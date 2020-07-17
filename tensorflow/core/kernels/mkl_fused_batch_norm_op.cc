@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -24,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define GET_FLAG(bn_flag) static_cast<int>(BN_FLAGS::bn_flag)
 #define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
@@ -1327,6 +1327,33 @@ class MklFusedBatchNormGradOp : public OpKernel {
               ? dnn_shape_diff_dst.GetMklLayout()
               : memory::desc(diff_dst_dims, MklDnnType<T>(), dnn_fmt);
 
+      MklDnnData<T> reorder_src(&cpu_engine_);
+      MklDnnData<T> reorder_diff_dst(&cpu_engine_);
+      T* diff_dst_data =
+          static_cast<T*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
+      T* src_data =
+          static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
+
+#ifdef ENABLE_MKLDNN_V1
+      // Ensure that src and diff_dst are in same blocked memory layout.
+      // As per MKL-DNN doc, this will lead to faster perf.
+      if (dnn_shape_src.IsMklTensor() && !dnn_shape_diff_dst.IsMklTensor()) {
+        reorder_diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
+        reorder_diff_dst.CheckReorderToOpMem(
+            MEMORY_PD_WITHOUT_DATA(src_md, cpu_engine_), context);
+        diff_dst_md = src_md;
+        diff_dst_data =
+            static_cast<T*>(reorder_diff_dst.GetOpMem().get_data_handle());
+      } else if (!dnn_shape_src.IsMklTensor() &&
+                 dnn_shape_diff_dst.IsMklTensor()) {
+        reorder_src.SetUsrMem(src_md, &src_tensor);
+        reorder_src.CheckReorderToOpMem(
+            MEMORY_PD_WITHOUT_DATA(diff_dst_md, cpu_engine_), context);
+        src_md = diff_dst_md;
+        src_data = static_cast<T*>(reorder_src.GetOpMem().get_data_handle());
+      }
+#endif  // ENABLE_MKLDNN_V1
+
       // weights -- MKL DNN packs scales/ shifts as weights in order
       // of scale, ..., scale, shift, ...., shift
       weights.AllocateBuffer(2 * depth_ * sizeof(U));
@@ -1350,20 +1377,24 @@ class MklFusedBatchNormGradOp : public OpKernel {
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 
-      const T* src_data = src_tensor.flat<T>().data();
-      const T* diff_dst_data = diff_dst_tensor.flat<T>().data();
       // Check if diff_dst input needs to be reordered
       std::shared_ptr<BatchNormBwdPd> bn_bwd_pd = bn_bwd->GetBatchNormBwdPd();
       if (IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, bn_bwd_pd, bn_bwd)) {
-        diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
+        diff_dst.SetUsrMem(diff_dst_md, diff_dst_data);
         diff_dst.CheckReorderToOpMem(
             MEMORY_PD_WITHOUT_DATA(GET_DIFF_DST_DESC_FROM_OP_PD(bn_bwd_pd),
                                    cpu_engine_),
             context);
         diff_dst_data = static_cast<T*>(diff_dst.GetOpMem().get_data_handle());
-      } else {
-        diff_dst_data =
-            static_cast<T*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
+      }
+
+      if (IS_SRC_REORDER_NEEDED(src_md, bn_bwd_pd, bn_bwd)) {
+        src.SetUsrMem(src_md, src_data);
+        src.CheckReorderToOpMem(
+            MEMORY_PD_WITHOUT_DATA(GET_SRC_DESC_FROM_OP_PD(bn_bwd_pd),
+                                   cpu_engine_),
+            context);
+        src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       }
 
       // Indices of output tensors

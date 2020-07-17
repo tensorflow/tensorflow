@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::algorithm;
 using mkldnn::eltwise_forward;
@@ -566,6 +566,7 @@ class MklReluOpBase : public OpKernel {
       std::shared_ptr<stream> fwd_cpu_stream;
       fwd_cpu_stream.reset(CreateStream(context, eltwise_fwd->GetEngine()));
       // Check if src needs to be reordered
+      bool is_src_reordered = false;
       const T* src_data = src_tensor.flat<T>().data();
       if (IS_SRC_REORDER_NEEDED(src_md, eltwise_fwd_pd, eltwise_fwd)) {
         src.SetUsrMem(src_md, &src_tensor);
@@ -575,27 +576,48 @@ class MklReluOpBase : public OpKernel {
             context);
         src_data = const_cast<T*>(
             reinterpret_cast<T*>(src.GetOpMem().get_data_handle()));
+        is_src_reordered = true;
       }
-      // Allocate dst tensor, always set it as MKL-DNN layout
-      if (dnn_shape_src.IsMklTensor()) {
+
+      // If src is reordered, then dst tensor would be in blocked layout.
+      // So we propagate this blocked layout on the output. We follow same
+      // logic when src is in blocked (MKL) layout to start of with also.
+      if (is_src_reordered || dnn_shape_src.IsMklTensor()) {
         dnn_shape_dst.SetMklTensor(true);
         auto dst_pd = eltwise_fwd_pd->PRIMITIVE_DESC_DST;
         dnn_shape_dst.SetMklLayout(&dst_pd);
         dnn_shape_dst.SetElemType(MklDnnType<T>());
-        dnn_shape_dst.SetTfLayout(dnn_shape_src.GetDimension(),
-                                  dnn_shape_src.GetSizesAsMklDnnDims(),
-                                  dnn_shape_src.GetTfDataFormat());
+        if (dnn_shape_src.IsMklTensor()) {
+          dnn_shape_dst.SetTfLayout(dnn_shape_src.GetDimension(),
+                                    dnn_shape_src.GetSizesAsMklDnnDims(),
+                                    dnn_shape_src.GetTfDataFormat());
+        } else {
+          dnn_shape_dst.SetTfLayout(src_tensor.dims(),
+                                    TFShapeToMklDnnDims(src_tensor.shape()),
+                                    MKL_TENSOR_FORMAT_BLOCKED);
+        }
         tf_shape_dst.AddDim(dst_pd.get_size() / sizeof(T));
       } else {
+        // If src is not in blocked layout or it is not reordered, then dst is
+        // in native layout.
         dnn_shape_dst.SetMklTensor(false);
         tf_shape_dst = src_tensor.shape();
       }
-      OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                  {static_cast<const int>(src_index)},
-                                  static_cast<const int>(dst_index),
-                                  tf_shape_dst, &dst_tensor));
-      AllocateOutputSetMklShape(context, dst_index, dnn_shape_dst);
 
+      if (is_src_reordered) {
+        // If src is reordered, then src and dst would be in different layouts.
+        AllocateOutputSetMklShape(context, dst_index, &dst_tensor, tf_shape_dst,
+                                  dnn_shape_dst);
+      } else {
+        // forwarding input to output works only when layouts of src and
+        // dst tensor remains same -- either both of them are in native layout
+        // or in blocked (MKL) layout.
+        OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                    {static_cast<const int>(src_index)},
+                                    static_cast<const int>(dst_index),
+                                    tf_shape_dst, &dst_tensor));
+        AllocateOutputSetMklShape(context, dst_index, dnn_shape_dst);
+      }
       T* dst_data = dst_tensor->flat<T>().data();
 
       // execute eltwise
@@ -924,7 +946,7 @@ class MklEluOp : public MklReluOpBase<Device, T, ALGORITHM::eltwise_elu> {
     // return exp(feature) - 1 if feature > 0; feature otherwise
     T feature = (static_cast<T*>(user_i))[0];
     if (feature < static_cast<T>(0))
-      (static_cast<T*>(out_o))[0] = std::exp(feature);
+      (static_cast<T*>(out_o))[0] = Eigen::numext::exp(feature);
     else
       (static_cast<T*>(out_o))[0] = feature;
     return;
@@ -966,7 +988,7 @@ class MklEluGradOp
     if (feature > static_cast<T>(0)) {
       (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0];
     } else {
-      T elu = std::exp(feature) - static_cast<T>(1);
+      T elu = Eigen::numext::exp(feature) - static_cast<T>(1);
       (static_cast<T*>(out_o))[0] =
           (static_cast<T*>(user_g))[0] * (elu + static_cast<T>(1));
     }
@@ -1004,8 +1026,8 @@ class MklTanhOp : public MklReluOpBase<Device, T, ALGORITHM::eltwise_tanh> {
     void* out_o = static_cast<void*>(dst_tensor->flat<T>().data());
     // tanh(x) = (e^x - e^(-x))/ (e^x + e^(-x))
     T feature = (static_cast<T*>(user_i))[0];
-    T e1 = std::exp(feature);
-    T e2 = std::exp(-feature);
+    T e1 = Eigen::numext::exp(feature);
+    T e2 = Eigen::numext::exp(-feature);
     (static_cast<T*>(out_o))[0] = (e1 - e2) / (e1 + e2);
     return;
   }
