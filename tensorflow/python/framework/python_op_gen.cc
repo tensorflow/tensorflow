@@ -1008,6 +1008,16 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
             FlattenInputs(&arg_list->second, &output_sizes);
         string conversion = strings::StrCat("_execute.args_to_matching_eager(",
                                             flattened, ", ctx");
+
+        strings::StrAppend(&conversion, ", [");
+        for (int t : attr.allowed_values().list().type()) {
+          DataType dtype = static_cast<DataType>(t);
+          const string py_dtype =
+              python_op_gen_internal::DataTypeToPython(dtype, "_dtypes.");
+          strings::StrAppend(&conversion, py_dtype, ", ");
+        }
+        strings::StrAppend(&conversion, "]");
+
         if (attr.has_default_value()) {
           strings::StrAppend(
               &conversion, ", ",
