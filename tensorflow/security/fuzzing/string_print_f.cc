@@ -27,8 +27,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   FuzzedDataProvider fuzzed_data(data, size);
 
   const char split = fuzzed_data.ConsumeIntegral<char>();
-  const char split_a = split % 8;
-  const char split_b = 8 - (split % 8);
+  const char split_a = split & 0x07;
+  const char split_b = (split >> 3) & 0x07;
 
   const std::string sa_string = fuzzed_data.ConsumeBytesAsString(split_a);
   const std::string sb_string = fuzzed_data.ConsumeBytesAsString(split_b);
