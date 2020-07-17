@@ -33,6 +33,7 @@ sudo pip install twine
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.
+export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.6)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
