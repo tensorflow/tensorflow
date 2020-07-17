@@ -130,10 +130,28 @@ static int64_t LoadBufferFromGCS(const std::string& path, size_t offset,
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
+using ReadFn =
+    std::function<int64_t(const std::string& path, uint64_t offset, size_t n,
+                          char* buffer, TF_Status* status)>;
 typedef struct GCSFile {
-  const std::string bucket;
-  const std::string object;
-  gcs::Client* gcs_client;  // not owned
+  const std::string path;
+  const bool is_cache_enable;
+  const uint64_t buffer_size;
+  ReadFn read_fn;
+  absl::Mutex buffer_mutex;
+  uint64_t buffer_start ABSL_GUARDED_BY(buffer_mutex);
+  bool buffer_end_is_past_eof ABSL_GUARDED_BY(buffer_mutex);
+  std::string buffer ABSL_GUARDED_BY(buffer_mutex);
+  GCSFile(std::string path, bool is_cache_enable, uint64_t buffer_size,
+          ReadFn read_fn)
+      : path(path),
+        is_cache_enable(is_cache_enable),
+        buffer_size(buffer_size),
+        buffer_mutex(),
+        buffer_start(0),
+        buffer_end_is_past_eof(false),
+        buffer(),
+        read_fn(std::move(read_fn)) {}
 } GCSFile;
 
 void Cleanup(TF_RandomAccessFile* file) {
@@ -141,30 +159,50 @@ void Cleanup(TF_RandomAccessFile* file) {
   delete gcs_file;
 }
 
-// TODO(vnvo2409): Adding cache.
+static void FillBuffer(uint64_t start, GCSFile* gcs_file, TF_Status* status) {
+  gcs_file->buffer_start = start;
+  gcs_file->buffer.resize(gcs_file->buffer_size);
+  auto read =
+      gcs_file->read_fn(gcs_file->path, gcs_file->buffer_start,
+                        gcs_file->buffer_size, &(gcs_file->buffer[0]), status);
+  gcs_file->buffer_end_is_past_eof = (TF_GetCode(status) == TF_OUT_OF_RANGE);
+  gcs_file->buffer.resize(read);
+}
+
 // `google-cloud-cpp` is working on a feature that we may want to use.
 // See https://github.com/googleapis/google-cloud-cpp/issues/4013.
 int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
              char* buffer, TF_Status* status) {
   auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-  auto stream = gcs_file->gcs_client->ReadObject(
-      gcs_file->bucket, gcs_file->object, gcs::ReadRange(offset, offset + n));
-  TF_SetStatusFromGCSStatus(stream.status(), status);
-  if ((TF_GetCode(status) != TF_OK) &&
-      (TF_GetCode(status) != TF_OUT_OF_RANGE)) {
-    return -1;
+  if (gcs_file->is_cache_enable || n > gcs_file->buffer_size) {
+    return gcs_file->read_fn(gcs_file->path, offset, n, buffer, status);
+  } else {
+    absl::MutexLock l(&gcs_file->buffer_mutex);
+    size_t buffer_end = gcs_file->buffer_start + gcs_file->buffer.size();
+    size_t copy_size = 0;
+    if (offset < buffer_end && gcs_file->buffer_start) {
+      copy_size = (std::min)(n, static_cast<size_t>(buffer_end - offset));
+      memcpy(buffer,
+             gcs_file->buffer.data() + (offset - gcs_file->buffer_start),
+             copy_size);
+    }
+    bool consumed_buffer_to_eof =
+        offset + copy_size >= buffer_end && gcs_file->buffer_end_is_past_eof;
+    if (copy_size < n && !consumed_buffer_to_eof) {
+      FillBuffer(offset + copy_size, gcs_file, status);
+      if (TF_GetCode(status) != TF_OK &&
+          TF_GetCode(status) != TF_OUT_OF_RANGE) {
+        // Empty the buffer to avoid caching bad reads.
+        gcs_file->buffer.resize(0);
+        return -1;
+      }
+      size_t remaining_copy =
+          (std::min)(n - copy_size, gcs_file->buffer.size());
+      memcpy(buffer + copy_size, gcs_file->buffer.data(), remaining_copy);
+      copy_size += remaining_copy;
+    }
+    return copy_size;
   }
-  int64_t read;
-  if (!absl::SimpleAtoi(stream.headers().find("content-length")->second,
-                        &read)) {
-    TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
-    return -1;
-  }
-  if (read != n) {
-    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
-  }
-  stream.read(buffer, read);
-  return read;
 }
 
 }  // namespace tf_random_access_file
@@ -407,8 +445,29 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
   if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  bool is_cache_enabled;
+  {
+    absl::MutexLock l(&gcs_file->block_cache_lock);
+    is_cache_enabled = gcs_file->file_block_cache->IsCacheEnabled();
+  }
+  auto read_fn = [gcs_file, is_cache_enabled](
+                     const std::string& path, uint64_t offset, size_t n,
+                     char* buffer, TF_Status* status) -> int64_t {
+    // TODO(vnvo2409): Check for `stat_cache`.
+    auto read =
+        is_cache_enabled
+            ? gcs_file->file_block_cache->Read(path, offset, n, buffer, status)
+            : LoadBufferFromGCS(path, offset, n, buffer, &gcs_file->gcs_client,
+                                status);
+    if (TF_GetCode(status) != TF_OK) return -1;
+    if (read < n)
+      TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+    else
+      TF_SetStatus(status, TF_OK, "");
+    return read;
+  };
   file->plugin_file = new tf_random_access_file::GCSFile(
-      {std::move(bucket), std::move(object), &gcs_file->gcs_client});
+      std::move(path), is_cache_enabled, gcs_file->block_size, read_fn);
   TF_SetStatus(status, TF_OK, "");
 }
 
