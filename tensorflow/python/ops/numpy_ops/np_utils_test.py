@@ -81,7 +81,7 @@ Unsupported arguments: `x`.
 
 f docstring.
 
-See the NumPy documentation for `numpy.np_fun`: %s"""
+See the NumPy documentation for [`numpy.np_fun`](%s)."""
     expected = expected % (link)
     self.assertEqual(expected, f.__doc__)
 
