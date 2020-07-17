@@ -125,4 +125,3 @@ class IRNNMnistBenchmark(tf.test.Benchmark):
 
 if __name__ == '__main__':
   tf.test.main()
-  
