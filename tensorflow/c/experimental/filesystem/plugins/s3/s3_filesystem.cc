@@ -442,8 +442,25 @@ void Close(const TF_WritableFile* file, TF_Status* status) {
 // SECTION 3. Implementation for `TF_ReadOnlyMemoryRegion`
 // ----------------------------------------------------------------------------
 namespace tf_read_only_memory_region {
+typedef struct S3MemoryRegion {
+  std::unique_ptr<char[]> data;
+  uint64_t length;
+} S3MemoryRegion;
 
-// TODO(vnvo2409): Implement later
+void Cleanup(TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<S3MemoryRegion*>(region->plugin_memory_region);
+  delete r;
+}
+
+const void* Data(const TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<S3MemoryRegion*>(region->plugin_memory_region);
+  return reinterpret_cast<const void*>(r->data.get());
+}
+
+uint64_t Length(const TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<S3MemoryRegion*>(region->plugin_memory_region);
+  return r->length;
+}
 
 }  // namespace tf_read_only_memory_region
 
