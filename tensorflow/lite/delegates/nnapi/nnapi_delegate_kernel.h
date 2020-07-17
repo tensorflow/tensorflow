@@ -61,8 +61,8 @@ class OperandMapping {
 
   // Add a new mapping from `tflite_index` and return the NN API tensor index.
   int add_new_ann_tensor_index(int tflite_index) {
-    const int64 lite_tensor_to_ann_tensor_size = lite_tensor_to_ann_tensor_.size();
-    if (tflite_index >= lite_tensor_to_ann_tensor_size) {
+    const int64 current_size = lite_tensor_to_ann_tensor_.size();
+    if (tflite_index >= current_size) {
       lite_tensor_to_ann_tensor_.resize(tflite_index + 1, -1);
     }
     const int new_tensor_index = next_ann_tensor_index_++;
@@ -74,8 +74,8 @@ class OperandMapping {
   // converted during copying the data to the memory allocated for NN API.
   // kTfLiteNoType means no conversion is needed.
   TfLiteType lite_index_to_ann_type_conversion(int index) const {
-    const int64 index_to_type_conversion_size = index_to_type_conversion_.size();
-    if (index >= 0 && index < index_to_type_conversion_size)
+    const int64 max_size = index_to_type_conversion_.size();
+    if (index >= 0 && index < max_size)
       return index_to_type_conversion_[index];
     else
       return kTfLiteNoType;
@@ -83,8 +83,8 @@ class OperandMapping {
 
   // Add a new mapping from TFLite index to a type conversion.
   void add_type_conversion(int tflite_index, TfLiteType tflite_type) {
-    const int64 index_to_type_conversion_size = index_to_type_conversion_.size();
-    if (tflite_index >= index_to_type_conversion_size) {
+    const int64 current_size = index_to_type_conversion_.size();
+    if (tflite_index >= current_size) {
       index_to_type_conversion_.resize(tflite_index + 1, kTfLiteNoType);
     }
     index_to_type_conversion_[tflite_index] = tflite_type;

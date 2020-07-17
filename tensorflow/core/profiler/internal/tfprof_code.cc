@@ -428,8 +428,8 @@ void TFCode::AddNode(TFGraphNode* node) {
     traces.insert(trace);
     pre_code_node = pre_code_node->AddChildren(
         trace, &node->call_stack()->traces().at(i), "");
-    const int64 node_call_stack_traces_size_minus_one = node->call_stack()->traces().size() - 1;
-    if (i == node_call_stack_traces_size_minus_one) {
+    const int64 last_index = node->call_stack()->traces().size() - 1;
+    if (i == last_index) {
       pre_code_node->node->AddGraphNode(node);
     }
   }

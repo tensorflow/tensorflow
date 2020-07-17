@@ -158,8 +158,8 @@ namespace xla {
 /* static */ int IndexUtil::CompareIndices(absl::Span<const int64> lhs,
                                            absl::Span<const int64> rhs) {
   int64 rank = lhs.size();
-  const int64 rhs_size = rhs.size();
-  CHECK_EQ(rhs_size, rank);
+  const int64 rhs_rank = rhs.size();
+  CHECK_EQ(rhs_rank, rank);
   for (int64 dim = 0; dim < rank; ++dim) {
     if (lhs[dim] < rhs[dim]) {
       return -1;
