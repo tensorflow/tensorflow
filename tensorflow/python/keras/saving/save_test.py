@@ -33,6 +33,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
@@ -151,7 +152,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
         'b': keras.layers.Input(shape=(1,), name='b', dtype='string')
     }
 
-    fc_layer = feature_column_lib.DenseFeatures(cols)(input_layers)
+    fc_layer = dense_features.DenseFeatures(cols)(input_layers)
     output = keras.layers.Dense(10)(fc_layer)
 
     model = keras.models.Model(input_layers, output)
