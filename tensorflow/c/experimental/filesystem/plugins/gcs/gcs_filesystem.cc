@@ -166,7 +166,7 @@ static void FillBuffer(uint64_t start, GCSFile* gcs_file, TF_Status* status) {
       gcs_file->read_fn(gcs_file->path, gcs_file->buffer_start,
                         gcs_file->buffer_size, &(gcs_file->buffer[0]), status);
   gcs_file->buffer_end_is_past_eof = (TF_GetCode(status) == TF_OUT_OF_RANGE);
-  gcs_file->buffer.resize(read);
+  if (read >= 0) gcs_file->buffer.resize(read);
 }
 
 // `google-cloud-cpp` is working on a feature that we may want to use.
@@ -200,7 +200,15 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
           (std::min)(n - copy_size, gcs_file->buffer.size());
       memcpy(buffer + copy_size, gcs_file->buffer.data(), remaining_copy);
       copy_size += remaining_copy;
+      if (copy_size < n) {
+        // Forget the end-of-file flag to allow for clients that poll on the
+        // same file.
+        gcs_file->buffer_end_is_past_eof = false;
+        TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+        return copy_size;
+      }
     }
+    TF_SetStatus(status, TF_OK, "");
     return copy_size;
   }
 }
