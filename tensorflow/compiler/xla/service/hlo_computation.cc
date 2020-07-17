@@ -615,7 +615,7 @@ string HloComputation::ToString(
     CanonicalNameMap name_map;
 
     bool print_prev = true;
-    for (int index = 0, end = instruction_order.size(); index < iter_limi; ++index) {
+    for (int index = 0, end = instruction_order.size(); index < end; ++index) {
       const HloInstruction* instruction = instruction_order[index];
       if (instructions_to_print.find(index) != instructions_to_print.end()) {
         s << new_options.format_instruction(

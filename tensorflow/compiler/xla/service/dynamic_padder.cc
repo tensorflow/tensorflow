@@ -809,7 +809,7 @@ StatusOr<bool> RewriteDynamicReshape(
   auto common_factors = CommonFactors(operand->shape().dimensions(),
                                       reshape->shape().dimensions());
   // Find common_factors that the input belongs to.
-  for (int64 i = 0, end = common_factors.size() - 1; i < end; ++i) {
+  for (int64 i = 0, iter_end = common_factors.size() - 1; i < iter_end; ++i) {
     auto start = common_factors[i];
     auto end = common_factors[i + 1];
     std::vector<int64> input_dims;
