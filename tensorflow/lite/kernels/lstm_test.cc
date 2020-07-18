@@ -41,7 +41,7 @@ class LSTMOpModel : public SingleOpModel {
               bool use_projection_bias, float cell_clip, float proj_clip,
               const std::vector<std::vector<int>>& input_shapes,
               const TensorType weight_type, bool is_layer_norm,
-              bool asymmetric_quantize_inputs = false)
+              bool asymmetric_quantize_inputs)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_cell_(n_cell),
@@ -504,8 +504,8 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_FLOAT32,
-                   /*is_layer_norm=*/false);
+                   /*weight_type=*/TensorType_FLOAT32, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/false);
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
@@ -559,8 +559,8 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingOmittedLayerNormLstmTest,
                        {0},  // cell_layer_norm_coefficient tensor
                        {0},  // output_layer_norm_coefficient tensor
                    },
-                   /*weight_type=*/TensorType_FLOAT32,
-                   /*is_layer_norm=*/true);
+                   /*weight_type=*/TensorType_FLOAT32, /*is_layer_norm=*/true,
+                   /*asymmetric_quantize_inputs=*/false);
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
@@ -607,8 +607,8 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmTest,
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_UINT8,
-                   /*is_layer_norm=*/false, GetParam());
+                   /*weight_type=*/TensorType_UINT8, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/GetParam());
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm,
                 /*tolerance=*/0.0157651);
@@ -658,8 +658,8 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmInt8Test,
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_INT8,
-                   /*is_layer_norm=*/false, GetParam());
+                   /*weight_type=*/TensorType_INT8, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/GetParam());
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm,
                 /*tolerance=*/0.0157651);
@@ -749,8 +749,8 @@ TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_FLOAT32,
-                   /*is_layer_norm=*/false);
+                   /*weight_type=*/TensorType_FLOAT32, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/false);
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
@@ -797,8 +797,8 @@ TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmTest,
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_UINT8,
-                   /*is_layer_norm=*/false, GetParam());
+                   /*weight_type=*/TensorType_UINT8, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/GetParam());
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.03573);
 }
@@ -846,8 +846,8 @@ TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmInt8Test,
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_INT8,
-                   /*is_layer_norm=*/false, GetParam());
+                   /*weight_type=*/TensorType_INT8, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/GetParam());
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.03573);
 }
@@ -1487,8 +1487,8 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest, LstmBlackBoxTest) {
                        {n_output, n_cell},  // projection_weight tensor
                        {0},                 // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_FLOAT32,
-                   /*is_layer_norm=*/false);
+                   /*weight_type=*/TensorType_FLOAT32, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/false);
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
@@ -1534,8 +1534,8 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLstmTest,
                        {n_output, n_cell},  // projection_weight tensor
                        {0},                 // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_UINT8,
-                   /*is_layer_norm=*/false, GetParam());
+                   /*weight_type=*/TensorType_UINT8, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/GetParam());
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.00467);
 }
@@ -1583,8 +1583,8 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLstmInt8Test,
                        {n_output, n_cell},  // projection_weight tensor
                        {0},                 // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_INT8,
-                   /*is_layer_norm=*/false, GetParam());
+                   /*weight_type=*/TensorType_INT8, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/GetParam());
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.0015);
 }
@@ -1703,8 +1703,8 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      /*weight_type=*/TensorType_FLOAT32,
-      /*is_layer_norm=*/true);
+      /*weight_type=*/TensorType_FLOAT32, /*is_layer_norm=*/true,
+      /*asymmetric_quantize_inputs=*/false);
 
   // Verify the final output.
   lstm_golden_output_ = {{
@@ -1774,8 +1774,8 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      /*weight_type=*/TensorType_UINT8,
-      /*is_layer_norm=*/true, GetParam());
+      /*weight_type=*/TensorType_UINT8, /*is_layer_norm=*/true,
+      /*asymmetric_quantize_inputs=*/GetParam());
 
   lstm_golden_output_ = {{
                              // Batch0: 3 (input_sequence_size) * 3 (n_output)
@@ -1847,8 +1847,8 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      /*weight_type=*/TensorType_INT8,
-      /*is_layer_norm=*/true, GetParam());
+      /*weight_type=*/TensorType_INT8, /*is_layer_norm=*/true,
+      /*asymmetric_quantize_inputs=*/GetParam());
 
   // Goldens are calculated from weight_type=TensorType_FLOAT32.
   lstm_golden_output_ = {{
@@ -1961,8 +1961,8 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      /*weight_type=*/TensorType_FLOAT32,
-      /*is_layer_norm=*/true);
+      /*weight_type=*/TensorType_FLOAT32, /*is_layer_norm=*/true,
+      /*asymmetric_quantize_inputs=*/false);
 
   // Verify the final output.
   lstm_golden_output_ = {
@@ -2032,8 +2032,8 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      /*weight_type=*/TensorType_UINT8,
-      /*is_layer_norm=*/true, GetParam());
+      /*weight_type=*/TensorType_UINT8, /*is_layer_norm=*/true,
+      /*asymmetric_quantize_inputs=*/GetParam());
 
   // Verify the final output.
   lstm_golden_output_ = {
@@ -2104,8 +2104,8 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      /*weight_type=*/TensorType_INT8,
-      /*is_layer_norm=*/true, GetParam());
+      /*weight_type=*/TensorType_INT8, /*is_layer_norm=*/true,
+      /*asymmetric_quantize_inputs=*/GetParam());
 
   // Goldens are results using FLOAT32 inference.
   lstm_golden_output_ = {{
@@ -3309,44 +3309,45 @@ TEST(LSTMOpModel, InvalidTypeTest) {
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_INT32,
-                   /*is_layer_norm=*/false),
+                   /*weight_type=*/TensorType_INT32, /*is_layer_norm=*/false,
+                   /*asymmetric_quantize_inputs=*/false),
                "");
 
-  EXPECT_DEATH(LSTMOpModel lstm(
-                   n_batch, n_input, n_cell, n_output,
-                   /*use_cifg=*/false, /*use_peephole=*/false,
-                   /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
-                   {
-                       {n_batch, n_input},  // input tensor
+  EXPECT_DEATH(
+      LSTMOpModel lstm(
+          n_batch, n_input, n_cell, n_output,
+          /*use_cifg=*/false, /*use_peephole=*/false,
+          /*use_projection_weights=*/false,
+          /*use_projection_bias=*/false,
+          /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+          {
+              {n_batch, n_input},  // input tensor
 
-                       {n_cell, n_input},  // input_to_input_weight tensor
-                       {n_cell, n_input},  // input_to_forget_weight tensor
-                       {n_cell, n_input},  // input_to_cell_weight tensor
-                       {n_cell, n_input},  // input_to_output_weight tensor
+              {n_cell, n_input},  // input_to_input_weight tensor
+              {n_cell, n_input},  // input_to_forget_weight tensor
+              {n_cell, n_input},  // input_to_cell_weight tensor
+              {n_cell, n_input},  // input_to_output_weight tensor
 
-                       {n_cell, n_output},  // recurrent_to_input_weight_tensor
-                       {n_cell, n_output},  // recurrent_to_forget_weight_tensor
-                       {n_cell, n_output},  // recurrent_to_cell_weight_tensor
-                       {n_cell, n_output},  // recurrent_to_output_weight_tensor
+              {n_cell, n_output},  // recurrent_to_input_weight_tensor
+              {n_cell, n_output},  // recurrent_to_forget_weight_tensor
+              {n_cell, n_output},  // recurrent_to_cell_weight_tensor
+              {n_cell, n_output},  // recurrent_to_output_weight_tensor
 
-                       {0},  // cell_to_input_weight tensor
-                       {0},  // cell_to_forget_weight tensor
-                       {0},  // cell_to_output_weight tensor
+              {0},  // cell_to_input_weight tensor
+              {0},  // cell_to_forget_weight tensor
+              {0},  // cell_to_output_weight tensor
 
-                       {n_cell},  // input_gate_bias tensor
-                       {n_cell},  // forget_gate_bias tensor
-                       {n_cell},  // cell_gate_bias tensor
-                       {n_cell},  // output_gate_bias tensor
+              {n_cell},  // input_gate_bias tensor
+              {n_cell},  // forget_gate_bias tensor
+              {n_cell},  // cell_gate_bias tensor
+              {n_cell},  // output_gate_bias tensor
 
-                       {0, 0},  // projection_weight tensor
-                       {0},     // projection_bias tensor
-                   },
-                   /*weight_type=*/TensorType_COMPLEX64,
-                   /*is_layer_norm=*/false),
-               "");
+              {0, 0},  // projection_weight tensor
+              {0},     // projection_bias tensor
+          },
+          /*weight_type=*/TensorType_COMPLEX64, /*is_layer_norm=*/false,
+          /*asymmetric_quantize_inputs=*/false),
+      "");
 }
 #endif
 
