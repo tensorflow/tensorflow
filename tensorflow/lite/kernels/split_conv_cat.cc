@@ -1,17 +1,3 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/conv.h"
 
 #include <algorithm>
@@ -42,12 +28,86 @@ limitations under the License.
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/kernels/padding.h"
 
-#include "tensorflow/lite/tools/logging.h"
+
+#ifndef TENSORFLOW_LITE_TOOLS_LOGGING_H_
+#define TENSORFLOW_LITE_TOOLS_LOGGING_H_
+
+// LOG and CHECK macros for tflite tooling.
+
+#include <cstdlib>
+#include <iostream>
+#include <sstream>
+
+#ifdef _WIN32
+#undef ERROR
+#endif
+
+namespace tflite {
+namespace logging {
+// A wrapper that logs to stderr.
+//
+// Used for TFLITE_LOG and TFLITE_BENCHMARK_CHECK macros.
+class LoggingWrapper {
+ public:
+  enum class LogSeverity : int {
+    INFO = 0,
+    WARN = 1,
+    ERROR = 2,
+    FATAL = 3,
+  };
+  LoggingWrapper(LogSeverity severity)
+      : severity_(severity), should_log_(true) {}
+  LoggingWrapper(LogSeverity severity, bool log)
+      : severity_(severity), should_log_(log) {}
+  std::stringstream& Stream() { return stream_; }
+  ~LoggingWrapper() {
+    if (should_log_) {
+      switch (severity_) {
+        case LogSeverity::INFO:
+        case LogSeverity::WARN:
+          std::cout << stream_.str() << std::endl;
+          break;
+        case LogSeverity::ERROR:
+          std::cerr << stream_.str() << std::endl;
+          break;
+        case LogSeverity::FATAL:
+          std::cerr << stream_.str() << std::endl;
+          std::flush(std::cerr);
+          std::abort();
+          break;
+      }
+    }
+  }
+
+ private:
+  std::stringstream stream_;
+  LogSeverity severity_;
+  bool should_log_;
+};
+}  // namespace logging
+}  // namespace tflite
+
+#define TFLITE_LOG(severity)                                  \
+  tflite::logging::LoggingWrapper(                            \
+      tflite::logging::LoggingWrapper::LogSeverity::severity) \
+      .Stream()
+
+#define TFLITE_TOOLS_CHECK(condition)                      \
+  tflite::logging::LoggingWrapper(                         \
+      tflite::logging::LoggingWrapper::LogSeverity::FATAL, \
+      (condition) ? false : true)                          \
+      .Stream()
+
+#define TFLITE_TOOLS_CHECK_EQ(a, b) TFLITE_TOOLS_CHECK((a) == (b))
+
+#endif  // TENSORFLOW_LITE_TOOLS_LOGGING_H_
+
+
 
 namespace tflite {
 namespace ops {
-namespace builtin {
-namespace conv {
+namespace custom {
+namespace split_conv_cat {
 
 // This file has 4 implementation of Conv.
 enum KernelType {
@@ -214,7 +274,6 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
                                                        KernelType kernel_type) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
-
   TF_LITE_ENSURE(context, node->inputs->size >= 2);
   const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* filter = GetInput(context, node, 1);
@@ -305,7 +364,8 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
                      TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
-
+  
+  TFLITE_LOG(INFO) << node->inputs->size;
   bool has_bias = node->inputs->size == 3;
   // Check number of inputs/outputs
   TF_LITE_ENSURE(context, has_bias || node->inputs->size == 2);
@@ -760,16 +820,6 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
     }
     case kCblasOptimized:
     case kGenericOptimized: {
-      // optimized_ops::Conv(op_params, GetTensorShape(input),
-      //                     GetTensorData<float>(input), GetTensorShape(filter),
-      //                     GetTensorData<float>(filter), GetTensorShape(bias),
-      //                     GetTensorData<float>(bias), GetTensorShape(output),
-      //                     GetTensorData<float>(output), GetTensorShape(im2col),
-      //                     GetTensorData<float>(im2col),
-      //                     CpuBackendContext::GetFromContext(context));
-      // break;
-      // TFLITE_LOG(INFO) << "hii";
-
       optimized_ops::SpecialConv(op_params, GetTensorShape(input),
                           GetTensorData<float>(input), GetTensorShape(filter),
                           GetTensorData<float>(filter), GetTensorShape(bias),
@@ -1026,40 +1076,40 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-}  // namespace conv
+}  // namespace split_conv_cat
 
 TfLiteRegistration* Register_CONVOLUTION_REF() {
-  static TfLiteRegistration r = {conv::Init, conv::Free,
-                                 conv::Prepare<conv::kReference>,
-                                 conv::Eval<conv::kReference>};
+  static TfLiteRegistration r = {split_conv_cat::Init, split_conv_cat::Free,
+                                 split_conv_cat::Prepare<split_conv_cat::kReference>,
+                                 split_conv_cat::Eval<split_conv_cat::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_CONVOLUTION_GENERIC_OPT() {
-  static TfLiteRegistration r = {conv::Init, conv::Free,
-                                 conv::Prepare<conv::kGenericOptimized>,
-                                 conv::Eval<conv::kGenericOptimized>};
+  static TfLiteRegistration r = {split_conv_cat::Init, split_conv_cat::Free,
+                                 split_conv_cat::Prepare<split_conv_cat::kGenericOptimized>,
+                                 split_conv_cat::Eval<split_conv_cat::kGenericOptimized>};
   return &r;
 }
 
 TfLiteRegistration* Register_CONVOLUTION_GENERIC_OPT_UINT8() {
   static TfLiteRegistration r = {
-      conv::Init, conv::Free, conv::Prepare<conv::kGenericOptimized>,
-      conv::EvalImpl<conv::kGenericOptimized, kTfLiteUInt8>};
+      split_conv_cat::Init, split_conv_cat::Free, split_conv_cat::Prepare<split_conv_cat::kGenericOptimized>,
+      split_conv_cat::EvalImpl<split_conv_cat::kGenericOptimized, kTfLiteUInt8>};
   return &r;
 }
 
 TfLiteRegistration* Register_CONVOLUTION_MULTITHREADED_OPT() {
-  static TfLiteRegistration r = {conv::Init, conv::Free,
-                                 conv::Prepare<conv::kMultithreadOptimized>,
-                                 conv::Eval<conv::kMultithreadOptimized>};
+  static TfLiteRegistration r = {split_conv_cat::Init, split_conv_cat::Free,
+                                 split_conv_cat::Prepare<split_conv_cat::kMultithreadOptimized>,
+                                 split_conv_cat::Eval<split_conv_cat::kMultithreadOptimized>};
   return &r;
 }
 
 TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
-  static TfLiteRegistration r = {conv::Init, conv::Free,
-                                 conv::Prepare<conv::kCblasOptimized>,
-                                 conv::Eval<conv::kCblasOptimized>};
+  static TfLiteRegistration r = {split_conv_cat::Init, split_conv_cat::Free,
+                                 split_conv_cat::Prepare<split_conv_cat::kCblasOptimized>,
+                                 split_conv_cat::Eval<split_conv_cat::kCblasOptimized>};
   return &r;
 }
 
@@ -1086,6 +1136,14 @@ TfLiteRegistration* Register_CONV_2D_UINT8() {
 #endif
 }
 
-}  // namespace builtin
+
+TfLiteRegistration* Register_SPLIT_CONV_CAT() {
+  static TfLiteRegistration r = {split_conv_cat::Init, split_conv_cat::Free,
+                                split_conv_cat::Prepare<split_conv_cat::kGenericOptimized>,
+                                split_conv_cat::Prepare<split_conv_cat::kGenericOptimized>};
+  return &r;
+}
+
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite

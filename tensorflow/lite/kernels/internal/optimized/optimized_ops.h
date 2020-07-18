@@ -32,6 +32,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 
+#include "tensorflow/lite/tools/logging.h"
+
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
 #endif
@@ -1322,6 +1324,11 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   const int gemm_input_dims = gemm_input_shape->DimensionsCount();
   int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
   int n = output_shape.Dims(3);
+  
+  // TFLITE_LOG(INFO) << "out chan " << n;
+  // TFLITE_LOG(INFO) << "hw " <<m;
+  // TFLITE_LOG(INFO) << "gemm_in_dim " << gemm_input_dims - 1;
+  // TFLITE_LOG(INFO) << "shape " << gemm_input_shape->DimsData()[0] << gemm_input_shape->DimsData()[1] << gemm_input_shape->DimsData()[2] << gemm_input_shape->DimsData()[3];
   int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
@@ -1366,6 +1373,213 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
                          dst_params, output_data, gemm_params,
                          cpu_backend_context);
+#endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
+}
+
+
+
+inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shape,
+                 const float* input_data, const RuntimeShape& filter_shape,
+                 const float* filter_data, const RuntimeShape& bias_shape,
+                 const float* bias_data, const RuntimeShape& output_shape,
+                 float* output_data, const RuntimeShape& im2col_shape,
+                 float* im2col_data, CpuBackendContext* cpu_backend_context) {
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  // for(int i=0; i<2; i++){
+  //       TFLITE_LOG(INFO) << "bias " << i << ": " << bias_shape[i];
+  //                }
+  // NB: the float 0.0f value is represented by all zero bytes.
+  const uint8 float_zero_byte = 0x00;
+  const float* gemm_input_data = nullptr;
+  const RuntimeShape* gemm_input_shape = nullptr;
+  const int filter_width = filter_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
+  const bool need_im2col = stride_width != 1 || stride_height != 1 ||
+                           filter_width != 1 || filter_height != 1;
+  if (need_dilated_im2col) {
+    DilatedIm2col(params, float_zero_byte, input_shape, input_data,
+                  filter_shape, output_shape, im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_shape = &im2col_shape;
+  } else if (need_im2col) {
+    TFLITE_DCHECK(im2col_data);
+    Im2col(params, filter_height, filter_width, float_zero_byte, input_shape,
+           input_data, im2col_shape, im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_shape = &im2col_shape;
+  } else {
+    // TODO(aselle): We need to make sure to not send im2col if it is not
+    // needed.
+    TFLITE_DCHECK(!im2col_data);
+    gemm_input_data = input_data;
+    gemm_input_shape = &input_shape;
+  }
+  
+  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
+  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
+  int n = filter_shape.Dims(0);
+  if (n == 15) n=5;
+  else if (n==128) {
+    n= 64;
+  }
+  else if (n==64) {
+    n=32;
+  }
+
+  else if (n==32) {
+    n=16;
+  }
+  else if (n==16){
+    n=8;
+  } 
+  else if (n==2){
+    n=1;
+  } 
+  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
+
+#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
+  // The following code computes matrix multiplication c = a * transponse(b)
+  // with CBLAS, where:
+  // * `a` is a matrix with dimensions (m, k).
+  // * `b` is a matrix with dimensions (n, k), so transpose(b) is (k, n).
+  // * `c` is a matrix with dimensions (m, n).
+  // The naming of variables are aligned with CBLAS specification here.
+  const float* a = gemm_input_data;
+  const float* b = filter_data;
+  float* c = output_data;
+  // The stride of matrix a, b and c respectively.
+  int stride_a = k;
+  int stride_b = k;
+  int stride_c = n;
+
+  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, m, n, k, 1.0f, a,
+              stride_a, b, stride_b, 0.0f, c, stride_c);
+  optimized_ops::AddBiasAndEvalActivationFunction(
+      output_activation_min, output_activation_max, bias_shape, bias_data,
+      output_shape, output_data);
+#else
+  // When an optimized CBLAS implementation is not available, fall back
+  // to using cpu_backend_gemm.
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n;
+  lhs_params.cols = k;
+  cpu_backend_gemm::MatrixParams<float> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = k;
+  rhs_params.cols = m;
+  cpu_backend_gemm::MatrixParams<float> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n;
+  dst_params.cols = m;
+  cpu_backend_gemm::GemmParams<float, float> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
+                         dst_params, output_data, gemm_params,
+                         cpu_backend_context);
+  int filter_depth = n;
+  int output_depth = output_shape.Dims(3);
+  int input_depth = input_shape.Dims(3);
+  // TFLITE_LOG(INFO) << "n " << n << " k " << k << " m " << m;
+
+  // for(int i=0; i<input_shape.Dims(0)*input_shape.Dims(1)*input_shape.Dims(2); i++)
+  //     for(int j=0; j<input_depth; j++){
+  //       TFLITE_LOG(INFO) << "input " << i << ", " << j << ": " << input_data[i*input_depth+j];
+  //     }
+
+  //   for(int i=0; i<m; i++)
+  //     for(int j=0; j<output_depth; j++){
+  //       TFLITE_LOG(INFO) << "output " << i << ", " << j << ": " << output_data[i*output_depth+j];
+  //     }
+
+  if (filter_depth < output_depth && output_depth <= input_depth) {
+    // m = batch x height x width)
+    
+    // for(int i=0; i<n; i++)
+    //   for(int j=0; j<k; j++){
+    //     TFLITE_LOG(INFO) << "filter " << i << ", " << j << ": " << filter_data[i];
+    //   }
+    
+    // CPP Wrong
+    // memcpy(&output_data[m*n], &input_data[m*n], (output_depth-filter_depth)*sizeof(float));
+
+    // CPP Perfect Pad
+    // [0, 1, 2, 0, 1, 2, 0, 1, 2, ,0, 1, 2 , , 0, 1, 2, , ]
+    // [0, 1, 2, 3, 0, 1, 2, 3]
+    // float* target_ptr = &output_data[(m-1)*output_depth];
+    // float* copy_ptr = &output_data[(m-1)*n];
+    // int copy_size = filter_depth*sizeof(float);
+    // for(int i =m-1; i>0; i--){
+    //   memcpy(target_ptr, copy_ptr, copy_size);
+    //   target_ptr -= output_depth;
+    //   copy_ptr -= n;
+    // }
+    // const float* input_ptr = &input_data[filter_depth];
+    // target_ptr = &output_data[filter_depth];
+    // copy_size = (output_depth - filter_depth)*sizeof(float);
+    // for(int i =0; i<m; i++){
+    //   memcpy(target_ptr, input_ptr, copy_size);
+    //   target_ptr += output_depth;
+    //   input_ptr += input_depth;
+    // }
+    
+    //CPP General
+    const int batch = input_shape.Dims(0);
+    const int output_height = output_shape.Dims(1);
+    const int output_width = output_shape.Dims(2);
+
+    const int height_diff = (input_shape.Dims(1)-output_height)*input_shape.Dims(2)*input_depth;
+    const int width_diff = (input_shape.Dims(2)-output_width)*input_depth;
+
+    float* target_ptr = &output_data[(m-1)*output_depth];
+    float* copy_ptr = &output_data[(m-1)*n];
+    int copy_size = filter_depth*sizeof(float);
+    for(int i =m-1; i>0; i--){
+      memcpy(target_ptr, copy_ptr, copy_size);
+      target_ptr -= output_depth;
+      copy_ptr -= n;
+    }
+
+    const float* input_ptr = &input_data[filter_depth];
+    target_ptr = &output_data[filter_depth];
+    copy_size = (output_depth - filter_depth)*sizeof(float);
+    for(int b =0; b<batch; b++){
+      for(int h=0; h<output_height; h++){
+        for(int w=0; w<output_width; w++){
+          memcpy(target_ptr, input_ptr, copy_size);
+          target_ptr += output_depth;
+          input_ptr += input_depth;
+        }
+        input_ptr += width_diff;
+      }
+      input_ptr += height_diff;
+    }
+    
+
+
+    // TFLITE_LOG(INFO) << "after"  << output_data[n*m-1] << output_data[n*m] << output_data[n*m+1];
+    // for(int i=0; i<m; i++)
+    //   for(int j=0; j<output_depth; j++){
+    //     TFLITE_LOG(INFO) << "output after concat " << i << ", " << j << ": " << output_data[i*output_depth+j];
+    //   }   
+    
+    // Concatenate prev_activ and input data together
+    
+  }
+
+  
 #endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 }
 
@@ -1571,7 +1785,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  uint8* output_data, const RuntimeShape& im2col_shape,
                  uint8* im2col_data, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("Conv/8bit");
-
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;

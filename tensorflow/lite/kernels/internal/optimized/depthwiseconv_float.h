@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
+#include "tensorflow/lite/tools/logging.h"
+
 namespace tflite {
 namespace optimized_ops {
 
@@ -320,6 +322,7 @@ struct FloatDepthwiseConvKernel<true, 0, 2> {
                   const float* input_ptr, int input_ptr_increment,
                   const float* filter_ptr, float* acc_buffer_ptr) {
     // Handle one output pixel at a time.
+    // TFLITE_LOG(INFO) << "LMAOOO";
     for (int outp = 0; outp < num_output_pixels; outp++) {
       const float* local_filter_ptr = filter_ptr;
       const float* local_input_ptr = input_ptr;
@@ -772,6 +775,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
   // Sanity check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
+  TFLITE_LOG(INFO) << "EXCITING";
   static_assert(kFixedDepthMultiplier || !kFixedInputDepth, "");
   static_assert(kFixedInputDepth || kAllowStrided, "");
   TFLITE_DCHECK(stride == 1 || kAllowStrided);
@@ -782,6 +786,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
     TFLITE_DCHECK_EQ(depth_multiplier, kFixedDepthMultiplier);
   }
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
+  TFLITE_LOG(INFO) << "LOL " << input_depth;
   const int input_ptr_increment = stride * input_depth;
   const float* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
@@ -818,7 +823,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
         std::max(out_x_buffer_start, out_x_loop_start_unclamped);
     const int out_x_loop_end =
         std::min(out_x_buffer_end, out_x_loop_end_unclamped);
-
+    // TFLITE_LOG(INFO) << "shift " << (out_x_loop_start - out_x_buffer_start) * output_depth << " " <<output_depth;
     float* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
     const int in_x_origin =
@@ -833,7 +838,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
                                                          input_ptr_increment,
                                                          filter_base_ptr,
                                                          acc_buffer_ptr);
-    filter_base_ptr += output_depth;
+    filter_base_ptr += output_depth; //add filter depth
   }
 }
 
@@ -960,7 +965,6 @@ inline void DepthwiseConvImpl(
 #ifdef USE_NEON
   // We go over our list of kernels by decreasing order of preference
   // for the cases where multiple kernels could apply.
-
   // Start with the fastest kernels: AllowStrided=false, fixed input depth.
 
   TFMINI_USE_DEPTHWISECONV_KERNEL(false, 8, 1)
@@ -1005,7 +1009,8 @@ inline void DepthwiseConvImpl(
   int row_start = 0;
   int row_end = output_height;
   int output_ptr_offset = 0;
-
+  TFLITE_LOG(INFO) << "Float " << thread_dim;
+  TFLITE_LOG(INFO) << "Output depth " << output_depth;
   switch (thread_dim) {
     case 0:
       // Multithread along with the batch axis
@@ -1052,6 +1057,11 @@ inline void DepthwiseConvImpl(
         DepthwiseConvInitAccBuffer(num_output_pixels, output_depth, bias_data,
                                    acc_buffer);
         // Accumulation loop. Most of the time should be spent in here.
+        TFLITE_LOG(INFO) << "Filter start end " << filter_y_start << filter_y_end;
+        TFLITE_LOG(INFO) << "DEPTH MULTIPLIER " << depth_multiplier;
+        for(int a =0; a<num_output_pixels*output_depth; a++){
+          TFLITE_LOG(INFO) << "pre acc " << a << ": "  << acc_buffer[a];
+        }
         for (int filter_y = filter_y_start; filter_y < filter_y_end;
              ++filter_y) {
           const int in_y = in_y_origin + dilation_height_factor * filter_y;
@@ -1062,7 +1072,12 @@ inline void DepthwiseConvImpl(
               filter_data + filter_y * filter_height_stride, out_x_buffer_start,
               out_x_buffer_end, output_depth, acc_buffer);
         }
+        // TFLITE_LOG(INFO) << "acc buffer " << i << ", " 
+        for(int a =0; a<num_output_pixels*output_depth; a++){
+          TFLITE_LOG(INFO) << "out " << a << ": "  << acc_buffer[a];
+        }
         // Finished accumulating. Now store to destination.
+        
         const int num_output_values = output_depth * num_output_pixels;
         int i = 0;
 // TODO(benoitjacob) optimized code goes here

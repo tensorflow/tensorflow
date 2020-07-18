@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/kernels/padding.h"
 
+#include "tensorflow/lite/tools/logging.h"
+
 namespace tflite {
 namespace ops {
 namespace builtin {
@@ -287,6 +289,7 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
+  TFLITE_LOG(INFO) << "HELLOOOO";
 
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
@@ -307,6 +310,8 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(bias), GetTensorData<float>(bias),
         GetTensorShape(output), GetTensorData<float>(output));
   } else {
+    TFLITE_LOG(INFO) << "HELLOOOO222";
+
     optimized_ops::DepthwiseConv<float, float>(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
         GetTensorShape(filter), GetTensorData<float>(filter),

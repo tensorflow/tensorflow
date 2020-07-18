@@ -518,6 +518,7 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
+        "//tensorflow/lite/tools:logging"
     ],
 )
 
