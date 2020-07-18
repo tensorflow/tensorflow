@@ -620,8 +620,7 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd);
         "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;" \
         "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
   }
-// TODO(nhasabni): Enable bfloat16 test when we enable the operator.
-REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Positive);
+REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Positive);
 #undef REGISTER_TEST
 
 // Test if input control edges do not duplicate after merge.
@@ -679,8 +678,7 @@ REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Positive);
         "DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"            \
         "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
   }
-// TODO(nhasabni): Enable bfloat16 test when we enable the operator.
-REGISTER_TEST_FLOAT32(Input_ControlEdge_PadWithConv2D_Positive);
+REGISTER_TEST_ALL_TYPES(Input_ControlEdge_PadWithConv2D_Positive);
 #undef REGISTER_TEST
 
 // Test if output control edges does not duplicate after merge.
@@ -737,8 +735,7 @@ REGISTER_TEST_FLOAT32(Input_ControlEdge_PadWithConv2D_Positive);
         "DMT/_0->E:3;DMT/_1->E:4;DMT/_2->E:5;E->Z;E:control->A1:control;"  \
         "Y->Z:1");                                                         \
   }
-// TODO(nhasabni): Enable bfloat16 test when we enable the operator.
-REGISTER_TEST_FLOAT32(Output_ControlEdge_PadWithConv2D_Positive);
+REGISTER_TEST_ALL_TYPES(Output_ControlEdge_PadWithConv2D_Positive);
 #undef REGISTER_TEST
 
 // Pad + Conv2D fusion with padding is VALID,
@@ -778,8 +775,7 @@ REGISTER_TEST_FLOAT32(Output_ControlEdge_PadWithConv2D_Positive);
               "DMT/_1:control;A:control->DMT/_2:control;B->E:2;DMT/_0->E:3;"\
               "DMT/_1->E:4;DMT/_2->E:5;E->Z;Y->Z:1");                      \
   }
-// TODO(nhasabni): Enable bfloat16 test when we enable the operator.
-REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Common_Input);
+REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Common_Input);
 #undef REGISTER_TEST
 
 // Pad + Conv2D with padding is VALID,
@@ -3021,6 +3017,69 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluGrad_Negative);
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluLeakyReluGrad_Positive);
 #undef REGISTER_TEST
+// clang-format on
+
+// clang-format off
+#ifdef ENABLE_MKLDNN_V1
+
+#define REGISTER_TEST(NAME, T, INPUT)                                        \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
+    DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);     \
+    InitGraph(                                                               \
+      "node { name: 'A' op: '" #INPUT "'}"                                   \
+      "node { name: 'B' op: 'Tanh'"                                          \
+      " attr { key: 'T'                value { type: " #T " } }"             \
+      " input: ['A'] }"                                                      \
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
+      " input: ['A', 'B'] }");                                               \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+            "A(" #INPUT ");B(_MklTanh);C(Zeta);DMT/_0(Const)|A->B;A->C;"     \
+            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                 \
+}
+REGISTER_TEST_ALL_TYPES(NodeRewrite_Tanh_Positive);
+#undef REGISTER_TEST
+
+#define REGISTER_TEST(NAME, T, INPUT)                                            \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                        \
+    DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);         \
+    InitGraph(                                                                   \
+      "node { name: 'A' op: '" #INPUT "'}"                                       \
+      "node { name: 'B' op: '" #INPUT "'}"                                       \
+      "node { name: 'C' op: 'TanhGrad'"                                          \
+      " attr { key: 'T'                value { type: " #T " } }"                 \
+      " input: ['A', 'B'] }"                                                     \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"     \
+      " input: ['A', 'C'] }");                                                   \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
+            "A(" #INPUT ");B(" #INPUT ");C(_MklTanhGrad);D(Zeta);DMT/_0(Const);" \
+            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                 \
+            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");  \
+}
+REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhGrad_Positive);
+#undef REGISTER_TEST
+
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+    DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);       \
+    InitGraph(                                                                 \
+      "node { name: 'A' op: '" #INPUT "'}"                                     \
+      "node { name: 'B' op: 'Tanh'"                                            \
+      " attr { key: 'T'                value { type: " #T " } }"               \
+      " input: ['A'] }"                                                        \
+      "node { name: 'C' op: 'TanhGrad'"                                        \
+      " attr { key: 'T'                value { type: " #T " } }"               \
+      " input: ['B', 'A'] }"                                                   \
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"   \
+      " input: ['A', 'C'] }");                                                 \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+            "A(" #INPUT ");B(_MklTanh);C(_MklTanhGrad);D(Zeta);DMT/_0(Const);" \
+            "DMT/_1(Const)|A->B;A->C:1;A->D;A:control->DMT/_0:control;"        \
+            "B->C;B:1->C:2;B:control->DMT/_1:control;C->D:1;DMT/_0->B:1;"      \
+            "DMT/_1->C:3");                                                    \
+}
+REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhTanhGrad_Positive);
+#undef REGISTER_TEST
+#endif  // ENABLE_MKLDNN_V1
 // clang-format on
 
 TEST_F(MklLayoutPassTest, NodeRewrite_AvgPool_Positive) {

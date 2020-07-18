@@ -98,6 +98,12 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
     }
     Tensor copy(out_allocator, in.dtype(), in.shape(), aa);
     *out = copy;
+    if (in.shape().num_elements() > 0 && out->data() == nullptr) {
+      done(tensorflow::errors::ResourceExhausted(
+          "SameWorkerRecvDone unable to allocate output tensor. Key: ",
+          parsed.FullKey()));
+      return;
+    }
   }
 
   CopyTensor::ViaDMA(

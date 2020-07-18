@@ -50,11 +50,14 @@ namespace snapshot_util {
     CustomReader::kSnappyReaderOutputBufferSizeBytes;
 
 std::string HashDirectory(const std::string& path, uint64 hash) {
-  return io::JoinPath(path, strings::Printf("%llu", hash));
+  return io::JoinPath(
+      path, strings::Printf("%llu", static_cast<unsigned long long>(hash)));
 }
 
 std::string RunDirectory(const std::string& hash_directory, uint64 run_id) {
-  return RunDirectory(hash_directory, strings::Printf("%llu", run_id));
+  return RunDirectory(
+      hash_directory,
+      strings::Printf("%llu", static_cast<unsigned long long>(run_id)));
 }
 
 std::string RunDirectory(const std::string& hash_directory,
@@ -63,13 +66,17 @@ std::string RunDirectory(const std::string& hash_directory,
 }
 
 std::string ShardDirectory(const std::string& run_directory, int64 shard_id) {
-  return io::JoinPath(run_directory, strings::Printf("%08llu%s", shard_id,
-                                                     kShardDirectorySuffix));
+  return io::JoinPath(
+      run_directory,
+      strings::Printf("%08llu%s", static_cast<unsigned long long>(shard_id),
+                      kShardDirectorySuffix));
 }
 std::string GetCheckpointFileName(const std::string& shard_directory,
                                   uint64 checkpoint_id) {
-  return io::JoinPath(shard_directory,
-                      strings::Printf("%08llu.snapshot", checkpoint_id));
+  return io::JoinPath(
+      shard_directory,
+      strings::Printf("%08llu.snapshot",
+                      static_cast<unsigned long long>(checkpoint_id)));
 }
 
 Status Writer::Create(Env* env, const std::string& filename,

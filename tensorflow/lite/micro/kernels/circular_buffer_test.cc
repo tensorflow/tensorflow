@@ -56,17 +56,12 @@ TfLiteNode PrepareCircularBufferInt8(const int* input_dims_data,
   // There is one output - tensor 1.
   const int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  // There are no intermediates.
-  const int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->prepare);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -104,17 +99,12 @@ TfLiteStatus InvokeCircularBufferInt8(const int* input_dims_data,
   // There is one output - tensor 1.
   const int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  // There are no intermediates.
-  const int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   node->inputs = inputs_array;
   node->outputs = outputs_array;
-  node->temporaries = temporaries_array;
   node->builtin_data = nullptr;
   node->custom_initial_data = nullptr;
   node->custom_initial_data_size = 0;
-  node->delegate = nullptr;
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
 

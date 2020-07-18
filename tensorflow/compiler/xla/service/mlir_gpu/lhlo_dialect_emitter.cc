@@ -25,8 +25,8 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -58,7 +58,7 @@ using ::xla::gpu::Thunk;
 using ::xla::gpu::ThunkEmitter;
 using ::xla::gpu::ThunkSequence;
 
-namespace lhlo = ::mlir::xla_lhlo;
+namespace lhlo = ::mlir::lmhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
@@ -202,15 +202,14 @@ LhloDialectEmitter::LhloDialectEmitter(
       mlir_module_(mlir_module),
       builder_(mlir_module_.getContext()),
       buffer_assignment_(assignment),
-      platform_(platform),
-      thunk_sequence_(new ThunkSequence()) {
+      platform_(platform) {
   LLVMDialect* llvmDialect =
       mlir_module.getContext()->getRegisteredDialect<LLVMDialect>();
   pointer_size_ = llvmDialect->getLLVMModule().getDataLayout().getPointerSize();
 }
 
 void LhloDialectEmitter::AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
-  thunk_sequence_->push_back(std::move(thunk));
+  thunk_sequence_.push_back(std::move(thunk));
 }
 
 StatusOr<BufferAllocation::Slice> LhloDialectEmitter::MaybeGetAllocationSlice(
@@ -222,10 +221,8 @@ int64 LhloDialectEmitter::ByteSizeOf(const Shape& shape) const {
   return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
-const se::Platform* LhloDialectEmitter::platform() const { return platform_; }
-
-Status LhloDialectEmitter::EmitComputation(const HloComputation& computation) {
-  return computation.root_instruction()->Accept(this);
+absl::string_view LhloDialectEmitter::platform_name() const {
+  return platform_->Name();
 }
 
 StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
@@ -303,6 +300,29 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   Value result_memref = function.getArguments().back();
   body_builder.create<::mlir::TensorStoreOp>(getLocation(instr), result,
                                              result_memref);
+
+  return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleGather(HloInstruction* instr) {
+  HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
+  mlir::mhlo::GatherDimensionNumbers dim_numbers =
+      xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
+                                        builder_);
+  mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{gather->gather_slice_sizes().begin(),
+                                  gather->gather_slice_sizes().end()},
+      builder_);
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
+  OpBuilder func_builder(function.getBody());
+
+  // TODO(pifon): Clean-up LHLO GatherOp to be consistent with HLO GatherOp.
+  func_builder.create<lhlo::GatherOp>(
+      getLocation(instr), function.getArgument(0), function.getArgument(1),
+      dim_numbers.index_vector_dim(), dim_numbers.offset_dims(), slice_sizes,
+      dim_numbers.collapsed_slice_dims(), dim_numbers.start_index_map(),
+      function.getArgument(2));
 
   return Status::OK();
 }

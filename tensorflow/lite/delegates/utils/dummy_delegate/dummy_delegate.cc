@@ -68,6 +68,11 @@ class DummyDelegate : public SimpleDelegateInterface {
     return std::make_unique<DummyDelegateKernel>(options_);
   }
 
+  SimpleDelegateInterface::Options DelegateOptions() const override {
+    // Use default options.
+    return SimpleDelegateInterface::Options();
+  }
+
  private:
   const DummyDelegateOptions options_;
 };

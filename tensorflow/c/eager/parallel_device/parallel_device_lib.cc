@@ -37,6 +37,15 @@ class StatusDeleter {
 
 using StatusPtr = std::unique_ptr<TF_Status, StatusDeleter>;
 
+class ExecutorDeleter {
+ public:
+  void operator()(TFE_Executor* to_delete) const {
+    TFE_DeleteExecutor(to_delete);
+  }
+};
+
+using ExecutorPtr = std::unique_ptr<TFE_Executor, ExecutorDeleter>;
+
 }  // namespace
 
 // Allows a single op at a time to be launched without blocking.
@@ -51,6 +60,13 @@ class DeviceThread {
   explicit DeviceThread(const std::string& device)
       : status_(TF_NewStatus()),
         device_(device),
+        // If the context's default exector is set to async, re-using that in
+        // each thread would cause collectives to deadlock. For consistency we
+        // create a new sync executor for every thread.
+        //
+        // TODO(allenl): We should have an async API that works with the
+        // parallel device.
+        executor_(TFE_NewExecutor(/*is_async=*/false)),
         op_(nullptr),
         thread_(tensorflow::Env::Default()->StartThread(
             tensorflow::ThreadOptions(), "parallel_device_execute",
@@ -105,6 +121,7 @@ class DeviceThread {
   StatusPtr status_ TF_GUARDED_BY(execution_mutex_);
 
   const std::string device_;
+  ExecutorPtr executor_ TF_GUARDED_BY(execution_mutex_);
   mutable OpPtr op_ TF_GUARDED_BY(execution_mutex_);
   std::unique_ptr<Thread> thread_;
 };
@@ -186,6 +203,7 @@ void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
                            std::vector<TensorHandlePtr>* outputs,
                            TF_Status* status) const {
   if (op_ == nullptr) {
+    TFE_ContextSetExecutorForThread(context, executor_.get());
     op_.reset(TFE_NewOp(context, operation_name, status));
     if (TF_GetCode(status) != TF_OK) return;
     TFE_OpSetDevice(op_.get(), device_.c_str(), status);
@@ -244,14 +262,14 @@ std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
   components.reserve(underlying_devices_.size());
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
-    int64_t* device_id = new int64_t;
+    int32_t* device_id = new int32_t;
     *device_id = device_index;
     std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tensor(
         TF_NewTensor(
-            TF_INT64, /*dims=*/nullptr, /*num_dims=*/0, device_id,
-            sizeof(int64_t),
+            TF_INT32, /*dims=*/nullptr, /*num_dims=*/0, device_id,
+            sizeof(int32_t),
             [](void* data, size_t, void* arg) {
-              delete reinterpret_cast<int64_t*>(data);
+              delete reinterpret_cast<int32_t*>(data);
             },
             nullptr),
         TF_DeleteTensor);
@@ -265,7 +283,7 @@ std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
     if (TF_GetCode(status) != TF_OK) return nullptr;
     TFE_OpSetAttrTensor(const_op.get(), "value", tensor.get(), status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    TFE_OpSetAttrType(const_op.get(), "dtype", TF_INT64);
+    TFE_OpSetAttrType(const_op.get(), "dtype", TF_INT32);
     TFE_TensorHandle* device_handle;
     int num_outputs = 1;
     TFE_Execute(const_op.get(), &device_handle, &num_outputs, status);

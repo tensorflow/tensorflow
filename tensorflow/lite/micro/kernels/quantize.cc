@@ -27,6 +27,7 @@ namespace micro {
 namespace quantize {
 
 struct OpData {
+  tflite::QuantizationParams quantization_params;
   // The scaling factor from input to output (aka the 'real multiplier') can
   // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
@@ -77,6 +78,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(effective_scale, &data->output_multiplier,
                        &data->output_shift);
   }
+
+  data->quantization_params.zero_point = output->params.zero_point;
+  data->quantization_params.scale = static_cast<double>(output->params.scale);
   return kTfLiteOk;
 }
 
@@ -87,21 +91,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  tflite::QuantizationParams op_params;
-  op_params.zero_point = output->params.zero_point;
-  op_params.scale = static_cast<double>(output->params.scale);
-
   if (input->type == kTfLiteFloat32) {
     switch (output->type) {
       case kTfLiteInt8:
         reference_ops::AffineQuantize(
-            op_params, GetTensorShape(input), GetTensorData<float>(input),
-            GetTensorShape(output), GetTensorData<int8_t>(output));
+            data->quantization_params, GetTensorShape(input),
+            GetTensorData<float>(input), GetTensorShape(output),
+            GetTensorData<int8_t>(output));
         break;
       case kTfLiteUInt8:
         reference_ops::AffineQuantize(
-            op_params, GetTensorShape(input), GetTensorData<float>(input),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
+            data->quantization_params, GetTensorShape(input),
+            GetTensorData<float>(input), GetTensorShape(output),
+            GetTensorData<uint8_t>(output));
         break;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
@@ -156,16 +158,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
-TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {/*init=*/quantize::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/quantize::Prepare,
-                                 /*invoke=*/quantize::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_QUANTIZE() {
+  return {/*init=*/quantize::Init,
+          /*free=*/nullptr,
+          /*prepare=*/quantize::Prepare,
+          /*invoke=*/quantize::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

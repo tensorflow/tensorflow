@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
-
 namespace tflite {
 namespace testing {
 namespace {
@@ -70,26 +69,20 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
       resolver.FindOp(tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLiteResizeNearestNeighborParams builtin_data = {
-    .align_corners = false
-  };
+  TfLiteResizeNearestNeighborParams builtin_data = {false, false};
 
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = nullptr;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
 
@@ -103,7 +96,6 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
 }  // namespace testing
 }  // namespace tflite
 
-
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(HorizontalResize) {
@@ -114,8 +106,9 @@ TF_LITE_MICRO_TEST(HorizontalResize) {
   const int output_dims[] = {4, 1, 1, 3, 1};
   float output_data[3];
 
-  tflite::testing::TestResizeNearestNeighbor<float>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<float>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(HorizontalResizeUInt8) {
   const int input_dims[] = {4, 1, 1, 2, 1};
@@ -125,8 +118,9 @@ TF_LITE_MICRO_TEST(HorizontalResizeUInt8) {
   const int output_dims[] = {4, 1, 1, 3, 1};
   uint8 output_data[3];
 
-  tflite::testing::TestResizeNearestNeighbor<uint8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<uint8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(HorizontalResizeInt8) {
   const int input_dims[] = {4, 1, 1, 2, 1};
@@ -136,8 +130,9 @@ TF_LITE_MICRO_TEST(HorizontalResizeInt8) {
   const int output_dims[] = {4, 1, 1, 3, 1};
   int8 output_data[3];
 
-  tflite::testing::TestResizeNearestNeighbor<int8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<int8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(VerticalResize) {
   const int input_dims[] = {4, 1, 2, 1, 1};
@@ -147,8 +142,9 @@ TF_LITE_MICRO_TEST(VerticalResize) {
   const int output_dims[] = {4, 1, 3, 1, 1};
   float output_data[3];
 
-  tflite::testing::TestResizeNearestNeighbor<float>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<float>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(VerticalResizeUInt8) {
   const int input_dims[] = {4, 1, 2, 1, 1};
@@ -158,8 +154,9 @@ TF_LITE_MICRO_TEST(VerticalResizeUInt8) {
   const int output_dims[] = {4, 1, 3, 1, 1};
   uint8 output_data[3];
 
-  tflite::testing::TestResizeNearestNeighbor<uint8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<uint8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(VerticalResizeInt8) {
   const int input_dims[] = {4, 1, 2, 1, 1};
@@ -169,168 +166,196 @@ TF_LITE_MICRO_TEST(VerticalResizeInt8) {
   const int output_dims[] = {4, 1, 3, 1, 1};
   int8 output_data[3];
 
-  tflite::testing::TestResizeNearestNeighbor<int8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<int8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(TwoDimensionalResize) {
   const int input_dims[] = {4, 1, 2, 2, 1};
-  const float input_data[] = {3, 6,   //
-                              9, 12,  //
-                             };
+  const float input_data[] = {
+      3, 6,   //
+      9, 12,  //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const float expected_output_data[] = {3, 3, 6,  //
-                                        3, 3, 6,  //
-                                        9, 9, 12  //
-                                       };
+  const float expected_output_data[] = {
+      3, 3, 6,  //
+      3, 3, 6,  //
+      9, 9, 12  //
+  };
 
   const int output_dims[] = {4, 1, 3, 3, 1};
   float output_data[9];
 
-  tflite::testing::TestResizeNearestNeighbor<float>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<float>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(TwoDimensionalResizeUInt8) {
   const int input_dims[] = {4, 1, 2, 2, 1};
-  const uint8 input_data[] = {3, 6,  //
-                              9, 12  //
-                             };
+  const uint8 input_data[] = {
+      3, 6,  //
+      9, 12  //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const uint8 expected_output_data[] = {3, 3, 6,  //
-                                        3, 3, 6,  //
-                                        9, 9, 12  //
-                                       };
+  const uint8 expected_output_data[] = {
+      3, 3, 6,  //
+      3, 3, 6,  //
+      9, 9, 12  //
+  };
   const int output_dims[] = {4, 1, 3, 3, 1};
   uint8 output_data[9];
 
-  tflite::testing::TestResizeNearestNeighbor<uint8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<uint8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(TwoDimensionalResizeInt8) {
   const int input_dims[] = {4, 1, 2, 2, 1};
-  const int8 input_data[] = {3, -6,  //
-                             9, 12,  //
-                            };
+  const int8 input_data[] = {
+      3, -6,  //
+      9, 12,  //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const int8 expected_output_data[] = {3, 3, -6,  //
-                                       3, 3, -6,  //
-                                       9, 9, 12,  //
-                                      };
+  const int8 expected_output_data[] = {
+      3, 3, -6,  //
+      3, 3, -6,  //
+      9, 9, 12,  //
+  };
   const int output_dims[] = {4, 1, 3, 3, 1};
   int8 output_data[9];
 
-  tflite::testing::TestResizeNearestNeighbor<int8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<int8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatches) {
   const int input_dims[] = {4, 2, 2, 2, 1};
-  const float input_data[] = {3, 6,   //
-                              9, 12,  //
-                              4, 10,  //
-                              10, 16  //
-                             };
+  const float input_data[] = {
+      3,  6,   //
+      9,  12,  //
+      4,  10,  //
+      10, 16   //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const float expected_output_data[] = {3, 3, 6,     //
-                                        3, 3, 6,     //
-                                        9, 9, 12,    //
-                                        4, 4, 10,    //
-                                        4, 4, 10,    //
-                                        10, 10, 16,  //
-                                       };
+  const float expected_output_data[] = {
+      3,  3,  6,   //
+      3,  3,  6,   //
+      9,  9,  12,  //
+      4,  4,  10,  //
+      4,  4,  10,  //
+      10, 10, 16,  //
+  };
   const int output_dims[] = {4, 2, 3, 3, 1};
   float output_data[18];
 
-  tflite::testing::TestResizeNearestNeighbor<float>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<float>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatchesUInt8) {
   const int input_dims[] = {4, 2, 2, 2, 1};
-  const uint8 input_data[] = {3, 6,   //
-                              9, 12,  //
-                              4, 10,  //
-                              10, 16  //
-                             };
+  const uint8 input_data[] = {
+      3,  6,   //
+      9,  12,  //
+      4,  10,  //
+      10, 16   //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const uint8 expected_output_data[] = {3, 3, 6,     //
-                                        3, 3, 6,     //
-                                        9, 9, 12,    //
-                                        4, 4, 10,    //
-                                        4, 4, 10,    //
-                                        10, 10, 16,  //
-                                       };
+  const uint8 expected_output_data[] = {
+      3,  3,  6,   //
+      3,  3,  6,   //
+      9,  9,  12,  //
+      4,  4,  10,  //
+      4,  4,  10,  //
+      10, 10, 16,  //
+  };
   const int output_dims[] = {4, 2, 3, 3, 1};
   uint8 output_data[18];
 
-  tflite::testing::TestResizeNearestNeighbor<uint8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<uint8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatchesInt8) {
   const int input_dims[] = {4, 2, 2, 2, 1};
-  const int8 input_data[] = {3, 6,    //
-                             9, -12,  //
-                             -4, 10,  //
-                             10, 16   //
-                            };
+  const int8 input_data[] = {
+      3,  6,    //
+      9,  -12,  //
+      -4, 10,   //
+      10, 16    //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const int8 expected_output_data[] = {3, 3, 6,     //
-                                       3, 3, 6,     //
-                                       9, 9, -12,   //
-                                       -4, -4, 10,  //
-                                       -4, -4, 10,  //
-                                       10, 10, 16,  //
-                                      };
+  const int8 expected_output_data[] = {
+      3,  3,  6,    //
+      3,  3,  6,    //
+      9,  9,  -12,  //
+      -4, -4, 10,   //
+      -4, -4, 10,   //
+      10, 10, 16,   //
+  };
   const int output_dims[] = {4, 2, 3, 3, 1};
   int8 output_data[18];
 
-  tflite::testing::TestResizeNearestNeighbor<int8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<int8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(ThreeDimensionalResize) {
   const int input_dims[] = {4, 1, 2, 2, 2};
-  const float input_data[] = {3, 4, 6, 10,    //
-                              9, 10, 12, 16,  //
-                             };
+  const float input_data[] = {
+      3, 4,  6,  10,  //
+      9, 10, 12, 16,  //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const float expected_output_data[] = {3, 4, 3, 4, 6, 10,     //
-                                        3, 4, 3, 4, 6, 10,     //
-                                        9, 10, 9, 10, 12, 16,  //
-                                     };
+  const float expected_output_data[] = {
+      3, 4,  3, 4,  6,  10,  //
+      3, 4,  3, 4,  6,  10,  //
+      9, 10, 9, 10, 12, 16,  //
+  };
   const int output_dims[] = {4, 1, 3, 3, 2};
   float output_data[18];
 
-  tflite::testing::TestResizeNearestNeighbor<float>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<float>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(ThreeDimensionalResizeUInt8) {
   const int input_dims[] = {4, 1, 2, 2, 2};
-  const uint8 input_data[] = {3, 4, 6, 10,     //
-                              10, 12, 14, 16,  //
-                             };
+  const uint8 input_data[] = {
+      3,  4,  6,  10,  //
+      10, 12, 14, 16,  //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const uint8 expected_output_data[] = {3, 4, 3, 4, 6, 10,       //
-                                        3, 4, 3, 4, 6, 10,       //
-                                        10, 12, 10, 12, 14, 16,  //
-                                     };
+  const uint8 expected_output_data[] = {
+      3,  4,  3,  4,  6,  10,  //
+      3,  4,  3,  4,  6,  10,  //
+      10, 12, 10, 12, 14, 16,  //
+  };
   const int output_dims[] = {4, 1, 3, 3, 2};
   uint8 output_data[18];
 
-  tflite::testing::TestResizeNearestNeighbor<uint8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<uint8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 TF_LITE_MICRO_TEST(ThreeDimensionalResizeInt8) {
   const int input_dims[] = {4, 1, 2, 2, 2};
-  const int8 input_data[] = {3, 4, -6, 10,    //
-                             10, 12, -14, 16,  //
-                            };
+  const int8 input_data[] = {
+      3,  4,  -6,  10,  //
+      10, 12, -14, 16,  //
+  };
   const int32 expected_size_data[] = {3, 3};
-  const int8 expected_output_data[] = {3, 4, 3, 4, -6, 10,       //
-                                        3, 4, 3, 4, -6, 10,       //
-                                        10, 12, 10, 12, -14, 16,  //
-                                     };
+  const int8 expected_output_data[] = {
+      3,  4,  3,  4,  -6,  10,  //
+      3,  4,  3,  4,  -6,  10,  //
+      10, 12, 10, 12, -14, 16,  //
+  };
   const int output_dims[] = {4, 1, 3, 3, 2};
   int8 output_data[18];
 
-  tflite::testing::TestResizeNearestNeighbor<int8>(input_dims, input_data,
-    expected_size_data, expected_output_data, output_dims, output_data);
+  tflite::testing::TestResizeNearestNeighbor<int8>(
+      input_dims, input_data, expected_size_data, expected_output_data,
+      output_dims, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

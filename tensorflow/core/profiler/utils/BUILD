@@ -47,6 +47,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -74,6 +75,17 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "op_metrics_db_utils_test",
+    srcs = ["op_metrics_db_utils_test.cc"],
+    deps = [
+        ":op_metrics_db_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
     ],
 )
 
@@ -145,6 +157,9 @@ cc_library(
 cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -233,6 +248,7 @@ cc_library(
     deps = [
         ":xplane_builder",
         ":xplane_schema",
+        ":xplane_utils",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -770,6 +770,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "long",
     srcs = ["image_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
     tags = [
@@ -933,8 +934,9 @@ tf_xla_py_test(
     name = "pooling_ops_test",
     size = "medium",
     srcs = ["pooling_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 20,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -952,8 +954,9 @@ tf_xla_py_test(
     name = "pooling_ops_3d_test",
     size = "medium",
     srcs = ["pooling_ops_3d_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 20,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1442,6 +1445,26 @@ tf_xla_py_test(
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "case_test",
+    size = "small",
+    srcs = ["case_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    use_xla_device = False,  # Uses tf.function(experimental_compile=True)
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",

@@ -114,6 +114,21 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   void Execute(const T* src_data, const T* diff_filter_data,
                const T* diff_bias_data, const T* diff_dst_data,
                std::shared_ptr<stream> bwd_filter_stream) {
+    // TODO: Create a common function and avoid the duplicate code
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    context_.src_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(src_data)), *bwd_filter_stream);
+    context_.diff_filter_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(diff_filter_data)),
+        *bwd_filter_stream);
+    if (diff_bias_data != nullptr) {
+      context_.diff_bias_mem->set_data_handle(
+          static_cast<void*>(const_cast<T*>(diff_bias_data)),
+          *bwd_filter_stream);
+    }
+    context_.diff_dst_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_filter_stream);
+#else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.diff_filter_mem->set_data_handle(
@@ -124,7 +139,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
     }
     context_.diff_dst_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
-
+#endif  // ENABLE_MKLDNN_THREADPOOL
 #ifdef ENABLE_MKLDNN_V1
     execute_primitives(context_.bwd_filter_primitives, bwd_filter_stream,
                        context_.bwd_filter_primitives_args);

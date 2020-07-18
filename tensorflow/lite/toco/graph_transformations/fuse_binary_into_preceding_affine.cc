@@ -260,7 +260,7 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
     return ::tensorflow::Status::OK();
   }
 
-  for (const string& output_array : model->flags.output_arrays()) {
+  for (const std::string& output_array : model->flags.output_arrays()) {
     if (preceding_op->outputs[0] == output_array) {
       return ::tensorflow::Status::OK();
     }

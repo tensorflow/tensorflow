@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import glob
 import math
 import os
@@ -48,8 +47,6 @@ from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.layers import core
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -74,10 +71,7 @@ from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
-from tensorflow.python.training import training_util
 from tensorflow.python.training.tracking import base as trackable_base
-from tensorflow.python.training.tracking import tracking as trackable_tracking
-from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import compat
 
 
@@ -265,8 +259,8 @@ class SaverTest(test.TestCase):
         graph_saver = saver_module.Saver([w3, w4])
         self.evaluate(variables.global_variables_initializer())
         graph_saver.restore(sess, eager_ckpt_prefix)
-        self.assertAllEqual(w3.eval(), 3.0)
-        self.assertAllEqual(w4.eval(), 4.0)
+        self.assertAllEqual(w3, 3.0)
+        self.assertAllEqual(w4, 4.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testResourceSaveRestoreCachingDevice(self):
@@ -283,7 +277,7 @@ class SaverTest(test.TestCase):
 
       save2 = saver_module.Saver([v])
       save2.restore(sess, save_path)
-      self.assertEquals(self.evaluate(v), [1])
+      self.assertEqual(self.evaluate(v), [1])
 
   def testNoAdditionalOpsAddedBySaverForResourceVariablesOutsideSaveScope(self):
     with ops_lib.Graph().as_default() as g:
@@ -388,7 +382,7 @@ class SaverTest(test.TestCase):
     for ver in (saver_pb2.SaverDef.V1, saver_pb2.SaverDef.V2):
       with self.cached_session() as sess:
         save = saver_module.Saver({"v0": v0}, write_version=ver)
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, "The passed save_path is not a valid checkpoint:"):
           save.restore(sess, "invalid path")
 
@@ -429,7 +423,7 @@ class SaverTest(test.TestCase):
           variables.Variable.SaveSliceInfo("v1", [1], [0], [1]))
 
       # By default the name used for "v2" will be "v1" and raise an error.
-      with self.assertRaisesRegexp(ValueError, "same name: v1"):
+      with self.assertRaisesRegex(ValueError, "same name: v1"):
         saver_module.Saver([v0, v1, v2])
 
       # The names are different and will work.
@@ -447,7 +441,7 @@ class SaverTest(test.TestCase):
           partitioner=partitioned_variables.fixed_size_partitioner(
               num_shards=2))
       p_v2._name = "p_v1"
-      with self.assertRaisesRegexp(ValueError, "same name: p_v1"):
+      with self.assertRaisesRegex(ValueError, "same name: p_v1"):
         saver_module.Saver([p_v1, p_v2])
 
   def testSameName(self):
@@ -456,12 +450,12 @@ class SaverTest(test.TestCase):
       v2 = saver_test_utils.CheckpointedOp(name="v2")
 
       # Saving one variable under two names raises an error.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "The same saveable will be restored with two names: v0"):
         saver_module.Saver({"v0": v0, "v0too": v0})
 
       # Ditto for custom saveables.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "The same saveable will be restored with two names: v2"):
         saver_module.Saver({"v2": v2.saveable, "v2too": v2.saveable})
 
@@ -637,7 +631,7 @@ class SaverTest(test.TestCase):
   def testVarListShouldBeEmptyInDeferredBuild(self):
     with ops_lib.Graph().as_default():
       v = variables.VariableV1(1.0)
-      with self.assertRaisesRegexp(ValueError, "defer_build"):
+      with self.assertRaisesRegex(ValueError, "defer_build"):
         saver_module.Saver([v], defer_build=True)
 
   def testBuildShouldBeCalledBeforeSaveInCaseOfDeferBuild(self):
@@ -645,7 +639,7 @@ class SaverTest(test.TestCase):
     with ops_lib.Graph().as_default(), session.Session() as sess:
       variables.VariableV1(1.0)
       saver = saver_module.Saver(defer_build=True)
-      with self.assertRaisesRegexp(RuntimeError, "build"):
+      with self.assertRaisesRegex(RuntimeError, "build"):
         saver.save(sess, save_path)
 
   def testDeferredBuild(self):
@@ -683,7 +677,7 @@ class SaverTest(test.TestCase):
     with session.Session("", graph=ops_lib.Graph()) as sess:
       var = variables.VariableV1([[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]])
       save = saver_module.Saver()
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Assign requires shapes of both tensors to match."):
         save.restore(sess, save_path)
@@ -816,8 +810,8 @@ class SaverTest(test.TestCase):
         # Restore the saved value with different dtype
         # in the parameter nodes.
         save = saver_module.Saver({"v0": v0_wrong_dtype})
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     "original dtype"):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "original dtype"):
           save.restore(sess, save_path)
 
   # Test restoring large tensors (triggers a thread pool)
@@ -2615,16 +2609,16 @@ class CheckpointReaderTest(test.TestCase):
       # Verifies get_tensor() returns the tensor value.
       v0_tensor = reader.get_tensor("v0")
       v1_tensor = reader.get_tensor("v1")
-      self.assertAllEqual(v0.eval(), v0_tensor)
-      self.assertAllEqual(v1.eval(), v1_tensor)
+      self.assertAllEqual(v0, v0_tensor)
+      self.assertAllEqual(v1, v1_tensor)
       # Verifies get_tensor() fails for non-existent tensors.
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "v3 not found in checkpoint"):
+      with self.assertRaisesRegex(errors.NotFoundError,
+                                  "v3 not found in checkpoint"):
         reader.get_tensor("v3")
 
   def testNonexistentPath(self):
-    with self.assertRaisesRegexp(errors.NotFoundError,
-                                 "Unsuccessful TensorSliceReader"):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                "Unsuccessful TensorSliceReader"):
       py_checkpoint_reader.NewCheckpointReader("non-existent")
 
 
@@ -3024,29 +3018,6 @@ class _OwnsMirroredVariables(trackable_base.Trackable):
     return self.non_dep_variable.name
 
 
-class NonLayerTrackable(trackable_tracking.AutoTrackable):
-
-  def __init__(self):
-    super(NonLayerTrackable, self).__init__()
-    self.a_variable = trackable_utils.add_variable(
-        self, name="a_variable", shape=[])
-
-
-class MyModel(training.Model):
-  """A concrete Model for testing."""
-
-  def __init__(self):
-    super(MyModel, self).__init__()
-    self._named_dense = core.Dense(1, use_bias=True)
-    self._second = core.Dense(1, use_bias=False)
-    # We can still track Trackables which aren't Layers.
-    self._non_layer = NonLayerTrackable()
-
-  def call(self, values):
-    ret = self._second(self._named_dense(values))
-    return ret
-
-
 class TrackableCompatibilityTests(test.TestCase):
 
   # TODO(allenl): Track down python3 reference cycles in these tests.
@@ -3112,46 +3083,6 @@ class TrackableCompatibilityTests(test.TestCase):
         saver.restore(sess, save_path)
         self.assertEqual(1, v.eval_count)
 
-  def _initialized_model(self):
-    input_value = constant_op.constant([[3.]])
-    model = MyModel()
-    optimizer = adam.AdamOptimizer(0.001)
-    optimizer_step = training_util.get_or_create_global_step()
-    root_trackable = trackable_utils.Checkpoint(
-        optimizer=optimizer, model=model, optimizer_step=optimizer_step)
-    train_op = optimizer.minimize(
-        functools.partial(model, input_value),
-        global_step=optimizer_step)
-    self.evaluate(trackable_utils.gather_initializers(
-        root_trackable))
-    self.evaluate(train_op)
-    # A regular variable, a slot variable, and a non-slot Optimizer variable
-    # with known values to check when loading.
-    self.evaluate(model._named_dense.bias.assign([1.]))
-    self.evaluate(optimizer.get_slot(
-        var=model._named_dense.bias, name="m").assign([2.]))
-    beta1_power, _ = optimizer._get_beta_accumulators()
-    self.evaluate(beta1_power.assign(3.))
-    return root_trackable
-
-  def _set_sentinels(self, root_trackable):
-    self.evaluate(root_trackable.model._named_dense.bias.assign([101.]))
-    self.evaluate(
-        root_trackable.optimizer.get_slot(
-            var=root_trackable.model._named_dense.bias, name="m")
-        .assign([102.]))
-    beta1_power, _ = root_trackable.optimizer._get_beta_accumulators()
-    self.evaluate(beta1_power.assign(103.))
-
-  def _check_sentinels(self, root_trackable):
-    self.assertAllEqual(
-        [1.], self.evaluate(root_trackable.model._named_dense.bias))
-    self.assertAllEqual([2.], self.evaluate(
-        root_trackable.optimizer.get_slot(
-            var=root_trackable.model._named_dense.bias, name="m")))
-    beta1_power, _ = root_trackable.optimizer._get_beta_accumulators()
-    self.assertAllEqual(3., self.evaluate(beta1_power))
-
   def testVariableNotFoundErrorRaised(self):
     # Restore does some tricky exception handling to figure out if it should
     # load an object-based checkpoint. Tests that the exception handling isn't
@@ -3166,8 +3097,8 @@ class TrackableCompatibilityTests(test.TestCase):
     with self.cached_session() as sess:
       self.evaluate(a.initializer)
       save_path = a_saver.save(sess=sess, save_path=checkpoint_prefix)
-      with self.assertRaisesRegexp(
-          errors.NotFoundError, "Key b not found in checkpoint"):
+      with self.assertRaisesRegex(errors.NotFoundError,
+                                  "Key b not found in checkpoint"):
         b_saver.restore(sess=sess, save_path=save_path)
 
       with self.assertRaises(errors.NotFoundError) as cs:
@@ -3194,62 +3125,10 @@ class TrackableCompatibilityTests(test.TestCase):
       a = variables.VariableV1([1.], name="a")
       a_saver = saver_module.Saver([a])
       with self.session(graph=g) as sess:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors.InvalidArgumentError,
             "a mismatch between the current graph and the graph"):
           a_saver.restore(sess=sess, save_path=save_path)
-
-  def testLoadFromObjectBasedGraph(self):
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-
-    save_graph = ops_lib.Graph()
-    with save_graph.as_default(), self.session(graph=save_graph) as sess:
-      root = self._initialized_model()
-      object_saver = trackable_utils.Checkpoint(root=root)
-      save_path = object_saver.save(file_prefix=checkpoint_prefix)
-
-      # An incompatible object-based checkpoint to check error messages
-      var = resource_variable_ops.ResourceVariable(1., name="a")
-      self.evaluate(var.initializer)
-      second_saver = trackable_utils.Checkpoint(v=var)
-      second_path = second_saver.save(file_prefix=os.path.join(
-          checkpoint_directory, "second"))
-
-    restore_graph = ops_lib.Graph()
-    with restore_graph.as_default(), self.session(
-        graph=restore_graph) as sess:
-      root = self._initialized_model()
-      self._set_sentinels(root)
-      saver = saver_module.Saver()
-      saver.restore(sess=sess, save_path=save_path)
-      self._check_sentinels(root)
-      before_second_restore_ops = restore_graph.get_operations()
-      # Test that multiple restores do not pollute the graph
-      saver.restore(sess=sess, save_path=save_path)
-      self.assertEqual(before_second_restore_ops,
-                       restore_graph.get_operations())
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "Could not find some variables"):
-        saver.restore(sess=sess, save_path=second_path)
-
-  def testLoadFromObjectBasedEager(self):
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-
-    save_graph = ops_lib.Graph()
-    with save_graph.as_default(), self.session(graph=save_graph):
-      root = self._initialized_model()
-      object_saver = trackable_utils.Checkpoint(root=root)
-      save_path = object_saver.save(file_prefix=checkpoint_prefix)
-
-    with context.eager_mode():
-      root = self._initialized_model()
-      self._set_sentinels(root)
-      saver = saver_module.Saver(
-          root.model.variables + root.optimizer.variables())
-      saver.restore(sess=None, save_path=save_path)
-      self._check_sentinels(root)
 
 
 if __name__ == "__main__":

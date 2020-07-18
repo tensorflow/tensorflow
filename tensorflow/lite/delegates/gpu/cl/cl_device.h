@@ -31,7 +31,15 @@ namespace cl {
 enum class Vendor { QUALCOMM, MALI, POWERVR, NVIDIA, AMD, INTEL, UNKNOWN };
 std::string VendorToString(Vendor v);
 
-enum class OpenCLVersion { CL_1_0, CL_1_1, CL_1_2, CL_2_0 };
+enum class OpenCLVersion {
+  CL_1_0,
+  CL_1_1,
+  CL_1_2,
+  CL_2_0,
+  CL_2_1,
+  CL_2_2,
+  CL_3_0
+};
 std::string OpenCLVersionToString(OpenCLVersion version);
 
 // for use only in cl_device.cc, but putted here to make tests
@@ -170,6 +178,8 @@ class CLDevice {
   bool SupportsExtension(const std::string& extension) const;
   bool SupportsFP32RTN() const;
   bool SupportsFP16RTN() const;
+  bool IsCL20OrHigher() const;
+  bool SupportsSubGroupWithSize(int sub_group_size) const;
   bool IsAdreno() const;
   bool IsAdreno3xx() const;
   bool IsAdreno4xx() const;

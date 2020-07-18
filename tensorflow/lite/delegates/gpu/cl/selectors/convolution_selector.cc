@@ -73,6 +73,7 @@ absl::Status SelectConvolutionDynamicWeightsAdreno(
 }
 
 absl::Status SelectConvolutionNVidia(const Convolution2DAttributes& attr,
+                                     const BHWC& dst_shape,
                                      const CreationContext& creation_context,
                                      const OperationDef& op_def,
                                      std::unique_ptr<GPUOperation>* ptr) {
@@ -82,7 +83,8 @@ absl::Status SelectConvolutionNVidia(const Convolution2DAttributes& attr,
     *ptr = absl::make_unique<ConvConstants>(std::move(conv));
   } else {
     ConvPowerVR conv;
-    RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
+    RETURN_IF_ERROR(
+        CreateConvPowerVR(creation_context, op_def, attr, &conv, &dst_shape));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   }
   return absl::OkStatus();
@@ -170,10 +172,12 @@ absl::Status SelectConvolution(const Convolution2DAttributes& attr,
       return SelectConvolutionAdreno(attr, dst_shape, creation_context, op_def,
                                      hints, ptr);
     case Vendor::POWERVR:
+    case Vendor::INTEL:
     case Vendor::AMD:
       return SelectConvolutionPowerVR(attr, creation_context, op_def, ptr);
     case Vendor::NVIDIA:
-      return SelectConvolutionNVidia(attr, creation_context, op_def, ptr);
+      return SelectConvolutionNVidia(attr, dst_shape, creation_context, op_def,
+                                     ptr);
     case Vendor::MALI:
       return SelectConvolutionMali(attr, dst_shape, creation_context, op_def,
                                    ptr);
@@ -193,10 +197,11 @@ absl::Status SelectConvolutionForWinograd(
                                              op_def, hints, ptr);
     case Vendor::POWERVR:
     case Vendor::AMD:
+    case Vendor::INTEL:
     case Vendor::NVIDIA: {
       ConvPowerVR conv;
-      RETURN_IF_ERROR(
-          CreateConvPowerVRWino4x4To6x6(creation_context, op_def, attr, &conv));
+      RETURN_IF_ERROR(CreateConvPowerVRWino4x4To6x6(creation_context, op_def,
+                                                    attr, &conv, &dst_shape));
       *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
       return absl::OkStatus();
     }

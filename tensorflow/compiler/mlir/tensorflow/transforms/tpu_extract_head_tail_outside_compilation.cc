@@ -113,64 +113,6 @@ tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder, Operation* op,
   return launch;
 }
 
-// Parses TPU compilation and execution devices from a TPU cluster and returns
-// the host device for the head and tail computations. If the TPU computation is
-// replicated, kTPUReplicatedHost is returned instead.
-LogicalResult GetHostDeviceForHeadTailComputation(
-    mlir::TF::RuntimeDevices devices, tf_device::ClusterOp cluster,
-    std::string* host_device) {
-  auto replicate = cluster.getParentOfType<tf_device::ReplicateOp>();
-  if (replicate) {
-    *host_device = tensorflow::kTPUReplicatedHost;
-    return success();
-  }
-
-  auto num_cores_per_replica_attr =
-      cluster.getAttrOfType<IntegerAttr>(tensorflow::kNumCoresPerReplicaAttr);
-  if (!num_cores_per_replica_attr)
-    return cluster.emitOpError(
-        "cluster op missing `num_cores_per_replica` attribute");
-
-  if (num_cores_per_replica_attr.getInt() != 1)
-    return cluster.emitOpError(
-        "outside compilation is not supported with model parallelism.");
-
-  auto topology_attr =
-      cluster.getAttrOfType<StringAttr>(tensorflow::kTopologyAttr);
-  if (!topology_attr)
-    return cluster.emitOpError("cluster op missing `topology` attribute");
-
-  auto device_assignment_attr =
-      cluster.getAttrOfType<mlir::ArrayAttr>(tensorflow::kDeviceAssignmentAttr);
-  if (!device_assignment_attr)
-    return cluster.emitOpError(llvm::formatv("requires attribute '{0}'",
-                                             tensorflow::kDeviceAssignmentAttr)
-                                   .str());
-
-  auto status_or_device_coodinates =
-      tensorflow::GetDeviceCoordinates(device_assignment_attr);
-
-  if (!status_or_device_coodinates.ok())
-    return cluster.emitError()
-           << "error in fetching tpu device coordinates: "
-           << status_or_device_coodinates.status().error_message();
-
-  // Determine compilation and execution devices.
-  auto status_or_tpu_device_assignment =
-      tensorflow::GetTPUCompilationAndExecutionDevices(
-          devices.device_names(), /*num_replicas=*/1,
-          /*num_cores_per_replica=*/1, topology_attr.getValue(),
-          status_or_device_coodinates.ConsumeValueOrDie());
-  if (!status_or_tpu_device_assignment.ok())
-    return cluster.emitError()
-           << "error in fetching TPU compilation/execution devices: "
-           << status_or_tpu_device_assignment.status().error_message();
-  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
-
-  *host_device = tpu_device_assignment.tpu_devices[0][0].host;
-  return success();
-}
-
 // Returns a set of ops that are outside compiled and can be extracted to before
 // the TPU computation. These ops are either connected to the inputs of the TPU
 // computation or other ops that can be extracted, and have no operands from
@@ -232,8 +174,8 @@ mlir::LogicalResult LiftHeadOutsideCompiledOps(
   llvm::SmallVector<Operation*, 4> head_outside_compiled_ops =
       FindOutsideCompiledOpsAtHead(cluster);
   if (head_outside_compiled_ops.empty()) return success();
-  if (failed(
-          GetHostDeviceForHeadTailComputation(devices, cluster, host_device)))
+  if (failed(tensorflow::GetHostDeviceOutsideComputation(devices, cluster,
+                                                         host_device)))
     return failure();
 
   CreateHeadComputation(builder, cluster, head_outside_compiled_ops,
@@ -361,8 +303,8 @@ mlir::LogicalResult LiftTailOutsideCompiledOps(
   if (tail_outside_compiled_ops.empty()) return success();
 
   if (host_device.empty())
-    if (failed(GetHostDeviceForHeadTailComputation(devices, *cluster,
-                                                   &host_device)))
+    if (failed(tensorflow::GetHostDeviceOutsideComputation(devices, *cluster,
+                                                           &host_device)))
       return failure();
 
   // Forward all results of cluster first. These results will be remapped once

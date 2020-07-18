@@ -29,7 +29,7 @@ namespace {
 // array instead. from_array is assumed to be discardable, and consequently
 // this only updates operator edges (since discardable arrays only
 // appear there, and not e.g. in model flags).
-void Reroute(const string& from, const string& to, Model* model) {
+void Reroute(const std::string& from, const std::string& to, Model* model) {
   for (const auto& op : model->operators) {
     for (auto& output : op->outputs) {
       if (output == from) {
@@ -82,7 +82,7 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
     // We call 'main input' the unique nonconstant input array if there is one,
     // or else the 0-th input.
     int count_nonconstant_input_arrays = 0;
-    for (int i = 0; i < passthru_op->inputs.size(); i++) {
+    for (size_t i = 0; i < passthru_op->inputs.size(); i++) {
       if (!model->GetArray(passthru_op->inputs[i]).buffer) {
         count_nonconstant_input_arrays++;
         if (count_nonconstant_input_arrays == 1) {
@@ -92,8 +92,9 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
     }
   }
 
-  const string main_input_name = passthru_op->inputs[main_input_array_index];
-  const string output_name = passthru_op->outputs[0];
+  const std::string main_input_name =
+      passthru_op->inputs[main_input_array_index];
+  const std::string output_name = passthru_op->outputs[0];
 
   if (IsDiscardableArray(*model, output_name)) {
     transformation->AddMessageF(

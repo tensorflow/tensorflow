@@ -55,7 +55,7 @@ static const char* GifErrorStringNonNull(int error_code) {
 
 uint8* Decode(const void* srcdata, int datasize,
               const std::function<uint8*(int, int, int, int)>& allocate_output,
-              string* error_string) {
+              string* error_string, bool expand_animations) {
   int error_code = D_GIF_SUCCEEDED;
   InputBufferInfo info = {reinterpret_cast<const uint8*>(srcdata), datasize};
   GifFileType* gif_file =
@@ -82,10 +82,13 @@ uint8* Decode(const void* srcdata, int datasize,
     return nullptr;
   }
 
+  int target_num_frames = gif_file->ImageCount;
+  if (!expand_animations) target_num_frames = 1;
+
   // Don't request more memory than needed for each frame, preventing OOM
   int max_frame_width = 0;
   int max_frame_height = 0;
-  for (int k = 0; k < gif_file->ImageCount; k++) {
+  for (int k = 0; k < target_num_frames; k++) {
     SavedImage* si = &gif_file->SavedImages[k];
     if (max_frame_height < si->ImageDesc.Height)
       max_frame_height = si->ImageDesc.Height;
@@ -93,14 +96,14 @@ uint8* Decode(const void* srcdata, int datasize,
       max_frame_width = si->ImageDesc.Width;
   }
 
-  const int num_frames = gif_file->ImageCount;
   const int width = max_frame_width;
   const int height = max_frame_height;
   const int channel = 3;
 
-  uint8* const dstdata = allocate_output(num_frames, width, height, channel);
+  uint8* const dstdata =
+      allocate_output(target_num_frames, width, height, channel);
   if (!dstdata) return nullptr;
-  for (int k = 0; k < num_frames; k++) {
+  for (int k = 0; k < target_num_frames; k++) {
     uint8* this_dst = dstdata + k * width * channel * height;
 
     SavedImage* this_image = &gif_file->SavedImages[k];

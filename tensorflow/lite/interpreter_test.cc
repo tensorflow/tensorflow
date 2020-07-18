@@ -1131,26 +1131,26 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   };
 
   EXPECT_EQ(TestExternalContext::Get(context), nullptr);
-  interpreter_.SetNumThreads(4);
+  ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
 
   TestExternalContext::Set(context, &external_context);
   EXPECT_EQ(TestExternalContext::Get(context), &external_context);
-  interpreter_.SetNumThreads(4);
-  interpreter_.SetNumThreads(5);
+  ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetNumThreads(5), kTfLiteOk);
   EXPECT_EQ(external_context.num_refreshes, 2);
 
   // Reset refresh count to 0
   external_context.num_refreshes = 0;
   // Below should not call external context refresh
-  interpreter_.SetNumThreads(-2);
+  ASSERT_EQ(interpreter_.SetNumThreads(-2), kTfLiteError);
   EXPECT_EQ(external_context.num_refreshes, 0);
 
-  interpreter_.SetNumThreads(-1);
+  ASSERT_EQ(interpreter_.SetNumThreads(-1), kTfLiteOk);
   EXPECT_EQ(external_context.num_refreshes, 1);
 
   TestExternalContext::Set(context, nullptr);
   EXPECT_EQ(TestExternalContext::Get(context), nullptr);
-  interpreter_.SetNumThreads(4);
+  ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
 }
 
 struct TestCpuBackendContext : public TfLiteInternalBackendContext {

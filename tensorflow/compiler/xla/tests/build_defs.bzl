@@ -34,7 +34,7 @@ def xla_test(
         deps,
         xla_test_library_deps = [],
         backends = [],
-        blacklisted_backends = [],
+        disabled_backends = [],
         real_hardware_only = False,
         args = [],
         tags = [],
@@ -99,7 +99,7 @@ def xla_test(
       backends: A list of backends to generate tests for. Supported values: "cpu",
         "gpu". If this list is empty, the test will be generated for all supported
         backends.
-      blacklisted_backends: A list of backends to NOT generate tests for.
+      disabled_backends: A list of backends to NOT generate tests for.
       args: Test arguments for the target.
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
@@ -121,7 +121,7 @@ def xla_test(
     backends = [
         backend
         for backend in backends
-        if backend not in blacklisted_backends
+        if backend not in disabled_backends
     ]
 
     native.cc_library(
@@ -266,11 +266,6 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
-                "@com_google_absl//absl/container:flat_hash_map",
-                "@com_google_absl//absl/strings",
-                "//tensorflow/compiler/xla:types",
-                "//tensorflow/core:lib",
-                "//tensorflow/core:regexp_internal",
-                "//tensorflow/core:test",
+                "//tensorflow/core/platform:logging",
             ],
         )

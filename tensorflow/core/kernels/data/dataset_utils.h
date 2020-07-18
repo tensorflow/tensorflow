@@ -35,7 +35,7 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
-                               MakeTypeIndex<T>());
+                               TypeIndex::Make<T>());
   return Status::OK();
 }
 
@@ -124,6 +124,19 @@ Status HashTensor(const Tensor& tensor, uint64* hash);
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
 // the same between TensorFlow builds.
 Status HashGraph(const GraphDef& graph, uint64* hash);
+
+// Writes dataset elements to the checkpoint writer using the given key prefix.
+// The elements can be read back by passing the same key prefix to
+// ReadElementsFromCheckpoint. Only one list of elements can be written under
+// the same key_prefix.
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements);
+
+// Reads dataset elements from the checkpoint reader using the given key prefix.
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements);
 
 // Dataset op level determinism policy.
 class DeterminismPolicy {

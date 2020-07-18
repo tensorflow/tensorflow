@@ -1,6 +1,7 @@
 package(
     default_visibility = [
         "//tensorflow/compiler/tf2xla:internal",
+        "//tensorflow/core/tpu:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

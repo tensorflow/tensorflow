@@ -281,11 +281,19 @@ class MklConcatFwdPrimitive : public MklPrimitive {
                std::shared_ptr<stream> fwd_stream) {
     DCHECK_EQ(in_data.size(), context_.data_mem.size());
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+      context_.data_mem_shdptr[i]->set_data_handle(
+          static_cast<void*>(in_data[i].get_data_handle()), *fwd_stream);
+    }
+    context_.dst_mem->set_data_handle(
+        static_cast<void*>(dst_data.get_data_handle()), *fwd_stream);
+#else
       context_.data_mem_shdptr[i]->set_data_handle(
           static_cast<void*>(in_data[i].get_data_handle()));
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(dst_data.get_data_handle()));
+#endif  // ENABLE_MKLDNN_THREADPOOL
 
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
       context_.data_mem[i] = *context_.data_mem_shdptr[i];
@@ -788,11 +796,13 @@ class MklConcatOp : public OpKernel {
                                     dnn_shape_dst);
           DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
 
+          std::shared_ptr<stream> fwd_cpu_stream;
+          fwd_cpu_stream.reset(CreateStream(context, cpu_engine));
+
           if (dnn_shape_dst.IsMklTensor())
             dst_md = dnn_shape_dst.GetMklLayout();
           dst.SetUsrMem(dst_md, dst_tensor);
-          std::shared_ptr<stream> fwd_cpu_stream;
-          fwd_cpu_stream.reset(CreateStream(context, cpu_engine));
+          dst.SetUsrMemDataHandle(dst_tensor, fwd_cpu_stream);
 #ifdef ENABLE_MKLDNN_V1
           auto concat_op = concat(concat_pd);
           std::unordered_map<int, memory> net_args = {
@@ -830,9 +840,10 @@ class MklConcatOp : public OpKernel {
 
           dst_md = dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout()
                                                : dst_md;
-          dst.SetUsrMem(dst_md, dst_tensor);
           std::shared_ptr<stream> fwd_cpu_stream;
           fwd_cpu_stream.reset(CreateStream(context, concat_fwd->GetEngine()));
+          dst.SetUsrMem(dst_md, dst_tensor);
+          dst.SetUsrMemDataHandle(dst_tensor, fwd_cpu_stream);
           // Execute concat
           concat_fwd->Execute(srcs_mem, dst.GetOpMem(), concat_fwd_dims,
                               fwd_cpu_stream);

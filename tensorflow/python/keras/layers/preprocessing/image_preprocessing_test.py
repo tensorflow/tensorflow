@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import gen_stateful_random_ops
@@ -187,8 +188,8 @@ class CenterCropTest(keras_parameterized.TestCase):
       ('center_crop_10_by_8', 10, 8),
       ('center_crop_10_by_12', 10, 12))
   def test_invalid_center_crop(self, expected_height, expected_width):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r'assertion failed'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'assertion failed'):
       self._run_test(expected_height, expected_width)
 
   def test_config_with_custom_name(self):
@@ -815,6 +816,61 @@ class RandomTransformTest(keras_parameterized.TestCase):
     self._run_random_transform_with_mock(transform_matrix, expected_output,
                                          'wrap')
 
+  def test_random_translation_nearest(self):
+    # nearest output is (aaaa|abcd|dddd)
+
+    # Test down shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[0., 1., 2.],
+         [0., 1., 2.],
+         [3., 4., 5.],
+         [6., 7., 8],
+         [9., 10., 11]]).reshape((1, 5, 3, 1)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
+    self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                         'nearest')
+
+    # Test up shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[3., 4., 5.],
+         [6., 7., 8],
+         [9., 10., 11.],
+         [12., 13., 14.],
+         [12., 13., 14.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
+    self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                         'nearest')
+
+    # Test left shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[1., 2., 2.],
+         [4., 5., 5.],
+         [7., 8., 8.],
+         [10., 11., 11.],
+         [13., 14., 14.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
+    self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                         'nearest')
+
+    # Test right shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[0., 0., 1.],
+         [3., 3., 4],
+         [6., 6., 7.],
+         [9., 9., 10.],
+         [12., 12., 13.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
+    self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                         'nearest')
+
   def test_random_translation_constant(self):
     # constant output is (0000|abcd|0000)
 
@@ -976,7 +1032,7 @@ class RandomRotationTest(keras_parameterized.TestCase):
         output = strat.run(lambda: layer(input_images, training=True))
       values = output.values
       self.assertAllEqual(2, len(values))
-      self.assertAllClose(values[0], values[1])
+      self.assertAllClose(values[0], values[1], rtol=1e-5)
 
   @tf_test_util.run_v2_only
   def test_config_with_custom_name(self):
@@ -1271,6 +1327,39 @@ class RandomWidthTest(keras_parameterized.TestCase):
     config = layer.get_config()
     layer_1 = image_preprocessing.RandomWidth.from_config(config)
     self.assertEqual(layer_1.name, layer.name)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class LearningPhaseTest(keras_parameterized.TestCase):
+
+  def test_plain_call(self):
+    layer = image_preprocessing.RandomWidth(.5, seed=123)
+    shape = (12, 12, 3)
+    img = np.random.random((12,) + shape)
+    out = layer(img)  # Default to training=True
+    self.assertNotEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+    out = layer(img, training=True)
+    self.assertNotEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+    out = layer(img, training=False)
+    self.assertEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+  def test_call_in_container(self):
+    layer1 = image_preprocessing.RandomWidth(.5, seed=123)
+    layer2 = image_preprocessing.RandomHeight(.5, seed=123)
+    seq = sequential.Sequential([layer1, layer2])
+
+    shape = (12, 12, 3)
+    img = np.random.random((12,) + shape)
+    out = seq(img)  # Default to training=True
+    self.assertNotEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+    out = seq(img, training=True)
+    self.assertNotEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+    out = seq(img, training=False)
+    self.assertEqual(tuple(int(i) for i in out.shape[1:]), shape)
 
 
 if __name__ == '__main__':

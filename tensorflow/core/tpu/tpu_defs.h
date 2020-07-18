@@ -32,7 +32,7 @@ extern const char* const DEVICE_TPU_NODE;  // "TPU";
 // TPUReplicate computation.
 extern const char* const DEVICE_TPU_REPLICATED_CORE;
 
-extern const char* const DEVICE_TPU_SYSTEM;  // "TPU_SYSTEM";
+// DEVICE_TPU_SYSTEM is now defined in tensorflow/core/framework/types.h/.cc
 
 // Name of the XLA_TPU_JIT compilation device, which is an internal device to
 // compile graphs for TPU. Not registered as a device; no operators can be
@@ -46,6 +46,9 @@ extern const char* const TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR;
 // Attribute used internally to annoate ops which might consume TPU FastMem
 // variable.
 extern const char* const TPU_FAST_MEM_ATTR;  // "_TPU_FAST_MEM"
+
+extern const char* const kTPUReplicateAttr;
+extern const char* const kOutsideCompilationAttr;
 
 // Supported types for TPUs.
 static constexpr std::array<DataType, 11> kTpuAllTypes = {

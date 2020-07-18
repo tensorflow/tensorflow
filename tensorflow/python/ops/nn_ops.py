@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import numbers
 import os
@@ -940,6 +939,9 @@ def convolution(
     filter: An (N+2)-D `Tensor` with the same type as `input` and shape
       `spatial_filter_shape + [in_channels, out_channels]`.
     padding: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
+      height/width dimension as the input.
     strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
       Defaults to [1]*N.  If any value of strides is > 1, then all values of
       dilation_rate must be 1.
@@ -3270,7 +3272,7 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
                       [input, filter, output_shape]) as name:
     if tensor_util.is_tensor(output_shape):
       n = output_shape.shape[0] - 2
-    elif isinstance(output_shape, collections.Sized):
+    elif isinstance(output_shape, collections_abc.Sized):
       n = len(output_shape) - 2
     else:
       raise ValueError("output_shape must be a tensor or sized collection.")

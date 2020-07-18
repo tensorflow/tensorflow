@@ -46,7 +46,7 @@ PythonHooks* PythonHooks::GetSingleton() {
 }
 
 void PythonHooks::Start(const PythonHooksOptions& option) {
-  DCHECK(Py_IsInitialized());
+  if (!Py_IsInitialized()) return;
   if (option.enable_python_traceme || option.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (option.enable_trace_python_function) {
@@ -200,8 +200,12 @@ void PythonHooks::ClearProfilerInAllThreads() {
 void PythonHooks::EnableTraceMe(bool enable) {
   const char* kModuleName =
       "tensorflow.python.profiler.trace";
-  auto trace_module = py::module::import(kModuleName);
-  trace_module.attr("enabled") = py::bool_(enable);
+  try {
+    auto trace_module = py::module::import(kModuleName);
+    trace_module.attr("enabled") = py::bool_(enable);
+  } catch (const py::error_already_set& e) {
+    LOG(ERROR) << "Can't import " << kModuleName;
+  }
 }
 
 }  // namespace profiler

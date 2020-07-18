@@ -39,17 +39,13 @@ TfLiteStatus ValidatePadGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = nullptr;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->prepare);
   TF_LITE_ENSURE_EQ(&context, kTfLiteOk,
                     registration->prepare(&context, &node));
@@ -76,17 +72,13 @@ TfLiteStatus ValidatePadV2Goldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = nullptr;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->prepare);
   // Prepare should catch dimension mismatches.
   TfLiteStatus prepare_status = registration->prepare(&context, &node);

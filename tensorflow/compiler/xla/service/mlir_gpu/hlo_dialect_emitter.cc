@@ -22,8 +22,8 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -42,7 +42,7 @@ using ::mlir::RankedTensorType;
 using ::mlir::Type;
 using ::mlir::Value;
 
-namespace hlo = ::mlir::xla_hlo;
+namespace hlo = ::mlir::mhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
@@ -180,6 +180,28 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* instr) {
   auto const_value =
       builder_.create<hlo::ConstOp>(getLocation(instr), type, value);
   instruction_to_values_[instr] = const_value;
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleGather(HloInstruction* instr) {
+  HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
+  mlir::mhlo::GatherDimensionNumbers dimension_numbers =
+      xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
+                                        builder_);
+  mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{gather->gather_slice_sizes().begin(),
+                                  gather->gather_slice_sizes().end()},
+      builder_);
+  mlir::BoolAttr indices_are_sorted =
+      builder_.getBoolAttr(gather->indices_are_sorted());
+
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         instr->shape(), builder_));
+
+  instruction_to_values_[instr] = builder_.create<hlo::GatherOp>(
+      getLocation(instr), res_type, instruction_to_values_[instr->operand(0)],
+      instruction_to_values_[instr->operand(1)], dimension_numbers, slice_sizes,
+      indices_are_sorted);
   return Status::OK();
 }
 

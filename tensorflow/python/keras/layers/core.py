@@ -679,7 +679,7 @@ class Flatten(Layer):
         return array_ops.reshape(inputs, flattened_shape)
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.as_shape(input_shape).as_list()
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
     else:
@@ -825,10 +825,14 @@ class Lambda(Layer):
       returned as output mask regardless of what the input is.
     arguments: Optional dictionary of keyword arguments to be passed to the
       function.
-  Input shape: Arbitrary. Use the keyword argument input_shape (tuple of
+
+  Input shape:
+    Arbitrary. Use the keyword argument input_shape (tuple of
     integers, does not include the samples axis) when using this layer as the
     first layer in a model.
-  Output shape: Specified by `output_shape` argument
+
+  Output shape:
+    Specified by `output_shape` argument
   """
 
   @trackable.no_automatic_dependency_tracking
@@ -1287,12 +1291,18 @@ class TFOpLambda(Layer):
         get_canonical_name_for_symbol(self.function,
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
+    if 'name' not in kwargs:
+      kwargs['name'] = K.unique_object_name(
+          'tf.' + self.symbol, zero_based=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method
     def _call_wrapper(*args, **kwargs):
       return self._call_wrapper(*args, **kwargs)
     self.call = tf_decorator.make_decorator(function, _call_wrapper)
+
+    # Do not individually trace op layers in the SavedModel.
+    self._must_restore_from_config = True
 
     super(TFOpLambda, self).__init__(**kwargs)
 

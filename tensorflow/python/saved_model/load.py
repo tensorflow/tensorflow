@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -37,11 +38,14 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
+from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.training.saving import checkpoint_options
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import tracking
@@ -105,7 +109,8 @@ class _WrapperFunction(function.ConcreteFunction):
 class Loader(object):
   """Helper class to load an object-based SavedModel."""
 
-  def __init__(self, object_graph_proto, saved_model_proto, export_dir):
+  def __init__(self, object_graph_proto, saved_model_proto, export_dir,
+               ckpt_options):
     meta_graph = saved_model_proto.meta_graphs[0]
     self._asset_file_def = meta_graph.asset_file_def
     self._operation_attributes = {
@@ -115,6 +120,7 @@ class Loader(object):
     self._concrete_functions = (
         function_deserialization.load_function_def_library(
             meta_graph.graph_def.library))
+    self._checkpoint_options = ckpt_options
 
     for name, concrete_function in self._concrete_functions.items():
       # Wrap all the concrete function so that they are capable of dealing with
@@ -140,6 +146,18 @@ class Loader(object):
     # captures.
     self._setup_functions_structures()
     self._setup_functions_captures()
+
+    self._create_saveable_object_factories()
+
+  def _create_saveable_object_factories(self):
+    for node_id, proto in enumerate(self._proto.nodes):
+      node = self.get(node_id)
+      node._self_saveable_object_factories = {}  # pylint: disable=protected-access
+      for name, saveable_object_proto in proto.saveable_objects.items():
+        node._self_saveable_object_factories[name] = (  # pylint: disable=protected-access
+            saveable_object_util.restored_saved_object_factory(
+                self.get(saveable_object_proto.save_function),
+                self.get(saveable_object_proto.restore_function)))
 
   def _load_edges(self):
     """Adds edges from objects to other objects and functions."""
@@ -306,9 +324,10 @@ class Loader(object):
     with ops.device("CPU"):
       saver._file_prefix_placeholder = constant_op.constant(variables_path)
     if self._expect_partial_checkpoint:
-      load_status = saver.restore(variables_path).expect_partial()
+      load_status = saver.restore(variables_path,
+                                  self._checkpoint_options).expect_partial()
     else:
-      load_status = saver.restore(variables_path)
+      load_status = saver.restore(variables_path, self._checkpoint_options)
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
 
@@ -491,7 +510,7 @@ def _call_attribute(instance, *args, **kwargs):
 
 
 @tf_export("saved_model.load", v1=["saved_model.load_v2"])
-def load(export_dir, tags=None):
+def load(export_dir, tags=None, options=None):
   """Load a SavedModel from `export_dir`.
 
   Signatures associated with the SavedModel are available as functions:
@@ -569,6 +588,8 @@ def load(export_dir, tags=None):
     tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
       if the SavedModel contains a single MetaGraph, as for those exported from
       `tf.saved_model.save`.
+    options: Optional, `tf.saved_model.LoadOptions` object that specifies
+      options for loading.
 
   Returns:
     A trackable object with a `signatures` attribute mapping from signature
@@ -579,11 +600,12 @@ def load(export_dir, tags=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
-  return load_internal(export_dir, tags)
+  return load_internal(export_dir, tags, options)
 
 
-def load_internal(export_dir, tags=None, loader_cls=Loader):
+def load_internal(export_dir, tags=None, options=None, loader_cls=Loader):
   """Loader implementation."""
+  options = options or load_options.LoadOptions()
   if tags is not None and not isinstance(tags, set):
     # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
     # sequences for nest.flatten, so we put those through as-is.
@@ -602,10 +624,20 @@ def load_internal(export_dir, tags=None, loader_cls=Loader):
            "it, pass 'None', or pass matching tags.")
           .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
     object_graph_proto = meta_graph_def.object_graph_def
+
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_io_device=options.experimental_io_device)
     with ops.init_scope():
-      loader = loader_cls(object_graph_proto,
-                          saved_model_proto,
-                          export_dir)
+      try:
+        loader = loader_cls(object_graph_proto, saved_model_proto, export_dir,
+                            ckpt_options)
+      except errors.NotFoundError as err:
+        raise FileNotFoundError(
+            str(err) + "\n If trying to load on a different device from the "
+            "computational device, consider using setting the "
+            "`experimental_io_device` option on tf.saved_model.LoadOptions "
+            "to the io_device such as '/job:localhost'."
+        )
       root = loader.get(0)
       if isinstance(loader, Loader):
         root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)

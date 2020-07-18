@@ -157,7 +157,7 @@ TEST(PARALLEL_DEVICE, TestExplicitCopies) {
   // Copies off of parallel devices must be explicit.
   TensorHandlePtr copy_back(TFE_TensorHandleCopyToDevice(
       device_value.get(), context.get(), first_device_name, status.get()));
-  ASSERT_EQ(TF_GetCode(status.get()), TF_INTERNAL);
+  ASSERT_EQ(TF_GetCode(status.get()), TF_UNIMPLEMENTED);
 }
 
 TEST(PARALLEL_DEVICE, TestDifferentShapes) {
@@ -412,6 +412,7 @@ void TestCollective(bool async) {
       TF_NewStatus(), TF_DeleteStatus);
   std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
       TFE_NewContextOptions(), TFE_DeleteContextOptions);
+  TFE_ContextOptionsSetAsync(opts.get(), async);
   std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> config(
       TF_CreateConfig(
           /*xla*/ false,
@@ -423,9 +424,6 @@ void TestCollective(bool async) {
   std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
       TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  std::unique_ptr<TFE_Executor, decltype(&TFE_DeleteExecutor)> executor(
-      TFE_NewExecutor(async), TFE_DeleteExecutor);
-  TFE_ContextSetExecutorForThread(context.get(), executor.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
   std::array<const char*, 2> underlying_devices{
@@ -455,8 +453,6 @@ void TestCollective(bool async) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   ExpectScalarEq<float>(result_components[0].get(), 3.);
   ExpectScalarEq<float>(result_components[1].get(), 3.);
-  // Destroying the context's default executor first isn't safe.
-  context.reset();
 }
 
 TEST(PARALLEL_DEVICE, TestCollectiveSync) { TestCollective(/*async=*/false); }

@@ -72,6 +72,10 @@ class Conv(Layer):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`,  `"same"`, or `"causal"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input. `"causal"` results in causal 
+      (dilated) convolutions, e.g. `output[t]` does not depend on `input[t+1:]`.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
@@ -417,7 +421,10 @@ class Conv1D(Conv):
       specifying the stride length of the convolution.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: One of `"valid"`, `"causal"` or `"same"` (case-insensitive).
+    padding: One of `"valid"`, `"same"` or `"causal"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
       `"causal"` results in causal (dilated) convolutions, e.g. `output[t]`
       does not depend on `input[t+1:]`. Useful when modeling temporal data
       where the model should not violate the temporal order.
@@ -571,6 +578,9 @@ class Conv2D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs. `channels_last` corresponds
       to inputs with shape `(batch_size, height, width, channels)` while
@@ -712,6 +722,9 @@ class Conv3D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs. `channels_last` corresponds
       to inputs with shape `batch_shape + (spatial_dim1, spatial_dim2,
@@ -833,6 +846,9 @@ class Conv1DTranspose(Conv1D):
       time dimension. Specifying a stride value != 1 is incompatible with
       specifying a `dilation_rate` value != 1. Defaults to 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     output_padding: An integer specifying the amount of padding along
       the time dimension of the output tensor.
       The amount of output padding must be lower than the stride.
@@ -1083,6 +1099,9 @@ class Conv2DTranspose(Conv2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     output_padding: An integer or tuple/list of 2 integers,
       specifying the amount of padding along the height and width
       of the output tensor.
@@ -1371,19 +1390,22 @@ class Conv3DTranspose(Conv3D):
 
   Arguments:
     filters: Integer, the dimensionality of the output space
-        (i.e. the number of output filters in the convolution).
+      (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of 3 integers, specifying the
-        depth, height and width of the 3D convolution window.
-        Can be a single integer to specify the same value for
-        all spatial dimensions.
+      depth, height and width of the 3D convolution window.
+      Can be a single integer to specify the same value for
+      all spatial dimensions.
     strides: An integer or tuple/list of 3 integers,
-        specifying the strides of the convolution along the depth, height
-          and width.
-        Can be a single integer to specify the same value for
-        all spatial dimensions.
-        Specifying any stride value != 1 is incompatible with specifying
-        any `dilation_rate` value != 1.
+      specifying the strides of the convolution along the depth, height
+        and width.
+      Can be a single integer to specify the same value for
+      all spatial dimensions.
+      Specifying any stride value != 1 is incompatible with specifying
+      any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     output_padding: An integer or tuple/list of 3 integers,
       specifying the amount of padding along the depth, height, and
       width.
@@ -1681,6 +1703,9 @@ class SeparableConv(Conv):
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
@@ -1885,6 +1910,10 @@ class SeparableConv1D(SeparableConv):
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`, `"same"`, or `"causal"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input. `"causal"` results in causal 
+      (dilated) convolutions, e.g. `output[t]` does not depend on `input[t+1:]`.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
@@ -2070,6 +2099,9 @@ class SeparableConv2D(SeparableConv):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -2230,6 +2262,9 @@ class DepthwiseConv2D(Conv2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `'valid'` or `'same'` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     depth_multiplier: The number of depthwise convolution output channels
       for each input channel.
       The total number of depthwise convolution output
@@ -2942,30 +2977,30 @@ class ZeroPadding3D(Layer):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       if input_shape[2] is not None:
-        dim1 = input_shape[2] + 2 * self.padding[0][0]
+        dim1 = input_shape[2] + self.padding[0][0] + self.padding[0][1]
       else:
         dim1 = None
       if input_shape[3] is not None:
-        dim2 = input_shape[3] + 2 * self.padding[1][0]
+        dim2 = input_shape[3] + self.padding[1][0] + self.padding[1][1]
       else:
         dim2 = None
       if input_shape[4] is not None:
-        dim3 = input_shape[4] + 2 * self.padding[2][0]
+        dim3 = input_shape[4] + self.padding[2][0] + self.padding[2][1]
       else:
         dim3 = None
       return tensor_shape.TensorShape(
           [input_shape[0], input_shape[1], dim1, dim2, dim3])
     elif self.data_format == 'channels_last':
       if input_shape[1] is not None:
-        dim1 = input_shape[1] + 2 * self.padding[0][1]
+        dim1 = input_shape[1] + self.padding[0][0] + self.padding[0][1]
       else:
         dim1 = None
       if input_shape[2] is not None:
-        dim2 = input_shape[2] + 2 * self.padding[1][1]
+        dim2 = input_shape[2] + self.padding[1][0] + self.padding[1][1]
       else:
         dim2 = None
       if input_shape[3] is not None:
-        dim3 = input_shape[3] + 2 * self.padding[2][1]
+        dim3 = input_shape[3] + self.padding[2][0] + self.padding[2][1]
       else:
         dim3 = None
       return tensor_shape.TensorShape(

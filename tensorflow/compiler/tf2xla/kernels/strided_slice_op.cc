@@ -350,6 +350,30 @@ class StridedSliceGradOp : public XlaOpKernel {
       grad = xla::Rev(grad, dimensions_to_reverse);
     }
     grad = xla::Pad(grad, zero, padding_config);
+
+    xla::XlaOp dynamic_shape = ctx->Input(0);
+    xla::Shape grad_shape = ctx->builder()->GetShape(grad).ValueOrDie();
+    ctx->set_dynamic_dimension_is_minus_one(true);
+    std::vector<int64> dynamic_size;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &dynamic_size));
+    // Input of strided_slice_op has to have the same shape as output.
+    DCHECK_EQ(grad_shape.rank(), input_shape.dims());
+    for (int64 dim = 0; dim < input_shape.dims(); ++dim) {
+      DCHECK_EQ(grad_shape.dimensions(dim), input_shape.dim_size(dim));
+      if (dynamic_size[dim] == -1) {
+        // Input is a dynamic dimension, set the same dynamic dimension size in
+        // the output.
+        auto dim_size = xla::Slice(dynamic_shape, {dim}, {dim + 1}, {1});
+        auto dim_size_scalar =
+            xla::Reshape(xla::ShapeUtil::MakeScalarShape(xla::S32), dim_size);
+        grad = xla::SetDimensionSize(grad, dim_size_scalar, dim);
+      } else if (grad_shape.is_dynamic_dimension(dim)) {
+        // Input is static but output is dynamic, respect input and remove any
+        // dynamic dim in the output.
+        grad = xla::RemoveDynamicDimension(grad, dim);
+      }
+    }
+
     ctx->SetOutput(0, grad);
   }
 

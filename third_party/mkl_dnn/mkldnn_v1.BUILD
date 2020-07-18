@@ -71,6 +71,8 @@ cc_library(
         "src/cpu/**/*.cpp",
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
+        "src/cpu/jit_utils/jitprofiling/*.c",
+        "src/cpu/jit_utils/jitprofiling/*.h",
     ]) + [
         ":dnnl_config_h",
         ":dnnl_version_h",

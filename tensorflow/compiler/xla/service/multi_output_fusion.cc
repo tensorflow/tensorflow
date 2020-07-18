@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -126,6 +127,10 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
   candidates_index_.clear();
   all_fusion_candidates_.clear();
   reachability_.reset();
+  if (changed) {
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
+  }
   return changed;
 }
 

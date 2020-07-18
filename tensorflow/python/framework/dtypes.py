@@ -607,6 +607,9 @@ assert len(_ANY_TO_TF) == sum(
 def as_dtype(type_value):
   """Converts the given `type_value` to a `DType`.
 
+  Note: `DType` values are interned. When passed a new `DType` object,
+  `as_dtype` always returns the interned value.
+
   Args:
     type_value: A value that can be converted to a `tf.DType` object. This may
       currently be a `tf.DType` object, a [`DataType`
@@ -620,7 +623,7 @@ def as_dtype(type_value):
     TypeError: If `type_value` cannot be converted to a `DType`.
   """
   if isinstance(type_value, DType):
-    return type_value
+    return _INTERN_TABLE[type_value.as_datatype_enum]
 
   if isinstance(type_value, np.dtype):
     try:

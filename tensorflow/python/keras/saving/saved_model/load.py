@@ -34,6 +34,7 @@ from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.saving.saved_model.serialized_attributes import CommonEndpoints
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import nested_structure_coder
@@ -43,7 +44,6 @@ from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -90,7 +90,7 @@ KERAS_OBJECT_IDENTIFIERS = (
     '_tf_keras_rnn_layer')
 
 
-def load(path, compile=True):  # pylint: disable=redefined-builtin
+def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
   """Loads Keras objects from a SavedModel.
 
   Any Keras layer or model saved to the SavedModel will be loaded back
@@ -107,13 +107,18 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
   Args:
     path: Path to SavedModel.
     compile: If true, compile the model after loading it.
+    options: Optional `tf.saved_model.LoadOptions` object that specifies
+      options for loading from SavedModel.
+
 
   Returns:
     Object loaded from SavedModel.
   """
   # TODO(kathywu): Add saving/loading of optimizer, compiled losses and metrics.
   # TODO(kathywu): Add code to load from objects that contain all endpoints
-  model = tf_load.load_internal(path, loader_cls=KerasObjectLoader)
+
+  model = tf_load.load_internal(
+      path, options=options, loader_cls=KerasObjectLoader)
 
   # pylint: disable=protected-access
   if isinstance(model, training_lib.Model) and compile:
@@ -124,6 +129,7 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
     if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config))
+      saving_utils.try_build_compiled_arguments(model)
     else:
       logging.warning('No training configuration found in save file, so the '
                       'model was *not* compiled. Compile it manually.')
@@ -402,6 +408,7 @@ class KerasObjectLoader(tf_load.Loader):
     #       found.
     class_name = metadata.get('class_name')
     config = metadata.get('config')
+    must_restore_from_config = metadata.get('must_restore_from_config')
     if not generic_utils.validate_config(config):
       return None
 
@@ -409,7 +416,18 @@ class KerasObjectLoader(tf_load.Loader):
       obj = layers_module.deserialize(
           generic_utils.serialize_keras_class_and_config(class_name, config))
     except ValueError:
-      return None
+      if must_restore_from_config:
+        raise RuntimeError(
+            'Unable to restore a layer of class {cls}. Layers of '
+            'class {cls} require that the class be provided to '
+            'the model loading code, either by registering the '
+            'class using @keras.utils.register_keras_serializable '
+            'on the class def and including that file in your '
+            'program, or by passing the class in a '
+            'keras.utils.CustomObjectScope that wraps this load '
+            'call.'.format(cls=class_name))
+      else:
+        return None
 
     # Use the dtype, name, and trainable status. Often times these are not
     # specified in custom configs, so retrieve their values from the metadata.
@@ -673,18 +691,22 @@ def _finalize_saved_model_layers(layers):
           layer, _get_keras_attr(layer).call_and_return_conditional_losses,
           return_method=True)
       layer._init_call_fn_args()
+    else:
+      layer.call = types.MethodType(
+          _unable_to_call_layer_due_to_serialization_issue, layer)
 
   for layer in layers:
     # 2. Set model inputs and outputs.
     if isinstance(layer, RevivedNetwork):
       _set_network_attributes_from_metadata(layer)
 
-      call_fn = _get_keras_attr(layer).call_and_return_conditional_losses
-      if call_fn.input_signature is None:
-        inputs = infer_inputs_from_restored_call_function(call_fn)
-      else:
-        inputs = call_fn.input_signature[0]
-      layer._set_inputs(inputs)
+      if hasattr(_get_keras_attr(layer), 'call_and_return_conditional_losses'):
+        call_fn = _get_keras_attr(layer).call_and_return_conditional_losses
+        if call_fn.input_signature is None:
+          inputs = infer_inputs_from_restored_call_function(call_fn)
+        else:
+          inputs = call_fn.input_signature[0]
+        layer._set_inputs(inputs)  # pylint: disable=protected-access
 
     # 3. Add losses that aren't generated by the layer.call function.
     _restore_layer_unconditional_losses(layer)
@@ -694,6 +716,41 @@ def _finalize_saved_model_layers(layers):
     _restore_layer_metrics(layer)
 
   # pylint: enable=protected-access
+
+
+def _unable_to_call_layer_due_to_serialization_issue(
+    layer, *unused_args, **unused_kwargs):
+  """Replaces the `layer.call` if the layer was not fully serialized.
+
+  Keras Model/Layer serialization is relatively relaxed because SavedModels
+  are not always loaded back as keras models. Thus, when there is an issue
+  tracing a non-signature function, a warning is logged instead of raising an
+  error. This results in a SavedModel where the model's call function is saved,
+  but the internal layer call functions are not.
+
+  When deserialized with `tf.keras.models.load_model`, the internal layers
+  which do not have serialized call functions should raise an error when called.
+
+  Args:
+    layer: Layer without the serialized call function.
+
+  Raises:
+    ValueError
+  """
+
+  raise ValueError(
+      'Cannot call {} ({}), because the call function was not serialized to '
+      'the SavedModel (due to lack information about the inputs). Please try '
+      'one of the following methods to fix the serialization:'
+      '\n\n(1) Implement `get_config` and `from_config` in the layer/model '
+      'class, and pass the object to the `custom_objects` argument when '
+      'loading the model. For more details, see: '
+      'https://www.tensorflow.org/guide/keras/save_and_serialize'
+      '\n\n(2) Ensure that the subclassed model or layer overwrites `call` '
+      'and not `__call__`. The input shape and dtype will be automatically '
+      'recorded when the object is called, and used when saving. To manually '
+      'specify the input shape/dtype, decorate the call function with '
+      '`@tf.function(input_signature=...)`.'.format(layer.name, layer))
 
 
 def _finalize_config_layers(layers):

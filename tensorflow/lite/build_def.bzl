@@ -251,7 +251,6 @@ def generated_test_models():
         "ceil",
         "concat",
         "constant",
-        # "control_dep", # b/150647401
         "conv",
         "conv_relu",
         "conv_relu1",
@@ -731,4 +730,50 @@ def tflite_experimental_runtime_linkopts(if_eager = [], if_non_eager = [], if_no
             # "//tensorflow/lite/experimental/tf_runtime:model",
         ] + if_non_eager,
         if_none = [] + if_none,
+    )
+
+def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility = ["//visibility:private"]):
+    """Generates a tflite cc library, stripping off unused operators.
+
+    This library includes the TfLite runtime as well as all operators needed for the given models.
+    Op resolver can be retrieved using tflite::CreateOpResolver method.
+
+    Args:
+        name: Str, name of the target.
+        models: List of models. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+        srcs: List of files implementing custom operators if any.
+        deps: Additional dependencies to build all the custom operators.
+        visibility: Visibility setting for the generated target. Default to private.
+    """
+    real_srcs = []
+    real_srcs.extend(srcs)
+    real_deps = []
+    real_deps.extend(deps)
+
+    if models:
+        gen_selected_ops(
+            name = "%s_registration" % name,
+            model = models[0],
+        )
+        real_srcs.append(":%s_registration" % name)
+        real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
+    else:
+        # Support all operators if `models` not specified.
+        real_deps.append("//tensorflow/lite/java/src/main/native")
+
+    native.cc_library(
+        name = name,
+        srcs = real_srcs,
+        copts = tflite_copts(),
+        linkopts = select({
+            "//tensorflow:windows": [],
+            "//conditions:default": ["-lm", "-ldl"],
+        }),
+        deps = depset([
+            "//tensorflow/lite:framework",
+            "//tensorflow/lite/kernels:builtin_ops",
+        ] + real_deps),
+        visibility = visibility,
     )

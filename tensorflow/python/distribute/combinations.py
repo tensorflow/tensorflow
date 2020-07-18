@@ -22,6 +22,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import copy
 import re
 import sys
 import types
@@ -29,12 +31,17 @@ import unittest
 
 import six
 
+from tensorflow.python.client import session
+from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations as framework_combinations
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
 from tensorflow.python.platform import flags
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -81,6 +88,8 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       update["has_chief"] = strategy.has_chief if strategy else False
     if "num_workers" in requested_parameters:
       update["num_workers"] = strategy.num_workers if strategy else 1
+    if "runner" in requested_parameters:
+      update["runner"] = strategy.runner if strategy else None
     return update
 
 
@@ -218,7 +227,8 @@ class NamedDistribution(object):
                required_tpu=False,
                use_cloud_tpu=False,
                has_chief=False,
-               num_workers=1):
+               num_workers=1,
+               use_pool_runner=True):
     """Initialize NamedDistribution.
 
     Args:
@@ -229,6 +239,8 @@ class NamedDistribution(object):
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
       num_workers: The number of workers that the strategy requires.
+      use_pool_runner: Whether to use a pool runner so that workers are re-used
+        each time.
     """
     object.__init__(self)
     self._name = name
@@ -238,6 +250,23 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self._runner = None
+
+    if _num_total_workers(self.has_chief, self.num_workers) > 1:
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=num_workers,
+          num_ps=0,
+          has_eval=False)
+      if use_pool_runner:
+        # Need to create the strategy in the initializer so that collectives are
+        # configured before eager context initialization.
+        self._runner = multi_process_runner.MultiProcessPoolRunner(
+            cluster_spec, initializer=self._distribution_fn)
+
+  @property
+  def runner(self):
+    return self._runner
 
   @property
   def strategy(self):
@@ -310,6 +339,9 @@ def main():
 _running_in_worker = False
 
 
+_TestResult = collections.namedtuple("_TestResult", ["status", "message"])
+
+
 def _test_runner(test_id):
   """Executes the test with the given test_id.
 
@@ -331,15 +363,23 @@ def _test_runner(test_id):
   test = unittest.defaultTestLoader.loadTestsFromName(test_id)
   runner = unittest.TextTestRunner()
   result = runner.run(test)
-  # Print failures and errors to stdout and multi_process_runner will collect
+  # Treat expected failures as failures, so that the main process can get
+  # them and fail as expected. Also treat errors as failures to simplify the
+  # handling.
+  failures = result.failures + result.expectedFailures + result.errors
+  if failures:
+    ret = _TestResult(status="failure", message=failures[0][1])
+  elif result.skipped:
+    ret = _TestResult(status="skipped", message=result.skipped[0][1])
+  else:
+    # Treat unexpectedSuccesses as OK so that the test case in the main process
+    # succeed as well.
+    ret = _TestResult(status="ok", message=None)
+  # Print tracebacks to stdout and multi_process_runner will collect
   # them and stream back to the main process.
-  for _, msg in result.failures + result.errors:
-    print(msg)
-  # Return expected failures as failures, so that the main process can get
-  # them and fail as expected.
-  if result.expectedFailures:
-    return False
-  return result.wasSuccessful()
+  if ret.message:
+    print(ret.message)
+  return ret
 
 
 def _multi_worker_test(test_method):
@@ -360,11 +400,19 @@ def _multi_worker_test(test_method):
     arguments.
   """
 
-  def decorator(self, has_chief, num_workers, **kwargs):
+  def decorator(self, has_chief, num_workers, runner, **kwargs):
     if _num_total_workers(has_chief, num_workers) == 1 or _running_in_worker:
       # We're in worker process or the test is for single worker. Either case we
       # execute the test method directly instead of spawning subprocesses.
-      test_method(self, **kwargs)
+
+      # For MultiWorkerMirroredStrategy(CollectiveAllReduceStrategy), install a
+      # session that connects to the local server. This is necessary for multi
+      # worker graph mode tests to work. Those tests cannot use their graphs or
+      # sessions, including the one returned by self.cached_session(). Since
+      # existing tests may already be doing so, we only install the session for
+      # multi worker tests.
+      with _multi_worker_session(kwargs):
+        test_method(self, **kwargs)
       return
 
     # We're in the main process. We spawn subprocesses and run the *test* on
@@ -384,16 +432,33 @@ def _multi_worker_test(test_method):
     #                   # _running_in_worker is True
     #                   [sub process]test_method()
     test_id = self.id()
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=has_chief, num_workers=num_workers, num_ps=0, has_eval=False)
-    result = multi_process_runner.run(
-        _test_runner, cluster_spec, args=(test_id,))
-    for was_successful in result.return_value:
-      if not was_successful:
-        raise AssertionError("some worker failed, see logs for details")
+    if runner:
+      results = runner.run(_test_runner, args=(test_id,))
+    else:
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=num_workers,
+          num_ps=0,
+          has_eval=False)
+      results = multi_process_runner.run(
+          _test_runner, cluster_spec, args=(test_id,)).return_value
+
+    skip_reason = None
+    for result in results:
+      if result.status == "failure":
+        # We can't tell which worker the return value come from, so we fail on
+        # the  first error.
+        self.fail(result.message)
+        break
+      elif result.status == "skipped":
+        # Record the skip reason, but do not actually skip the test in case some
+        # processes fail instead.
+        skip_reason = result.message
+    if skip_reason is not None:
+      self.skipTest(skip_reason)
 
   argspec = tf_inspect.getfullargspec(test_method)
-  decorator_args = (argspec.args or []) + ["has_chief", "num_workers"]
+  decorator_args = (argspec.args or []) + ["has_chief", "num_workers", "runner"]
   decorator_argspec = argspec._replace(args=decorator_args)
   return tf_decorator.make_decorator(
       test_method, decorator, decorator_argspec=decorator_argspec)
@@ -404,3 +469,32 @@ def _num_total_workers(has_chief, num_workers):
   if has_chief:
     return num_workers + 1
   return num_workers
+
+
+def _multi_worker_session(kwargs):
+  """Returns a context manager that enters a session that is configured for the MultiWorkerMirroredStrategy.
+
+  Args:
+    kwargs: a dict. Keyword arguments passed to the test.
+
+  Returns:
+    A context manager. If MultiWorkerMirroredStrategy is the  one and only one
+    strategy in kwargs and it's in graph mode, it's the seesion that is
+    configured for that strategy.  Otherwise, it's a no-op context manager.
+  """
+  strategy = None
+  for _, v in kwargs.items():
+    if isinstance(v, distribute_lib.StrategyBase):
+      if strategy is not None:
+        logging.warning(
+            "The test uses multiple strategies. Skipping "
+            "entering a session that is configured for the strategy.")
+        return ops.NullContextmanager()
+      strategy = v
+  if context.executing_eagerly() or not isinstance(
+      strategy, collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+    return ops.NullContextmanager()
+  sess_config = copy.deepcopy(context.context().config)
+  sess_config = strategy.update_config_proto(sess_config)
+  target = strategy.cluster_resolver.master()
+  return session.Session(config=sess_config, target=target).as_default()

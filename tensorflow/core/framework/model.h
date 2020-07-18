@@ -294,9 +294,10 @@ class Node {
     autotune_.store(autotune);
   }
 
-  // Given the average time between output events (`output_time`), the average
-  // time between input events (`input_time`) and the buffer size, the method
-  // computes the expected time an input event will have to wait.
+  // Given the average time between events when the elements in the buffer are
+  // produced (`producer_time`), the average time between events when elements
+  // in the buffer are consumed (`consumer_time`) and the buffer size, the
+  // method computes the expected time an consumer event will have to wait.
   //
   // The wait time is approximated as the product of the probability the buffer
   // will be empty and the time it takes to produce an element into the buffer.
@@ -305,13 +306,14 @@ class Node {
   // problem as an M/M/1/K queue
   // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
   //
-  // Collects derivatives of `ComputeWaitTime` w.r.t `output_time`, `input_time'
-  // and `buffer_size` if the corresponding pointers are not `nullptr`.
-  static double ComputeWaitTime(const double& output_time,
-                                const double& input_time,
+  // Collects derivatives of `ComputeWaitTime` w.r.t `producer_time`,
+  // `consumer_time' and `buffer_size` if the corresponding pointers are not
+  // `nullptr`.
+  static double ComputeWaitTime(const double& producer_time,
+                                const double& consumer_time,
                                 const double& buffer_size,
-                                double* output_time_derivative,
-                                double* input_time_derivative,
+                                double* producer_time_derivative,
+                                double* consumer_time_derivative,
                                 double* buffer_size_derivative);
 
   // Collects tunable parameters in the subtree rooted in this node.
@@ -626,7 +628,10 @@ class Model {
   // relative to other transformations. The collected parameters are returned
   // as a mapping from a (unique) node name to a parallelism parameter.
   absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-  CollectEssentialParallelism(std::shared_ptr<Node> node);
+  CollectEssentialParallelism(
+      std::shared_ptr<Node> node,
+      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
+          parameters);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then repeatedly identifies the

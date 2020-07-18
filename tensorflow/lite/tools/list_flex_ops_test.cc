@@ -22,6 +22,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
 namespace tflite {
@@ -31,8 +32,9 @@ class FlexOpsListTest : public ::testing::Test {
  protected:
   FlexOpsListTest() {}
 
-  void ReadOps(const string& model_path) {
-    auto model = FlatBufferModel::BuildFromFile(model_path.data());
+  void ReadOps(const string& path) {
+    std::string full_path = tensorflow::GetDataDependencyFilepath(path);
+    auto model = FlatBufferModel::BuildFromFile(full_path.data());
     AddFlexOpsFromModel(model->GetModel(), &flex_ops_);
     output_text_ = OpListToJSONString(flex_ops_);
   }
@@ -84,30 +86,29 @@ class FlexOpModel : public SingleOpModel {
 };
 
 TEST_F(FlexOpsListTest, TestModelsNoFlex) {
-  ReadOps("third_party/tensorflow/lite/testdata/test_model.bin");
+  ReadOps("tensorflow/lite/testdata/test_model.bin");
   EXPECT_EQ(output_text_, "[]");
 }
 
 TEST_F(FlexOpsListTest, TestBrokenModel) {
   EXPECT_DEATH_IF_SUPPORTED(
-      ReadOps("third_party/tensorflow/lite/testdata/test_model_broken.bin"),
-      "");
+      ReadOps("tensorflow/lite/testdata/test_model_broken.bin"), "");
 }
 
 TEST_F(FlexOpsListTest, TestZeroSubgraphs) {
-  ReadOps("third_party/tensorflow/lite/testdata/0_subgraphs.bin");
+  ReadOps("tensorflow/lite/testdata/0_subgraphs.bin");
   EXPECT_EQ(output_text_, "[]");
 }
 
 TEST_F(FlexOpsListTest, TestFlexAdd) {
-  ReadOps("third_party/tensorflow/lite/testdata/multi_add_flex.bin");
+  ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   EXPECT_EQ(output_text_,
             "[[\"Add\", \"BinaryOp<CPUDevice, functor::add<float>>\"]]");
 }
 
 TEST_F(FlexOpsListTest, TestTwoModel) {
-  ReadOps("third_party/tensorflow/lite/testdata/multi_add_flex.bin");
-  ReadOps("third_party/tensorflow/lite/testdata/softplus_flex.bin");
+  ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
+  ReadOps("tensorflow/lite/testdata/softplus_flex.bin");
   EXPECT_EQ(output_text_,
             "[[\"Add\", \"BinaryOp<CPUDevice, "
             "functor::add<float>>\"],\n[\"Softplus\", \"SoftplusOp<CPUDevice, "
@@ -115,8 +116,8 @@ TEST_F(FlexOpsListTest, TestTwoModel) {
 }
 
 TEST_F(FlexOpsListTest, TestDuplicatedOp) {
-  ReadOps("third_party/tensorflow/lite/testdata/multi_add_flex.bin");
-  ReadOps("third_party/tensorflow/lite/testdata/multi_add_flex.bin");
+  ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
+  ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   EXPECT_EQ(output_text_,
             "[[\"Add\", \"BinaryOp<CPUDevice, functor::add<float>>\"]]");
 }

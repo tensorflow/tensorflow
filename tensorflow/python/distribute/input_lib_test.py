@@ -185,38 +185,76 @@ class DistributedIteratorTestBase(test.TestCase):
       if not ops.executing_eagerly_outside_functions():
         evaluate(control_flow_ops.group(iterator.initializer))
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = evaluate(
-            [distribute_utils.select_replica(r, next_element)
-             for r in range(len(devices))])
-        self.assertEqual(len(expected_value), len(computed_value))
-        for i in range(len(expected_value)):
-          self.assertAllEqual(expected_value[i], computed_value[i])
+      def test_get_next(iterator):
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
 
-      with self.assertRaises(errors.OutOfRangeError):
-        next_element = iterator.get_next()
-        evaluate(
-            [distribute_utils.select_replica(r, next_element)
-             for r in range(len(devices))])
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
 
-      # After re-initializing the iterator, should be able to iterate again.
-      if not ops.executing_eagerly_outside_functions():
-        evaluate(control_flow_ops.group(iterator.initializer))
+        with self.assertRaises(errors.OutOfRangeError):
+          next_element = iterator.get_next()
+          evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
+
+        # After re-initializing the iterator, should be able to iterate again.
+        if not ops.executing_eagerly_outside_functions():
+          evaluate(control_flow_ops.group(iterator.initializer))
+        else:
+          if api_type == "wrap_into_iterator":
+            self.skipTest("unsupported test combination")
+          else:
+            iterator = iter(dataset)
+
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
+
+      def test_get_next_as_optional(iterator):
+        for expected_value in expected_values:
+          next_element = iterator.get_next_as_optional()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element.get_value())
+              for r in range(len(devices))
+          ])
+
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
+
+        next_element = iterator.get_next_as_optional()
+        self.assertFalse(self.evaluate(next_element.has_value()))
+        with self.assertRaises(errors.InvalidArgumentError):
+          evaluate([
+              distribute_utils.select_replica(r, next_element.get_value())
+              for r in range(len(devices))
+          ])
+
+      test_get_next(iterator)
+
+      # re-initializing the iterator
+      if not tf2.enabled():
+        self.skipTest("Not testing get_next_as_optional in TF1")
       else:
         if api_type == "wrap_into_iterator":
           self.skipTest("unsupported test combination")
         else:
           iterator = iter(dataset)
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = evaluate(
-            [distribute_utils.select_replica(r, next_element)
-             for r in range(len(devices))])
-        self.assertEqual(len(expected_value), len(computed_value))
-        for i in range(len(expected_value)):
-          self.assertAllEqual(expected_value[i], computed_value[i])
+      test_get_next_as_optional(iterator)
 
     if iteration_type == "for_loop" and context.executing_eagerly():
       actual_values = []
@@ -1106,7 +1144,6 @@ class DistributedIteratorMultiWorkerTest(
           expected_values = [[[0, 1]], [[2, 3]], [[4]]]
           input_context = None
 
-        strategy.extended.experimental_enable_get_next_as_optional = True
         self._test_input_iteration(
             input_type,
             api_type,

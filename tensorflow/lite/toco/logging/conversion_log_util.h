@@ -25,37 +25,39 @@ namespace toco {
 
 // This function scans through the error message string, extracts the part about
 // missing ops and prunes away all other information in the error info.
-string SanitizeErrorMessage(const string& error_message);
+std::string SanitizeErrorMessage(const std::string& error_message);
 
 // Populates the TocoConversionLog proto after analyzing the model.
 void PopulateConversionLog(const Model& model, TocoConversionLog* log);
 
 // Returns the names of the operators in the model.
-std::vector<string> GetOperatorNames(const Model& model);
+std::vector<std::string> GetOperatorNames(const Model& model);
 
 // Counts the number of different types of operators in the model:
 // Built-in ops, custom ops and select ops.
 // Each map is mapping from the name of the operator (such as 'Conv') to its
 // total number of occurrences in the model.
 void CountOperatorsByType(const Model& model,
-                          std::map<string, int>* built_in_ops,
-                          std::map<string, int>* custom_ops,
-                          std::map<string, int>* select_ops);
+                          std::map<std::string, int>* built_in_ops,
+                          std::map<std::string, int>* custom_ops,
+                          std::map<std::string, int>* select_ops);
 
 // Gets the input and output types of the model. The input and output is
 // specified by model.flags.input_arrays and model.flags.output_arrays.
 void GetInputAndOutputTypes(
-    const Model& model, TFLITE_PROTO_NS::RepeatedPtrField<string>* input_types,
-    TFLITE_PROTO_NS::RepeatedPtrField<string>* output_types);
+    const Model& model,
+    TFLITE_PROTO_NS::RepeatedPtrField<std::string>* input_types,
+    TFLITE_PROTO_NS::RepeatedPtrField<std::string>* output_types);
 
 // Calculates signatures for all the ops in the model. An op signature is
 // defined by its input/output shapes and types, op name and its version.
-void GetOpSignatures(const Model& model,
-                     TFLITE_PROTO_NS::RepeatedPtrField<string>* op_signatures);
+void GetOpSignatures(
+    const Model& model,
+    TFLITE_PROTO_NS::RepeatedPtrField<std::string>* op_signatures);
 
 // TODO(b/123519920): Implement this.
 // Calculates a unique hash for the model.
-string GetModelHash(const Model& model);
+std::string GetModelHash(const Model& model);
 
 }  // namespace toco
 

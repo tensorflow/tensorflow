@@ -484,11 +484,12 @@ Status RunGpuConv(const HloCustomCallInstruction* conv,
           return RunGpuConvImpl<int8, float, int8>(params, scratch_allocator,
                                                    stream, options);
         default:
-          LOG(FATAL) << conv->ToString();
+          return Unimplemented("Unimplemented convolution %s",
+                               conv->ToString());
       }
     }
     default:
-      LOG(FATAL) << conv->ToString();
+      return Unimplemented("Unimplemented convolution %s", conv->ToString());
   }
 }
 

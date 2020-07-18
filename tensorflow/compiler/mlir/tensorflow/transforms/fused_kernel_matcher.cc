@@ -32,11 +32,15 @@ namespace TF {
 
 namespace {
 
-// Note: This implements fusions performed in the old Remapper Grappler pass.
-// That pass has specific cases for GPU and based on different target
-// configurations on both CPU and GPU (Intel MKL, ROCm, etc.). This MLIR pass
-// covers the general CPU case and at the moment does not account for any
-// target-specific configurations.
+// Note: This implements the fusions performed in the old Remapper Grappler
+// pass. That pass has specific cases for GPU and based on different
+// target configurations on both CPU and GPU (Intel MKL, ROCm, etc.). This MLIR
+// pass covers (some of) the general CPU case and at the moment does not account
+// for any target-specific configurations.
+
+// This pass is being ported over from the Grappler Remapper pass based on
+// need/usage. File a bug to request porting over additional fusions.
+
 // TODO(b/158265178): Support GPU-specific fusions.
 // TODO(b/158266710): Support CPU MKL configurations.
 
@@ -48,13 +52,8 @@ struct FusedKernelMatcherPass
   void runOnFunction() override;
 };
 
-// Returns an op's name with the dialect prefix stripped off.
-StringRef GetOpNameWithoutDialect(Operation *op) {
-  return op->getName().getStringRef().split(".").second;
-}
-
 bool IsActivationFunction(Operation *op) {
-  return isa<EluOp>(op) || isa<ReluOp>(op) || isa<Relu6Op>(op);
+  return isa<EluOp, ReluOp, Relu6Op>(op);
 }
 
 // Finds and returns an activation op that uses the result of `op`. If there are
@@ -124,8 +123,8 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     }
 
     SmallVector<Location, 3> locations{contraction.getLoc(), bias_add.getLoc()};
-    SmallVector<Attribute, 2> fused_ops{
-        StringAttr::get(GetOpNameWithoutDialect(bias_add), context)};
+    SmallVector<Attribute, 2> fused_ops{StringAttr::get(
+        bias_add.getOperation()->getName().stripDialect(), context)};
 
     // BiasAdd may or may not feed into an activation function.
     auto activation = GetActivation(bias_add);
@@ -139,7 +138,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     if (fuse_activation) {
       locations.push_back(activation->getLoc());
       fused_ops.push_back(
-          StringAttr::get(GetOpNameWithoutDialect(activation), context));
+          StringAttr::get(activation->getName().stripDialect(), context));
       result_type = activation->getResultTypes().front();
     } else {
       result_type = bias_add.getResult().getType();

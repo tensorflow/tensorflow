@@ -88,6 +88,7 @@ TEST(SnapshotUtilTest, CombinationRoundTripTest) {
 
   SnapshotRoundTrip(io::compression::kNone, 2);
   SnapshotRoundTrip(io::compression::kGzip, 2);
+  SnapshotRoundTrip(io::compression::kSnappy, 2);
 }
 
 void SnapshotReaderBenchmarkLoop(int iters, std::string compression_type,
@@ -195,11 +196,16 @@ void SnapshotTFRecordWriterGzipBenchmark(int iters) {
   SnapshotWriterBenchmarkLoop(iters, io::compression::kGzip, 2);
 }
 
+void SnapshotTFRecordWriterSnappyBenchmark(int iters) {
+  SnapshotWriterBenchmarkLoop(iters, io::compression::kSnappy, 2);
+}
+
 BENCHMARK(SnapshotCustomWriterNoneBenchmark);
 BENCHMARK(SnapshotCustomWriterGzipBenchmark);
 BENCHMARK(SnapshotCustomWriterSnappyBenchmark);
 BENCHMARK(SnapshotTFRecordWriterNoneBenchmark);
 BENCHMARK(SnapshotTFRecordWriterGzipBenchmark);
+BENCHMARK(SnapshotTFRecordWriterSnappyBenchmark);
 
 }  // namespace
 }  // namespace snapshot_util

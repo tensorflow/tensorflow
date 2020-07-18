@@ -45,9 +45,8 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   constexpr int64 kSecondCorrelationId = 200;
 
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);

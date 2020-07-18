@@ -31,6 +31,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -228,10 +229,14 @@ else_branch: A function that takes 'inputs' and returns a list of
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
-def TF_YieldOp : TF_Op<"Yield", [Terminator]> {
+def TF_YieldOp : TF_Op<"Yield",
+      [Terminator, ParentOneOf<["IfRegionOp", "WhileRegionOp"]>]> {
   let summary = "Yield operation";
+
   let description = [{
     The "yield" operation represents a return operation within the conditional
     and body of structured control flow (e.g., if and while). The operation
@@ -241,14 +246,10 @@ def TF_YieldOp : TF_Op<"Yield", [Terminator]> {
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
-      [SingleBlockImplicitTerminator<"YieldOp">]> {
+      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments]> {
   let summary = "output = cond ? then_branch output : else_branch output";
 
   let description = [{
@@ -497,6 +498,7 @@ Inserts a placeholder for a tensor that will be always fed.
 
 def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]> {
   let summary = "Placeholder op";
+
   let description = [{
     A placeholder op that passes through input when its output is not fed.
   }];
@@ -524,8 +526,8 @@ are sparse matrices.
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$a,
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$b,
+    TensorOf<[BF16, F32]>:$a,
+    TensorOf<[BF16, F32]>:$b,
 
     DefaultValuedAttr<BoolAttr, "true">:$a_is_sparse,
     DefaultValuedAttr<BoolAttr, "false">:$b_is_sparse,
@@ -535,7 +537,7 @@ are sparse matrices.
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$product
+    TensorOf<[F32]>:$product
   );
 
   TF_DerivedOperandTypeAttr Ta = TF_DerivedOperandTypeAttr<0>;
@@ -593,7 +595,7 @@ output = input; While (Cond(output)) { output = Body(output) }
 
 input: A list of input tensors whose types are T.
 output: A list of output tensors whose types are T.
-cond: A function takes 'input' and returns a tensor.  If the tensor is
+cond: A function that takes 'input' and returns a tensor.  If the tensor is
     a scalar of non-boolean, the scalar is converted to a boolean
     according to the following rule: if the scalar is a numerical
     value, non-zero means True and zero means False; if the scalar is
@@ -627,6 +629,59 @@ body: A function that takes a list of tensors and returns another
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TL_WhileRegionOp : TF_Op<"WhileRegion",
+      [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "while operation";
+  let description = [{
+  The tf.WhileRegion op represents a while loop using 2 regions and a set of
+  iteration variables. The iteration variables maintained by this Op have the
+  same types as the inputs. The Op executes a while loop described by the
+  following pseudo code:
+
+  ```
+     func WhileRegionOp(inputs) {
+       iteration_vars = inputs;
+       while (cond(iteration_vars)) {
+           iteration_vars = body(iteration_vars);
+       }
+       return iteration_vars;
+     }
+  ```
+
+  `cond` is the condition region and `body` is the body region. Both these
+  regions accept the current value of the iteration variables as inputs. The
+  condition region returns a tensor<i1> which, if false, will exit the loop.
+  The body region computes new values of the iteration variables. The iteration
+  variables are initialized to the Op input, and the results of the
+  tf.WhileRegion op are the final values of the iteration variables.
+
+  This implies that the operand and result types for tf.WhileRegion should be
+  the same. Note that the condition and body regions can implicitly capture
+  loop invariant values directly. In canonical form, iteration variables that
+  pass through the loop body unmodified are converted to implicitly captured
+  references to their values outside the loop.
+  }];
+
+  let arguments = (ins
+    Variadic<AnyTensor>:$input,
+
+    // Used to map StatelessWhile and While op defined in TensorFlow to a common
+    // op.
+    DefaultValuedAttr<BoolAttr, "false">:$is_stateless,
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+  );
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
+
+  let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_TensorListReserveOp : TF_TensorListInitOp<"TensorListReserve"> {
@@ -668,7 +723,8 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
     DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
     DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
     DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
-    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement
+    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement,
+    DefaultValuedAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning
   );
 
   let results = (outs);
@@ -839,9 +895,6 @@ def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
 An op which shards the input based on the given sharding attribute.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_Tensor:$input,
 
@@ -857,9 +910,6 @@ An op which shards the input based on the given sharding attribute.
 
 def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
   let summary = "Fetches multiple values from infeed as an XLA tuple.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     OptionalAttr<StrAttr>:$_XlaSharding
@@ -902,9 +952,6 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
 def TF_BatchDatasetV2Op : TF_Op<"BatchDatasetV2", [NoSideEffect]> {
   let summary = [{
 Creates a dataset that batches `batch_size` elements from `input_dataset`.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -1046,6 +1093,166 @@ operation create / operate on a copy of `x`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Bessel i0e function of `x` element-wise.";
+
+  let description = [{
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
+
+This function is faster and numerically stabler than `bessel_i0(x)`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BesselI1eOp : TF_Op<"BesselI1e", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Bessel i1e function of `x` element-wise.";
+
+  let description = [{
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+
+This function is faster and numerically stabler than `bessel_i1(x)`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_StringToHashBucketFastOp : TF_Op<"StringToHashBucketFast", [NoSideEffect]> {
+  let summary = [{
+Converts each string in the input Tensor to its hash mod by a number of buckets.
+  }];
+
+  let description = [{
+The hash function is deterministic on the content of the string within the
+process and will never change. However, it is not suitable for cryptography.
+This function may be used when CPU time is scarce and inputs are trusted or
+unimportant. There is a risk of adversaries constructing inputs that all hash
+to the same bucket. To prevent this problem, use a strong hash function with
+`tf.string_to_hash_bucket_strong`.
+
+Examples:
+
+>>> tf.strings.to_hash_bucket_fast(["Hello", "TensorFlow", "2.x"], 3).numpy()
+array([0, 2, 2])
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$input,
+
+    Confined<I64Attr, [IntMinValue<1>]>:$num_buckets
+  );
+
+  let results = (outs
+    I64Tensor:$output
+  );
+}
+
+def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
+  let summary = "Calls a function placed on a specified TPU device.";
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    I32Tensor:$device_ordinal,
+
+    SymbolRefAttr:$f,
+    DefaultValuedAttr<I64Attr, "0">:$autotuner_thresh
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return args(); }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("f");
+    }
+  }];
+
+  let verifier = [{ return VerifyPartitionedCall(*this); }];
+}
+
+class TF_FusedBatchNormOpBase<string Name> : TF_Op<Name, [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_LayoutSensitiveInterface]> {
+  let summary = "Batch normalization.";
+
+  let description = [{
+Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+The size of 1D Tensors matches the dimension C of the 4D Tensors.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$x,
+    F32Tensor:$scale,
+    F32Tensor:$offset,
+    F32Tensor:$mean,
+    F32Tensor:$variance,
+
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<BoolAttr, "true">:$is_training
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
+
+  let extraClassDeclaration = [{
+    // TF_FoldOperandsTransposeInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+
+    // TF_LayoutSensitiveInterface:
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
+    LogicalResult UpdateDataFormat(StringRef data_format);
+  }];
+}
+
+def TF_FusedBatchNormV2Op : TF_FusedBatchNormOpBase<"FusedBatchNormV2"> {
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$y,
+    F32Tensor:$batch_mean,
+    F32Tensor:$batch_variance,
+    F32Tensor:$reserve_space_1,
+    F32Tensor:$reserve_space_2
+  );
+}
+
+def TF_FusedBatchNormV3Op : TF_FusedBatchNormOpBase<"FusedBatchNormV3"> {
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$y,
+    F32Tensor:$batch_mean,
+    F32Tensor:$batch_variance,
+    F32Tensor:$reserve_space_1,
+    F32Tensor:$reserve_space_2,
+    F32Tensor:$reserve_space_3
+  );
 }
 
 #endif // TF_OPS

@@ -269,6 +269,14 @@ func @testSub(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testSubInt64
+func @testSubInt64(tensor<? x i64>, tensor<? x i64>) -> tensor<? x i64> {
+^bb0(%arg0: tensor<? x i64>, %arg1: tensor<? x i64>):
+  // CHECK: tfl.sub %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.sub %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i64>
+  return %0#0 : tensor<? x i64>
+}
+
 // CHECK-LABEL: testMul
 func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
@@ -1298,6 +1306,14 @@ func @testConcatInvalidOperandDimSizeComparedToPrevInput(%arg0: tensor<1x2xi32>,
   // expected-error @+1 {{'tfl.concatenation' op dimension size of dimension #1 of operand #1 must be equal to dimension size of dimension #1 of operand #0, expected 2, got 3}}
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x3xi32>) -> tensor<?x?xi32>
   return %0 : tensor<?x?xi32>
+}
+
+// -----
+
+func @testConcatInvalidScales(%arg0: tensor<*x!quant.uniform<i8:f32, 1.0>>, %arg1: tensor<*x!quant.uniform<i8:f32, 2.0>>) -> tensor<*x!quant.uniform<i8:f32, 1.0>> {
+  // expected-error @+1 {{'tfl.concatenation' op quantization parameters violate the same scale constraint: !quant.uniform<i8:f32, 1.000000e+00> vs. !quant.uniform<i8:f32, 2.000000e+00>}}
+  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 3 : i32, fused_activation_function = "NONE"} : (tensor<*x!quant.uniform<i8:f32, 1.0>>, tensor<*x!quant.uniform<i8:f32, 2.0>>) -> tensor<*x!quant.uniform<i8:f32, 1.0>>
+  return %0 : tensor<*x!quant.uniform<i8:f32, 1.0>>
 }
 
 // -----

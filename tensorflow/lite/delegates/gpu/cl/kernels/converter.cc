@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
@@ -40,20 +41,22 @@ class OpenClConverterImpl : public TensorObjectConverter {
                             Environment* environment) = 0;
 
  protected:
-  absl::Status DispatchKernel(cl_mem input, cl_mem output) {
+  absl::Status DispatchKernel(cl_mem buffer_mem, Tensor* tensor) {
     kernel_.ResetBindingCounter();
-    RETURN_IF_ERROR(kernel_.SetMemoryAuto(input));
-    RETURN_IF_ERROR(kernel_.SetMemoryAuto(output));
-    int3 grid = int3(dims_.w * dims_.b, dims_.h, dims_.d());
-    int4 size = int4(dims_.w, dims_.h, dims_.d(), dims_.b);
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(size));
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(dims_.c));
+    RETURN_IF_ERROR(kernel_.SetMemoryAuto(buffer_mem));
+    RETURN_IF_ERROR(args_.SetObjectRef("tensor", tensor));
+    RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
+    int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
+                     tensor->Slices());
     return queue_->DispatchImplicit(kernel_, grid, {16, 8, 1});
   }
 
-  Dimensions dims_;
+  Arguments args_;
+  BHWC shape_;
   CLKernel kernel_;
+  TensorDescriptor tensor_descriptor_;
   CLCommandQueue* queue_ = nullptr;
+  const CLContext* context_ = nullptr;
 };
 
 bool IsSupportedDataType(DataType type) {
@@ -87,15 +90,11 @@ class FromTensorConverter : public OpenClConverterImpl {
   std::pair<std::string, std::string> GetToDhwc4Kernel(
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
-    return std::make_pair(
-        "__global " + ToCLDataType(output_def.object_def.data_type, 4) +
-            "* dst",
-        "dst[(d * size.y + y) * size.x + x] = " +
-            (output_def.object_def.data_type == input_def.object_def.data_type
-                 ? "input;"
-                 : "convert_" +
-                       ToCLDataType(output_def.object_def.data_type, 4) +
-                       "(input);"));
+    return std::make_pair("__global " +
+                              ToCLDataType(output_def.object_def.data_type, 4) +
+                              "* dst",
+                          "dst[(d * args.tensor.Height() + y) * "
+                          "args.tensor.Width() + x] = input;");
   }
 
   std::pair<std::string, std::string> GetToBhwcKernel(
@@ -105,16 +104,16 @@ class FromTensorConverter : public OpenClConverterImpl {
         "__global " + ToCLDataType(output_def.object_def.data_type) + "* dst",
         R"(
   int c = d * 4;
-  int index = ((b * size.y + y) * size.x + x) * channels + c;
+  int index = ((b * args.tensor.Height() + y) * args.tensor.Width() + x) * args.tensor.Channels() + c;
 
   dst[index] = input.x;
-  if (c + 1 < channels) {
+  if (c + 1 < args.tensor.Channels()) {
     dst[index + 1] = input.y;
   }
-  if (c + 2 < channels) {
+  if (c + 2 < args.tensor.Channels()) {
     dst[index + 2] = input.z;
   }
-  if (c + 3 < channels) {
+  if (c + 3 < args.tensor.Channels()) {
     dst[index + 3] = input.w;
   })");
   }
@@ -128,12 +127,11 @@ class FromTensorConverter : public OpenClConverterImpl {
 
     TensorStorageType src_tensor_type = ToTensorStorageType(
         input_def.object_def.object_type, input_def.object_def.data_layout);
-    TensorDescriptor src_descr;
-    src_descr.storage_type = src_tensor_type;
-    src_descr.data_type = input_def.object_def.data_type;
-    TensorCodeGenerator src_tensor(
-        "src", WHSBPoint{"size.x", "size.y", "size.z", "size.w"}, src_descr);
-
+    tensor_descriptor_.layout = Layout::BHWC;
+    tensor_descriptor_.storage_type = src_tensor_type;
+    tensor_descriptor_.data_type = input_def.object_def.data_type;
+    args_.AddObjectRef("tensor", AccessType::READ,
+                       absl::make_unique<TensorDescriptor>(tensor_descriptor_));
     std::string shader_src =
         R"(
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
@@ -141,19 +139,23 @@ class FromTensorConverter : public OpenClConverterImpl {
 const sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
 __kernel void from_tensor()" +
-        src_tensor.GetDeclaration(AccessType::READ) + ", " +
-        params_kernel.first + R"(, int4 size, int channels) {
+        params_kernel.first + R"(, $0) {
   int linear_id = get_global_id(0);
-  int x = (linear_id / size.w);
-  int b = linear_id % size.w;
+  int x = linear_id / args.tensor.Batch();
+  int b = linear_id % args.tensor.Batch();
   int y = get_global_id(1);
   int d = get_global_id(2);
-  if (x >= size.x || y >= size.y || d >= size.z) return;
-  )" + ToCLDataType(input_def.object_def.data_type, 4) +
-        " input = " + src_tensor.ReadWHSB("x", "y", "d", "b") + ";\n" +
+  if (x >= args.tensor.Width() || y >= args.tensor.Height() || d >= args.tensor.Slices()) return;
+  )" + ToCLDataType(output_def.object_def.data_type, 4) +
+        " input = args.tensor.Read<" +
+        ToCLDataType(output_def.object_def.data_type) + ">(x, y, d, b);\n" +
         params_kernel.second + "\n}";
     queue_ = environment->queue();
-    dims_ = input_def.dimensions;
+    context_ = &environment->context();
+    shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
+                  input_def.dimensions.w, input_def.dimensions.c);
+    RETURN_IF_ERROR(args_.TransformToCLCode(environment->device().GetInfo(), {},
+                                            &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "from_tensor", environment->context(),
         environment->device(), &kernel_);
@@ -166,15 +168,23 @@ __kernel void from_tensor()" +
       return absl::InvalidArgumentError(
           "Missing output in from_tensor converter");
     }
+    cl_mem memory = nullptr;
     auto input_texture = absl::get_if<OpenClTexture>(&input_obj);
     if (input_texture && input_texture->memobj) {
-      return DispatchKernel(input_texture->memobj, output->memobj);
+      memory = input_texture->memobj;
     }
     auto input_buffer = absl::get_if<OpenClBuffer>(&input_obj);
     if (input_buffer && input_buffer->memobj) {
-      return DispatchKernel(input_buffer->memobj, output->memobj);
+      memory = input_buffer->memobj;
     }
-    return absl::InvalidArgumentError("Missing input in from_tensor converter");
+    if (!memory) {
+      return absl::InvalidArgumentError(
+          "Missing input in from_tensor converter");
+    }
+    Tensor tensor;
+    RETURN_IF_ERROR(CreateSharedTensor(*context_, memory, shape_,
+                                       tensor_descriptor_, &tensor));
+    return DispatchKernel(output->memobj, &tensor);
   }
 };
 
@@ -208,10 +218,12 @@ class ToTensorConverter : public OpenClConverterImpl {
     return std::make_pair(
         "__global " + ToCLDataType(input_def.object_def.data_type, 4) + "* src",
         output_def.object_def.data_type == input_def.object_def.data_type
-            ? "result = src[(d * size.y + y) * size.x + x];"
+            ? "result = src[(d * args.tensor.Height() + y) * "
+              "args.tensor.Width() + x];"
             : "result = convert_" +
                   ToCLDataType(output_def.object_def.data_type, 4) +
-                  "(src[(d * size.y + y) * size.x + x]);");
+                  "(src[(d * args.tensor.Height() + y) * args.tensor.Width() + "
+                  "x]);");
   }
 
   std::pair<std::string, std::string> GetFromBhwcKernel(
@@ -220,11 +232,11 @@ class ToTensorConverter : public OpenClConverterImpl {
     return std::make_pair(
         "__global " + ToCLDataType(input_def.object_def.data_type) + "* src",
         R"(int c = d * 4;
-  int index = ((b * size.y + y) * size.x + x) * channels + c;
+  int index = ((b * args.tensor.Height() + y) * args.tensor.Width() + x) * args.tensor.Channels() + c;
   result.x = src[index];
-  result.y = c + 1 < channels ? src[index + 1] : 1;
-  result.z = c + 2 < channels ? src[index + 2] : 2;
-  result.w = c + 3 < channels ? src[index + 3] : 3;
+  result.y = c + 1 < args.tensor.Channels() ? src[index + 1] : 1;
+  result.z = c + 2 < args.tensor.Channels() ? src[index + 2] : 2;
+  result.w = c + 3 < args.tensor.Channels() ? src[index + 3] : 3;
 )");
   }
 
@@ -236,31 +248,34 @@ class ToTensorConverter : public OpenClConverterImpl {
                              : GetFromDhwc4Kernel(input_def, output_def);
     TensorStorageType dst_tensor_type = ToTensorStorageType(
         output_def.object_def.object_type, output_def.object_def.data_layout);
-    TensorDescriptor dst_descr;
-    dst_descr.storage_type = dst_tensor_type;
-    dst_descr.data_type = output_def.object_def.data_type;
-    TensorCodeGenerator dst_tensor(
-        "dst", WHSBPoint{"size.x", "size.y", "size.z", "size.w"}, dst_descr);
+    tensor_descriptor_.layout = Layout::BHWC;
+    tensor_descriptor_.storage_type = dst_tensor_type;
+    tensor_descriptor_.data_type = output_def.object_def.data_type;
+    args_.AddObjectRef("tensor", AccessType::WRITE,
+                       absl::make_unique<TensorDescriptor>(tensor_descriptor_));
     std::string shader_src =
         R"(
+#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 
 __kernel void to_tensor()" +
-        params_kernel.first + ", " +
-        dst_tensor.GetDeclaration(AccessType::WRITE) +
-        R"(, int4 size, int channels) {
+        params_kernel.first + R"(, $0) {
   int linear_id = get_global_id(0);
-  int x = (linear_id / size.w);
-  int b = linear_id % size.w;
+  int x = linear_id / args.tensor.Batch();
+  int b = linear_id % args.tensor.Batch();
   int y = get_global_id(1);
   int d = get_global_id(2);
 
-  if (x >= size.x || y >= size.y || d >= size.z) return;
+  if (x >= args.tensor.Width() || y >= args.tensor.Height() || d >= args.tensor.Slices()) return;
   )" + ToCLDataType(output_def.object_def.data_type, 4) +
         " result;\n" + params_kernel.second + "\n  " +
-        dst_tensor.WriteWHSB("result", "x", "y", "d", "b") + ";\n}";
+        "args.tensor.Write(result, x, y, d, b);\n}";
     queue_ = environment->queue();
-    dims_ = output_def.dimensions;
+    context_ = &environment->context();
+    shape_ = BHWC(output_def.dimensions.b, output_def.dimensions.h,
+                  output_def.dimensions.w, output_def.dimensions.c);
+    RETURN_IF_ERROR(args_.TransformToCLCode(environment->device().GetInfo(), {},
+                                            &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "to_tensor", environment->context(), environment->device(),
         &kernel_);
@@ -272,15 +287,23 @@ __kernel void to_tensor()" +
     if (!input || !input->memobj) {
       return absl::InvalidArgumentError("Missing input in to_tensor converter");
     }
+    cl_mem memory = nullptr;
     auto output_texture = absl::get_if<OpenClTexture>(&output_obj);
     if (output_texture && output_texture->memobj) {
-      return DispatchKernel(input->memobj, output_texture->memobj);
+      memory = output_texture->memobj;
     }
     auto output_buffer = absl::get_if<OpenClBuffer>(&output_obj);
     if (output_buffer && output_buffer->memobj) {
-      return DispatchKernel(input->memobj, output_buffer->memobj);
+      memory = output_buffer->memobj;
     }
-    return absl::InvalidArgumentError("Missing input in to_tensor converter");
+    if (!memory) {
+      return absl::InvalidArgumentError(
+          "Missing output in to_tensor converter");
+    }
+    Tensor tensor;
+    RETURN_IF_ERROR(CreateSharedTensor(*context_, memory, shape_,
+                                       tensor_descriptor_, &tensor));
+    return DispatchKernel(input->memobj, &tensor);
   }
 };
 
@@ -326,7 +349,8 @@ class TrivialCopier : public OpenClConverterImpl {
   absl::Status Init(const TensorObjectDef& input_def,
                     const TensorObjectDef& output_def,
                     Environment* environment) final {
-    dims_ = input_def.dimensions;
+    shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
+                  input_def.dimensions.w, input_def.dimensions.c);
     data_type_ = input_def.object_def.data_type;
     queue_ = environment->queue();
     region_ = CalculateTextureRegion(output_def);
@@ -352,10 +376,11 @@ class TrivialCopier : public OpenClConverterImpl {
     if (input.memobj == output.memobj) {
       return absl::OkStatus();
     }
-    return GetOpenCLError(clEnqueueCopyBuffer(
-        queue_->queue(), input.memobj, output.memobj, 0, 0,
-        SizeOf(data_type_) * dims_.w * dims_.h * dims_.d() * dims_.b * 4, 0,
-        nullptr, nullptr));
+    return GetOpenCLError(
+        clEnqueueCopyBuffer(queue_->queue(), input.memobj, output.memobj, 0, 0,
+                            SizeOf(data_type_) * shape_.w * shape_.h *
+                                AlignByN(shape_.c, 4) * shape_.b,
+                            0, nullptr, nullptr));
   }
 
   absl::Status Copy(const OpenClTexture& input, const OpenClTexture& output) {

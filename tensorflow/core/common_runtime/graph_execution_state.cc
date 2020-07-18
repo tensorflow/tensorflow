@@ -378,7 +378,7 @@ struct TensorAndDevice {
 };
 
 // Tensors of some DataTypes cannot placed in device memory as feeds or
-// fetches. Validate against a whitelist of those known to work.
+// fetches. Validate against a allowlist of those known to work.
 bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
   // The mechanism for supporting feeds of device-backed Tensors requires
   // the _Arg kernel to be registered for the corresponding type (and that
@@ -391,7 +391,7 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
   // For now, we return true iff there are _Arg AND _Retval kernels for dtype on
   // the device. False negatives are okay, false positives would be bad.
   //
-  // TODO(ashankar): Instead of a whitelist here, perhaps we could query
+  // TODO(ashankar): Instead of a allowlist here, perhaps we could query
   // the kernel registry for _Arg and _Retval kernels instead.
   if (device_type == DEVICE_CPU) return true;
   if (device_type != DEVICE_GPU) return false;

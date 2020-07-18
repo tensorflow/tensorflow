@@ -16,19 +16,28 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/fully_connected.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <initializer_list>
-#include <iomanip>
+#include <limits>
+#include <map>
+#include <memory>
 #include <random>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {

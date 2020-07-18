@@ -38,12 +38,14 @@ namespace grappler {
 
 GrapplerFunctionItem::GrapplerFunctionItem(
     string func_name, string description, AttrSlice func_attr,
+    std::vector<const FunctionDef::ArgAttrs*> arg_attr,
     std::vector<InputArgInstantiation> input_args,
     std::vector<OutputArgInstantiation> output_args,
     std::vector<ControlOutput> control_outputs, const int graph_def_version,
     const bool is_stateful, GraphDef&& function_body)
     : description_(std::move(description)),
       func_attr_(func_attr),
+      arg_attr_(std::move(arg_attr)),
       input_args_(std::move(input_args)),
       output_args_(std::move(output_args)),
       control_outputs_(std::move(control_outputs)),
@@ -107,6 +109,11 @@ const std::size_t GrapplerFunctionItem::control_output_size() const {
 }
 
 const AttrSlice& GrapplerFunctionItem::func_attr() const { return func_attr_; }
+
+const std::vector<const FunctionDef::ArgAttrs*>&
+GrapplerFunctionItem::arg_attr() const {
+  return arg_attr_;
+}
 
 const GraphDef& GrapplerFunctionItem::function_body() const { return graph; }
 
@@ -278,12 +285,17 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
     control_outputs.push_back({control_ret.first, control_ret.second});
   }
 
+  std::vector<const FunctionDef::ArgAttrs*> arg_attr(inputs.size(), nullptr);
+  for (const auto& attr : func.arg_attr()) {
+    arg_attr.at(attr.first) = &attr.second;
+  }
+
   *item = GrapplerFunctionItem(
       /*func_name=*/signature.name(),
       /*description=*/signature.description(),
-      /*func_attr=*/AttrSlice(&func.attr()), std::move(inputs),
-      std::move(outputs), std::move(control_outputs), graph_def_version,
-      signature.is_stateful(), std::move(function_body));
+      /*func_attr=*/AttrSlice(&func.attr()), std::move(arg_attr),
+      std::move(inputs), std::move(outputs), std::move(control_outputs),
+      graph_def_version, signature.is_stateful(), std::move(function_body));
   return Status::OK();
 }
 
@@ -330,6 +342,7 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
   }
 
   item->input_args_.erase(item->input_args_.begin() + input_index);
+  item->arg_attr_.erase(item->arg_attr_.begin() + input_index);
 
   return Status::OK();
 }
@@ -564,6 +577,14 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
     const auto& attr_name = attr.first;
     const auto& attr_value = attr.second;
     (*func->mutable_attr())[attr_name] = attr_value;
+  }
+
+  // Copy function arg attributes.
+  for (int i = 0; i < item.arg_attr().size(); ++i) {
+    const auto* attr = item.arg_attr().at(i);
+    if (attr != nullptr) {
+      (*func->mutable_arg_attr())[i] = *attr;
+    }
   }
 
   // Copy function body nodes to the FunctionDef and update input format

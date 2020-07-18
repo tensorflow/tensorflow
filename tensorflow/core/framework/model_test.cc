@@ -776,51 +776,51 @@ class ComputeWaitTimeTest
     : public ::testing::TestWithParam<std::tuple<double, double, double>> {};
 
 TEST_P(ComputeWaitTimeTest, Model) {
-  const double output_time = std::get<0>(GetParam());
-  const double input_time = std::get<1>(GetParam());
+  const double producer_time = std::get<0>(GetParam());
+  const double consumer_time = std::get<1>(GetParam());
   const double buffer_size = std::get<2>(GetParam());
 
-  double output_time_derivative = 0.0L;
-  double input_time_derivative = 0.0L;
+  double producer_time_derivative = 0.0L;
+  double consumer_time_derivative = 0.0L;
   double buffer_size_derivative = 0.0L;
 
   double wait_time = model::Node::ComputeWaitTime(
-      output_time, input_time, buffer_size, &output_time_derivative,
-      &input_time_derivative, &buffer_size_derivative);
+      producer_time, consumer_time, buffer_size, &producer_time_derivative,
+      &consumer_time_derivative, &buffer_size_derivative);
 
-  double new_wait_time =
-      model::Node::ComputeWaitTime(output_time + kParameterStep, input_time,
-                                   buffer_size, nullptr, nullptr, nullptr);
-  EXPECT_NEAR(output_time_derivative,
+  double new_wait_time = model::Node::ComputeWaitTime(
+      producer_time + kParameterStep, consumer_time, buffer_size, nullptr,
+      nullptr, nullptr);
+  EXPECT_NEAR(producer_time_derivative,
               (new_wait_time - wait_time) / kParameterStep,
               kComparisonPrecision);
 
-  if (output_time >= kParameterStep) {
-    new_wait_time =
-        model::Node::ComputeWaitTime(output_time - kParameterStep, input_time,
-                                     buffer_size, nullptr, nullptr, nullptr);
-    EXPECT_NEAR(output_time_derivative,
+  if (producer_time >= kParameterStep) {
+    new_wait_time = model::Node::ComputeWaitTime(producer_time - kParameterStep,
+                                                 consumer_time, buffer_size,
+                                                 nullptr, nullptr, nullptr);
+    EXPECT_NEAR(producer_time_derivative,
                 (wait_time - new_wait_time) / kParameterStep,
                 kComparisonPrecision);
   }
 
-  new_wait_time =
-      model::Node::ComputeWaitTime(output_time, input_time + kParameterStep,
-                                   buffer_size, nullptr, nullptr, nullptr);
-  EXPECT_NEAR(input_time_derivative,
+  new_wait_time = model::Node::ComputeWaitTime(
+      producer_time, consumer_time + kParameterStep, buffer_size, nullptr,
+      nullptr, nullptr);
+  EXPECT_NEAR(consumer_time_derivative,
               (new_wait_time - wait_time) / kParameterStep,
               kComparisonPrecision);
 
-  if (input_time >= kParameterStep) {
-    new_wait_time =
-        model::Node::ComputeWaitTime(output_time, input_time - kParameterStep,
-                                     buffer_size, nullptr, nullptr, nullptr);
-    EXPECT_NEAR(input_time_derivative,
+  if (consumer_time >= kParameterStep) {
+    new_wait_time = model::Node::ComputeWaitTime(
+        producer_time, consumer_time - kParameterStep, buffer_size, nullptr,
+        nullptr, nullptr);
+    EXPECT_NEAR(consumer_time_derivative,
                 (wait_time - new_wait_time) / kParameterStep,
                 kComparisonPrecision);
   }
 
-  new_wait_time = model::Node::ComputeWaitTime(output_time, input_time,
+  new_wait_time = model::Node::ComputeWaitTime(producer_time, consumer_time,
                                                buffer_size + kParameterStep,
                                                nullptr, nullptr, nullptr);
   EXPECT_NEAR(buffer_size_derivative,
@@ -828,7 +828,7 @@ TEST_P(ComputeWaitTimeTest, Model) {
               kComparisonPrecision);
 
   if (buffer_size >= kParameterStep) {
-    new_wait_time = model::Node::ComputeWaitTime(output_time, input_time,
+    new_wait_time = model::Node::ComputeWaitTime(producer_time, consumer_time,
                                                  buffer_size - kParameterStep,
                                                  nullptr, nullptr, nullptr);
     EXPECT_NEAR(buffer_size_derivative,

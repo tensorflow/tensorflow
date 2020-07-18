@@ -70,6 +70,12 @@ void ContextHelper::ReportOpError(struct TfLiteContext* context,
   va_end(args);
 }
 
+TfLiteTensor* ContextHelper::GetTensor(const struct TfLiteContext* context,
+                                       int tensor_idx) {
+  // TODO(b/160894903): Return this value from temp allocated memory.
+  return &context->tensors[tensor_idx];
+}
+
 }  // namespace internal
 
 MicroInterpreter::MicroInterpreter(const Model* model,
@@ -83,20 +89,28 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       error_reporter_(error_reporter),
       allocator_(*MicroAllocator::Create(tensor_arena, tensor_arena_size,
                                          error_reporter)),
-      context_helper_(error_reporter_, &allocator_) {
+      tensors_allocated_(false),
+      initialization_status_(kTfLiteError),
+      context_helper_(error_reporter_, &allocator_),
+      input_tensor_(nullptr),
+      output_tensor_(nullptr) {
   Init(profiler);
 }
 
 MicroInterpreter::MicroInterpreter(const Model* model,
-                                   const MicroOpResolver* op_resolver,
+                                   const MicroOpResolver& op_resolver,
                                    MicroAllocator* allocator,
                                    ErrorReporter* error_reporter,
                                    tflite::Profiler* profiler)
     : model_(model),
-      op_resolver_(*op_resolver),
+      op_resolver_(op_resolver),
       error_reporter_(error_reporter),
       allocator_(*allocator),
-      context_helper_(error_reporter_, &allocator_) {
+      tensors_allocated_(false),
+      initialization_status_(kTfLiteError),
+      context_helper_(error_reporter_, &allocator_),
+      input_tensor_(nullptr),
+      output_tensor_(nullptr) {
   Init(profiler);
 }
 
@@ -128,6 +142,7 @@ void MicroInterpreter::Init(tflite::Profiler* profiler) {
 
   context_.impl_ = static_cast<void*>(&context_helper_);
   context_.ReportError = context_helper_.ReportOpError;
+  context_.GetTensor = context_helper_.GetTensor;
   context_.recommended_num_threads = 1;
   context_.profiler = profiler;
 
@@ -157,6 +172,9 @@ void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
       break;
     case TfLiteType::kTfLiteComplex64:
       CorrectTensorDataEndianness(tensorCorr->data.c64, tensorSize);
+      break;
+    case TfLiteType::kTfLiteComplex128:
+      CorrectTensorDataEndianness(tensorCorr->data.c128, tensorSize);
       break;
     default:
       // Do nothing for other data types.
@@ -296,29 +314,51 @@ TfLiteStatus MicroInterpreter::Invoke() {
 
 TfLiteTensor* MicroInterpreter::input(size_t index) {
   const size_t length = inputs_size();
-  if ((index < 0) || (index >= length)) {
+  if (index >= length) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Input index %d out of range (length is %d)", index,
                          length);
     return nullptr;
   }
-  return &(context_.tensors[inputs().Get(index)]);
+  if (index != 0) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Input tensors not at index 0 will allocate from the "
+                         "persistent memory arena in the future!");
+    return &(context_.tensors[inputs().Get(index)]);
+  }
+  if (input_tensor_ == nullptr) {
+    // TODO(b/160894903): This API will allocate TfLiteTensor structs from
+    // persistent (tail) memory and cache on this pointer.
+    input_tensor_ = &(context_.tensors[inputs().Get(index)]);
+  }
+  return input_tensor_;
 }
 
 TfLiteTensor* MicroInterpreter::output(size_t index) {
   const size_t length = outputs_size();
-  if ((index < 0) || (index >= length)) {
+  if (index >= length) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Output index %d out of range (length is %d)", index,
                          length);
     return nullptr;
   }
-  return &(context_.tensors[outputs().Get(index)]);
+  if (index != 0) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Output tensors not at index 0 will allocate from the "
+                         "persistent memory arena in the future!");
+    return &(context_.tensors[outputs().Get(index)]);
+  }
+  if (output_tensor_ == nullptr) {
+    // TODO(b/160894903): This API will allocate TfLiteTensor structs from
+    // persistent (tail) memory and cache on this pointer.
+    output_tensor_ = &(context_.tensors[outputs().Get(index)]);
+  }
+  return output_tensor_;
 }
 
 TfLiteTensor* MicroInterpreter::tensor(size_t index) {
   const size_t length = tensors_size();
-  if ((index < 0) || (index >= length)) {
+  if (index >= length) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Tensor index %d out of range (length is %d)", index,
                          length);

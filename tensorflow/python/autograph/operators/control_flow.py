@@ -80,6 +80,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -429,7 +430,9 @@ def _known_len_tf_for_stmt(
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  opts['maximum_iterations'] = n
+  # TODO(b/159186914): Remove.
+  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    opts['maximum_iterations'] = n
 
   _tf_while_stmt(
       aug_test,
@@ -475,7 +478,9 @@ def _tf_ragged_for_stmt(
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  opts['maximum_iterations'] = n
+  # TODO(b/159186914): Remove.
+  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    opts['maximum_iterations'] = n
 
   _tf_while_stmt(
       aug_test,
@@ -517,15 +522,26 @@ def _tf_range_for_stmt(
     iterate.value += delta
 
   def aug_test():
-    main_test = math_ops.logical_or(
-        math_ops.logical_and(delta >= 0, iterate.value < limit),
-        math_ops.logical_and(delta < 0, iterate.value > limit))
+    # TODO(b/159713842): Remove once constant folding works.
+    const_delta = tensor_util.constant_value(delta)
+    if const_delta is not None:
+      if const_delta >= 0:
+        main_test = iterate.value < limit
+      else:
+        main_test = iterate.value > limit
+    else:
+      main_test = math_ops.logical_or(
+          math_ops.logical_and(delta >= 0, iterate.value < limit),
+          math_ops.logical_and(delta < 0, iterate.value > limit))
+
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      main_test = control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  opts['maximum_iterations'] = math_ops.cast(
-      misc.get_range_len(start, limit, delta), dtypes.int32)
+  # TODO(b/134181679): Remove.
+  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    opts['maximum_iterations'] = math_ops.cast(
+        misc.get_range_len(start, limit, delta), dtypes.int32)
 
   _tf_while_stmt(
       aug_test,

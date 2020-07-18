@@ -17,22 +17,35 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
 
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
-struct StatusHelper {
-  StatusHelper() : c_status(TpuStatus_New()) {}
-  ~StatusHelper() { TpuStatus_Free(c_status); }
-  bool ok() { return TpuStatus_Code(c_status) == 0; }
-  tensorflow::Status status() {
+class StatusHelper {
+ public:
+  StatusHelper()
+      : c_status(tensorflow::tpu::ExecutorApiFn()->TpuStatus_NewFn()) {}
+
+  ~StatusHelper() {
+    tensorflow::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
+  }
+
+  bool ok() const {
+    return tensorflow::tpu::ExecutorApiFn()->TpuStatus_CodeFn(c_status) == 0;
+  }
+
+  tensorflow::Status status() const {
     if (!ok()) {
       return tensorflow::Status(
-          tensorflow::error::Code(TpuStatus_Code(c_status)),
-          TpuStatus_Message(c_status));
+          tensorflow::error::Code(
+              tensorflow::tpu::ExecutorApiFn()->TpuStatus_CodeFn(c_status)),
+          tensorflow::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));
     } else {
       return tensorflow::Status::OK();
     }
   }
-  SE_Status* c_status;
+
+  SE_Status* c_status;  // NOLINT
 };
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_

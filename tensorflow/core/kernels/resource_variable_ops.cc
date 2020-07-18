@@ -222,8 +222,6 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   PartialTensorShape shape;
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
-  OP_REQUIRES_OK(context,
-                 context->GetAttr("allowed_devices", &allowed_devices_));
 
   is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
 
@@ -234,8 +232,7 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
                                                    &resource_, attr));
     resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         context, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
-        allowed_devices_);
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
   }
 }
 
@@ -248,8 +245,7 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
-        allowed_devices_);
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
     ctx->set_output(0, handle);
   } else {
     ctx->set_output(0, resource_);
@@ -512,7 +508,6 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
-TF_CALL_uint32(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1003,8 +998,8 @@ REGISTER_SCATTER_KERNEL(Variant, CPU, "ResourceScatterUpdate",
 
 #define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHMETIC_GPU);
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_MINMAX_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_GPU);
 
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_GPU)

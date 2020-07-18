@@ -359,7 +359,7 @@ class RendezvousNcclAllReduce : public RendezvousBase {
       : RendezvousBase(k) {}
 
  protected:
-  StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+  StatusOr<ParticipantImplOutput> RunCollectiveOp(
       const AllReduceParticipantData& participant) override;
 
   void CleanupImpl(std::shared_ptr<NcclClique> handle,
@@ -380,7 +380,7 @@ GlobalRendezvousMap() {
 }
 
 StatusOr<RendezvousNcclAllReduce::ParticipantImplOutput>
-RendezvousNcclAllReduce::SubmitParticipantImpl(
+RendezvousNcclAllReduce::RunCollectiveOp(
     const AllReduceParticipantData& participant) {
   // We pull into our thread a) the communication handle and b) whether we're
   // the "primary" thread for this rendezvous -- the "primary" thread has some
@@ -541,13 +541,14 @@ NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
 }
 
 NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, std::vector<NcclAllReduceThunk::Buffer> buffers,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
+    ThunkInfo thunk_info, int64 replica_count,
+    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    : Thunk(Thunk::kNcclAllReduce, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       replica_count_(replica_count),
       buffers_(std::move(buffers)),
       aux_data_(absl::make_unique<AuxData>()) {
-  CHECK_EQ(hlo_instruction()->operand_count(), buffers_.size());
+  CHECK_EQ(hlo_instruction_->operand_count(), buffers_.size());
 }
 
 // Figures out which devices (named by their replica-ids) are participating in
@@ -555,9 +556,9 @@ NcclAllReduceThunk::NcclAllReduceThunk(
 Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << "Starting NcclAllReduceThunk.";
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
 
-  auto* instr = Cast<HloAllReduceInstruction>(hlo_instruction());
+  auto* instr = Cast<HloAllReduceInstruction>(hlo_instruction_);
   int64 local_device_ordinal = params.stream->parent()->device_ordinal();
   GlobalDeviceId global_device_id;
   if (params.gpu_global_device_ids) {
@@ -606,7 +607,7 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Find or create the rendezvous for this collective operation.
   RendezvousKey rendezvous_key = RendezvousKey::FromInstruction(
-      params.run_id, global_devices, local_devices.size(), hlo_instruction());
+      params.run_id, global_devices, local_devices.size(), hlo_instruction_);
 
   if (VLOG_IS_ON(2)) {
     std::vector<std::string> local_participants;
@@ -622,8 +623,8 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
             << ", local participants: "
             << absl::StrJoin(local_participants, ",");
   }
-  AllReduceParticipantData participant(rendezvous_key);
-  participant.device_ordinal = local_device_ordinal;
+  AllReduceParticipantData participant(rendezvous_key, local_device_ordinal,
+                                       params.stream);
   for (size_t i = 0; i < buffers_.size(); ++i) {
     const NcclAllReduceThunk::Buffer& buffer = buffers_[i];
     AllReduceParticipantData::Buffer pbuffer;
@@ -633,14 +634,12 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
     pbuffer.destination_data =
         params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer);
     pbuffer.primitive_type =
-        hlo_instruction()->operand(i)->shape().element_type();
+        hlo_instruction_->operand(i)->shape().element_type();
     participant.buffers.push_back(pbuffer);
   }
-  participant.stream = params.stream;
   participant.local_devices = std::move(local_devices);
   participant.nccl_unique_id_callback = params.nccl_unique_id_callback;
-  auto reduction_kind =
-      MatchReductionComputation(hlo_instruction()->to_apply());
+  auto reduction_kind = MatchReductionComputation(hlo_instruction_->to_apply());
   CHECK(reduction_kind.has_value());
   participant.reduction_kind = *reduction_kind;
 

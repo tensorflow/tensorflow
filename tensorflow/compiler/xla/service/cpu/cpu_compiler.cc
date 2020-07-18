@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
+#include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
@@ -94,6 +95,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -277,12 +279,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConvolutionGroupConverter>(
       cost_model,
       /*convert_batch_groups_only=*/false);
-  pipeline.AddPass<ScatterExpander>();
   pipeline.AddPass<BatchNormExpander>(
       /*rewrite_training_op=*/true,
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
+  pipeline.AddPass<LogisticExpander>(
+      /*expansion_type=*/LogisticExpansionType::kExp);
+  pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicPadder>();
+  pipeline.AddPass<ScatterExpander>();
   pipeline.AddPass<HloGetDimensionSizeRewriter>();
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {

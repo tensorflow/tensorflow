@@ -15,15 +15,22 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/batch_matmul.h"
 
+#include <stddef.h>
+
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/batch_matmul.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -46,6 +53,14 @@ enum KernelType {
 };
 
 struct OpData {
+  // The scaling factor from input to output (aka the 'real multiplier') can
+  // be represented as a fixed point multiplier plus a left shift.
+  int32_t output_multiplier;
+  int output_shift;
+  // The range of the fused activation layer. For example for kNone and
+  // uint8_t these would be 0 and 255.
+  int32_t output_activation_min;
+  int32_t output_activation_max;
   // The index of the temporary tensors where we store transposed LHS/RHS.
   int scratch_tensor_index;
   bool rhs_transposed;
@@ -268,6 +283,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   OpContext op_context(context, node);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   bool adj_x = op_context.params->adj_x;
   bool adj_y = op_context.params->adj_y;
@@ -276,7 +292,24 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* rhs_data = GetInput(context, node, kInputRHSTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, lhs_data->type, kTfLiteFloat32);
+  // Note that quantized inference requires that all tensors have their
+  // parameters set. This is usually done during quantized training.
+  if (lhs_data->type == kTfLiteInt8) {
+    double real_multiplier = 0.0;
+    TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
+        context, lhs_data, rhs_data, output, &real_multiplier));
+    int exponent;
+    QuantizeMultiplier(real_multiplier, &op_data->output_multiplier, &exponent);
+    op_data->output_shift = exponent;
+    // BatchMatMul has no fused activation functions. Therefore, set
+    // output activation min and max to min and max of int8_t type,
+    // respecitvely.
+    op_data->output_activation_min = std::numeric_limits<int8_t>::min();
+    op_data->output_activation_max = std::numeric_limits<int8_t>::max();
+  }
+
+  TF_LITE_ENSURE(context, lhs_data->type == kTfLiteFloat32 ||
+                              lhs_data->type == kTfLiteInt8);
   TF_LITE_ENSURE(context, rhs_data->type == kTfLiteFloat32 ||
                               rhs_data->type == kTfLiteInt8);
   // Support dimensions between 2 and 4, inclusive.
@@ -428,6 +461,41 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
 }
 
 template <KernelType kernel_type>
+TfLiteStatus EvalInt8(TfLiteContext* context, const OpData* data,
+                      const RuntimeShape& lhs_shape, const TfLiteTensor* lhs,
+                      const RuntimeShape& rhs_shape, const TfLiteTensor* rhs,
+                      const RuntimeShape& output_shape, TfLiteTensor* output) {
+  // Reuse params struct from FullyConnected Op.
+  FullyConnectedParams op_params;
+  int32_t input_offset = -lhs->params.zero_point;
+  int32_t filter_offset = -rhs->params.zero_point;
+  int32_t output_offset = output->params.zero_point;
+  op_params.input_offset = input_offset;
+  op_params.weights_offset = filter_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+  op_params.lhs_cacheable = IsConstantTensor(lhs);
+  op_params.rhs_cacheable = IsConstantTensor(rhs);
+
+  if (kernel_type == kReference) {
+    reference_ops::BatchMatMul(op_params, rhs_shape, GetTensorData<int8_t>(rhs),
+                               lhs_shape, GetTensorData<int8_t>(lhs),
+                               GetTensorShape(output),
+                               GetTensorData<int8_t>(output));
+  } else {
+    optimized_ops::BatchMatMul(op_params, rhs_shape, GetTensorData<int8_t>(rhs),
+                               lhs_shape, GetTensorData<int8_t>(lhs),
+                               GetTensorShape(output),
+                               GetTensorData<int8_t>(output),
+                               CpuBackendContext::GetFromContext(context));
+  }
+  return kTfLiteOk;
+}
+
+template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            OpData* data, const RuntimeShape& lhs_shape,
                            const TfLiteTensor* lhs,
@@ -442,23 +510,37 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     return EvalHybrid<kernel_type>(
         context, node, data, lhs_shape, lhs, rhs_shape, rhs, input_quantized,
         scaling_factors, accum_scratch, row_sums, input_offsets, output);
+  } else if (lhs->type == kTfLiteInt8) {
+    return EvalInt8<kernel_type>(context, data, lhs_shape, lhs, rhs_shape, rhs,
+                                 GetTensorShape(output), output);
   } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Currently only hybrid quantization is supported.\n");
+    TF_LITE_KERNEL_LOG(
+        context, "Currently only hybrid and int8 quantization is supported.\n");
     return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
-TfLiteTensor* GetRhs(TfLiteContext* context, TfLiteNode* node,
-                     const TfLiteTensor* rhs) {
+TfLiteTensor* GetTempRhs(TfLiteContext* context, TfLiteNode* node,
+                         const TfLiteTensor* rhs) {
   TfLiteTensor* transposed_rhs = GetTemporary(context, node, 1);
   if (rhs->type == kTfLiteInt8) {
-    // Get the quantization params from the weights tensors.
+    // Get the quantization params from the RHS tensor.
     transposed_rhs->params.scale = rhs->params.scale;
     transposed_rhs->params.zero_point = rhs->params.zero_point;
   }
   return transposed_rhs;
+}
+
+TfLiteTensor* GetTempLhs(TfLiteContext* context, TfLiteNode* node,
+                         const TfLiteTensor* lhs) {
+  TfLiteTensor* transposed_lhs = GetTemporary(context, node, 0);
+  if (lhs->type == kTfLiteInt8) {
+    // Get the quantization params from the LHS tensor.
+    transposed_lhs->params.scale = lhs->params.scale;
+    transposed_lhs->params.zero_point = lhs->params.zero_point;
+  }
+  return transposed_lhs;
 }
 
 // Perform a batch matrix multiply on
@@ -485,8 +567,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   bool adj_y = op_context.params->adj_y;
   bool adj_x = op_context.params->adj_x;
 
-  const TfLiteTensor* rhs_tensor = adj_y ? rhs : GetRhs(context, node, rhs);
-  const TfLiteTensor* lhs_tensor = adj_x ? GetTemporary(context, node, 0) : lhs;
+  const TfLiteTensor* rhs_tensor = adj_y ? rhs : GetTempRhs(context, node, rhs);
+  const TfLiteTensor* lhs_tensor = adj_x ? GetTempLhs(context, node, lhs) : lhs;
   if (!adj_y) {
     // TODO(b/154760341) Constant tensors should already be transposed, but
     // we transpose once if necessary for now.

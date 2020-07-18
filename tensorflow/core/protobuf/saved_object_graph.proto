@@ -61,6 +61,8 @@ message SavedObject {
     SavedConstant constant = 9;
     SavedResource resource = 10;
   }
+
+  map<string, SaveableObject> saveable_objects = 11;
 }
 
 // A SavedUserObject is an object (in the object-oriented language of the
@@ -161,4 +163,10 @@ message SavedResource {
   // creation function, e.g. "CPU". An empty string allows the user to select a
   // device.
   string device = 1;
+}
+
+message SaveableObject {
+  // Node ids of concrete functions for saving and loading from a checkpoint.
+  int32 save_function = 2;
+  int32 restore_function = 3;
 }

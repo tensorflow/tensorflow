@@ -15,19 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <algorithm>
-#include <cstdarg>
+#include <iterator>
 #include <limits>
 #include <random>
 #include <sstream>
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "ruy/matrix.h"  // from @ruy
 #include "ruy/reference_mul.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
 
 namespace tflite {
 

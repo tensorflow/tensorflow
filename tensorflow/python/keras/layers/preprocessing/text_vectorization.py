@@ -89,23 +89,25 @@ class TextVectorization(CombinerPreprocessingLayer):
   to create the vocabulary.
 
   The processing of each sample contains the following steps:
-    1) standardize each sample (usually lowercasing + punctuation stripping)
-    2) split each sample into substrings (usually words)
-    3) recombine substrings into tokens (usually ngrams)
-    4) index tokens (associate a unique int value with each token)
-    5) transform each sample using this index, either into a vector of ints or
+
+    1. standardize each sample (usually lowercasing + punctuation stripping)
+    2. split each sample into substrings (usually words)
+    3. recombine substrings into tokens (usually ngrams)
+    4. index tokens (associate a unique int value with each token)
+    5. transform each sample using this index, either into a vector of ints or
        a dense float vector.
 
   Some notes on passing Callables to customize splitting and normalization for
   this layer:
-    1) Any callable can be passed to this Layer, but if you want to serialize
+
+    1. Any callable can be passed to this Layer, but if you want to serialize
        this object you should only pass functions that are registered Keras
        serializables (see `tf.keras.utils.register_keras_serializable` for more
        details).
-    2) When using a custom callable for `standardize`, the data received
+    2. When using a custom callable for `standardize`, the data received
        by the callable will be exactly as passed to this layer. The callable
        should return a tensor of the same shape as the input.
-    3) When using a custom callable for `split`, the data received by the
+    3. When using a custom callable for `split`, the data received by the
        callable will have the 1st dimension squeezed out - instead of
        `[["string to split"], ["another string to split"]]`, the Callable will
        see `["string to split", "another string to split"]`. The callable should

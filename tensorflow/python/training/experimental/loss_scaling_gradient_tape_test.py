@@ -214,7 +214,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
       y = x * x
       z = y * y
     g.gradient(z, x)
-    with self.assertRaisesRegexp(RuntimeError, 'persistent'):
+    with self.assertRaisesRegex(RuntimeError, 'persistent'):
       g.gradient(y, x)
 
   @test_combinations.generate(test_combinations.combine(
@@ -512,7 +512,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(dy_dx, np.full((2, 3), 2.))
 
   def test_passing_non_loss_scale_raises_error(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         '`loss_scale` must be an instance of LossScale, but got: 2.0'):
       lsgt.LossScaleGradientTape(2.0)
@@ -522,7 +522,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
     x = variables.Variable([1.0, 2.0])
     with lsgt.LossScaleGradientTape(loss_scale) as g:
       y = x * 2
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         NotImplementedError,
         'LossScaleGradientTape.jacobian is not yet implemented'):
       g.jacobian(y, x)
@@ -530,7 +530,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
     x = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
     with lsgt.LossScaleGradientTape(loss_scale) as g:
       y = x * 2
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         NotImplementedError,
         'LossScaleGradientTape.batch_jacobian is not yet implemented'):
       g.batch_jacobian(y, x)

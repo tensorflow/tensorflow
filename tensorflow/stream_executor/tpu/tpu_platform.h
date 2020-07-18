@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -38,7 +39,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
                           SE_Event*>;
 
   static const ::stream_executor::Platform::Id kId;
-  static constexpr char kName[] = "TPU";
 
   using Status = ::stream_executor::port::Status;
   template <typename T>
@@ -60,9 +60,9 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   bool ShouldRegisterTpuDeviceToDeviceCopy() override;
 
-  bool Initialized() const override {
-    return TpuPlatform_Initialized(platform_);
-  }
+  const tensorflow::tpu::TpuTopologyPtr GetTopologyPtr() override;
+
+  bool Initialized() const override;
 
   Status Initialize(
       const std::map<std::string, std::string>& platform_options) override;
@@ -114,15 +114,37 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   StreamMap* stream_map() { return &stream_map_; }
 
-  EventMap* event_map() { return &event_map_; }
+  void InsertEvent(stream_executor::internal::EventInterface* key,
+                   SE_Event* val);
+  SE_Event* LookupEvent(stream_executor::internal::EventInterface* key);
+  SE_Stream* LookupStream(stream_executor::internal::StreamInterface* key) {
+    mutex().lock();
+    auto stream = stream_map_.at(key);
+    mutex().unlock();
+    return stream;
+  }
+  void EraseEvent(stream_executor::internal::EventInterface* key);
+
+  SE_Platform* se_platform() const { return platform_; }
+
+  // Returns the number of TPUs per host.
+  static Status TpusPerHost(int* tpus);
+
+  // Returns the memory capacity of the TPUs on this host.
+  static Status TpuMemoryLimit(int64* memory_limit);
+
+  tensorflow::mutex& mutex() { return event_map_mu_; }
 
  private:
-  SE_Platform* platform_;
-
+  mutable SE_Platform* platform_;
+  std::string name_;
   stream_executor::ExecutorCache executor_cache_;
   StreamMap stream_map_;
   EventMap event_map_;
+  tensorflow::mutex event_map_mu_;
 };
+
+bool RegisterTpuPlatform();
 
 }  // namespace tensorflow
 

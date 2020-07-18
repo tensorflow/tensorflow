@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -84,9 +85,8 @@ XLAJIT_MAKE_UNARY(Rsqrt, xla::Rsqrt(x));
 
 XLAJIT_MAKE_UNARY(Sigmoid, xla::Logistic(x));
 
-// Returns 0 if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-XLAJIT_MAKE_UNARY(Sign,
-                  xla::Select(xla::Ne(x, x), xla::ZerosLike(x), xla::Sign(x)));
+// Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+XLAJIT_MAKE_UNARY(Sign, xla::Sign(x));
 XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
 
 static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {

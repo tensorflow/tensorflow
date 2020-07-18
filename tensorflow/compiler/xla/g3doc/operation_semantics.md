@@ -1288,6 +1288,9 @@ if and only if the corresponding input element is finite.
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 
+<b>`Logistic(operand)`</b> Element-wise logistic function computation `x ->
+logistic(x)`.
+
 <b>`PopulationCount(operand)`</b> Computes the number of bits set in each
 element of `operand`.
 
@@ -1306,6 +1309,8 @@ $$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 & 
 using the comparison operator of the element type of `operand`.
 
 <b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
+
+<b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 

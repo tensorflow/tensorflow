@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
 
 
 def _safe_shape_div(x, y):
@@ -186,9 +187,12 @@ def _SumGrad(op, grad):
 
           # Compute and cache `output_shape_kept_dims` and `tile_scaling`.
           def EvaluateAsTuple(t):
-            value = c_api.TF_TryEvaluateConstant_wrapper(
-                t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
-            assert value is not None
+            if tensor_util.is_tensor(t):
+              value = c_api.TF_TryEvaluateConstant_wrapper(
+                  t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
+              assert value is not None
+            else:
+              value = t
             return tuple(value)
 
           output_shape_kept_dims = EvaluateAsTuple(
@@ -875,14 +879,40 @@ def _SpenceGrad(op, grad):
     return grad * partial_x
 
 
+@ops.RegisterGradient("BesselI0")
+def _BesselI0Grad(op, grad):
+  """Compute gradient of bessel_i0(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    partial_x = special_math_ops.bessel_i1(x)
+    return grad * partial_x
+
+
 @ops.RegisterGradient("BesselI0e")
 def _BesselI0eGrad(op, grad):
   """Compute gradient of bessel_i0e(x) with respect to its argument."""
   x = op.inputs[0]
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
-    partial_x = (math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
+    partial_x = (special_math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
     return grad * partial_x
+
+
+@ops.RegisterGradient("BesselI1")
+def _BesselI1Grad(op, grad):
+  """Compute gradient of bessel_i1(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    # For x = 0, the correct gradient is 1.0.
+    # However, the main branch gives NaN because of the division by x, so
+    # we impute the gradient manually.
+    # An alternative solution is to express the gradient via bessel_i0 and
+    # bessel_i2, but the latter is not yet implemented in Eigen.
+    dy_dx = array_ops.where_v2(
+        math_ops.equal(x, 0.), math_ops.cast(1., x.dtype),
+        special_math_ops.bessel_i0(x) - math_ops.div(y, x))
+    return grad * dy_dx
 
 
 @ops.RegisterGradient("BesselI1e")
@@ -896,14 +926,102 @@ def _BesselI1eGrad(op, grad):
     # we impute the gradient manually.
     # An alternative solution is to express the gradient via bessel_i0e and
     # bessel_i2e, but the latter is not yet implemented in Eigen.
-    eps = np.finfo(x.dtype.as_numpy_dtype).eps
-    zeros = array_ops.zeros_like(x)
-    x_is_not_tiny = math_ops.abs(x) > eps
-    safe_x = array_ops.where_v2(x_is_not_tiny, x, eps + zeros)
-    dy_dx = math_ops.bessel_i0e(safe_x) - y * (
-        math_ops.sign(safe_x) + math_ops.reciprocal(safe_x))
-    dy_dx = array_ops.where_v2(x_is_not_tiny, dy_dx, 0.5 + zeros)
+    dy_dx = array_ops.where_v2(
+        math_ops.equal(x, 0.), math_ops.cast(0.5, x.dtype),
+        special_math_ops.bessel_i0e(x) - y *
+        (math_ops.sign(x) + math_ops.reciprocal(x)))
     return grad * dy_dx
+
+
+@ops.RegisterGradient("BesselK0")
+def _BesselK0Grad(op, grad):
+  """Compute gradient of bessel_k0(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    partial_x = -special_math_ops.bessel_k1(x)
+    return grad * partial_x
+
+
+@ops.RegisterGradient("BesselK0e")
+def _BesselK0eGrad(op, grad):
+  """Compute gradient of bessel_k0e(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    partial_x = (y - special_math_ops.bessel_k1e(x))
+    return grad * partial_x
+
+
+@ops.RegisterGradient("BesselK1")
+def _BesselK1Grad(op, grad):
+  """Compute gradient of bessel_k1(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    # At 0., this is NaN which is fine since the derivative is undefined
+    # at 0.
+    partial_x = -special_math_ops.bessel_k0(x) - math_ops.div(y, x)
+    return grad * partial_x
+
+
+@ops.RegisterGradient("BesselK1e")
+def _BesselK1eGrad(op, grad):
+  """Compute gradient of bessel_k1e(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    # At 0., this is NaN which is fine since the derivative is undefined
+    # at 0.
+    partial_x = (
+        y * (1. - math_ops.reciprocal(x)) - special_math_ops.bessel_k0e(x))
+    return grad * partial_x
+
+
+@ops.RegisterGradient("BesselJ0")
+def _BesselJ0Grad(op, grad):
+  """Compute gradient of bessel_j0(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    partial_x = -special_math_ops.bessel_j1(x)
+    return grad * partial_x
+
+
+@ops.RegisterGradient("BesselJ1")
+def _BesselJ1Grad(op, grad):
+  """Compute gradient of bessel_j1(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    # For x = 0, the correct gradient is 0.5.
+    # However, the main branch gives NaN because of the division by x, so
+    # we impute the gradient manually.
+    # An alternative solution is to express the gradient via bessel_i0e and
+    # bessel_i2e, but the latter is not yet implemented in Eigen.
+    dy_dx = array_ops.where_v2(
+        math_ops.equal(x, 0.), math_ops.cast(0.5, x.dtype),
+        special_math_ops.bessel_j0(x) - math_ops.div(y, x))
+    return grad * dy_dx
+
+
+@ops.RegisterGradient("BesselY0")
+def _BesselY0Grad(op, grad):
+  """Compute gradient of bessel_y0(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    partial_x = -special_math_ops.bessel_y1(x)
+    return grad * partial_x
+
+
+@ops.RegisterGradient("BesselY1")
+def _BesselY1Grad(op, grad):
+  """Compute gradient of bessel_y1(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    # At 0., this is NaN which is fine since the derivative is undefined
+    # at 0.
+    partial_x = special_math_ops.bessel_y0(x) - math_ops.div(y, x)
+    return grad * partial_x
 
 
 @ops.RegisterGradient("Igamma")

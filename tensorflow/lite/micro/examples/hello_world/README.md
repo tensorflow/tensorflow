@@ -17,6 +17,7 @@ of the device.
 -   [Deploy to ARC EM SDP](#deploy-to-arc-em-sdp)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to ESP32](#deploy-to-esp32)
+-   [Deploy to Himax WE1 EVB](#deploy-to-himax-we1-evb)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
@@ -190,6 +191,105 @@ The previous two commands can be combined:
 ```
 idf.py --port /dev/ttyUSB0 flash monitor
 ```
+
+## Deploy to Himax WE1 EVB
+
+The following instructions will help you build and deploy this example to
+[HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
+board. To undstand more about using this board, please check
+[HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
+
+### Initial Setup
+
+To use the HIMAX WE1 EVB, please make sure following software are installed:
+
+#### MetaWare Development Toolkit
+
+See
+[Install the Synopsys DesignWare ARC MetaWare Development Toolkit](/tensorflow/lite/micro/tools/make/targets/arc/README.md#install-the-synopsys-designware-arc-metaware-development-toolkit)
+section for instructions on toolchain installation.
+
+#### Make Tool version
+
+A `'make'` tool is required for deploying Tensorflow Lite Micro applications on
+HIMAX WE1 EVB, See
+[Check make tool version](/tensorflow/lite/micro/tools/make/targets/arc/README.md#make-tool)
+section for proper environment.
+
+#### Serial Terminal Emulation Application
+
+There are 2 main purposes for HIMAX WE1 EVB Debug UART port
+
+-   print application output
+-   burn application to flash by using xmodem send application binary
+
+You can use any terminal emulation program (like [PuTTY](https://www.putty.org/)
+or [minicom](https://linux.die.net/man/1/minicom)).
+
+### Generate Example Project
+
+The example project for HIMAX WE1 EVB platform can be generated with the
+following command:
+
+Download related third party data
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=himax_we1_evb third_party_downloads
+```
+
+Generate hello world project
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile generate_hello_world_make_project TARGET=himax_we1_evb TAGS=no_arc_mli
+```
+
+### Build and Burn Example
+
+Following the Steps to run hello world example at HIMAX WE1 EVB platform.
+
+1.  Go to the generated example project directory.
+
+    ```
+    cd tensorflow/lite/micro/tools/make/gen/himax_we1_evb_arc/prj/hello_world/make
+    ```
+
+2.  Build the example using
+
+    ```
+    make app
+    ```
+
+3.  After example build finish, copy ELF file and map file to image generate
+    tool directory. \
+    image generate tool directory located at
+    `'tensorflow/lite/micro/tools/make/downloads/himax_we1_sdk/image_gen_linux_v3/'`
+
+    ```
+    cp hello_world.elf himax_we1_evb.map ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+4.  Go to flash image generate tool directory.
+
+    ```
+    cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+5.  run image generate tool, generate flash image file.
+
+    *   Before running image generate tool, by typing `sudo chmod +x image_gen`
+        and `sudo chmod +x sign_tool` to make sure it is executable.
+
+    ```
+    image_gen -e hello_world.elf -m himax_we1_evb.map -o out.img
+    ```
+
+6.  Download flash image file to HIMAX WE1 EVB by UART:
+
+    *   more detail about download image through UART can be found at
+        [HIMAX WE1 EVB update Flash image](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide#flash-image-update)
+
+After these steps, press reset button on the HIMAX WE1 EVB, you will see
+application output in the serial terminal.
 
 ## Deploy to SparkFun Edge
 

@@ -208,14 +208,16 @@ HloCompareInstruction::HloCompareInstruction(const Shape& shape,
                                              HloInstruction* lhs,
                                              HloInstruction* rhs,
                                              ComparisonDirection direction)
-    : HloInstruction(HloOpcode::kCompare, shape), direction_(direction) {
+    : HloInstruction(HloOpcode::kCompare, shape),
+      compare_(direction, lhs->shape().element_type()) {
   AppendOperand(lhs);
   AppendOperand(rhs);
 }
 
 HloInstructionProto HloCompareInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_comparison_direction(ComparisonDirectionToString(direction_));
+  proto.set_comparison_direction(
+      ComparisonDirectionToString(compare_.GetDirection()));
   return proto;
 }
 
@@ -550,6 +552,7 @@ bool HloCollectiveInstruction::IdenticalSlowPath(
   const auto& casted_other =
       static_cast<const HloCollectiveInstruction&>(other);
   return HloChannelInstruction::IdenticalSlowPath(other, eq_computations) &&
+         constrain_layout() == casted_other.constrain_layout() &&
          absl::c_equal(replica_groups(), casted_other.replica_groups(),
                        [](const ReplicaGroup& a, const ReplicaGroup& b) {
                          return absl::c_equal(a.replica_ids(), b.replica_ids());
@@ -1101,7 +1104,9 @@ bool HloMapInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  return eq_computations(to_apply(), other.to_apply());
+  const auto& casted_other = static_cast<const HloMapInstruction&>(other);
+  return eq_computations(to_apply(), casted_other.to_apply()) &&
+         dimensions() == casted_other.dimensions();
 }
 
 std::unique_ptr<HloInstruction> HloMapInstruction::CloneWithNewOperandsImpl(
@@ -2515,7 +2520,8 @@ bool HloDynamicSliceInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  return true;
+  const auto& casted_other = static_cast<const HloMapInstruction&>(other);
+  return dynamic_slice_sizes() == casted_other.dynamic_slice_sizes();
 }
 
 std::unique_ptr<HloInstruction>

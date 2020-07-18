@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_WHILE_H_
 #define TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_WHILE_H_
 
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 
@@ -24,7 +25,14 @@ namespace tensorflow {
 // Transformation that converts tf.while_loop() loops into functional While
 // operators, suitable for XLA compilation. If lookup_library is provided, use
 // it to make the library for control flow self-contained.
-Status FunctionalizeWhileLoop(Graph* graph, FunctionLibraryDefinition* library);
+//
+// If `node_filter` is defined, then only loops for whose nodes `node_filter`
+// returns true are functionalized.
+//
+// Preconditions:
+// Same as for `FunctionalizeControlFlow` (see comment there).
+Status FunctionalizeWhileLoop(Graph* graph, FunctionLibraryDefinition* library,
+                              const NodeFilter& node_filter = {});
 
 }  // namespace tensorflow
 

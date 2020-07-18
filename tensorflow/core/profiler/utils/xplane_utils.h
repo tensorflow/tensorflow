@@ -27,13 +27,17 @@ namespace profiler {
 
 // Returns the plane with the given name or nullptr if not found.
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Returns the plane with the given name in the container. If necessary, adds a
+// new plane to the container.
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
 
 // Returns all the planes with a given prefix.
 std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
                                                 absl::string_view prefix);
-
-// Returns the plane with the given name, create it if necessary.
-XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name);
+std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
+                                                 absl::string_view prefix);
 
 // Returns true if event is nested by parent.
 bool IsNested(const tensorflow::profiler::XEvent& event,
@@ -48,13 +52,6 @@ void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
 void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
-
-// Returns the plane with the given name in the container or null if not found.
-XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
-
-// Returns the plane with the given name in the container. If necessary, adds a
-// new plane to the container.
-XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
 
 // Sort lines in plane with a provided comparator.
 template <class Compare>

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/experimental/saved_model/internal/tensorhandle_list_type.h"
 

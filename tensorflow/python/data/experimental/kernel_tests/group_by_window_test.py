@@ -265,7 +265,7 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
         grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
 
     get_next = self.getNext(dataset)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Window size must be greater than zero, but got 0."):
       print(self.evaluate(get_next()))

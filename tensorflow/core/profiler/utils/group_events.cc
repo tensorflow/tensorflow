@@ -54,13 +54,13 @@ void CreateStatMetadata(XPlane* plane) {
 }
 
 // Returns event type if it is a KernelLaunch or KernelExecute event.
-absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
+absl::optional<int64> GetKernelEventType(bool is_host_plane,
+                                         const XPlaneVisitor& visitor,
                                          const XEvent& event) {
   for (const auto& stat : event.stats()) {
     if (visitor.GetStatType(stat) == StatType::kCorrelationId) {
-      // TODO(b/149095099): avoid string comparison.
-      return visitor.Name() == kHostThreads ? HostEventType::kKernelLaunch
-                                            : HostEventType::kKernelExecute;
+      return is_host_plane ? HostEventType::kKernelLaunch
+                           : HostEventType::kKernelExecute;
     }
   }
   return absl::nullopt;
@@ -72,14 +72,15 @@ bool IsTfOpEvent(const XPlaneVisitor& visitor, const XEvent& event) {
   return tf_op.category == Category::kTensorFlow;
 }
 
-int64 GetEventType(const XPlaneVisitor& visitor, const XEvent& event) {
+int64 GetEventType(bool is_host_plane, const XPlaneVisitor& visitor,
+                   const XEvent& event) {
   if (absl::optional<int64> event_type = visitor.GetEventType(event)) {
     return *event_type;
   } else if (absl::optional<int64> kernel_event_type =
-                 GetKernelEventType(visitor, event)) {
+                 GetKernelEventType(is_host_plane, visitor, event)) {
     // KernelLaunch and KernelExecute event types are not supported by
     // XPlaneVisitor and should be checked separately.
-    // TODO(148346217): Make XPlaneVisitor support KernelLaunch and
+    // TODO(b/148346217): Make XPlaneVisitor support KernelLaunch and
     // KernelExecute event types.
     return *kernel_event_type;
   } else if (IsTfOpEvent(visitor, event)) {
@@ -138,13 +139,26 @@ bool HasFunctionRun(EventNode* event_node) {
   return false;
 }
 
+bool IsImplicitRootEvent(const XEventVisitor& event) {
+  static const auto* const kImplicitRootEvents = new absl::flat_hash_set<int64>{
+      HostEventType::kFunctionRun, HostEventType::kSessionRun,
+      HostEventType::kRunGraph, HostEventType::kExecutorStateProcess};
+  return event.Type().has_value() &&
+         kImplicitRootEvents->contains(*event.Type());
+}
+
 void ProcessRootEvent(int64 group_id, EventNode* root_event,
-                      EventGroupNameMap* event_group_name_map) {
+                      GroupMetadataMap* group_metadata_map) {
   root_event->PropagateGroupId(group_id);
   std::string group_name = root_event->GetGroupName();
   // TODO(jihochoi): change event name instead.
-  root_event->AddStepName(group_name);
-  event_group_name_map->emplace(group_id, std::move(group_name));
+  if (!IsImplicitRootEvent(root_event->GetEventVisitor())) {
+    // Add the `step_name` stat for the user-defined root events only. When an
+    // XEvent is converted to a trace event, the trace event name is set to the
+    // `step_name` stat's value if present.
+    root_event->AddStepName(group_name);
+  }
+  (*group_metadata_map)[group_id].name = std::move(group_name);
 }
 
 bool IsTfDataEvent(const EventNode& event_node) {
@@ -255,6 +269,11 @@ void SortEventList(EventList* event_list) {
   });
 }
 
+// Returns true if it has JAX-related events.
+bool HasJaxEvent(const EventNodeMap& event_node_map) {
+  return event_node_map.contains(HostEventType::kExecuteOnLocalDevices);
+}
+
 }  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
@@ -335,6 +354,8 @@ std::string EventNode::GetGroupName() const {
   if (absl::optional<XStatVisitor> stat =
           GetContextStat(StatType::kGraphType)) {
     absl::StrAppend(&name, stat->StrOrRefValue(), " ");
+  } else if (!(IsImplicitRootEvent(visitor_))) {
+    absl::StrAppend(&name, GetEventVisitor().Name(), " ");
   }
   int64 step_num = group_id_.value_or(0);
   if (absl::optional<XStatVisitor> stat = GetContextStat(StatType::kIterNum)) {
@@ -396,6 +417,8 @@ bool EventNode::StartsBefore(const EventNode& other) const {
 void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
                                      XPlane* plane,
                                      ContextGroupMap* context_groups) {
+  // TODO(b/149095099): avoid string comparison.
+  bool is_host_plane = (visitor.Name() == kHostThreadsPlaneName);
   for (auto& line : *plane->mutable_lines()) {
     std::vector<EventNode*> parent_nodes;
     for (auto& event : *line.mutable_events()) {
@@ -418,7 +441,7 @@ void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
       }
       parent_nodes.push_back(cur_node.get());
       // event_node_map_ keeps cur_node alive.
-      event_node_map_[GetEventType(visitor, event)].push_back(
+      event_node_map_[GetEventType(is_host_plane, visitor, event)].push_back(
           std::move(cur_node));
     }
   }
@@ -474,6 +497,7 @@ void EventForest::ProcessLegacyRootEvents(
   for (int64 root_event_type : root_event_types) {
     if (auto root_events = gtl::FindOrNull(event_node_map_, root_event_type)) {
       for (const auto& root_event : *root_events) {
+        root_event->SetIsRoot(true);
         root_events_.push_back(root_event.get());
       }
     }
@@ -481,18 +505,21 @@ void EventForest::ProcessLegacyRootEvents(
 }
 
 void EventForest::CreateEventGroup() {
-  if (!tf_loop_root_events_.empty()) {
-    // If a TF loop is used, each TF loop iteration becomes a root.
+  // Create a group for each TF loop iteration in non-JAX profiles.
+  if (!HasJaxEvent(event_node_map_) && !tf_loop_root_events_.empty()) {
     for (EventNode* root_event : tf_loop_root_events_) {
-      ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
+      ProcessRootEvent(next_group_id_++, root_event, &group_metadata_map_);
     }
     return;
   }
-
   SortEventList(&root_events_);
+  // Create a group for each top root event while ignoring TF's legacy root
+  // events for JAX profiles.
   for (EventNode* root_event : root_events_) {
-    if (IsTopRoot(root_event)) {
-      ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
+    if (IsTopRoot(root_event) &&
+        (!HasJaxEvent(event_node_map_) ||
+         !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
+      ProcessRootEvent(next_group_id_++, root_event, &group_metadata_map_);
     }
   }
 }
@@ -600,6 +627,20 @@ void EventForest::ProcessWorker() {
   }
 }
 
+void EventForest::ProcessModelIds() {
+  auto session_run_event_list =
+      gtl::FindOrNull(event_node_map_, HostEventType::kSessionRun);
+  if (!session_run_event_list) return;
+  for (const auto& session_run_event : *session_run_event_list) {
+    auto group_id = session_run_event->GetGroupId();
+    if (!group_id.has_value()) continue;
+    absl::optional<XStatVisitor> model_id =
+        session_run_event->GetEventVisitor().GetStat(StatType::kModelId);
+    if (!model_id.has_value()) continue;
+    group_metadata_map_[*group_id].model_id = model_id->ToString();
+  }
+}
+
 EventForest::EventForest(
     const std::vector<InterThreadConnectInfo>& connect_info_list,
     const std::vector<int64>& root_event_types,
@@ -620,6 +661,7 @@ EventForest::EventForest(
   CreateEventGroup();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
+  ProcessModelIds();
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
@@ -632,20 +674,17 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
        {StatType::kStepId, StatType::kIterNum}},
       {HostEventType::kKernelLaunch,
        HostEventType::kKernelExecute,
-       {StatType::kCorrelationId}},
-      {HostEventType::kLocalExecutableExecuteOnLocalDevice,
-       HostEventType::kLocalExecutableExecute,
-       {StatType::kRunId}}};
+       {StatType::kCorrelationId}}};
   return connect_info_list;
 }
 
-void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
+void GroupTfEvents(XSpace* space, GroupMetadataMap* group_metadata_map) {
   if (!space) return;
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
   EventForest event_forest(connect_info_list, {}, CreateTfXPlaneVisitor, space);
-  if (event_group_name_map) {
-    *event_group_name_map = event_forest.GetEventGroupNameMap();
+  if (group_metadata_map) {
+    *group_metadata_map = event_forest.GetGroupMetadataMap();
   }
 }
 

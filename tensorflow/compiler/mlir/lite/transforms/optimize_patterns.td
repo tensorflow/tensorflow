@@ -18,6 +18,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def F32ElementsAttr : ElementsAttrBase<
@@ -26,16 +27,9 @@ def F32ElementsAttr : ElementsAttrBase<
 def ExtractSingleElementAsFloat : NativeCodeCall<
     "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
 
-// Checks if the value has only one user.
-def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
-
 // Checks if the value has rank at most 'n'.
 class HasRankAtMost<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
-
-// Checks value is not produce by a TLF_QUant with
-// different quantization attribute
-def NotFromQuantOpDifferentQuant : Constraint<CPred<"NotFromQuantOpDifferentQuant($0,$1)">>;
 
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
@@ -169,9 +163,9 @@ foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
 // with the same scale. We want to remove the redundancy.
 // TODO(fengliuai): move this to the sanity check of pre-quantize pass.
 def eliminate_dq_q_pairs : Pat<
-  (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), 
-  (replaceWithValue $in), 
-  [(NotFromQuantOpDifferentQuant $in, $qt)]>;
+  (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt),
+  (replaceWithValue $in),
+  [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
 
 
 // Constraint that makes sure both operands are the same operands.
@@ -446,6 +440,10 @@ def : Pat<(TFL_MaximumOp (TFL_MulOp:$mul_out $input1,
            (EqualOperands $input1, $input2),
            (HasOneUse $mul_out)]>;
 
+def RemoveTrivialCast : Pat<(TFL_CastOp:$output $input),
+                            (replaceWithValue $input),
+                            [(SameElementType $input, $output)]>;
+
 // Checks if the operand0's rank is one less than operand1's rank.
 def PReluAlphaRankCheck : Constraint<
   CPred<"$0.getType().cast<ShapedType>().getRank() == "
@@ -487,4 +485,11 @@ foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
   [(HasOneUse $first_output)]>;
 }
 
-
+// We can eliminate Relu from Relu(SquaredDifference(x, y)),
+// since the result of SquaredDifference is always non-negative.
+// TFLite interpreter doesn't support Relu+int32 for now. So the test cases
+// are failing without the following pattern to optimize Relu away fixes
+// the problem.
+def OptimizeReluSquaredDifference : Pat<
+  (TFL_ReluOp (TFL_SquaredDifferenceOp $l, $r)),
+  (TFL_SquaredDifferenceOp $l, $r)>;

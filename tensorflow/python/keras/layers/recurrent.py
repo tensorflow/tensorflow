@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -45,7 +43,9 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -176,7 +176,7 @@ class StackedRNNCells(Layer):
       else:
         output_dim = cell.state_size
       input_shape = tuple([input_shape[0]] +
-                          tensor_shape.as_shape(output_dim).as_list())
+                          tensor_shape.TensorShape(output_dim).as_list())
     self.built = True
 
   def get_config(self):
@@ -465,7 +465,7 @@ class RNN(Layer):
     # (tensor_shape(1, 2), tensor_shape(3, 4)) or (1, 2, 3) which is from numpy
     # inputs.
     try:
-      input_shape = tensor_shape.as_shape(input_shape)
+      input_shape = tensor_shape.TensorShape(input_shape)
     except (ValueError, TypeError):
       # A nested tensor input
       input_shape = nest.flatten(input_shape)[0]
@@ -481,14 +481,16 @@ class RNN(Layer):
       state_size = [self.cell.state_size]
 
     def _get_output_shape(flat_output_size):
-      output_dim = tensor_shape.as_shape(flat_output_size).as_list()
+      output_dim = tensor_shape.TensorShape(flat_output_size).as_list()
       if self.return_sequences:
         if self.time_major:
-          output_shape = tensor_shape.as_shape([time_step, batch] + output_dim)
+          output_shape = tensor_shape.TensorShape(
+              [time_step, batch] + output_dim)
         else:
-          output_shape = tensor_shape.as_shape([batch, time_step] + output_dim)
+          output_shape = tensor_shape.TensorShape(
+              [batch, time_step] + output_dim)
       else:
-        output_shape = tensor_shape.as_shape([batch] + output_dim)
+        output_shape = tensor_shape.TensorShape([batch] + output_dim)
       return output_shape
 
     if getattr(self.cell, 'output_size', None) is not None:
@@ -502,8 +504,8 @@ class RNN(Layer):
 
     if self.return_state:
       def _get_state_shape(flat_state):
-        state_shape = [batch] + tensor_shape.as_shape(flat_state).as_list()
-        return tensor_shape.as_shape(state_shape)
+        state_shape = [batch] + tensor_shape.TensorShape(flat_state).as_list()
+        return tensor_shape.TensorShape(state_shape)
       state_shape = nest.map_structure(_get_state_shape, state_size)
       return generic_utils.to_list(output_shape) + nest.flatten(state_shape)
     else:
@@ -552,7 +554,7 @@ class RNN(Layer):
     # (tensor_shape(1, 2), tensor_shape(3, 4)) or (1, 2, 3) which is from numpy
     # inputs.
     try:
-      input_shape = tensor_shape.as_shape(input_shape)
+      input_shape = tensor_shape.TensorShape(input_shape)
     except (ValueError, TypeError):
       # A nested tensor input
       pass
@@ -589,7 +591,7 @@ class RNN(Layer):
       self._validate_state_spec(state_size, self.state_spec)
     else:
       self.state_spec = [
-          InputSpec(shape=[None] + tensor_shape.as_shape(dim).as_list())
+          InputSpec(shape=[None] + tensor_shape.TensorShape(dim).as_list())
           for dim in state_size
       ]
     if self.stateful:
@@ -828,7 +830,7 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if (isinstance(inputs, collections.Sequence)
+    if (isinstance(inputs, collections_abc.Sequence)
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
@@ -924,7 +926,7 @@ class RNN(Layer):
     # initialize state if None
     if nest.flatten(self.states)[0] is None:
       def create_state_variable(state):
-        return K.zeros([batch_size] + tensor_shape.as_shape(state).as_list())
+        return K.zeros([batch_size] + tensor_shape.TensorShape(state).as_list())
       self.states = nest.map_structure(
           create_state_variable, self.cell.state_size)
       if not nest.is_sequence(self.states):
@@ -933,7 +935,7 @@ class RNN(Layer):
       for state, size in zip(nest.flatten(self.states),
                              nest.flatten(self.cell.state_size)):
         K.set_value(state, np.zeros([batch_size] +
-                                    tensor_shape.as_shape(size).as_list()))
+                                    tensor_shape.TensorShape(size).as_list()))
     else:
       flat_states = nest.flatten(self.states)
       flat_input_states = nest.flatten(states)
@@ -2553,6 +2555,47 @@ class PeepholeLSTMCell(LSTMCell):
   ```
   """
 
+  @deprecation.deprecated(
+      None, 'Please use tensorflow_addons.rnn.PeepholeLSTMCell instead')
+  def __init__(self,
+               units,
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               dropout=0.,
+               recurrent_dropout=0.,
+               implementation=1,
+               **kwargs):
+    super(PeepholeLSTMCell, self).__init__(
+        units=units,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        unit_forget_bias=unit_forget_bias,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        implementation=implementation,
+        **kwargs)
+
   def build(self, input_shape):
     super(PeepholeLSTMCell, self).build(input_shape)
     # The following are the weight matrices for the peephole connections. These
@@ -2973,7 +3016,7 @@ def _generate_zero_filled_state(batch_size_tensor, state_size, dtype):
         'batch_size={}, dtype={}'.format(batch_size_tensor, dtype))
 
   def create_zeros(unnested_state_size):
-    flat_dims = tensor_shape.as_shape(unnested_state_size).as_list()
+    flat_dims = tensor_shape.TensorShape(unnested_state_size).as_list()
     init_state_size = [batch_size_tensor] + flat_dims
     return array_ops.zeros(init_state_size, dtype=dtype)
 

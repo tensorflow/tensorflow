@@ -58,16 +58,13 @@ void TestPreluFloat(std::initializer_list<int> input_dims_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -122,16 +119,13 @@ void TestPreluQuantized(std::initializer_list<int> input_dims_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -176,8 +170,6 @@ TF_LITE_MICRO_TEST(QuantizedUint8PreluActivationsOpTest) {
   using tflite::testing::F2Q;
   const float kMin = -4;
   const float kMax = 127.f / 32.f;
-  const float kAlphaMin = -0.5f;
-  const float kAlphaMax = 0.5f;
   const int output_dims_count = 12;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestPreluQuantized(
@@ -203,8 +195,6 @@ TF_LITE_MICRO_TEST(QuantizedInt8PreluActivationsOpTest) {
   using tflite::testing::F2QS;
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
-  const float kAlphaMin = -0.5f;
-  const float kAlphaMax = 0.5f;
   const int output_dims_count = 12;
   int8_t output_data[output_dims_count];
   tflite::testing::TestPreluQuantized(

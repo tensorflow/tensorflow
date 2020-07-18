@@ -33,14 +33,19 @@ namespace internal {
 
 // Sets up all of the data structure members for a TfLiteTensor based on the
 // contents of a serialized tensor in the flatbuffer.
+// TODO(b/160894903): Once all kernels have been updated to the new
+// TfLiteEvalTensor API - drop the allocate_temp flag. This enables internal
+// flatbuffer quantization or dimension allocations to take place in either the
+// temp or tail section of the arena.
 TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
-    SimpleMemoryAllocator* allocator, const tflite::Tensor& flatbuffer_tensor,
+    SimpleMemoryAllocator* allocator, bool allocate_temp,
+    const tflite::Tensor& flatbuffer_tensor,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     ErrorReporter* error_reporter, TfLiteTensor* result);
 
 // A handle tracking scratch buffer allocation. This handle is created by
 // `RequestScratchBufferInArena`. `data` field is populated in
-// `FinishTensorAllocation` after static memory planning.
+// `FinishModelAllocation` after static memory planning.
 // TODO(b/150257460) As a future optimization, this struct could be replaced by
 // a union, since once `data` is populated, `bytes` and `node_idx` is not
 // needed.
@@ -119,6 +124,25 @@ class MicroAllocator {
   TfLiteStatus FinishModelAllocation(const Model* model,
                                      TfLiteContext* context);
 
+  // Allocates a TfLiteTensor struct and populates the returned value with
+  // properties from the model flatbuffer. This struct is allocated from
+  // persistent arena memory is only guaranteed for the lifetime of the
+  // application.
+  virtual TfLiteTensor* AllocatePersistentTfLiteTensor(const Model* model,
+                                                       int tensor_index);
+
+  // Allocates a TfLiteTensor struct and populates the returned value with
+  // properties from the model flatbuffer. This struct is allocated from
+  // temporary arena memory is only guaranteed until a call is made to
+  // ResetTempAllocations().
+  virtual TfLiteTensor* AllocateTempTfLiteTensor(const Model* model,
+                                                 int tensor_index);
+
+  // Resets all temporary allocations. This method should be called after a
+  // chain of temp allocations (e.g. chain of TfLiteTensor objects via
+  // AllocateTfLiteTensor()).
+  virtual void ResetTempAllocations();
+
   // Allocates persistent buffer which has the same life time as the allocator.
   // The memory is immediately available and is allocated from the tail of the
   // arena.
@@ -126,7 +150,7 @@ class MicroAllocator {
 
   // Register a scratch buffer of size `bytes` for Node with `node_id`.
   // This method only allocates a BufferHandle holding information for memory
-  // planning. The buffer ptr is ready after `FinishTensorAllocation` and can
+  // planning. The buffer ptr is ready after `FinishModelAllocation` and can
   // be retrieved by `GetScratchBuffer` method using the returned buffer_idx.
   // Note that there should be no tail allocation between two consecutive
   // `RequestScratchBufferInArena` calls.
@@ -136,7 +160,7 @@ class MicroAllocator {
   void* GetScratchBuffer(int buffer_idx) const;
 
   // Returns the arena usage in bytes, only available after
-  // `FinishTensorAllocation`. Otherwise, it will return 0.
+  // `FinishModelAllocation`. Otherwise, it will return 0.
   size_t used_bytes() const;
 
  protected:
@@ -147,6 +171,7 @@ class MicroAllocator {
   // Allocates an array in the arena to hold pointers to the tensors required
   // to initialize and prepare a model. These allocations are stored and
   // populated on the context.
+  // TODO(b/160894903): Remove this function when new kernel API is ready.
   virtual TfLiteStatus AllocateTfLiteTensorArray(TfLiteContext* context,
                                                  const SubGraph* subgraph);
 
@@ -154,6 +179,7 @@ class MicroAllocator {
   // prepare a model from data in the flatbuffer (loaded from the TfLiteModel
   // instance). Persistent data (e.g. quantization params) is allocated from the
   // arena.
+  // TODO(b/160894903): Remove this function when new kernel API is ready.
   virtual TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer(
       const Model* model, TfLiteContext* context, const SubGraph* subgraph);
 
@@ -179,17 +205,13 @@ class MicroAllocator {
   ErrorReporter* error_reporter() const;
 
  private:
-  // Initializes the graph and allocates TfLiteContext tensor data.
-  TfLiteStatus InitGraphAndContextTensorData(const Model* model,
-                                             TfLiteContext* context,
-                                             const SubGraph* subgraph);
-
   // Returns the first subgraph from the model.
   const SubGraph* GetSubGraphFromModel(const Model* model);
 
   // Commits a memory plan for all non-persistent buffer allocations in the
   // 'head' section of the memory arena.
-  virtual TfLiteStatus CommitStaticMemoryPlan(TfLiteContext* context,
+  virtual TfLiteStatus CommitStaticMemoryPlan(const Model* model,
+                                              TfLiteContext* context,
                                               const SubGraph* subgraph);
 
   // A simple memory allocator that always allocate from the arena tail or head.

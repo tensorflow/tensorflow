@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -239,11 +239,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     if (target_triple.isNVPTX()) {
       // "atom.add.f64 requires sm_60 or higher."
       // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
-      int cc_major = 0, cc_minor = 0;
-      ir_emitter_context_->device_description().cuda_compute_capability(
-          &cc_major, &cc_minor);
-
-      bool f64_atomic_add_supported = cc_major >= 6;
+      bool f64_atomic_add_supported =
+          ir_emitter_context_->cuda_compute_capability()->cc_major >= 6;
 
       bool atomic_add_supported =
           element_type == F32 ||

@@ -28,6 +28,10 @@ namespace profiler {
 
 using XStatValue = absl::variant<int64, uint64, absl::string_view>;
 
+XPlane* GetOrCreateHostXPlane(XSpace* space);
+
+XPlane* GetOrCreateGpuXPlane(XSpace* space, int32 device_ordinal);
+
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     absl::string_view event_name, int64 offset_ps, int64 duration_ps,

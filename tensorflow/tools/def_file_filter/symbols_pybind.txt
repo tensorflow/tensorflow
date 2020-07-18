@@ -17,6 +17,7 @@ tensorflow::swig::Flatten
 tensorflow::swig::IsSequenceForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
+tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 
@@ -98,8 +99,8 @@ tensorflow::data::GrpcDataServerBase::Join
 tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
 tensorflow::data::GrpcDataServerBase::BoundPort
-tensorflow::data::MasterGrpcDataServer::NumWorkers
-tensorflow::data::NewMasterServer
+tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::NewDispatchServer
 tensorflow::data::NewWorkerServer
 
 [protos_all]  # device_lib, dtypes
@@ -368,3 +369,7 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 [flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
+
+[tf32_utils] # tf32
+tensorflow::allow_tf32_execution
+tensorflow::tf32_execution_allowed

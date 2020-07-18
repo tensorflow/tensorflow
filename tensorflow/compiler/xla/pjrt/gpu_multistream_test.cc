@@ -72,18 +72,21 @@ TEST(GpuMultiStream, Basics) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto dummy_buffer,
         PjRtBuffer::FromHostBuffer(
-            dummy_inputs.data(), dummy_shape, /*force_copy=*/false,
+            dummy_inputs.data(), dummy_shape,
+            PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes,
             /*buffer_reference=*/nullptr, client.get(), device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer0,
-        PjRtBuffer::FromHostBuffer(inputs.data(), shape, /*force_copy=*/false,
-                                   /*buffer_reference=*/nullptr, client.get(),
-                                   device));
+        PjRtBuffer::FromHostBuffer(
+            inputs.data(), shape,
+            PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            /*buffer_reference=*/nullptr, client.get(), device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer1,
-        PjRtBuffer::FromHostBuffer(inputs.data(), shape, /*force_copy=*/false,
-                                   /*buffer_reference=*/nullptr, client.get(),
-                                   device));
+        PjRtBuffer::FromHostBuffer(
+            inputs.data(), shape,
+            PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            /*buffer_reference=*/nullptr, client.get(), device));
     // The execution may be enqueued before the transfers complete, requiring
     // adequate device-side synchronization.
     ExecuteOptions options;

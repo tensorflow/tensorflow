@@ -446,6 +446,12 @@ void EagerServiceImpl::RunComponentFunction(
         "Received RunComponentFunction request with remote function device. "));
     return;
   }
+  s = op->SetAttrBool("is_component_function", true);
+  if (!s.ok()) {
+    done(errors::Internal("Error setting is_component_function attribute: ",
+                          s.error_message()));
+    return;
+  }
 
   auto* retvals = new absl::FixedArray<TensorHandle*>(*num_retvals);
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
@@ -491,7 +497,11 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
   absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
-  TF_RETURN_IF_ERROR(EagerExecute(&op, retvals.data(), &num_retvals));
+  TF_RETURN_IF_ERROR(op.Execute(
+      absl::MakeSpan(
+          reinterpret_cast<tensorflow::AbstractTensorHandle**>(retvals.data()),
+          num_retvals),
+      &num_retvals));
 
   return AddOpRetvalsToResponse(
       eager_context, operation.id(), num_retvals, retvals.data(),
@@ -685,7 +695,7 @@ Status EagerServiceImpl::SendPackedHandle(
   // Create a unshaped packed TensorHandle.
   TF_RETURN_IF_ERROR(TensorHandle::CreatePackedHandle(
       std::move(handles_to_pack), handles.at(0)->dtype, TensorShape(),
-      eager_context, &packed_handle));
+      send_packed_handle.device_name(), eager_context, &packed_handle));
 
   for (auto* h : handles) {
     // Unref handle since it has a ref in the packed handle now.

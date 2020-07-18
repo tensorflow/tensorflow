@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -43,12 +44,6 @@ void AddTensorFlowOpEvent(absl::string_view tf_op_fullname,
                              tf_op_fullname);
 }
 
-void SetXPlaneNameAndId(absl::string_view name, int64 id,
-                        XPlaneBuilder* plane) {
-  plane->SetName(name);
-  plane->SetId(id);
-}
-
 TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   static constexpr char kTfOp1[] = "TfOp1";
   static constexpr char kTfOp2[] = "TfOp2";
@@ -57,9 +52,9 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   constexpr int64 kTfOp2StartNs = 110000;
   constexpr int64 kTfOp2DurationNs = 10000;
 
-  XPlane xplane;
-  XPlaneBuilder host_plane(&xplane);
-  SetXPlaneNameAndId(kHostThreads, /*id=*/0, &host_plane);
+  XSpace xspace;
+  XPlane* xplane = GetOrCreateHostXPlane(&xspace);
+  XPlaneBuilder host_plane(xplane);
   XLineBuilder thread1 = host_plane.GetOrCreateLine(/*line_id=*/10);
   AddTensorFlowOpEvent(absl::StrCat(kTfOp1, ":", kTfOp1), kTfOp1StartNs,
                        kTfOp1DurationNs, /*on_device=*/false,
@@ -72,7 +67,7 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
                        kTfOp2DurationNs, /*on_device=*/false,
                        /*kernel_name=*/"", &host_plane, &thread2);
 
-  OpMetricsDb op_metrics = ConvertHostThreadsXPlaneToOpMetricsDb(xplane);
+  OpMetricsDb op_metrics = ConvertHostThreadsXPlaneToOpMetricsDb(*xplane);
   // Op1, Op2, Idle.
   EXPECT_EQ(3, op_metrics.metrics_db_size());
   uint64 total_op_duration =
@@ -115,10 +110,9 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   constexpr int64 kKernel3StartNs = 120000;
   constexpr int64 kKernel3DurationNs = 10000;
 
-  XPlane xplane;
-  XPlaneBuilder device_plane(&xplane);
-  SetXPlaneNameAndId(absl::StrCat(kGpuPlanePrefix, ":0"), /*id=*/1,
-                     &device_plane);
+  XSpace xspace;
+  XPlane* xplane = GetOrCreateGpuXPlane(&xspace, /*device_ordinal=*/0);
+  XPlaneBuilder device_plane(xplane);
   XLineBuilder stream1 = device_plane.GetOrCreateLine(/*line_id=*/10);
   AddTensorFlowOpEvent(absl::StrCat(kTfOp1, ":", kTfOp1), kKernel1StartNs,
                        kKernel1DurationNs, /*on_device=*/true, kKernel1,
@@ -138,7 +132,7 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
                        &device_plane, &stream2);
 
   OpMetricsDb op_metrics = ConvertDeviceTraceXPlaneToOpMetricsDb(
-      xplane, /*peak_tera_flops_per_second=*/0,
+      *xplane, /*peak_tera_flops_per_second=*/0,
       /*peak_hbm_bw_giga_bytes_per_second=*/0);
 
   // kernel1, kernel2, kernel3, Idle.

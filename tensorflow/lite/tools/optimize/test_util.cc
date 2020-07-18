@@ -48,6 +48,7 @@ const char* kModelWithArgMaxOp = "argmax.bin";
 const char* kModelWithFCOp = "fc.bin";
 
 const char* kModelMixed = "mixed.bin";
+const char* kModelMixed16x8 = "mixed16x8.bin";
 
 const char* kModelSplit = "split.bin";
 
@@ -60,6 +61,8 @@ const char* kModelWithMinimumOp = "minimum.bin";
 const char* kModelWithMaximumOp = "maximum.bin";
 const char* kLstmCalibrated2 = "lstm_calibrated2.bin";
 const char* kLstmQuantized2 = "lstm_quantized2.bin";
+
+const char* kModelWithTranspose = "transpose.bin";
 
 const char* kSvdfCalibrated = "svdf_calibrated.bin";
 const char* kSvdfQuantized = "svdf_quantized.bin";

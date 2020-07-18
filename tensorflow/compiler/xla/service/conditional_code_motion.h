@@ -23,26 +23,80 @@ limitations under the License.
 
 namespace xla {
 
-// HLO pass that moves identical ops out of conditional.
+namespace conditional_opt {
+// At the conceptural level, a boundary can be thought of as representing a
+// single virtual operation, except this virtual operation is conditionally
+// instantiated into different concrete operations at each conditional branch.
+// So a boundary is mapped to a single concrete operation if it is outside of
+// conditional branches, and is mapped to a list of instructions if inside the
+// branches. This data structure therefore allows a common data structure
+// representation of the instructions to be moved, whether  they are inside or
+// outside of the branches. Subsequently, it allows a common implementation
+// basis to be used for both moving instructions out of and for moving them
+// inside branches.
+class Boundary {
+ public:
+  enum class Position { kInsideBranch, kOutsideBranch };
+  explicit Boundary(Position p) : position_(p) {}
+  std::vector<HloInstruction*>& Operands() { return operands_; }
+  const std::vector<HloInstruction*>& Operands() const { return operands_; }
+  bool IsInsideBranch() const { return position_ == Position::kInsideBranch; }
+  bool IsOutsideBranch() const { return position_ == Position::kOutsideBranch; }
+  Position GetPosition() const { return position_; }
+  bool IsEmpty() const { return operands_.empty(); }
+  std::string ToString() const {
+    std::string res;
+    for (HloInstruction* op : operands_) {
+      res += op->ToString() + ";";
+    }
+    return res;
+  }
+
+ private:
+  // Boundary instructions in the conditional branches, one from each branch
+  // of the conditional.
+  std::vector<HloInstruction*> operands_;
+  Position position_;
+};
+
+// HLO pass that moves identical ops in/out of conditional.
 // - The definition of identical are the shape of the operands are identical
 // and their properties are identical.
-// - Currently, only some types of instructions is supported.
-// TODO(b/154283721): relax non-sharable operand constraint and avoid copies in
-// the new root.
 // - Only the identical ops that won't share operands with other ops will
 // be moved out of conditional.
 class ConditionalCodeMotion : public HloModulePass {
  public:
   // If is_layout_sensitive is true, then the hoist process preserves layout
   // during identical comparison. Otherwise, layout is ignored.
-  explicit ConditionalCodeMotion(bool is_layout_sensitive = true)
-      : is_layout_sensitive_(is_layout_sensitive) {}
+  explicit ConditionalCodeMotion(bool is_layout_sensitive,
+                                 bool pursue_full_conditional_code_motion)
+      : is_layout_sensitive_(is_layout_sensitive),
+        pursue_full_conditional_code_motion_(
+            pursue_full_conditional_code_motion) {}
   absl::string_view name() const override { return "conditional-code-motion"; }
   StatusOr<bool> Run(HloModule* module) override;
 
+  // Optimization decision for each boundary of the conditional instruction.
+  enum class Decision { kMoveOutOfBranch, kMoveIntoBranch, kNoChange };
+  // If the optimization decision is NO_CHANGE, new_boundary is set to nullptr;
+  // otherwise, it is set to the new boundary after proposed optimization.
+  virtual Decision ConsiderCodeMotion(HloInstruction* conditional,
+                                      const Boundary& cur_boundary,
+                                      std::vector<Boundary>& to_move,
+                                      std::vector<Boundary>& new_boundaries);
+
  private:
   const bool is_layout_sensitive_;
+  const bool pursue_full_conditional_code_motion_;
+
+  StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
+                                    std::vector<Boundary>& to_move_out,
+                                    std::vector<Boundary>& new_boundaries);
+  StatusOr<bool> MoveInstructionIn(HloInstruction* conditional,
+                                   std::vector<Boundary>& to_move_in,
+                                   std::vector<Boundary>& new_boundaries);
 };
+}  // namespace conditional_opt
 
 }  // namespace xla
 

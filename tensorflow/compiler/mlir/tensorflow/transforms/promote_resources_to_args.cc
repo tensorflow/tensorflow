@@ -80,11 +80,11 @@ constexpr char kResourceNameArgAttr[] = "tf.resource_name";
 
 // Checks if a function has only one block.
 mlir::LogicalResult CheckSingleBlockFunction(FuncOp function) {
-  if (!hasSingleElement(function.getBlocks()))
+  if (!llvm::hasSingleElement(function)) {
     return function.emitError()
            << "expects function '" << function.getName()
            << "' to have 1 block, got " << function.getBlocks().size();
-
+  }
   return success();
 }
 
@@ -97,8 +97,7 @@ llvm::SmallSet<llvm::StringRef, 1> GetCompositeResourceUserNames(
   // the error message are ordered.
   llvm::SmallSet<llvm::StringRef, 1> composite_users;
   for (Operation* user : resource.getUsers())
-    if (!llvm::isa<TF::ReadVariableOp>(user) &&
-        !llvm::isa<TF::AssignVariableOp>(user))
+    if (!llvm::isa<TF::ReadVariableOp, TF::AssignVariableOp>(user))
       composite_users.insert(user->getName().getStringRef());
 
   return composite_users;

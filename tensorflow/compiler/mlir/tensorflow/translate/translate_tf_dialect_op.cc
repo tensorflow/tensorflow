@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -26,12 +27,12 @@ static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
   mlir::FuncOp fn = module.lookupSymbol<mlir::FuncOp>("main");
   if (!fn) return nullptr;
 
-  if (fn.getBlocks().size() != 1) return nullptr;
+  if (!llvm::hasSingleElement(fn)) return nullptr;
 
   // Here, modules with exactly two operations in the only basic block are
   // supported. The last operation should be a terminator operation and the
   // other operation is the operation of interest.
-  auto& block = fn.getBlocks().front();
+  auto& block = fn.front();
   if (block.getOperations().size() != 2) return nullptr;
   if (!block.back().isKnownTerminator()) return nullptr;
 

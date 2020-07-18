@@ -1012,7 +1012,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testReturnValueError(self, apply_map):
     dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Unsupported return value from function passed to "
         r"Dataset.map\(\)"):
       _ = apply_map(dataset, lambda x: Foo)
