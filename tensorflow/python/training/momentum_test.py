@@ -209,7 +209,6 @@ class MomentumOptimizerTest(test.TestCase):
         accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
         var0 = variables.Variable(var0_np)
         var1 = variables.Variable(var1_np)
-        loss = 5 * var0 * var0 + 3 * var1
         mom_op = momentum_lib.MomentumOptimizer(
             learning_rate=2.0, momentum=0.9, use_nesterov=True)
         x_feed = array_ops.placeholder(dtype)
