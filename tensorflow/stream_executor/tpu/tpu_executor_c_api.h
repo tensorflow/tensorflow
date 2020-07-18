@@ -43,6 +43,11 @@ typedef struct SE_DeviceMemoryBase {
   uint64_t payload;
 } SE_DeviceMemoryBase;
 
+typedef struct SE_ScopedDeviceMemory {
+  SE_DeviceMemoryBase wrapped;
+  int device_ordinal;
+} SE_ScopedDeviceMemory;
+
 typedef struct SE_AllocatorStats {
   int64_t num_allocs;
   int64_t bytes_in_use;
@@ -249,6 +254,8 @@ int64_t TpuTimer_Microseconds(SE_Timer*);
 
 SE_Status* TpuStatus_New();
 SE_Status* TpuStatus_Create(int32_t code, const char* msg);
+void TpuStatus_Set(SE_Status* status, int32_t code, const char* msg,
+                   int32_t len);
 void TpuStatus_Free(SE_Status* status);
 const char* TpuStatus_Message(SE_Status* status);
 int TpuStatus_Code(SE_Status* status);
@@ -308,6 +315,137 @@ int TpuCoreLocation_ChipCoordinates_Y(void* tpu_core_location);
 int TpuCoreLocation_ChipCoordinates_Z(void* tpu_core_location);
 int TpuCoreLocation_Index(void* tpu_core_location);
 int TpuCoreLocation_Id(void* tpu_core_location);
+
+// C API for XLA::Compiler interface
+
+// Note, due to the... odd way in which DeviceMemoryAllocator is used in TF, we
+// cannot simply wrap an underlying pointer. Instead, we reverse the call
+// direction and request memory via a callback.
+typedef void (*SE_AllocateFn)(void* ctx, int device_ordinal, uint64_t size,
+                              bool retry_on_failure, int64_t memory_space,
+                              SE_ScopedDeviceMemory* result, SE_Status* status);
+
+typedef void (*SE_DeallocateFn)(void* ctx, SE_DeviceMemoryBase* base,
+                                int device_ordinal, SE_Status* status);
+
+typedef struct SE_DeviceMemoryAllocator {
+  SE_Platform* platform;
+  void* ctx;
+  SE_AllocateFn allocate;
+  SE_DeallocateFn deallocate;
+} SE_DeviceMemoryAllocator;
+
+typedef struct Tpu_Compiler Tpu_Compiler;
+typedef struct SE_Executable SE_Executable;
+
+typedef struct SE_ExecutableRunOptions {
+  SE_DeviceMemoryAllocator allocator;
+  int device_ordinal;
+  SE_Stream* stream;
+} SE_ExecutableRunOptions;
+
+typedef struct SE_MaybeOwningDeviceMemory {
+  SE_DeviceMemoryBase memory;
+  bool owned;
+
+  // Set if owned
+  int device_ordinal;
+  SE_DeviceMemoryAllocator allocator;
+} SE_MaybeOwningDeviceMemory;
+
+typedef struct XLA_MaybeOwningDeviceMemoryShapeTree {
+  XLA_Shape shape;
+  SE_MaybeOwningDeviceMemory* buffers;
+} XLA_MaybeOwningDeviceMemoryShapeTree;
+
+typedef struct XLA_ShapeIndex {
+  int64_t indices[8];
+  int64_t count;
+} XLA_ShapeIndex;
+
+typedef struct SE_ExecutionInput {
+  XLA_MaybeOwningDeviceMemoryShapeTree shape_tree;
+  XLA_ShapeIndex* unowned_indices;
+  int unowned_indices_size;
+  XLA_Shape dynamic_shape;
+  XLA_Shape host_shape;
+} SE_ExecutionInput;
+
+typedef struct SE_ExecutionOutput {
+  XLA_ShapedBuffer result;
+  SE_MaybeOwningDeviceMemory* to_be_released;
+  int to_be_released_size;
+  XLA_ShapeIndex* aliased_indices;
+  int aliased_indices_size;
+} SE_ExecutionOutput;
+
+typedef struct XLA_ComputationLayout {
+  int parameter_count;
+  XLA_Shape* parameter_layouts;
+  XLA_Shape result_layout;
+} XLA_ComputationLayout;
+
+typedef struct XLA_HloModuleConfig {
+  uint64_t seed;
+  int32_t launch_id;
+  int64_t replica_count;
+  int64_t num_partitions;
+  bool use_spmd_partitioning;
+  bool has_static_device_assignment;
+  TpuSerializedProto static_device_assignment;
+  bool has_entry_computation_layout;
+  XLA_ComputationLayout entry_computation_layout;
+} XLA_HloModuleConfig;
+
+typedef struct SE_HloExecutionProfile SE_HloExecutionProfile;
+
+TFTPU_CAPI_EXPORT Tpu_Compiler* TpuCompiler_New();
+TFTPU_CAPI_EXPORT void TpuCompiler_Free(Tpu_Compiler* compiler);
+
+struct SE_StreamExecutorList {
+  SE_StreamExecutor** exec;
+  int count;
+};
+
+typedef struct XLA_HloModuleGroup {
+  TpuSerializedProto proto;
+  XLA_HloModuleConfig* module_config;
+} XLA_HloModuleGroup;
+
+typedef struct XLA_HloModule {
+  TpuSerializedProto proto;
+  XLA_HloModuleConfig module_config;
+} XLA_HloModule;
+
+TFTPU_CAPI_EXPORT void TpuCompiler_RunHloPasses(
+    Tpu_Compiler* compiler, XLA_HloModule* se_hlo_module,
+    SE_StreamExecutor* stream_executor, SE_DeviceMemoryAllocator* allocator,
+    XLA_HloModule* result, SE_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuCompiler_RunBackend(
+    Tpu_Compiler* compiler, XLA_HloModule* se_hlo_module,
+    SE_StreamExecutor* stream_executor, SE_DeviceMemoryAllocator* allocator,
+    SE_Executable** result, SE_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuCompiler_Compile(
+    Tpu_Compiler* compiler, XLA_HloModuleGroup* se_hlo_module_group,
+    SE_StreamExecutorList* stream_exec_lists, int num_lists,
+    SE_DeviceMemoryAllocator* allocator, SE_Executable** executables,
+    SE_Status* status);
+
+TFTPU_CAPI_EXPORT int64_t TpuCompiler_ShapeSize(Tpu_Compiler* compiler,
+                                                XLA_Shape* c_shape);
+
+TFTPU_CAPI_EXPORT void TpuExecutable_HloModule(SE_Executable* executable,
+                                               TpuSerializedProto* proto);
+
+TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
+    SE_Executable* executable, SE_ExecutableRunOptions* run_options,
+    SE_ExecutionInput** se_arguments, int se_arguments_size,
+    SE_HloExecutionProfile* hlo_execution_profile, SE_ExecutionOutput* output,
+    SE_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuExecutable_Free(SE_Executable*);
 
 struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_New);

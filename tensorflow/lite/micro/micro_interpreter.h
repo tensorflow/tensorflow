@@ -191,6 +191,11 @@ class MicroInterpreter {
 
   const SubGraph* subgraph_;
   internal::ContextHelper context_helper_;
+
+  // TODO(b/160894903): Clean these pointers up when all APIs are updated to new
+  // TfLiteEvalTensor buffers.
+  TfLiteTensor* input_tensor_;
+  TfLiteTensor* output_tensor_;
 };
 
 }  // namespace tflite

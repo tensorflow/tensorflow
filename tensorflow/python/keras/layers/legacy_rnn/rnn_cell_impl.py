@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_wrapper_impl
 from tensorflow.python.keras.utils import tf_utils
@@ -250,7 +251,7 @@ class RNNCell(base_layer.Layer):
     else:
       trainable = (
           variable in tf_variables.trainable_variables() or
-          (isinstance(variable, tf_variables.PartitionedVariable) and
+          (base_layer_utils.is_split_variable(variable) and
            list(variable)[0] in tf_variables.trainable_variables()))
     if trainable and all(variable is not v for v in self._trainable_weights):
       self._trainable_weights.append(variable)

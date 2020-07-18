@@ -2827,11 +2827,21 @@ class StrategyExtendedV1(StrategyExtendedV2):
 #   and switches the thread mode to a "cross-replica context".
 @tf_export("distribute.ReplicaContext")
 class ReplicaContext(object):
-  """`tf.distribute.Strategy` API when in a replica context.
+  """A class with a collection of APIs that can be called in a replica context.
 
   You can use `tf.distribute.get_replica_context` to get an instance of
-  `ReplicaContext`. This should be inside your replicated step function, such
-  as in a `tf.distribute.Strategy.run` call.
+  `ReplicaContext`, which can only be called inside the function passed to
+  `tf.distribute.Strategy.run`.
+
+  >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'GPU:1'])
+  >>> def func():
+  ...   replica_context = tf.distribute.get_replica_context()
+  ...   return replica_context.replica_id_in_sync_group
+  >>> strategy.run(func)
+  PerReplica:{
+    0: <tf.Tensor: shape=(), dtype=int32, numpy=0>,
+    1: <tf.Tensor: shape=(), dtype=int32, numpy=1>
+  }
   """
 
   def __init__(self, strategy, replica_id_in_sync_group):
@@ -2906,16 +2916,16 @@ class ReplicaContext(object):
 
   @property
   def num_replicas_in_sync(self):
-    """Returns number of replicas over which gradients are aggregated."""
+    """Returns number of replicas that are kept in sync."""
     return self._strategy.num_replicas_in_sync
 
   @property
   def replica_id_in_sync_group(self):
-    """Returns the id of the replica being defined.
+    """Returns the id of the replica.
 
-    This identifies the replica that is part of a sync group. Currently we
-    assume that all sync groups contain the same number of replicas. The value
-    of the replica id can range from 0 to `num_replica_in_sync` - 1.
+    This identifies the replica among all replicas that are kept in sync. The
+    value of the replica id can range from 0 to
+    `tf.distribute.ReplicaContext.num_replicas_in_sync` - 1.
 
     NOTE: This is not guaranteed to be the same ID as the XLA replica ID use
     for low-level operations such as collective_permute.
