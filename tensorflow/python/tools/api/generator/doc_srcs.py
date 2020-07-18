@@ -47,6 +47,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'distributions': DocSource(
         docstring_module_name='ops.distributions.distributions'),
     'errors': DocSource(docstring_module_name='framework.errors'),
+    'experimental.numpy': DocSource(docstring_module_name='ops.numpy_ops'),
     'gfile': DocSource(docstring_module_name='platform.gfile'),
     'graph_util': DocSource(docstring_module_name='framework.graph_util'),
     'image': DocSource(docstring_module_name='ops.image_ops'),
