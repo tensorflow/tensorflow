@@ -678,7 +678,7 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
                                      TF_ReadOnlyMemoryRegion* region,
                                      TF_Status* status) {
   Aws::String bucket, object;
-  ParseS3Path(path, true, &bucket, &object, status);
+  ParseS3Path(path, false, &bucket, &object, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
