@@ -64,6 +64,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "threadsafe_status",
+    srcs = ["threadsafe_status.cc"],
+    hdrs = ["threadsafe_status.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
 tf_cc_test(
     name = "batch_scheduler_test",
     srcs = ["batch_scheduler_test.cc"],
