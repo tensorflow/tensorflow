@@ -710,6 +710,56 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
   TF_SetStatus(status, TF_OK, "");
 }
 
+static void SimpleCopyFile(const Aws::String& source,
+                           const Aws::String& bucket_dst,
+                           const Aws::String& object_dst, S3File* s3_file,
+                           TF_Status* status){};
+
+static void MultiPartCopy(const Aws::String& source,
+                          const Aws::String& bucket_dst,
+                          const Aws::String& object_dst, const size_t num_parts,
+                          const uint64_t file_size, S3File* s3_file,
+                          TF_Status* status){};
+
+void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
+              TF_Status* status) {
+  auto file_size = GetFileSize(filesystem, src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  if (file_size == 0)
+    return TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                        "Source is a directory or empty file");
+
+  Aws::String bucket_src, object_src;
+  ParseS3Path(src, false, &bucket_src, &object_src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  Aws::String copy_src = bucket_src + "/" + object_src;
+
+  Aws::String bucket_dst, object_dst;
+  ParseS3Path(dst, false, &bucket_dst, &object_dst, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  auto chunk_size =
+      s3_file->multi_part_chunk_sizes[Aws::Transfer::TransferDirection::UPLOAD];
+  size_t num_parts = 1;
+  if (file_size > chunk_size) num_parts = ceil((float)file_size / chunk_size);
+  if (num_parts == 1)
+    SimpleCopyFile(copy_src, bucket_dst, object_dst, s3_file, status);
+  else if (num_parts > 10000)
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        absl::StrCat("MultiPartCopy with number of parts more than 10000 is "
+                     "not supported. Your object ",
+                     src, " required ", num_parts,
+                     " as multi_part_copy_part_size is set to ", chunk_size,
+                     ". You can control this part size using the environment "
+                     "variable S3_MULTI_PART_COPY_PART_SIZE to increase it.")
+            .c_str());
+  else
+    MultiPartCopy(copy_src, bucket_dst, object_dst, num_parts, file_size,
+                  s3_file, status);
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_s3_filesystem
