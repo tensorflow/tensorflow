@@ -49,17 +49,8 @@ struct AllocationInfo {
 // We align tensor buffers to 16-byte boundaries, since this is a common
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
-
 constexpr char kOfflineMemAllocMetadata[] = "OfflineMemoryAllocation";
-
-// Instance of a zero-length int to pass as tensor dims for a flatbuffer
-// Tensor with no shape. Note that the second member of a TfLiteArray is a
-// flexible array member, which is not strictly valid C++. However it is
-// supported by both GCC and clang, as long as the flexible array element is not
-// initialized, which is ok in this case as it should never be accessed.
-// Declaring this as constexpr causes build errors with clang, as it requires
-// the flexible array element to be initialized.
-const TfLiteIntArray kZeroLengthIntArray = {0};
+const TfLiteIntArray kZeroLengthIntArray = {0, {}};
 
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
@@ -394,6 +385,8 @@ namespace internal {
 
 // Handles architecture safe mapping of flatbuffer vectors to a TfLite*Array
 // struct. Matching types are required (e.g. float and TfLiteFloatArray).
+// Big-endian systems will always allocate dimension array data in the tail
+// (persistent) section.
 template <typename kFlatBufferVectorType, typename kTfLiteArrayType>
 TfLiteStatus FlatBufferVectorToTfLiteTypeArray(
     SimpleMemoryAllocator* allocator, ErrorReporter* error_reporter,
@@ -435,7 +428,8 @@ TfLiteStatus FlatBufferVectorToTfLiteTypeArray(
 }
 
 TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
-    SimpleMemoryAllocator* allocator, const tflite::Tensor& flatbuffer_tensor,
+    SimpleMemoryAllocator* allocator, bool allocate_temp,
+    const tflite::Tensor& flatbuffer_tensor,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     ErrorReporter* error_reporter, TfLiteTensor* result) {
   *result = {};
@@ -517,9 +511,14 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
     // Populate per-channel quantization params.
     int channels = src_quantization->scale()->size();
     TfLiteAffineQuantization* quantization =
-        reinterpret_cast<TfLiteAffineQuantization*>(
-            allocator->AllocateFromTail(sizeof(TfLiteAffineQuantization),
-                                        alignof(TfLiteAffineQuantization)));
+        allocate_temp
+            ? reinterpret_cast<TfLiteAffineQuantization*>(
+                  allocator->AllocateTemp(sizeof(TfLiteAffineQuantization),
+                                          alignof(TfLiteAffineQuantization)))
+            : reinterpret_cast<TfLiteAffineQuantization*>(
+                  allocator->AllocateFromTail(
+                      sizeof(TfLiteAffineQuantization),
+                      alignof(TfLiteAffineQuantization)));
     if (quantization == nullptr) {
       TF_LITE_REPORT_ERROR(error_reporter,
                            "Unable to allocate TfLiteAffineQuantization.\n");
@@ -530,8 +529,13 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
     // buffer. This value can not be reused from the flatbuffer since the
     // zero_point is stored as a int64_t.
     quantization->zero_point =
-        reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
-            TfLiteIntArrayGetSizeInBytes(channels), alignof(TfLiteIntArray)));
+        allocate_temp
+            ? reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
+                  TfLiteIntArrayGetSizeInBytes(channels),
+                  alignof(TfLiteIntArray)))
+            : reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
+                  TfLiteIntArrayGetSizeInBytes(channels),
+                  alignof(TfLiteIntArray)));
     if (quantization->zero_point == nullptr) {
       TF_LITE_REPORT_ERROR(error_reporter,
                            "Unable to allocate quantization->zero_point.\n");
@@ -728,8 +732,9 @@ TfLiteStatus MicroAllocator::PopulateTfLiteTensorArrayFromFlatbuffer(
   // Initialize tensors in context_ using the flatbuffer for quantization data.
   for (size_t i = 0; i < subgraph->tensors()->size(); ++i) {
     TfLiteStatus status = internal::InitializeTfLiteTensorFromFlatbuffer(
-        memory_allocator_, *subgraph->tensors()->Get(i), model->buffers(),
-        error_reporter_, &context->tensors[i]);
+        memory_allocator_, /*allocate_temp=*/false,
+        *subgraph->tensors()->Get(i), model->buffers(), error_reporter_,
+        &context->tensors[i]);
     if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_, "Failed to initialize tensor %d",
                            i);
@@ -842,8 +847,25 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
   return kTfLiteOk;
 }
 
-TfLiteTensor* MicroAllocator::AllocateTfLiteTensor(const Model* model,
-                                                   int subgraph_idx) {
+TfLiteTensor* MicroAllocator::AllocatePersistentTfLiteTensor(const Model* model,
+                                                             int tensor_index) {
+  const SubGraph* subgraph = GetSubGraphFromModel(model);
+  TFLITE_DCHECK(subgraph != nullptr);
+
+  // This value is allocated from persistent arena space. It is guaranteed to be
+  // around for the lifetime of the application.
+  TfLiteTensor* tensor =
+      reinterpret_cast<TfLiteTensor*>(memory_allocator_->AllocateFromTail(
+          sizeof(TfLiteTensor), alignof(TfLiteTensor)));
+  internal::InitializeTfLiteTensorFromFlatbuffer(
+      memory_allocator_, /*allocate_temp=*/false,
+      *subgraph->tensors()->Get(tensor_index), model->buffers(),
+      error_reporter_, tensor);
+  return tensor;
+}
+
+TfLiteTensor* MicroAllocator::AllocateTempTfLiteTensor(const Model* model,
+                                                       int tensor_index) {
   const SubGraph* subgraph = GetSubGraphFromModel(model);
   TFLITE_DCHECK(subgraph != nullptr);
 
@@ -854,8 +876,9 @@ TfLiteTensor* MicroAllocator::AllocateTfLiteTensor(const Model* model,
       reinterpret_cast<TfLiteTensor*>(memory_allocator_->AllocateTemp(
           sizeof(TfLiteTensor), alignof(TfLiteTensor)));
   internal::InitializeTfLiteTensorFromFlatbuffer(
-      memory_allocator_, *subgraph->tensors()->Get(subgraph_idx),
-      model->buffers(), error_reporter_, tensor);
+      memory_allocator_, /*allocate_temp=*/true,
+      *subgraph->tensors()->Get(tensor_index), model->buffers(),
+      error_reporter_, tensor);
   return tensor;
 }
 

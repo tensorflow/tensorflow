@@ -217,7 +217,7 @@ TF_LITE_MICRO_TEST(SimpleTestTanhUInt8) {
 
   const float input_scale = 16 / 256.f;
   const int input_zero_point = 128;
-  const float output_scale = 1.99999955 / 256.f;
+  const float output_scale = 1.99999955f / 256.f;
   const int output_zero_point = 128;
 
   const int input_shape[] = {2, 1, tanh_vec_size};
@@ -245,7 +245,7 @@ TF_LITE_MICRO_TEST(SimpleTestTanhUInt8) {
 
   const float input_scale = 16 / 256.f;
   const int input_zero_point = 0;
-  const float output_scale = 1.99999955 / 256.f;
+  const float output_scale = 1.99999955f / 256.f;
   const int output_zero_point = 0;
 
   const int input_shape[] = {2, 1, tanh_vec_size};

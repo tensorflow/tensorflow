@@ -877,5 +877,13 @@ HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
       output_shape, hlo, start_indices, limit_indices, strides));
 }
 
+// Check if a dimension is sharded.
+int64 ShardCountAtDim(const HloSharding& sharding, int64 dim) {
+  if (sharding.IsTileMaximal()) {
+    return 1;
+  }
+  return sharding.tile_assignment().dim(dim);
+}
+
 }  // namespace spmd
 }  // namespace xla

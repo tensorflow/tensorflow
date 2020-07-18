@@ -527,7 +527,7 @@ class CodeGenerator(NodeStateTracker, gast.NodeVisitor):
       self.ctx.current_origin = anno.getanno(node, anno.Basic.ORIGIN)
 
     try:
-      super(CodeGenerator, self).visit(node)
+      ret = super(CodeGenerator, self).visit(node)
 
       # By default, all replacements receive the origin info of the replaced
       # node.
@@ -537,5 +537,6 @@ class CodeGenerator(NodeStateTracker, gast.NodeVisitor):
             node, anno.Basic.ORIGIN, default=parent_origin)
         if inherited_origin is not None:
           self.source_map[(eof_before, eof_after)] = inherited_origin
+      return ret
     finally:
       self.ctx.current_origin = parent_origin

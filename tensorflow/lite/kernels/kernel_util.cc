@@ -30,18 +30,31 @@ namespace tflite {
 
 const TfLiteTensor* GetInput(const TfLiteContext* context,
                              const TfLiteNode* node, int index) {
-  return &context->tensors[node->inputs->data[index]];
+  if (context->tensors != nullptr) {
+    return &context->tensors[node->inputs->data[index]];
+  } else {
+    return context->GetTensor(context, node->inputs->data[index]);
+  }
 }
 
 TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
-  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
-  return (tensor->is_variable) ? tensor : nullptr;
+  TfLiteTensor* tensor = nullptr;
+  if (context->tensors != nullptr) {
+    tensor = &context->tensors[node->inputs->data[index]];
+  } else {
+    tensor = context->GetTensor(context, node->inputs->data[index]);
+  }
+  return tensor->is_variable ? tensor : nullptr;
 }
 
 TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                         int index) {
-  return &context->tensors[node->outputs->data[index]];
+  if (context->tensors != nullptr) {
+    return &context->tensors[node->outputs->data[index]];
+  } else {
+    return context->GetTensor(context, node->outputs->data[index]);
+  }
 }
 
 const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
@@ -49,7 +62,11 @@ const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
   const bool use_tensor = index < node->inputs->size &&
                           node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
-    return &context->tensors[node->inputs->data[index]];
+    if (context->tensors != nullptr) {
+      return &context->tensors[node->inputs->data[index]];
+    } else {
+      return context->GetTensor(context, node->inputs->data[index]);
+    }
   }
   return nullptr;
 }

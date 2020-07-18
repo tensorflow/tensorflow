@@ -83,6 +83,7 @@
 #     release_common:       Common options for all builds on all operating systems.
 #     release_gpu_common:   Common options for GPU builds on Linux and Windows.
 #     release_cpu_linux:    Toolchain and CUDA options for Linux CPU builds.
+#     release_cpu_macos:    Toolchain and CUDA options for MacOS CPU builds.
 #     release_gpu_linux:    Toolchain and CUDA options for Linux PU builds.
 
 # Allow builds using libc++ as a linker library
@@ -550,6 +551,9 @@ build:release_cpu_linux --config=avx_linux
 # We use the same toolchain for CPU/GPU packages.
 # Did not add this to the defaults in case this changes.
 build:release_cpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
+
+build:release_cpu_macos --config=release_common
+build:release_cpu_macos --config=avx_linux
 
 build:release_gpu_common --config=release_common
 build:release_gpu_common --config=cuda

@@ -298,8 +298,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
     auto nloops = resultType.getRank();
     auto loc = op.getLoc();
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, isLHLO ? ArrayRef<Type>{} : resultType, args, /*inputCount=*/1,
-        /*outputCount=*/1, indexing_maps, GetNParallelLoopsAttrs(nloops),
+        loc, isLHLO ? ArrayRef<Type>{} : resultType, args, /*argsIn=*/1,
+        /*argsOut=*/1, indexing_maps, GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
           nestedBuilder.create<linalg::YieldOp>(loc, *args.begin());
         });
@@ -420,7 +420,7 @@ class LhloBroadcastInDimConverter
           rewriter.create<LoadOp>(loc, operand, llvm::makeArrayRef({zero}));
       rewriter.create<linalg::GenericOp>(
           loc, llvm::None, llvm::makeArrayRef(operand_adaptor.output()),
-          /*inputCount=*/0, /*outputCount=*/1,
+          /*argsIn=*/0, /*argsOut=*/1,
           llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
           GetNParallelLoopsAttrs(nloops),
           [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
@@ -433,7 +433,7 @@ class LhloBroadcastInDimConverter
       rewriter.create<linalg::GenericOp>(
           loc, llvm::None,
           llvm::makeArrayRef({operand, operand_adaptor.output()}),
-          /*inputCount=*/1, /*outputCount=*/1, indexing_maps,
+          /*argsIn=*/1, /*argsOut=*/1, indexing_maps,
           GetNParallelLoopsAttrs(nloops),
           [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
             nestedBuilder.create<linalg::YieldOp>(loc, *args.begin());

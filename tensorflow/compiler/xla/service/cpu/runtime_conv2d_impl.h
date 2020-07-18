@@ -19,6 +19,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
 #include "tensorflow/core/platform/types.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 // 'tensorflow' namespace is used so that int64 and other types don't require
 // qualification.
 namespace tensorflow {

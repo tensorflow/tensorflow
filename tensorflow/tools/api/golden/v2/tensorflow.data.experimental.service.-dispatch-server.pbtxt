@@ -1,6 +1,6 @@
-path: "tensorflow.data.experimental.service.MasterServer"
+path: "tensorflow.data.experimental.service.DispatchServer"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.MasterServer\'>"
+  is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.DispatchServer\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "target"

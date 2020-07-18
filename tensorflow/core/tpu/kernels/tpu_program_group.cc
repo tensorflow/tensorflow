@@ -276,13 +276,14 @@ Status TpuProgramGroup::CompileAndBuild(
   CompileApiFn()->TpuCompile_CompileAndBuildFn(serialized_compilation_request,
                                                mesh_state, &xla_tpu_programs,
                                                &count, status.c_status);
-  // SPMD could return 1 result for all partitions.
-  TF_RET_CHECK(count == 1 ||
-               count == compilation_request.metadata().num_cores_per_replica());
-  if (!status.status().ok()) {
+  if (!status.ok()) {
     VLOG(1) << "Run CompileAndBuild failed.";
     return status.status();
   }
+
+  // SPMD could return 1 result for all partitions.
+  TF_RET_CHECK(count == 1 ||
+               count == compilation_request.metadata().num_cores_per_replica());
 
   VLOG(1) << "CreateTpuProgramGroup";
   Status serialize_status =

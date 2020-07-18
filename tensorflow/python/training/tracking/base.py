@@ -251,7 +251,12 @@ class CheckpointPosition(object):
                       original_variable=trackable,
                       slot_variable_id=slot_restoration.slot_variable_id,
                       slot_name=slot_restoration.slot_name))
-        else:
+
+        # `optimizer_object` can be a `Checkpoint` when user only needs the
+        # attributes the optimizer holds, such as `iterations`. In those cases,
+        # it would not have the optimizer's `_create_or_restore_slot_variable`
+        # method.
+        elif hasattr(optimizer_object, "_create_or_restore_slot_variable"):
           optimizer_object._create_or_restore_slot_variable(  # pylint: disable=protected-access
               slot_variable_position=CheckpointPosition(
                   checkpoint=checkpoint,
