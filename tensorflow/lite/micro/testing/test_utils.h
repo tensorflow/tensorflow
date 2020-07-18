@@ -53,8 +53,9 @@ inline float MinFromZeroPointScale(const int zero_point, const float scale) {
 // Derives the quantization scaling factor from a min and max range.
 template <typename T>
 inline float ScaleFromMinMax(const float min, const float max) {
-  return (max - min) / ((std::numeric_limits<T>::max() * 1.0) -
-                        std::numeric_limits<T>::min());
+  return (max - min) /
+         static_cast<float>((std::numeric_limits<T>::max() * 1.0) -
+                            std::numeric_limits<T>::min());
 }
 
 // Derives the quantization zero point from a min and max range.

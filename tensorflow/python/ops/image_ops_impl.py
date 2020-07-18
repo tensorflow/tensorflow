@@ -1794,7 +1794,7 @@ def random_contrast(image, lower, upper, seed=None):
   """Adjust the contrast of an image or images by a random factor.
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
-  picked in the interval `[lower, upper]`.
+  picked in the interval `[lower, upper)`.
 
   Args:
     image: An image tensor with 3 or more dimensions.
@@ -1824,7 +1824,6 @@ def random_contrast(image, lower, upper, seed=None):
   if lower < 0:
     raise ValueError('lower must be non-negative.')
 
-  # Generate an a float in [lower, upper]
   contrast_factor = random_ops.random_uniform([], lower, upper, seed=seed)
   return adjust_contrast(image, contrast_factor)
 
@@ -2182,7 +2181,7 @@ def random_hue(image, max_delta, seed=None):
   """Adjust the hue of RGB images by a random factor.
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
-  picked in the interval `[-max_delta, max_delta]`.
+  picked in the interval `[-max_delta, max_delta)`.
 
   `max_delta` must be in the interval `[0, 0.5]`.
 
@@ -2392,7 +2391,7 @@ def random_saturation(image, lower, upper, seed=None):
   """Adjust the saturation of RGB images by a random factor.
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
-  picked in the interval `[lower, upper]`.
+  picked in the interval `[lower, upper)`.
 
   Usage Example:
 
@@ -2428,7 +2427,6 @@ def random_saturation(image, lower, upper, seed=None):
   if lower < 0:
     raise ValueError('lower must be non-negative.')
 
-  # Pick a float in [lower, upper]
   saturation_factor = random_ops.random_uniform([], lower, upper, seed=seed)
   return adjust_saturation(image, saturation_factor)
 

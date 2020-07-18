@@ -40,12 +40,13 @@ class RamFileBlockCache {
  public:
   /// The callback executed when a block is not found in the cache, and needs to
   /// be fetched from the backing filesystem. This callback is provided when the
-  /// cache is constructed. The `status` should be `TF_OK` as long as the
-  /// read from the remote filesystem succeeded (similar to the semantics of the
-  /// read(2) system call).
-  typedef std::function<void(const std::string& filename, size_t offset,
-                             size_t buffer_size, char* buffer,
-                             size_t* bytes_transferred, TF_Status* status)>
+  /// cache is constructed. It returns total bytes read ( -1 in case of errors
+  /// ). The `status` should be `TF_OK` as long as the read from the remote
+  /// filesystem succeeded (similar to the semantics of the read(2) system
+  /// call).
+  typedef std::function<int64_t(const std::string& filename, size_t offset,
+                                size_t buffer_size, char* buffer,
+                                TF_Status* status)>
       BlockFetcher;
 
   RamFileBlockCache(size_t block_size, size_t max_bytes, uint64_t max_staleness,
@@ -65,7 +66,7 @@ class RamFileBlockCache {
           TF_StartThread(&thread_options, "TF_prune_FBC", PruneThread, this));
     }
     std::cout << "GCS file block cache is "
-              << (IsCacheEnabled() ? "enabled" : "disabled");
+              << (IsCacheEnabled() ? "enabled" : "disabled") << ".\n";
   }
 
   ~RamFileBlockCache() {
@@ -77,8 +78,9 @@ class RamFileBlockCache {
     }
   }
 
-  /// Read `n` bytes from `filename` starting at `offset` into `buffer`. This
-  /// method will set `status` to:
+  /// Read `n` bytes from `filename` starting at `offset` into `buffer`. It
+  /// returns total bytes read ( -1 in case of errors ). This method will set
+  /// `status` to:
   ///
   /// 1) The error from the remote filesystem, if the read from the remote
   ///    filesystem failed.
@@ -96,8 +98,8 @@ class RamFileBlockCache {
   ///
   /// Caller is responsible for allocating memory for `buffer`.
   /// `buffer` will be left unchanged in case of errors.
-  void Read(const std::string& filename, size_t offset, size_t n, char* buffer,
-            size_t* bytes_transferred, TF_Status* status);
+  int64_t Read(const std::string& filename, size_t offset, size_t n,
+               char* buffer, TF_Status* status);
 
   // Validate the given file signature with the existing file signature in the
   // cache. Returns true if the signature doesn't change or the file doesn't

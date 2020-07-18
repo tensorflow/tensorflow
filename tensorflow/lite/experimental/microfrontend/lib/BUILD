@@ -135,6 +135,9 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "filterbank_test",
     srcs = ["filterbank_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":filterbank",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -144,6 +147,9 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "frontend_test",
     srcs = ["frontend_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":frontend",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -153,6 +159,9 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "log_scale_test",
     srcs = ["log_scale_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":log_scale",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -162,6 +171,9 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "noise_reduction_test",
     srcs = ["noise_reduction_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":noise_reduction",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -171,6 +183,9 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "pcan_gain_control_test",
     srcs = ["pcan_gain_control_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":pcan_gain_control",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -180,6 +195,9 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "window_test",
     srcs = ["window_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":window",
         "//tensorflow/lite/micro/testing:micro_test",

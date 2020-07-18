@@ -553,7 +553,7 @@ class MeanRelativeError(Mean):
     y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
+    y_pred, self.normalizer = losses_utils.remove_squeezable_dimensions(
         y_pred, self.normalizer)
     y_pred.shape.assert_is_compatible_with(y_true.shape)
     relative_errors = math_ops.div_no_nan(

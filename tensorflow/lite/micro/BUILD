@@ -297,6 +297,7 @@ tflite_micro_cc_test(
         ":micro_framework",
         ":test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:test_conv_model",
     ],
 )
 

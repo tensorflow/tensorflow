@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DATA_SERVICE_MASTER_IMPL_H_
-#define TENSORFLOW_CORE_DATA_SERVICE_MASTER_IMPL_H_
+#ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
+#define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
-#include "tensorflow/core/data/service/master.pb.h"
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -40,11 +40,11 @@ namespace data {
 //   ProcessingModeDef which determines what data it produces.
 // * Task: A job is broken into multiple tasks, which each represent
 //   iterating over all of or part of the dataset. Workers process tasks.
-class DataServiceMasterImpl {
+class DataServiceDispatcherImpl {
  public:
-  explicit DataServiceMasterImpl(const std::string protocol);
+  explicit DataServiceDispatcherImpl(const std::string protocol);
 
-  // See master.proto for API documentation.
+  // See dispatcher.proto for API documentation.
 
   /// Worker-facing API.
   Status RegisterWorker(const RegisterWorkerRequest* request,
@@ -191,7 +191,7 @@ class DataServiceMasterImpl {
   // Creates a new task for a job, returning a reference to the task.
   const Task& CreateTask(Job* job, const std::string& worker_address)
       LOCKS_EXCLUDED(mu_);
-  // Same as `CreateTask`, but expects that the master lock is already held.
+  // Same as `CreateTask`, but expects that the dispatcher lock is already held.
   const Task& CreateTaskLocked(Job* job, const std::string& worker_address)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Validates that an existing job matches the given processing_mode and
@@ -225,10 +225,10 @@ class DataServiceMasterImpl {
   absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_
       TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataServiceMasterImpl);
+  TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_MASTER_IMPL_H_
+#endif  // TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_

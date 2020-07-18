@@ -1227,6 +1227,14 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_small_val))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorStridedSliceAssign(self):
+    @def_function.function
+    def assign(x):
+      y = x + 1
+      return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
+    self.assertAllEqual([0, 1], self.evaluate(assign(array_ops.zeros([2]))))
+
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
