@@ -1331,6 +1331,8 @@ def parallel_stack(values, name="parallel_stack"):
     output: A stacked `Tensor` with the same type as `values`.
   """
   with ops.name_scope(name):
+    if context.executing_eagerly():
+      return stack(values, name=name)
     value_t = ops.convert_to_tensor(values[0])
     value_shape = ops.convert_to_tensor(value_t).get_shape()
 
