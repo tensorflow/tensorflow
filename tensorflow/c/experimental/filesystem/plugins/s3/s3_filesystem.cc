@@ -17,6 +17,7 @@ limitations under the License.
 #include <aws/core/config/AWSProfileConfigLoader.h>
 #include <aws/core/utils/FileSystemUtils.h>
 #include <aws/core/utils/stream/PreallocatedStreamBuf.h>
+#include <aws/s3/model/CopyObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadBucketRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
@@ -713,7 +714,18 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
 static void SimpleCopyFile(const Aws::String& source,
                            const Aws::String& bucket_dst,
                            const Aws::String& object_dst, S3File* s3_file,
-                           TF_Status* status){};
+                           TF_Status* status) {
+  Aws::S3::Model::CopyObjectRequest copy_object_request;
+  copy_object_request.WithCopySource(source)
+      .WithBucket(bucket_dst)
+      .WithKey(object_dst);
+  auto copy_object_outcome =
+      s3_file->s3_client->CopyObject(copy_object_request);
+  if (!copy_object_outcome.IsSuccess())
+    TF_SetStatusFromAWSError(copy_object_outcome.GetError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+};
 
 static void MultiPartCopy(const Aws::String& source,
                           const Aws::String& bucket_dst,
