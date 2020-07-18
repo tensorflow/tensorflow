@@ -672,6 +672,10 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
+        "//tensorflow/core/kernels/batching_util:threadsafe_status",
+        "//tensorflow/core/util:incremental_barrier",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
