@@ -1130,6 +1130,27 @@ xla_test(
     name = "convolution_test_1d",
     timeout = "long",
     srcs = ["convolution_test_1d.cc"],
+    # Turn on logging so that VLOG statements don't appear uncovered to zapfhahn.
+    args = ["--vmodule=convolution_emitter=7"],
+    # In the open source build, convolution_test_1d_gpu fails because it doesn't
+    # recognize --vmodule.
+    disabled_backends = ["gpu"],
+    shard_count = 50,
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
+    deps = CONVOLUTION_TEST_DEPS + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "convolution_test_1d_gpu",
+    timeout = "long",
+    srcs = ["convolution_test_1d.cc"],
+    backends = ["gpu"],
     shard_count = 50,
     tags = [
         "no_rocm",
