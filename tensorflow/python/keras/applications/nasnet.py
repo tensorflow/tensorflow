@@ -354,6 +354,7 @@ def NASNetMobile(input_shape=None,
           layer at the top of the network.
       weights: `None` (random initialization) or
           `imagenet` (ImageNet weights)
+          For loading `imagenet` weights, `input_shape` should be (224, 224, 3)
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
@@ -429,6 +430,7 @@ def NASNetLarge(input_shape=None,
           layer at the top of the network.
       weights: `None` (random initialization) or
           `imagenet` (ImageNet weights)
+          For loading `imagenet` weights, `input_shape` should be (331, 331, 3)
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
