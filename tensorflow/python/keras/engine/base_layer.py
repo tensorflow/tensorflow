@@ -2739,7 +2739,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     super(tracking.AutoTrackable, self).__delattr__(name)
 
     if (isinstance(existing_value, Layer)
-        or base_layer_utils.has_weights(existing_value)):
+        or trackable_layer_utils.has_weights(existing_value)):
       super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
@@ -2789,7 +2789,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
     if (getattr(self, '_auto_track_sub_layers', True) and
-        (isinstance(value, Layer) or base_layer_utils.has_weights(value))):
+        (isinstance(value, Layer) or trackable_layer_utils.has_weights(value))):
       self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
