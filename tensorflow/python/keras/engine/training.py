@@ -329,7 +329,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if all(
         isinstance(v, (base_layer.Layer,
                        data_structures.TrackableDataStructure)) or
-        trackable_layer_utils.has_weights(v) for v in nest.flatten(value)):
+        base_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._base_model_initialized
       except AttributeError:
