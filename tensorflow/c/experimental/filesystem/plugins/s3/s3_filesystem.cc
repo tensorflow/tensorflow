@@ -18,6 +18,7 @@ limitations under the License.
 #include <aws/core/config/AWSProfileConfigLoader.h>
 #include <aws/core/utils/FileSystemUtils.h>
 #include <aws/core/utils/stream/PreallocatedStreamBuf.h>
+#include <aws/s3/model/AbortMultipartUploadRequest.h>
 #include <aws/s3/model/CompleteMultipartUploadRequest.h>
 #include <aws/s3/model/CompletedMultipartUpload.h>
 #include <aws/s3/model/CompletedPart.h>
@@ -760,12 +761,36 @@ typedef struct MultipartCopyAsyncContext
 static void AbortMultiPartCopy(const Aws::String& bucket_dst,
                                const Aws::String& object_dst,
                                const Aws::String& upload_id, S3File* s3_file,
-                               TF_Status* status) {}
+                               TF_Status* status) {
+  Aws::S3::Model::AbortMultipartUploadRequest request;
+  request.WithBucket(bucket_dst).WithKey(object_dst).WithUploadId(upload_id);
+  auto outcome = s3_file->s3_client->AbortMultipartUpload(request);
+  if (!outcome.IsSuccess())
+    TF_SetStatusFromAWSError(outcome.GetError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
 
 static void MultiPartCopyCallback(
     const Aws::S3::Model::UploadPartCopyRequest& request,
     const Aws::S3::Model::UploadPartCopyOutcome& outcome,
-    const std::shared_ptr<const MultipartCopyAsyncContext>& context) {}
+    const std::shared_ptr<const MultipartCopyAsyncContext>& context) {
+  // Access to `etag_outcomes` should be thread-safe because of distinct
+  // `part_number`.
+  auto part_number = context->part_number;
+  auto etag_outcomes = context->etag_outcomes;
+  if (outcome.IsSuccess()) {
+    (*etag_outcomes)[part_number] =
+        outcome.GetResult().GetCopyPartResult().GetETag();
+  } else {
+    (*etag_outcomes)[part_number] = outcome.GetError();
+  }
+  {
+    absl::MutexLock l(context->multi_part_copy_mutex);
+    (*context->num_finished_parts)++;
+    context->multi_part_copy_cv->Signal();
+  }
+}
 
 static void MultiPartCopy(const Aws::String& source,
                           const Aws::String& bucket_dst,
