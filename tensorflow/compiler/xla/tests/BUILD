@@ -1119,6 +1119,8 @@ xla_test(
     tags = [
         "no_rocm",
         "optonly",
+        # Timed out on 2020-07-18
+        "nozapfhahn",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
