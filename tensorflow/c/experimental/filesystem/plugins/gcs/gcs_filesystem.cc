@@ -161,6 +161,7 @@ void Cleanup(TF_RandomAccessFile* file) {
 }
 
 static void FillBuffer(uint64_t start, GCSFile* gcs_file, TF_Status* status) {
+  ABSL_EXCLUSIVE_LOCKS_REQUIRED(gcs_file->buffer_mutex)
   gcs_file->buffer_start = start;
   gcs_file->buffer.resize(gcs_file->buffer_size);
   auto read =
@@ -463,11 +464,14 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
                      const std::string& path, uint64_t offset, size_t n,
                      char* buffer, TF_Status* status) -> int64_t {
     // TODO(vnvo2409): Check for `stat_cache`.
-    auto read =
-        is_cache_enabled
-            ? gcs_file->file_block_cache->Read(path, offset, n, buffer, status)
-            : LoadBufferFromGCS(path, offset, n, buffer, &gcs_file->gcs_client,
-                                status);
+    int64_t read = 0;
+    if (is_cache_enabled) {
+      absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+      read = gcs_file->file_block_cache->Read(path, offset, n, buffer, status);
+    } else {
+      read = LoadBufferFromGCS(path, offset, n, buffer, &gcs_file->gcs_client,
+                               status);
+    }
     if (TF_GetCode(status) != TF_OK) return -1;
     if (read < n)
       TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
