@@ -677,7 +677,11 @@ cc_library(
     name = "type_index",
     hdrs = ["type_index.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core/platform:types"],
+    deps = [
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 cc_library(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_configuration_rewrite_pass.h"
+#include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/encapsulate_tpu_computations_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/variable_merger_pass.h"
 
@@ -30,8 +31,9 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 34,
                       EncapsulateTPUComputationsPass);
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 39,
                       ExtractOutsideCompilationPass);
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 40,
+                      DistributedTPURewritePass);
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 0,
                       VariableMergerPass);
-
 }  // namespace
 }  // namespace tensorflow

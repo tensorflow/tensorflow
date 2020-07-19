@@ -30,6 +30,7 @@ struct TpuChipCoordinatesExternal {
 
 class TpuCoreLocationExternal {
  public:
+  TpuCoreLocationExternal() : core_location_(nullptr) {}
   explicit TpuCoreLocationExternal(void* core_location)
       : core_location_(core_location) {}
   TpuChipCoordinatesExternal chip_coordinates() const;
