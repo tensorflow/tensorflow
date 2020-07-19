@@ -142,6 +142,7 @@ typedef struct GCSFile {
   uint64_t buffer_start ABSL_GUARDED_BY(buffer_mutex);
   bool buffer_end_is_past_eof ABSL_GUARDED_BY(buffer_mutex);
   std::string buffer ABSL_GUARDED_BY(buffer_mutex);
+
   GCSFile(std::string path, bool is_cache_enable, uint64_t buffer_size,
           ReadFn read_fn)
       : path(path),
