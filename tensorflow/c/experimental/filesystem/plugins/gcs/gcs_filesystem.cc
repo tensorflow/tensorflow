@@ -148,11 +148,11 @@ typedef struct GCSFile {
       : path(path),
         is_cache_enable(is_cache_enable),
         buffer_size(buffer_size),
+        read_fn(std::move(read_fn)),
         buffer_mutex(),
         buffer_start(0),
         buffer_end_is_past_eof(false),
-        buffer(),
-        read_fn(std::move(read_fn)) {}
+        buffer() {}
 } GCSFile;
 
 void Cleanup(TF_RandomAccessFile* file) {
