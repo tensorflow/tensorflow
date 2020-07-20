@@ -66,7 +66,7 @@ class MemoryTile {
   void StoreTile(absl::Span<llvm::Value* const> tile,
                  llvm::Value* minor_dim_offset) const {
     CHECK_EQ(tile.size(), pointers_.size());
-    for (int64 i = 0; i < pointers_.size(); i++) {
+    for (int64 i = 0, end = pointers_.size(); i < end; i++) {
       vsl_->StoreVector(tile[i], pointers_[i], minor_dim_offset);
     }
   }
@@ -82,7 +82,7 @@ class MemoryTile {
       llvm::Value* minor_dim_offset, int64 tile_size_along_middle_dim) const {
     std::vector<std::vector<llvm::Value*>> result;
     result.resize(pointers_.size());
-    for (int64 i = 0; i < pointers_.size(); i++) {
+    for (int64 i = 0, end = pointers_.size(); i < end; i++) {
       for (int64 j = 0; j < tile_size_along_middle_dim; j++) {
         result[i].push_back(vsl_->LoadBroadcast(
             pointers_[i], b_->CreateAdd(minor_dim_offset, b_->getInt64(j))));

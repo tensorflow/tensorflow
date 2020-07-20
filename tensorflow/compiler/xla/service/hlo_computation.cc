@@ -117,7 +117,8 @@ HloInstruction* HloComputation::AddParameter(
     std::unique_ptr<HloInstruction> instruction) {
   CHECK(instruction->opcode() == HloOpcode::kParameter);
   CHECK(IsFusionComputation());
-  CHECK(fusion_instruction_->operand_count() == param_instructions_.size());
+  const int64 param_instructions_size = param_instructions_.size();
+  CHECK(fusion_instruction_->operand_count() == param_instructions_size);
   instruction->set_parent(this);
   param_instructions_.push_back(instruction.get());
   AddInstructionInternal(std::move(instruction));
@@ -172,7 +173,8 @@ Status HloComputation::RemoveParameter(int64 param_no) {
   // Throw removed fused parameter instruction away.
   TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
 
-  while (param_no < param_instructions_.size()) {
+  const int64 param_instructions_size = param_instructions_.size();
+  while (param_no < param_instructions_size) {
     param_instruction = param_instructions_[param_no];
     HloInstruction* new_instr =
         AddInstructionInternal(HloInstruction::CreateParameter(
@@ -197,7 +199,7 @@ Status HloComputation::RemoveUnusedParametersFromAnyComputation() {
 Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   CHECK(allow_non_fusion || IsFusionComputation());
   int64 removed = 0;
-  for (int64 i = 0; i < param_instructions_.size(); ++i) {
+  for (int64 i = 0, end = param_instructions_.size(); i < end; ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
     if (param_instruction->user_count() == 0 &&
         param_instruction != root_instruction()) {
@@ -578,7 +580,8 @@ string HloComputation::ToString(
     // Find all the instructions that should be printed.
     auto add_instruction = [&instructions_to_print,
                             &instruction_order](int index) {
-      if (index < 0 || index >= instruction_order.size()) {
+      const int64 instruction_order_size = instruction_order.size();
+      if (index < 0 || index >= instruction_order_size) {
         return;
       }
       instructions_to_print.insert(index);
@@ -592,7 +595,7 @@ string HloComputation::ToString(
       }
     };
 
-    for (int i = 0; i < instruction_order.size(); ++i) {
+    for (int i = 0, end = instruction_order.size(); i < end; ++i) {
       const HloInstruction* instruction = instruction_order[i];
       CHECK_EQ(this, instruction->parent());
       if (options.print_instruction(instruction)) {
@@ -612,7 +615,7 @@ string HloComputation::ToString(
     CanonicalNameMap name_map;
 
     bool print_prev = true;
-    for (int index = 0; index < instruction_order.size(); ++index) {
+    for (int index = 0, end = instruction_order.size(); index < end; ++index) {
       const HloInstruction* instruction = instruction_order[index];
       if (instructions_to_print.find(index) != instructions_to_print.end()) {
         s << new_options.format_instruction(

@@ -1145,6 +1145,8 @@ distribute_py_test(
     deps = [
         ":combinations",
         ":distribute_lib",
+        ":distribute_utils",
+        ":packed_distributed_variable",
         ":strategy_combinations",
         ":test_util",
         ":tpu_strategy",
@@ -1174,7 +1176,7 @@ distribute_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/saved_model/model_utils:mode_keys",
+        "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",

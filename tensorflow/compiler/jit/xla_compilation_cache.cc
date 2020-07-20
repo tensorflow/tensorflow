@@ -97,7 +97,7 @@ bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
   if (arg_shapes != other.arg_shapes) return false;
 
   if (arg_values.size() != other.arg_values.size()) return false;
-  for (int i = 0; i < arg_values.size(); ++i) {
+  for (int i = 0, end = arg_values.size(); i < end; ++i) {
     if (arg_values[i].dtype() != other.arg_values[i].dtype() ||
         arg_values[i].shape() != other.arg_values[i].shape() ||
         arg_values[i].tensor_data() != other.arg_values[i].tensor_data()) {
@@ -158,7 +158,7 @@ Status XlaCompilationCache::BuildExecutable(
 
   std::vector<const xla::Shape*> argument_layouts(
       result.xla_input_shapes.size());
-  for (int i = 0; i < result.xla_input_shapes.size(); ++i) {
+  for (int i = 0, end = result.xla_input_shapes.size(); i < end; ++i) {
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
@@ -224,7 +224,7 @@ static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
 
   // Create dummy _Arg nodes. Link these to `node` and also via a control
   // dependency edge to the _SOURCE node.
-  for (int64 i = 0; i < args.size(); ++i) {
+  for (int64 i = 0, end = args.size(); i < end; ++i) {
     Node* node;
     string arg_name = absl::StrCat("_arg", i);
     Status status =
@@ -240,7 +240,7 @@ static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
   }
 
   // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64 i = 0; i < result_types.size(); ++i) {
+  for (int64 i = 0, end = result_types.size(); i < end; ++i) {
     Node* node;
     string retval_name = absl::StrCat("_retval", i);
     Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
@@ -271,7 +271,7 @@ Status XlaCompilationCache::CompileSingleOp(
   auto compile_op = [&](XlaCompiler* compiler,
                         XlaCompiler::CompilationResult* result) {
     std::vector<DataType> result_dtypes(ctx->num_outputs());
-    for (int i = 0; i < result_dtypes.size(); ++i) {
+    for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
       result_dtypes[i] = ctx->expected_output_dtype(i);
     }
 
@@ -330,7 +330,7 @@ Status XlaCompilationCache::CompileImpl(
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
-    for (int i = 0; i < args.size(); i++) {
+    for (int i = 0, end = args.size(); i < end; i++) {
       VLOG(3) << i << ": " << args[i].HumanString();
     }
   }

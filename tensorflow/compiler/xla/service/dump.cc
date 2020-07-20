@@ -177,7 +177,8 @@ void DumpToFileInDirImpl(string_view filename, string_view contents,
       LOG(ERROR) << "Could not get matching paths for pattern " << pattern
                  << ": " << status;
     }
-    if (matches.size() > opts.dump_max_hlo_modules) {
+    const int64 matches_size = matches.size();
+    if (matches_size > opts.dump_max_hlo_modules) {
       LOG(ERROR) << "Have already dumped " << matches.size()
                  << " modules, more than the limit of "
                  << opts.dump_max_hlo_modules;

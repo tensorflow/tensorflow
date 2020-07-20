@@ -440,6 +440,10 @@ Status HloEvaluator::HandleSetDimensionSize(
   Literal result(set_dimension_size->shape());
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
          operand_literal.size_bytes());
+  const Literal& size_literal =
+      GetEvaluatedLiteralFor(set_dimension_size->operand(1));
+  result.SetDynamicSize(set_dimension_size->dimension(),
+                        size_literal.Get<int32>({}));
   evaluated_[set_dimension_size] = std::move(result);
   return Status::OK();
 }
@@ -2353,11 +2357,11 @@ static StatusOr<bool> GenerateReduceOutputElement(
   const Shape& arg_shape = input_args[0]->shape();
   absl::Span<const int64> arg_dimensions = AsInt64Slice(arg_shape.dimensions());
   std::vector<int64> base(arg_dimensions.size());
-  for (int64 i = 0; i < output_index.size(); ++i) {
+  for (int64 i = 0, end = output_index.size(); i < end; ++i) {
     base[result_to_arg_index[i]] = output_index[i];
   }
 
-  for (int64 i = 0; i < results.size(); ++i) {
+  for (int64 i = 0, end = results.size(); i < end; ++i) {
     TF_RETURN_IF_ERROR(
         results[i].CopyElementFrom(*init_values[i], {}, output_index));
   }
@@ -2445,7 +2449,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
   // Map each dimension in the result to a dimension in arg that isn't
   // being reduced.
   std::vector<int64> result_to_arg_index;
-  for (int64 i = 0; i < arg_dimensions.size(); ++i) {
+  for (int64 i = 0, end = arg_dimensions.size(); i < end; ++i) {
     if (arg_dim_steps[i] == 0) {
       result_to_arg_index.push_back(i);
     }

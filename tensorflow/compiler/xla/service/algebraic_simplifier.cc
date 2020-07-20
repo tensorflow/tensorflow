@@ -4137,13 +4137,13 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
         new_dnums.add_rhs_contracting_dimensions(
             dnums.rhs_batch_dimensions(batch_dim));
         new_dnums.add_lhs_contracting_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
+            dnums.lhs_batch_dimensions(batch_dim));
         ++removed_dims;
       } else {
         new_dnums.add_rhs_batch_dimensions(
             dnums.rhs_batch_dimensions(batch_dim));
         new_dnums.add_lhs_batch_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
+            dnums.lhs_batch_dimensions(batch_dim));
       }
     }
     std::vector<int64> reduce_dims;

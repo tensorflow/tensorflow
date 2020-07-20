@@ -1283,7 +1283,7 @@ class SymbolicShapeRefiner {
     }
 
     for (int i = grappler_function_item.inputs().size(),
-             end = function_node->input_size(); i < end; ++i) {
+         end = function_node->input_size(); i < end; ++i) {
       const string& input = function_node->input(i);
       if (!IsControlInput(input)) {
         return errors::FailedPrecondition(

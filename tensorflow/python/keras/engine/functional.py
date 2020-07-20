@@ -107,10 +107,6 @@ class Functional(training_lib.Model):
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, inputs=None, outputs=None, name=None, trainable=True):
-    # generic_utils.validate_kwargs(
-    #     kwargs, {'name', 'trainable'},
-    #     'Functional models may only specify `name` and `trainable` keyword '
-    #     'arguments during initialization. Got an unexpected argument:')
     super(Functional, self).__init__(name=name, trainable=trainable)
     self._init_graph_network(inputs, outputs)
 

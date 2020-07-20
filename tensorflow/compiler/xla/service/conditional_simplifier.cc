@@ -193,7 +193,8 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
   // If all tuple elements are used in this conditional branch, there is nothing
   // to be removed.
   int64 old_tuple_element_count = ShapeUtil::TupleElementCount(param->shape());
-  if (tuple_indices_to_keep.size() == old_tuple_element_count) {
+  const int64 tuple_indices_to_keep_size = tuple_indices_to_keep.size();
+  if (tuple_indices_to_keep_size == old_tuple_element_count) {
     return false;
   }
 

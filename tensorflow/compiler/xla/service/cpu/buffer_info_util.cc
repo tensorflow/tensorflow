@@ -43,7 +43,7 @@ std::vector<BufferInfo> CreateBufferInfosFromBufferAssignment(
 std::vector<int32> CreateArgIndexTableFromBufferInfos(
     absl::Span<const BufferInfo> buffer_infos) {
   std::vector<int32> result;
-  for (int64 i = 0; i < buffer_infos.size(); i++) {
+  for (int64 i = 0, end = buffer_infos.size(); i < end; i++) {
     if (buffer_infos[i].is_entry_parameter()) {
       if (buffer_infos[i].entry_parameter_number() >= result.size()) {
         result.resize(buffer_infos[i].entry_parameter_number() + 1);

@@ -2139,7 +2139,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       raise ValueError(profile_batch_error_message)
 
     if self._start_batch > 0:
-      profiler.warmup()  # Improve the profiling accuracy.
+      # Warm up and improve the profiling accuracy.
+      profiler.start('')
+      profiler.stop(save=False)
     # True when a trace is running.
     self._is_tracing = False
 

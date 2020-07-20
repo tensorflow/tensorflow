@@ -73,6 +73,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "newaxis"
+    mtype: "<type \'NoneType\'>"
+  }
+  member {
     name: "object_"
     mtype: "<type \'type\'>"
   }
