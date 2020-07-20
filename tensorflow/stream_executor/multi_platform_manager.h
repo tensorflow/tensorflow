@@ -100,6 +100,13 @@ class MultiPlatformManager {
   static port::StatusOr<Platform*> PlatformWithName(absl::string_view target);
   static port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id);
 
+  // Same functions as above, but allows platforms to be returned without
+  // initialization if initialize_platform == false.
+  static port::StatusOr<Platform*> PlatformWithName(absl::string_view target,
+                                                    bool initialize_platform);
+  static port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id,
+                                                  bool initialize_platform);
+
   // Retrieves the platform registered with the given platform name (e.g.
   // "CUDA", "OpenCL", ...) or id (an opaque, comparable value provided by the
   // Platform's Id() method).

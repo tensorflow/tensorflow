@@ -39,6 +39,14 @@ class MultiPlatformManagerImpl {
   port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id)
       TF_LOCKS_EXCLUDED(mu_);
 
+  port::StatusOr<Platform*> PlatformWithName(absl::string_view target,
+                                             bool initialize_platform)
+      TF_LOCKS_EXCLUDED(mu_);
+
+  port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id,
+                                           bool initialize_platform)
+      TF_LOCKS_EXCLUDED(mu_);
+
   port::StatusOr<Platform*> InitializePlatformWithName(
       absl::string_view target,
       const std::map<std::string, std::string>& options) TF_LOCKS_EXCLUDED(mu_);
@@ -104,10 +112,20 @@ port::Status MultiPlatformManagerImpl::RegisterPlatform(
 
 port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
     absl::string_view target) {
+  return PlatformWithName(target, /*initialize_platform=*/true);
+}
+
+port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithId(
+    const Platform::Id& id) {
+  return PlatformWithId(id, /*initialize_platform=*/true);
+}
+
+port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
+    absl::string_view target, bool initialize_platform) {
   absl::MutexLock lock(&mu_);
 
   SE_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
-  if (!platform->Initialized()) {
+  if (initialize_platform && !platform->Initialized()) {
     SE_RETURN_IF_ERROR(platform->Initialize({}));
   }
 
@@ -115,11 +133,11 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
 }
 
 port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithId(
-    const Platform::Id& id) {
+    const Platform::Id& id, bool initialize_platform) {
   absl::MutexLock lock(&mu_);
 
   SE_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
-  if (!platform->Initialized()) {
+  if (initialize_platform && !platform->Initialized()) {
     SE_RETURN_IF_ERROR(platform->Initialize({}));
   }
 
@@ -248,6 +266,16 @@ MultiPlatformManagerImpl& Impl() {
 /*static*/ port::StatusOr<Platform*> MultiPlatformManager::PlatformWithId(
     const Platform::Id& id) {
   return Impl().PlatformWithId(id);
+}
+
+/*static*/ port::StatusOr<Platform*> MultiPlatformManager::PlatformWithId(
+    const Platform::Id& id, bool initialize_platform) {
+  return Impl().PlatformWithId(id, initialize_platform);
+}
+
+/*static*/ port::StatusOr<Platform*> MultiPlatformManager::PlatformWithName(
+    absl::string_view target, bool initialize_platform) {
+  return Impl().PlatformWithName(target, initialize_platform);
 }
 
 /*static*/ port::StatusOr<Platform*>
