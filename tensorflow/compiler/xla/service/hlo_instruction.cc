@@ -2189,6 +2189,27 @@ Status HloInstruction::ReplaceOperandWithDifferentShape(
   return Status::OK();
 }
 
+Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
+                                       HloInstruction* new_producer) {
+  TF_RET_CHECK(
+      ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
+      << shape() << " is not compatible with " << new_producer->shape();
+  return ReplaceAllUsesWithDifferentShape(users, new_producer);
+}
+
+Status HloInstruction::ReplaceAllUsesWithDifferentShape(
+    absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
+  for (HloInstruction* user : users) {
+    TF_RETURN_IF_ERROR(ReplaceUseWith(user, new_producer));
+  }
+
+  if (parent_ && parent_->root_instruction() == this) {
+    parent_->set_root_instruction(new_producer,
+                                  /*accept_different_shape=*/true);
+  }
+  return Status::OK();
+}
+
 Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
