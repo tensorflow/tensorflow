@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -237,21 +238,26 @@ LogicalResult CheckOutputConsumer(
 }
 
 LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
-  bool check_failed = false;
   for (auto func : module.getOps<FuncOp>()) {
-    func.walk([&](Operation* op) {
-      auto call_op = dyn_cast_or_null<CallOpInterface>(op);
-      if (call_op && op->getAttrOfType<SymbolRefAttr>("f").getRootReference() ==
-                         lstm_func.getName()) {
-        // Keras LSTM have 5 outputs.
-        // We should make sure only the first or the second output are consumed.
-        if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
-          check_failed = true;
+    auto result = func.walk([&](Operation* op) {
+      if (auto call_op = dyn_cast<CallOpInterface>(op)) {
+        CallInterfaceCallable callable = call_op.getCallableForCallee();
+        if (auto sym = callable.dyn_cast<SymbolRefAttr>()) {
+          if (sym.getRootReference() == lstm_func.getName()) {
+            // Keras LSTM have 5 outputs.
+            // We should make sure only the first or the second output are
+            // consumed.
+            if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
+              return WalkResult::interrupt();
+          }
+        }
       }
+      return WalkResult::advance();
     });
+
+    if (result.wasInterrupted()) return failure();
   }
 
-  if (check_failed) return failure();
   return success();
 }
 
