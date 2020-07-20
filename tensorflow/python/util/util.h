@@ -115,6 +115,15 @@ bool IsTuple(PyObject* o);
 //   True if the sequence subclasses mapping.
 bool IsMappingView(PyObject* o);
 
+// Returns a true if its input is a python `slice` object.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the input object is a python `slice`.
+bool IsSlice(PyObject* o);
+
 // A version of PyMapping_Keys that works in C++11
 //
 // Args:

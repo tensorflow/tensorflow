@@ -294,6 +294,115 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllEqual([layer.name for layer in model.layers],
                         [layer.name for layer in new_model.layers])
 
+  def test_getitem_slice_with_step_only(self):
+    if not context.executing_eagerly():
+      self.skipTest('Complex slicing like this fails in v1')
+    inp = keras.Input(shape=(4, 3, 8))
+    slice_step = keras.Input(shape=(), dtype='int32')
+
+    out = inp[..., ::slice_step[0]]
+    model = keras.Model(
+        inputs=[inp, slice_step],
+        outputs=out)
+    model.compile(
+        adam.Adam(0.001),
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    batch_size = 7
+    step = 3
+    x = array_ops.stack([
+        math_ops.range(8) for _ in range(batch_size)])
+    args = [x, constant_op.constant(step, shape=(batch_size,))]
+    expected = array_ops.stack([
+        math_ops.range(8)[::step] for _ in range(batch_size)])
+
+    self.assertAllEqual(model(args), expected)
+    self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
+    # Make sure it can be successfully saved and loaded
+    config = model.get_config()
+    model = keras.Model.from_config(config)
+
+    self.assertAllEqual(model(args), expected)
+    self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
+  def test_getitem_slice_with_stop_only(self):
+    if not context.executing_eagerly():
+      self.skipTest('Complex slicing like this fails in v1')
+    inp = keras.Input(shape=(4, 3, 8))
+    slice_stop = keras.Input(shape=(), dtype='int32')
+
+    out = inp[..., :slice_stop[0]]
+    model = keras.Model(
+        inputs=[inp, slice_stop],
+        outputs=out)
+    model.compile(
+        adam.Adam(0.001),
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    batch_size = 7
+    stop = 6
+    x = array_ops.stack([
+        math_ops.range(8) for _ in range(batch_size)])
+    args = [x, constant_op.constant(stop, shape=(batch_size,))]
+    expected = array_ops.stack([
+        math_ops.range(8)[:stop] for _ in range(batch_size)])
+
+    self.assertAllEqual(model(args), expected)
+    self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
+    # Make sure it can be successfully saved and loaded
+    config = model.get_config()
+    model = keras.Model.from_config(config)
+
+    self.assertAllEqual(model(args), expected)
+    self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
+  def test_getitem_complex_slicing(self):
+    if not context.executing_eagerly():
+      self.skipTest('Complex slicing like this fails in v1')
+    inp = keras.Input(shape=(4, 3, 8))
+    first_dim = keras.Input(shape=(), dtype='int32')
+    slice_start = keras.Input(shape=(), dtype='int32')
+    slice_stop = keras.Input(shape=(), dtype='int32')
+    slice_stride = keras.Input(shape=(), dtype='int32')
+
+    out = inp[..., first_dim[0], slice_start[0]:slice_stop[0]:slice_stride[0]]
+    model = keras.Model(
+        inputs=[inp, first_dim, slice_start, slice_stop, slice_stride],
+        outputs=out)
+    model.compile(
+        adam.Adam(0.001),
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    batch_size = 7
+    start = 1
+    stop = 6
+    step = 2
+    x = array_ops.stack([array_ops.stack([array_ops.stack([
+        math_ops.range(8)
+        for _ in range(3)]) for _ in range(4)]) for _ in range(batch_size)])
+    args = [x,
+            constant_op.constant(0, shape=(batch_size,)),
+            constant_op.constant(start, shape=(batch_size,)),
+            constant_op.constant(stop, shape=(batch_size,)),
+            constant_op.constant(step, shape=(batch_size,))]
+    # Slice the innermost dim. only grab one index from the second-to-innermost
+    # dim, removing that dim from the shape.
+    expected = array_ops.stack([array_ops.stack([
+        math_ops.range(8)[start:stop:step]
+        for _ in range(4)]) for _ in range(batch_size)])
+
+    self.assertAllEqual(model(args), expected)
+    self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
+    # Make sure it can be successfully saved and loaded
+    config = model.get_config()
+    model = keras.Model.from_config(config)
+
+    self.assertAllEqual(model(args), expected)
+    self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
   def test_numerical_correctness_simple(self):
     x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))

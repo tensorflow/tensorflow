@@ -181,6 +181,8 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
     values = [nested[k] for k in nest._sorted(nested)]
   elif nest._is_attrs(nested):
     values = _astuple(nested)
+  elif nest._is_slice(nested):
+    values = (nested.start, nested.stop, nested.step)
   else:
     values = nested
   mapped_values = [
