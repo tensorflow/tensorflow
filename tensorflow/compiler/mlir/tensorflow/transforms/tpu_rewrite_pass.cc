@@ -69,6 +69,7 @@ constexpr char kPaddingMapAttr[] = "padding_map";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
+constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
 
 constexpr char kBadStringArrayElementMsg[] =
     "bad '{0}' attribute at index {1}, not a string";
@@ -331,6 +332,10 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
   if (xla_device_assignment.hasValue())
     *metadata->mutable_device_assignment() =
         std::move(xla_device_assignment.getValue());
+  auto use_spmd_attr = op.getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
+  if (!use_spmd_attr)
+    return op.emitOpError(CreateMissingAttributeMsg(kUseXlaSpmdAttr));
+  metadata->set_use_spmd_for_xla_partitioning(use_spmd_attr.getValue());
 
   if (failed(SetMetadataProtoArgs(op, metadata))) return failure();
 

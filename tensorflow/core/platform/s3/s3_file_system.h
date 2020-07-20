@@ -50,42 +50,66 @@ class S3FileSystem : public FileSystem {
   ~S3FileSystem();
 
   Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+      const string& fname,
+      std::unique_ptr<RandomAccessFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status NewRandomAccessFile(const string& fname,
-                             std::unique_ptr<RandomAccessFile>* result,
-                             bool use_multi_part_download);
+  Status NewRandomAccessFile(
+      const string& fname, std::unique_ptr<RandomAccessFile>* result,
+      bool use_multi_part_download /*, TransactionToken* token = nullptr */);
 
-  Status NewWritableFile(const string& fname,
-                         std::unique_ptr<WritableFile>* result) override;
+  Status NewWritableFile(
+      const string& fname,
+      std::unique_ptr<WritableFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status NewAppendableFile(const string& fname,
-                           std::unique_ptr<WritableFile>* result) override;
+  Status NewAppendableFile(
+      const string& fname,
+      std::unique_ptr<WritableFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
+      std::unique_ptr<ReadOnlyMemoryRegion>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(
+      const string& dir,
+      std::vector<string>* result /*, TransactionToken* token = nullptr */)
+      override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  Status Stat(
+      const string& fname,
+      FileStatistics* stat /*, TransactionToken* token = nullptr */) override;
 
-  Status GetMatchingPaths(const string& pattern,
-                          std::vector<string>* results) override;
+  Status GetMatchingPaths(
+      const string& pattern,
+      std::vector<string>* results /*, TransactionToken* token = nullptr */)
+      override;
 
-  Status DeleteFile(const string& fname) override;
+  Status DeleteFile(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status CreateDir(const string& name) override;
+  Status CreateDir(
+      const string& name /*, TransactionToken* token = nullptr */) override;
 
-  Status DeleteDir(const string& name) override;
+  Status DeleteDir(
+      const string& name /*, TransactionToken* token = nullptr */) override;
 
-  Status GetFileSize(const string& fname, uint64* size) override;
+  Status GetFileSize(
+      const string& fname,
+      uint64* size /*, TransactionToken* token = nullptr */) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status RenameFile(
+      const string& src,
+      const string& target /*, TransactionToken* token = nullptr */) override;
 
-  Status HasAtomicMove(const string& path, bool* has_atomic_move) override;
+  Status HasAtomicMove(
+      const string& path,
+      bool* has_atomic_move /*, TransactionToken* token = nullptr */) override;
 
  private:
   // Returns the member S3 client, initializing as-needed.

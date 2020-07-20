@@ -77,7 +77,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         amount of memory used, since `distribute` won't use more than
         `element_size` * `max_outstanding_requests` of memory.
       task_refresh_interval_hint_ms: (Optional.) A hint for how often to query
-        the master for task changes.
+        the dispatcher for task changes.
     """
 
     if job_name is None:
@@ -173,7 +173,7 @@ def _distribute(processing_mode,
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
     task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
-      master for task changes.
+      dispatcher for task changes.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -365,7 +365,7 @@ def distribute(processing_mode,
       processed by tf.data workers. Currently, the only supported value is
       "parallel_epochs".
     service: A string indicating how to connect to the tf.data service. The
-      string should be in the format <protocol>://<address>, e.g.
+      string should be in the format protocol://address, e.g.
       grpc://localhost:5000.
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that

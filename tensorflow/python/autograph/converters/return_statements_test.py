@@ -27,81 +27,80 @@ from tensorflow.python.platform import test
 
 class SingleReturnTest(converter_testing.TestCase):
 
-  def assertTransformedEquivalent(self, test_fn, *inputs):
-    ns = {'ops': ops}
-    with self.converted(test_fn, (functions, return_statements), ns) as result:
-      self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
+  def assertTransformedEquivalent(self, f, *inputs):
+    tr = self.transform(f, (functions, return_statements))
+    self.assertEqual(f(*inputs), tr(*inputs))
 
   def test_straightline(self):
 
-    def test_fn(x):
+    def f(x):
       return x * x
 
-    self.assertTransformedEquivalent(test_fn, 2)
+    self.assertTransformedEquivalent(f, 2)
 
   def test_superfluous_returns(self):
 
-    def test_fn():
+    def f():
       retval = 1
       return retval
       retval = 2  # pylint:disable=unreachable
       return retval
 
-    self.assertTransformedEquivalent(test_fn)
+    self.assertTransformedEquivalent(f)
 
   def test_superfluous_returns_adjacent(self):
 
-    def test_fn():
+    def f():
       return 1
       return 2  # pylint:disable=unreachable
 
-    self.assertTransformedEquivalent(test_fn)
+    self.assertTransformedEquivalent(f)
 
   def test_conditional(self):
 
-    def test_fn(x):
+    def f(x):
       if x > 0:
         return x
       else:
         return x * x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def test_conditional_missing_else(self):
 
-    def test_fn(x):
+    def f(x):
       if x > 0:
         return x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def test_conditional_missing_else_then_default(self):
 
-    def test_fn(x):
+    def f(x):
       if x > 0:
         return x
       return x * x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def test_conditional_else_only_then_default(self):
 
-    def test_fn(x):
+    def f(x):
       if x < 0:
         x *= x
       else:
         return x
       return x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def test_conditional_nested(self):
 
-    def test_fn(x):
+    def f(x):
       if x > 0:
         if x < 5:
           return x
@@ -110,53 +109,53 @@ class SingleReturnTest(converter_testing.TestCase):
       else:
         return x * x * x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
-    self.assertTransformedEquivalent(test_fn, 5)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
+    self.assertTransformedEquivalent(f, 5)
 
   def test_context_manager(self):
 
-    def test_fn(x):
+    def f(x):
       with ops.name_scope(''):
         return x * x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def test_context_manager_in_conditional(self):
 
-    def test_fn(x):
+    def f(x):
       if x > 0:
         with ops.name_scope(''):
           return x * x
       else:
         return x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def text_conditional_in_context_manager(self):
 
-    def test_fn(x):
+    def f(x):
       with ops.name_scope(''):
         if x > 0:
           return x * x
         else:
           return x
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def test_no_return(self):
 
-    def test_fn(x):
+    def f(x):
       x *= x
 
-    self.assertTransformedEquivalent(test_fn, 2)
+    self.assertTransformedEquivalent(f, 2)
 
   def test_nested_function(self):
 
-    def test_fn(x):
+    def f(x):
 
       def inner_fn(y):
         if y > 0:
@@ -166,33 +165,33 @@ class SingleReturnTest(converter_testing.TestCase):
 
       return inner_fn(x)
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def test_nested_function_in_control_flow(self):
 
-    def test_fn(x):
+    def f(x):
 
       if x:
         def inner_fn(y):
           return y
         inner_fn(x)
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, -2)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, -2)
 
   def test_for_loop(self):
 
-    def test_fn(n):
+    def f(n):
       for _ in range(n):
         return 1
 
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, 0)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, 0)
 
   def test_while_loop(self):
 
-    def test_fn(n):
+    def f(n):
       i = 0
       s = 0
       while i < n:
@@ -202,23 +201,23 @@ class SingleReturnTest(converter_testing.TestCase):
           return s
       return -1
 
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 2)
-    self.assertTransformedEquivalent(test_fn, 4)
+    self.assertTransformedEquivalent(f, 0)
+    self.assertTransformedEquivalent(f, 2)
+    self.assertTransformedEquivalent(f, 4)
 
   def test_null_return(self):
 
-    def test_fn(n):
+    def f(n):
       if n > 4:
         return
       return
 
-    self.assertTransformedEquivalent(test_fn, 4)
-    self.assertTransformedEquivalent(test_fn, 5)
+    self.assertTransformedEquivalent(f, 4)
+    self.assertTransformedEquivalent(f, 5)
 
   def test_nested_multiple_withs(self):
 
-    def test_fn(x):
+    def f(x):
       v = []
       while x > 0:
         x -= 1
@@ -230,14 +229,14 @@ class SingleReturnTest(converter_testing.TestCase):
         v.append(x)
       return v
 
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 1)
-    self.assertTransformedEquivalent(test_fn, 3)
-    self.assertTransformedEquivalent(test_fn, 4)
+    self.assertTransformedEquivalent(f, 0)
+    self.assertTransformedEquivalent(f, 1)
+    self.assertTransformedEquivalent(f, 3)
+    self.assertTransformedEquivalent(f, 4)
 
   def test_multiple_returns_in_nested_scope(self):
 
-    def test_fn(a):
+    def f(a):
       v = []
       for x in a:
         x -= 1
@@ -250,10 +249,10 @@ class SingleReturnTest(converter_testing.TestCase):
         v.append(x)
       return v
 
-    self.assertTransformedEquivalent(test_fn, [])
-    self.assertTransformedEquivalent(test_fn, [1])
-    self.assertTransformedEquivalent(test_fn, [2])
-    self.assertTransformedEquivalent(test_fn, [1, 2, 3])
+    self.assertTransformedEquivalent(f, [])
+    self.assertTransformedEquivalent(f, [1])
+    self.assertTransformedEquivalent(f, [2])
+    self.assertTransformedEquivalent(f, [1, 2, 3])
 
 if __name__ == '__main__':
   test.main()

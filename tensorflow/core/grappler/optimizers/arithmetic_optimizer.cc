@@ -750,6 +750,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
         ctx().node_map->AddOutput(new_add_node->name(), new_outer_node->name());
 
         // Hoist non-shared factors up into the new AddN node.
+
         for (int i = 0, end = unique_factors.size(); i < end; ++i) {
           const string& unique_factor_i = unique_factors[i];
           new_add_node->set_input(i, unique_factor_i);
@@ -1161,7 +1162,19 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     } else {
       // Remove simple identity transposes.
       if (IsIdentityPermutation(node_perm_values)) {
-        *simplified_node_name = node->input(0);
+        if (IsConjugateTranspose(*node)) {
+          const NodeScopeAndName transpose =
+              ParseNodeScopeAndName(node->name());
+          const string optimized_node_name = OptimizedNodeName(transpose);
+          NodeDef* new_op = AddCopyNode(optimized_node_name, node);
+          new_op->set_op("Conj");
+          new_op->mutable_input()->RemoveLast();
+          new_op->mutable_attr()->erase("Tperm");
+          ForwardControlDependencies(new_op, {node});
+          *simplified_node_name = new_op->name();
+        } else {
+          *simplified_node_name = node->input(0);
+        }
       }
     }
     return Status::OK();

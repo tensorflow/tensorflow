@@ -28,7 +28,7 @@ namespace {
 
 StatusOr<bool> ReplaceGetSize(
     HloInstruction* instr,
-    const DynamicDimensionInference* dynamic_dimension_inference) {
+    DynamicDimensionInference* dynamic_dimension_inference) {
   if (instr->opcode() != HloOpcode::kGetDimensionSize) {
     return false;
   }
@@ -47,11 +47,18 @@ StatusOr<bool> ReplaceGetSize(
       dynamic_dimension_inference->GetDynamicSize(operand, {}, dim);
   if (dynamic_size != nullptr) {
     TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(dynamic_size));
+    // The dependency between a instruction and its dynamic dimensions is not
+    // modeled in the IR. As instr is being replaced by dynamic_size, also tell
+    // dynamic dimension inference that the instruction is being replaced.
+    dynamic_dimension_inference->ReplaceAllDynamicDimensionUsesWith(
+        instr, dynamic_size);
   } else {
     int32 size = instr->operand(0)->shape().dimensions(dim);
     HloInstruction* new_instr = computation->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(size)));
     TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
+    dynamic_dimension_inference->ReplaceAllDynamicDimensionUsesWith(instr,
+                                                                    new_instr);
   }
   return true;
 }
@@ -95,14 +102,14 @@ StatusOr<bool> HloGetDimensionSizeRewriter::Run(HloModule* module) {
   //
   // This will get static size of the op, which is incorrect.
   for (auto* computation : module->computations()) {
-    for (auto instruction : computation->instructions()) {
+    for (auto instruction : computation->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool replaced_get_size,
                           ReplaceGetSize(instruction, &inference));
       changed = changed || replaced_get_size;
     }
   }
   for (auto* computation : module->computations()) {
-    for (auto instruction : computation->instructions()) {
+    for (auto instruction : computation->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool replaced_set_size, ReplaceSetSize(instruction));
       changed = changed || replaced_set_size;
     }

@@ -573,7 +573,8 @@ Status HloComputation::AcceptOrdered(
   for (HloInstruction* root : CollectUnreachableRoots()) {
     TF_RET_CHECK(absl::c_linear_search(order, root)) << root->ToString();
   }
-  TF_RET_CHECK(order.size() == instruction_count());
+  const uint64 instruction_count_uint = instruction_count();
+  TF_RET_CHECK(order.size() == instruction_count_uint);
   absl::flat_hash_set<const HloInstruction*> visited;
   for (const HloInstruction* instruction : order) {
     VLOG(3) << "Visiting ordered: " << instruction->ToString();

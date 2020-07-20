@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import gc
 import os
 
 from tensorflow.core.framework import versions_pb2
@@ -166,14 +167,16 @@ class _SaveableView(object):
   ignored.
   """
 
-  def __init__(self, checkpoint_view, wrapped_functions=None):
+  def __init__(self, checkpoint_view, options, wrapped_functions=None):
     """Initializes a SaveableView.
 
     Args:
       checkpoint_view: A GraphView object.
+      options: A SaveOptions instance.
       wrapped_functions: Dictionary that maps concrete functions to functions
         that do not capture cached variable values.
     """
+    self.options = options
     self.checkpoint_view = checkpoint_view
     trackable_objects, node_ids, slot_variables = (
         self.checkpoint_view.objects_ids_and_slot_variables())
@@ -308,7 +311,7 @@ class _SaveableView(object):
         _process_asset(obj, asset_info, resource_map)
         self.captured_tensor_node_ids[obj.asset_path] = node_id
       elif isinstance(obj, base.Trackable):
-        node_object_map, node_resource_map = obj._map_resources()  # pylint: disable=protected-access
+        node_object_map, node_resource_map = obj._map_resources(self.options)  # pylint: disable=protected-access
         for capturable in node_resource_map.keys():
           self.captured_tensor_node_ids[capturable] = node_id
         object_map.update(node_object_map)
@@ -387,12 +390,27 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
   for exterior, interior in original_captures:
     mapped_resource = resource_map.get(exterior, None)
     if mapped_resource is None:
+      trackable_referrers = []
+      # Try to figure out where the resource came from by iterating over objects
+      # which reference it. This is slow and doesn't help us figure out how to
+      # match it to other objects when loading the SavedModel as a checkpoint,
+      # so we can't continue saving. But we can at least tell the user what
+      # needs attaching.
+      for primary_referrer in gc.get_referrers(exterior):
+        if isinstance(primary_referrer, base.Trackable):
+          trackable_referrers.append(primary_referrer)
+        for secondary_referrer in gc.get_referrers(primary_referrer):
+          if isinstance(secondary_referrer, base.Trackable):
+            trackable_referrers.append(secondary_referrer)
       raise AssertionError(
-          ("Tried to export a function which references untracked object {}."
+          ("Tried to export a function which references untracked resource {}."
            "TensorFlow objects (e.g. tf.Variable) captured by functions must "
            "be tracked by assigning them to an attribute of a tracked object "
-           "or assigned to an attribute of the main object directly."
-          ).format(interior))
+           "or assigned to an attribute of the main object directly.\n\n"
+           "Trackable Python objects referring to this tensor "
+           "(from gc.get_referrers, limited to two hops):\n{}"
+          ).format(interior,
+                   "\n".join([repr(obj) for obj in trackable_referrers])))
     export_captures.append(mapped_resource)
   return export_captures
 
@@ -942,15 +960,16 @@ def save(obj, export_dir, signatures=None, options=None):
   Args:
     obj: A trackable object to export.
     export_dir: A directory in which to write the SavedModel.
-    signatures: Optional, either a `tf.function` with an input signature
-      specified or the result of `f.get_concrete_function` on a
-      `@tf.function`-decorated function `f`, in which case `f` will be used to
-      generate a signature for the SavedModel under the default serving
-      signature key. `signatures` may also be a dictionary, in which case it
-      maps from signature keys to either `tf.function` instances with input
-      signatures or concrete functions. The keys of such a dictionary may be
-      arbitrary strings, but will typically be from the
-      `tf.saved_model.signature_constants` module.
+    signatures: Optional, one of three types:
+      * a `tf.function` with an input signature specified, which will use the
+        default serving signature key,
+      * the result of `f.get_concrete_function` on a `@tf.function`-decorated
+        function `f`, in which case `f` will be used to generate a signature for
+        the SavedModel under the default serving signature key,
+      * a dictionary, which maps signature keys to either `tf.function`
+        instances with input signatures or concrete functions. Keys of such a
+        dictionary may be arbitrary strings, but will typically be from the
+        `tf.saved_model.signature_constants` module.
     options: Optional, `tf.saved_model.SaveOptions` object that specifies
       options for saving.
 
@@ -967,6 +986,10 @@ def save(obj, export_dir, signatures=None, options=None):
   @end_compatibility
   """
   options = options or save_options.SaveOptions()
+  if options.experimental_variable_policy._expand_distributed_variables():  # pylint:disable=protected-access
+    raise NotImplementedError(
+        "The VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES option is "
+        "not implemented in saved_model.save.")
   # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
   # compatible (no sessions) and share it with this export API rather than
   # making a SavedModel proto and writing it directly.
@@ -1013,7 +1036,28 @@ def save(obj, export_dir, signatures=None, options=None):
 
 
 def export_meta_graph(obj, filename, signatures=None, options=None):
-  """Exports the MetaGraph proto to a file."""
+  """Exports the MetaGraph proto to a file.
+
+  This function goes through the same procedures saved_model.save goes to
+  produce the given object's MetaGraph, then saves it to the given file. It
+  skips saving checkpoint information, and is useful when all one wants is the
+  graph defining the model.
+
+  Args:
+    obj: A trackable object to build the MetaGraph from.
+    filename: The file into which to write the MetaGraph.
+    signatures: Optional, either a `tf.function` with an input signature
+      specified or the result of `f.get_concrete_function` on a
+      `@tf.function`-decorated function `f`, in which case `f` will be used to
+      generate a signature for the SavedModel under the default serving
+      signature key. `signatures` may also be a dictionary, in which case it
+      maps from signature keys to either `tf.function` instances with input
+      signatures or concrete functions. The keys of such a dictionary may be
+      arbitrary strings, but will typically be from the
+      `tf.saved_model.signature_constants` module.
+    options: Optional, `tf.saved_model.SaveOptions` object that specifies
+      options for saving.
+  """
   options = options or save_options.SaveOptions()
   export_dir = os.path.dirname(filename)
   meta_graph_def, exported_graph, _, _ = _build_meta_graph(
@@ -1062,8 +1106,9 @@ def _build_meta_graph_impl(obj,
   # Use _SaveableView to provide a frozen listing of properties and functions.
   # Note we run this twice since, while constructing the view the first time
   # there can be side effects of creating variables.
-  _ = _SaveableView(checkpoint_graph_view)
-  saveable_view = _SaveableView(checkpoint_graph_view, wrapped_functions)
+  _ = _SaveableView(checkpoint_graph_view, options)
+  saveable_view = _SaveableView(checkpoint_graph_view, options,
+                                wrapped_functions)
   object_saver = util.TrackableSaver(checkpoint_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(meta_graph_def,
                                                     saveable_view, signatures,
@@ -1098,6 +1143,6 @@ def _build_meta_graph(obj,
                       options,
                       meta_graph_def=None):
   """Creates a MetaGraph under a SaveContext."""
-  with save_context.save_context():
+  with save_context.save_context(options):
     return _build_meta_graph_impl(obj, export_dir, signatures, options,
                                   meta_graph_def)

@@ -16,7 +16,7 @@
 
 This module provides a subset of numpy APIs, built on top of TensorFlow
 operations. Please see documentation here:
-https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/ops/numpy_ops.
+https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/ops/numpy_ops/README.md
 """
 # TODO(wangpeng): Append `np_export`ed symbols to the comments above.
 
@@ -28,6 +28,7 @@ from __future__ import print_function
 
 from tensorflow.python.ops.array_ops import newaxis
 from tensorflow.python.ops.numpy_ops import np_random as random
+from tensorflow.python.ops.numpy_ops import np_utils
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.numpy_ops.np_array_ops import *
 from tensorflow.python.ops.numpy_ops.np_arrays import ndarray
@@ -38,8 +39,19 @@ from tensorflow.python.ops.numpy_ops.np_utils import finfo
 from tensorflow.python.ops.numpy_ops.np_utils import promote_types
 from tensorflow.python.ops.numpy_ops.np_utils import result_type
 
+
 # pylint: disable=redefined-builtin,undefined-variable
-max = amax
-min = amin
-round = around
+@np_utils.np_doc("max")
+def max(a, axis=None, keepdims=None):
+  return amax(a, axis=axis, keepdims=keepdims)
+
+
+@np_utils.np_doc("min")
+def min(a, axis=None, keepdims=None):
+  return amin(a, axis=axis, keepdims=keepdims)
+
+
+@np_utils.np_doc("round")
+def round(a, decimals=0):
+  return around(a, decimals=decimals)
 # pylint: enable=redefined-builtin,undefined-variable

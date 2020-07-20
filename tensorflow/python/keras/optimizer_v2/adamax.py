@@ -25,7 +25,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -136,17 +136,16 @@ class Adamax(optimizer_v2.OptimizerV2):
 
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
-
-    return training_ops.resource_apply_ada_max(
-        var.handle,
-        m.handle,
-        v.handle,
-        coefficients['beta_1_power'],
-        coefficients['lr_t'],
-        coefficients['beta_1_t'],
-        coefficients['beta_2_t'],
-        coefficients['epsilon'],
-        grad,
+    return gen_training_ops.ResourceApplyAdaMax(
+        var=var.handle,
+        m=m.handle,
+        v=v.handle,
+        beta1_power=coefficients['beta_1_power'],
+        lr=coefficients['lr_t'],
+        beta1=coefficients['beta_1_t'],
+        beta2=coefficients['beta_2_t'],
+        epsilon=coefficients['epsilon'],
+        grad=grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):

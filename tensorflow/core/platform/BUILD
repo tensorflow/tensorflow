@@ -762,6 +762,14 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "ctstring",
+    srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
+    ],
+)
+
 cc_library(
     name = "types",
     hdrs = ["types.h"],
@@ -943,6 +951,12 @@ cc_library(
     srcs = ["tf32_utils.cc"],
     hdrs = ["tf32_utils.h"],
     copts = tf_copts(),
+    alwayslink = 1,
+)
+
+filegroup(
+    name = "tf32_hdr",
+    srcs = ["tf32_utils.h"],
 )
 
 tf_cc_tests(

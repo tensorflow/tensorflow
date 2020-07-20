@@ -1164,8 +1164,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DataType T_m;
     TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
 
+#ifndef ENABLE_INTEL_MKL_BFLOAT16
     // Don't try to merge if datatype is not DT_FLOAT
     if (T_m != DT_FLOAT) return n;
+#else
+    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16
+    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16) return n;
+#endif
 
     const Node* conv_node;
     if (m->type_string() == csinfo_.pad) {

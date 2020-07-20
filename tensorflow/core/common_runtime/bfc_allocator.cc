@@ -832,7 +832,7 @@ bool BFCAllocator::MergeTimestampedChunks(size_t required_bytes) {
   // to to_merge.  If this is a standard merge (required_bytes == 0) then
   // merge them all, otherwise merge just until a Chunk of the required size
   // is produced.
-  for (int ci = 0; ci < to_merge.size(); ++ci) {
+  for (int ci = 0, end = to_merge.size(); ci < end; ++ci) {
     void* ptr = to_merge[ci];
     // It's possible that the Chunk associated with this memory location got
     // merged and deallocated in a prior iteration so refetch the handle and

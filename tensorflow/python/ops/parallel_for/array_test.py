@@ -148,9 +148,12 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
-      return array_ops.expand_dims(
-          x1, axis=-1), array_ops.expand_dims(
-              x1, axis=1)
+      return [
+          array_ops.expand_dims(x1, axis=-1),
+          array_ops.expand_dims(x1, axis=1),
+          array_ops.expand_dims(
+              x1, axis=constant_op.constant(1, dtype=dtypes.int64))
+      ]
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -209,7 +212,7 @@ class ArrayTest(PForTestCase):
       x1 = array_ops.gather(x, i)
       return array_ops.tile(x1, [i, 1])
 
-    with self.assertRaisesRegexp(ValueError, "expected to be loop invariant"):
+    with self.assertRaisesRegex(ValueError, "expected to be loop invariant"):
       pfor_control_flow_ops.pfor(loop_fn, 2, fallback_to_while_loop=False)
 
   def test_pack(self):
@@ -319,8 +322,12 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
-      return array_ops.concat([x1, x1, y],
-                              axis=0), array_ops.concat([x1, x1, y], axis=-1)
+      return [
+          array_ops.concat([x1, x1, y], axis=0),
+          array_ops.concat([x1, x1, y], axis=-1),
+          array_ops.concat([x1, x1, y],
+                           axis=constant_op.constant(0, dtype=dtypes.int64))
+      ]
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -458,7 +465,7 @@ class ArrayTest(PForTestCase):
     # handled.
     self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
     # Without fallback, ValueError is thrown.
-    with self.assertRaisesRegexp(ValueError, "expected to be loop invariant"):
+    with self.assertRaisesRegex(ValueError, "expected to be loop invariant"):
       self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=False)
 
   def test_depth_to_space(self):

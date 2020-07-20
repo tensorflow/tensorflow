@@ -39,8 +39,8 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -69,12 +69,12 @@ using ::tensorflow::uint32;
 using ::tensorflow::uint64;
 using ::tensorflow::uint8;
 
-constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
+constexpr char kPaddingMapAttr[] = "mhlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
-constexpr char kShardingAttr[] = "xla_hlo.sharding";
-constexpr char kFrontendAttributesAttr[] = "xla_hlo.frontend_attributes";
-constexpr char kRepicationAttr[] = "xla_hlo.is_same_data_across_replicas";
+constexpr char kShardingAttr[] = "mhlo.sharding";
+constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
+constexpr char kRepicationAttr[] = "mhlo.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -247,7 +247,7 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
 }
 
 static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
-    mlir::xla_hlo::DotDimensionNumbers dot_dimension_numbers_attr) {
+    mlir::mhlo::DotDimensionNumbers dot_dimension_numbers_attr) {
   xla::DotDimensionNumbers dot_dimension_numbers;
 
   auto rhs_contracting_dimensions =
@@ -282,7 +282,7 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
 }
 
 static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
-    mlir::xla_hlo::ConvDimensionNumbers input) {
+    mlir::mhlo::ConvDimensionNumbers input) {
   xla::ConvolutionDimensionNumbers output;
 
   output.set_input_batch_dimension(
@@ -315,7 +315,7 @@ static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
   return output;
 }
 
-xla::ChannelHandle Convert_channel_handle(mlir::xla_hlo::ChannelHandle attr) {
+xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
   xla::ChannelHandle channel_handle;
   channel_handle.set_handle(ConvertAPInt(attr.handle().getValue()));
   channel_handle.set_type(static_cast<xla::ChannelHandle::ChannelType>(
@@ -333,7 +333,7 @@ static xla::ComparisonDirection Convert_comparison_direction(
 }
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
-    mlir::xla_hlo::GatherDimensionNumbers input) {
+    mlir::mhlo::GatherDimensionNumbers input) {
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = ConvertDenseIntAttr(input.offset_dims());
@@ -357,7 +357,7 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 }
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
-    mlir::xla_hlo::ScatterDimensionNumbers input) {
+    mlir::mhlo::ScatterDimensionNumbers input) {
   xla::ScatterDimensionNumbers output;
 
   auto update_window_dims = ConvertDenseIntAttr(input.update_window_dims());
@@ -574,7 +574,7 @@ llvm::SmallVector<xla::XlaOp, 4> GetTuple(mlir::Operation::operand_range values,
 }  // namespace
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 
 LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
@@ -829,7 +829,7 @@ LogicalResult ExportXlaOp(ReshapeOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
-  // Failure on purpose because `xla_hlo::ReturnOp` will be handled by
+  // Failure on purpose because `mhlo::ReturnOp` will be handled by
   // special purpose logic in `ConvertToHloModule::Lower`.
   return failure();
 }
@@ -943,7 +943,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
 }
 
 }  // namespace
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir
 
 #include "tensorflow/compiler/mlir/xla/operator_writers.inc"
@@ -1060,7 +1060,7 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   }
 
-  if (isa<xla_hlo::ReturnOp, mlir::ReturnOp>(inst)) {
+  if (isa<mhlo::ReturnOp, mlir::ReturnOp>(inst)) {
     // Construct the return value for the function. If there are multiple
     // values returned, then create a tuple, else return value directly.
     xla::XlaOp return_value;
@@ -1405,7 +1405,7 @@ void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
 }
 
 // Validates and populates dynamic parameter bindings from a module's entry
-// function `xla_hlo.padding_map` argument attributes to a `xla::HloModuleProto`
+// function `mhlo.padding_map` argument attributes to a `xla::HloModuleProto`
 // `DynamicParameterBindingProto`.
 LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
                                           xla::HloModuleProto* hlo_module_proto,

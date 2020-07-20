@@ -221,9 +221,9 @@ class ConfusionMatrixTest(test.TestCase):
   def testInputDifferentSize(self):
     labels = np.asarray([1, 2])
     predictions = np.asarray([1, 2, 3])
-    self.assertRaisesRegexp(ValueError, "must be equal",
-                            confusion_matrix.confusion_matrix, predictions,
-                            labels)
+    self.assertRaisesRegex(ValueError, "must be equal",
+                           confusion_matrix.confusion_matrix, predictions,
+                           labels)
 
   def testOutputIsInt32(self):
     labels = np.arange(2)

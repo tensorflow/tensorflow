@@ -215,8 +215,8 @@ class RaggedSegmentStackOpTest(test_util.TensorFlowTestCase,
   def testRuntimeError(self, data, partitions, num_partitions, error):
     data = ragged_factory_ops.constant(data)
     partitions = ragged_factory_ops.constant(partitions, dtype=dtypes.int64)
-    with self.assertRaisesRegexp((ValueError, errors.InvalidArgumentError),
-                                 error):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                error):
       self.evaluate(
           ragged_array_ops.stack_dynamic_partitions(data, partitions,
                                                     num_partitions))
@@ -239,8 +239,8 @@ class RaggedSegmentStackOpTest(test_util.TensorFlowTestCase,
           error='must have rank 0'),
   ])
   def testStaticError(self, data, partitions, num_partitions, error):
-    with self.assertRaisesRegexp((ValueError, errors.InvalidArgumentError),
-                                 error):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                error):
       ragged_array_ops.stack_dynamic_partitions(data, partitions,
                                                 num_partitions)
 
@@ -248,8 +248,8 @@ class RaggedSegmentStackOpTest(test_util.TensorFlowTestCase,
     if context.executing_eagerly():
       return
     partitions = array_ops.placeholder(dtypes.int32, None)
-    with self.assertRaisesRegexp((ValueError, errors.InvalidArgumentError),
-                                 'partitions must have known rank'):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                'partitions must have known rank'):
       ragged_array_ops.stack_dynamic_partitions(['a', 'b', 'c'], partitions, 10)
 
 

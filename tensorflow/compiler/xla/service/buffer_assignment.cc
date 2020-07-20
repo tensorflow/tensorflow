@@ -83,7 +83,8 @@ std::vector<int64> ColorInterferenceGraph(
 
     // Find the color that is not yet assigned to the neighbors.
     int64 color = kColorUnassigned;
-    for (color = 0; color < available_colors.size(); ++color) {
+    const int64 end = available_colors.size();
+    for (color = 0; color < end; ++color) {
       if (available_colors[color]) {
         break;
       }
@@ -785,7 +786,7 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   // because we need to do the HasAllocation check for each buffer. Otherwise
   // the buffer_size_ call might fail for some backends.
   const HloDataflowAnalysis& dataflow = this->dataflow_analysis();
-  for (BufferValue::Id id = 0; id < dataflow.values().size(); id++) {
+  for (BufferValue::Id id = 0, end = dataflow.values().size(); id < end; id++) {
     auto& value = dataflow.values().at(id);
     if (HasAllocation(*value)) {
       LogicalBufferProto proto_buffer = value->ToProto(buffer_size_);

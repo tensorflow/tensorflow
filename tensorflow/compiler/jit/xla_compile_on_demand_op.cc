@@ -50,35 +50,47 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   // Builds an XLA allocator for the device.
   XlaComputationLaunchContext launch_context(
       client, client->backend().memory_allocator(),
+      client->default_device_ordinal(),
       /*allocate_xla_tensors=*/true,
       /*use_multiple_streams=*/metadata.UseMultipleStreams());
 
-  launch_context.PopulateInputs(ctx, result, variable_args,
-                                /*missing_ctx_input_prefix=*/0);
+  std::map<int, const Tensor*> snapshot_ptrs;
+  for (auto& p : variable_args) {
+    snapshot_ptrs.emplace(p.first,
+                          p.second.has_value() ? &p.second.value() : nullptr);
+  }
+
+  const xla::HloInputOutputAliasConfig& input_output_alias =
+      executable->executable()->module().input_output_alias_config();
+  xla::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
+      launch_context.PopulateInputs(ctx, result, snapshot_ptrs,
+                                    /*missing_ctx_input_prefix=*/0,
+                                    input_output_alias);
+  TF_RETURN_IF_ERROR(execution_inputs.status());
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   TF_RET_CHECK(stream);
 
   VLOG(2) << "Executing computation: " << name();
-  for (const xla::ShapedBuffer* arg : launch_context.arguments()) {
-    VLOG(2) << name() << ": " << *arg;
-  }
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_allocator(client->backend().memory_allocator());
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
 
-  xla::StatusOr<xla::ScopedShapedBuffer> run_result =
-      executable->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ExecutionOutput> run_result =
+      executable->Run(execution_inputs.ConsumeValueOrDie(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
-
-  const xla::HloInputOutputAliasConfig& input_output_alias =
-      executable->executable()->module().input_output_alias_config();
+  xla::ExecutionOutput execution_output = run_result.ConsumeValueOrDie();
+  xla::StatusOr<std::vector<VariableInfo>> variable_infos =
+      GatherVariableInfo(ctx, *result, 0);
+  TF_RETURN_IF_ERROR(variable_infos.status());
+  TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(*variable_infos)));
   TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
-      ctx, result, run_result.ConsumeValueOrDie(),
-      /*missing_ctx_input_prefix=*/0, input_output_alias, variable_args));
+      ctx, result, execution_output.ConsumeResult(),
+      /*missing_ctx_input_prefix=*/0, absl::MakeSpan(*variable_infos),
+      input_output_alias, snapshot_ptrs));
   return Status::OK();
 }
 

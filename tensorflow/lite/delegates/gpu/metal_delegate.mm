@@ -205,6 +205,14 @@ class Delegate {
   }
 
   absl::Status BindBufferToTensor(id<MTLBuffer> buffer, int tensor_index) {
+    // The tensor index is expected to be an input or output tensor of the interpreter.
+    // For quantized model, the buffer should be linked with their dequantized counterpart.
+    if (quant_conversion_map_.find(tensor_index) != quant_conversion_map_.end()) {
+      tensor_index = quant_conversion_map_[tensor_index];
+      // remove [dequantized tensor ID] -> [quantized tensor ID] mapping, to prevent extra
+      // dequant/quant on in/outputs.
+      quant_conversion_map_.erase(tensor_index);
+    }
     for (auto& input : graph_inputs_) {
       if (input.tensor_id == tensor_index) {
         input_output_buffers_[input.id] = buffer;

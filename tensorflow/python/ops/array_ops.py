@@ -591,7 +591,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a = tf.keras.layers.Input((None, 10))
   >>> tf.shape(a)
-  <tf.Tensor ... shape=(3,) dtype=int32>
+  <... shape=(3,) dtype=int32...>
 
   In these cases, using `tf.Tensor.shape` will return more informative results.
 
@@ -4458,7 +4458,7 @@ def where_v2(condition, x=None, y=None, name=None):
 
   The `condition` tensor acts as a mask that chooses whether the corresponding
   element / row in the output should be taken from `x`
-  (if the element in `condition is True) or `y` (if it is false).
+  (if the element in `condition` is True) or `y` (if it is false).
 
   >>> tf.where([True, False, False, True], [1,2,3,4], [100,200,300,400])
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 200, 300,   4],
@@ -4484,7 +4484,7 @@ def where_v2(condition, x=None, y=None, name=None):
     condition: A `tf.Tensor` of type `bool`
     x: If provided, a Tensor which is of the same type as `y`, and has a shape
       broadcastable with `condition` and `y`.
-    y: If provided, a Tensor which is of the same type as `y`, and has a shape
+    y: If provided, a Tensor which is of the same type as `x`, and has a shape
       broadcastable with `condition` and `x`.
     name: A name of the operation (optional).
 

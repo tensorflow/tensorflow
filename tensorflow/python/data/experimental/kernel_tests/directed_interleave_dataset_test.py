@@ -113,38 +113,38 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testErrors(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 r"vector of length `len\(datasets\)`"):
+    with self.assertRaisesRegex(ValueError,
+                                r"vector of length `len\(datasets\)`"):
       interleave_ops.sample_from_datasets(
           [dataset_ops.Dataset.range(10),
            dataset_ops.Dataset.range(20)],
           weights=[0.25, 0.25, 0.25, 0.25])
 
-    with self.assertRaisesRegexp(TypeError, "`tf.float32` or `tf.float64`"):
+    with self.assertRaisesRegex(TypeError, "`tf.float32` or `tf.float64`"):
       interleave_ops.sample_from_datasets(
           [dataset_ops.Dataset.range(10),
            dataset_ops.Dataset.range(20)],
           weights=[1, 1])
 
-    with self.assertRaisesRegexp(TypeError, "must have the same type"):
+    with self.assertRaisesRegex(TypeError, "must have the same type"):
       interleave_ops.sample_from_datasets([
           dataset_ops.Dataset.from_tensors(0),
           dataset_ops.Dataset.from_tensors(0.0)
       ])
 
-    with self.assertRaisesRegexp(TypeError, "tf.int64"):
+    with self.assertRaisesRegex(TypeError, "tf.int64"):
       interleave_ops.choose_from_datasets([
           dataset_ops.Dataset.from_tensors(0),
           dataset_ops.Dataset.from_tensors(1)
       ], choice_dataset=dataset_ops.Dataset.from_tensors(1.0))
 
-    with self.assertRaisesRegexp(TypeError, "scalar"):
+    with self.assertRaisesRegex(TypeError, "scalar"):
       interleave_ops.choose_from_datasets([
           dataset_ops.Dataset.from_tensors(0),
           dataset_ops.Dataset.from_tensors(1)
       ], choice_dataset=dataset_ops.Dataset.from_tensors([1.0]))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "out of range"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "out of range"):
       dataset = interleave_ops.choose_from_datasets(
           [dataset_ops.Dataset.from_tensors(0)],
           choice_dataset=dataset_ops.Dataset.from_tensors(

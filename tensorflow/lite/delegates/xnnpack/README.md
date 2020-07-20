@@ -100,7 +100,7 @@ Below is the list of current operators and limitations:
 ### `AVERAGE_POOL_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* 1x1 pooling is not supported.
+* 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
@@ -157,7 +157,7 @@ Below is the list of current operators and limitations:
 ### `MAX_POOL_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* 1x1 pooling is not supported.
+* 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
@@ -223,6 +223,10 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
+
+### `SQRT`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `SQUARE`
 

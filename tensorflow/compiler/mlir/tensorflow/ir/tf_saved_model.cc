@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -140,16 +141,27 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
   return mlir::success();
 }
 
-Type GetBoundInputArgTypeFor(GlobalTensorOp global_tensor) {
-  auto type = global_tensor.type().cast<TensorType>();
-  return RankedTensorType::get(
-      {}, TF::ResourceType::get({type}, type.getContext()));
+Type GetBoundInputArgTypeFor(mlir::Operation *op) {
+  if (auto global_tensor = llvm::dyn_cast<GlobalTensorOp>(op)) {
+    auto type = global_tensor.type().cast<TensorType>();
+    return RankedTensorType::get(
+        {}, TF::ResourceType::get({type}, type.getContext()));
+  }
+
+  if (auto asset = llvm::dyn_cast<AssetOp>(op)) {
+    return RankedTensorType::get({}, TF::StringType::get(asset.getContext()));
+  }
+
+  op->emitError() << "unknown symbol operation";
+  return {};
 }
 
 static LogicalResult VerifyBoundInputArgType(Operation *op_for_diagnostics,
                                              Type arg_type,
-                                             GlobalTensorOp global_tensor) {
-  auto expected_type = GetBoundInputArgTypeFor(global_tensor);
+                                             mlir::Operation *symbol_op) {
+  auto expected_type = GetBoundInputArgTypeFor(symbol_op);
+  if (!expected_type) return failure();
+
   if (arg_type != expected_type) {
     return op_for_diagnostics->emitError()
            << "bound input with type " << arg_type << " expected to have type "
@@ -168,14 +180,14 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     }
     auto symbol_name = named_attr.second.cast<FlatSymbolRefAttr>().getValue();
     auto module = op->getParentOfType<ModuleOp>();
-    auto global_tensor = module.lookupSymbol<GlobalTensorOp>(symbol_name);
-    if (!global_tensor) {
+    mlir::Operation *symbol_op = module.lookupSymbol(symbol_name);
+    if (!symbol_op) {
       return op->emitError() << "'tf_saved_model.bound_input' attribute must "
                                 "reference a valid symbol, got invalid symbol '"
                              << symbol_name << "'";
     }
     auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
-    return VerifyBoundInputArgType(op, arg_type, global_tensor);
+    return VerifyBoundInputArgType(op, arg_type, symbol_op);
   }
   if (named_attr.first == "tf_saved_model.index_path") {
     return VerifyIndexPath(op, named_attr);
@@ -297,6 +309,7 @@ static LogicalResult VerifySavedModelModule(
 
 LogicalResult VerifyExportedFunc(FuncOp func) {
   bool reached_bound_inputs = false;
+  auto module = func.getParentOfType<ModuleOp>();
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
     if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
       reached_bound_inputs = true;
@@ -311,7 +324,9 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
       continue;
     }
     if (func.getArgAttr(i, "tf.resource_name")) {
-      continue;
+      if (module.getAttr("tf_saved_model.under_construction")) continue;
+      return func.emitError() << "'tf.resource_name' attribute is not allowed "
+                                 "unless it is being under construction";
     }
     return func.emitError()
            << "all arguments should have 'tf_saved_model.index_path', "
@@ -341,7 +356,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.exported_names") {
-    if (!isa<FuncOp>(op) && !isa<GlobalTensorOp>(op)) {
+    if (!isa<FuncOp, GlobalTensorOp>(op)) {
       return op->emitError() << "'tf_saved_model.exported_names' must be on a "
                                 "'func' or 'tf_saved_model.global_tensor' op";
     }
@@ -370,6 +385,9 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     }
     return VerifySavedModelModule(module, this);
   }
+  if (named_attr.first == "tf_saved_model.under_construction") {
+    return success();
+  }
 
   return op->emitError() << "unknown tf_saved_model dialect attribute '"
                          << named_attr.first << "'";
@@ -397,12 +415,12 @@ bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;
 }
 
-GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
-                                const SymbolTable &symbol_table) {
+Operation *LookupBoundInput(FuncOp func, int arg_index,
+                            const SymbolTable &symbol_table) {
   auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
       arg_index, "tf_saved_model.bound_input");
   if (!attr) return nullptr;
-  return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
+  return symbol_table.lookup(attr.getValue());
 }
 
 SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op) {
@@ -422,9 +440,13 @@ class OptimizeSessionInitializerPattern
     auto init_func_op = symbol_table.lookup<mlir::FuncOp>(op.initializer());
 
     // The init function can only be referenced from the SessionInitializerOp.
-    // And there is at most one SessionInitializerOp in the module. So both ops
-    // have no other uses and can be simply erased.
-    if (init_func_op.front().begin()->isKnownTerminator()) {
+    // And there is at most one SessionInitializerOp in the module. So if both
+    // ops have no other uses or have one NoOp only, they can be simply erased.
+    auto &operations = init_func_op.front().getOperations();
+    if ((operations.size() == 1 && operations.front().isKnownTerminator()) ||
+        (operations.size() == 2 &&
+         dyn_cast<mlir::TF::NoOp>(operations.front()) &&
+         operations.back().isKnownTerminator())) {
       rewriter.eraseOp(init_func_op);
       rewriter.eraseOp(op);
       return success();

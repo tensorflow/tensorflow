@@ -495,7 +495,7 @@ class RotateTransposeTest(test.TestCase):
       error_message = r"Attempt to convert a value \(None\)"
     else:
       error_message = "None values not supported."
-    with self.assertRaisesRegexp(ValueError, error_message):
+    with self.assertRaisesRegex(ValueError, error_message):
       du.rotate_transpose(None, 1)
     for x in (np.ones(1), np.ones((2, 1)), np.ones((3, 2, 1))):
       for shift in np.arange(-5, 5):

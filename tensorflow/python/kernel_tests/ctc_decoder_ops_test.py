@@ -236,9 +236,9 @@ class CTCGreedyDecoderTest(test.TestCase):
         top_paths=2)
 
     # Requesting more paths than the beam width allows.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 (".*requested more paths than the beam "
-                                  "width.*")):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                (".*requested more paths than the beam "
+                                 "width.*")):
       self._testCTCDecoder(
           ctc_ops.ctc_beam_search_decoder,
           inputs,

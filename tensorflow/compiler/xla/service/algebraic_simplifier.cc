@@ -4137,13 +4137,13 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
         new_dnums.add_rhs_contracting_dimensions(
             dnums.rhs_batch_dimensions(batch_dim));
         new_dnums.add_lhs_contracting_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
+            dnums.lhs_batch_dimensions(batch_dim));
         ++removed_dims;
       } else {
         new_dnums.add_rhs_batch_dimensions(
             dnums.rhs_batch_dimensions(batch_dim));
         new_dnums.add_lhs_batch_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
+            dnums.lhs_batch_dimensions(batch_dim));
       }
     }
     std::vector<int64> reduce_dims;
@@ -4697,15 +4697,17 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   for (int64 spatial_dim = 0;
        spatial_dim < dnums.input_spatial_dimensions_size(); ++spatial_dim) {
     const int64 kernel_size = window_dims[spatial_dim].size();
-    kernel_product *= kernel_size;
     const int64 dilated_kernel_size =
         1 + (kernel_size - 1) * window_dims[spatial_dim].window_dilation();
 
     const int64 input_size =
         input->shape().dimensions(dnums.input_spatial_dimensions(spatial_dim));
-    swapped_kernel_product *= input_size;
     const int64 dilated_input_size =
         1 + (input_size - 1) * window_dims[spatial_dim].base_dilation();
+    // Don't decide to swap if the input size is one, since many convolution
+    // implementations can easily hand that special case efficiently.
+    kernel_product *= kernel_size;
+    swapped_kernel_product *= input_size == 1 ? kernel_size : input_size;
 
     auto new_dim = swapped_window.add_dimensions();
     new_dim->set_size(input_size);

@@ -145,9 +145,7 @@ ConvolutionTransposedThin::ConvolutionTransposedThin(
     : GPUOperation(std::move(operation)),
       kernel_size_(operation.kernel_size_),
       src_channels_(operation.src_channels_),
-      dst_channels_(operation.dst_channels_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      dst_channels_(operation.dst_channels_) {}
 
 ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
     ConvolutionTransposedThin&& operation) {
@@ -155,8 +153,6 @@ ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
     std::swap(kernel_size_, operation.kernel_size_);
     std::swap(src_channels_, operation.src_channels_);
     std::swap(dst_channels_, operation.dst_channels_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -187,9 +183,7 @@ absl::Status ConvolutionTransposedThin::Compile(
 
 absl::Status ConvolutionTransposedThin::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 ConvolutionTransposedThin::GetGridSize() const {
@@ -197,16 +191,6 @@ int3 ConvolutionTransposedThin::GetGridSize() const {
   const int grid_y = src_[0]->Height();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status ConvolutionTransposedThin::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status ConvolutionTransposedThin::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 bool IsConvolutionTransposedThinSupported(

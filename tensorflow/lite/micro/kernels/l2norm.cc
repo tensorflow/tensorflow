@@ -128,22 +128,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace l2norm
 
-TfLiteRegistration* Register_L2NORM_REF() {
-    static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/l2norm::Prepare,
-                                 /*invoke=*/l2norm::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-
-  return &r;
+TfLiteRegistration Register_L2NORM_REF() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/l2norm::Prepare,
+          /*invoke=*/l2norm::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-TfLiteRegistration* Register_L2_NORMALIZATION() {
-  return Register_L2NORM_REF();
-}
+TfLiteRegistration Register_L2_NORMALIZATION() { return Register_L2NORM_REF(); }
 
 }  // namespace micro
 }  // namespace ops

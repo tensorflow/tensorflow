@@ -21,7 +21,8 @@ from __future__ import print_function
 import json
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
@@ -30,7 +31,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import serialization
 
 
-class SerializationTests(test.TestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class SerializationTests(keras_parameterized.TestCase):
 
   def test_serialize_dense(self):
     dense = core.Dense(3)
@@ -39,7 +41,6 @@ class SerializationTests(test.TestCase):
         dense, default=serialization.get_json_type))
     self.assertEqual(3, round_trip["config"]["units"])
 
-  @test_util.run_in_graph_and_eager_modes
   def test_serialize_sequential(self):
     model = sequential.Sequential()
     model.add(core.Dense(4))
@@ -52,7 +53,6 @@ class SerializationTests(test.TestCase):
         # (but not in V1)
         5, sequential_round_trip["config"]["layers"][-1]["config"]["units"])
 
-  @test_util.run_in_graph_and_eager_modes
   def test_serialize_model(self):
     x = input_layer.Input(shape=[3])
     y = core.Dense(10)(x)

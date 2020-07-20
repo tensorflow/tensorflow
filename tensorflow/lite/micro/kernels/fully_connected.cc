@@ -216,19 +216,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace fully_connected
 
-TfLiteRegistration* Register_FULLY_CONNECTED() {
-  // TODO(b/149408647): Once we remove AddBuiltin from MicroOpResolver and
-  // completely switch to the templated AddBuiltin from MicroMutableOpResolver,
-  // this struct no longer needs to be static and can be returned by value.
-  static TfLiteRegistration r = {/*init=*/fully_connected::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/fully_connected::Prepare,
-                                 /*invoke=*/fully_connected::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_FULLY_CONNECTED() {
+  return {/*init=*/fully_connected::Init,
+          /*free=*/nullptr,
+          /*prepare=*/fully_connected::Prepare,
+          /*invoke=*/fully_connected::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

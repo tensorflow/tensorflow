@@ -28,8 +28,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/1150e71e07c79b538efd842aba5b210a31827ae5.zip"
-CMSIS_MD5 := "e05f4222ef58825193910b41a0871dcb"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/9daaa7a34a5627a24009462b8fa8413a00c4fdb1.zip"
+CMSIS_MD5 := "b988dacff8925ffffcb7e5079cc713b7"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
@@ -56,8 +56,8 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/34ea9f4993955fa1ff4eb58e504421806b7f2e8f.zip"
-RUY_MD5="18613212e9c01aba85c7d19010b194a9"
+RUY_URL="https://github.com/google/ruy/archive/d492ac890d982d7a153a326922f362b10de8d2ad.zip"
+RUY_MD5="3a5c19abc60c3d9a8045ddf6b114067f"
 
 CIFAR10_DATASET_URL="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
 CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"
@@ -68,8 +68,8 @@ IMAGE_RECOGNITION_MODEL_MD5 := "1f4607b05ac45b8a6146fb883dbc2d7b"
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2020_05_27.zip"
 PERSON_MODEL_MD5 := "55b85f76e2995153e660391d4a209ef1"
 
-PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_05_27.zip"
-PERSON_MODEL_INT8_MD5 := "a0ede2d058aa2a1d413893455dd55352"
+PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_06_23.zip"
+PERSON_MODEL_INT8_MD5 := "9b5b6d4677dd0a91b1bb992d1c4c0417"
 
 EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/58284867ca52d1f43b25045e8601999d7359d986.zip"
 EMBARC_MLI_MD5 := "2bf4982a327fdaa9d475803ce014d1ef"
@@ -88,5 +88,5 @@ ETHOSU_MD5 := "d2073c8d88fc167fd5c46b5dcda58ea1"
 
 HIMAX_WE1_SDK_URL ="https://www.himax.com.tw/we-i/himax_we1_sdk_v02.zip"
 HIMAX_WE1_SDK_MD5 ="9a4b2f29b16052764e437b64bdcba816"
-                    
+
 

@@ -27,7 +27,6 @@ from tensorflow.python.keras import metrics as metrics_mod
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.util import nest
 
 
@@ -634,7 +633,7 @@ def apply_mask(y_p, sw, mask):
     mask = math_ops.cast(mask, y_p.dtype)
     if sw is not None:
       mask, _, sw = (
-          tf_losses_utils.squeeze_or_expand_dimensions(mask, sample_weight=sw))
+          losses_utils.squeeze_or_expand_dimensions(mask, sample_weight=sw))
       sw *= mask
     else:
       sw = mask

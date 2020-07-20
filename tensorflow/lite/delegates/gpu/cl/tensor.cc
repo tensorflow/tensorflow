@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -41,13 +42,13 @@ absl::Status CreateImageBufferFromBuffer(const CLContext& context,
   format.image_channel_data_type = ToImageChannelType(data_type);
   format.image_channel_order = CL_RGBA;
 
-  cl_int error;
+  cl_int error_code;
   *result = clCreateImage(context.context(), CL_MEM_READ_WRITE, &format, &desc,
-                          nullptr, &error);
-  if (error != CL_SUCCESS) {
+                          nullptr, &error_code);
+  if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
-        absl::StrCat("Failed to create Texture2D (clCreateImage)",
-                     CLErrorCodeToString(error)));
+        absl::StrCat("Failed to create Image from Buffer (clCreateImage): ",
+                     CLErrorCodeToString(error_code)));
   }
   return absl::OkStatus();
 }
@@ -163,13 +164,27 @@ void Tensor::Release() {
 
 absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                      GPUResourcesWithValue* resources) const {
+  const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
+  if (buffer_desc) {
+    if (descriptor_.storage_type != TensorStorageType::BUFFER) {
+      return absl::InvalidArgumentError(
+          "Tensor can be used with BufferDescriptor only wtih "
+          "TensorStorageType::BUFFER.");
+    }
+    resources->buffers.push_back({"buffer", memory_});
+    return absl::OkStatus();
+  }
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(obj_ptr);
   if (!tensor_desc) {
     return absl::InvalidArgumentError("Expected TensorDescriptor on input.");
   }
   if (descriptor_.HasAxis(Axis::WIDTH)) {
     resources->ints.push_back({"width", Width()});
+    resources->ints.push_back({"width_div2", Width() / 2});
+    resources->ints.push_back({"width_div4", Width() / 4});
     resources->ints.push_back({"width_batched", Width() * Batch()});
+    resources->ints.push_back({"width_batched_div2", Width() * Batch() / 2});
+    resources->ints.push_back({"width_batched_div4", Width() * Batch() / 4});
   }
   if (descriptor_.HasAxis(Axis::HEIGHT)) {
     resources->ints.push_back({"height", Height()});
@@ -470,7 +485,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                      data_size, nullptr, &error_code);
       if (!memory) {
         return absl::UnknownError(
-            absl::StrCat("Failed to allocate device memory with clCreateBuffer",
+            absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
                          CLErrorCodeToString(error_code)));
       }
       *result = CLMemory(memory, true);
@@ -497,7 +512,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
-            absl::StrCat("Failed to create Texture2D (clCreateImage)",
+            absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
@@ -525,7 +540,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
-            absl::StrCat("Failed to create Texture3D (clCreateImage)",
+            absl::StrCat("Failed to create 3D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
@@ -554,7 +569,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                     &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
-            absl::StrCat("Failed to create TextureArray (clCreateImage)",
+            absl::StrCat("Failed to create 2D texture array (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
@@ -594,7 +609,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
-            absl::StrCat("Failed to create Texture2D (clCreateImage)",
+            absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 

@@ -72,8 +72,6 @@ class TensorShapeRep {
   std::string DebugString() const;
   static std::string DebugString(const TensorShapeProto& proto);
 
-  void DumpRep() const;  // XXX
-
  protected:
   // Constructable only via TensorShapeBase
   TensorShapeRep() = default;

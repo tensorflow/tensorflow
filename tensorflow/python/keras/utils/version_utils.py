@@ -20,27 +20,27 @@ from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.util import lazy_loader
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 
 # TODO(b/134426265): Switch back to single-quotes once the issue
 # with copybara is fixed.
 # pylint: disable=g-inconsistent-quotes
-training = lazy_loader.LazyLoader(
+training = LazyLoader(
     "training", globals(),
     "tensorflow.python.keras.engine.training")
-training_v1 = lazy_loader.LazyLoader(
+training_v1 = LazyLoader(
     "training_v1", globals(),
     "tensorflow.python.keras.engine.training_v1")
-base_layer = lazy_loader.LazyLoader(
+base_layer = LazyLoader(
     "base_layer", globals(),
     "tensorflow.python.keras.engine.base_layer")
-base_layer_v1 = lazy_loader.LazyLoader(
+base_layer_v1 = LazyLoader(
     "base_layer_v1", globals(),
     "tensorflow.python.keras.engine.base_layer_v1")
-callbacks = lazy_loader.LazyLoader(
+callbacks = LazyLoader(
     "callbacks", globals(),
     "tensorflow.python.keras.callbacks")
-callbacks_v1 = lazy_loader.LazyLoader(
+callbacks_v1 = LazyLoader(
     "callbacks_v1", globals(),
     "tensorflow.python.keras.callbacks_v1")
 

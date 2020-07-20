@@ -264,7 +264,7 @@ class RaggedMergeDimsOpTest(test_util.TensorFlowTestCase,
                                message=None,
                                ragged_rank=None):
     x = ragged_factory_ops.constant(rt, ragged_rank=ragged_rank)
-    with self.assertRaisesRegexp(exception, message):
+    with self.assertRaisesRegex(exception, message):
       self.evaluate(x.merge_dims(outer_axis, inner_axis))
 
 

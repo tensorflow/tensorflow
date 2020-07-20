@@ -24,7 +24,7 @@ namespace tensorflow {
 class WorkerSession;
 
 // ClusterFunctionLibraryRuntime contains methods to Instantiate and Run
-// functions across processes by making RPCs.
+// functions across processes by making RPCs through worker service.
 class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
  public:
   ClusterFunctionLibraryRuntime(WorkerSession* worker_session,
