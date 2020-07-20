@@ -1,4 +1,4 @@
-path: "numpy_ops.random"
+path: "tensorflow.experimental.numpy.random"
 tf_module {
   member_method {
     name: "rand"

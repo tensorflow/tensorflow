@@ -1,4 +1,4 @@
-path: "numpy_ops.ndarray"
+path: "tensorflow.experimental.numpy.ndarray"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.numpy_ops.np_arrays.ndarray\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"

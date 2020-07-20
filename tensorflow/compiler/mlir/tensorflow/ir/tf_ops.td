@@ -229,6 +229,8 @@ else_branch: A function that takes 'inputs' and returns a list of
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_YieldOp : TF_Op<"Yield",

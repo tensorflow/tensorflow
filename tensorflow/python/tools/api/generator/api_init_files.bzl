@@ -26,6 +26,8 @@ TENSORFLOW_API_INIT_FILES = [
     "dtypes/__init__.py",
     "errors/__init__.py",
     "experimental/__init__.py",
+    "experimental/numpy/__init__.py",
+    "experimental/numpy/random/__init__.py",
     "experimental/tensorrt/__init__.py",
     "experimental/dlpack/__init__.py",
     "feature_column/__init__.py",

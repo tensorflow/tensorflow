@@ -745,7 +745,7 @@ class BatchResource : public ResourceBase {
     }
 
     // Generate 'split_tensors' and populate the context outputs.
-    for (int i = 0, iter_limit = combined_outputs.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = combined_outputs.size(); i < end; ++i) {
       const Tensor& output_tensor = combined_outputs[i];
       if (output_tensor.shape().dims() == 0) {
         return errors::FailedPrecondition(

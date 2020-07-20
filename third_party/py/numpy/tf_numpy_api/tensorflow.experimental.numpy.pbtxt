@@ -1,4 +1,4 @@
-path: "numpy_ops"
+path: "tensorflow.experimental.numpy"
 tf_module {
   member {
     name: "bool_"
@@ -474,7 +474,7 @@ tf_module {
   }
   member_method {
     name: "imag"
-    argspec: "args=[\'a\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'val\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "inner"
@@ -522,7 +522,7 @@ tf_module {
   }
   member_method {
     name: "isscalar"
-    argspec: "args=[\'a\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'num\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "issubdtype"
@@ -682,7 +682,7 @@ tf_module {
   }
   member_method {
     name: "pad"
-    argspec: "args=[\'ary\', \'pad_width\', \'mode\', \'constant_values\'], varargs=None, keywords=None, defaults=[\'0\'], "
+    argspec: "args=[\'array\', \'pad_width\', \'mode\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "polyval"
