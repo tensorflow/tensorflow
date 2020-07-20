@@ -328,8 +328,36 @@ TEST_F(GCSFilesystemTest, ReadOnlyMemoryRegion) {
 
 // These tests below are ported from
 // `//tensorflow/core/platform/cloud:gcs_file_system_test`
-TEST_F(GCSFilesystemTest, RandomAccessFile_NoBlockCache) {
+TEST_F(GCSFilesystemTest, NewRandomAccessFile_NoBlockCache) {
   tf_gcs_filesystem::InitTest(filesystem_, false, 0, 0, 0, 0, 0, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
+  std::string path = GetURIForPath("a_file");
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(InsertObject(path, "0123456789", &gcs_file->gcs_client, status_));
+
+  TF_RandomAccessFile* file = new TF_RandomAccessFile;
+  tf_gcs_filesystem::NewRandomAccessFile(filesystem_, path.c_str(), file,
+                                         status_);
+  ASSERT_TF_OK(status_);
+
+  std::string result;
+  result.resize(6);
+  int64_t read = tf_random_access_file::Read(file, 0, 6, &result[0], status_);
+  ASSERT_EQ(read, 6) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(result, "012345") << "Result: " << result << "\n";
+
+  read = tf_random_access_file::Read(file, 6, 6, &result[0], status_);
+  ASSERT_EQ(read, 4) << "Read: " << read << "\n";
+  ASSERT_EQ(TF_GetCode(status_), TF_OUT_OF_RANGE) << TF_Message(status_);
+  result.resize(read);
+  ASSERT_EQ(result, "6789") << "Result: " << result << "\n";
+}
+
+TEST_F(GCSFilesystemTest, NewRandomAccessFile_Buffered) {
+  tf_gcs_filesystem::InitTest(filesystem_, false, 10, 0, 0, 0, 0, status_);
   ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
                         << TF_Message(status_);
   std::string path = GetURIForPath("a_file");
