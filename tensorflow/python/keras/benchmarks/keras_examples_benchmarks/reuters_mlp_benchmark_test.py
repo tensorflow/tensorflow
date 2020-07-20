@@ -12,38 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmarks on Bidirectional LSTM on IMDB."""
+"""Benchmarks on MLP on Reuters dataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import numpy as np
 
 import tensorflow as tf
 
 from tensorflow.python.keras.benchmarks import benchmark_util
 
 
-class BidirectionalLSTMBenchmark(tf.test.Benchmark):
-  """Benchmarks for Bidirectional LSTM using `tf.test.Benchmark`."""
+class MLPReutersBenchmark(tf.test.Benchmark):
+  """Benchmarks for MLP using `tf.test.Benchmark`."""
 
   def __init__(self):
-    super(BidirectionalLSTMBenchmark, self).__init__()
-    self.max_feature = 20000
-    self.max_len = 200
-    (self.imdb_x, self.imdb_y), _ = tf.keras.datasets.imdb.load_data(
-        num_words=self.max_feature)
-    self.imdb_x = tf.keras.preprocessing.sequence.pad_sequences(
-        self.imdb_x, maxlen=self.max_len)
+    super(MLPReutersBenchmark, self).__init__()
+    self.max_words = 1000
+    (self.x_train, self.y_train), _ = tf.keras.datasets.reuters.load_data(
+        num_words=self.max_words)
+    self.num_classes = np.max(self.y_train) + 1
+    tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=self.max_words)
+    self.x_train = tokenizer.sequences_to_matrix(self.x_train, mode='binary')
+    self.y_train = tf.keras.utils.to_categorical(self.y_train, self.num_classes)
+    self.epochs = 5
 
   def _build_model(self):
-    """Model from https://keras.io/examples/nlp/bidirectional_lstm_imdb/."""
-    inputs = tf.keras.Input(shape=(None,), dtype='int32')
-    x = tf.keras.layers.Embedding(self.max_feature, 128)(inputs)
-    x = tf.keras.layers.Bidirectional(
-        tf.keras.layers.LSTM(64, return_sequences=True))(
-            x)
-    x = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64))(x)
-    outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
-    model = tf.keras.Model(inputs, outputs)
+    """Model from https://github.com/keras-team/keras/blob/master/
+
+    examples/reuters_mlp.py.
+    """
+    model = tf.keras.Sequential()
+    model.add(tf.keras.layers.Dense(512, input_shape=(self.max_words,)))
+    model.add(tf.keras.layers.Activation('relu'))
+    model.add(tf.keras.layers.Dropout(0.5))
+    model.add(tf.keras.layers.Dense(self.num_classes))
+    model.add(tf.keras.layers.Activation('softmax'))
     return model
 
   # In each benchmark test, the required arguments for the
@@ -55,52 +60,55 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
   #   optimizer: Optimizer for model.
   #   Check more details in `measure_performance()` method of
   #   benchmark_util.
-  def benchmark_bidirect_lstm_imdb_bs_128(self):
-    """Measure performance with batch_size=128 and run_iters=3."""
+  def benchmark_mlp_reuters_bs_128(self):
+    """Measure performance with batch_size=128 and run_iters=2."""
     batch_size = 128
-    run_iters = 3
-    metrics, wall_time, extras = benchmark_util.measure_performance(
-        self._build_model,
-        x=self.imdb_x,
-        y=self.imdb_y,
-        batch_size=batch_size,
-        run_iters=run_iters,
-        optimizer='adam',
-        loss='binary_crossentropy',
-        metrics=['accuracy'])
-
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
-
-  def benchmark_bidirect_lstm_imdb_bs_256(self):
-    """Measure performance with batch_size=256 and run_iters=2."""
-    batch_size = 256
     run_iters = 2
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
-        x=self.imdb_x,
-        y=self.imdb_y,
+        x=self.x_train,
+        y=self.y_train,
         batch_size=batch_size,
         run_iters=run_iters,
+        epochs=self.epochs,
         optimizer='adam',
-        loss='binary_crossentropy',
+        loss='categorical_crossentropy',
         metrics=['accuracy'])
 
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_bidirect_lstm_imdb_bs_512(self):
+  def benchmark_mlp_reuters_bs_256(self):
+    """Measure performance with batch_size=256 and run_iters=3."""
+    batch_size = 256
+    run_iters = 3
+    metrics, wall_time, extras = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.x_train,
+        y=self.y_train,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        epochs=self.epochs,
+        optimizer='adam',
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+
+  def benchmark_mlp_reuters_bs_512(self):
     """Measure performance with batch_size=512 and run_iters=4."""
     batch_size = 512
     run_iters = 4
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
-        x=self.imdb_x,
-        y=self.imdb_y,
+        x=self.x_train,
+        y=self.y_train,
         batch_size=batch_size,
         run_iters=run_iters,
+        epochs=self.epochs,
         optimizer='adam',
-        loss='binary_crossentropy',
+        loss='categorical_crossentropy',
         metrics=['accuracy'])
 
     self.report_benchmark(
