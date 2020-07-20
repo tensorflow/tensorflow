@@ -124,8 +124,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   auto type = FunctionType::get(input_types, return_types, region.getContext());
 
   // Create new function and extract region body into the function.
-  auto outlined_func =
-      builder.create<FuncOp>(loc, name, type, ArrayRef<NamedAttribute>{});
+  auto outlined_func = builder.create<FuncOp>(loc, name, type);
   Region& func_region = outlined_func.getBody();
   func_region.takeBody(region);
   Block& first_block = func_region.front();
