@@ -858,6 +858,13 @@ def is_split_variable(v):
   return hasattr(v, '_variable_list') or hasattr(v, '_variables')
 
 
+def has_weights(obj):
+  obj_type = type(obj)
+  return (hasattr(obj_type, 'trainable_weights') and
+          hasattr(obj_type, 'non_trainable_weights') and
+          not isinstance(obj, type))
+
+
 # TODO(kathywu): This is a temporary hack. When a network of layers is revived
 # from SavedModel, only the top-level layer will have losses. This causes issues
 # in eager mode because the child layers may have graph losses
