@@ -92,7 +92,6 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:macros",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
