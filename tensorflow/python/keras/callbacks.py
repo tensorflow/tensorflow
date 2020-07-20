@@ -1102,11 +1102,13 @@ class ModelCheckpoint(Callback):
         in the filename.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
-      save_best_only: if `save_best_only=True`, the latest best model according
-        to the quantity monitored will not be overwritten.
-        If `filepath` doesn't contain formatting options like `{epoch}` then
-        `filepath` will be overwritten by each new better model.
-      mode: one of {auto, min, max}. If `save_best_only=True`, the decision to
+      save_best_only: if `save_best_only=True`, not only the "latest best model" 
+        according to the quantity monitored will not be overwritten, but also 
+        the current model will not be written at all, even if it has another 
+        filename than the "latest best model". If `filepath` doesn't contain 
+        formatting options like `{epoch}` then `filepath` will be overwritten 
+        by each new better model.
+      mode: one of `{auto, min, max}`. If `save_best_only=True`, the decision to
         overwrite the current save file is made based on either the maximization
         or the minimization of the monitored quantity. For `val_acc`, this
         should be `max`, for `val_loss` this should be `min`, etc. In `auto`
