@@ -514,7 +514,6 @@ tf_cuda_cc_test(
     extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
-        "noasan",  # leaks gRPC server instances
     ],
     deps = [
         ":c_api",
@@ -581,7 +580,6 @@ tf_cuda_cc_test(
     extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
-        "noasan",  # leaks gRPC server instances
     ],
     deps = [
         ":c_api",

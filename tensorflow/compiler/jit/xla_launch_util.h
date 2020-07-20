@@ -81,6 +81,12 @@ class VariableInfo {
   bool lock_held_ = false;
 };
 
+// Creates a list of updated resource variables.
+xla::StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
+    OpKernelContext* ctx,
+    const XlaCompiler::CompilationResult& compilation_result,
+    int missing_ctx_input_prefix);
+
 // Takes a snapshot of the values of resource variable arguments, whose indices
 // are specified in `variable_indices` argument. We snapshot tensors that back
 // resource variables since concurrent updates may modify the shape, and it is
@@ -124,7 +130,7 @@ class XlaComputationLaunchContext {
   // objects.
   XlaComputationLaunchContext(xla::LocalClient* client,
                               se::DeviceMemoryAllocator* xla_allocator,
-                              bool allocate_xla_tensors,
+                              int device_ordinal, bool allocate_xla_tensors,
                               bool use_multiple_streams);
 
   // Builds a XlaCompiler::Argument vector from the arguments to an XlaLaunch
@@ -142,10 +148,12 @@ class XlaComputationLaunchContext {
   // missing and adjusts input indices accordingly.  All elements in kernel's
   // input_mapping must be greater than or equal to `missing_ctx_input_prefix`
   // (in other words, no inputs actually required by the kernel can be missing).
-  void PopulateInputs(OpKernelContext* ctx,
-                      const XlaCompiler::CompilationResult* compilation_result,
-                      const ResourceVarsSnapshot& variables,
-                      int missing_ctx_input_prefix);
+  xla::StatusOr<std::vector<xla::ExecutionInput>> PopulateInputs(
+      OpKernelContext* ctx,
+      const XlaCompiler::CompilationResult* compilation_result,
+      const std::map<int, const Tensor*>& resource_vars,
+      int missing_ctx_input_prefix,
+      const xla::HloInputOutputAliasConfig& input_output_alias);
 
   // Given the XLA output in `output`, populate all outputs of `ctx`.  Also
   // writes out the resource variable updates.
@@ -161,20 +169,16 @@ class XlaComputationLaunchContext {
       OpKernelContext* ctx,
       const XlaCompiler::CompilationResult* compilation_result,
       xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,
+      absl::Span<VariableInfo> variable_infos,
       const xla::HloInputOutputAliasConfig& input_output_alias,
-      const ResourceVarsSnapshot& resource_var_snapshots);
-
-  // Return the argument list. Only valid after PopulateInputs() has been
-  // called.
-  const std::vector<xla::ShapedBuffer*>& arguments() const { return arg_ptrs_; }
+      const std::map<int, const Tensor*>& resource_vars);
 
  private:
   xla::LocalClient* client_;
   se::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
   bool use_multiple_streams_;
-  std::deque<xla::ShapedBuffer> arg_buffers_;
-  std::vector<xla::ShapedBuffer*> arg_ptrs_;
+  int device_ordinal_;
 };
 
 // A simple TensorBuffer implementation that allows us to create Tensors that

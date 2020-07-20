@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/server_lib.h"
 
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/grpc_master_impl.h"
+#include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/grpc_worker_impl.h"
 #include "tensorflow/core/platform/errors.h"
@@ -72,18 +72,18 @@ void GrpcDataServerBase::Join() { server_->Wait(); }
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
 
-MasterGrpcDataServer::MasterGrpcDataServer(int port,
-                                           const std::string& protocol)
+DispatchGrpcDataServer::DispatchGrpcDataServer(int port,
+                                               const std::string& protocol)
     : GrpcDataServerBase(port, protocol) {}
 
-MasterGrpcDataServer::~MasterGrpcDataServer() { delete service_; }
+DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
-void MasterGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  auto service = absl::make_unique<GrpcMasterImpl>(builder, protocol_);
+void DispatchGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
+  auto service = absl::make_unique<GrpcDispatcherImpl>(builder, protocol_);
   service_ = service.release();
 }
 
-Status MasterGrpcDataServer::NumWorkers(int* num_workers) {
+Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   GetWorkersRequest req;
   GetWorkersResponse resp;
   grpc::ServerContext ctx;
@@ -95,19 +95,18 @@ Status MasterGrpcDataServer::NumWorkers(int* num_workers) {
   return Status::OK();
 }
 
-WorkerGrpcDataServer::WorkerGrpcDataServer(int port,
-                                           const std::string& protocol,
-                                           const std::string& master_address,
-                                           const std::string& worker_address)
+WorkerGrpcDataServer::WorkerGrpcDataServer(
+    int port, const std::string& protocol,
+    const std::string& dispatcher_address, const std::string& worker_address)
     : GrpcDataServerBase(port, protocol),
-      master_address_(master_address),
+      dispatcher_address_(dispatcher_address),
       worker_address_(worker_address) {}
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
 void WorkerGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  auto service =
-      absl::make_unique<GrpcWorkerImpl>(builder, master_address_, protocol_);
+  auto service = absl::make_unique<GrpcWorkerImpl>(builder, dispatcher_address_,
+                                                   protocol_);
   service_ = service.release();
 }
 
@@ -123,25 +122,25 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   return Status::OK();
 }
 
-Status NewMasterServer(int port, const std::string& protocol,
-                       std::unique_ptr<MasterGrpcDataServer>* out_server) {
-  *out_server = absl::make_unique<MasterGrpcDataServer>(port, protocol);
+Status NewDispatchServer(int port, const std::string& protocol,
+                         std::unique_ptr<DispatchGrpcDataServer>* out_server) {
+  *out_server = absl::make_unique<DispatchGrpcDataServer>(port, protocol);
   return Status::OK();
 }
 
 Status NewWorkerServer(int port, const std::string& protocol,
-                       const std::string& master_address,
+                       const std::string& dispatcher_address,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server) {
-  return NewWorkerServer(port, protocol, master_address, /*worker_address=*/"",
-                         out_server);
+  return NewWorkerServer(port, protocol, dispatcher_address,
+                         /*worker_address=*/"", out_server);
 }
 
 Status NewWorkerServer(int port, const std::string& protocol,
-                       const std::string& master_address,
+                       const std::string& dispatcher_address,
                        const std::string& worker_address,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server) {
   *out_server = absl::make_unique<WorkerGrpcDataServer>(
-      port, protocol, master_address, worker_address);
+      port, protocol, dispatcher_address, worker_address);
   return Status::OK();
 }
 

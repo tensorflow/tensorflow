@@ -6145,10 +6145,10 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
     }
     test {
       p0 = f32[32,8,5,6] parameter(0)
-      p1 = f32[32,8,6,7] parameter(1)
+      p1 = f32[8,32,6,7] parameter(1)
       d = f32[32,8,5,7] dot(p0, p1),
         lhs_batch_dims={0,1},
-        rhs_batch_dims={0,1},
+        rhs_batch_dims={1,0},
         rhs_contracting_dims={2},
         lhs_contracting_dims={3}
      c = f32[] constant(0)

@@ -625,6 +625,16 @@ cc_library(
 )
 
 cc_test(
+    name = "type_to_tflitetype_test",
+    size = "small",
+    srcs = ["type_to_tflitetype_test.cc"],
+    deps = [
+        ":type_to_tflitetype",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "minimal_logging_test",
     size = "small",
     srcs = ["minimal_logging_test.cc"],

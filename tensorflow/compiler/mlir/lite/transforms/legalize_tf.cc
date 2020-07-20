@@ -170,7 +170,7 @@ LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
       size_t num_samples = Distribution::kResultElementCount;
       llvm::SmallVector<float, 32> data;
       data.resize(num_elements);
-      while (offset < num_elements) {
+      while (static_cast<int>(offset) < num_elements) {
         const typename Distribution::ResultType samples = dist(&generator);
         std::copy(&samples[0],
                   &samples[0] + std::min(num_samples, data.size() - offset),

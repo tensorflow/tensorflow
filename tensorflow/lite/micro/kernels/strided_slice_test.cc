@@ -124,8 +124,7 @@ void TestStrideSlide(std::initializer_list<int> input_shape,
   if (registration->free) {
     registration->free(&context, user_data);
   }
-  auto* output_tensor = &context.tensors[node.outputs->data[0]];
-  for (int i = 0; i < expected_output.size(); ++i) {
+  for (size_t i = 0; i < expected_output.size(); ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output.begin()[i], output_data[i],
                               1e-5f);
   }

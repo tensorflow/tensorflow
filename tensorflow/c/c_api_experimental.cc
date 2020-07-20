@@ -525,12 +525,12 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
     LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
         std::move(new_server), grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr));
+        grpc_server->worker_env()->collective_executor_mgr.get()));
   } else {
     LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
     LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
         /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr));
+        grpc_server->worker_env()->collective_executor_mgr.get()));
   }
   return tensorflow::Status::OK();
 #undef LOG_AND_RETURN_IF_ERROR

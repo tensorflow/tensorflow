@@ -485,4 +485,11 @@ foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
   [(HasOneUse $first_output)]>;
 }
 
-
+// We can eliminate Relu from Relu(SquaredDifference(x, y)),
+// since the result of SquaredDifference is always non-negative.
+// TFLite interpreter doesn't support Relu+int32 for now. So the test cases
+// are failing without the following pattern to optimize Relu away fixes
+// the problem.
+def OptimizeReluSquaredDifference : Pat<
+  (TFL_ReluOp (TFL_SquaredDifferenceOp $l, $r)),
+  (TFL_SquaredDifferenceOp $l, $r)>;

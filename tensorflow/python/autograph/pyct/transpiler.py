@@ -238,7 +238,7 @@ class GenericTranspiler(object):
 
       class MyTransformer(GenericTranspiler):
 
-        def transform(self, obj):
+        def transform_ast(self, node, ctx):
           result = <<transform node>>
           return result
 
@@ -247,6 +247,14 @@ class GenericTranspiler(object):
       result = transformer.transform(f, ...)
       # result is the output
   """
+
+  def get_transformed_name(self, node):
+    """Returns a name for the output function. Subclasses may override this."""
+    if isinstance(node, gast.Lambda):
+      return 'lam'
+    elif isinstance(node, gast.FunctionDef):
+      return node.name
+    raise ValueError('Unknown node type {}'.format(node))
 
   def transform_ast(self, node, ctx):
     """Performs an actual transformation of a function's AST.
@@ -288,6 +296,34 @@ class GenericTranspiler(object):
       if d is not None:
         args.kw_defaults[i] = parser.parse_expression('None')
     return node
+
+  def transform_module(self, mod, user_context):
+    """Transforms a module.
+
+    Subclasses may override this method. The return value is opaque.
+
+    The method receives the original AST. The result is passed as-is to the
+    output of `transform`.
+
+    Args:
+      mod: A Python module.
+      user_context: An opaque object (may be None) that is forwarded to
+        transform_ast, through the ctx.user_context argument.
+    Returns:
+      List[Tuple[Any, Any]]. By default it returns the output of transform_ast,
+      evaluated on each supported member, other than modules, together with a
+      `transformer.Context` containing information about the transformation
+      process.
+    """
+    result = []
+    for member in mod.__dict__.values():
+      if inspect.ismodule(member):
+        continue  # Not transforming modules recursively.
+      try:
+        result.append(self.transform(member, user_context))
+      except NotImplementedError:
+        pass  # Skip unsupported elements.
+    return result
 
   def transform_function(self, fn, user_context):
     """Transforms a function.
@@ -362,16 +398,6 @@ class PyToPy(GenericTranspiler):
   def __init__(self):
     self._cache_lock = threading.RLock()
     self._cache = cache.CodeObjectCache()
-
-  def get_transformed_name(self, node):
-    """Returns a name for the output function. Subclasses may override this."""
-    if isinstance(node, gast.Lambda):
-      return 'lam'
-    elif isinstance(node, gast.FunctionDef):
-      # Note that we need to rename the function, to avoid any namespace
-      # clashes.
-      return node.name
-    raise ValueError('Unknown node type {}'.format(node))
 
   def get_extra_locals(self):
     """Returns extra static local variables to be made to transformed code.

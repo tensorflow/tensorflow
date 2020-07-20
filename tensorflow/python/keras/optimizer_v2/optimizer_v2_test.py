@@ -59,6 +59,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum
 from tensorflow.python.training import training_util
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 _DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
@@ -643,6 +644,23 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(opt_op)
     self.assertAllClose([0.7, 1.7], self.evaluate(var))
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testRestoringIterationsWithoutAnOptimizer(self):
+    opt = gradient_descent.SGD(3.0)
+    opt.iterations.assign(5)
+    checkpoint = trackable_utils.Checkpoint(optimizer=opt)
+    path = checkpoint.save(self.get_temp_dir())
+
+    # Following verifies that the `iterations` can be restored with the absence
+    # of an `Optimizer` object (using a `Checkpoint` as a placeholder).
+    iterations_var = variables.Variable(0, dtype=dtypes.int64)
+    optimizer_checkpoint = trackable_utils.Checkpoint(iter=iterations_var)
+    checkpoint_to_restore = trackable_utils.Checkpoint(
+        optimizer=optimizer_checkpoint)
+    checkpoint_to_restore.restore(path)
+
+    self.assertEqual(5, self.evaluate(iterations_var))
 
 
 @keras_parameterized.run_all_keras_modes
