@@ -180,5 +180,25 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(g, array_ops.zeros_like(v))
       self.assertAllClose(g2, 5)
 
+  def testSameKeyInsertLookupGrad2(self):
+    with backprop.GradientTape(persistent=True) as tape:
+      m = map_ops.empty_tensor_map()
+      k = constant_op.constant(1.0)
+      v = constant_op.constant(2.0)
+      v2 = constant_op.constant(22.0)
+      tape.watch(v)
+      tape.watch(v2)
+      m = map_ops.tensor_map_insert(m, k, v)
+      l = map_ops.tensor_map_lookup(m, k, v.dtype)
+      g = tape.gradient(l * 5, v)
+      self.assertAllClose(g, 5)
+
+      m = map_ops.tensor_map_insert(m, k, v2)
+      l2 = map_ops.tensor_map_lookup(m, k, v2.dtype)
+      g2 = tape.gradient(l2 * 5, v2)
+      g3 = tape.gradient(l2 * 5, v)
+      self.assertAllClose(g2, 5)
+      self.assertAllClose(g3, array_ops.zeros_like(v))
+
 if __name__ == '__main__':
   test.main()
