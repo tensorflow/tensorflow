@@ -54,4 +54,7 @@ tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 echo "Running silabs tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_silabs.sh
 
+echo "Running silabs tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_silabs.sh
+
 echo "Finished all micro tests at `date`"
