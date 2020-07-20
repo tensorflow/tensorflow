@@ -344,10 +344,11 @@ llvm::Value* VectorSupportLibrary::ExtractHighHalf(llvm::Value* vector) {
 
 std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
     std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
-  const int x86_avx_vector_elements =
+  const int64 x86_avx_vector_elements =
       TargetMachineFeatures::kX86AvxVectorByteSize / scalar_byte_size();
+  const int64 vectors_size = vectors.size();    
   if (vector_size() == x86_avx_vector_elements &&
-      vectors.size() == x86_avx_vector_elements) {
+       vectors_size == x86_avx_vector_elements) {
     return ComputeAvxOptimizedHorizontalSums(std::move(vectors), init_values);
   }
 
@@ -371,7 +372,7 @@ VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
 
   while (vectors.size() != 2) {
     std::vector<llvm::Value*> new_vectors;
-    for (int i = 0; i < vectors.size(); i += 2) {
+    for (int i = 0, end = vectors.size(); i < end; i += 2) {
       new_vectors.push_back(AvxStyleHorizontalAdd(vectors[i], vectors[i + 1]));
     }
 

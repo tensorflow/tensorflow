@@ -764,7 +764,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     const auto& field_name = fn_and_name.second;
     bool first_module_val =
         (modules[0]->config().debug_options().*field_method_ptr)();
-    for (int64 i = 0; i < modules.size(); ++i) {
+    for (int64 i = 0, end = modules.size(); i < end; ++i) {
       bool cur_module_val =
           (modules[i]->config().debug_options().*field_method_ptr)();
       if (first_module_val != cur_module_val) {
