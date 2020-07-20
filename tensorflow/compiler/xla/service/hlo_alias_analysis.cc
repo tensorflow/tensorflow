@@ -97,7 +97,7 @@ class BufferValueMap {
         // If multiple buffers are aliased merge these buffers together into a
         // single buffer (arbitrarily chosen as the first buffer in the vector).
         if (aliased_buffers.size() > 1) {
-          for (int64 i = 1; i < aliased_buffers.size(); ++i) {
+          for (int64 i = 1, end = aliased_buffers.size(); i < end; ++i) {
             MergeBuffers(/*from=*/aliased_buffers[i],
                          /*to=*/aliased_buffers[0]);
           }
@@ -433,7 +433,7 @@ Status HloAliasAnalysis::Verify() const {
     TF_RET_CHECK(absl::c_linear_search(buffer.values(), value));
   }
 
-  for (HloBuffer::Id id = 0; id < buffers_.size(); ++id) {
+  for (HloBuffer::Id id = 0, end = buffers_.size(); id < end; ++id) {
     const HloBuffer& buffer = buffers_[id];
     TF_RET_CHECK(buffer.id() == id);
 
@@ -541,9 +541,10 @@ void HloAliasAnalysis::MergeBuffers(const HloBuffer& to,
                                     const HloBuffer& from) {
   CHECK(to.id() != from.id());
   VLOG(2) << "Merge buffer: " << from.ToString() << " into :" << to.ToString();
-
-  CHECK(from.id() < buffers_.size());
-  CHECK(to.id() < buffers_.size());
+  
+  const int64 buffers_size = buffers_.size();
+  CHECK(from.id() < buffers_size);
+  CHECK(to.id() < buffers_size);
 
   // Merge the values of `to` and `from`, creates a new buffer with the
   // merged values.
@@ -629,7 +630,7 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
     // a buffer and A interferes with C, then necessarily A also interferes
     // with B. So to check interference you only need to check interference
     // between A and B, and between B and C.
-    for (int i = 1; i < values.size(); ++i) {
+    for (int i = 1, end = values.size(); i < end; ++i) {
       if (!ordering.IsDefinedBefore(*values[i - 1], *values[i])) {
         VLOG(1) << values[i - 1]->ToShortString() << " and "
                 << values[i]->ToShortString() << " are not ordered";

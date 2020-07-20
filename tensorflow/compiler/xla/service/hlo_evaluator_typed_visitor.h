@@ -1183,7 +1183,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         // Find corresponding spatial dimension index for input (lhs).
         int64 lhs_linear_spatial_index = 0;
         int64 rhs_linear_spatial_index = 0;
-        for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
+        for (int64 ki = 0, end = rhs_spatial_index.size(); ki < end; ++ki) {
           // Spatial dimension number for input (lhs) and output.
           const int64 input_spatial_dim = dnums.input_spatial_dimensions(ki);
           const int64 output_spatial_dim = dnums.output_spatial_dimensions(ki);
@@ -1415,7 +1415,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         result.Populate<ReturnT>([&](absl::Span<const int64> result_index) {
           ElementwiseT result_val = static_cast<ElementwiseT>(0);
 
-          for (int64 i = 0; i < result_index.size(); i++) {
+          for (int64 i = 0, end = result_index.size(); i < end; i++) {
             *result_index_locations[i].first = result_index[i];
             if (result_index_locations[i].second) {
               *result_index_locations[i].second = result_index[i];
@@ -1492,7 +1492,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const PaddingConfig& pad_config = pad->padding_config();
 
     auto func = [&](absl::Span<const int64> input_index) {
-      for (auto i = 0; i < input_index.size(); ++i) {
+      for (int i = 0, end = input_index.size(); i < end; ++i) {
         // Interior padding occurs logically before edge padding, so in the case
         // of negative edge padding elements are removed from the
         // interior-padded operand.
@@ -2797,7 +2797,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     }
 
     // Clamp the start indices so the slice is in-bounds w.r.t the operand.
-    for (int64 i = 0; i < start.size(); ++i) {
+    for (int64 i = 0, end = start.size(); i < end; ++i) {
       start[i] = std::min<int64>(
           std::max(int64{0}, start[i]),
           operand_literal.shape().dimensions(i) - result_shape.dimensions(i));
@@ -2807,7 +2807,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     Literal result(result_shape);
     TF_RETURN_IF_ERROR(
         result.Populate<ReturnT>([&](absl::Span<const int64> multi_index) {
-          for (int64 i = 0; i < operand_indices.size(); ++i) {
+          for (int64 i = 0, end = operand_indices.size(); i < end; ++i) {
             CHECK_GE(multi_index[i] + start[i], 0);
             operand_indices[i] = multi_index[i] + start[i];
           }
