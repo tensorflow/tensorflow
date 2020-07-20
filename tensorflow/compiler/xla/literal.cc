@@ -58,7 +58,7 @@ constexpr int kMinimumAlignment = 64;
 // Precondition: size % 2 == 0 (elements in the array are 16 bits long)
 void ConvertEndianShort(string* bytes) {
   CHECK_EQ(bytes->size() / 2, 0);
-  for (int64 i = 0; i < bytes->size(); i += 2) {
+  for (int64 i = 0, end = bytes->size(); i < end; i += 2) {
     std::swap((*bytes)[i], (*bytes)[i + 1]);
   }
 }
@@ -249,8 +249,10 @@ template <typename NativeT>
 Status MutableLiteralBase::CopySliceFromInternal(
     const LiteralBase& src_literal, absl::Span<const int64> src_base,
     absl::Span<const int64> dest_base, absl::Span<const int64> copy_size) {
-  TF_RET_CHECK(src_literal.shape().rank() == src_base.size());
-  TF_RET_CHECK(shape().rank() == dest_base.size());
+  const int64 src_base_size = src_base.size();
+  const int64 dest_base_size = dest_base.size();
+  TF_RET_CHECK(src_literal.shape().rank() == src_base_size);
+  TF_RET_CHECK(shape().rank() == dest_base_size);
 
   auto linear_index = [](const Shape& shape,
                          absl::Span<const int64> multi_index) {
@@ -564,7 +566,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
         }
         // Construct the index of the corresponding piece in the source literal.
         ShapeIndex src_piece_index = src_shape_index;
-        for (int64 i = dest_shape_index.size(); i < index.size(); ++i) {
+        for (int64 i = dest_shape_index.size(), end = index.size(); i < end; ++i) {
           src_piece_index.push_back(index[i]);
         }
         TF_RETURN_IF_ERROR(
@@ -755,7 +757,7 @@ StatusOr<Literal> LiteralBase::Broadcast(
     return InvalidArgument("Broadcast only supports arrays.");
   }
 
-  for (int64 i = 0; i < dimensions.size(); i++) {
+  for (int64 i = 0, end = dimensions.size(); i < end; i++) {
     TF_RET_CHECK(shape().dimensions(i) ==
                  result_shape.dimensions(dimensions[i]));
   }
@@ -779,7 +781,7 @@ StatusOr<Literal> LiteralBase::Broadcast(
 
   ShapeUtil::ForEachIndex(
       result_shape, [&](absl::Span<const int64> output_index) {
-        for (int64 i = 0; i < dimensions.size(); ++i) {
+        for (int64 i = 0, end = dimensions.size(); i < end; ++i) {
           scratch_source_index[i] = output_index[dimensions[i]];
         }
         int64 dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
@@ -1185,8 +1187,9 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
           }
           // Handle the non-innermost tensors of a 2D+ tensor.
           if (brace == "{") {
+            const int64 accum_indices_size = accum_indices->size();
             if (rank > 3 && !accum_indices->empty() &&
-                accum_indices->size() < rank) {
+                accum_indices_size < rank) {
               int index = accum_indices->size() - 1;
               int value = accum_indices->back();
               return StrCat(brace, " /*i", index, "=", value, "*/\n");
@@ -1520,7 +1523,7 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes),
                   /*allocate_arrays=*/false);
-  for (int i = 0; i < elements.size(); ++i) {
+  for (int i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(
         literal.MoveFrom(std::move(elements[i]), /*dest_shape_index=*/{i}));
   }
@@ -1891,13 +1894,13 @@ bool LiteralBase::IsR1Iota() const {
   auto is_iota_at_idx = [&](const int64 idx) {
     switch (shape().element_type()) {
       case U8:
-        return Get<uint8>({idx}) == idx;
+        return Get<uint8>({idx}) == static_cast<uint8>(idx);
       case U16:
-        return Get<uint16>({idx}) == idx;
+        return Get<uint16>({idx}) == static_cast<uint16>(idx);
       case U32:
-        return Get<uint32>({idx}) == idx;
+        return Get<uint32>({idx}) == static_cast<uint32>(idx);
       case U64:
-        return Get<uint64>({idx}) == idx;
+        return Get<uint64>({idx}) == static_cast<uint64>(idx);
       case S8:
         return Get<int8>({idx}) == idx;
       case S16:
@@ -2174,8 +2177,9 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     }
     case C128: {
       auto complex_data = data<complex128>();
-      TF_RET_CHECK(proto.c128s_size() == complex_data.size() * 2);
-      for (int64 i = 0; i < complex_data.size(); ++i) {
+      const int64 complex_data_size_doubled = complex_data.size() * 2;
+      TF_RET_CHECK(proto.c128s_size() == complex_data_size_doubled);
+      for (int64 i = 0, end = complex_data.size(); i < end; ++i) {
         complex_data[i] =
             complex128{proto.c128s(i * 2), proto.c128s(i * 2 + 1)};
       }
@@ -2394,7 +2398,7 @@ BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
   root_piece_.set_subshape(shape_.get());
   BuildPieceSubtree(*shape_, &root_piece_);
 
-  for (int i = 0; i < src_buf_ptrs.size(); ++i) {
+  for (int i = 0, end = src_buf_ptrs.size(); i < end; ++i) {
     const auto& src_shape = shape_->tuple_shapes(i);
     CHECK(src_shape.IsArray());
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));

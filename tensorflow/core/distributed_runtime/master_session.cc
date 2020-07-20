@@ -836,7 +836,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
   std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
-  for (size_t i = 0; i < callable_opts_.feed_size(); ++i) {
+  for (size_t i = 0, end = callable_opts_.feed_size(); i < end; ++i) {
     if (!feeds.insert({callable_opts_.feed(i), i}).second) {
       // MakeCallable will fail if there are two feeds with the same name.
       return errors::Internal("Duplicated feeds in callable: ",
@@ -1564,7 +1564,7 @@ uint64 MasterSession::NewStepId(int64 graph_key) {
   } else {
     uint64 step_id = env_->collective_executor_mgr->NextStepId(graph_key);
     int32 retry_count = 0;
-    while (step_id == CollectiveExecutor::kInvalidId) {
+    while (static_cast<int64>(step_id) == CollectiveExecutor::kInvalidId) {
       Notification note;
       Status status;
       env_->collective_executor_mgr->RefreshStepIdSequenceAsync(

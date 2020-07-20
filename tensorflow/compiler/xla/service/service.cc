@@ -270,12 +270,13 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
-  if (program_shape.parameters_size() != argument_shapes.size()) {
+  const int64 argument_shapes_size = argument_shapes.size();
+  if (program_shape.parameters_size() != argument_shapes_size) {
     return InvalidArgument("computation takes %d parameters, but %u given",
                            program_shape.parameters_size(),
                            argument_shapes.size());
   }
-  for (int i = 0; i < argument_shapes.size(); ++i) {
+  for (int i = 0, end = argument_shapes.size(); i < end; ++i) {
     // Verify that shape of arguments matches the shape of the arguments in the
     // ProgramShape.
     if (!ShapeUtil::Compatible(*argument_shapes[i],
@@ -371,7 +372,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 
   // Dump computation proto state if flag is set.
   std::vector<std::unique_ptr<HloProto>> hlo_protos;
-  for (int64 i = 0; i < module_protos.size(); ++i) {
+  for (int64 i = 0, end = module_protos.size(); i < end; ++i) {
     auto hlo_proto = absl::make_unique<HloProto>();
     *hlo_proto->mutable_hlo_module() = *module_protos[i];
     hlo_protos.push_back(std::move(hlo_proto));
@@ -385,7 +386,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   CHECK_EQ(module_protos.size(), module_configs.size());
   auto module_group =
       absl::make_unique<HloModuleGroup>(module_protos[0]->name());
-  for (int64 i = 0; i < module_protos.size(); ++i) {
+  for (int64 i = 0, end = module_protos.size(); i < end; ++i) {
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module, CreateModuleFromProto(*proto, config));
@@ -433,12 +434,12 @@ Service::ExecuteParallelAndRegisterResult(
   for (int64 i = 0; i < executables.size(); i++) {
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
-    for (int64 replica = 0; replica < replicas.size(); ++replica) {
+    for (int64 replica = 0, end = replicas.size(); replica < end; ++replica) {
       device_assignment(replica, i) = replicas[replica]->device_ordinal();
     }
   }
 
-  for (int64 i = 0; i < executables.size(); i++) {
+  for (int64 i = 0, end = executables.size(); i < end; i++) {
     // Stream executors for the replicas of the current computation.
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
@@ -497,7 +498,7 @@ Service::ExecuteParallelAndRegisterResult(
   }
 
   // Wait for all executions to complete.
-  for (int64 i = 0; i < streams.size(); ++i) {
+  for (int64 i = 0, end = streams.size(); i < end; ++i) {
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError("failed to complete execution for stream %d: %s", i,
@@ -715,7 +716,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
 
   std::vector<HloSnapshot> snapshots;
   snapshots.resize(executable_ptrs.size());
-  for (int i = 0; i < executable_ptrs.size(); i++) {
+  for (int i = 0, end = executable_ptrs.size(); i < end; i++) {
     if (executable_ptrs[i]->dumping_snapshot()) {
       *snapshots[i].mutable_hlo() = *executable_ptrs[i]->hlo_proto();
       TF_ASSIGN_OR_RETURN(auto stream,
@@ -761,7 +762,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     *result->add_responses() = response;
   }
 
-  for (int i = 0; i < executable_ptrs.size(); i++) {
+  for (int i = 0, end = executable_ptrs.size(); i < end; i++) {
     Executable* executable = executable_ptrs[i];
     if (executable->dumping_snapshot()) {
       TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,

@@ -287,15 +287,16 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
   // Sorts candidates in descending order of expensive_call_percent.
   absl::c_sort(candidates, cmp);
   std::string expensive_functions = "";
-  auto num_functions_shown = std::min(
+  const int64 num_functions_shown = std::min(
       static_cast<decltype(candidates)::size_type>(3), candidates.size());
 
-  for (auto i = 0; i < num_functions_shown; i++) {
+  for (int64 i = 0; i < num_functions_shown; i++) {
     if (i > 0) absl::StrAppend(&expensive_functions, ", ");
     absl::StrAppend(&expensive_functions, "\"", candidates[i].function_name,
                     "\"");
   }
-  if (candidates.size() > num_functions_shown)
+  const int64 candidates_size  = candidates.size();
+  if (candidates_size > num_functions_shown)
     absl::StrAppend(&expensive_functions, " and more");
   return absl::StrCat("Expensive tf-functions detected (", expensive_functions,
                       ") due to either retracing or eager execution.");

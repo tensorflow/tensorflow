@@ -630,12 +630,12 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   // from the rhs index are the lower dimensions in the index so we add them
   // first.
   std::vector<llvm::Value*> target_multi_index;
-  for (int dimension = 0; dimension < lhs_index.size(); ++dimension) {
+  for (int dimension = 0, end = lhs_index.size(); dimension < end; ++dimension) {
     if (dimension != lhs_reduction_dimension) {
       target_multi_index.push_back(lhs_index[dimension]);
     }
   }
-  for (int dimension = 0; dimension < rhs_index.size(); ++dimension) {
+  for (int dimension = 0, end = rhs_index.size(); dimension < end; ++dimension) {
     if (dimension != rhs_reduction_dimension) {
       target_multi_index.push_back(rhs_index[dimension]);
     }

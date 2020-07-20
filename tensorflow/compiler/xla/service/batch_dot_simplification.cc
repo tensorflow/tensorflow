@@ -26,7 +26,7 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
   // This pass assumes the lhs and rhs batch dimensions are equal and strictly
   // ascending.
   const auto& is_iota = [](absl::Span<const int64> dims) {
-    for (int64 i = 0; i < dims.size(); ++i) {
+    for (int64 i = 0, end = dims.size(); i < end; ++i) {
       if (dims[i] != i) {
         return false;
       }

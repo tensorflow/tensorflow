@@ -973,8 +973,8 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
     for (int i = 0, end = node->num_inputs(); i < end; ++i) {
       const Edge* edge = nullptr;
       TF_RETURN_IF_ERROR(node->input_edge(i, &edge));
-      for (int j = 0, second_end = border_outputs.size();
-           j < second_end; ++j) {
+
+      for (int j = 0, second_end = border_outputs.size(); j < second_end; ++j) {
         const string& output = border_outputs.at(j);
         const TensorId tid = ParseTensorName(output);
         const string output_name(tid.first);

@@ -48,7 +48,7 @@ void HloLiveRange::NormalizeAliasedBuffers() {
                  std::forward_as_tuple(live_range2.start, live_range2.end);
         });
 
-    for (int64 i = 0; i + 1 < aliased_buffers.size(); ++i) {
+    for (int64 i = 0, end = aliased_buffers.size(); i + 1 < end; ++i) {
       const HloValue* value1 = aliased_buffers[i];
       const HloValue* value2 = aliased_buffers[i + 1];
       TimeBound& live_range1 = buffer_live_ranges_[value1];
@@ -213,7 +213,7 @@ std::string HloLiveRange::ToString() const {
                         schedule_end_time_);
   absl::StrAppendFormat(&output, "  InstructionSequence:\n");
   auto& instructions = flattened_instruction_sequence().instructions();
-  for (int64 i = 0; i < instructions.size(); ++i) {
+  for (int64 i = 0, end = instructions.size(); i < end; ++i) {
     absl::StrAppendFormat(&output, "    %d:%s\n", i, instructions[i]->name());
   }
 

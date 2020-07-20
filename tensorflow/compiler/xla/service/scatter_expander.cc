@@ -187,7 +187,7 @@ static StatusOr<HloInstruction*> CheckIndexValidity(
 
   // Check if the index is OOB w.r.t. the operand dimensions and window sizes.
   std::vector<int64> max_valid_index(operand_dims.size());
-  for (int i = 0; i < operand_dims.size(); ++i) {
+  for (int i = 0, end = operand_dims.size(); i < end; ++i) {
     max_valid_index[i] = operand_dims[i] - window_sizes[i];
   }
   TF_ASSIGN_OR_RETURN(

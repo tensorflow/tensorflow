@@ -848,7 +848,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
         return output_bytes_it->second;
       }
       float bytes_accessed = 0;
-      for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+      for (int i = 0, end = shape.tuple_shapes_size(); i < end; ++i) {
         const Shape& subshape = shape.tuple_shapes(i);
         ShapeIndex subshape_index(shape_index);
         subshape_index.push_back(i);
