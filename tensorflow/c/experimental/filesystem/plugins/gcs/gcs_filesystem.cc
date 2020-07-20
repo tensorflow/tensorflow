@@ -160,17 +160,6 @@ void Cleanup(TF_RandomAccessFile* file) {
   delete gcs_file;
 }
 
-static void FillBuffer(uint64_t start, GCSFile* gcs_file, TF_Status* status) {
-  ABSL_EXCLUSIVE_LOCKS_REQUIRED(gcs_file->buffer_mutex);
-  gcs_file->buffer_start = start;
-  gcs_file->buffer.resize(gcs_file->buffer_size);
-  auto read =
-      gcs_file->read_fn(gcs_file->path, gcs_file->buffer_start,
-                        gcs_file->buffer_size, &(gcs_file->buffer[0]), status);
-  gcs_file->buffer_end_is_past_eof = (TF_GetCode(status) == TF_OUT_OF_RANGE);
-  if (read >= 0) gcs_file->buffer.resize(read);
-}
-
 // `google-cloud-cpp` is working on a feature that we may want to use.
 // See https://github.com/googleapis/google-cloud-cpp/issues/4013.
 int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
@@ -191,7 +180,14 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
     bool consumed_buffer_to_eof =
         offset + copy_size >= buffer_end && gcs_file->buffer_end_is_past_eof;
     if (copy_size < n && !consumed_buffer_to_eof) {
-      FillBuffer(offset + copy_size, gcs_file, status);
+      gcs_file->buffer_start = offset + copy_size;
+      gcs_file->buffer.resize(gcs_file->buffer_size);
+      auto read_fill_buffer = gcs_file->read_fn(
+          gcs_file->path, gcs_file->buffer_start, gcs_file->buffer_size,
+          &(gcs_file->buffer[0]), status);
+      gcs_file->buffer_end_is_past_eof =
+          (TF_GetCode(status) == TF_OUT_OF_RANGE);
+      if (read_fill_buffer >= 0) gcs_file->buffer.resize(read_fill_buffer);
       if (TF_GetCode(status) != TF_OK &&
           TF_GetCode(status) != TF_OUT_OF_RANGE) {
         // Empty the buffer to avoid caching bad reads.
