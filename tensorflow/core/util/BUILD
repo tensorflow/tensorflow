@@ -25,10 +25,12 @@ load(
     "if_static",
 )
 
+default_package_visibility = [
+    "//tensorflow/core:__subpackages__",
+]
+
 package(
-    default_visibility = [
-        "//tensorflow/core:__subpackages__",
-    ],
+    default_visibility = default_package_visibility,
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -558,6 +560,7 @@ cc_library(
     name = "incremental_barrier",
     srcs = ["incremental_barrier.cc"],
     hdrs = ["incremental_barrier.h"],
+    visibility = default_package_visibility + ["//tensorflow_serving:__subpackages__"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/functional:bind_front",
