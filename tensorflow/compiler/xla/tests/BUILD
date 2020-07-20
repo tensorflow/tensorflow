@@ -1136,7 +1136,10 @@ xla_test(
     args = ["--vmodule=convolution_emitter=7"],
     # In the open source build, convolution_test_1d_gpu fails because it doesn't
     # recognize --vmodule.
-    disabled_backends = ["gpu"],
+    disabled_backends = [
+        "cpu",
+        "gpu",
+    ],
     shard_count = 50,
     tags = [
         "no_rocm",
@@ -1149,10 +1152,13 @@ xla_test(
 )
 
 xla_test(
-    name = "convolution_test_1d_gpu",
+    name = "convolution_test_1d_no_vmodule",
     timeout = "long",
     srcs = ["convolution_test_1d.cc"],
-    backends = ["gpu"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
     shard_count = 50,
     tags = [
         "no_rocm",
