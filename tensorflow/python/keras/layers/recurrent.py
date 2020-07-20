@@ -139,7 +139,7 @@ class StackedRNNCells(Layer):
     # Call the cells in order and store the returned states.
     new_nested_states = []
     for cell, states in zip(self.cells, nested_states):
-      states = states if nest.is_sequence(states) else [states]
+      states = states if nest.is_nested(states) else [states]
       # TF cell does not wrap the state into list when there is only one state.
       is_tf_rnn_cell = getattr(cell, '_is_tf_rnn_cell', None) is not None
       states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
@@ -448,7 +448,7 @@ class RNN(Layer):
   def states(self):
     if self._states is None:
       state = nest.map_structure(lambda _: None, self.cell.state_size)
-      return state if nest.is_sequence(self.cell.state_size) else [state]
+      return state if nest.is_nested(self.cell.state_size) else [state]
     return self._states
 
   @states.setter
@@ -559,7 +559,7 @@ class RNN(Layer):
       # A nested tensor input
       pass
 
-    if not nest.is_sequence(input_shape):
+    if not nest.is_nested(input_shape):
       # This indicates the there is only one input.
       if self.input_spec is not None:
         self.input_spec[0] = get_input_spec(input_shape)
@@ -632,7 +632,7 @@ class RNN(Layer):
   def get_initial_state(self, inputs):
     get_initial_state_fn = getattr(self.cell, 'get_initial_state', None)
 
-    if nest.is_sequence(inputs):
+    if nest.is_nested(inputs):
       # The input are nested sequences. Use the first element in the seq to get
       # batch size and dtype.
       inputs = nest.flatten(inputs)[0]
@@ -647,7 +647,7 @@ class RNN(Layer):
       init_state = _generate_zero_filled_state(batch_size, self.cell.state_size,
                                                dtype)
     # Keras RNN expect the states in a list, even if it's a single state tensor.
-    if not nest.is_sequence(init_state):
+    if not nest.is_nested(init_state):
       init_state = [init_state]
     # Force the state to be a list in case it is a namedtuple eg LSTMStateTuple.
     return list(init_state)
@@ -743,7 +743,7 @@ class RNN(Layer):
       # TODO(scottzhu): Should we accept multiple different masks?
       mask = nest.flatten(mask)[0]
 
-    if nest.is_sequence(inputs):
+    if nest.is_nested(inputs):
       # In the case of nested input, use the first element for shape check.
       input_shape = K.int_shape(nest.flatten(inputs)[0])
     else:
@@ -782,7 +782,7 @@ class RNN(Layer):
         states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
         output, new_states = cell_call_fn(
             inputs, states, constants=constants, **kwargs)
-        if not nest.is_sequence(new_states):
+        if not nest.is_nested(new_states):
           new_states = [new_states]
         return output, new_states
     else:
@@ -790,7 +790,7 @@ class RNN(Layer):
       def step(inputs, states):
         states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
         output, new_states = cell_call_fn(inputs, states, **kwargs)
-        if not nest.is_sequence(new_states):
+        if not nest.is_nested(new_states):
           new_states = [new_states]
         return output, new_states
     last_output, outputs, states = K.rnn(
@@ -929,7 +929,7 @@ class RNN(Layer):
         return K.zeros([batch_size] + tensor_shape.TensorShape(state).as_list())
       self.states = nest.map_structure(
           create_state_variable, self.cell.state_size)
-      if not nest.is_sequence(self.states):
+      if not nest.is_nested(self.states):
         self.states = [self.states]
     elif states is None:
       for state, size in zip(nest.flatten(self.states),
@@ -1359,7 +1359,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    prev_output = states[0] if nest.is_sequence(states) else states
+    prev_output = states[0] if nest.is_nested(states) else states
     dp_mask = self.get_dropout_mask_for_cell(inputs, training)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
         prev_output, training)
@@ -1377,7 +1377,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     if self.activation is not None:
       output = self.activation(output)
 
-    new_state = [output] if nest.is_sequence(states) else output
+    new_state = [output] if nest.is_nested(states) else output
     return output, new_state
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
@@ -1819,7 +1819,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    h_tm1 = states[0] if nest.is_sequence(states) else states  # previous memory
+    h_tm1 = states[0] if nest.is_nested(states) else states  # previous memory
 
     dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
@@ -1917,7 +1917,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       hh = self.activation(x_h + recurrent_h)
     # previous and candidate state mixed by update gate
     h = z * h_tm1 + (1 - z) * hh
-    new_state = [h] if nest.is_sequence(states) else h
+    new_state = [h] if nest.is_nested(states) else h
     return h, new_state
 
   def get_config(self):
@@ -3020,7 +3020,7 @@ def _generate_zero_filled_state(batch_size_tensor, state_size, dtype):
     init_state_size = [batch_size_tensor] + flat_dims
     return array_ops.zeros(init_state_size, dtype=dtype)
 
-  if nest.is_sequence(state_size):
+  if nest.is_nested(state_size):
     return nest.map_structure(create_zeros, state_size)
   else:
     return create_zeros(state_size)

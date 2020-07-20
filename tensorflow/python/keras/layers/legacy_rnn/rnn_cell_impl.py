@@ -1235,7 +1235,7 @@ class MultiRNNCell(RNNCell):
     super(MultiRNNCell, self).__init__()
     if not cells:
       raise ValueError("Must specify at least one cell for MultiRNNCell.")
-    if not nest.is_sequence(cells):
+    if not nest.is_nested(cells):
       raise TypeError("cells must be a list or tuple, but saw: %s." % cells)
 
     if len(set(id(cell) for cell in cells)) < len(cells):
@@ -1252,7 +1252,7 @@ class MultiRNNCell(RNNCell):
         self._track_trackable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
-      if any(nest.is_sequence(c.state_size) for c in self._cells):
+      if any(nest.is_nested(c.state_size) for c in self._cells):
         raise ValueError("Some cells return tuples of states, but the flag "
                          "state_is_tuple is not set.  State sizes are: %s" %
                          str([c.state_size for c in self._cells]))
@@ -1309,7 +1309,7 @@ class MultiRNNCell(RNNCell):
     for i, cell in enumerate(self._cells):
       with vs.variable_scope("cell_%d" % i):
         if self._state_is_tuple:
-          if not nest.is_sequence(state):
+          if not nest.is_nested(state):
             raise ValueError(
                 "Expected state to be a tuple of length %d, but received: %s" %
                 (len(self.state_size), state))
