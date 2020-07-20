@@ -161,7 +161,7 @@ void Cleanup(TF_RandomAccessFile* file) {
 }
 
 static void FillBuffer(uint64_t start, GCSFile* gcs_file, TF_Status* status) {
-  ABSL_EXCLUSIVE_LOCKS_REQUIRED(gcs_file->buffer_mutex)
+  ABSL_EXCLUSIVE_LOCKS_REQUIRED(gcs_file->buffer_mutex);
   gcs_file->buffer_start = start;
   gcs_file->buffer.resize(gcs_file->buffer_size);
   auto read =
