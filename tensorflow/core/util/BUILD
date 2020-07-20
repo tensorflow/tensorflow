@@ -61,6 +61,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "abstract_stack_trace.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -313,6 +314,7 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
+        "abstract_stack_trace.h",
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
@@ -435,6 +437,22 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "abstract_stack_trace",
+    hdrs = ["abstract_stack_trace.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime/eager:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/eager:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
 )
 
 tf_cuda_library(
