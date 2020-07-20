@@ -13,24 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
 namespace TFTPU {
 namespace {
 
+constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kTPUEmbeddingAttr[] = "_tpu_embedding_layer";
 
 struct TPUUpdateEmbeddingEnqueueOpInputs
@@ -86,7 +91,8 @@ LogicalResult FindTPUEmbeddingOps(
 LogicalResult UpdateEmbeddingEnqueueOpInput(
     const llvm::StringMap<Operation*>& enqueue_op_map,
     const llvm::StringMap<Operation*>& recv_activation_op_map,
-    const llvm::StringMap<Operation*>& send_gradient_op_map) {
+    const llvm::StringMap<Operation*>& send_gradient_op_map,
+    OpBuilder* builder) {
   for (const auto& it : enqueue_op_map) {
     const auto& embedding_attr = it.getKey();
     Operation* embedding_op = it.second;
@@ -96,21 +102,36 @@ LogicalResult UpdateEmbeddingEnqueueOpInput(
              << TF::RecvTPUEmbeddingActivationsOp::getOperationName() << "' op";
 
     // TPU Embedding enqueue ops take different inputs depending on whether
-    // graph is in training mode or in eval/prediction mode. The inputs to the
-    // enqueue ops are present/listed as operands to SelectV2 op. Then branch
-    // operand of the SelectV2 op represents input to take during training
-    // and else branch operand represents input to take during
-    // prediction/evaluation. If SendTPUEmbeddingGradients op exists in the
-    // graph, then graph is in training mode, so correctly forward the input
-    // of SelectV2 op as operand to the TPU embedding enqueue op.
+    // graph is in training mode or in eval/prediction mode. During training,
+    // the mode parameter for TPUEmbeddingEnqueue op must be `train` and for
+    // evaluation or prediction, mode must be set to `inference`.
+    // If SendTPUEmbeddingGradients op exists in the graph, then graph is
+    // in training mode, so create a const op with value `train` use the
+    // output value of the constant as an operand to the TPU embedding
+    // enqueue op.
     bool is_training = send_gradient_op_map.count(embedding_attr);
-    for (auto enqueue_operand : embedding_op->getOperands()) {
-      if (auto select = llvm::dyn_cast_or_null<TF::SelectV2Op>(
-              enqueue_operand.getDefiningOp())) {
-        enqueue_operand.replaceAllUsesWith(is_training ? select.t()
-                                                       : select.e());
-      }
-    }
+
+    // The last operand of TPUEmbeddingEnqueue ops is the mode which
+    // represents whether graph is in training mode or in evaluation mode.
+    auto& mode_enqueue_operand =
+        embedding_op->getOpOperand(embedding_op->getNumOperands() - 1);
+
+    llvm::SmallVector<StringRef, 1> mode_string_value;
+    mode_string_value.emplace_back(is_training ? "train" : "inference");
+    builder->setInsertionPoint(embedding_op);
+    auto enqueue_mode = builder->create<TF::ConstOp>(
+        embedding_op->getLoc(),
+        DenseStringElementsAttr::get(
+            RankedTensorType::get({}, builder->getType<TF::StringType>()),
+            mode_string_value));
+
+    auto outside_compilation_attr =
+        embedding_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr);
+    if (outside_compilation_attr)
+      enqueue_mode.setAttr(kXlaOutsideCompilationAttr,
+                           outside_compilation_attr);
+
+    mode_enqueue_operand.set(enqueue_mode);
   }
 
   return success();
@@ -140,8 +161,9 @@ void TPUUpdateEmbeddingEnqueueOpInputs::runOnFunction() {
     return signalPassFailure();
   }
 
-  if (failed(UpdateEmbeddingEnqueueOpInput(
-          enqueue_op_map, recv_activation_op_map, send_gradient_op_map)))
+  if (failed(UpdateEmbeddingEnqueueOpInput(enqueue_op_map,
+                                           recv_activation_op_map,
+                                           send_gradient_op_map, &builder)))
     return signalPassFailure();
 }
 
