@@ -263,11 +263,11 @@ class ndarray(composite_tensor.CompositeTensor):
   def __float__(self):
     return float(self.data)
 
-  def __nonzero__(self):
+  def __bool__(self):
     return bool(self.data)
 
-  def __bool__(self):
-    return self.__nonzero__()
+  def __nonzero__(self):
+    return self.__bool__()
 
   def __iter__(self):
     if not isinstance(self.data, ops.EagerTensor):

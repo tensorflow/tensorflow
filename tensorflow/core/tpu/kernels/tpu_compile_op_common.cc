@@ -163,12 +163,13 @@ Status TpuCompileOpKernelCommon::AssignReturnValueToCore(
 
 Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
     const std::vector<TensorShape>& arg_shapes,
-    const OpInputList& guaranteed_constants, const XlaCompiler& compiler,
+    const GuaranteedConsts& guaranteed_constants, const XlaCompiler& compiler,
     std::vector<XlaCompiler::Argument>* args,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
   // Builds a description of the computation's arguments.
   int constant_count = 0;
+  size_t guaranteed_constants_size = 0;
   for (int i = 0; i < metadata_.args_size(); ++i) {
     const tpu::TPUCompileMetadataProto::Arg& proto_arg = metadata_.args(i);
     args->push_back(XlaCompiler::Argument());
@@ -187,10 +188,26 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
         break;
       case tpu::TPUCompileMetadataProto::Arg::GUARANTEED_CONSTANT:
         arg.kind = XlaCompiler::Argument::kConstant;
-        TF_RET_CHECK(constant_count < guaranteed_constants.size())
+        guaranteed_constants_size =
+            guaranteed_constants.index() == 0
+                ? absl::get<0>(guaranteed_constants).size()
+                : absl::get<1>(guaranteed_constants)->size();
+        TF_RET_CHECK(constant_count < guaranteed_constants_size)
             << "More constant args in TPUCompileMetadataProto than constant "
                "tensors.";
-        arg.constant_value = guaranteed_constants[constant_count++];
+        if (guaranteed_constants.index() == 0) {
+          // `guaranteed_constants` is of type `absl::Span<const TensorProto*
+          // const>`.
+          Tensor tensor;
+          CHECK(tensor.FromProto(
+              *absl::get<0>(guaranteed_constants)[constant_count++]))
+              << "Failed to deserialize invalid `TensorProto` into `Tensor`.";
+          arg.constant_value = tensor;
+        } else {
+          // `guaranteed_constants` is of type `const OpInputList* const`.
+          arg.constant_value =
+              (*absl::get<1>(guaranteed_constants))[constant_count++];
+        }
         break;
       case tpu::TPUCompileMetadataProto::Arg::INVALID:
       default:
@@ -213,7 +230,7 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
     TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
         proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
   }
-  TF_RET_CHECK(constant_count == guaranteed_constants.size())
+  TF_RET_CHECK(constant_count == guaranteed_constants_size)
       << "Not all of the constant tensors were consumed.";
 
   return Status::OK();
@@ -246,7 +263,7 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
     const FunctionLibraryDefinition& flib_def, int graph_def_version,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     const std::vector<TensorShape>& arg_shapes,
-    const OpInputList& guaranteed_constants, const NameAttrList& function,
+    const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
     xla::CompileOnlyClient* client,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
@@ -380,7 +397,8 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
   return Status::OK();
 }
 
-/* static */ Status TpuCompileOpKernelCommon::ComputeArgumentShapes(
+/* static */
+Status TpuCompileOpKernelCommon::ComputeArgumentShapes(
     const tpu::TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& dynamic_shapes,
     std::vector<TensorShape>* arg_shapes) {
@@ -573,10 +591,21 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
     const OpInputList& guaranteed_constants, const TpuCompilationCacheKey& key,
     TpuProgramGroupInterface* tpu_program_group) {
   absl::Time start_time = absl::Now();
-  Status compile_status =
-      Compile(*flib_runtime->GetFunctionLibraryDefinition(),
-              flib_runtime->graph_def_version(), mesh_state, dynamic_shapes,
-              guaranteed_constants, tpu_program_group);
+  std::vector<TensorShape> arg_shapes;
+  TF_RETURN_IF_ERROR(
+      ComputeArgumentShapes(metadata_, dynamic_shapes, &arg_shapes));
+  Status compile_status;
+  if (use_mlir_) {
+    compile_status = Compile(MlirToHloArgs{mlir_module_}, mesh_state->data(),
+                             arg_shapes, tpu_program_group);
+  } else {
+    compile_status =
+        Compile(FunctionToHloArgs{&function_,
+                                  flib_runtime->GetFunctionLibraryDefinition(),
+                                  flib_runtime->graph_def_version(),
+                                  {&guaranteed_constants}},
+                mesh_state->data(), arg_shapes, tpu_program_group);
+  }
 
   absl::Time end_time = absl::Now();
   auto duration = end_time - start_time;

@@ -70,14 +70,16 @@ class ImageProjectiveTransformV2 : public OpKernel {
     string mode_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fill_mode", &mode_str));
     if (mode_str == "REFLECT") {
-      fill_mode_ = Mode::REFLECT;
+      fill_mode_ = Mode::FILL_REFLECT;
     } else if (mode_str == "WRAP") {
-      fill_mode_ = Mode::WRAP;
+      fill_mode_ = Mode::FILL_WRAP;
     } else if (mode_str == "CONSTANT") {
-      fill_mode_ = Mode::CONSTANT;
+      fill_mode_ = Mode::FILL_CONSTANT;
+    } else if (mode_str == "NEAREST") {
+      fill_mode_ = Mode::FILL_NEAREST;
     } else {
       LOG(ERROR) << "Invalid mode " << mode_str
-                 << ". Supported types: REFLECT, WRAP, CONSTANT";
+                 << ". Supported types: REFLECT, WRAP, CONSTANT, NEAREST";
     }
   }
 
@@ -179,9 +181,10 @@ namespace generator {
                                                    const DenseIndex len); \
   extern template struct MapCoordinate<GPUDevice, Mode>
 
-DECLARE_MAP_FUNCTOR(Mode::REFLECT);
-DECLARE_MAP_FUNCTOR(Mode::WRAP);
-DECLARE_MAP_FUNCTOR(Mode::CONSTANT);
+DECLARE_MAP_FUNCTOR(Mode::FILL_REFLECT);
+DECLARE_MAP_FUNCTOR(Mode::FILL_WRAP);
+DECLARE_MAP_FUNCTOR(Mode::FILL_CONSTANT);
+DECLARE_MAP_FUNCTOR(Mode::FILL_NEAREST);
 
 }  // end namespace generator
 

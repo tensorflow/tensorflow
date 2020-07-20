@@ -30,8 +30,12 @@ class Mean : public GPUOperation {
  public:
   Mean() = default;
   explicit Mean(const OperationDef& definition) : GPUOperation(definition) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
 
+  absl::Status Tune(const TuningParameters& params) override {
+    return absl::OkStatus();
+  }
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -39,15 +43,6 @@ class Mean : public GPUOperation {
   Mean& operator=(Mean&& operation);
   Mean(const Mean&) = delete;
   Mean& operator=(const Mean&) = delete;
-
- private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-  CLKernel kernel_;
-
-  // must be: (x * y) % 4 = 0;
-  // must be: z = 1;
-  int3 work_group_size_ = int3(16, 16, 1);
 };
 
 Mean CreateMean(const OperationDef& definition);

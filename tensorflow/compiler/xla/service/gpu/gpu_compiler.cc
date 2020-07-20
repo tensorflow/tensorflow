@@ -537,10 +537,10 @@ static Status CompileModuleToLlvmIrImpl(
       // computation.
       // * For each visit of these HloInstructions, either none or one Thunk
       // will be returned.
-      // * If there is a thunk returned, thunk->hlo_instruction() equals the
+      // * If there is a thunk returned, thunk->hlo_instruction_ equals the
       // input HloInstruction*.
       // * A returned thunk may contain other sub-thunks. A sub-thunk may or may
-      // not have an associated hlo_instruction().
+      // not have an associated hlo_instruction_.
       TF_RET_CHECK(thunks->size() <= 1) << instruction->ToString();
       if (!thunks->empty()) {
         auto thunk = std::move(thunks->front());

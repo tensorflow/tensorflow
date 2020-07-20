@@ -32,7 +32,7 @@ namespace tensorflow {
 //   string input = "input string";
 //   uint64 hash_value = StrongKeyedHash(key, input);
 //
-uint64 StrongKeyedHash(const uint64 (&)[2], const string&);
+uint64 StrongKeyedHash(const tensorflow::uint64 (&)[2], const string&);
 
 }  // namespace tensorflow
 

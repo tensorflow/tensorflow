@@ -193,6 +193,22 @@ Status ValidateInputTypeAndPlacement(
     for (int i = 0; i < n_inputs; ++i) {
       TensorHandle* handle = handles[i];
       Device* expected_device = kernel->InputDevice(i);
+      if (!kernel->IsFunction() && handle->Type() == TensorHandle::PACKED) {
+        // Extract a handle on the op device from a packed input.
+        // This happens when a function is marked for XLA compilation.
+        // MaybePackInputTensor guarantees that a primitive op has no packed
+        // input at this point.
+        for (int j = 0; j < handle->NumPackedHandles(); ++j) {
+          TensorHandle* h = nullptr;
+          TF_RETURN_IF_ERROR(handle->ExtractPackedHandle(j, &h));
+          if ((h->op_device() != nullptr) &&
+              (h->op_device()->name() == op->DeviceName())) {
+            op->UpdateInput(i, h);
+            handle = h;
+            break;
+          }
+        }
+      }
       auto handle_device_variant = handle->DeviceOrHostCPU(*ctx);
       if (VariantDeviceIsCustom(handle_device_variant)) {
         return errors::Unimplemented(

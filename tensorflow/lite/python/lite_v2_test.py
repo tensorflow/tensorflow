@@ -36,9 +36,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
+from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
 
@@ -547,6 +549,25 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       self.assertEqual(np.float32, output_details[0]['dtype'])
       self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
       self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  @test_util.run_v2_only
+  def testTF1HubFormattedModel(self):
+    """Test a TF1 hub formatted model."""
+    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+
+    # TF1 hub model is based on V1 saved model and they omit the saved model
+    # schema version setting.
+    saved_model_proto = parse_saved_model(saved_model_dir)
+    saved_model_proto.saved_model_schema_version = 0
+
+    saved_model_pb_file_path = os.path.join(saved_model_dir, 'saved_model.pb')
+    with file_io.FileIO(saved_model_pb_file_path, 'wb') as writer:
+      writer.write(saved_model_proto.SerializeToString())
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
   @test_util.run_v2_only
   def testConstModel(self):

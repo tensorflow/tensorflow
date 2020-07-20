@@ -12,18 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_FACTORY_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_FACTORY_H_
 
-#include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_configuration_rewrite_pass.h"
+#include <functional>
+
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
 namespace tensorflow {
-namespace {
+namespace tpu {
 
-// This pass removes the TPUEmbeddingConfiguration in ConfigureDistributedTPU.
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 20,
-                      DistributedTPUConfigurationRewritePass);
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 20,
-                      DistributedTPUShutdownRewritePass);
+std::function<TpuCompilationCacheInterface*()> GetCompilationCacheCreateFn();
 
-}  // namespace
+void SetCompilationCacheCreateFn(
+    std::function<TpuCompilationCacheInterface*()> fn);
+
+}  // namespace tpu
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_FACTORY_H_

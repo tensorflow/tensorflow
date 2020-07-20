@@ -87,6 +87,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // changed constants out of tf_device.Launch.
   func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
   func_pm.addPass(CreateTPUHostComputationExpansionPass());
+  pm.addNestedPass<FuncOp>(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.

@@ -320,9 +320,7 @@ ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
       kernel_size_(operation.kernel_size_),
       stride_(operation.stride_),
       padding_(operation.padding_),
-      block_size_(operation.block_size_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      block_size_(operation.block_size_) {}
 
 ConvolutionTransposed& ConvolutionTransposed::operator=(
     ConvolutionTransposed&& operation) {
@@ -332,8 +330,6 @@ ConvolutionTransposed& ConvolutionTransposed::operator=(
     std::swap(stride_, operation.stride_);
     std::swap(padding_, operation.padding_);
     std::swap(block_size_, operation.block_size_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -366,9 +362,7 @@ absl::Status ConvolutionTransposed::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x));
   RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
   RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
-  RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetInt("kernel_size_y", kernel_size_.y);
 }
 
 int3 ConvolutionTransposed::GetGridSize() const {
@@ -381,14 +375,8 @@ int3 ConvolutionTransposed::GetGridSize() const {
 }
 
 absl::Status ConvolutionTransposed::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &work_group_size_);
-}
-
-absl::Status ConvolutionTransposed::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
 }
 
 absl::Status CreateConvolutionTransposed(

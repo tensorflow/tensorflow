@@ -1397,6 +1397,7 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
 
 Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
   auto* instr = Cast<HloCollectivePermuteInstruction>(crs);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instr));
   std::string source_target_pairs = absl::StrJoin(
       instr->source_target_pairs(), ",", absl::PairFormatter("="));
   llvm::Value* source_target_pairs_v =
@@ -3037,10 +3038,21 @@ void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
                 {b->CreateBitCast(run_options, void_ptr_type), activity_id});
 }
 
+namespace {
+bool IsHloVeryCheap(const HloInstruction* hlo) {
+  return hlo->opcode() == HloOpcode::kBitcast ||
+         hlo->opcode() == HloOpcode::kTuple ||
+         hlo->opcode() == HloOpcode::kGetTupleElement ||
+         hlo->opcode() == HloOpcode::kParameter ||
+         hlo->opcode() == HloOpcode::kConstant;
+}
+}  // namespace
+
 Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
-  if (instruction_to_profile_idx_.count(hlo)) {
-    // Only trace the same HLOs that the profiler does.
+  // When profiling is enabled, trace the same HLOs that the profiler does.
+  if (instruction_to_profile_idx_.count(hlo) ||
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
     tracing_state_.EmitTracingStart(&b_, hlo,
                                     GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
@@ -3052,8 +3064,9 @@ Status IrEmitter::Postprocess(HloInstruction* hlo) {
   if (auto* prof_counter = GetProfileCounterFor(*hlo)) {
     profiling_state_.RecordCycleDelta(&b_, hlo, prof_counter);
   }
-  // Only trace the same HLOs that the profiler does.
-  if (instruction_to_profile_idx_.count(hlo)) {
+  // When profiling is enabled, trace the same HLOs that the profiler does.
+  if (instruction_to_profile_idx_.count(hlo) ||
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
     tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
   return Status::OK();

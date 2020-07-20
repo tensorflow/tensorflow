@@ -98,16 +98,12 @@ std::string GetConverterToConvWeightsCode(
 ConverterToConvWeights::ConverterToConvWeights(
     ConverterToConvWeights&& operation)
     : GPUOperation(std::move(operation)),
-      conv_weights_desc_(operation.conv_weights_desc_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      conv_weights_desc_(operation.conv_weights_desc_) {}
 
 ConverterToConvWeights& ConverterToConvWeights::operator=(
     ConverterToConvWeights&& operation) {
   if (this != &operation) {
     conv_weights_desc_ = operation.conv_weights_desc_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -131,9 +127,7 @@ absl::Status ConverterToConvWeights::BindArguments() {
   RETURN_IF_ERROR(args_.SetFloat("mask_x", mask.x));
   RETURN_IF_ERROR(args_.SetFloat("mask_y", mask.y));
   RETURN_IF_ERROR(args_.SetFloat("mask_z", mask.z));
-  RETURN_IF_ERROR(args_.SetFloat("mask_w", mask.w));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetFloat("mask_w", mask.w);
 }
 
 int3 ConverterToConvWeights::GetGridSize() const {
@@ -142,16 +136,6 @@ int3 ConverterToConvWeights::GetGridSize() const {
   const int grid_y = src_[0]->Slices();
   const int grid_z = src_[0]->Width() * src_[0]->Height();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status ConverterToConvWeights::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status ConverterToConvWeights::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 ConverterToConvWeights CreateConverterToConvWeights(

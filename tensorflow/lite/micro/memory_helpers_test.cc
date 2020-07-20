@@ -141,6 +141,10 @@ TF_LITE_MICRO_TEST(TestTypeSizeOf) {
                           tflite::TfLiteTypeSizeOf(kTfLiteComplex64, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(float) * 2, size);
 
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteComplex128, &size));
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(double) * 2, size);
+
   TF_LITE_MICRO_EXPECT_NE(
       kTfLiteOk, tflite::TfLiteTypeSizeOf(static_cast<TfLiteType>(-1), &size));
 }
