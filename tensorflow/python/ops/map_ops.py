@@ -24,7 +24,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.gen_map_ops import *
-from tensorflow.python.framework import constant_op
 
 from tensorflow.python.util.lazy_loader import LazyLoader
 control_flow_ops = LazyLoader("control_flow_ops", globals(),

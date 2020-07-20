@@ -135,9 +135,8 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = map_ops.tensor_map_lookup(m, k, dtypes.float32)
       l *= 5
       g = tape.gradient(l, v)
-      self.assertAllClose(g, 5.0)
+      self.assertAllClose(g, 5)
 
-  #TODO(kattian): Test alternating inserts and lookups
   def testMultipleInsertLookupGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
@@ -158,11 +157,11 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l2 = map_ops.tensor_map_lookup(m, k2, v2.dtype)
       l3 = map_ops.tensor_map_lookup(m, k3, v3.dtype)
       g = tape.gradient(l * 5, v)
-      g2 = tape.gradient(l2 * 5, v2)
-      g3 = tape.gradient(l3 * 5, v3)
+      g2 = tape.gradient(l2 * 6, v2)
+      g3 = tape.gradient(l3 * 7, v3)
       self.assertAllClose(g, 5)
-      self.assertAllClose(g2, 5)
-      self.assertAllClose(g3, 5)
+      self.assertAllClose(g2, 6)
+      self.assertAllClose(g3, 7)
 
   def testSameKeyInsertLookupGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
@@ -180,7 +179,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(g, array_ops.zeros_like(v))
       self.assertAllClose(g2, 5)
 
-  def testSameKeyInsertLookupGrad2(self):
+  def testSameKeyAlternatingInsertLookupGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
       k = constant_op.constant(1.0)
@@ -192,13 +191,12 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = map_ops.tensor_map_lookup(m, k, v.dtype)
       g = tape.gradient(l * 5, v)
       self.assertAllClose(g, 5)
-
       m = map_ops.tensor_map_insert(m, k, v2)
       l2 = map_ops.tensor_map_lookup(m, k, v2.dtype)
-      g2 = tape.gradient(l2 * 5, v2)
-      g3 = tape.gradient(l2 * 5, v)
-      self.assertAllClose(g2, 5)
-      self.assertAllClose(g3, array_ops.zeros_like(v))
+      g2 = tape.gradient(l2 * 6, v)
+      g3 = tape.gradient(l2 * 7, v2)
+      self.assertAllClose(g2, array_ops.zeros_like(v))
+      self.assertAllClose(g3, 7)
 
 if __name__ == '__main__':
   test.main()
