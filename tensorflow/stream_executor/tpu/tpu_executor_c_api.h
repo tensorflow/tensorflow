@@ -436,9 +436,6 @@ TFTPU_CAPI_EXPORT void TpuCompiler_Compile(
 TFTPU_CAPI_EXPORT int64_t TpuCompiler_ShapeSize(Tpu_Compiler* compiler,
                                                 XLA_Shape* c_shape);
 
-TFTPU_CAPI_EXPORT void TpuExecutable_HloModule(SE_Executable* executable,
-                                               TpuSerializedProto* proto);
-
 TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
     SE_Executable* executable, SE_ExecutableRunOptions* run_options,
     SE_ExecutionInput** se_arguments, int se_arguments_size,
@@ -550,6 +547,13 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_Z);
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Index);
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunHloPasses);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunBackend);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Free);
 };
 }
 

@@ -594,3 +594,22 @@ cc_library(
     ],
     alwayslink = True,
 )
+
+cc_library(
+    name = "cross_replica_ops",
+    srcs = ["cross_replica_ops.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
