@@ -909,7 +909,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
   // BinaryOp(Broadcast'(Const0), Const1).  We now translate simulated_index to
   // new_inner_broadcast_dims.
   std::vector<int64> new_inner_broadcast_dims;
-  for (int64 i = 0; i < simulated_index.size(); i++) {
+  for (int64 i = 0, end = simulated_index.size(); i < end; i++) {
     if (simulated_index[i] == IndexComponent::NotBroadcasted) {
       new_inner_broadcast_dims.push_back(i);
     }

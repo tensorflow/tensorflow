@@ -293,7 +293,8 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     float elapsed_time = cost_analysis_.GetInstructionElapsed(
         *instruction_and_logical_time.first);
     int64 logical_time = instruction_and_logical_time.second;
-    if (logical_time >= instructions_elapsed_time.size()) {
+    const int64 instructions_elapsed_time_size = instructions_elapsed_time.size();
+    if (logical_time >= instructions_elapsed_time_size) {
       instructions_elapsed_time.resize(logical_time + 1, 0.0);
       while_nest_level_.resize(logical_time + 1, 0);
     }
@@ -580,7 +581,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
   // Create an AllocationValue for each non-trivial position.
   absl::flat_hash_set<const HloComputation*> computations;
   int beginning_idx = allocation_values->size();
-  for (int i = 0; i < positions.size(); ++i) {
+  for (int i = 0, end = positions.size(); i < end; ++i) {
     const HloPosition& position = positions.at(i);
     allocation_values->emplace_back(value, position);
   }
@@ -603,7 +604,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
     HloComputation* use_computation = use.instruction->parent();
 
     AllocationValue* last_allocation_value = nullptr;
-    for (int i = beginning_idx; i < allocation_values->size(); ++i) {
+    for (int i = beginning_idx, end = allocation_values->size(); i < end; ++i) {
       AllocationValue* allocation_value = &allocation_values->at(i);
       if (allocation_value->computation() == use_computation &&
           instruction_schedule.at(
@@ -615,7 +616,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
     last_allocation_value->AddUse(use, use_time);
   }
 
-  for (int i = beginning_idx; i < allocation_values->size(); ++i) {
+  for (int i = beginning_idx, end = allocation_values->size(); i < end; ++i) {
     VLOG(3) << "Created allocation value: "
             << allocation_values->at(i).ToString();
   }
@@ -906,7 +907,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     VLOG(3) << "Flattened instruction sequence:";
     const auto& instruction_sequence =
         hlo_live_range_.flattened_instruction_sequence().instructions();
-    for (int i = 0; i < instruction_sequence.size(); ++i) {
+    for (int i = 0, end = instruction_sequence.size(); i < end; ++i) {
       VLOG(3) << " " << i << ": " << instruction_sequence[i]->parent()->name()
               << " " << instruction_sequence[i]->name();
     }
@@ -2762,8 +2763,8 @@ Status MemorySpaceAssignment::FixSchedule() {
 
     VLOG(4) << "Scheduling: " << computation->ToString();
 
-    for (int64 instruction_index = 0;
-         instruction_index < flattened_instructions_.size();
+    for (int64 instruction_index = 0, end = flattened_instructions_.size();
+         instruction_index < end;
          ++instruction_index) {
       auto insts_before_iter = schedule_before_.find(instruction_index);
       if (insts_before_iter != schedule_before_.end()) {

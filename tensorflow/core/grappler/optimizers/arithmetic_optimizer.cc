@@ -750,7 +750,6 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
         ctx().node_map->AddOutput(new_add_node->name(), new_outer_node->name());
 
         // Hoist non-shared factors up into the new AddN node.
-
         for (int i = 0, end = unique_factors.size(); i < end; ++i) {
           const string& unique_factor_i = unique_factors[i];
           new_add_node->set_input(i, unique_factor_i);
