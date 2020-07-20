@@ -1676,7 +1676,7 @@ cc_library(
 tf_cc_test(
     name = "hlo_algorithm_blacklist_test",
     srcs = ["hlo_algorithm_blacklist_test.cc"],
-    data = ["data/hlo_algorithm_blacklist.pbtxt"],
+    data = ["data/hlo_algorithm_denylist.pbtxt"],
     tags = ["no_pip"],
     deps = [
         ":hlo_algorithm_blacklist",

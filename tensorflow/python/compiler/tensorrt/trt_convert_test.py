@@ -280,7 +280,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         input_saved_model_signature_key=_SAVED_MODEL_SIGNATURE_KEY,
         input_graph_def=None
         if input_saved_model_dir else self._GetGraphDefForV1(device),
-        nodes_blacklist=None if input_saved_model_dir else ["output"],
+        nodes_denylist=None if input_saved_model_dir else ["output"],
         session_config=self._GetConfigProto(),
         max_batch_size=max_batch_size,
         max_workspace_size_bytes=TrtConvertTest._TRT_MAX_WORKSPACE_SIZE_BYTES,

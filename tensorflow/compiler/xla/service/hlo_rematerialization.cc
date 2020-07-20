@@ -121,9 +121,9 @@ struct Item {
   bool placed = false;
 
   // To avoid an infinite loop rematerializing the same set of
-  // instructions ad infinitum, keep a blacklist of instructions
+  // instructions ad infinitum, keep a denylist of instructions
   // which should not be rematerialized.
-  bool blacklisted = false;
+  bool denylisted = false;
 
   // The buffers defined by this instruction.
   BufferIdList buffers_defined;
@@ -292,8 +292,8 @@ class InstructionList {
     InsertBeforeInstructions(to_insert, {max_position_item->next});
   }
 
-  void Blacklist(const HloInstruction* inst) {
-    GetItem(inst)->blacklisted = true;
+  void Denylist(const HloInstruction* inst) {
+    GetItem(inst)->denylisted = true;
   }
 
  private:
@@ -1158,13 +1158,13 @@ std::vector<Item*> GetInitialBlock(const InstructionList& instruction_list,
   return item_block;
 }
 
-// Returns whether any instruction in 'block' is blacklisted or
+// Returns whether any instruction in 'block' is denylisted or
 // non-rematerializable.
-bool AnyBlacklistedOrNonRematerializable(
+bool AnyDenylistedOrNonRematerializable(
     const std::vector<Item*>& block,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map) {
   for (auto* item : block) {
-    if (item->blacklisted) {
+    if (item->denylisted) {
       return true;
     }
     if (!CanBeRematerialized(item->instruction, rematerializable_map)) {
@@ -1195,10 +1195,10 @@ MemoryUsageTracker::PickRematerializationCandidates(
       // instructions.
       break;
     }
-    // If any item in the starting block are blacklisted or non-rematable, then
+    // If any item in the starting block are denylisted or non-rematable, then
     // break and move on to next start_item (we can actually move to the last
     // invalid item in this block, but let's ignore that optimization for now).
-    if (AnyBlacklistedOrNonRematerializable(block, rematerializable_map)) {
+    if (AnyDenylistedOrNonRematerializable(block, rematerializable_map)) {
       continue;
     }
     while (block.size() <= max_block_size) {
@@ -1289,8 +1289,8 @@ MemoryUsageTracker::PickRematerializationCandidates(
       // Time to update the block to include the next instruction.
       auto* last_item = block[block.size() - 1];
       auto* next_item = instruction_list.next(last_item);
-      if (next_item == nullptr || next_item->blacklisted ||
-          !next_item->placed || next_item == in_progress_item_ ||
+      if (next_item == nullptr || next_item->denylisted || !next_item->placed ||
+          next_item == in_progress_item_ ||
           !CanBeRematerialized(next_item->instruction, rematerializable_map)) {
         break;
       }
@@ -1404,7 +1404,7 @@ StatusOr<int64> RematerializeInstructions(
         // instruction it was a copying of. Now 'remat' is a rematerialization
         // of 'best' and kills 'best'. Stop rematerializing this instruction
         // to avoid an infinite loop.
-        instruction_list->Blacklist(remat);
+        instruction_list->Denylist(remat);
       }
       remat_move_instructions->insert(remat);
     } else {
@@ -1460,8 +1460,8 @@ StatusOr<int64> CompressInstruction(MemoryUsageTracker* memory_tracker,
     place_before.push_back(instruction_list->GetItem(user));
   }
 
-  instruction_list->Blacklist(compressed_item->instruction);
-  instruction_list->Blacklist(uncompressed_item->instruction);
+  instruction_list->Denylist(compressed_item->instruction);
+  instruction_list->Denylist(uncompressed_item->instruction);
 
   instruction_list->InsertBeforeInstructions(uncompressed_item, place_before);
 
@@ -1583,7 +1583,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // rematerialization is added to 'remat_move_instructions' (the
   // rematerialization is essentially a move). If the next rematerialization of
   // the instruction is also a move then the rematerialization is added to the
-  // blacklist.
+  // denylist.
   absl::flat_hash_set<const HloInstruction*> remat_move_instructions;
 
   // The map from instructions to their rematerializable status.

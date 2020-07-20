@@ -66,9 +66,9 @@
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>
 *   Other:
-    * We have replaced uses of "whitelist" with "allowlist" where possible.
-  Please see https://developers.google.com/style/word-list#blacklist for more
-  context.
+    * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
+  and "denylist" where possible. Please see 
+  https://developers.google.com/style/word-list#blacklist for more context.
     * <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors

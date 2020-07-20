@@ -36,13 +36,13 @@ _SUPPORTED_SEQUENCE_COLUMNS = (fc._SequenceCategoricalColumn,
 
 
 # For V2 columns, we support anything that inherits from CategoricalColumn
-# other than those in the blacklist. User-provided columns that inherit from
+# other than those in the denylist. User-provided columns that inherit from
 # CategoricalColumn may or may not be compatible; it is up to the user to
 # manage TPU compatibility for custom columns.
 _SUPPORTED_CATEGORICAL_COLUMNS_V2 = (fc_lib.CategoricalColumn,)
-_BLACKLISTED_CATEGORICAL_COLUMNS_V2 = (fc_lib.HashedCategoricalColumn,
-                                       fc_lib.BucketizedColumn,
-                                       fc_lib.CrossedColumn)
+_DENYLISTED_CATEGORICAL_COLUMNS_V2 = (fc_lib.HashedCategoricalColumn,
+                                      fc_lib.BucketizedColumn,
+                                      fc_lib.CrossedColumn)
 _SUPPORTED_CATEGORICAL_COLUMNS = (fc._IdentityCategoricalColumn,
                                   fc._VocabularyFileCategoricalColumn,
                                   fc._VocabularyListCategoricalColumn,
@@ -106,9 +106,9 @@ def embedding_column(categorical_column,
     ValueError: if `initializer` is specified but not callable.
     TypeError: if categorical_column is not a supported type.
   """
-  if isinstance(categorical_column, _BLACKLISTED_CATEGORICAL_COLUMNS_V2):
+  if isinstance(categorical_column, _DENYLISTED_CATEGORICAL_COLUMNS_V2):
     raise TypeError('categorical_column for tpu '
-                    ' embedding_column was blacklisted type %s' %
+                    ' embedding_column was denylisted type %s' %
                     type(categorical_column))
   if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS):
     raise TypeError(
@@ -223,9 +223,9 @@ def shared_embedding_columns(categorical_columns,
       or 0 for a sequence column.
   """
   for categorical_column in categorical_columns:
-    if isinstance(categorical_column, _BLACKLISTED_CATEGORICAL_COLUMNS_V2):
+    if isinstance(categorical_column, _DENYLISTED_CATEGORICAL_COLUMNS_V2):
       raise TypeError('categorical_column for tpu '
-                      ' embedding_column was blacklisted type %s' %
+                      ' embedding_column was denylisted type %s' %
                       type(categorical_column))
     if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS):
       raise TypeError(

@@ -773,34 +773,34 @@ def assert_no_new_tensors(f):
 
 def _find_reference_cycle(objects, idx):
 
-  def get_ignore_reason(obj, blacklist):
+  def get_ignore_reason(obj, denylist):
     """Tests whether an object should be omitted from the dependency graph."""
-    if len(blacklist) > 100:
+    if len(denylist) > 100:
       return "<depth limit>"
     if tf_inspect.isframe(obj):
       if "test_util.py" in tf_inspect.getframeinfo(obj)[0]:
         return "<test code>"
-    for b in blacklist:
+    for b in denylist:
       if b is obj:
         return "<test code>"
-    if obj is blacklist:
+    if obj is denylist:
       return "<test code>"
     return None
 
   # Note: this function is meant to help with diagnostics. Its output is purely
   # a human-readable representation, so you may freely modify it to suit your
   # needs.
-  def describe(obj, blacklist, leaves_only=False):
+  def describe(obj, denylist, leaves_only=False):
     """Returns a custom human-readable summary of obj.
 
     Args:
       obj: the value to describe.
-      blacklist: same as blacklist in get_ignore_reason.
+      denylist: same as denylist in get_ignore_reason.
       leaves_only: boolean flag used when calling describe recursively. Useful
         for summarizing collections.
     """
-    if get_ignore_reason(obj, blacklist):
-      return "{}{}".format(get_ignore_reason(obj, blacklist), type(obj))
+    if get_ignore_reason(obj, denylist):
+      return "{}{}".format(get_ignore_reason(obj, denylist), type(obj))
     if tf_inspect.isframe(obj):
       return "frame: {}".format(tf_inspect.getframeinfo(obj))
     elif tf_inspect.ismodule(obj):
@@ -810,10 +810,10 @@ def _find_reference_cycle(objects, idx):
         return "{}, {}".format(type(obj), id(obj))
       elif isinstance(obj, list):
         return "list({}): {}".format(
-            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+            id(obj), [describe(e, denylist, leaves_only=True) for e in obj])
       elif isinstance(obj, tuple):
         return "tuple({}): {}".format(
-            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+            id(obj), [describe(e, denylist, leaves_only=True) for e in obj])
       elif isinstance(obj, dict):
         return "dict({}): {} keys".format(id(obj), len(obj.keys()))
       elif tf_inspect.isfunction(obj):
@@ -822,7 +822,7 @@ def _find_reference_cycle(objects, idx):
       else:
         return "{}, {}".format(type(obj), id(obj))
 
-  def build_ref_graph(obj, graph, reprs, blacklist):
+  def build_ref_graph(obj, graph, reprs, denylist):
     """Builds a reference graph as <referrer> -> <list of referents>.
 
     Args:
@@ -832,21 +832,21 @@ def _find_reference_cycle(objects, idx):
         references, the graph holds object IDs rather than actual objects.
       reprs: Auxiliary structure that maps object IDs to their human-readable
         description.
-      blacklist: List of objects to ignore.
+      denylist: List of objects to ignore.
     """
     referrers = gc.get_referrers(obj)
-    blacklist = blacklist + (referrers,)
+    denylist = denylist + (referrers,)
 
     obj_id = id(obj)
     for r in referrers:
-      if get_ignore_reason(r, blacklist) is None:
+      if get_ignore_reason(r, denylist) is None:
         r_id = id(r)
         if r_id not in graph:
           graph[r_id] = []
         if obj_id not in graph[r_id]:
           graph[r_id].append(obj_id)
-          build_ref_graph(r, graph, reprs, blacklist)
-          reprs[r_id] = describe(r, blacklist)
+          build_ref_graph(r, graph, reprs, denylist)
+          reprs[r_id] = describe(r, denylist)
 
   def find_cycle(el, graph, reprs, path):
     """Finds and prints a single cycle in the dependency graph."""
