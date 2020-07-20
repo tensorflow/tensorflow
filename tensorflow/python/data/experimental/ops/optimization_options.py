@@ -177,8 +177,24 @@ class OptimizationOptions(options.OptionsBase):
   parallel_batch = options.create_option(
       name="parallel_batch",
       ty=bool,
-      docstring="Whether to parallelize copying of batch elements. If None, "
-      "defaults to False.")
+      docstring="Whether to parallelize copying of batch elements. This "
+      "optimization is highly experimental and can cause performance "
+      "degradation (e.g. when the parallelization overhead exceeds the "
+      "benefits of performing the data copies in parallel). You should only "
+      "enable this optimization if a) your input pipeline is bottlenecked on "
+      "batching and b) you have validated that this optimization improves "
+      "performance. If None, defaults to False.")
+
+  reorder_data_discarding_ops = options.create_option(
+      name="reorder_data_discarding_ops",
+      ty=bool,
+      docstring="Whether to reorder ops that will discard data to the front of "
+      "unary cardinality preserving transformations, e.g. "
+      "dataset.map(...).take(3) will be optimized to dataset.take(3).map(...). "
+      "For now this optimization will move `skip`, `shard` and `take` to the "
+      "front of `map` and `prefetch`. This optimization is only for "
+      "performance; it will not affect the output of the dataset. "
+      "If None, defaults to True.")
 
   shuffle_and_repeat_fusion = options.create_option(
       name="shuffle_and_repeat_fusion",
@@ -225,6 +241,7 @@ class OptimizationOptions(options.OptionsBase):
         "map_fusion",
         "noop_elimination",
         "parallel_batch",
+        "reorder_data_discarding_ops",
         "shuffle_and_repeat_fusion",
     ]
     for optimization in all_optimizations:

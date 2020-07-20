@@ -29,12 +29,27 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+bool ElementIsF32OrF16(const Shape& shape) {
+  PrimitiveType type = shape.element_type();
+  return type == F32 || type == F16;
+}
+}  // namespace
+
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
-  // We say that floating-point division is cheap on the GPU.
-  if (instruction.opcode() == HloOpcode::kDivide &&
-      ShapeUtil::ElementIsFloating(instruction.shape())) {
-    return false;
+  // We say that some floating-point math ops are cheap on the GPU. Unlike other
+  // intrinsics that can be expanded into many instructions, Div and Rsqrt are
+  // lowered into single hardware instructions.
+  switch (instruction.opcode()) {
+    case HloOpcode::kDivide:
+    case HloOpcode::kRsqrt:
+      if (ElementIsF32OrF16(instruction.shape())) {
+        return false;
+      }
+      break;
+    default:
+      break;
   }
   return InstructionFusion::IsExpensive(instruction);
 }

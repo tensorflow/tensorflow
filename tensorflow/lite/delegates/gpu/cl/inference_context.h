@@ -114,6 +114,7 @@ class InferenceContext {
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
   absl::Status Tune(const TuningParameters& tuning_parameters);
+  absl::Status UpdateParams();
 
   // performance hacks
   bool need_flush_ = false;

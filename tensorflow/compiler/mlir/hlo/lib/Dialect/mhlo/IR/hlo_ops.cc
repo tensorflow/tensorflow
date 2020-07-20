@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -59,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_patterns.cc.inc"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.cc.inc"
 namespace mhlo {
 
@@ -744,7 +746,8 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
 
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic>(context);
+  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic,
+                 DynamicBroadcastToOwnShape>(context);
 }
 
 //===----------------------------------------------------------------------===//

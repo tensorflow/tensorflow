@@ -143,6 +143,7 @@ tf_py_test(
     shard_count = 4,
     tags = [
         "no_windows",
+        "notap",  # TODO(b/161198218): flaky timeout
     ],
     deps = [
         "//tensorflow/python:client_testlib",

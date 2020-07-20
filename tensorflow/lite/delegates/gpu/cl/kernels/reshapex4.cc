@@ -74,14 +74,10 @@ std::string GetReshapeCode(const OperationDef& op_def, Arguments* args) {
 }  // namespace
 
 Reshapex4::Reshapex4(Reshapex4&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)) {}
 
 Reshapex4& Reshapex4::operator=(Reshapex4&& operation) {
   if (this != &operation) {
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -103,8 +99,7 @@ absl::Status Reshapex4::Compile(const CreationContext& creation_context) {
 absl::Status Reshapex4::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Reshapex4::GetGridSize() const {
@@ -112,16 +107,6 @@ int3 Reshapex4::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Reshapex4::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status Reshapex4::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 Reshapex4 CreateReshapex4(const OperationDef& definition) {

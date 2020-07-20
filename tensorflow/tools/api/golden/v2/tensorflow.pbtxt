@@ -393,6 +393,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "types"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "uint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

@@ -351,31 +351,35 @@ class DistributedCollectiveAllReduceStrategyTest(
       combinations.combine(
           mode=['graph'], required_gpus=[0, 1, 2], use_dataset=[True, False]))
   def testMakeInputFnIterator(self, required_gpus, use_dataset):
-    if use_dataset:
-      fn = lambda: dataset_ops.Dataset.range(100)
-    else:
-      def fn():
-        dataset = dataset_ops.Dataset.range(100)
-        it = dataset_ops.make_one_shot_iterator(dataset)
-        return it.get_next
-    # We use CPU as the device when required_gpus = 0
-    devices_per_worker = max(1, required_gpus)
-    expected_values = [[i+j for j in range(devices_per_worker)]
-                       for i in range(0, 100, devices_per_worker)]
+    def _worker_fn(task_type, task_id, required_gpus):
+      if use_dataset:
+        fn = lambda: dataset_ops.Dataset.range(20)
+      else:
+        def fn():
+          dataset = dataset_ops.Dataset.range(20)
+          it = dataset_ops.make_one_shot_iterator(dataset)
+          return it.get_next
+      # We use CPU as the device when required_gpus = 0
+      devices_per_worker = max(1, required_gpus)
+      expected_values = [[i+j for j in range(devices_per_worker)]
+                         for i in range(0, 20, devices_per_worker)]
 
-    input_fn = self._input_fn_to_test_input_context(
-        fn,
-        expected_num_replicas_in_sync=3*devices_per_worker,
-        expected_num_input_pipelines=3,
-        expected_input_pipeline_id=1)  # because task_id = 1
-    self._test_input_fn_iterator(
-        'worker',
-        1,
-        required_gpus,
-        input_fn,
-        expected_values,
-        test_reinitialize=use_dataset,
-        ignore_order=not use_dataset)
+      input_fn = self._input_fn_to_test_input_context(
+          fn,
+          expected_num_replicas_in_sync=3*devices_per_worker,
+          expected_num_input_pipelines=3,
+          expected_input_pipeline_id=task_id)
+      self._test_input_fn_iterator(
+          task_type,
+          task_id,
+          required_gpus,
+          input_fn,
+          expected_values,
+          test_reinitialize=use_dataset,
+          ignore_order=not use_dataset)
+
+    self._run_between_graph_clients(_worker_fn, self._cluster_spec,
+                                    required_gpus)
 
   @combinations.generate(combinations.combine(mode=['graph']))
   def testUpdateConfigProto(self):

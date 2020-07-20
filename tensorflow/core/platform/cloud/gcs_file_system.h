@@ -126,43 +126,67 @@ class GcsFileSystem : public FileSystem {
                 bool compose_append);
 
   Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+      const string& fname,
+      std::unique_ptr<RandomAccessFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status NewWritableFile(const string& fname,
-                         std::unique_ptr<WritableFile>* result) override;
+  Status NewWritableFile(
+      const string& fname,
+      std::unique_ptr<WritableFile>*
+          result) /*, TransactionToken* token = nullptr */ override;
 
-  Status NewAppendableFile(const string& fname,
-                           std::unique_ptr<WritableFile>* result) override;
+  Status NewAppendableFile(
+      const string& fname,
+      std::unique_ptr<WritableFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
+      std::unique_ptr<ReadOnlyMemoryRegion>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  Status Stat(
+      const string& fname,
+      FileStatistics* stat /*, TransactionToken* token = nullptr */) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(
+      const string& dir,
+      std::vector<string>* result /*, TransactionToken* token = nullptr */)
+      override;
 
-  Status GetMatchingPaths(const string& pattern,
-                          std::vector<string>* results) override;
+  Status GetMatchingPaths(
+      const string& pattern,
+      std::vector<string>* results /*, TransactionToken* token = nullptr */)
+      override;
 
-  Status DeleteFile(const string& fname) override;
+  Status DeleteFile(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status CreateDir(const string& dirname) override;
+  Status CreateDir(
+      const string& dirname /*, TransactionToken* token = nullptr */) override;
 
-  Status DeleteDir(const string& dirname) override;
+  Status DeleteDir(
+      const string& dirname /*, TransactionToken* token = nullptr */) override;
 
-  Status GetFileSize(const string& fname, uint64* file_size) override;
+  Status GetFileSize(
+      const string& fname,
+      uint64* file_size /*, TransactionToken* token = nullptr */) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status RenameFile(
+      const string& src,
+      const string& target /*, TransactionToken* token = nullptr */) override;
 
-  Status IsDirectory(const string& fname) override;
+  Status IsDirectory(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
-                           int64* undeleted_dirs) override;
+  Status DeleteRecursively(
+      const string& dirname, int64* undeleted_files,
+      int64* undeleted_dirs /*, TransactionToken* token = nullptr */) override;
 
-  void FlushCaches() override;
+  void FlushCaches(/* TransactionToken* token = nullptr */) override;
 
   /// Set an object to collect runtime statistics from the GcsFilesystem.
   void SetStats(GcsStatsInterface* stats);

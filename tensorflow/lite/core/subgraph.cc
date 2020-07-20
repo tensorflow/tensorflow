@@ -189,6 +189,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
       next_execution_plan_index_to_plan_allocation_(0),
       subgraphs_(subgraphs),
       resources_(resources) {
+  // TODO(b/161272052): Consider a better TfLiteContext initialization pattern:
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -200,6 +201,8 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
   context_.GetExternalContext = GetExternalContext;
   context_.SetExternalContext = SetExternalContext;
   context_.profiler = nullptr;
+  context_.GetTensor = nullptr;
+  context_.GetEvalTensor = nullptr;
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);

@@ -201,9 +201,9 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
                              sizeof(float) * bias_data.size())));
   }
 
-  const std::array<int32_t, 2> filter_shape(
-      {OutputChannels(), InputChannels()});
-  const std::array<int32_t, 1> bias_shape({OutputChannels()});
+  const std::array<int32_t, 2> filter_shape{
+      {OutputChannels(), InputChannels()}};
+  const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
 
   const std::vector<int32_t> output_shape = OutputShape();
   std::vector<flatbuffers::Offset<Tensor>> tensors;

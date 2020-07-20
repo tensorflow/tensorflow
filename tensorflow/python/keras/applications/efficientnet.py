@@ -16,9 +16,9 @@
 # pylint: disable=missing-docstring
 """EfficientNet models for Keras.
 
-Reference paper:
-  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks]
-    (https://arxiv.org/abs/1905.11946) (ICML 2019)
+Reference:
+  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
+      https://arxiv.org/abs/1905.11946) (ICML 2019)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -210,7 +210,7 @@ def EfficientNet(
     classifier_activation='softmax'):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
 
-  Reference paper:
+  Reference:
   - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
       https://arxiv.org/abs/1905.11946) (ICML 2019)
 

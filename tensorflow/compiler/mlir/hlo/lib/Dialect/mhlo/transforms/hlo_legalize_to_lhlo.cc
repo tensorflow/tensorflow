@@ -42,9 +42,6 @@ namespace {
 
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
-using StdReturnOpConverter =
-    detail::BufferAssignmentReturnOpConverter<mlir::ReturnOp, mlir::ReturnOp,
-                                              lmhlo::CopyOp, true>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -272,33 +269,33 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
     // Copy over the operations inside the region.
     rewriter.inlineRegionBefore(op.body(), new_op.body(), new_op.body().end());
 
-    // Create new block arguments with correct type.
+    // Convert the region signature to memref and add extra result.
     auto& entry_block = new_op.body().front();
-    int original_arg_count = entry_block.getNumArguments();
-    for (int i = 0; i < original_arg_count; ++i) {
-      auto old_arg = entry_block.getArgument(i);
-      auto old_type = old_arg.getType().cast<TensorType>();
+    TypeConverter::SignatureConversion sig_conversion(
+        entry_block.getNumArguments() + 1);
+    for (auto arg : entry_block.getArguments()) {
+      auto old_type = arg.getType().cast<TensorType>();
       auto new_type =
           MemRefType::get(old_type.getShape(), old_type.getElementType());
-      auto new_arg = entry_block.addArgument(new_type);
-      rewriter.replaceUsesOfBlockArgument(old_arg, new_arg);
+      sig_conversion.addInputs(arg.getArgNumber(), new_type);
     }
-    // Add an argument for the result.
-    entry_block.addArgument(
-        entry_block.getArgument(original_arg_count).getType());
-    // Remove the old arguments.
-    for (int i = original_arg_count - 1; i >= 0; --i) {
-      entry_block.eraseArgument(i);
-    }
-    // Insert terminator at the end.
-    rewriter.setInsertionPointToEnd(&entry_block);
-    rewriter.create<lmhlo::TerminatorOp>(loc);
+    auto return_op = cast<mhlo::ReturnOp>(entry_block.getTerminator());
+    auto result_type = return_op.results().front().getType().cast<TensorType>();
+    sig_conversion.addInputs({MemRefType::get(result_type.getShape(),
+                                              result_type.getElementType())});
+    rewriter.applySignatureConversion(&new_op.body(), sig_conversion);
 
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
 
     return success();
   }
 };
+
+// Legalize mhlo.return to a lmhlo.copy and lmhlo.terminator. This functionality
+// is provided by mlir buffer assignment, so use the pattern from there.
+// TODO(DFKI): Move this out of detail.
+using HloToLhloReturnOpConverter = detail::BufferAssignmentReturnOpConverter<
+    mhlo::ReturnOp, lmhlo::TerminatorOp, lmhlo::CopyOp, false>;
 
 class HloToLhloTensorLoadOpConverter
     : public BaseOpConversion<mlir::TensorLoadOp> {
@@ -312,7 +309,6 @@ class HloToLhloTensorLoadOpConverter
   }
 };
 
-// TODO(b/137624192): Rewrite into a copy and elide copy if possible.
 class HloToLhloTensorStoreOpConverter
     : public BaseOpConversion<mlir::TensorStoreOp> {
  public:
@@ -506,6 +502,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::SubOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloReduceOpConverter,
+      HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
   >(context, bufferAssignment, converter);

@@ -305,7 +305,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     self.assertEqual(out_2.shape.as_list(), [None, 1, 5])
 
     ph_3 = keras.backend.placeholder(shape=(None, 1, 18))
-    with self.assertRaisesRegex(ValueError, 'is incompatible with layer'):
+    with self.assertRaisesRegex(ValueError, 'is incompatible with'):
       time_dist(ph_3)
 
   def test_TimeDistributed_with_invalid_dimensions(self):

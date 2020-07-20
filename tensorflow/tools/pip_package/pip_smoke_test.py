@@ -75,7 +75,6 @@ PYTHON_TARGETS, PY_TEST_QUERY_EXPRESSION = BuildPyTestDependencies()
 DEPENDENCY_DENYLIST = [
     "//tensorflow/python:extra_py_tests_deps",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
-    "//tensorflow:enable_mlir_bridge",
     "//tensorflow:no_tensorflow_py_deps",
     "//tensorflow/tools/pip_package:win_pip_package_marker",
     "//tensorflow/python:test_ops_2",
