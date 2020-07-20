@@ -1,4 +1,4 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=18.04
+ARG UBUNTU_VERSION=20.04
 
 FROM ubuntu:${UBUNTU_VERSION} AS base
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG DEBIAN_FRONTEND="noninteractive"
+
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
         build-essential \
         curl \
         git \
@@ -50,14 +52,13 @@ ENV CI_BUILD_PYTHON python
 ARG CACHE_STOP=1
 # Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
 ARG CHECKOUT_TF_SRC=0
-# In case of Python 2.7+ we need to add passwd entries for user and group id
-RUN chmod a+w /etc/passwd /etc/group
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
+ARG TF_BRANCH=master
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git --branch "${TF_BRANCH}" --single-branch /tensorflow_src || true
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     python3 \
     python3-pip
 
@@ -68,78 +69,37 @@ RUN python3 -m pip --no-cache-dir install --upgrade \
 # Some TF tools expect a "python" binary
 RUN ln -s $(which python3) /usr/local/bin/python
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    wget \
-    openjdk-8-jdk \
-    python3-dev \
-    virtualenv \
-    swig
-
-RUN python3 -m pip --no-cache-dir install \
-    Pillow \
-    h5py \
-    keras_preprocessing \
-    matplotlib \
-    mock \
-    'numpy<1.19.0' \
-    scipy \
-    sklearn \
-    pandas \
-    future \
-    portpicker \
-    enum34
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    curl
 
 # Install bazel
 ARG BAZEL_VERSION=3.1.0
 RUN mkdir /bazel && \
-    wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
-    wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
-    chmod +x /bazel/installer.sh && \
-    /bazel/installer.sh && \
+    curl -fSsL -o /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
+    curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
+    bash /bazel/installer.sh && \
     rm -f /bazel/installer.sh
 
-# install libnuma, openssh, wget
-RUN ( apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-        libnuma-dev \
-        openssh-server \
-        openssh-client \
-        wget && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* ) || \
-    ( yum -y update && yum -y install \
-            numactl-devel \
-            openssh-server \
-            openssh-clients \
-            wget && \
-    yum clean all ) || \
-    ( echo "Unsupported Linux distribution. Aborting!" && exit 1 )
+ARG DEBIAN_FRONTEND="noninteractive"
 
-# Install Open MPI
-# download realese version from official website as openmpi github master is not always stable
-ARG OPENMPI_VERSION=openmpi-4.0.0
-ARG OPENMPI_DOWNLOAD_URL=https://www.open-mpi.org/software/ompi/v4.0/downloads/openmpi-4.0.0.tar.gz
-RUN mkdir /tmp/openmpi && \
-    cd /tmp/openmpi && \
-    wget ${OPENMPI_DOWNLOAD_URL} && \
-    tar zxf ${OPENMPI_VERSION}.tar.gz && \
-    cd ${OPENMPI_VERSION} && \
-    ./configure --enable-orterun-prefix-by-default && \
-    make -j $(nproc) all && \
-    make install && \
-    ldconfig && \
-    rm -rf /tmp/openmpi
+# install libnuma, openssh, wget
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    libopenmpi-dev \
+    openmpi-bin \
+    openmpi-common \
+    openssh-client \
+    openssh-server && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create a wrapper for OpenMPI to allow running as root by default
-RUN mv /usr/local/bin/mpirun /usr/local/bin/mpirun.real && \
-    echo '#!/bin/bash' > /usr/local/bin/mpirun && \
-    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/local/bin/mpirun && \
-    chmod a+x /usr/local/bin/mpirun
+RUN mv /usr/bin/mpirun /usr/bin/mpirun.real && \
+    echo '#!/bin/bash' > /usr/bin/mpirun && \
+    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
+    chmod a+x /usr/bin/mpirun
 
 # Configure OpenMPI to run good defaults:
-RUN echo "btl_tcp_if_exclude = lo,docker0" >> /usr/local/etc/openmpi-mca-params.conf
+RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi/openmpi-mca-params.conf
 
 # Install OpenSSH for MPI to communicate between containers
 RUN mkdir -p /var/run/sshd
@@ -151,7 +111,22 @@ RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_confi
 
 # Check out horovod source code if --build-arg CHECKOUT_HOROVOD_SRC=1
 ARG CHECKOUT_HOROVOD_SRC=0
-RUN test "${CHECKOUT_HOROVOD_SRC}" -eq 1 && git clone --recursive https://github.com/uber/horovod.git /horovod_src || true
+ARG HOROVOD_BRANCH=master
+RUN test "${CHECKOUT_HOROVOD_SRC}" -eq 1 && git clone --branch "${HOROVOD_BRANCH}" --single-branch --recursive https://github.com/uber/horovod.git /horovod_src || true
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
+
+RUN python3 -m pip install --no-cache-dir jupyter matplotlib
+# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
+RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+RUN jupyter serverextension enable --py jupyter_http_over_ws
+
+RUN mkdir -p /tf/ && chmod -R a+rwx /tf/
+RUN mkdir /.local && chmod a+rwx /.local
+WORKDIR /tf
+EXPOSE 8888
+
+RUN python3 -m ipykernel.kernelspec
+
+CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]
