@@ -26,6 +26,10 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import map_ops
 from tensorflow.python.platform import test
 
+from tensorflow.python.util.lazy_loader import LazyLoader 
+control_flow_ops = LazyLoader("control_flow_ops", globals(),
+                              "tensorflow.python.ops.control_flow_ops")
+
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -96,16 +100,35 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(e)
 
   def testTensorMapHasKey(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    k2 = constant_op.constant(2.0)
+    v = constant_op.constant(2.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+
+    b = map_ops.tensor_map_has_key(m, k)
+    b2 = map_ops.tensor_map_has_key(m, k2)
+    self.assertAllEqual(b, True)
+    self.assertAllEqual(b2, False)
+  
+  def testHasKeyLookup(self):
+    with self.test_session():
       m = map_ops.empty_tensor_map()
       k = constant_op.constant(1.0)
       k2 = constant_op.constant(2.0)
       v = constant_op.constant(2.0)
       m = map_ops.tensor_map_insert(m, k, v)
 
-      b = map_ops.tensor_map_has_key(m, k)
-      b2 = map_ops.tensor_map_has_key(m, k2)
-      self.assertAllEqual(b, True)
-      self.assertAllEqual(b2, False)
+      default_value = constant_op.constant(0.0)
+      l = control_flow_ops.cond(map_ops.tensor_map_has_key(m, k),
+                                lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32), 
+                                lambda: default_value)
+      l2 = control_flow_ops.cond(map_ops.tensor_map_has_key(m, k2),
+                                lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32), 
+                                lambda: default_value)
+                                
+      self.assertAllClose(l, v)
+      self.assertAllClose(l2, default_value)
   
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:
