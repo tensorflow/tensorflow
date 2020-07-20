@@ -66,6 +66,9 @@ static std::string* GetTmpDir() {
 namespace tensorflow {
 namespace {
 
+// TODO(vnvo2409): Refactor `gcs_filesystem_test` to remove unnecessary tests
+// after porting all tests from
+// `//tensorflow/core/platform/cloud:gcs_file_system_test`.
 class GCSFilesystemTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -74,13 +77,14 @@ class GCSFilesystemTest : public ::testing::Test {
         ::testing::UnitTest::GetInstance()->current_test_info()->name());
     status_ = TF_NewStatus();
     filesystem_ = new TF_Filesystem;
-    tf_gcs_filesystem::Init(filesystem_, status_);
-    ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
-                          << TF_Message(status_);
+    filesystem_->plugin_filesystem = nullptr;
+    // Because different tests requires different setup for filesystem. We
+    // initialize filesystem in each testcase.
   }
   void TearDown() override {
     TF_DeleteStatus(status_);
-    tf_gcs_filesystem::Cleanup(filesystem_);
+    if (filesystem_->plugin_filesystem != nullptr)
+      tf_gcs_filesystem::Cleanup(filesystem_);
     delete filesystem_;
   }
 
@@ -172,6 +176,9 @@ TEST_F(GCSFilesystemTest, ParseGCSPath) {
 }
 
 TEST_F(GCSFilesystemTest, RandomAccessFile) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
   std::string filepath = GetURIForPath("a_file");
   TF_RandomAccessFile* file = new TF_RandomAccessFile;
   tf_gcs_filesystem::NewRandomAccessFile(filesystem_, filepath.c_str(), file,
@@ -208,6 +215,9 @@ TEST_F(GCSFilesystemTest, RandomAccessFile) {
 }
 
 TEST_F(GCSFilesystemTest, WritableFile) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
   std::string filepath = GetURIForPath("a_file");
   TF_WritableFile* file = new TF_WritableFile;
   tf_gcs_filesystem::NewWritableFile(filesystem_, filepath.c_str(), file,
@@ -273,6 +283,9 @@ TEST_F(GCSFilesystemTest, WritableFile) {
 }
 
 TEST_F(GCSFilesystemTest, ReadOnlyMemoryRegion) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
   std::string path = GetURIForPath("a_file");
   auto gcs_file =
       static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
@@ -297,6 +310,9 @@ TEST_F(GCSFilesystemTest, ReadOnlyMemoryRegion) {
   tf_read_only_memory_region::Cleanup(region);
   delete region;
 }
+
+// These tests below are ported from
+// `//tensorflow/core/platform/cloud:gcs_file_system_test`
 
 }  // namespace
 }  // namespace tensorflow
