@@ -26,7 +26,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import map_ops
 from tensorflow.python.platform import test
 
-from tensorflow.python.util.lazy_loader import LazyLoader 
+from tensorflow.python.util.lazy_loader import LazyLoader
 control_flow_ops = LazyLoader("control_flow_ops", globals(),
                               "tensorflow.python.ops.control_flow_ops")
 
@@ -110,7 +110,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     b2 = map_ops.tensor_map_has_key(m, k2)
     self.assertAllEqual(b, True)
     self.assertAllEqual(b2, False)
-  
+
   def testHasKeyLookup(self):
     with self.test_session():
       m = map_ops.empty_tensor_map()
@@ -119,17 +119,15 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       v = constant_op.constant(2.0)
       m = map_ops.tensor_map_insert(m, k, v)
 
-      default_value = constant_op.constant(0.0)
       l = control_flow_ops.cond(map_ops.tensor_map_has_key(m, k),
-                                lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32), 
-                                lambda: default_value)
+                                lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
+                                lambda: array_ops.zeros_like(v))
       l2 = control_flow_ops.cond(map_ops.tensor_map_has_key(m, k2),
-                                lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32), 
-                                lambda: default_value)
-                                
+                                 lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
+                                 lambda: default_value)
       self.assertAllClose(l, v)
       self.assertAllClose(l2, default_value)
-  
+
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:
       m = map_ops.empty_tensor_map()
@@ -141,6 +139,33 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l *= 5
       g = tape.gradient(l, v)
       self.assertAllClose(g, 5.0)
+
+  #TODO(kattian): Test alternating inserts and lookups
+  def testMultipleInsertLookupGrad(self):
+    with backprop.GradientTape(persistent=True) as tape:
+      m = map_ops.empty_tensor_map()
+      k = constant_op.constant(1.0)
+      v = constant_op.constant(2.0)
+      k2 = constant_op.constant(12.0)
+      v2 = constant_op.constant(22.0)
+      k3 = constant_op.constant(13.0)
+      v3 = constant_op.constant(23.0)
+      tape.watch(v)
+      tape.watch(v2)
+      tape.watch(v3)
+      m = map_ops.tensor_map_insert(m, k, v)
+      m = map_ops.tensor_map_insert(m, k2, v2)
+      m = map_ops.tensor_map_insert(m, k3, v3)
+
+      l = map_ops.tensor_map_lookup(m, k, v.dtype)
+      l2 = map_ops.tensor_map_lookup(m, k2, v2.dtype)
+      l3 = map_ops.tensor_map_lookup(m, k3, v3.dtype)
+      g = tape.gradient(l * 5, v)
+      self.assertAllClose(g, 5)
+      g2 = tape.gradient(l2 * 5, v2)
+      self.assertAllClose(g2, 5)
+      g3 = tape.gradient(l3 * 5, v3)
+      self.assertAllClose(g3, 5)
 
 if __name__ == '__main__':
   test.main()

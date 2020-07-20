@@ -22,7 +22,13 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_map_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.gen_map_ops import *
+from tensorflow.python.framework import constant_op
+
+from tensorflow.python.util.lazy_loader import LazyLoader
+control_flow_ops = LazyLoader("control_flow_ops", globals(),
+                              "tensorflow.python.ops.control_flow_ops")
 
 ops.NotDifferentiable("EmptyTensorMap")
 
@@ -46,7 +52,7 @@ def tensor_map_has_key(input_handle, key):
 
 @ops.RegisterGradient("TensorMapLookup")
 def LookupGrad(op, dval):
-  m, k = op.inputs
+  _, k = op.inputs
   map_grad = empty_tensor_map()
   map_grad = tensor_map_insert(map_grad, k, dval)
   key_grad = None
@@ -54,8 +60,12 @@ def LookupGrad(op, dval):
 
 @ops.RegisterGradient("TensorMapInsert")
 def InsertGrad(op, dmap):
-  _, key, val = op.inputs
-  map_grad = None
+  _, k, v = op.inputs
   key_grad = None
-  value_grad = tensor_map_lookup(dmap, key, val.dtype)
+  value_grad = control_flow_ops.cond(tensor_map_has_key(dmap, k),
+                                     lambda: tensor_map_lookup(dmap, k, v.dtype),
+                                     lambda: array_ops.zeros_like(v))
+  map_grad = control_flow_ops.cond(tensor_map_has_key(dmap, k),
+                                   lambda: tensor_map_erase(dmap, k, v.dtype)[0],
+                                   lambda: dmap)
   return map_grad, key_grad, value_grad
