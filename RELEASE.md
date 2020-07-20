@@ -38,6 +38,7 @@
   * Calling ops with a python constants or numpy values is now consistent with
     tf.convert_to_tensor behavior. This avoids operations like tf.reshape
     truncating inputs such as from int64 to int32.
+  * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensror` arguments.
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.
