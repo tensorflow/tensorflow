@@ -1905,8 +1905,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
         gather_index_index_components.push_back(index[i]);
       }
     }
-
-    if (gather_index_index_components.size() !=
+    const int64 gather_index_index_components_size = gather_index_index_components.size();
+    if (gather_index_index_components_size !=
         indices_shape.dimensions_size()) {
       gather_index_index_components.insert(
           gather_index_index_components.begin() +
@@ -2707,8 +2707,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
       std::vector<llvm::Value*> results,
       EmitThreadLocalCall(*reduce->to_apply(), reduction_operands,
                           "reduce_function"));
-
-  CHECK(results.size() == accumulators_count);
+  const int64 results_size = results.size();
+  CHECK(results_size == accumulators_count);
   for (int i = 0; i < accumulators_count; i++) {
     Store(results[i], accumulator_addrs[i]);
   }

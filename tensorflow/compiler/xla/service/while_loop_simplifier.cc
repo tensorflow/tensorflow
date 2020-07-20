@@ -118,7 +118,8 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       }
 
       used_tuple_indices.insert(user->tuple_index());
-      if (used_tuple_indices.size() == tuple_size) {
+      const int64 used_tuple_indices_size = used_tuple_indices.size();
+      if (used_tuple_indices_size == tuple_size) {
         VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
                 << " uses all of its inputs; no simplification possible.";
         return false;
@@ -164,7 +165,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   absl::c_sort(new_to_old_tuple_idx);
 
   absl::flat_hash_map<int64, int64> old_to_new_tuple_idx;
-  for (int64 new_idx = 0; new_idx < new_to_old_tuple_idx.size(); ++new_idx) {
+  for (int64 new_idx = 0, end = new_to_old_tuple_idx.size(); new_idx < end; ++new_idx) {
     int64 old_idx = new_to_old_tuple_idx[new_idx];
     old_to_new_tuple_idx[old_idx] = new_idx;
     VLOG(2) << "Remapping tuple index " << old_idx << " to " << new_idx;
@@ -558,7 +559,7 @@ static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
   // to scalar constant values because propagating array constants can regress
   // performance by forcing us to copy constants.
   absl::flat_hash_map<int, const HloInstruction*> index_to_constant;
-  for (int i = 0; i < root_operands.size(); i++) {
+  for (int i = 0, end = root_operands.size(); i < end; i++) {
     const HloInstruction* init_tuple_elem = nullptr;
     if (Match(root_operands[i],
               m::GetTupleElement(m::Op().Is(while_body_param), i)

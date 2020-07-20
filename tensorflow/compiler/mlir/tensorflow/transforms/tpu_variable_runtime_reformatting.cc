@@ -351,7 +351,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
   cond.setType(FunctionType::get(append_types(cond.getType().getInputs()),
                                  cond.getType().getResults(),
                                  cond.getContext()));
-  for (int64_t i = 0; i < state_vars.size(); ++i) {
+  for (int64_t i = 0, end =  state_vars.size(); i < end; ++i) {
     int64_t arg_index = body.getNumArguments() - state_vars.size() + i;
     TF::VarHandleOp state_var = state_vars[i];
     auto device_attr = state_var.getAttr(kDeviceAttr);
@@ -368,7 +368,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
   if (new_while_op.output_shapes().size() != 0) {
     auto new_output_shapes = llvm::to_vector<4>(new_while_op.output_shapes());
     // VarHandleOp is a scalar shape resource.
-    for (int64_t i = 0; i < state_vars.size(); ++i) {
+    for (int64_t i = 0, end = state_vars.size(); i < end; ++i) {
       new_output_shapes.push_back(
           mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
     }

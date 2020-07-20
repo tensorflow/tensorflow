@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/StringUtils.h>
+#include <aws/core/utils/memory/stl/AWSMap.h>
 #include <aws/core/utils/threading/Executor.h>
 #include <aws/s3/S3Client.h>
+#include <aws/transfer/TransferManager.h>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
@@ -28,6 +30,13 @@ namespace tf_s3_filesystem {
 typedef struct S3File {
   std::shared_ptr<Aws::S3::S3Client> s3_client;
   std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor;
+  // We need 2 `TransferManager`, for multipart upload/download.
+  Aws::Map<Aws::Transfer::TransferDirection,
+           std::shared_ptr<Aws::Transfer::TransferManager>>
+      transfer_managers;
+  // Sizes to split objects during multipart upload/download.
+  Aws::Map<Aws::Transfer::TransferDirection, uint64_t> multi_part_chunk_sizes;
+  bool use_multi_part_download;
   absl::Mutex initialization_lock;
   S3File();
 } S3File;

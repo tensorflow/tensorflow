@@ -658,7 +658,7 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
                                      arg_data_type_and_updated_output_index);
   new_while.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   // Replace uses.
-  for (int64_t i = 0; i < old_to_new_indices.size(); ++i) {
+  for (int64_t i = 0, end = old_to_new_indices.size(); i < end; ++i) {
     if (old_to_new_indices[i] >= 0) {
       while_op.getResult(i).replaceAllUsesWith(
           new_while.getResult(old_to_new_indices[i]));
@@ -762,8 +762,11 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   for (auto branch : branches) {
     auto new_retvals =
         llvm::to_vector<4>(branch.front().getTerminator()->getOperands());
+    new_retvals.resize(new_retvals.size() + resource_arg_to_new_output.size());
     for (const auto& entry : resource_arg_to_new_output) {
-      new_retvals.push_back(branch.getArgument(entry.getFirst()));
+      int64_t resource_arg_index = entry.getFirst();
+      int64_t output_index = entry.getSecond();
+      new_retvals[output_index] = branch.getArgument(resource_arg_index);
     }
     auto old_return = branch.front().getTerminator();
     OpBuilder builder(old_return);
@@ -801,7 +804,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   AddLoadsStoresOutsideControlFlowOp(new_op,
                                      arg_data_type_and_updated_output_index);
   // Replace uses.
-  for (int64_t i = 0; i < old_to_new_output_indices.size(); ++i) {
+  for (int64_t i = 0, end = old_to_new_output_indices.size(); i < end; ++i) {
     if (old_to_new_output_indices[i] >= 0) {
       op.getResult(i).replaceAllUsesWith(
           new_op.getResult(old_to_new_output_indices[i]));
@@ -945,7 +948,8 @@ void UpdatePartitionedCallOpWithNewCallee(
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);
   // Replace uses.
-  for (int64_t i = 0; i < lifting_info.old_to_new_output_indices.size(); ++i) {
+  for (int64_t i = 0, end = lifting_info.old_to_new_output_indices.size(); 
+       i < end; ++i) {
     if (lifting_info.old_to_new_output_indices[i] >= 0) {
       call_op.getResult(i).replaceAllUsesWith(
           new_call.getResult(lifting_info.old_to_new_output_indices[i]));

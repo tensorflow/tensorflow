@@ -22,6 +22,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
+typedef void* TpuTopologyPtr;
+
 class TpuPlatformInterface : public stream_executor::Platform {
  public:
   using Status = stream_executor::port::Status;
@@ -38,6 +40,8 @@ class TpuPlatformInterface : public stream_executor::Platform {
   virtual int64 TpuMemoryLimit() = 0;
 
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
+
+  virtual const TpuTopologyPtr GetTopologyPtr() = 0;
 };
 
 }  // namespace tpu

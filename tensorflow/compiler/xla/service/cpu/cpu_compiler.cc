@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
+#include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
@@ -284,6 +285,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       /*rewrite_grad_op=*/true);
   pipeline.AddPass<LogisticExpander>(
       /*expansion_type=*/LogisticExpansionType::kExp);
+  pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicPadder>();
   pipeline.AddPass<ScatterExpander>();
   pipeline.AddPass<HloGetDimensionSizeRewriter>();
@@ -762,7 +764,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     const auto& field_name = fn_and_name.second;
     bool first_module_val =
         (modules[0]->config().debug_options().*field_method_ptr)();
-    for (int64 i = 0; i < modules.size(); ++i) {
+    for (int64 i = 0, end = modules.size(); i < end; ++i) {
       bool cur_module_val =
           (modules[i]->config().debug_options().*field_method_ptr)();
       if (first_module_val != cur_module_val) {

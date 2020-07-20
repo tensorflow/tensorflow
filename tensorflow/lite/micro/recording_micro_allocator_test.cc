@@ -58,6 +58,8 @@ TF_LITE_MICRO_TEST(TestRecordsTfLiteTensorArrayData) {
   TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
   if (status != kTfLiteOk) return 1;
 
+  micro_allocator->PrintAllocations();
+
   tflite::RecordedAllocation recorded_allocation =
       micro_allocator->GetRecordedAllocation(
           tflite::RecordedAllocationType::kTfLiteTensorArray);

@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DATA_SERVICE_GRPC_MASTER_IMPL_H_
-#define TENSORFLOW_CORE_DATA_SERVICE_GRPC_MASTER_IMPL_H_
+#ifndef TENSORFLOW_CORE_DATA_SERVICE_GRPC_DISPATCHER_IMPL_H_
+#define TENSORFLOW_CORE_DATA_SERVICE_GRPC_DISPATCHER_IMPL_H_
 
 #include "grpcpp/server_builder.h"
-#include "tensorflow/core/data/service/master.grpc.pb.h"
-#include "tensorflow/core/data/service/master_impl.h"
+#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
+#include "tensorflow/core/data/service/dispatcher_impl.h"
 
 namespace tensorflow {
 namespace data {
@@ -29,14 +29,14 @@ namespace data {
 //
 // ::grpc::ServerBuilder builder;
 // // configure builder
-// GrpcMasterImpl data_service(&builder);
+// GrpcDispatcherImpl data_service(&builder);
 // builder.BuildAndStart()
 //
-class GrpcMasterImpl : public MasterService::Service {
+class GrpcDispatcherImpl : public DispatcherService::Service {
  public:
-  explicit GrpcMasterImpl(grpc::ServerBuilder* server_builder,
-                          const std::string& protocol);
-  ~GrpcMasterImpl() override {}
+  explicit GrpcDispatcherImpl(grpc::ServerBuilder* server_builder,
+                              const std::string& protocol);
+  ~GrpcDispatcherImpl() override {}
 
 #define HANDLER(method)                               \
   grpc::Status method(grpc::ServerContext* context,   \
@@ -52,12 +52,12 @@ class GrpcMasterImpl : public MasterService::Service {
 #undef HANDLER
 
  private:
-  DataServiceMasterImpl impl_;
+  DataServiceDispatcherImpl impl_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterImpl);
+  TF_DISALLOW_COPY_AND_ASSIGN(GrpcDispatcherImpl);
 };
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_GRPC_MASTER_IMPL_H_
+#endif  // TENSORFLOW_CORE_DATA_SERVICE_GRPC_DISPATCHER_IMPL_H_

@@ -262,6 +262,9 @@ absl::optional<int64> GetKValueInTopKWhenPartitionSortDim(HloInstruction* hlo);
 HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
                             int64 slice_dim, int64 k);
 
+// Check if a dimension is sharded.
+int64 ShardCountAtDim(const HloSharding& sharding, int64 dim);
+
 }  // namespace spmd
 }  // namespace xla
 

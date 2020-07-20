@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
+#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
@@ -286,15 +287,16 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
   // Sorts candidates in descending order of expensive_call_percent.
   absl::c_sort(candidates, cmp);
   std::string expensive_functions = "";
-  auto num_functions_shown = std::min(
+  const int64 num_functions_shown = std::min(
       static_cast<decltype(candidates)::size_type>(3), candidates.size());
 
-  for (auto i = 0; i < num_functions_shown; i++) {
+  for (int64 i = 0; i < num_functions_shown; i++) {
     if (i > 0) absl::StrAppend(&expensive_functions, ", ");
     absl::StrAppend(&expensive_functions, "\"", candidates[i].function_name,
                     "\"");
   }
-  if (candidates.size() > num_functions_shown)
+  const int64 candidates_size  = candidates.size();
+  if (candidates_size > num_functions_shown)
     absl::StrAppend(&expensive_functions, " and more");
   return absl::StrCat("Expensive tf-functions detected (", expensive_functions,
                       ") due to either retracing or eager execution.");
@@ -316,14 +318,13 @@ std::string EagerRecommendationHtml(double host_op_time_eager_percent,
   return recommendation;
 }
 
-OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
-                                          HardwareType hardware_type) {
+OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats) {
   OverviewPage overview_page;
   *overview_page.mutable_run_environment() =
       ComputeRunEnvironment(op_stats.run_environment());
   *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
   *overview_page.mutable_input_analysis() =
-      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
+      ConvertOpStatsToInputPipelineAnalysis(op_stats);
   BottleneckAnalysis bottleneck = ComputeBottleneckAnalysis(
       overview_page.input_analysis().input_time_breakdown(),
       overview_page.input_analysis().step_details());
@@ -331,7 +332,8 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
       bottleneck, op_stats.device_op_metrics_db().precision_stats());
   SetCommonRecommendation(
       bottleneck.input_classification(), bottleneck.input_statement(), "",
-      hardware_type, TfFunctionRecommendationHtml(op_stats.tf_function_db()),
+      ParseHardwareType(op_stats.run_environment().device_type()),
+      TfFunctionRecommendationHtml(op_stats.tf_function_db()),
       EagerRecommendationHtml(
           overview_page.analysis().host_op_time_eager_percent(),
           overview_page.analysis().device_op_time_eager_percent()),

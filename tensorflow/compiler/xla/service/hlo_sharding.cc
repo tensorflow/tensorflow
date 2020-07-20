@@ -170,7 +170,7 @@ std::vector<int64> HloSharding::TileOffsetForDevice(const Shape& shape,
 
   CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
   std::vector<int64> index = TileIndexForDevice(device);
-  for (int64 i = 0; i < index.size(); ++i) {
+  for (int64 i = 0, end = index.size(); i < end; ++i) {
     const int64 shape_dim = shape.dimensions(i);
     index[i] = std::min(
         index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
@@ -189,7 +189,7 @@ std::vector<int64> HloSharding::TileLimitForDevice(const Shape& shape,
 
   CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
   std::vector<int64> index = TileIndexForDevice(device);
-  for (int64 i = 0; i < index.size(); ++i) {
+  for (int64 i = 0, end = index.size(); i < end; ++i) {
     const int64 shape_dim = shape.dimensions(i);
     index[i] = std::min(
         (index[i] + 1) * CeilOfRatio(shape_dim, tile_assignment_.dim(i)),
@@ -209,7 +209,8 @@ int64 HloSharding::RequiredLeaves(const Shape& shape) {
 
 Status HloSharding::CheckLeafCount(const Shape& shape) const {
   int64 shape_leaves = RequiredLeaves(shape);
-  TF_RET_CHECK(shape_leaves == tuple_elements_.size())
+  const int64 tuple_elements_size = tuple_elements_.size();
+  TF_RET_CHECK(shape_leaves == tuple_elements_size)
       << "Shape " << ShapeUtil::HumanString(shape) << " has " << shape_leaves
       << " leaf nodes while this sharding has " << tuple_elements_.size();
   return Status::OK();
@@ -452,7 +453,7 @@ Shape HloSharding::TileShape(const Shape& shape, int64 device) const {
 
   std::vector<int64> index = TileIndexForDevice(device);
   Shape result_shape = shape;
-  for (int64 i = 0; i < index.size(); ++i) {
+  for (int64 i = 0, end = index.size(); i < end; ++i) {
     const int64 shape_dim = shape.dimensions(i);
     int64 offset = std::min(
         index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
@@ -493,7 +494,7 @@ absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
   if (tuple_elements_.empty()) {
     return absl::nullopt;
   }
-  for (int64 i = 1; i < tuple_elements_.size(); ++i) {
+  for (int64 i = 1, end = tuple_elements_.size(); i < end; ++i) {
     if (tuple_elements_[0] != tuple_elements_[i]) {
       return absl::nullopt;
     }

@@ -302,6 +302,18 @@ py_strict_library(
     deps = [],
 )
 
+tf_py_test(
+    name = "save_context_test",
+    srcs = ["save_context_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":save_context",
+        ":save_options",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_strict_library(
     name = "save",
     srcs = [

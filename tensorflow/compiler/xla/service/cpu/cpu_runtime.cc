@@ -395,7 +395,7 @@ class CpuCollectivePermuteRendezvous
       tensorflow::mutex_lock lock(mu_);
 
       std::map<int, int> replica_idx_to_participant_idx;
-      for (int p_idx = 0; p_idx < participants_.size(); p_idx++) {
+      for (int p_idx = 0, end = participants_.size(); p_idx < end; p_idx++) {
         replica_idx_to_participant_idx[participants_[p_idx].replica_id] = p_idx;
       }
 
@@ -522,13 +522,13 @@ class CpuAllReduceRendezvous
       int element_count = first_participant.buffers[buffer_idx].element_count;
       for (int idx = 0; idx < element_count; idx++) {
         T out = GetInitialValue<T>(reduction_kind);
-        for (int participant_idx = 0; participant_idx < participants_.size();
+        for (int participant_idx = 0, end = participants_.size(); participant_idx < end;
              participant_idx++) {
           out = PerformReductionStep<T>(
               reduction_kind, out,
               input_buffers[participant_idx][buffer_idx][idx]);
         }
-        for (int participant_idx = 0; participant_idx < participants_.size();
+        for (int participant_idx = 0, end = participants_.size(); participant_idx < end;
              participant_idx++) {
           output_buffers[participant_idx][buffer_idx][idx] = out;
         }

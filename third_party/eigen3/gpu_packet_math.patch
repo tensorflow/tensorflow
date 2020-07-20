@@ -1,3 +1,4 @@
+diff -ru a/Eigen/src/Geometry/arch/Geometry_SSE.h b/Eigen/src/Geometry/arch/Geometry_SSE.h
 --- a/Eigen/src/Geometry/arch/Geometry_SSE.h
 +++ b/Eigen/src/Geometry/arch/Geometry_SSE.h
 @@ -33,13 +33,14 @@
@@ -22,6 +23,7 @@
      return res;
    }
  };
+diff -ru a/Eigen/src/Core/arch/Default/BFloat16.h a/Eigen/src/Core/arch/Default/BFloat16.h
 --- a/Eigen/src/Core/arch/Default/BFloat16.h
 +++ a/Eigen/src/Core/arch/Default/BFloat16.h
 @@ -291,7 +291,7 @@

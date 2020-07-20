@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -402,6 +403,69 @@ class DefFunctionTest(test.TestCase):
       def_function.function(outer)(func_input, func_input)
 
     self.assertEqual(inner_retracings, 1)
+
+  def testUpdateVariable(self):
+    v = variables.Variable(3.1)
+
+    @def_function.function(experimental_compile=True)
+    def update_var(a, b):
+      v.assign_add(a * b)
+
+    update_var(constant_op.constant(0.7), constant_op.constant(0.6))
+    self.assertAllClose(v, 3.52)
+
+  def testUpdateVariableVector(self):
+    v = variables.Variable([3.1, 3.1])
+
+    @def_function.function(experimental_compile=True)
+    def update_var(a, b):
+      v.assign_add(a * b)
+
+    update_var(
+        constant_op.constant([0.7, 0.7]), constant_op.constant([0.6, 0.6]))
+    self.assertAllClose(v, [3.52, 3.52])
+
+  def testUpdateVariableInClass(self):
+
+    class C(object):
+
+      @def_function.function(experimental_compile=True)
+      def update_var(self, a, b):
+        if not hasattr(self, 'v'):
+          self.v = variables.Variable(3.1)
+        self.v.assign_add(a * b)
+
+    c = C()
+
+    @def_function.function
+    def outer():
+      c.update_var(constant_op.constant(0.7), constant_op.constant(0.6))
+
+    outer()
+    self.assertAllClose(c.v, 3.52)
+
+  def testUpdateVariableMultipleOutputs(self):
+    v = variables.Variable(3.1)
+
+    @def_function.function(experimental_compile=True)
+    def update_var(a, b):
+      v.assign_add(a * b)
+      return a * b + v
+
+    out = update_var(constant_op.constant(0.7), constant_op.constant(0.6))
+    self.assertAllClose(v, 3.52)
+    self.assertAllClose(out, 3.94)
+
+  def testReturnIdentity(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(a, b):
+      return (a, b)
+
+    a = constant_op.constant([0.7])
+    b = constant_op.constant([0.6])
+
+    f(a, b)
 
 
 if __name__ == '__main__':
