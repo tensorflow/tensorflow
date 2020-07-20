@@ -118,7 +118,7 @@ StatusOr<std::vector<MaybeOwningDeviceMemory>> CpuExecutable::CreateBufferTable(
       assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
           << " allocations for module " << module().name();
-  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
+  for (BufferAllocation::Index i = 0, end = assignment_->Allocations().size(); i < end;
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     TF_ASSIGN_OR_RETURN(

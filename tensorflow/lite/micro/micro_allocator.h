@@ -33,8 +33,13 @@ namespace internal {
 
 // Sets up all of the data structure members for a TfLiteTensor based on the
 // contents of a serialized tensor in the flatbuffer.
+// TODO(b/160894903): Once all kernels have been updated to the new
+// TfLiteEvalTensor API - drop the allocate_temp flag. This enables internal
+// flatbuffer quantization or dimension allocations to take place in either the
+// temp or tail section of the arena.
 TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
-    SimpleMemoryAllocator* allocator, const tflite::Tensor& flatbuffer_tensor,
+    SimpleMemoryAllocator* allocator, bool allocate_temp,
+    const tflite::Tensor& flatbuffer_tensor,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     ErrorReporter* error_reporter, TfLiteTensor* result);
 
@@ -121,10 +126,17 @@ class MicroAllocator {
 
   // Allocates a TfLiteTensor struct and populates the returned value with
   // properties from the model flatbuffer. This struct is allocated from
+  // persistent arena memory is only guaranteed for the lifetime of the
+  // application.
+  virtual TfLiteTensor* AllocatePersistentTfLiteTensor(const Model* model,
+                                                       int tensor_index);
+
+  // Allocates a TfLiteTensor struct and populates the returned value with
+  // properties from the model flatbuffer. This struct is allocated from
   // temporary arena memory is only guaranteed until a call is made to
   // ResetTempAllocations().
-  virtual TfLiteTensor* AllocateTfLiteTensor(const Model* model,
-                                             int subgraph_idx);
+  virtual TfLiteTensor* AllocateTempTfLiteTensor(const Model* model,
+                                                 int tensor_index);
 
   // Resets all temporary allocations. This method should be called after a
   // chain of temp allocations (e.g. chain of TfLiteTensor objects via

@@ -1230,7 +1230,7 @@ def _ragged_embedding_lookup_with_reduce(table, ragged, weights, combiner):
     A Tensor.
   """
   if weights is None:
-    weights = array_ops.ones_like(ragged)
+    weights = array_ops.ones_like(ragged, dtype=table.dtype)
   weights = array_ops.expand_dims(weights, axis=2)
   ragged_result = embedding_ops.embedding_lookup_ragged(table, ragged)
   ragged_result = math_ops.reduce_sum(ragged_result * weights, axis=1)

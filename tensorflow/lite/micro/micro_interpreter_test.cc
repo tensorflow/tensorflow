@@ -82,15 +82,15 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
                                          micro_test::reporter);
     TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
     TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 928 + 100);
-    TF_LITE_MICRO_EXPECT_EQ(1, interpreter.inputs_size());
-    TF_LITE_MICRO_EXPECT_EQ(2, interpreter.outputs_size());
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.inputs_size());
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(2), interpreter.outputs_size());
 
     TfLiteTensor* input = interpreter.input(0);
     TF_LITE_MICRO_EXPECT_NE(nullptr, input);
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, input->type);
     TF_LITE_MICRO_EXPECT_EQ(1, input->dims->size);
     TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
-    TF_LITE_MICRO_EXPECT_EQ(4, input->bytes);
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), input->bytes);
     TF_LITE_MICRO_EXPECT_NE(nullptr, input->data.i32);
     input->data.i32[0] = 21;
 
@@ -101,7 +101,7 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, output->type);
     TF_LITE_MICRO_EXPECT_EQ(1, output->dims->size);
     TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
-    TF_LITE_MICRO_EXPECT_EQ(4, output->bytes);
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), output->bytes);
     TF_LITE_MICRO_EXPECT_NE(nullptr, output->data.i32);
     TF_LITE_MICRO_EXPECT_EQ(42, output->data.i32[0]);
 
@@ -110,7 +110,7 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, output->type);
     TF_LITE_MICRO_EXPECT_EQ(1, output->dims->size);
     TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
-    TF_LITE_MICRO_EXPECT_EQ(4, output->bytes);
+    TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), output->bytes);
     TF_LITE_MICRO_EXPECT_NE(nullptr, output->data.i32);
     TF_LITE_MICRO_EXPECT_EQ(42, output->data.i32[0]);
 
@@ -133,8 +133,8 @@ TF_LITE_MICRO_TEST(TestKernelMemoryPlanning) {
                                        allocator_buffer_size,
                                        micro_test::reporter);
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
-  TF_LITE_MICRO_EXPECT_EQ(1, interpreter.inputs_size());
-  TF_LITE_MICRO_EXPECT_EQ(2, interpreter.outputs_size());
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.inputs_size());
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(2), interpreter.outputs_size());
 
   TfLiteTensor* input = interpreter.input(0);
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->size);
@@ -177,8 +177,8 @@ TF_LITE_MICRO_TEST(TestVariableTensorReset) {
                                        micro_test::reporter);
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 2096 + 100);
-  TF_LITE_MICRO_EXPECT_EQ(1, interpreter.inputs_size());
-  TF_LITE_MICRO_EXPECT_EQ(1, interpreter.outputs_size());
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.inputs_size());
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), interpreter.outputs_size());
 
   // Assign hard-code values:
   for (size_t i = 0; i < interpreter.tensors_size(); ++i) {
@@ -306,25 +306,28 @@ TF_LITE_MICRO_TEST(TestIncompleteInitializationAllocationsWithSmallArena) {
   // Ensure allocations are zero (ignore tail since some internal structs are
   // initialized with this space):
   TF_LITE_MICRO_EXPECT_EQ(
-      0, allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes());
+      static_cast<size_t>(0),
+      allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes());
   TF_LITE_MICRO_EXPECT_EQ(
-      0, allocator
-             ->GetRecordedAllocation(
-                 tflite::RecordedAllocationType::kTfLiteTensorArray)
-             .used_bytes);
+      static_cast<size_t>(0),
+      allocator
+          ->GetRecordedAllocation(
+              tflite::RecordedAllocationType::kTfLiteTensorArray)
+          .used_bytes);
   TF_LITE_MICRO_EXPECT_EQ(
-      0, allocator
-             ->GetRecordedAllocation(tflite::RecordedAllocationType::
-                                         kTfLiteTensorArrayQuantizationData)
-             .used_bytes);
+      static_cast<size_t>(0),
+      allocator
+          ->GetRecordedAllocation(tflite::RecordedAllocationType::
+                                      kTfLiteTensorArrayQuantizationData)
+          .used_bytes);
   TF_LITE_MICRO_EXPECT_EQ(
-      0,
+      static_cast<size_t>(0),
       allocator
           ->GetRecordedAllocation(
               tflite::RecordedAllocationType::kTfLiteTensorVariableBufferData)
           .used_bytes);
   TF_LITE_MICRO_EXPECT_EQ(
-      0,
+      static_cast<size_t>(0),
       allocator->GetRecordedAllocation(tflite::RecordedAllocationType::kOpData)
           .used_bytes);
 }
@@ -349,20 +352,22 @@ TF_LITE_MICRO_TEST(TestInterpreterDoesNotAllocateUntilInvoke) {
   // Ensure allocations are zero (ignore tail since some internal structs are
   // initialized with this space):
   TF_LITE_MICRO_EXPECT_EQ(
-      0, allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes());
+      static_cast<size_t>(0),
+      allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes());
   TF_LITE_MICRO_EXPECT_EQ(
-      0, allocator
-             ->GetRecordedAllocation(
-                 tflite::RecordedAllocationType::kTfLiteTensorArray)
-             .used_bytes);
+      static_cast<size_t>(0),
+      allocator
+          ->GetRecordedAllocation(
+              tflite::RecordedAllocationType::kTfLiteTensorArray)
+          .used_bytes);
   TF_LITE_MICRO_EXPECT_EQ(
-      0,
+      static_cast<size_t>(0),
       allocator
           ->GetRecordedAllocation(
               tflite::RecordedAllocationType::kTfLiteTensorVariableBufferData)
           .used_bytes);
   TF_LITE_MICRO_EXPECT_EQ(
-      0,
+      static_cast<size_t>(0),
       allocator->GetRecordedAllocation(tflite::RecordedAllocationType::kOpData)
           .used_bytes);
 
@@ -372,28 +377,29 @@ TF_LITE_MICRO_TEST(TestInterpreterDoesNotAllocateUntilInvoke) {
   // Allocation sizes vary based on platform - check that allocations are now
   // non-zero:
   TF_LITE_MICRO_EXPECT_GT(
-      allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes(), 0);
+      allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes(),
+      static_cast<size_t>(0));
   TF_LITE_MICRO_EXPECT_GT(
       allocator
           ->GetRecordedAllocation(
               tflite::RecordedAllocationType::kTfLiteTensorArray)
           .used_bytes,
-      0);
+      static_cast<size_t>(0));
 
   TF_LITE_MICRO_EXPECT_GT(
       allocator
           ->GetRecordedAllocation(
               tflite::RecordedAllocationType::kTfLiteTensorVariableBufferData)
           .used_bytes,
-      0);
+      static_cast<size_t>(0));
 
   // TODO(b/160160549): This check is mostly meaningless right now because the
-  // operator creation in our mock models is inconsistent. Revisit what this
+  // operator creation in our mock models is inconsistent.  Revisit what this
   // check should be once the mock models are properly created.
   TF_LITE_MICRO_EXPECT_EQ(
       allocator->GetRecordedAllocation(tflite::RecordedAllocationType::kOpData)
           .used_bytes,
-      0);
+      static_cast<size_t>(0));
 }
 
 TF_LITE_MICRO_TESTS_END

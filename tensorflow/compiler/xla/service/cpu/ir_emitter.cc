@@ -1168,7 +1168,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
 
   const std::vector<int64>& fft_length = fft->fft_length();
   int64 input_batch = 1;
-  for (int i = 0; i < fft->shape().dimensions_size() - fft_length.size(); i++) {
+  for (int i = 0, end = fft->shape().dimensions_size() - fft_length.size(); i < end; i++) {
     input_batch *= fft->shape().dimensions(i);
   }
 
@@ -1638,7 +1638,7 @@ IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
     // Lower "current_size_fragment" number of elements using (as few as
     // possible) vector registers.
 
-    if (current_size_fragment >= vector_register_size_in_elements) {
+    if (static_cast<int>(current_size_fragment) >= vector_register_size_in_elements) {
       auto vector_type = llvm::VectorType::get(
           element_ir_type, vector_register_size_in_elements);
       sharded_vector_type.insert(
@@ -1713,7 +1713,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
   llvm::Value* input_address = BitCast(
       arg_array.EmitArrayElementAddress(input_index, &b_), b_.getInt8PtrTy());
 
-  for (int i = 0; i < accumulator.size(); i++) {
+  for (int i = 0, end = accumulator.size(); i < end; i++) {
     auto input_address_typed =
         BitCast(input_address, accumulator[i]->getType());
     auto current_accumulator_value =
@@ -1724,8 +1724,9 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     auto reduced_result =
         reduction_generator(&b_, current_accumulator_value, addend);
     AlignedStore(reduced_result, accumulator[i], element_alignment);
-
-    if (i != (accumulator.size() - 1)) {
+    
+    const int64 accumulator_size_with_offset = accumulator.size() - 1;
+    if (i != accumulator_size_with_offset) {
       input_address = ConstInBoundsGEP1_32(reduced_result->getType(),
                                            input_address_typed, 1);
     }
@@ -1744,7 +1745,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
 void IrEmitter::EmitShardedVectorStore(
     llvm::Value* store_address, const std::vector<llvm::Value*>& value_to_store,
     const int alignment, const llvm_ir::IrArray& containing_array) {
-  for (int i = 0; i < value_to_store.size(); i++) {
+  for (int i = 0, end = value_to_store.size(); i < end; i++) {
     auto store_address_typed =
         BitCast(store_address,
                 llvm::PointerType::getUnqual(value_to_store[i]->getType()));
@@ -1753,8 +1754,9 @@ void IrEmitter::EmitShardedVectorStore(
         AlignedStore(value_to_store[i], store_address_typed, alignment);
     containing_array.AnnotateLoadStoreInstructionWithMetadata(
         store_instruction);
-
-    if (i != (value_to_store.size() - 1)) {
+ 
+    const int64 value_to_store_size_with_offset = (value_to_store.size() - 1);
+    if (i != value_to_store_size_with_offset) {
       store_address = ConstInBoundsGEP1_32(value_to_store[i]->getType(),
                                            store_address_typed, 1);
     }
@@ -2007,7 +2009,8 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
     inner_dims.insert(dim);
   }
 
-  const bool is_trivial_copy = (inner_dims.size() == num_dims);
+  const int64 inner_dims_size = inner_dims.size();
+  const bool is_trivial_copy = (inner_dims_size == num_dims);
   if (is_trivial_copy) {
     if (ShapeUtil::IsEffectiveScalar(slice->shape())) {
       return DefaultAction(slice);
@@ -2040,7 +2043,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   // Determine the dimensions that get lowered as loops.
   std::vector<int64> outer_dims;
-  for (int64 i = 0; i < num_dims - inner_dims.size() - 1; ++i) {
+  for (int64 i = 0, end = num_dims - inner_dims.size() - 1; i < end; ++i) {
     outer_dims.push_back(LayoutUtil::Major(layout, i));
   }
 
@@ -3245,7 +3248,7 @@ Status IrEmitter::EmitTargetElementLoop(
             .EmitLoop(IrName(target_op)));
 
     std::vector<llvm::Value*> tuple_operand_ptrs;
-    for (int64 i = 0; i < output_arrays.size(); ++i) {
+    for (int64 i = 0, end = output_arrays.size(); i < end; ++i) {
       tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
     }
     llvm_ir::EmitTuple(target_array, tuple_operand_ptrs, &b_);

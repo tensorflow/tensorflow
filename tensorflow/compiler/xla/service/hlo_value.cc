@@ -268,7 +268,7 @@ bool InstructionValueSet::IsAmbiguous() const {
 bool InstructionValueSet::AssignUnionOf(
     absl::Span<const InstructionValueSet* const> inputs) {
   CHECK_GT(inputs.size(), 0);
-  for (int i = 1; i < inputs.size(); ++i) {
+  for (int i = 1, end = inputs.size(); i < end; ++i) {
     DCHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
   }
   bool changed = false;

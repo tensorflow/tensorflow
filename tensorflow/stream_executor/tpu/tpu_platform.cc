@@ -118,6 +118,10 @@ bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
 }
 
+const tensorflow::tpu::TpuTopologyPtr TpuPlatform::GetTopologyPtr() {
+  return tpu::ExecutorApiFn()->TpuPlatform_GetTopologyPtrFn(platform_);
+}
+
 void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
                               SE_Event* val) {
   tensorflow::mutex_lock lock(event_map_mu_);

@@ -35,7 +35,7 @@ namespace data {
 class GrpcWorkerImpl : public WorkerService::Service {
  public:
   explicit GrpcWorkerImpl(grpc::ServerBuilder* server_builder,
-                          const std::string& master_address,
+                          const std::string& dispatcher_address,
                           const std::string& protocol);
   ~GrpcWorkerImpl() override {}
 

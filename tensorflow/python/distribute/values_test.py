@@ -56,6 +56,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
@@ -597,7 +598,8 @@ class PackedDistributedVariableTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(
           v._packed_variable, packed.PackedDistributedVariable)
 
-    with save_context.save_context():
+    options = save_options.SaveOptions()
+    with save_context.save_context(options):
       self.assertIsNone(v._packed_variable)
 
 

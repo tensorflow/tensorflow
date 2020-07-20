@@ -46,7 +46,7 @@ class UtilsTest(test.TestCase, parameterized.TestCase):
     def f():
       """f docstring."""
       return
-    expected = """TensorFlow variant of `numpy.np_fun`.
+    expected = """TensorFlow variant of NumPy's `np_fun`.
 
 Unsupported arguments: `x`.
 
@@ -75,13 +75,14 @@ np_fun docstring."""
     def f():
       """f docstring."""
       return
-    expected = """TensorFlow variant of `numpy.np_fun`.
+    expected = """TensorFlow variant of NumPy's `np_fun`.
 
 Unsupported arguments: `x`.
 
 f docstring.
 
-See the documentation for `numpy.np_fun`: [%s]""" % link
+See the NumPy documentation for [`numpy.np_fun`](%s)."""
+    expected = expected % (link)
     self.assertEqual(expected, f.__doc__)
 
   @parameterized.parameters([None, 1, 'a', '1a', '1.1a', '1.1.1a'])
@@ -94,7 +95,7 @@ See the documentation for `numpy.np_fun`: [%s]""" % link
     def f():
       """f docstring."""
       return
-    expected = """TensorFlow variant of `numpy.np_fun`.
+    expected = """TensorFlow variant of NumPy's `np_fun`.
 
 Unsupported arguments: `x`.
 
@@ -109,7 +110,7 @@ f docstring.
     def f():
       """f docstring."""
       return
-    expected = """TensorFlow variant of `numpy.foo`.
+    expected = """TensorFlow variant of NumPy's `foo`.
 
 f docstring.
 

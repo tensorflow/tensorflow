@@ -135,13 +135,14 @@ LocalService::CompileExecutables(
   ProgramShape program_shape(proto.host_program_shape());
 
   // Validate incoming layouts.
-  if (argument_layouts.size() != program_shape.parameters_size()) {
+  const int64 argument_layouts_size = argument_layouts.size();
+  if (argument_layouts_size != program_shape.parameters_size()) {
     return InvalidArgument(
         "Invalid number of arguments for computation: expected %d, got %u.",
         program_shape.parameters_size(), argument_layouts.size());
   }
 
-  for (int i = 0; i < argument_layouts.size(); ++i) {
+  for (int i = 0, end =  argument_layouts.size(); i < end; ++i) {
     const Shape& argument_shape = *argument_layouts[i];
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));
@@ -219,7 +220,8 @@ StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
 StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
     const GlobalDataHandle& data, int replica_number) {
   TF_ASSIGN_OR_RETURN(auto buffers, allocation_tracker_.Resolve(data));
-  if (replica_number >= buffers.size()) {
+  const int64 buffers_size = buffers.size();
+  if (replica_number >= buffers_size) {
     return InvalidArgument(
         "replica_number %d out of range; must be less than num_replicas = %u.",
         replica_number, buffers.size());

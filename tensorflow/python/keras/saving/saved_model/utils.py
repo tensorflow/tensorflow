@@ -24,10 +24,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 
 # pylint:disable=g-inconsistent-quotes

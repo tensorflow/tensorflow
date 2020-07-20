@@ -495,7 +495,7 @@ def _QrGrad(op, dq, dr):
     raise NotImplementedError("QrGrad not implemented with dynamic shapes.")
   if (r.shape.dims[-2].value > r.shape.dims[-1].value and
       q.shape.dims[-2].value == q.shape.dims[-1].value):
-    raise NotImplementedError("QrGrad not implemented when ncols > nrows "
+    raise NotImplementedError("QrGrad not implemented when nrows > ncols "
                               "and full_matrices is true.")
 
   def _TriangularSolve(x, r):
@@ -506,7 +506,6 @@ def _QrGrad(op, dq, dr):
 
   def _QrGradSquareAndDeepMatrices(q, r, dq, dr):
     """Gradient for matrix orders num_rows >= num_cols
-
     and full_matrices is false.
     """
     qdq = math_ops.matmul(q, dq, adjoint_a=True)

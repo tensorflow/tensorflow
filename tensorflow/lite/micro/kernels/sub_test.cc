@@ -431,12 +431,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithScalarBroadcastUint8) {
   }
 }
 TF_LITE_MICRO_TEST(QuantizedSubWithScalarBroadcastFloat) {
-  const float scales[] = {0.1, 0.05, 0.1};
-  const int zero_points[] = {127, 131, 139};
-  uint8_t input1_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t output[tflite::testing::broadcast_output_dims_count];
   float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
@@ -491,7 +485,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithMixedBroadcastUint8) {
   uint8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
   uint8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
   uint8_t output[tflite::testing::broadcast_output_dims_count];
-  float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
     tflite::testing::TestSubQuantized(
@@ -512,7 +505,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithMixedBroadcastInt8) {
   int8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
   int8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
   int8_t output[tflite::testing::broadcast_output_dims_count];
-  float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
     tflite::testing::TestSubQuantized(

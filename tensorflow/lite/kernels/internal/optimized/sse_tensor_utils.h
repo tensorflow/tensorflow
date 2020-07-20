@@ -71,7 +71,7 @@ void MatrixBatchVectorMultiplyAccumulate(
     int32_t* __restrict__ scratch, float* __restrict__ result,
     CpuBackendContext* __restrict__ context) {
   SSE_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
-                  vectors, scaling_factors, n_batch, result);
+                  vectors, scaling_factors, n_batch, scratch, result, context);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate1x4(

@@ -642,7 +642,7 @@ bool HloDataflowAnalysis::UpdateTupleSelectValueSet(HloInstruction* select) {
 bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
   CHECK_EQ(tuple->opcode(), HloOpcode::kTuple);
   bool changed = false;
-  for (int64 i = 0; i < tuple->operands().size(); ++i) {
+  for (int64 i = 0, end = tuple->operands().size(); i < end; ++i) {
     // Copy the value set(s) of each operand into the respective position in the
     // kTuple instruction's value sets.
     for (auto& pair : GetInstructionValueSet(tuple->operand(i))) {

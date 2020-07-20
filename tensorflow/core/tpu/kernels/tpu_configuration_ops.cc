@@ -223,6 +223,10 @@ void ShutdownDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
   TF_DeleteStatus(status);
 
+  OP_REQUIRES_OK(
+      ctx, DeleteIfExists<tpu::TpuCompilationCacheInterface>(
+               GetTPUConfigResourceMgr(), tpu::kCompilationCacheResourceName));
+
   VLOG(1) << "ShutdownDistributedTpuOp done";
 }
 
@@ -257,10 +261,22 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     compilation_cache->Unref();
   }
 
+  tpu::TpuCompilationCacheInterface* local_compilation_cache;
+  Status s = rmgr->Lookup(rmgr->default_container(),
+                          tpu::kCompilationCacheResourceName,
+                          &local_compilation_cache);
+  if (!s.ok()) {
+    local_compilation_cache = nullptr;
+  }
+
   tpu::ConfigApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
       tpu_host_config.size(), tpu_host_config.data(),
-      enable_whole_mesh_compilations_, &device_id_output_size,
-      &device_id_output, status);
+      enable_whole_mesh_compilations_, local_compilation_cache,
+      &device_id_output_size, &device_id_output, status);
+
+  if (local_compilation_cache != nullptr) {
+    local_compilation_cache->Unref();
+  }
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(

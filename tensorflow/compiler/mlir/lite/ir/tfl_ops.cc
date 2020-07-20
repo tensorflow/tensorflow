@@ -773,7 +773,8 @@ static LogicalResult Verify(CustomOp op) {
       op.custom_option().cast<OpaqueElementsAttr>();
   if (!opaque_attr.getType().hasStaticShape())
     return op.emitOpError("custom_option should have a static shape.");
-  if (opaque_attr.getValue().size() !=
+  const int opaque_attr_getValue_size = opaque_attr.getValue().size();
+  if (opaque_attr_getValue_size !=
       opaque_attr.getType().cast<ShapedType>().getDimSize(0))
     return op.emitOpError(
         "custom_option should have the same length of content with shape.");
@@ -955,7 +956,7 @@ static LogicalResult Verify(ScatterNdOp op) {
     // Checks whether the last `(shape_type.getDimSize(0) - outermost_dim)`
     // dimensions of `updates` and `shape` are equal.
     for (auto shape_it : llvm::enumerate(shape_value)) {
-      auto i = shape_it.index();
+      long int i = shape_it.index();
       auto value = shape_it.value().getSExtValue();
       if (i >= outermost_dim) {
         auto corresponding_dim = i - outermost_dim + outer_dims;
@@ -1192,7 +1193,8 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
       return failure();
 
     const int total_pack_inputs = pack_op.getNumOperands();
-    if (total_pack_inputs != input_unpack_op.getNumResults()) return failure();
+    const int input_unpack_op_getNumResults = input_unpack_op.getNumResults();
+    if (total_pack_inputs != input_unpack_op_getNumResults) return failure();
     for (auto input_output :
          llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
       Value pack_input = std::get<0>(input_output);
@@ -1261,7 +1263,7 @@ static LogicalResult Verify(SliceOp op) {
   }
 
   if (begin && size && input_type.hasStaticShape()) {
-    const int input_rank = begin.getNumElements();
+    const uint64_t input_rank = begin.getNumElements();
     for (uint64_t i = 0; i < input_rank; i++) {
       int begin_i =
           begin.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();

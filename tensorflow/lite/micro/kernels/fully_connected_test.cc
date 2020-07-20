@@ -59,9 +59,8 @@ TfLiteStatus TestFullyConnectedFloat(
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteFullyConnectedParams builtin_data = {
-      activation,
-      kTfLiteFullyConnectedWeightsFormatDefault,
-  };
+      activation, kTfLiteFullyConnectedWeightsFormatDefault, false, false};
+
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
   void* user_data = nullptr;
@@ -133,9 +132,7 @@ TfLiteStatus TestFullyConnectedQuantized(
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteFullyConnectedParams builtin_data = {
-      activation,
-      kTfLiteFullyConnectedWeightsFormatDefault,
-  };
+      activation, kTfLiteFullyConnectedWeightsFormatDefault, false, false};
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
   void* user_data = nullptr;

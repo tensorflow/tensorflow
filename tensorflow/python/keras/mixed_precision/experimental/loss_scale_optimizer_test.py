@@ -106,19 +106,20 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # and so the variable will be init_val - grad * lr == 5 - 1 * 2 == 3
       self.assertAllClose([3.], self.evaluate(var))
 
-  @test_util.deprecated_graph_mode_only
   def testFixedLossScaleAppliedToLossWithGetGradients(self):
-    var = variables.Variable([2.0])
-    opt = gradient_descent.SGD(1.0)
-    loss_scale = 10.
-    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-    grad_check_fn = mp_test_util.create_identity_with_grad_check_fn(loss_scale)
-    loss = grad_check_fn(var)
-    run_op = opt.get_gradients(loss, [var])
-    self.evaluate(variables.global_variables_initializer())
-    # This will cause an assertion to run, as
-    # mp_test_util.create_identity_with_grad_check_fn added an assertion op.
-    self.evaluate(run_op)
+    with ops.Graph().as_default():
+      var = variables.Variable([2.0])
+      opt = gradient_descent.SGD(1.0)
+      loss_scale = 10.
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      grad_check_fn = mp_test_util.create_identity_with_grad_check_fn(
+          loss_scale)
+      loss = grad_check_fn(var)
+      run_op = opt.get_gradients(loss, [var])
+      self.evaluate(variables.global_variables_initializer())
+      # This will cause an assertion to run, as
+      # mp_test_util.create_identity_with_grad_check_fn added an assertion op.
+      self.evaluate(run_op)
 
   def testGetScaledLoss(self):
     opt = gradient_descent.SGD(2.0)

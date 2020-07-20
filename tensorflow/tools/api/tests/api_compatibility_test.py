@@ -362,9 +362,13 @@ class ApiCompatibilityTest(test.TestCase):
       public_api_visitor.private_map['tf'].append('enable_v2_behavior')
 
     public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
-    # Do not descend into `iinfo` because np.iinfo's signature is different
-    # between internal and OSS.
-    public_api_visitor.do_not_descend_map['tf.experimental.numpy'] = ['iinfo']
+    # Do not descend into these numpy classes because their signatures may be
+    # different between internal and OSS.
+    public_api_visitor.do_not_descend_map['tf.experimental.numpy'] = [
+        'bool_', 'complex_', 'complex128', 'complex64', 'float_', 'float16',
+        'float32', 'float64', 'inexact', 'int_', 'int16', 'int32', 'int64',
+        'int8', 'object_', 'string_', 'uint16', 'uint32', 'uint64', 'uint8',
+        'unicode_', 'iinfo']
     if FLAGS.only_test_core_api:
       public_api_visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
     if additional_private_map:

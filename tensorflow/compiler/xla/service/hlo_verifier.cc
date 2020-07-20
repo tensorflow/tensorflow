@@ -202,7 +202,7 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
       }
     }
   }
-  for (int64 i = 0; i < replicas_seen.size(); ++i) {
+  for (int64 i = 0, end = replicas_seen.size(); i < end; ++i) {
     if (!replicas_seen.count(i)) {
       return InternalError(
           "Replica %d is not named in instruction's replica-groups: %s", i,
@@ -225,7 +225,8 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
   }
 
   int64 replica_count = hlo->GetModule()->config().replica_count();
-  if (!replicas_seen.empty() && replicas_seen.size() != replica_count) {
+  const int64 replicas_seen_size = replicas_seen.size();
+  if (!replicas_seen.empty() && replicas_seen_size != replica_count) {
     return InternalError(
         "Replica count in HloModuleConfig is %d, but ReplicaGroup config "
         "contains %d replicas: %s",
@@ -698,7 +699,8 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   const Shape& operand_shape = broadcast->operand(0)->shape();
   // Check for mixed precision.
   TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape));
-  TF_RET_CHECK(operand_shape.rank() == broadcast->dimensions().size());
+  const int64 broadcast_dimensions_size = broadcast->dimensions().size();
+  TF_RET_CHECK(operand_shape.rank() == broadcast_dimensions_size);
   for (int64 operand_dimension = 0; operand_dimension < operand_shape.rank();
        ++operand_dimension) {
     int64 output_dimension = broadcast->dimensions()[operand_dimension];
@@ -745,7 +747,8 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   }
 
   auto& fused_parameters = fusion->fused_parameters();
-  if (fused_parameters.size() != fusion->operand_count()) {
+  const int64 fused_parameters_size = fused_parameters.size();
+  if (fused_parameters_size != fusion->operand_count()) {
     return InternalError(
         "Fused parameter count (%d) does not match the number of operands (%d)"
         " passed to the fusion instruction in: %s.",
@@ -782,9 +785,10 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
     // If the layout is constrained, verify all the respective shapes have
     // layouts and that the constrained operand shapes match the shapes of the
     // operands.
+    const int64 custom_call_oswl_size = custom_call->operand_shapes_with_layout().size();
     TF_RET_CHECK(LayoutUtil::HasLayout(custom_call->shape()));
     TF_RET_CHECK(custom_call->operand_count() ==
-                 custom_call->operand_shapes_with_layout().size());
+                 custom_call_oswl_size);
     for (int64 i = 0; i < custom_call->operand_count(); ++i) {
       const Shape& operand_shape_with_layout =
           custom_call->operand_shapes_with_layout()[i];
@@ -1594,7 +1598,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
       }
       root_owned = true;
     }
-    for (int i = 0; i < fused_parameters.size(); ++i) {
+    for (int i = 0, end = fused_parameters.size(); i < end; ++i) {
       if (fused_parameters[i] == instruction) {
         if (parameter_owned[i]) {
           return InternalError("Parameter appears more than once in %s.",
@@ -1609,7 +1613,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
                          fusion->ToString());
   }
   // Make sure all the parameter_owned entries are set
-  for (int i = 0; i < parameter_owned.size(); i++) {
+  for (int i = 0, end = parameter_owned.size(); i < end; i++) {
     if (!parameter_owned[i]) {
       return InternalError("Parameter %d not found in computation of %s.", i,
                            fusion->ToString());
@@ -1664,7 +1668,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
     parameter_numbers[param_no] = true;
   }
   // Make sure all the parameter_numbers entries were seen.
-  for (int i = 0; i < parameter_numbers.size(); i++) {
+  for (int i = 0, end = parameter_numbers.size(); i < end; i++) {
     if (!parameter_numbers[i]) {
       return InternalError("Did not see parameter number %d in %s.", i,
                            fusion->ToString());
@@ -1733,7 +1737,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // between the HLO broadcast op, and the UserComputation broadcast
     // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
     // or ComputationLowerer::Visit()
-    TF_RET_CHECK(broadcast->dimensions().size() ==
+    const int64 broadcast_dimensions_size = broadcast->dimensions().size();
+    TF_RET_CHECK(broadcast_dimensions_size ==
                  broadcast->operand(0)->shape().rank())
         << "Broadcast HLO (" << broadcast->ToShortString()
         << ") has invalid number of dimensions: "

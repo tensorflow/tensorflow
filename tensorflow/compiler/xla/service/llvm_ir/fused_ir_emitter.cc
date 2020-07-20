@@ -153,7 +153,8 @@ Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
   indexed_generators_[parameter] =
       [=](const IrArray::Index& index) -> llvm::Value* {
     int64 param_num = parameter->parameter_number();
-    if (param_shmem_buffers_.size() > param_num) {
+    const int64 param_shmem_buffers_size = param_shmem_buffers_.size();
+    if (param_shmem_buffers_size > param_num) {
       if (llvm::Value* param_tile_buffer = param_shmem_buffers_[param_num]) {
         // TODO(jlebar): Add AA metadata to this load.  Tile buffers are global
         // variables, so LLVM's points-to analysis doesn't help us much.  And we
@@ -183,7 +184,7 @@ Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
     llvm::Value* ret = llvm::UndefValue::get(
         llvm::StructType::get(b_->getContext(), operand_elemental_ir_types));
-    for (size_t i = 0; i < ShapeUtil::TupleElementCount(tuple->shape()); ++i) {
+    for (size_t i = 0, end = ShapeUtil::TupleElementCount(tuple->shape()); i < end; ++i) {
       TF_ASSIGN_OR_RETURN(llvm::Value * val_i,
                           indexed_generators_[operands[i]](index));
       ret = b_->CreateInsertValue(ret, val_i, i);
@@ -306,7 +307,8 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
 
   // Check that the code duplication has at most a factor of 15 (where 15 is an
   // arbitrary constant that seems to work).
-  return total > 15 * index_usage_count.size();
+  const int64 max_duplication_size = 15 * index_usage_count.size();
+  return total > max_duplication_size;
 }
 
 }  // namespace xla

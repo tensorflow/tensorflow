@@ -158,18 +158,3 @@ cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
-
-cc_test(
-    name = "c_test",
-    size = "small",
-    srcs = ["c_test.c"],
-    copts = tflite_copts(),
-    data = [
-        "//tensorflow/lite:testdata/add.bin",
-    ],
-    deps = [
-        ":c_api",
-        ":c_api_experimental",
-        ":common",
-    ],
-)

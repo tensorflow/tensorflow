@@ -144,6 +144,10 @@ Status SessionMgr::CreateSession(
   return Status::OK();
 }
 
+void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
+  default_worker_cache_.reset(worker_cache);
+}
+
 Status SessionMgr::UpdateSession(
     const string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&

@@ -183,7 +183,8 @@ class HloModule {
 
   // Returns the mutable computation for the given index.
   HloComputation* mutable_computation(int64 idx) {
-    CHECK(idx >= 0 && idx < computations_.size());
+    const int computations_size = computations_.size();
+    CHECK(idx >= 0 && idx < computations_size);
     return computations_[idx].get();
   }
 

@@ -1148,7 +1148,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters([True, False])
   def test_optimizer_with_slot_creation_fn(self, use_tpu):
-    def slot_creation_fn(table, slot_names):
+    def slot_creation_fn(table, slot_names, _):
       slots = {}
       for slot in slot_names:
         slots[slot] = tf_variables.Variable(
@@ -1188,7 +1188,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
                                   self.table_user.dim)))
 
   def test_optimizer_with_slot_creation_fn_non_partial(self):
-    def slot_creation_fn(table, slot_names):
+    def slot_creation_fn(table, slot_names, _):
       slots = {}
       for slot in slot_names:
         # Note that we don't pass functools.partial here, so on TPU we can't
