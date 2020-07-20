@@ -48,7 +48,8 @@ LoadFromGraphdefOrMlirSource(
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
-    absl::Span<std::string> exported_names, mlir::MLIRContext* context);
+    absl::Span<std::string> exported_names, const GraphImportConfig& specs,
+    mlir::MLIRContext* context);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TF Lite dialect and
