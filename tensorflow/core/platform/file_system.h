@@ -381,7 +381,7 @@ class FileSystem {
   };
 
   /// \brief Decode transaction to human readable string.
-  virtual string DecodeTransaction(const TransactionToken* token);
+  virtual std::string DecodeTransaction(const TransactionToken* token);
 
   FileSystem() {}
 
