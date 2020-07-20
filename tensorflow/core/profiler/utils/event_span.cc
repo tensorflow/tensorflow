@@ -128,8 +128,7 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
   if (event_boundaries.empty()) return result;
   result.reserve(event_boundaries.size());
   PriorityTracker priority_tracker;
-  for (int64 i = 0, end = (event_boundaries.size() - 1); i < end;
-       i++) {
+  for (int64 i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
     EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
     result.push_back({highest_priority, Timespan::FromEndPoints(
                                             event_boundaries[i].time_ps,
