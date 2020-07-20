@@ -432,7 +432,8 @@ def _random_flip(image, flip_index, seed, scope_name):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+
+    def f_rank3():
       uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
       mirror_cond = math_ops.less(uniform_random, .5)
       result = control_flow_ops.cond(
@@ -441,7 +442,8 @@ def _random_flip(image, flip_index, seed, scope_name):
           lambda: image,
           name=scope)
       return fix_image_flip_shape(image, result)
-    elif shape.ndims == 4:
+
+    def f_rank4():
       batch_size = array_ops.shape(image)[0]
       uniform_random = random_ops.random_uniform([batch_size],
                                                  0,
@@ -452,6 +454,14 @@ def _random_flip(image, flip_index, seed, scope_name):
       flips = math_ops.cast(flips, image.dtype)
       flipped_input = array_ops.reverse(image, [flip_index + 1])
       return flips * flipped_input + (1 - flips) * image
+
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    if shape.ndims == 3:
+      return f_rank3()
+    elif shape.ndims == 4:
+      return f_rank4()
     else:
       raise ValueError(
           '\'image\' (shape %s) must have either 3 or 4 dimensions.' % shape)
@@ -550,10 +560,20 @@ def _flip(image, flip_index, scope_name):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+
+    def f_rank3():
       return fix_image_flip_shape(image, array_ops.reverse(image, [flip_index]))
-    elif shape.ndims == 4:
+
+    def f_rank4():
       return array_ops.reverse(image, [flip_index + 1])
+
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
+      return f_rank3()
+    elif shape.ndims == 4:
+      return f_rank4()
     else:
       raise ValueError(
           '\'image\' (shape %s)must have either 3 or 4 dimensions.' % shape)
@@ -600,7 +620,17 @@ def rot90(image, k=1, name=None):
     k = math_ops.mod(k, 4)
 
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+
+      def f_rank3():
+        return _rot90_3D(image, k, scope)
+
+      def f_rank4():
+        return _rot90_4D(image, k, scope)
+
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
       return _rot90_3D(image, k, scope)
     elif shape.ndims == 4:
       return _rot90_4D(image, k, scope)
@@ -723,7 +753,17 @@ def transpose(image, name=None):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+
+      def f_rank3():
+        return array_ops.transpose(image, [1, 0, 2], name=name)
+
+      def f_rank4():
+        return array_ops.transpose(image, [0, 2, 1, 3], name=name)
+
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
       return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
       return array_ops.transpose(image, [0, 2, 1, 3], name=name)
