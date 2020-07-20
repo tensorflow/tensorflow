@@ -454,7 +454,7 @@ class Layer(base_layer.Layer):
       self._handle_weight_regularization(name_in_scope,
                                          variable,
                                          regularizer)
-    if isinstance(variable, tf_variables.PartitionedVariable):
+    if base_layer_utils.is_split_variable(variable):
       for v in variable:
         backend.track_variable(v)
         if trainable:
@@ -1923,7 +1923,7 @@ class Layer(base_layer.Layer):
         regularization = regularizer(v)
       return regularization
 
-    if isinstance(variable, tf_variables.PartitionedVariable):
+    if base_layer_utils.is_split_variable(variable):
       for v in variable:
         self.add_loss(functools.partial(_loss_for_variable, v))
     else:

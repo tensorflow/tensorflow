@@ -29,18 +29,12 @@ ifeq ($(TARGET), bluepill)
     -Wvla \
     -Wall \
     -Wextra \
-    -Wsign-compare \
-    -Wdouble-promotion \
-    -Wshadow \
-    -Wunused-variable \
-    -Wmissing-field-initializers \
     -Wno-unused-parameter \
-    -Wno-write-strings \
-    -Wunused-function \
+    -Wno-strict-aliasing \
+    -Wno-type-limits \
     -fno-delete-null-pointer-checks \
     -fno-threadsafe-statics \
     -fomit-frame-pointer \
-    -fpermissive \
     -fno-use-cxa-atexit \
     -nostdlib \
     -g \

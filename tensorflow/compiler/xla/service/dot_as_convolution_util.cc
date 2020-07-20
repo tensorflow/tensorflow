@@ -24,6 +24,31 @@ limitations under the License.
 namespace xla {
 namespace dot_as_convolution_util {
 
+bool ConvSpatialDimensionIsParallel(const WindowDimension& wd, int64 lhs_size) {
+  // A parallel batch dimension in DotGeneral is represented as a
+  // spatial dimension with window size B (batch dimension size),
+  // stride B - 1, and base dilation B.
+  if (lhs_size == wd.size() && lhs_size == wd.base_dilation() &&
+      ((std::max<int64>(1, lhs_size - 1) == wd.stride() &&
+        wd.window_dilation() == 1) ||
+       (std::max<int64>(1, lhs_size - 1) == wd.window_dilation() &&
+        wd.stride() == 1)) &&
+      wd.padding_high() == 0 && wd.padding_low() == 0 &&
+      !wd.window_reversal()) {
+    return true;
+  }
+
+  // Aternative representation of a batch dimension.
+  if (wd.size() == lhs_size && wd.padding_high() == lhs_size - 1 &&
+      wd.padding_low() == lhs_size - 1 && wd.window_reversal() &&
+      wd.window_dilation() == 1 && wd.stride() == lhs_size &&
+      wd.base_dilation() == lhs_size - 1) {
+    return true;
+  }
+
+  return false;
+}
+
 /* static */ absl::optional<DotGeneralAsConvolutionDimsInfo>
 ParseDotGeneralFromConvolution(const HloInstruction* conv) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
@@ -49,22 +74,7 @@ ParseDotGeneralFromConvolution(const HloInstruction* conv) {
     int64 rhs_size = conv->operand(1)->shape().dimensions(rhs);
     int64 output = conv_dims.output_spatial_dimensions(i);
     const auto& wd = conv->window().dimensions(i);
-    if (lhs_size == wd.size() && lhs_size == wd.base_dilation() &&
-        ((std::max<int64>(1, lhs_size - 1) == wd.stride() &&
-          wd.window_dilation() == 1) ||
-         (std::max<int64>(1, lhs_size - 1) == wd.window_dilation() &&
-          wd.stride() == 1)) &&
-        wd.padding_high() == 0 && wd.padding_low() == 0 &&
-        !wd.window_reversal()) {
-      // A batch dimension in DotGeneral is represented as a spatial dimension
-      // with window size B (batch dimension size), stride B - 1, and base
-      // dilation B.
-      dims.batch_dims.push_back({lhs, rhs, output, i});
-    } else if (wd.size() == lhs_size && wd.padding_high() == lhs_size - 1 &&
-               wd.padding_low() == lhs_size - 1 && wd.window_reversal() &&
-               wd.window_dilation() == 1 && wd.stride() == lhs_size &&
-               wd.base_dilation() == lhs_size - 1) {
-      // Aternative representation of a batch dimension.
+    if (ConvSpatialDimensionIsParallel(wd, lhs_size)) {
       dims.batch_dims.push_back({lhs, rhs, output, i});
     } else if (lhs_size == wd.size() && wd.base_dilation() == 1 &&
                wd.window_dilation() == 1 && wd.padding_high() == 0 &&

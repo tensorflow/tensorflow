@@ -2673,6 +2673,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 // are unranked. Therefore, we skip adding shape constraints here.
 def TFL_SelectOp : TFL_Op<"select", [
   NoSideEffect,
+  SameOperandsAndResultsScale,
   PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TFL_TCresVTEtIsSameAsOp<0, 1>>]> {

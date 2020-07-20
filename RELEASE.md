@@ -35,9 +35,17 @@
   * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
     type annotation for variables representing a Tensor or a value that can be
     converted to Tensor by `tf.convert_to_tensor`.
+  * Calling ops with a python constants or numpy values is now consistent with
+    tf.convert_to_tensor behavior. This avoids operations like tf.reshape
+    truncating inputs such as from int64 to int32.
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.
+    * We have implemented an optimization which reorders data-discarding
+      transformations such as `take` and `shard` to happen earlier in the
+      dataset when it is safe to do so. The optimization can be disabled via
+      the `experimental_optimization.reorder_data_discarding_ops` dataset
+      option.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:

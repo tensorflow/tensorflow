@@ -68,7 +68,7 @@ void ValidateDequantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   }
 
   for (int i = 0; i < output_length; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i], 0.001);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i], 0.001f);
   }
 }
 
@@ -113,7 +113,6 @@ void TestDequantizeToInt32(const int* input_dims_data, const float* input_data,
       CreateInt32Tensor(output_data, output_dims),
   };
 
-  TfLiteQuantizationParams output_quant;
   tensors[1].params.scale = output_scale;
   tensors[1].params.zero_point = output_zero_point;
 

@@ -224,6 +224,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     LOG(FATAL) << "not yet implemented";
   }
 
+  SE_StreamExecutor* se_executor() { return executor_; }
+
  private:
   TpuPlatform& tpu_platform() {
     return *(tensorflow::down_cast<TpuPlatform*>(platform_));

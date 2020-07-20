@@ -53,6 +53,9 @@ class ContextHelper {
   static void ReportOpError(struct TfLiteContext* context, const char* format,
                             ...);
 
+  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
+                                 int tensor_idx);
+
   void SetNodeIndex(int idx) { current_node_idx_ = idx; }
 
  private:
@@ -188,6 +191,11 @@ class MicroInterpreter {
 
   const SubGraph* subgraph_;
   internal::ContextHelper context_helper_;
+
+  // TODO(b/160894903): Clean these pointers up when all APIs are updated to new
+  // TfLiteEvalTensor buffers.
+  TfLiteTensor* input_tensor_;
+  TfLiteTensor* output_tensor_;
 };
 
 }  // namespace tflite

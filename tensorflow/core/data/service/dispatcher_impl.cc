@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/data/service/master_impl.h"
+#include "tensorflow/core/data/service/dispatcher_impl.h"
 
 #include <memory>
 #include <tuple>
@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/master.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -53,10 +53,10 @@ Status CreateWorkerStub(const std::string& address,
 }
 }  // namespace
 
-DataServiceMasterImpl::DataServiceMasterImpl(const std::string protocol)
+DataServiceDispatcherImpl::DataServiceDispatcherImpl(const std::string protocol)
     : protocol_(protocol) {}
 
-Status DataServiceMasterImpl::RegisterWorker(
+Status DataServiceDispatcherImpl::RegisterWorker(
     const RegisterWorkerRequest* request, RegisterWorkerResponse* response) {
   VLOG(3) << "Received register worker request";
   mutex_lock l(mu_);
@@ -86,8 +86,8 @@ Status DataServiceMasterImpl::RegisterWorker(
   return Status::OK();
 }
 
-Status DataServiceMasterImpl::WorkerUpdate(const WorkerUpdateRequest* request,
-                                           WorkerUpdateResponse* response) {
+Status DataServiceDispatcherImpl::WorkerUpdate(
+    const WorkerUpdateRequest* request, WorkerUpdateResponse* response) {
   mutex_lock l(mu_);
   int64 worker_id = request->worker_id();
   for (auto& update : request->updates()) {
@@ -106,7 +106,7 @@ Status DataServiceMasterImpl::WorkerUpdate(const WorkerUpdateRequest* request,
   return Status::OK();
 }
 
-Status DataServiceMasterImpl::GetOrRegisterDataset(
+Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {
   uint64 fingerprint;
@@ -128,8 +128,8 @@ Status DataServiceMasterImpl::GetOrRegisterDataset(
   return Status::OK();
 }
 
-int64 DataServiceMasterImpl::RegisterDataset(uint64 fingerprint,
-                                             const DatasetDef& dataset)
+int64 DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
+                                                 const DatasetDef& dataset)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64 dataset_id = next_dataset_id_++;
   auto new_dataset =
@@ -142,8 +142,8 @@ int64 DataServiceMasterImpl::RegisterDataset(uint64 fingerprint,
   return dataset_id;
 }
 
-Status DataServiceMasterImpl::CreateJob(const CreateJobRequest* request,
-                                        CreateJobResponse* response) {
+Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
+                                            CreateJobResponse* response) {
   VLOG(3) << "Received create job request for dataset id "
           << request->dataset_id();
   ProcessingMode processing_mode = ProcessingMode(request->processing_mode());
@@ -157,7 +157,7 @@ Status DataServiceMasterImpl::CreateJob(const CreateJobRequest* request,
   return Status::OK();
 }
 
-Status DataServiceMasterImpl::GetOrCreateJob(
+Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
   VLOG(3) << "Received get or create job request for dataset id "
           << request->dataset_id() << " with name " << request->job_name()
@@ -193,7 +193,7 @@ Status DataServiceMasterImpl::GetOrCreateJob(
 }
 
 // Validates that the job matches the given processing_mode and dataset_id.
-Status DataServiceMasterImpl::ValidateMatchingJob(
+Status DataServiceDispatcherImpl::ValidateMatchingJob(
     const Job& job, ProcessingMode processing_mode, int64 dataset_id) {
   DCHECK(job.name().has_value());
   std::string job_name = job.name().value();
@@ -214,10 +214,10 @@ Status DataServiceMasterImpl::ValidateMatchingJob(
   return Status::OK();
 }
 
-Status DataServiceMasterImpl::CreateJob(int64 dataset_id,
-                                        ProcessingMode processing_mode,
-                                        absl::optional<std::string> job_name,
-                                        int64* out_job_id) LOCKS_EXCLUDED(mu_) {
+Status DataServiceDispatcherImpl::CreateJob(
+    int64 dataset_id, ProcessingMode processing_mode,
+    absl::optional<std::string> job_name, int64* out_job_id)
+    LOCKS_EXCLUDED(mu_) {
   switch (processing_mode) {
     case ProcessingMode::PARALLEL_EPOCHS:
       break;
@@ -274,14 +274,16 @@ Status DataServiceMasterImpl::CreateJob(int64 dataset_id,
   return Status::OK();
 }
 
-const DataServiceMasterImpl::Task& DataServiceMasterImpl::CreateTask(
+const DataServiceDispatcherImpl::Task& DataServiceDispatcherImpl::CreateTask(
     Job* job, const std::string& worker_address) LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   return CreateTaskLocked(job, worker_address);
 }
 
-const DataServiceMasterImpl::Task& DataServiceMasterImpl::CreateTaskLocked(
-    Job* job, const std::string& worker_address) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+const DataServiceDispatcherImpl::Task&
+DataServiceDispatcherImpl::CreateTaskLocked(Job* job,
+                                            const std::string& worker_address)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64 task_id = next_task_id_++;
   DCHECK(!tasks_.contains(task_id));
   tasks_.insert({task_id, Task(task_id, job->job_id(), job->dataset_id(),
@@ -290,7 +292,7 @@ const DataServiceMasterImpl::Task& DataServiceMasterImpl::CreateTaskLocked(
   return tasks_.at(task_id);
 }
 
-Status DataServiceMasterImpl::EnsureWorkerStubInitialized(Worker* worker) {
+Status DataServiceDispatcherImpl::EnsureWorkerStubInitialized(Worker* worker) {
   if (!worker->stub()) {
     std::unique_ptr<WorkerService::Stub> stub;
     TF_RETURN_IF_ERROR(CreateWorkerStub(worker->address(), protocol_, &stub));
@@ -299,8 +301,8 @@ Status DataServiceMasterImpl::EnsureWorkerStubInitialized(Worker* worker) {
   return Status::OK();
 }
 
-Status DataServiceMasterImpl::AllocateTaskToWorker(const Task& task,
-                                                   Worker* worker)
+Status DataServiceDispatcherImpl::AllocateTaskToWorker(const Task& task,
+                                                       Worker* worker)
     LOCKS_EXCLUDED(mu_) {
   TF_RETURN_IF_ERROR(EnsureWorkerStubInitialized(worker));
   grpc::ClientContext client_ctx;
@@ -322,8 +324,8 @@ Status DataServiceMasterImpl::AllocateTaskToWorker(const Task& task,
   return Status::OK();
 }
 
-Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
-                                       GetTasksResponse* response) {
+Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
+                                           GetTasksResponse* response) {
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job id " << request->job_id();
   auto it = jobs_.find(request->job_id());
@@ -346,8 +348,8 @@ Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
   return Status::OK();
 }
 
-Status DataServiceMasterImpl::GetWorkers(const GetWorkersRequest* request,
-                                         GetWorkersResponse* response) {
+Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
+                                             GetWorkersResponse* response) {
   mutex_lock l(mu_);
   VLOG(3) << "Enter GetWorkers";
   for (auto& worker : workers_) {
