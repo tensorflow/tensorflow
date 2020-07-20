@@ -58,7 +58,7 @@ def get_tpu_strategy():
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
   tpu_strategy_util.initialize_tpu_system(resolver)
-  return tpu_lib.TPUStrategy(resolver)
+  return tpu_lib.TPUStrategyV2(resolver)
 
 
 class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):

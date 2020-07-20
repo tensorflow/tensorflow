@@ -140,7 +140,7 @@ class RuntimeShape {
     if (dimensions_count > kMaxSmallSize) {
 #ifdef TF_LITE_STATIC_MEMORY
       TFLITE_CHECK(false && "No shape resizing supported on this platform");
-#else   // TF_LITE_STATIC_MEMORY
+#else  // TF_LITE_STATIC_MEMORY
       dims_pointer_ = new int32[dimensions_count];
 #endif  // TF_LITE_STATIC_MEMORY
     }
@@ -179,7 +179,7 @@ class RuntimeShape {
     if (size_ > kMaxSmallSize) {
 #ifdef TF_LITE_STATIC_MEMORY
       TFLITE_CHECK(false && "No shape resizing supported on this platform");
-#else   // TF_LITE_STATIC_MEMORY
+#else  // TF_LITE_STATIC_MEMORY
       delete[] dims_pointer_;
 #endif  // TF_LITE_STATIC_MEMORY
     }
@@ -214,7 +214,7 @@ class RuntimeShape {
     if (size_ > kMaxSmallSize) {
 #ifdef TF_LITE_STATIC_MEMORY
       TFLITE_CHECK(false && "No shape resizing supported on this platform");
-#else   // TF_LITE_STATIC_MEMORY
+#else  // TF_LITE_STATIC_MEMORY
       delete[] dims_pointer_;
 #endif  // TF_LITE_STATIC_MEMORY
     }
@@ -222,7 +222,7 @@ class RuntimeShape {
     if (dimensions_count > kMaxSmallSize) {
 #ifdef TF_LITE_STATIC_MEMORY
       TFLITE_CHECK(false && "No shape resizing supported on this platform");
-#else   // TF_LITE_STATIC_MEMORY
+#else  // TF_LITE_STATIC_MEMORY
       dims_pointer_ = new int32[dimensions_count];
 #endif  // TF_LITE_STATIC_MEMORY
     }
@@ -738,7 +738,7 @@ struct ReluParams : public ActivationParams {
   int32 input_offset;
   int32 output_offset;
   int32 output_multiplier;
-  int32 output_shift;
+  int output_shift;
 };
 
 // Styles of resizing op usages. For example, kImageStyle can be used with a Pad

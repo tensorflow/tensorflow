@@ -36,9 +36,9 @@ constexpr size_t kBufferAlignment = 16;
 // We store the pointer to the ith scratch buffer to implement the Request/Get
 // ScratchBuffer API for the tests. scratch_buffers_[i] will be the ith scratch
 // buffer and will still be allocated from within raw_arena_.
-constexpr size_t kNumScratchBuffers = 5;
+constexpr int kNumScratchBuffers = 5;
 uint8_t* scratch_buffers_[kNumScratchBuffers];
-size_t scratch_buffer_count_ = 0;
+int scratch_buffer_count_ = 0;
 
 // Note that the context parameter in this function is only needed to match the
 // signature of TfLiteContext::AllocatePersistentBuffer and isn't needed in the

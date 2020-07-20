@@ -177,8 +177,13 @@ class OptimizationOptions(options.OptionsBase):
   parallel_batch = options.create_option(
       name="parallel_batch",
       ty=bool,
-      docstring="Whether to parallelize copying of batch elements. If None, "
-      "defaults to False.")
+      docstring="Whether to parallelize copying of batch elements. This "
+      "optimization is highly experimental and can cause performance "
+      "degradation (e.g. when the parallelization overhead exceeds the "
+      "benefits of performing the data copies in parallel). You should only "
+      "enable this optimization if a) your input pipeline is bottlenecked on "
+      "batching and b) you have validated that this optimization improves "
+      "performance. If None, defaults to False.")
 
   reorder_data_discarding_ops = options.create_option(
       name="reorder_data_discarding_ops",

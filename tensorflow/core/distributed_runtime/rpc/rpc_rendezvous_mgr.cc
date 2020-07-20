@@ -282,7 +282,6 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     // callback.
     call->ReleaseWorker(sess->worker_cache());
     call->done()(call->status(), Args(), Args(), Tensor(), false);
-    DeregisterCall(call);
     get_call_freelist()->Release(call);
     return;
   }

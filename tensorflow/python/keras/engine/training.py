@@ -258,8 +258,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
-    generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
-                                           'name', 'autocast'})
+    # `inputs` / `outputs` will only appear in kwargs if either are misspelled.
+    generic_utils.validate_kwargs(kwargs, {
+        'trainable', 'dtype', 'dynamic', 'name', 'autocast', 'inputs', 'outputs'
+    })
     super(Model, self).__init__(**kwargs)
     # By default, Model is a subclass model, which is not in graph network.
     self._is_graph_network = False
@@ -327,7 +329,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if all(
         isinstance(v, (base_layer.Layer,
                        data_structures.TrackableDataStructure)) or
-        trackable_layer_utils.has_weights(v) for v in nest.flatten(value)):
+        base_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._base_model_initialized
       except AttributeError:

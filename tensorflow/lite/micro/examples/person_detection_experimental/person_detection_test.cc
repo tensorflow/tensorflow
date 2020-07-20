@@ -76,10 +76,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, input->type);
 
   // Copy an image with a person into the memory area used for the input.
-  for (size_t i = 0; i < input->bytes; ++i) {
-    // Subtract 128 to convert between uint8 and int8.
-    input->data.int8[i] = g_person_data[i] - 128;
-  }
+  TFLITE_DCHECK_EQ(input->bytes, static_cast<size_t>(g_person_data_size));
+  memcpy(input->data.int8, g_person_data, input->bytes);
 
   // Run the model on this input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter.Invoke();
@@ -104,10 +102,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
                        person_score, no_person_score);
   TF_LITE_MICRO_EXPECT_GT(person_score, no_person_score);
 
-  // Now test with a blank image.
-  for (size_t i = 0; i < input->bytes; ++i) {
-    input->data.int8[i] = 0;
-  }
+  // TODO(b/161461076): Update model to make this work on real negative inputs.
+  memset(input->data.int8, 0, input->bytes);
 
   // Run the model on this "No Person" input.
   invoke_status = interpreter.Invoke();
