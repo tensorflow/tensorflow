@@ -546,7 +546,10 @@ void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   GetS3Client(s3_file);
   GetTransferManager(Aws::Transfer::TransferDirection::UPLOAD, s3_file);
 
-  // We need to delete `file->plugin_file` in case of errors.
+  // We need to delete `file->plugin_file` in case of errors. We set
+  // `file->plugin_file` to `nullptr` in order to avoid segment fault when
+  // calling deleter of `unique_ptr`.
+  file->plugin_file = nullptr;
   std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile*)> writer(
       file, [](TF_WritableFile* file) {
         if (file != nullptr && file->plugin_file != nullptr) {
@@ -562,10 +565,14 @@ void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile*)> reader(
       new TF_RandomAccessFile, [](TF_RandomAccessFile* file) {
         if (file != nullptr) {
-          tf_random_access_file::Cleanup(file);
+          if (file->plugin_file != nullptr)
+            tf_random_access_file::Cleanup(file);
           delete file;
         }
       });
+  // We set `reader->plugin_file` to `nullptr` in order to avoid segment fault
+  // when calling deleter of `unique_ptr`
+  reader->plugin_file = nullptr;
   NewRandomAccessFile(filesystem, path, reader.get(), status);
   if (TF_GetCode(status) != TF_OK) return;
 
@@ -696,10 +703,14 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
   std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile*)> reader(
       new TF_RandomAccessFile, [](TF_RandomAccessFile* file) {
         if (file != nullptr) {
-          tf_random_access_file::Cleanup(file);
+          if (file->plugin_file != nullptr)
+            tf_random_access_file::Cleanup(file);
           delete file;
         }
       });
+  // We set `reader->plugin_file` to `nullptr` in order to avoid segment fault
+  // when calling deleter of `unique_ptr`
+  reader->plugin_file = nullptr;
   NewRandomAccessFile(filesystem, path, reader.get(), status);
   if (TF_GetCode(status) != TF_OK) return;
   auto read =
