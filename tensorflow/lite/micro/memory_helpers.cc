@@ -101,6 +101,23 @@ TfLiteStatus BytesRequiredForTensor(const tflite::Tensor& flatbuffer_tensor,
   return kTfLiteOk;
 }
 
+TfLiteStatus TfLiteEvalTensorByteLength(const TfLiteEvalTensor* eval_tensor,
+                                        size_t* out_bytes) {
+  TFLITE_DCHECK(out_bytes != nullptr);
+
+  int element_count = 1;
+  // If eval_tensor->dims == nullptr, then tensor is a scalar so has 1 element.
+  if (eval_tensor->dims != nullptr) {
+    for (int n = 0; n < eval_tensor->dims->size; ++n) {
+      element_count *= eval_tensor->dims->data[n];
+    }
+  }
+  size_t type_size;
+  TF_LITE_ENSURE_STATUS(TfLiteTypeSizeOf(eval_tensor->type, &type_size));
+  *out_bytes = element_count * type_size;
+  return kTfLiteOk;
+}
+
 TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
                                                const TfLiteTensor* input1,
                                                const TfLiteTensor* input2,
