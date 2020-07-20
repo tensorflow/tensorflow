@@ -339,8 +339,7 @@ class Node {
   //
   // The purpose for this method is to allow the model optimization logic to
   // operate over immutable state while allowing concurrent model updates.
-  std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output) const
-      TF_LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<Node> Snapshot() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the per-element processing time spent in this node.
   double SelfProcessingTime() const TF_LOCKS_EXCLUDED(mu_);
