@@ -84,7 +84,8 @@
 #     release_gpu_common:   Common options for GPU builds on Linux and Windows.
 #     release_cpu_linux:    Toolchain and CUDA options for Linux CPU builds.
 #     release_cpu_macos:    Toolchain and CUDA options for MacOS CPU builds.
-#     release_gpu_linux:    Toolchain and CUDA options for Linux PU builds.
+#     release_gpu_linux:    Toolchain and CUDA options for Linux GPU builds.
+#     release_cpu_windows:    Toolchain and CUDA options for Windows CPU builds.
 
 # Allow builds using libc++ as a linker library
 # This is mostly for OSSFuzz, so we also pass in the flags from environment to clean build file
@@ -570,3 +571,6 @@ build:release_gpu_common --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-5"
 build:release_gpu_linux --config=release_gpu_common
 build:release_gpu_linux --config=avx_linux
 build:release_gpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
+
+build:release_cpu_windows --config=release_common
+build:release_cpu_windows --announce_rc
