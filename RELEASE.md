@@ -38,6 +38,7 @@
   * Calling ops with a python constants or numpy values is now consistent with
     tf.convert_to_tensor behavior. This avoids operations like tf.reshape
     truncating inputs such as from int64 to int32.
+  * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensror` arguments.
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.
@@ -53,7 +54,8 @@
 *   `tf.function`/AutoGraph:
     * <ADD RELEASE NOTES HERE>
 *   `tf.lite`:
-    * <ADD RELEASE NOTES HERE>
+    * Better support for ops with high-dimensional broadcasting inputs by adding
+  `BroadcastTo` ops when necessary.
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
 *   Math and Linear Algebra:
@@ -65,9 +67,9 @@
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>
 *   Other:
-    * We have replaced uses of "whitelist" with "allowlist" where possible.
-  Please see https://developers.google.com/style/word-list#blacklist for more
-  context.
+    * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
+  and "denylist" where possible. Please see 
+  https://developers.google.com/style/word-list#blacklist for more context.
     * <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors

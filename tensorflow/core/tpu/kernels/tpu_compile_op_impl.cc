@@ -23,6 +23,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
+using stream_executor::port::StatusOr;
+
 Status TpuCompileOpKernelImpl::Compile(
     const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const XLA_TpuMeshState* mesh_state,
@@ -35,5 +37,42 @@ Status TpuCompileOpKernelImpl::Compile(
   return TpuProgramGroup::CompileAndBuild(compilation_request, mesh_state,
                                           tpu_program_group);
 }
+
+class TpuCompileOpImplFactory : public CompileOpImplFactory {
+ public:
+  StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> CreateNonMlirImpl(
+      OpKernelConstruction* ctx) override {
+    NameAttrList function_name;
+    TPUCompileMetadataProto metadata;
+    TF_RETURN_IF_ERROR(CompileOpMetadataFromContext(ctx, &metadata,
+                                                    &function_name,
+                                                    /*mlir_module=*/nullptr));
+    VLOG(1) << "Create tensorflow::tpu::TpuCompileOpKernelImpl";
+    return {std::make_unique<TpuCompileOpKernelImpl>(
+        function_name, metadata, metadata.num_cores_per_replica(),
+        /*return_hlo_protos=*/false,
+        /*unload_cache_on_session_close=*/false)};
+  }
+
+  StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> CreateMlirImpl(
+      OpKernelConstruction* ctx) override {
+    TPUCompileMetadataProto metadata;
+    std::string mlir_module;
+    TF_RETURN_IF_ERROR(CompileOpMetadataFromContext(
+        ctx, &metadata, /*function_name=*/nullptr, &mlir_module));
+    VLOG(1) << "Create tensorflow::tpu::TpuCompileOpKernelImpl";
+    return {std::make_unique<TpuCompileOpKernelImpl>(
+        mlir_module, metadata, metadata.num_cores_per_replica(),
+        /*return_hlo_protos=*/false,
+        /*unload_cache_on_session_close=*/false)};
+  }
+};
+
+#if defined(LIBTFTPU)
+REGISTER_MODULE_INITIALIZER(tpu_compile_op_impl_factory, {
+  VLOG(1) << "register TpuCompileOpImplFactory()";
+  CompileOpImplFactory::Register(new TpuCompileOpImplFactory());
+});
+#endif  // LIBTFTPU
 }  // namespace tpu
 }  // namespace tensorflow

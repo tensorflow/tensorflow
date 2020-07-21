@@ -521,8 +521,7 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       replicate.GetNumReplicatedBlockArguments() - 1));
   builder.setInsertionPoint(execute_launch);
   auto reformat_op = builder.create<TF::TPUReshardVariablesOp>(
-      execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands,
-      llvm::ArrayRef<NamedAttribute>{});
+      execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), reformat_op,
                  execute_launch.device());
 
@@ -579,8 +578,7 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       default_state_key.getResult());
   // Unformat op.
   auto unformat_op = builder.create<TF::TPUReshardVariablesOp>(
-      while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands,
-      llvm::ArrayRef<NamedAttribute>{});
+      while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), unformat_op,
                  execute_launch.device());
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});

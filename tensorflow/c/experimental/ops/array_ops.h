@@ -12,27 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
+#define TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
 
-#ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_PASS_INTERNAL_H_
-#define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_PASS_INTERNAL_H_
-
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
 namespace tensorflow {
-
-// Implementation details of distributed_tpu_rewrite_pass.cc, please DO NOT
-// depend on these.
-namespace internal {
-
-// When set to a value >= 0, overrides the node_id. Used for getting
-// deterministic node_ids during testing.
-void OverrideNodeIdForTesting(int64 node_id);
-
-// Retrieves the node id, used to make some node names unique in the rewrite
-// pass.
-uint64 GetNodeId();
-
-}  // namespace internal
+namespace ops {
+Status Identity(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+}  // namespace ops
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_PASS_INTERNAL_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_

@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
-#include <iostream>
 struct MyCustomKernel {
   bool created;
   bool compute_called;
@@ -160,9 +159,6 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
   }
 
   ASSERT_TRUE(delete_called);
-}
-
-TEST(TestKernel, TestGetKernelName) { 
 }
 
 class DummyDevice : public DeviceBase {

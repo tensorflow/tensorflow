@@ -130,6 +130,19 @@ Status SetPerCoreArgShapes(
 
 }  // namespace
 
+CompileOpImplFactory* CompileOpImplFactory::factory_ = nullptr;
+
+/* static */
+CompileOpImplFactory* CompileOpImplFactory::Get() { return factory_; }
+
+/* static */
+void CompileOpImplFactory::Register(CompileOpImplFactory* factory) {
+  CHECK_EQ(factory_, nullptr)
+      << "CompileOpImplFactory can only be registered "
+         "once and there can only be one factory active and used.";
+  factory_ = factory;
+}
+
 Status TpuCompileOpKernelCommon::AssignReturnValueToCore(
     std::vector<tpu::ShardingAndIndex>* retval_core_mapping) {
   std::vector<int> per_core_retval_counts(metadata_.num_cores_per_replica(), 0);

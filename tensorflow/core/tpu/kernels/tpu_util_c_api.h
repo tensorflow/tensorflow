@@ -17,15 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
-
-typedef struct SE_Status SE_Status;
-
-enum TpuCoreTypeEnum {
-  kTensorCore,
-  kEmbeddingV1,
-  kEmbeddingV2,
-};
 
 // Property for creating compilation cache key.
 struct CompilationCacheKeyProperty {

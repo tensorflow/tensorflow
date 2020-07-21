@@ -28,6 +28,7 @@ py_library(
     name = "keras_benchmark_lib_pip",
     deps = [
         ":benchmark_util",
+        ":distribution_util",
         "//tensorflow/python/keras/benchmarks/saved_model_benchmarks:saved_model_benchmark_util",
     ],
 )
@@ -74,6 +75,7 @@ py_library(
     name = "benchmark_util",
     srcs = ["benchmark_util.py"],
     deps = [
+        ":distribution_util",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -166,6 +168,14 @@ py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "distribution_util",
+    srcs = ["distribution_util.py"],
+    deps = [
         "//tensorflow:tensorflow_py",
     ],
 )

@@ -3271,6 +3271,7 @@ cc_library(
         ":QuantPassIncGen",
         ":SideEffectInterfaces",
         ":StandardOps",
+        ":TransformUtils",
         "@llvm-project//llvm:Support",
     ],
 )

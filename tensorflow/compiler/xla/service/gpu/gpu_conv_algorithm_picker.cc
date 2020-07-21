@@ -438,10 +438,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     (void)blas->GetVersion(&blas_version);
   }
 
-  absl::Span<const AlgorithmDesc> blacklisted_algos =
-      GetBlacklistedConvAlgorithms(GetComputeCapability(stream_exec_),
-                                   GetCudnnVersion(stream_exec_), blas_version,
-                                   canonical_hlo);
+  absl::Span<const AlgorithmDesc> disabled_algos = GetDisabledConvAlgorithms(
+      GetComputeCapability(stream_exec_), GetCudnnVersion(stream_exec_),
+      blas_version, canonical_hlo);
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -449,7 +448,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                      AlgorithmToString(alg)),
         2);
 
-    if (absl::c_linear_search(blacklisted_algos, alg)) {
+    if (absl::c_linear_search(disabled_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm "
                 << AlgorithmToString(alg) << " for conv " << instr->ToString();
       continue;
@@ -503,7 +502,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
-      AlgorithmBlacklist proto;
+      AlgorithmDenylist proto;
       auto entry = proto.add_entries();
       entry->set_hlo(canonical_hlo);
       *entry->mutable_cc() = GetComputeCapability(stream_exec_);
@@ -513,13 +512,12 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       algo->set_id(alg.algo_id());
       algo->set_tensor_ops(alg.tensor_ops_enabled());
 
-      LOG(ERROR)
-          << "To blacklist this algorithm for this convolution, "
-             "copy-paste the following "
-             "proto to the blacklist file pointed by XLA_FLAGS "
-             "--xla_gpu_algorithm_blacklist_path="
-          << GetDebugOptionsFromFlags().xla_gpu_algorithm_blacklist_path()
-          << " : " << proto.ShortDebugString();
+      LOG(ERROR) << "To denylist this algorithm for this convolution, "
+                    "copy-paste the following "
+                    "proto to the denylist file pointed by XLA_FLAGS "
+                    "--xla_gpu_algorithm_denylist_path="
+                 << GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path()
+                 << " : " << proto.ShortDebugString();
       continue;
     }
 

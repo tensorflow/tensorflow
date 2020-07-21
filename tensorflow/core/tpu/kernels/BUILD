@@ -9,6 +9,11 @@ load(
     "tf_kernel_library",
 )
 
+# Config setting to enable go/libtpu support.
+WITH_TPU_SUPPORT = "//tensorflow:with_tpu_support"
+
+DEFAULT = "//conditions:default"
+
 package(
     default_visibility = [
         "//tensorflow/core/tpu:__subpackages__",
@@ -178,12 +183,14 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:computation_layout",
+        "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_module_group",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "@com_google_absl//absl/strings",
@@ -434,6 +441,7 @@ cc_library(
     deps = [
         ":tpu_mesh_state_c_api_hdrs",
         "//tensorflow/core/tpu:libtftpu_header",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = True,
@@ -494,7 +502,10 @@ tf_proto_library_cc(
 cc_library(
     name = "tpu_compile_op_hdrs",
     hdrs = ["tpu_compile_op.h"],
-    deps = ["//tensorflow/core:framework"],
+    deps = [
+        ":tpu_compile_op_common",
+        "//tensorflow/core:framework",
+    ],
 )
 
 cc_library(
@@ -532,6 +543,10 @@ cc_library(
     name = "tpu_compile_op_impl",
     srcs = ["tpu_compile_op_impl.cc"],
     hdrs = ["tpu_compile_op_impl.h"],
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
     deps = [
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -552,6 +567,33 @@ cc_library(
         "@com_google_absl//absl/types:variant",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_compile_op_lib",
+    srcs = ["tpu_compile_op.cc"],
+    deps = [
+        ":tpu_compile_op_hdrs",
+        ":tpu_compile_op_options",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/protobuf/tpu:compilation_result_proto_cc",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_compile_op",
+    deps = [
+        ":tpu_compile_op_hdrs",
+        ":tpu_compile_op_impl",
+        ":tpu_compile_op_lib",
+        ":tpu_compile_op_options",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/protobuf/tpu:compilation_result_proto_cc",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
+    alwayslink = True,
 )
 
 cc_library(

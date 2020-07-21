@@ -21,10 +21,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:internal",
     ],
-    packages = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests/...",
-    ],
 )
 
 package_group(
@@ -34,7 +30,6 @@ package_group(
     ],
     packages = [
         # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests/...",
         "//platforms/xla/tests/neural_nets",
     ],
 )

@@ -12,34 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_MATH_GRAD_H_
+#define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_MATH_GRAD_H_
 
-#include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass_internal.h"
-
-#include <limits>
-
-#include "absl/random/random.h"
+#include "tensorflow/c/eager/gradients.h"
 
 namespace tensorflow {
-namespace {
-
-static int64 overridden_node_id = -1;
-
-}  // namespace
-
-namespace internal {
-
-void OverrideNodeIdForTesting(const int64 node_id) {
-  overridden_node_id = node_id;
-}
-
-uint64 GetNodeId() {
-  if (overridden_node_id > -1) {
-    return overridden_node_id;
-  } else {
-    return absl::Uniform(absl::SharedBitGen(), uint64{0},
-                         std::numeric_limits<uint64>::max());
-  }
-}
-
-}  // namespace internal
+namespace gradients {
+GradientFunction* AddRegisterer(const ForwardOperation& op);
+}  // namespace gradients
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_MATH_GRAD_H_

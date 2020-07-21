@@ -650,12 +650,8 @@ cc_test(
 cc_library(
     name = "shared_library",
     hdrs = ["shared_library.h"],
+    copts = TFLITE_DEFAULT_COPTS,
     linkopts = if_not_windows(["-ldl"]),
-)
-
-cc_library(
-    name = "macros",
-    hdrs = ["core/macros.h"],
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.

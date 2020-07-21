@@ -198,7 +198,7 @@ class Node(object):
       return tf_utils.ListWrapper(data)
 
     data = nest.map_structure(serialize_first_arg_tensor, inputs)
-    if not nest.is_sequence(data):
+    if not nest.is_nested(data):
       data = [data]
     data = tf_utils.convert_inner_node_data(data)
     return data

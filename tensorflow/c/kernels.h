@@ -111,10 +111,6 @@ TF_CAPI_EXPORT extern void TF_KernelBuilder_HostMemory(
 TF_CAPI_EXPORT extern void TF_KernelBuilder_Priority(
     TF_KernelBuilder* kernel_builder, int32_t priority_number);
 
-typedef struct string_view string_view; 
-
-TF_CAPI_EXPORT extern string_view TF_GetName(TF_KernelBuilder* kernel_builder);
-
 // Register the given kernel builder with the TensorFlow runtime. If
 // registration fails, the given status will be populated.
 //
