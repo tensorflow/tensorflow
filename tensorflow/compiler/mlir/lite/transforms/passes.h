@@ -91,6 +91,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 // Verifies runtime constraints.
 std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 
+// Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
+std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
+
 }  // namespace TFL
 
 }  // namespace mlir
