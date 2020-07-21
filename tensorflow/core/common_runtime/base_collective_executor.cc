@@ -214,6 +214,7 @@ BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
   VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
+  cem_->GetParamResolver()->StartAbort(s);
   remote_access_->StartAbort(s);
 }
 
