@@ -303,6 +303,12 @@ cc_library(
 )
 
 alias(
+    name = "framework_bounds_check",
+    actual = "//tensorflow/core/framework:bounds_check",
+    visibility = ["//tensorflow/core/kernels:friends"],
+)
+
+alias(
     name = "human_readable_json",
     actual = "//tensorflow/core/platform:human_readable_json",
 )
@@ -763,7 +769,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":stream_executor",
-        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/kernels:bounds_check_lib",
     ],
     alwayslink = 1,
 )
@@ -2155,7 +2161,7 @@ cc_header_only_library(
         ":lib",
         ":lib_internal",
         ":version_lib",
-        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
@@ -2220,7 +2226,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:shape_inference",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",
-        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
@@ -2322,7 +2328,7 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
-        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
     ]),
     alwayslink = 1,

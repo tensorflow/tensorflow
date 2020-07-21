@@ -164,6 +164,7 @@ tf_kernel_library(
         "strided_slice_op_gpu_number_types.cu.cc",
     ],
     deps = [
+        ":bounds_check",
         ":dense_update_functor",
         ":inplace_ops",
         ":ops_util",
@@ -172,7 +173,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -283,9 +283,9 @@ tf_kernel_library(
         "gpu_device_array_gpu.h",
     ],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
     alwayslink = 0,
@@ -347,11 +347,11 @@ tf_kernel_library(
     name = "extract_image_patches_op",
     prefix = "extract_image_patches_op",
     deps = [
+        ":bounds_check",
         ":eigen_helpers",
         ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -360,11 +360,11 @@ tf_kernel_library(
     name = "extract_volume_patches_op",
     prefix = "extract_volume_patches_op",
     deps = [
+        ":bounds_check",
         ":eigen_helpers",
         ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -690,9 +690,9 @@ cc_library(
     hdrs = ["save_restore_tensor.h"],
     copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -748,7 +748,18 @@ cc_library(
     ],
 )
 
+alias(
+    name = "bounds_check",
+    actual = "//tensorflow/core:framework_bounds_check",
+    visibility = [":friends"],
+)
+
 # Private support libraries ---------------------------------------------------
+
+cc_header_only_library(
+    name = "bounds_check_lib",
+    deps = [":bounds_check"],
+)
 
 cc_library(
     name = "gpu_device_array",
@@ -936,9 +947,9 @@ cc_library(
     hdrs = ["image_resizer_state.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -971,7 +982,7 @@ tf_cc_test(
 # OpKernel libraries ----------------------------------------------------------
 
 ARRAY_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     ":concat_lib",
     ":fill_functor",
     ":gather_functor",
@@ -1585,12 +1596,12 @@ tf_kernel_library(
     srcs = ["cudnn_rnn_ops.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":bounds_check_lib",
         ":gpu_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -2041,8 +2052,8 @@ tf_kernel_library(
     prefix = "gather_functor",
     visibility = [":friends"],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -2271,10 +2282,10 @@ tf_kernel_library(
     prefix = "scatter_functor",
     visibility = [":friends"],
     deps = [
+        ":bounds_check",
         ":dense_update_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -2439,7 +2450,7 @@ tf_kernel_library(
     name = "ctc_ops",
     prefix = "ctc",
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2508,7 +2519,7 @@ cc_header_only_library(
 )
 
 DATA_FLOW_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     ":concat_lib",
     ":conditional_accumulator",
     ":conditional_accumulator_base",
@@ -2652,7 +2663,7 @@ tf_kernel_library(
 )
 
 DYNAMIC_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -2705,7 +2716,7 @@ tf_cc_test(
 )
 
 LOOKUP_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     ":initializable_lookup_table",
     ":lookup_util",
     "@com_google_absl//absl/container:flat_hash_map",
@@ -2885,6 +2896,7 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     hdrs = ["resource_variable_ops.h"],
     deps = [
+        ":bounds_check",
         ":dense_update_functor",
         ":gather_functor",
         ":gather_nd_op",
@@ -2895,7 +2907,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:bounds_check",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -3014,7 +3025,7 @@ cc_library(
 )
 
 IMAGE_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     ":eigen_helpers",
     ":image_resizer_state",
     "//third_party/eigen3",
@@ -3166,11 +3177,11 @@ tf_kernel_library(
     name = "encode_wav_op",
     prefix = "encode_wav_op",
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/framework:bounds_check",
     ],
 )
 
@@ -3481,7 +3492,7 @@ tf_kernel_library(
 )
 
 SAVE_RESTORE_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check_lib",
     ":save_restore_tensor",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -3924,9 +3935,9 @@ tf_kernel_library(
         "roll_op.h",
     ],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -3951,7 +3962,7 @@ tf_cc_test(
 )
 
 MATH_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     ":fill_functor",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
@@ -4317,6 +4328,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["cwise_ops_test.cc"],
     deps = [
+        ":bounds_check",
         ":cwise_op",
         ":nn",
         ":ops_testutil",
@@ -4328,7 +4340,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/framework:bounds_check",
     ],
 )
 
@@ -4634,7 +4645,7 @@ tf_kernel_library(
     deps = [
         ":conv_grad_shape_utils",
         ":conv_ops_3d_headers",
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":conv_2d",
         ":conv_3d",
         ":eigen_contraction_kernel",
@@ -4701,7 +4712,7 @@ tf_kernel_library(
         "depthwise_conv_op_gpu_half.cu.cc",
     ],
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":conv_ops",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -4722,7 +4733,7 @@ tf_kernel_library(
     ],
     prefix = "depthwise_conv_grad_op",
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":conv_ops",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -4766,7 +4777,7 @@ cc_library(
 )
 
 NN_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     ":conv_2d",
     ":eigen_contraction_kernel",
     ":ops_util",
@@ -5023,6 +5034,7 @@ tf_kernel_library(
         "pooling_ops_3d_gpu.cu.cc",
     ],
     deps = [
+        ":bounds_check",
         ":conv_2d",
         ":conv_3d",
         ":conv_ops",
@@ -5033,7 +5045,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -5094,9 +5105,9 @@ tf_kernel_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -5278,6 +5289,7 @@ tf_kernel_library(
     name = "stateful_random_ops",
     prefix = "stateful_random_ops",
     deps = [
+        ":bounds_check",
         ":dense_update_functor",
         ":gather_functor",
         ":mutex_ops",
@@ -5293,7 +5305,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:bounds_check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
@@ -5303,11 +5314,11 @@ tf_kernel_library(
     name = "stateless_random_ops",
     prefix = "stateless_random_ops",
     deps = [
+        ":bounds_check",
         ":random_op",
         ":random_poisson_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
     ],
 )
 
@@ -5494,7 +5505,7 @@ tf_kernel_library(
     name = "sparse_tensor_dense_matmul_op",
     prefix = "sparse_tensor_dense_matmul_op",
     deps = SPARSE_DEPS + [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":fill_functor",
         "//third_party/eigen3",
     ],
@@ -5512,7 +5523,7 @@ tf_kernel_library(
     name = "sparse_xent_op",
     prefix = "sparse_xent_op",
     deps = SPARSE_DEPS + [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         "//third_party/eigen3",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
@@ -5667,7 +5678,7 @@ cc_library(
 
 STATE_DEPS = [
     ":assign_op",
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     ":fill_functor",
     ":scatter_functor",
     "//third_party/eigen3",
@@ -5838,7 +5849,7 @@ cc_library(
 )
 
 STRING_DEPS = [
-    "//tensorflow/core/framework:bounds_check",
+    ":bounds_check",
     ":string_util",
     "//third_party/eigen3",
     "//tensorflow/core:framework",
@@ -6037,11 +6048,11 @@ tf_kernel_library(
     name = "unicode_ops",
     prefix = "unicode_ops",
     deps = [
+        ":bounds_check",
         ":string_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
         "//third_party/icu/data:conversion_data",
         "@icu//:common",
@@ -6058,11 +6069,11 @@ tf_kernel_library(
     name = "training_ops",
     prefix = "training_ops",
     deps = [
+        ":bounds_check",
         ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -7743,7 +7754,7 @@ tf_mkl_kernel_library(
         "reference_gemm.h",
     ],
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -8090,7 +8101,7 @@ tf_mkl_kernel_library(
         "no_op.h",
     ],
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":fill_functor",
         ":matmul_op",
         ":ops_util",
@@ -8113,7 +8124,7 @@ tf_mkl_kernel_library(
     ],
     prefix = "mkl_conv",
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":conv_ops",
         ":ops_util",
         "@com_google_absl//absl/strings",
@@ -8185,7 +8196,7 @@ tf_mkl_kernel_library(
     name = "mkl_tfconv_op",
     prefix = "mkl_tfconv",
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -8199,7 +8210,7 @@ tf_mkl_kernel_library(
     hdrs = ["mkl_tfconv_op.h"],
     prefix = "mkl_input_conversion",
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -8217,7 +8228,7 @@ tf_mkl_kernel_library(
     ],
     hdrs = ["mkl_pooling_ops_common.h"],
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -8287,7 +8298,7 @@ tf_mkl_kernel_library(
     name = "mkl_relu_op",
     prefix = "mkl_relu",
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -8301,7 +8312,7 @@ tf_mkl_kernel_library(
     name = "mkl_softmax_op",
     prefix = "mkl_softmax",
     deps = [
-        "//tensorflow/core/framework:bounds_check",
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -8624,10 +8635,10 @@ cc_library(
         "meta_support.h",
     ],
     deps = [
+        ":bounds_check",
         ":quantization_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
         "@gemmlowp",
     ],
