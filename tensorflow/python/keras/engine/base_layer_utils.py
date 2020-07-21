@@ -29,8 +29,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import variables as tf_variables

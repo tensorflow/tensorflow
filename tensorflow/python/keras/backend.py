@@ -53,10 +53,10 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradients_module
