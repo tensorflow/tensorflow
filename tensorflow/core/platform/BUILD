@@ -1540,6 +1540,7 @@ filegroup(
         "raw_coding.h",
         "refcount.h",
         "resource.h",
+        "regexp.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",
