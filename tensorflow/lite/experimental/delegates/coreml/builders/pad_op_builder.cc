@@ -94,6 +94,50 @@ OpBuilder* CreateMirrorPadOpBuilder(GraphBuilder* graph_builder) {
   return new PadOpBuilder(graph_builder, PadType::kMirrorPad);
 }
 
+bool IsPadOpSupported(const TfLiteRegistration* registration,
+                      const TfLiteNode* node, TfLiteContext* context) {
+  // padding is d x 2 tensor, where d is the dimension of input.
+  const TfLiteTensor* padding = GetInput(context, node, 1);
+  if (!IsConstantTensor(padding)) {
+    TF_LITE_KERNEL_LOG(context,
+                       "%s: Only constant padding is supported for PAD.",
+                       padding->name);
+    return false;
+  }
+  if (padding->dims->data[0] != 4 || padding->dims->data[1] != 2) {
+    TF_LITE_KERNEL_LOG(context, "%s: Only 4D inputs are supported for PAD.",
+                       padding->name);
+    return false;
+  }
+  const int32_t* padding_data = GetTensorData<int32_t>(padding);
+  if (!(padding_data[0] == 0 && padding_data[1] == 0)) {
+    TF_LITE_KERNEL_LOG(
+        context, "%s: Padding for batch dimension is not supported in PAD.",
+        padding->name);
+    return false;
+  }
+
+  if (!(padding_data[6] == 0 && padding_data[7] == 0)) {
+    TF_LITE_KERNEL_LOG(
+        context, "%s: Padding for channel dimension is not supported in PAD.",
+        padding->name);
+    return false;
+  }
+  return true;
+}
+
+bool IsMirrorPadOpSupported(const TfLiteRegistration* registration,
+                            const TfLiteNode* node, TfLiteContext* context) {
+  auto* params =
+      reinterpret_cast<TfLiteMirrorPaddingParams*>(node->builtin_data);
+  if (params->mode != kTfLiteMirrorPaddingReflect) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Only REFLECT mode is supported for MIRROR_PAD.");
+    return false;
+  }
+  return IsPadOpSupported(registration, node, context);
+}
+
 }  // namespace coreml
 }  // namespace delegates
 }  // namespace tflite
