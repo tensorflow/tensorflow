@@ -435,7 +435,7 @@ class GroupedConvTest(keras_parameterized.TestCase):
   )
   def disable_test_group_conv(self, layer_cls, input_shape):
     if test.is_gpu_available(cuda_only=True):
-      with test_util.use_gpu():
+      with testing_utils.use_gpu():
         inputs = random_ops.random_uniform(shape=input_shape)
 
         layer = layer_cls(16, 3, groups=4, use_bias=False)
@@ -453,7 +453,7 @@ class GroupedConvTest(keras_parameterized.TestCase):
 
   def test_group_conv_depthwise(self):
     if test.is_gpu_available(cuda_only=True):
-      with test_util.use_gpu():
+      with testing_utils.use_gpu():
         inputs = random_ops.random_uniform(shape=(3, 27, 27, 32))
 
         layer = keras.layers.Conv2D(32, 3, groups=32, use_bias=False)
@@ -474,7 +474,7 @@ class Conv1DTransposeTest(keras_parameterized.TestCase):
     stack_size = 3
     num_col = 6
 
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       testing_utils.layer_test(
           keras.layers.Conv1DTranspose,
           kwargs=kwargs,
@@ -509,7 +509,7 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
     num_col = 6
     depth = 5
 
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       testing_utils.layer_test(
           keras.layers.Conv3DTranspose,
           kwargs=kwargs,

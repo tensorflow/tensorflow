@@ -44,15 +44,9 @@ int scratch_buffer_count_ = 0;
 // signature of TfLiteContext::AllocatePersistentBuffer and isn't needed in the
 // implementation because we are assuming a single global
 // simple_memory_allocator_
-TfLiteStatus AllocatePersistentBuffer(TfLiteContext* context, size_t bytes,
-                                      void** ptr) {
+void* AllocatePersistentBuffer(TfLiteContext* context, size_t bytes) {
   TFLITE_DCHECK(simple_memory_allocator_ != nullptr);
-  TFLITE_DCHECK(ptr != nullptr);
-  *ptr = simple_memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
-  if (*ptr == nullptr) {
-    return kTfLiteError;
-  }
-  return kTfLiteOk;
+  return simple_memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
 }
 
 TfLiteStatus RequestScratchBufferInArena(TfLiteContext* context, size_t bytes,

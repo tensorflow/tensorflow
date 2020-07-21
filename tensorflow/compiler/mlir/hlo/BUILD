@@ -569,6 +569,26 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_gather_to_torch_index_select",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_gather_to_torch_index_select.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "legalize_tanh_to_approximation",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_tanh_to_approximation.cc"],
     hdrs = [
@@ -717,6 +737,7 @@ cc_library(
         ":hlo_dialect_registration",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
+        ":legalize_gather_to_torch_index_select",
         ":legalize_tanh_to_approximation",
         ":legalize_to_linalg",
         ":legalize_to_standard",

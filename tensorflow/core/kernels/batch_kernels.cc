@@ -1024,11 +1024,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
       enable_large_batch_splitting_ = false;
     }
 
-    if (enable_large_batch_splitting_ && (!allowed_batch_sizes_.empty())) {
-      max_execution_batch_size_ = *allowed_batch_sizes_.rbegin();
-    } else {
-      max_execution_batch_size_ = max_batch_size_;
-    }
     OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
   }
 
@@ -1088,7 +1083,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
   string batcher_queue_;
   int32 num_batch_threads_;
   int32 max_batch_size_;
-  int32 max_execution_batch_size_;
   int32 batch_timeout_micros_;
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;

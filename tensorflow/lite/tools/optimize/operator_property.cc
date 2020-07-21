@@ -802,7 +802,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_MINIMUM:
       property.arbitrary_inputs = true;

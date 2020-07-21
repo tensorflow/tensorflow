@@ -37,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import build_info
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
@@ -1664,7 +1665,7 @@ def _runtime(runtime_name):
 
 
 def _read_variable_value(v):
-  """Read the value of a resource variable if it is variable."""
-  if resource_variable_ops.is_resource_variable(v):
+  """Read the value of a variable if it is variable."""
+  if isinstance(v, variables.Variable):
     return v.read_value()
   return v

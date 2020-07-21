@@ -17,7 +17,11 @@ limitations under the License.
 #include <aws/core/config/AWSProfileConfigLoader.h>
 #include <aws/core/utils/FileSystemUtils.h>
 #include <aws/core/utils/stream/PreallocatedStreamBuf.h>
+#include <aws/s3/model/CopyObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
+#include <aws/s3/model/HeadBucketRequest.h>
+#include <aws/s3/model/HeadObjectRequest.h>
+#include <aws/s3/model/ListObjectsRequest.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -442,8 +446,25 @@ void Close(const TF_WritableFile* file, TF_Status* status) {
 // SECTION 3. Implementation for `TF_ReadOnlyMemoryRegion`
 // ----------------------------------------------------------------------------
 namespace tf_read_only_memory_region {
+typedef struct S3MemoryRegion {
+  std::unique_ptr<char[]> data;
+  uint64_t length;
+} S3MemoryRegion;
 
-// TODO(vnvo2409): Implement later
+void Cleanup(TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<S3MemoryRegion*>(region->plugin_memory_region);
+  delete r;
+}
+
+const void* Data(const TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<S3MemoryRegion*>(region->plugin_memory_region);
+  return reinterpret_cast<const void*>(r->data.get());
+}
+
+uint64_t Length(const TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<S3MemoryRegion*>(region->plugin_memory_region);
+  return r->length;
+}
 
 }  // namespace tf_read_only_memory_region
 
@@ -525,7 +546,10 @@ void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   GetS3Client(s3_file);
   GetTransferManager(Aws::Transfer::TransferDirection::UPLOAD, s3_file);
 
-  // We need to delete `file->plugin_file` in case of errors.
+  // We need to delete `file->plugin_file` in case of errors. We set
+  // `file->plugin_file` to `nullptr` in order to avoid segment fault when
+  // calling deleter of `unique_ptr`.
+  file->plugin_file = nullptr;
   std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile*)> writer(
       file, [](TF_WritableFile* file) {
         if (file != nullptr && file->plugin_file != nullptr) {
@@ -541,10 +565,14 @@ void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile*)> reader(
       new TF_RandomAccessFile, [](TF_RandomAccessFile* file) {
         if (file != nullptr) {
-          tf_random_access_file::Cleanup(file);
+          if (file->plugin_file != nullptr)
+            tf_random_access_file::Cleanup(file);
           delete file;
         }
       });
+  // We set `reader->plugin_file` to `nullptr` in order to avoid segment fault
+  // when calling deleter of `unique_ptr`
+  reader->plugin_file = nullptr;
   NewRandomAccessFile(filesystem, path, reader.get(), status);
   if (TF_GetCode(status) != TF_OK) return;
 
@@ -571,6 +599,188 @@ void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   }
   writer.release();
   TF_SetStatus(status, TF_OK, "");
+}
+
+void Stat(const TF_Filesystem* filesystem, const char* path,
+          TF_FileStatistics* stats, TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, true, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  if (object.empty()) {
+    Aws::S3::Model::HeadBucketRequest head_bucket_request;
+    head_bucket_request.WithBucket(bucket);
+    auto head_bucket_outcome =
+        s3_file->s3_client->HeadBucket(head_bucket_request);
+    if (!head_bucket_outcome.IsSuccess())
+      return TF_SetStatusFromAWSError(head_bucket_outcome.GetError(), status);
+    stats->length = 0;
+    stats->is_directory = 1;
+    stats->mtime_nsec = 0;
+    return TF_SetStatus(status, TF_OK, "");
+  }
+
+  bool found = false;
+  Aws::S3::Model::HeadObjectRequest head_object_request;
+  head_object_request.WithBucket(bucket).WithKey(object);
+  head_object_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+  auto head_object_outcome =
+      s3_file->s3_client->HeadObject(head_object_request);
+  if (head_object_outcome.IsSuccess()) {
+    stats->length = head_object_outcome.GetResult().GetContentLength();
+    stats->is_directory = 0;
+    stats->mtime_nsec =
+        head_object_outcome.GetResult().GetLastModified().Millis() * 1e6;
+    found = true;
+  } else {
+    return TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+  }
+
+  auto prefix = object;
+  if (prefix.back() != '/') {
+    prefix.push_back('/');
+  }
+  Aws::S3::Model::ListObjectsRequest list_objects_request;
+  list_objects_request.WithBucket(bucket).WithPrefix(prefix).WithMaxKeys(1);
+  list_objects_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+  auto list_objects_outcome =
+      s3_file->s3_client->ListObjects(list_objects_request);
+  if (list_objects_outcome.IsSuccess()) {
+    auto objects = list_objects_outcome.GetResult().GetContents();
+    if (objects.size() > 0) {
+      stats->length = 0;
+      stats->is_directory = 1;
+      stats->mtime_nsec = objects[0].GetLastModified().Millis() * 1e6;
+      found = true;
+    }
+  } else {
+    TF_SetStatusFromAWSError(list_objects_outcome.GetError(), status);
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION) return;
+  }
+  if (!found)
+    return TF_SetStatus(
+        status, TF_NOT_FOUND,
+        absl::StrCat("Object ", path, " does not exist").c_str());
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void PathExists(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  TF_FileStatistics stats;
+  Stat(filesystem, path, &stats, status);
+}
+
+int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
+                    TF_Status* status) {
+  TF_FileStatistics stats;
+  Stat(filesystem, path, &stats, status);
+  return stats.length;
+}
+
+void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
+                                     const char* path,
+                                     TF_ReadOnlyMemoryRegion* region,
+                                     TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+  GetTransferManager(Aws::Transfer::TransferDirection::UPLOAD, s3_file);
+
+  auto size = GetFileSize(filesystem, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  if (size == 0)
+    return TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
+
+  std::unique_ptr<char[]> data(new char[size]);
+  // Wraping inside a `std::unique_ptr` to prevent memory-leaking.
+  std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile*)> reader(
+      new TF_RandomAccessFile, [](TF_RandomAccessFile* file) {
+        if (file != nullptr) {
+          if (file->plugin_file != nullptr)
+            tf_random_access_file::Cleanup(file);
+          delete file;
+        }
+      });
+  // We set `reader->plugin_file` to `nullptr` in order to avoid segment fault
+  // when calling deleter of `unique_ptr`
+  reader->plugin_file = nullptr;
+  NewRandomAccessFile(filesystem, path, reader.get(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto read =
+      tf_random_access_file::Read(reader.get(), 0, size, data.get(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  region->plugin_memory_region = new tf_read_only_memory_region::S3MemoryRegion(
+      {std::move(data), static_cast<uint64_t>(read)});
+  TF_SetStatus(status, TF_OK, "");
+}
+
+static void SimpleCopyFile(const Aws::String& source,
+                           const Aws::String& bucket_dst,
+                           const Aws::String& object_dst, S3File* s3_file,
+                           TF_Status* status) {
+  Aws::S3::Model::CopyObjectRequest copy_object_request;
+  copy_object_request.WithCopySource(source)
+      .WithBucket(bucket_dst)
+      .WithKey(object_dst);
+  auto copy_object_outcome =
+      s3_file->s3_client->CopyObject(copy_object_request);
+  if (!copy_object_outcome.IsSuccess())
+    TF_SetStatusFromAWSError(copy_object_outcome.GetError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+};
+
+static void MultiPartCopy(const Aws::String& source,
+                          const Aws::String& bucket_dst,
+                          const Aws::String& object_dst, const size_t num_parts,
+                          const uint64_t file_size, S3File* s3_file,
+                          TF_Status* status){};
+
+void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
+              TF_Status* status) {
+  auto file_size = GetFileSize(filesystem, src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  if (file_size == 0)
+    return TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                        "Source is a directory or empty file");
+
+  Aws::String bucket_src, object_src;
+  ParseS3Path(src, false, &bucket_src, &object_src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  Aws::String copy_src = bucket_src + "/" + object_src;
+
+  Aws::String bucket_dst, object_dst;
+  ParseS3Path(dst, false, &bucket_dst, &object_dst, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  auto chunk_size =
+      s3_file->multi_part_chunk_sizes[Aws::Transfer::TransferDirection::UPLOAD];
+  size_t num_parts = 1;
+  if (file_size > chunk_size) num_parts = ceil((float)file_size / chunk_size);
+  if (num_parts == 1)
+    SimpleCopyFile(copy_src, bucket_dst, object_dst, s3_file, status);
+  else if (num_parts > 10000)
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        absl::StrCat("MultiPartCopy with number of parts more than 10000 is "
+                     "not supported. Your object ",
+                     src, " required ", num_parts,
+                     " as multi_part_copy_part_size is set to ", chunk_size,
+                     ". You can control this part size using the environment "
+                     "variable S3_MULTI_PART_COPY_PART_SIZE to increase it.")
+            .c_str());
+  else
+    MultiPartCopy(copy_src, bucket_dst, object_dst, num_parts, file_size,
+                  s3_file, status);
 }
 
 // TODO(vnvo2409): Implement later

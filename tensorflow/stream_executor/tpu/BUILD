@@ -6,47 +6,39 @@ package(
 )
 
 cc_library(
-    name = "tpu_executor_c_api_hdrs",
-    hdrs = ["tpu_executor_c_api.h"],
-    visibility = ["//visibility:public"],
+    name = "c_api_decl",
+    hdrs = [
+        "c_api_decl.h",
+        "c_api_defn.h",
+    ],
     deps = [
         "//tensorflow/c:tf_attrtype",
         "//tensorflow/c:tf_status",
         "//tensorflow/core/tpu:libtftpu_header",
-        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+        "//tensorflow/stream_executor:stream_executor_headers",
     ],
-    alwayslink = True,
 )
 
 cc_library(
-    name = "tpu_node_context_c_api_hdrs",
-    hdrs = ["tpu_node_context_c_api.h"],
+    name = "tpu_executor_c_api_hdrs",
+    hdrs = ["tpu_executor_c_api.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_decl",
+        "//tensorflow/c:tf_attrtype",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core/tpu:libtftpu_header",
-        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "status_helper",
-    hdrs = ["status_helper.h"],
-    deps = [
-        ":tpu_executor_c_api_hdrs",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
     ],
 )
 
 cc_library(
     name = "c_api_conversions",
+    srcs = ["c_api_conversions.cc"],
     hdrs = ["c_api_conversions.h"],
     deps = [
-        ":device_memory_base_helper",
+        ":c_api_decl",
         ":tpu_executor_c_api_hdrs",
-        ":tpu_executor_hdrs",
+        ":tpu_platform_interface",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -61,18 +53,33 @@ cc_library(
 )
 
 cc_library(
-    name = "proto_helper",
-    srcs = ["proto_helper.cc"],
-    hdrs = ["proto_helper.h"],
-    deps = ["//tensorflow/core:lib"],
+    name = "tpu_node_context_c_api_hdrs",
+    hdrs = ["tpu_node_context_c_api.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_decl",
+        "//tensorflow/core/tpu:libtftpu_header",
+    ],
 )
 
 cc_library(
-    name = "device_memory_base_helper",
-    hdrs = ["device_memory_base_helper.h"],
+    name = "status_helper",
+    hdrs = ["status_helper.h"],
     deps = [
+        ":c_api_decl",
         ":tpu_executor_c_api_hdrs",
-        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu:tpu_api",
+    ],
+)
+
+cc_library(
+    name = "proto_helper",
+    srcs = ["proto_helper.cc"],
+    hdrs = ["proto_helper.h"],
+    deps = [
+        ":c_api_decl",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -89,7 +96,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":device_memory_base_helper",
+        ":c_api_conversions",
         ":status_helper",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
@@ -120,7 +127,7 @@ cc_library(
         "tpu_timer.h",
     ],
     deps = [
-        ":device_memory_base_helper",
+        ":c_api_conversions",
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
@@ -140,13 +147,15 @@ cc_library(
         "tpu_platform.cc",
     ],
     hdrs = [
+        "tpu_event.h",
         "tpu_executor.h",
         "tpu_platform.h",
         "tpu_stream.h",
         "tpu_timer.h",
     ],
     deps = [
-        ":device_memory_base_helper",
+        ":c_api_conversions",
+        ":c_api_decl",
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
         ":tpu_executor_interface",
@@ -322,10 +331,9 @@ cc_library(
     name = "tpu_topology_external",
     srcs = ["tpu_topology.cc"],
     hdrs = ["tpu_topology.h"],
-    visibility = ["//visibility:public"],
     deps = [
+        ":c_api_decl",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
     ],
 )

@@ -339,8 +339,7 @@ class Node {
   //
   // The purpose for this method is to allow the model optimization logic to
   // operate over immutable state while allowing concurrent model updates.
-  std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output) const
-      TF_LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<Node> Snapshot() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the per-element processing time spent in this node.
   double SelfProcessingTime() const TF_LOCKS_EXCLUDED(mu_);
@@ -493,7 +492,7 @@ class Node {
       const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Copy the node and add the (input, copy) pairs to the NodePairList.
-  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> clone_base,
+  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> cloned_output,
                                        NodePairList* node_pairs) const;
 
   // Compute total buffered bytes for the node and store in the total bytes map.

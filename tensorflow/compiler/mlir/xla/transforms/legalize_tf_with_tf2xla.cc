@@ -226,7 +226,6 @@ class Tf2XlaRewriter {
   static LogicalResult RewriteOp(Operation* op, OpBuilder& builder,
                                  const std::string& device_type) {
     Tf2XlaRewriter rewriter(op, builder, device_type);
-    if (failed(rewriter.PrepareParams())) return failure();
     return rewriter.LegalizeOp();
   }
 
@@ -235,10 +234,12 @@ class Tf2XlaRewriter {
                  const std::string& device_type)
       : op_(op),
         device_type_(device_type),
-        hlo_builder_(op->getName().getStringRef().str(), builder,
-                     op->getLoc()) {}
+        hlo_builder_(op->getName().getStringRef().str(), builder, op->getLoc()),
+        context_(nullptr) {}
 
-  ~Tf2XlaRewriter() { context_->Unref(); }
+  ~Tf2XlaRewriter() {
+    if (context_) context_->Unref();
+  }
 
   // Prepares OpKernelContext params common to all the ops.
   // Emits an error on failure.
@@ -335,6 +336,8 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     return op_->emitRemark() << "failed to convert op to NodeDef: "
                              << nodedef_or.status().ToString();
   }
+
+  if (failed(PrepareParams())) return failure();
 
   std::shared_ptr<const tensorflow::NodeProperties> props;
   tensorflow::Status status = tensorflow::NodeProperties::CreateFromNodeDef(

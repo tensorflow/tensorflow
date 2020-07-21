@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TOPOLOGY_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -30,7 +30,6 @@ struct TpuChipCoordinatesExternal {
 
 class TpuCoreLocationExternal {
  public:
-  TpuCoreLocationExternal() : core_location_(nullptr) {}
   explicit TpuCoreLocationExternal(void* core_location)
       : core_location_(core_location) {}
   TpuChipCoordinatesExternal chip_coordinates() const;

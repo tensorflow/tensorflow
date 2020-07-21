@@ -29,16 +29,15 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_func_graphs
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _call_context = threading.local()
@@ -118,9 +117,7 @@ def make_variable(name,
     variable_dtype = None
   else:
     # Instantiate initializer if provided initializer is a type object.
-    if isinstance(
-        initializer,
-        (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+    if tf_inspect.isclass(initializer):
       initializer = initializer()
     init_val = functools.partial(initializer, shape, dtype=dtype)
     variable_dtype = dtype.base_dtype
@@ -856,6 +853,13 @@ def no_ragged_support(inputs, layer_name):
 def is_split_variable(v):
   """Returns True if `v` is either a PartionedVariable or a SharedVariable."""
   return hasattr(v, '_variable_list') or hasattr(v, '_variables')
+
+
+def has_weights(obj):
+  obj_type = type(obj)
+  return (hasattr(obj_type, 'trainable_weights') and
+          hasattr(obj_type, 'non_trainable_weights') and
+          not isinstance(obj, type))
 
 
 # TODO(kathywu): This is a temporary hack. When a network of layers is revived

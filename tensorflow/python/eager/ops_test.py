@@ -30,6 +30,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -479,6 +480,24 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     gc.collect()
     self.assertIs(weak_x(), None)
     self.assertIs(weak_y(), None)
+
+  def testAsyncExceptionStackTrace(self):
+    config.set_synchronous_execution(False)
+
+    def exception_originated_from_here():
+      # Invalid shapes for matmul.
+      return math_ops.matmul([[1]], [[2], [3]])
+
+    # In sync mode, an exception would have been raised here but since this is
+    # in async, the exception will be raised next.
+    x = exception_originated_from_here()
+
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                'in exception_originated_from_here'):
+      x.numpy()
+
+    context.async_clear_error()
+    config.set_synchronous_execution(True)
 
 
 if __name__ == '__main__':

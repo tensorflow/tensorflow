@@ -574,9 +574,7 @@ void* SimpleStatefulOp::Init(TfLiteContext* context, const char* buffer,
   TFLITE_DCHECK(context->GetScratchBuffer == nullptr);
   TFLITE_DCHECK(context->RequestScratchBufferInArena == nullptr);
 
-  void* raw;
-  TFLITE_DCHECK(context->AllocatePersistentBuffer(context, sizeof(OpData),
-                                                  &raw) == kTfLiteOk);
+  void* raw = context->AllocatePersistentBuffer(context, sizeof(OpData));
   OpData* data = reinterpret_cast<OpData*>(raw);
   *data = {};
   return raw;
@@ -994,6 +992,14 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
   result.quantization = {kTfLiteAffineQuantization, affine_quant};
   result.bytes = ElementCount(*dims) * sizeof(int8_t);
   return result;
+}
+
+size_t GetModelTensorCount(const Model* model) {
+  auto* subgraphs = model->subgraphs();
+  if (subgraphs) {
+    return (*subgraphs)[0]->tensors()->size();
+  }
+  return 0;
 }
 
 }  // namespace testing
