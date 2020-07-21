@@ -24,12 +24,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import map_ops
 from tensorflow.python.platform import test
-
-from tensorflow.python.util.lazy_loader import LazyLoader
-control_flow_ops = LazyLoader("control_flow_ops", globals(),
-                              "tensorflow.python.ops.control_flow_ops")
 
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -189,14 +186,34 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       tape.watch(v2)
       m = map_ops.tensor_map_insert(m, k, v)
       l = map_ops.tensor_map_lookup(m, k, v.dtype)
+      self.assertAllClose(l, v)
       g = tape.gradient(l * 5, v)
       self.assertAllClose(g, 5)
       m = map_ops.tensor_map_insert(m, k, v2)
       l2 = map_ops.tensor_map_lookup(m, k, v2.dtype)
+      self.assertAllClose(l2, v2)
       g2 = tape.gradient(l2 * 6, v)
       g3 = tape.gradient(l2 * 7, v2)
       self.assertAllClose(g2, array_ops.zeros_like(v))
       self.assertAllClose(g3, 7)
+
+  def testEraseGrad(self):
+    with backprop.GradientTape(persistent=True) as tape:
+      m = map_ops.empty_tensor_map()
+      k = constant_op.constant(1.0)
+      v = constant_op.constant(2.0)
+      tape.watch(v)
+      k2 = constant_op.constant(12.0)
+      v2 = constant_op.constant(22.0)
+      tape.watch(v2)
+      m = map_ops.tensor_map_insert(m, k, v)
+      m = map_ops.tensor_map_insert(m, k2, v2)
+      m, e = map_ops.tensor_map_erase(m, k2, v2.dtype)
+      l = map_ops.tensor_map_lookup(m, k, v.dtype)
+      self.assertAllClose(l, v)
+      self.assertAllClose(e, v2)
+      g = tape.gradient(l * 5, v)
+      self.assertAllClose(g, 5)
 
 if __name__ == '__main__':
   test.main()

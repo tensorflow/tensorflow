@@ -21,13 +21,10 @@ from __future__ import print_function
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops.gen_map_ops import *
-
-from tensorflow.python.util.lazy_loader import LazyLoader
-control_flow_ops = LazyLoader("control_flow_ops", globals(),
-                              "tensorflow.python.ops.control_flow_ops")
 
 ops.NotDifferentiable("EmptyTensorMap")
 
@@ -68,3 +65,10 @@ def InsertGrad(op, dmap):
                                    lambda: tensor_map_erase(dmap, k, v.dtype)[0],
                                    lambda: dmap)
   return map_grad, key_grad, value_grad
+
+@ops.RegisterGradient("TensorMapErase")
+def EraseGrad(op, dmap, dval):
+  _, k = op.inputs
+  key_grad = None
+  map_grad = dmap
+  return map_grad, key_grad
