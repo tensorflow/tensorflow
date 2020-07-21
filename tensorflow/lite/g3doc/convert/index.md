@@ -50,6 +50,7 @@ In case you encounter any issues:
     (from the [tflite_convert](https://www.tensorflow.org/lite/convert/cmdline)
     command line tool) or `converter.experimental_new_converter=False` (from the
     [Python API](https://www.tensorflow.org/api_docs/python/tf/lite/TFLiteConverter))
+*   If you want to convert a Frozen Graph you can use the `from_frozen_graph()` method from `tf.compat.v1.lite.TFLiteConverter.from_frozen_graph()`. One advantage of using it is it allows us to specify `input_arrays` and `output_arrays` that would go into the converted TensorFlow Lite model.   
 
 ## Device deployment
 
