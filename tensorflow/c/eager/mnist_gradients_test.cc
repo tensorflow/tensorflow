@@ -381,8 +381,6 @@ TEST_P(CppGradients, TestMatMulGrad) {
     ASSERT_NEAR(result_data[j], expected_dA[j], tolerance);
   }  
 
-  printArr(result_data, 4);
-
   outputs[0]->Release();
   outputs[1]->Release();
   TF_DeleteTensor(dA_tensor);
