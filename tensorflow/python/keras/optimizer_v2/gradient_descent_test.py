@@ -358,90 +358,100 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
               3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
           ]), self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testNesterovMomentum(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.float32, dtypes.float64]:
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype, name="var0")
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype, name="var1")
-        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
-        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
-        accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-        accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-        loss = lambda: 5 * var0 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
-        mom_op = gradient_descent.SGD(
-            learning_rate=2.0, momentum=0.9, nesterov=True)
-        opt_op = mom_op.minimize(loss, [var0, var1])
-        self.evaluate(variables.global_variables_initializer())
-        for _ in range(1, 5):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([1.0, 2.0], dtype=dtype, name="var0")
+      var1 = variables.Variable([3.0, 4.0], dtype=dtype, name="var1")
+      var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+      var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+      accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+      accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+      loss = lambda: 5 * var0 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
+      mom_op = gradient_descent.SGD(
+          learning_rate=2.0, momentum=0.9, nesterov=True)
+      opt_op = mom_op.minimize(loss, [var0, var1])
+      self.evaluate(variables.global_variables_initializer())
+      for i in range(1, 5):
+        # already updated once in eager mode
+        if i != 1 and context.executing_eagerly():
+          mom_op.minimize(loss, [var0, var1])
+        else:
           self.evaluate(opt_op)
-          var0_np, accum0_np = self._update_nesterov_momentum_numpy(
-              var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
-          var1_np, accum1_np = self._update_nesterov_momentum_numpy(
-              var1_np, accum1_np, 3, 2.0, 0.9)
-          self.assertAllClose(var0_np, self.evaluate(var0))
-          self.assertAllClose(var1_np, self.evaluate(var1))
+        var0_np, accum0_np = self._update_nesterov_momentum_numpy(
+            var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
+        var1_np, accum1_np = self._update_nesterov_momentum_numpy(
+            var1_np, accum1_np, 3, 2.0, 0.9)
+        self.assertAllClose(var0_np, self.evaluate(var0))
+        self.assertAllClose(var1_np, self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparseNesterovMomentum(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session() as sess:
-        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
-        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
-        accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-        accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-        grads = []
+      var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+      var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+      accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+      accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+      grads = []
+      for t in range(1, 5):
+        grads.append(var0_np * 10)
+        var0_np, accum0_np = self._update_nesterov_momentum_numpy(
+            var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
+        var1_np, accum1_np = self._update_nesterov_momentum_numpy(
+            var1_np, accum1_np, 3, 2.0, 0.9)
+      var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+      var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+      accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+      accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+      var0 = variables.Variable(var0_np, dtype=dtype, name="var0")
+      var1 = variables.Variable(var1_np, dtype=dtype, name="var1")
+      mom_op = gradient_descent.SGD(
+          learning_rate=2.0, momentum=0.9, nesterov=True)
+      grads_and_vars = []
+      for t in range(1, 5):
+        y = ops.IndexedSlices(constant_op.constant(grads[t - 1], dtype=dtype),
+                              constant_op.constant([0, 1]),
+                              constant_op.constant([2]))
+        grads_and_vars.append([
+          (y, var0),
+          (constant_op.constant([3.0, 3.0], dtype=dtype), var1)])
+      if not context.executing_eagerly():
+        opt_update = []
         for t in range(1, 5):
-          grads.append(var0_np * 10)
-          var0_np, accum0_np = self._update_nesterov_momentum_numpy(
-              var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
-          var1_np, accum1_np = self._update_nesterov_momentum_numpy(
-              var1_np, accum1_np, 3, 2.0, 0.9)
-        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
-        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
-        accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-        accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-        var0 = variables.Variable(var0_np, dtype=dtype, name="var0")
-        var1 = variables.Variable(var1_np, dtype=dtype, name="var1")
-        mom_op = gradient_descent.SGD(
-            learning_rate=2.0, momentum=0.9, nesterov=True)
-        x_feed = array_ops.placeholder(dtype)
-        y_feed = ops.IndexedSlices(x_feed, constant_op.constant([0, 1]),
-                                   constant_op.constant([2]))
-        grads_and_vars = [(y_feed, var0),
-                          (constant_op.constant([3.0, 3.0], dtype=dtype), var1)]
-        opt_update = mom_op.apply_gradients(grads_and_vars)
-        self.evaluate(variables.global_variables_initializer())
-        for t in range(1, 5):
-          sess.run(opt_update, feed_dict={x_feed: grads[t - 1]})
-          var0_np, accum0_np = self._update_nesterov_momentum_numpy(
-              var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
-          var1_np, accum1_np = self._update_nesterov_momentum_numpy(
-              var1_np, accum1_np, 3, 2.0, 0.9)
-          self.assertAllClose(var0_np, self.evaluate(var0))
-          self.assertAllClose(var1_np, self.evaluate(var1))
+          opt_update.append(mom_op.apply_gradients(grads_and_vars[t - 1]))
+      self.evaluate(variables.global_variables_initializer())
+      for t in range(1, 5):
+        if context.executing_eagerly():
+          mom_op.apply_gradients(grads_and_vars[t - 1])
+        else:
+          self.evaluate(opt_update[t - 1])
+        var0_np, accum0_np = self._update_nesterov_momentum_numpy(
+            var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
+        var1_np, accum1_np = self._update_nesterov_momentum_numpy(
+            var1_np, accum1_np, 3, 2.0, 0.9)
+        self.assertAllClose(var0_np, self.evaluate(var0))
+        self.assertAllClose(var1_np, self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeSparseResourceVariable(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
 
-        # pylint: disable=cell-var-from-loop
-        def loss():
-          x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-          return pred * pred
+      # pylint: disable=cell-var-from-loop
+      def loss():
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        return pred * pred
 
-        # pylint: enable=cell-var-from-loop
+      # pylint: enable=cell-var-from-loop
 
-        opt = gradient_descent.SGD(learning_rate=1.0, momentum=0.9)
-        sgd_op = opt.minimize(loss, [var0])
-        self.evaluate(variables.global_variables_initializer())
-        # Run 1 step of sgd
-        self.evaluate(sgd_op)
-        # Validate updated params
-        self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
+      opt = gradient_descent.SGD(learning_rate=1.0, momentum=0.9)
+      sgd_op = opt.minimize(loss, [var0])
+      self.evaluate(variables.global_variables_initializer())
+      # Run 1 step of sgd
+      self.evaluate(sgd_op)
+      # Validate updated params
+      self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeWith2DIndicesForEmbeddingLookup(self):
@@ -456,151 +466,149 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testTensorLearningRateAndMomentum(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
-        grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
-        grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        mom_opt = gradient_descent.SGD(
-            learning_rate=constant_op.constant(2.0),
-            momentum=constant_op.constant(0.9))
-        mom_update = mom_opt.apply_gradients(
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+      var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+      grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+      grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+      mom_opt = gradient_descent.SGD(
+          learning_rate=constant_op.constant(2.0),
+          momentum=constant_op.constant(0.9))
+      mom_update = mom_opt.apply_gradients(
+          zip([grads0, grads1], [var0, var1]))
+      self.evaluate(variables.global_variables_initializer())
+      # Check we have slots
+      slot0 = mom_opt.get_slot(var0, "momentum")
+      self.assertEqual(slot0.shape, var0.shape)
+      slot1 = mom_opt.get_slot(var1, "momentum")
+      self.assertEqual(slot1.shape, var1.shape)
+
+      # Step 1: the momentum accumulators where 0. So we should see a normal
+      # update: v -= grad * learning_rate
+      self.evaluate(mom_update)
+      # Check that the momentum accumulators have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([-0.2, -0.2]), self.evaluate(slot0))
+      self.assertAllCloseAccordingToType(
+          np.array([-0.02, -0.02]), self.evaluate(slot1))
+      # Check that the parameters have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
+          self.evaluate(var0))
+      self.assertAllCloseAccordingToType(
+          np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
+          self.evaluate(var1))
+      # Step 2: the momentum accumulators contain the previous update.
+      if context.executing_eagerly():
+        mom_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        self.evaluate(variables.global_variables_initializer())
-        # Check we have slots
-        slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEqual(slot0.shape, var0.shape)
-        slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEqual(slot1.shape, var1.shape)
-
-        # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
-        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
-        # Step 1: the momentum accumulators where 0. So we should see a normal
-        # update: v -= grad * learning_rate
+      else:
         self.evaluate(mom_update)
-        # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([-0.2, -0.2]), self.evaluate(slot0))
-        self.assertAllCloseAccordingToType(
-            np.array([-0.02, -0.02]), self.evaluate(slot1))
-        # Check that the parameters have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
-            self.evaluate(var0))
-        self.assertAllCloseAccordingToType(
-            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
-            self.evaluate(var1))
-        # Step 2: the momentum accumulators contain the previous update.
-        self.evaluate(mom_update)
-        # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
-            self.evaluate(slot0))
-        self.assertAllCloseAccordingToType(
-            np.array([(0.9 * (-0.02) - 2.0 * 0.01),
-                      (0.9 * (-0.02) - 2.0 * 0.01)]), self.evaluate(slot1))
-        # Check that the parameters have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([
-                1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
-                2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
-            ]), self.evaluate(var0))
-        self.assertAllCloseAccordingToType(
-            np.array([
-                2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
-                3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
-            ]), self.evaluate(var1))
+      # Check that the momentum accumulators have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
+          self.evaluate(slot0))
+      self.assertAllCloseAccordingToType(
+          np.array([(0.9 * (-0.02) - 2.0 * 0.01),
+                    (0.9 * (-0.02) - 2.0 * 0.01)]), self.evaluate(slot1))
+      # Check that the parameters have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([
+              1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+              2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
+          ]), self.evaluate(var0))
+      self.assertAllCloseAccordingToType(
+          np.array([
+              2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+              3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
+          ]), self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparse(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = variables.Variable(array_ops.zeros([4, 2], dtype=dtype))
-        var1 = variables.Variable(constant_op.constant(1.0, dtype, [4, 2]))
-        grads0 = ops.IndexedSlices(
-            constant_op.constant([[.1, .1]], dtype=dtype),
-            constant_op.constant([1]), constant_op.constant([4, 2]))
-        grads1 = ops.IndexedSlices(
-            constant_op.constant([[.01, .01], [.01, .01]], dtype=dtype),
-            constant_op.constant([2, 3]), constant_op.constant([4, 2]))
-        mom_opt = gradient_descent.SGD(learning_rate=2.0, momentum=0.9)
-        mom_update = mom_opt.apply_gradients(
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable(array_ops.zeros([4, 2], dtype=dtype))
+      var1 = variables.Variable(constant_op.constant(1.0, dtype, [4, 2]))
+      grads0 = ops.IndexedSlices(
+          constant_op.constant([[.1, .1]], dtype=dtype),
+          constant_op.constant([1]), constant_op.constant([4, 2]))
+      grads1 = ops.IndexedSlices(
+          constant_op.constant([[.01, .01], [.01, .01]], dtype=dtype),
+          constant_op.constant([2, 3]), constant_op.constant([4, 2]))
+      mom_opt = gradient_descent.SGD(learning_rate=2.0, momentum=0.9)
+      mom_update = mom_opt.apply_gradients(
+          zip([grads0, grads1], [var0, var1]))
+      self.evaluate(variables.global_variables_initializer())
+
+      # Check we have slots
+      slot0 = mom_opt.get_slot(var0, "momentum")
+      self.assertEqual(slot0.shape, var0.shape)
+      slot1 = mom_opt.get_slot(var1, "momentum")
+      self.assertEqual(slot1.shape, var1.shape)
+
+      # Step 1: the momentum accumulators are 0. So we should see a normal
+      # update: v -= grad * learning_rate
+      self.evaluate(mom_update)
+      # Check that the momentum accumulators have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([0, 0]),
+          self.evaluate(slot0)[0])
+      self.assertAllCloseAccordingToType(
+          np.array([-2.0 * .1, -2.0 * .1]),
+          self.evaluate(slot0)[1])
+      self.assertAllCloseAccordingToType(
+          np.array([-2.0 * .01, -2.0 * .01]),
+          self.evaluate(slot1)[2])
+      # Check that the parameters have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([0, 0]),
+          self.evaluate(var0)[0])
+      self.assertAllCloseAccordingToType(
+          np.array([-(0.1 * 2.0), -(0.1 * 2.0)]),
+          self.evaluate(var0)[1])
+      self.assertAllCloseAccordingToType(
+          np.array([1.0 - (0.01 * 2.0), 1.0 - (0.01 * 2.0)]),
+          self.evaluate(var1)[2])
+      # Step 2: the momentum accumulators contain the previous update.
+      if context.executing_eagerly():
+        mom_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        self.evaluate(variables.global_variables_initializer())
-
-        # Check we have slots
-        slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEqual(slot0.shape, var0.shape)
-        slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEqual(slot1.shape, var1.shape)
-
-        # Fetch params to validate initial values
-        self.assertAllClose([0, 0], self.evaluate(var0)[0])
-        self.assertAllClose([0, 0], self.evaluate(var0)[1])
-        self.assertAllClose([1, 1], self.evaluate(var1)[2])
-
-        # Step 1: the momentum accumulators are 0. So we should see a normal
-        # update: v -= grad * learning_rate
+      else:
         self.evaluate(mom_update)
-        # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([0, 0]),
-            self.evaluate(slot0)[0])
-        self.assertAllCloseAccordingToType(
-            np.array([-2.0 * .1, -2.0 * .1]),
-            self.evaluate(slot0)[1])
-        self.assertAllCloseAccordingToType(
-            np.array([-2.0 * .01, -2.0 * .01]),
-            self.evaluate(slot1)[2])
-        # Check that the parameters have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([0, 0]),
-            self.evaluate(var0)[0])
-        self.assertAllCloseAccordingToType(
-            np.array([-(0.1 * 2.0), -(0.1 * 2.0)]),
-            self.evaluate(var0)[1])
-        self.assertAllCloseAccordingToType(
-            np.array([1.0 - (0.01 * 2.0), 1.0 - (0.01 * 2.0)]),
-            self.evaluate(var1)[2])
-        # Step 2: the momentum accumulators contain the previous update.
-        self.evaluate(mom_update)
-        # Check that the momentum accumulators have been updated.
-        self.assertAllClose(np.array([0, 0]), self.evaluate(slot0)[0])
-        self.assertAllCloseAccordingToType(
-            np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
-            self.evaluate(slot0)[1])
-        self.assertAllCloseAccordingToType(
-            np.array([(0.9 * (-0.02) - 2.0 * 0.01),
-                      (0.9 * (-0.02) - 2.0 * 0.01)]),
-            self.evaluate(slot1)[2])
-        # Check that the parameters have been updated.
-        self.assertAllClose(np.array([0, 0]), self.evaluate(var0)[0])
-        self.assertAllCloseAccordingToType(
-            np.array([
-                -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
-                -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
-            ]),
-            self.evaluate(var0)[1])
-        self.assertAllCloseAccordingToType(
-            np.array([
-                0.98 - ((0.9 * 0.01 + 0.01) * 2.0),
-                0.98 - ((0.9 * 0.01 + 0.01) * 2.0)
-            ]),
-            self.evaluate(var1)[2])
+      # Check that the momentum accumulators have been updated.
+      self.assertAllClose(np.array([0, 0]), self.evaluate(slot0)[0])
+      self.assertAllCloseAccordingToType(
+          np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
+          self.evaluate(slot0)[1])
+      self.assertAllCloseAccordingToType(
+          np.array([(0.9 * (-0.02) - 2.0 * 0.01),
+                    (0.9 * (-0.02) - 2.0 * 0.01)]),
+          self.evaluate(slot1)[2])
+      # Check that the parameters have been updated.
+      self.assertAllClose(np.array([0, 0]), self.evaluate(var0)[0])
+      self.assertAllCloseAccordingToType(
+          np.array([
+              -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+              -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
+          ]),
+          self.evaluate(var0)[1])
+      self.assertAllCloseAccordingToType(
+          np.array([
+              0.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+              0.98 - ((0.9 * 0.01 + 0.01) * 2.0)
+          ]),
+          self.evaluate(var1)[2])
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSharing(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
-        grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
-        grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        mom_opt = gradient_descent.SGD(learning_rate=2.0, momentum=0.9)
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+      var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+      grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+      grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+      mom_opt = gradient_descent.SGD(learning_rate=2.0, momentum=0.9)
+      if not context.executing_eagerly():
         mom_update1 = mom_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         mom_update2 = mom_opt.apply_gradients(
@@ -612,44 +620,53 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
         slot1 = mom_opt.get_slot(var1, "momentum")
         self.assertEqual(slot1.shape, var1.shape)
 
-        # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
-        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
-        # Step 1: the momentum accumulators where 0. So we should see a normal
-        # update: v -= grad * learning_rate
+      # Step 1: the momentum accumulators where 0. So we should see a normal
+      # update: v -= grad * learning_rate
+      if context.executing_eagerly():
+        mom_opt.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+        slot0 = mom_opt.get_slot(var0, "momentum")
+        self.assertEqual(slot0.shape, var0.shape)
+        slot1 = mom_opt.get_slot(var1, "momentum")
+        self.assertEqual(slot1.shape, var1.shape)
+      else:
         self.evaluate(mom_update1)
-        # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([-0.2, -0.2]), self.evaluate(slot0))
-        self.assertAllCloseAccordingToType(
-            np.array([-0.02, -0.02]), self.evaluate(slot1))
-        # Check that the parameters have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
-            self.evaluate(var0))
-        self.assertAllCloseAccordingToType(
-            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
-            self.evaluate(var1))
-        # Step 2: the second momentum accumulators contain the previous update.
+      # Check that the momentum accumulators have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([-0.2, -0.2]), self.evaluate(slot0))
+      self.assertAllCloseAccordingToType(
+          np.array([-0.02, -0.02]), self.evaluate(slot1))
+      # Check that the parameters have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
+          self.evaluate(var0))
+      self.assertAllCloseAccordingToType(
+          np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
+          self.evaluate(var1))
+      # Step 2: the second momentum accumulators contain the previous update.
+      if context.executing_eagerly():
+        mom_update2 = mom_opt.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+      else:
         self.evaluate(mom_update2)
-        # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
-            self.evaluate(slot0))
-        self.assertAllCloseAccordingToType(
-            np.array([(0.9 * (-0.02) - 2.0 * 0.01),
-                      (0.9 * (-0.02) - 2.0 * 0.01)]), self.evaluate(slot1))
-        # Check that the parameters have been updated.
-        self.assertAllCloseAccordingToType(
-            np.array([
-                1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
-                2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
-            ]), self.evaluate(var0))
-        self.assertAllCloseAccordingToType(
-            np.array([
-                2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
-                3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
-            ]), self.evaluate(var1))
+      # Check that the momentum accumulators have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
+          self.evaluate(slot0))
+      self.assertAllCloseAccordingToType(
+          np.array([(0.9 * (-0.02) - 2.0 * 0.01),
+                    (0.9 * (-0.02) - 2.0 * 0.01)]), self.evaluate(slot1))
+      # Check that the parameters have been updated.
+      self.assertAllCloseAccordingToType(
+          np.array([
+              1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+              2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
+          ]), self.evaluate(var0))
+      self.assertAllCloseAccordingToType(
+          np.array([
+              2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+              3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
+          ]), self.evaluate(var1))
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testConfig(self):
