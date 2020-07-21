@@ -208,11 +208,13 @@ Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
   return Status::OK();
 }
 
-Status RecordReader::SkipRecords(uint64* offset, int num_to_skip) {
+Status RecordReader::SkipRecords(uint64* offset, int num_to_skip,
+                                 int* num_skipped) {
   TF_RETURN_IF_ERROR(PositionInputStream(*offset));
 
   Status s;
   tstring record;
+  *num_skipped = 0;
   for (int i = 0; i < num_to_skip; ++i) {
     s = ReadChecksummed(*offset, sizeof(uint64), &record);
     if (!s.ok()) {
@@ -220,10 +222,21 @@ Status RecordReader::SkipRecords(uint64* offset, int num_to_skip) {
       return s;
     }
     const uint64 length = core::DecodeFixed64(record.data());
-    input_stream_->SkipNBytes(length + kFooterSize);
+
+    // Skip data
+    s = input_stream_->SkipNBytes(length + kFooterSize);
+    if (!s.ok()) {
+      last_read_failed_ = true;
+      if (errors::IsOutOfRange(s)) {
+        s = errors::DataLoss("truncated record at ", *offset);
+      }
+      return s;
+    }
     *offset += kHeaderSize + length + kFooterSize;
     DCHECK_EQ(*offset, input_stream_->Tell());
+    (*num_skipped)++;
   }
+  return Status::OK();
 }
 
 SequentialRecordReader::SequentialRecordReader(

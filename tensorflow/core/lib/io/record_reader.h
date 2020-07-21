@@ -100,8 +100,9 @@ class RecordReader {
   // Skip num_to_skip record starting at "*offset" and update *offset
   // to point to the offset of the next num_to_skip + 1 record.
   // Return OK on success, OUT_OF_RANGE for end of file, or something
-  // else for an error.
-  Status SkipRecords(uint64* offset, int num_to_skip);
+  // else for an error. "*num_skipped" records the number of records that
+  // are actually skipped. It should be equal to num_to_skip on success.
+  Status SkipRecords(uint64* offset, int num_to_skip, int* num_skipped);
 
   // Return the metadata of the Record file.
   //
@@ -148,8 +149,10 @@ class SequentialRecordReader {
 
   // Skip the next num_to_skip record in the file. Return OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
-  Status SkipRecords(int num_to_skip) {
-    return underlying_.SkipRecords(&offset_, num_to_skip);
+  // "*num_skipped" records the number of records that are actually skipped.
+  // It should be equal to num_to_skip on success.
+  Status SkipRecords(int num_to_skip, int* num_skipped) {
+    return underlying_.SkipRecords(&offset_, num_to_skip, num_skipped);
   }
 
   // Return the current offset in the file.
