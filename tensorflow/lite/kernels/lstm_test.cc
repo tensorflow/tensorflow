@@ -46,43 +46,35 @@ class LSTMOpModel : public SingleOpModel {
         n_cell_(n_cell),
         n_output_(n_output),
         weight_type_(weight_type) {
-    input_ = AddInput(TensorData{TensorType_FLOAT32, {n_batch, n_input}});
+    input_ = AddInput({TensorType_FLOAT32, {n_batch, n_input}});
 
     if (use_cifg) {
       input_to_input_weights_ = AddNullInput();
     } else {
-      input_to_input_weights_ =
-          AddInput(TensorData{weight_type, {n_cell, n_input}});
+      input_to_input_weights_ = AddInput({weight_type, {n_cell, n_input}});
     }
 
-    input_to_forget_weights_ =
-        AddInput(TensorData{weight_type, {n_cell, n_input}});
-    input_to_cell_weights_ =
-        AddInput(TensorData{weight_type, {n_cell, n_input}});
-    input_to_output_weights_ =
-        AddInput(TensorData{weight_type, {n_cell, n_input}});
+    input_to_forget_weights_ = AddInput({weight_type, {n_cell, n_input}});
+    input_to_cell_weights_ = AddInput({weight_type, {n_cell, n_input}});
+    input_to_output_weights_ = AddInput({weight_type, {n_cell, n_input}});
     if (use_cifg) {
       recurrent_to_input_weights_ = AddNullInput();
     } else {
-      recurrent_to_input_weights_ =
-          AddInput(TensorData{weight_type, {n_cell, n_output}});
+      recurrent_to_input_weights_ = AddInput({weight_type, {n_cell, n_output}});
     }
 
-    recurrent_to_forget_weights_ =
-        AddInput(TensorData{weight_type, {n_cell, n_output}});
-    recurrent_to_cell_weights_ =
-        AddInput(TensorData{weight_type, {n_cell, n_output}});
-    recurrent_to_output_weights_ =
-        AddInput(TensorData{weight_type, {n_cell, n_output}});
+    recurrent_to_forget_weights_ = AddInput({weight_type, {n_cell, n_output}});
+    recurrent_to_cell_weights_ = AddInput({weight_type, {n_cell, n_output}});
+    recurrent_to_output_weights_ = AddInput({weight_type, {n_cell, n_output}});
 
     if (use_peephole) {
       if (use_cifg) {
         cell_to_input_weights_ = AddNullInput();
       } else {
-        cell_to_input_weights_ = AddInput(TensorData{weight_type, {n_cell}});
+        cell_to_input_weights_ = AddInput({weight_type, {n_cell}});
       }
-      cell_to_forget_weights_ = AddInput(TensorData{weight_type, {n_cell}});
-      cell_to_output_weights_ = AddInput(TensorData{weight_type, {n_cell}});
+      cell_to_forget_weights_ = AddInput({weight_type, {n_cell}});
+      cell_to_output_weights_ = AddInput({weight_type, {n_cell}});
     } else {
       cell_to_input_weights_ = AddNullInput();
       cell_to_forget_weights_ = AddNullInput();
@@ -92,17 +84,16 @@ class LSTMOpModel : public SingleOpModel {
     if (use_cifg) {
       input_gate_bias_ = AddNullInput();
     } else {
-      input_gate_bias_ = AddInput(TensorData{TensorType_FLOAT32, {n_cell}});
+      input_gate_bias_ = AddInput({TensorType_FLOAT32, {n_cell}});
     }
-    forget_gate_bias_ = AddInput(TensorData{TensorType_FLOAT32, {n_cell}});
-    cell_gate_bias_ = AddInput(TensorData{TensorType_FLOAT32, {n_cell}});
-    output_gate_bias_ = AddInput(TensorData{TensorType_FLOAT32, {n_cell}});
+    forget_gate_bias_ = AddInput({TensorType_FLOAT32, {n_cell}});
+    cell_gate_bias_ = AddInput({TensorType_FLOAT32, {n_cell}});
+    output_gate_bias_ = AddInput({TensorType_FLOAT32, {n_cell}});
 
     if (use_projection_weights) {
-      projection_weights_ =
-          AddInput(TensorData{weight_type, {n_output, n_cell}});
+      projection_weights_ = AddInput({weight_type, {n_output, n_cell}});
       if (use_projection_bias) {
-        projection_bias_ = AddInput(TensorData{TensorType_FLOAT32, {n_output}});
+        projection_bias_ = AddInput({TensorType_FLOAT32, {n_output}});
       } else {
         projection_bias_ = AddNullInput();
       }
@@ -112,10 +103,8 @@ class LSTMOpModel : public SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    output_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_batch, n_output}}, true);
-    cell_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_batch, n_cell}}, true);
+    output_state_ = AddInput({TensorType_FLOAT32, {n_batch, n_output}}, true);
+    cell_state_ = AddInput({TensorType_FLOAT32, {n_batch, n_cell}}, true);
 
     // Layer norm weights.
     if (!model_has_legacy_20_inputs) {
@@ -123,21 +112,21 @@ class LSTMOpModel : public SingleOpModel {
         input_layer_norm_coefficients_ = AddNullInput();
       } else {
         input_layer_norm_coefficients_ =
-            is_layer_norm ? AddInput(TensorData{TensorType_FLOAT32, {n_cell}})
+            is_layer_norm ? AddInput({TensorType_FLOAT32, {n_cell}})
                           : AddNullInput();
       }
       forget_layer_norm_coefficients_ =
-          is_layer_norm ? AddInput(TensorData{TensorType_FLOAT32, {n_cell}})
+          is_layer_norm ? AddInput({TensorType_FLOAT32, {n_cell}})
                         : AddNullInput();
       cell_layer_norm_coefficients_ =
-          is_layer_norm ? AddInput(TensorData{TensorType_FLOAT32, {n_cell}})
+          is_layer_norm ? AddInput({TensorType_FLOAT32, {n_cell}})
                         : AddNullInput();
       output_layer_norm_coefficients_ =
-          is_layer_norm ? AddInput(TensorData{TensorType_FLOAT32, {n_cell}})
+          is_layer_norm ? AddInput({TensorType_FLOAT32, {n_cell}})
                         : AddNullInput();
     }
 
-    output_ = AddOutput(TensorData{TensorType_FLOAT32, {n_output}});
+    output_ = AddOutput({TensorType_FLOAT32, {n_output}});
 
     SetBuiltinOp(
         BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
