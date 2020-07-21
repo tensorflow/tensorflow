@@ -145,6 +145,11 @@ REGISTER_OP("UncompressElement")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::DatasetIteratorShape);
 
+REGISTER_OP("ComputeBatchSize")
+    .Input("input_dataset : variant")
+    .Output("batch_size : int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("CSVDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
