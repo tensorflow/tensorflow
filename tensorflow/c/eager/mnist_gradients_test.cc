@@ -353,12 +353,14 @@ TEST_P(CppGradients, TestMatMulGrad) {
   Status s = RegisterGradientMatMul(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-  // Pseudo-code:
-  //
-  // tape.watch(A)
-  // tape.watch(B)
-  // Y = AB
-  // outputs = tape.gradient(Y, [A, B])
+  /* Pseudo-code:
+   *
+   * tape.watch(A)
+   * tape.watch(B)
+   * Y = AB
+   * outputs = tape.gradient(Y, [A, B])
+   */
+
   std::vector<AbstractTensorHandle*> outputs(2);
   // s = RunModel(MatMulGradModel, ctx.get(), {A.get(), B.get()},
   //              absl::MakeSpan(outputs),
