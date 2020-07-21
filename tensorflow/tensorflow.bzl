@@ -1766,14 +1766,30 @@ def transitive_hdrs(name, deps = [], **kwargs):
     native.filegroup(name = name, srcs = [":" + name + "_gather"])
 
 # Bazel rule for collecting the transitive parameters from a set of dependencies into a library.
-# Propagates defines.
+# Propagates defines and includes.
 def _transitive_parameters_library_impl(ctx):
     defines = depset(
         transitive = [dep[CcInfo].compilation_context.defines for dep in ctx.attr.original_deps],
     )
+    system_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.system_includes for dep in ctx.attr.original_deps],
+    )
+    includes = depset(
+        transitive = [dep[CcInfo].compilation_context.includes for dep in ctx.attr.original_deps],
+    )
+    quote_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.quote_includes for dep in ctx.attr.original_deps],
+    )
+    framework_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.framework_includes for dep in ctx.attr.original_deps],
+    )
     return CcInfo(
         compilation_context = cc_common.create_compilation_context(
             defines = depset(direct = defines.to_list()),
+            system_includes = depset(direct = system_includes.to_list()),
+            includes = depset(direct = includes.to_list()),
+            quote_includes = depset(direct = quote_includes.to_list()),
+            framework_includes = depset(direct = framework_includes.to_list()),
         ),
     )
 
@@ -1792,12 +1808,9 @@ _transitive_parameters_library = rule(
 # the libraries in deps.
 #
 # **NOTE**: The headers brought in are **NOT** fully transitive; certain
-# deep headers may be missing.  Furthermore, the `includes` argument of
-# cc_libraries in the dependencies are *not* going to be respected
-# when you use cc_header_only_library.  Some cases where this creates
-# problems include: Eigen, grpc, MLIR.  In cases such as these, you must
-# find a header-only version of the cc_library rule you care about and
-# link it *directly* in addition to your use of the cc_header_only_library
+# deep headers may be missing.  If this creates problems, you must find
+# a header-only version of the cc_library rule you care about and link it
+# *directly* in addition to your use of the cc_header_only_library
 # intermediary.
 #
 # For:
