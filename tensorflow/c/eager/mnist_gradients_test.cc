@@ -287,8 +287,6 @@ TEST_P(CppGradients, TestMatMulGrad) {
     ASSERT_NEAR(result_data[j], expected_dA[j], tolerance);
   }  
 
-  printArr(result_data, 4);
-
   outputs[0]->Release();
   outputs[1]->Release();
   TF_DeleteTensor(dA_tensor);
@@ -600,6 +598,39 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
  
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch scores.
+  tape->Watch(ToId(inputs[1]));  // Watch labels.
+  std::vector<AbstractTensorHandle*> sm_outputs(1);
+  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, inputs,
+                    absl::MakeSpan(sm_outputs), "softmax0", registry));  // Compute x*y.
+  
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(sm_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads));
+  
+  for (auto sm_output : sm_outputs) {
+    sm_output->Release();
+  }
+  outputs[0] = out_grads[0];
+  outputs[1] = out_grads[1];
+  delete tape;
+  return Status::OK();
+}
+
+// Test Model to verify ReluGrad functionality
+Status SoftmaxLossModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry) {
+ 
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch scores
   std::vector<AbstractTensorHandle*> sm_outputs(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, inputs, absl::MakeSpan(sm_outputs), 
@@ -608,19 +639,25 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
 
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(sm_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
+  // std::vector<AbstractTensorHandle*> out_grads;
+  // TF_RETURN_IF_ERROR(tape->ComputeGradient(
+  //     vspace, /*target_tensor_ids=*/{ToId(sm_outputs[0])},
+  //     /*source_tensor_ids=*/{ToId(inputs[0])},
+  //     source_tensors_that_are_targets,
+  //     /*output_gradients=*/{}, &out_grads));
+
+  outputs[0] = sm_outputs[0]; 
+  outputs[1] = sm_outputs[1];
+
   for (auto sm_output : sm_outputs) {
     sm_output->Release();
   }
-  outputs[0] = out_grads[0];
+
   delete tape;
   return Status::OK();
 }
+
+
 
 TEST_P(CppGradients, TestSoftmaxLossGrad) {
 
@@ -657,29 +694,30 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   // Y = SoftmaxLoss(X, labels)
   // outputs = tape.gradient(Y, [X])
 
-  std::vector<AbstractTensorHandle*> outputs(1);
+  std::vector<AbstractTensorHandle*> outputs(2);
   s = RunModel(SoftmaxLossGradModel, ctx.get(), {X.get(), y.get()},
                absl::MakeSpan(outputs),
                /*use_function=*/!std::get<2>(GetParam()), registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-  // TF_Tensor* dX_tensor;
-  // s = getValue(outputs[0], &dX_tensor);
-  // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  TF_Tensor* dX_tensor;
+  s = getValue(outputs[1], &dX_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   
-  // float result_data[9] = {0};
-  // memcpy(&result_data[0], TF_TensorData(dX_tensor), TF_TensorByteSize(dX_tensor));
+  float result_data[9] = {0};
+  memcpy(&result_data[0], TF_TensorData(dX_tensor), TF_TensorByteSize(dX_tensor));
   
-  // float expected_dX [9] =  {0.090f, -0.7553f, 0.6652f,
-  //                           -0.9099f, 0.2447f, 0.6652f,
-  //                           0.8437f, -0.8858f, 0.0420f}; 
-  // float tolerance = 1e-2;
-  // for(int j = 0; j < 9; j++){
-  //   ASSERT_NEAR(result_data[j], expected_dX[j], tolerance);
-  // }  
+  float expected_dX [9] =  {0.090f, -0.7553f, 0.6652f,
+                            -0.9099f, 0.2447f, 0.6652f,
+                            0.8437f, -0.8858f, 0.0420f}; 
+  float tolerance = 1e-2;
+  for(int j = 0; j < 9; j++){
+    ASSERT_NEAR(result_data[j], expected_dX[j], tolerance);
+  }  
 
-  // outputs[0]->Release();
-  // TF_DeleteTensor(dX_tensor);
+  outputs[0]->Release();
+  outputs[1]->Release();
+  TF_DeleteTensor(dX_tensor);
 }
 
 

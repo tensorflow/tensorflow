@@ -158,25 +158,27 @@ Status RegisterGradientRelu(GradientRegistry* registry) {
 
 class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
  public:
-  explicit SparseSoftmaxCrossEntropyLossGradientFunction(AbstractContext* ctx, std::vector<AbstractTensorHandle*> f_outputs) : 
-            ctx_(ctx), forward_outputs(f_outputs)  {}
+  explicit SparseSoftmaxCrossEntropyLossGradientFunction(AbstractContext* ctx, 
+            std::vector<AbstractTensorHandle*> f_inputs, std::vector<AbstractTensorHandle*> f_outputs) : 
+            ctx_(ctx), forward_inputs(f_inputs), forward_outputs(f_outputs)  {}
   
   Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
     
     // Forward Inputs : [scores, labels]
     
-    //AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    // grad_outputs->resize(2);
-    // std::vector<AbstractTensorHandle*> sm_outputs(2);
-
+    // AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    grad_outputs->resize(2);
+    std::vector<AbstractTensorHandle*> sm_outputs(2);
+    
     // Calculate Grad
-    // TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx_, {forward_inputs[0], forward_inputs[1]},
-    //                           absl::MakeSpan(sm_outputs), "softmax_loss"));
+    TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx_, {forward_inputs[0], forward_inputs[1]},
+                              absl::MakeSpan(sm_outputs), "softmax_loss"));
 
 
     // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd output.
-    (*grad_outputs)[0] = forward_outputs[1];
+    (*grad_outputs)[0] = sm_outputs[0];
+    (*grad_outputs)[1] = sm_outputs[1];
 
     return Status::OK();
   }
@@ -184,12 +186,13 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
 
  private:
   AbstractContext* ctx_;
+  std::vector<AbstractTensorHandle*> forward_inputs;
   std::vector<AbstractTensorHandle*> forward_outputs;
 
 };
 
 GradientFunction* SparseSoftmaxCrossEntropyLossRegisterer(const ForwardOperation& op) {
-  return new SparseSoftmaxCrossEntropyLossGradientFunction(op.ctx, op.outputs);
+  return new SparseSoftmaxCrossEntropyLossGradientFunction(op.ctx, op.inputs, op.outputs);
 }
  
 Status RegisterGradientSparseSoftmaxCrossEntropyLoss(GradientRegistry* registry) {
