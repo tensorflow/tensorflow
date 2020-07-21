@@ -1,3 +1,4 @@
+
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,64 +42,49 @@ namespace CachedDsoLoader = stream_executor::internal::CachedDsoLoader;
 
 #ifdef PLATFORM_GOOGLE
 
-// return type == roctracer_status_t
-#define PROFILER_ROCTRACER_WRAP(__return_type_t, __name) \
-  struct WrapperShim__##__name {                         \
-    template <typename... Args>                          \
-    __return_type_t operator()(Args... args) {           \
-      __return_type_t retval = ::__name(args...);        \
-      return retval;                                     \
-    }                                                    \
-  } __name;
+#define PROFILER_ROCTRACER_WRAP(__name)                      \
+  template <typename... Args>                                \
+  auto __name()(Args... args)->decltype(::__name(args...)) { \
+    return ::__name(args...);                                \
+  }
 
 #else
 
-#define PROFILER_ROCTRACER_WRAP(__return_type_t, __name)                    \
-  struct DynLoadShim__##__name {                                            \
-    static const char* kName;                                               \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;            \
-    static void* GetDsoHandle() {                                           \
-      auto s = CachedDsoLoader::GetRoctracerDsoHandle();                    \
-      return s.ValueOrDie();                                                \
-    }                                                                       \
-    static FuncPtrT LoadOrDie() {                                           \
-      void* f;                                                              \
-      auto s =                                                              \
-          Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), kName, &f);  \
-      CHECK(s.ok()) << "could not find " << kName                           \
-                    << " in roctracer DSO; dlerror: " << s.error_message(); \
-      return reinterpret_cast<FuncPtrT>(f);                                 \
-    }                                                                       \
-    static FuncPtrT DynLoad() {                                             \
-      static FuncPtrT f = LoadOrDie();                                      \
-      return f;                                                             \
-    }                                                                       \
-    template <typename... Args>                                             \
-    __return_type_t operator()(Args... args) {                              \
-      return DynLoad()(args...);                                            \
-    }                                                                       \
-  } __name;                                                                 \
-  const char* DynLoadShim__##__name::kName = #__name;
+#define PROFILER_ROCTRACER_WRAP(__name)                                      \
+  template <typename... Args>                                                \
+  auto __name(Args... args)->decltype(::__name(args...)) {                   \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;             \
+    static FuncPtrT loaded = []() -> FuncPtrT {                              \
+      static const char* kName = #__name;                                    \
+      void* f;                                                               \
+      auto s = Env::Default()->GetSymbolFromLibrary(                         \
+          CachedDsoLoader::GetRoctracerDsoHandle().ValueOrDie(), kName, &f); \
+      CHECK(s.ok()) << "could not find " << kName                            \
+                    << " in roctracer DSO; dlerror: " << s.error_message();  \
+      return reinterpret_cast<FuncPtrT>(f);                                  \
+    }();                                                                     \
+    return loaded(args...);                                                  \
+  }
 
 #endif
 
 // clang-format off
-#define WRAP_EACH_ROCTRACER_API(__macro)				\
-  __macro(roctracer_pool_t*, roctracer_default_pool)			\
-  __macro(roctracer_status_t, roctracer_disable_domain_activity)	\
-  __macro(roctracer_status_t, roctracer_disable_domain_callback)	\
-  __macro(roctracer_status_t, roctracer_disable_op_activity)		\
-  __macro(roctracer_status_t, roctracer_disable_op_callback)		\
-  __macro(roctracer_status_t, roctracer_enable_domain_activity)		\
-  __macro(roctracer_status_t, roctracer_enable_domain_callback)		\
-  __macro(roctracer_status_t, roctracer_enable_op_activity)		\
-  __macro(roctracer_status_t, roctracer_enable_op_callback)		\
-  __macro(const char*, roctracer_error_string)				\
-  __macro(roctracer_status_t, roctracer_flush_activity)			\
-  __macro(roctracer_status_t, roctracer_get_timestamp)			\
-  __macro(const char*, roctracer_op_string)				\
-  __macro(roctracer_status_t, roctracer_open_pool)			\
-  __macro(roctracer_status_t, roctracer_set_properties)
+#define WRAP_EACH_ROCTRACER_API(__macro)		\
+  __macro(roctracer_default_pool_expl)			\
+  __macro(roctracer_disable_domain_activity)		\
+  __macro(roctracer_disable_domain_callback)		\
+  __macro(roctracer_disable_op_activity)		\
+  __macro(roctracer_disable_op_callback)		\
+  __macro(roctracer_enable_domain_activity_expl)	\
+  __macro(roctracer_enable_domain_callback)		\
+  __macro(roctracer_enable_op_activity)			\
+  __macro(roctracer_enable_op_callback)			\
+  __macro(roctracer_error_string)			\
+  __macro(roctracer_flush_activity_expl)		\
+  __macro(roctracer_get_timestamp)			\
+  __macro(roctracer_op_string)				\
+  __macro(roctracer_open_pool_expl)			\
+  __macro(roctracer_set_properties)
 
 // clang-format on
 
@@ -1140,13 +1126,14 @@ Status RocmTracer::EnableActivityTracing() {
 
   if (!options_->activity_tracing.empty()) {
     // Creat the memory pool to store activity records in
-    if (wrap::roctracer_default_pool() == NULL) {
+    if (wrap::roctracer_default_pool_expl(nullptr) == NULL) {
       roctracer_properties_t properties{};
       properties.buffer_size = 0x1000;
       properties.buffer_callback_fun = ActivityCallback;
       properties.buffer_callback_arg = this;
       VLOG(kRocmTracerVlog) << "Creating roctracer activity buffer";
-      RETURN_IF_ROCTRACER_ERROR(wrap::roctracer_open_pool(&properties));
+      RETURN_IF_ROCTRACER_ERROR(
+          wrap::roctracer_open_pool_expl(&properties, nullptr));
     }
   }
 
@@ -1156,7 +1143,8 @@ Status RocmTracer::EnableActivityTracing() {
     if (ops.size() == 0) {
       VLOG(kRocmTracerVlog) << "Enabling Activity tracing for domain "
                             << GetActivityDomainName(domain);
-      RETURN_IF_ROCTRACER_ERROR(wrap::roctracer_enable_domain_activity(domain));
+      RETURN_IF_ROCTRACER_ERROR(
+          wrap::roctracer_enable_domain_activity_expl(domain, nullptr));
     } else {
       VLOG(kRocmTracerVlog) << "Enabling Activity tracing for " << ops.size()
                             << " ops in domain "
@@ -1201,7 +1189,7 @@ Status RocmTracer::DisableActivityTracing() {
   // flag to FALSE. This is because the activity record callback routine is
   // gated by the same flag
   VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
-  RETURN_IF_ROCTRACER_ERROR(wrap::roctracer_flush_activity());
+  RETURN_IF_ROCTRACER_ERROR(wrap::roctracer_flush_activity_expl(nullptr));
 
   // Explicitly wait for (almost) all pending acitivity records
   // The choice of all of the following is based what seemed to work
