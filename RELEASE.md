@@ -401,7 +401,7 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
   * Legalization for `NMS` ops in TFLite.
   * add `narrow_range` and `axis` to `quantize_v2` and `dequantize` ops.
   * Added support for `FusedBatchNormV3` in converter.
-  * Add an `errno`-like field to `NNAPI` delegate for detecting `NNAPI` errors for fallback behaviour.
+  * Add an `errno`-like field to `NNAPI` delegate for detecting `NNAPI` errors for fallback behavior.
   * Refactors `NNAPI` Delegate to support detailed reason why an operation is not accelerated.
   * Converts hardswish subgraphs into atomic ops.
 * Other
