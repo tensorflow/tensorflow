@@ -304,7 +304,7 @@ class AsyncInterleaveMany : public Node {
 
 class KnownRatio : public Node {
  public:
-  KnownRatio(Node::Args args, int64 ratio) : Node(args), ratio_(ratio) {}
+  KnownRatio(Node::Args args, double ratio) : Node(args), ratio_(ratio) {}
 
   virtual ~KnownRatio() {}
 
