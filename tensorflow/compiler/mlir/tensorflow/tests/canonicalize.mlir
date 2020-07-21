@@ -985,3 +985,36 @@ func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %ar
   // CHECK: return %[[WHILE_OUT]]#0 : tensor<*xf32>
   return %0#0 : tensor<*xf32>
 }
+
+// Check that output_shapes attribute is removed for tf.If
+func @testIfThen(tensor<*xf32>) -> tensor<*xf32>
+func @testIfElse(tensor<*xf32>) -> tensor<*xf32>
+// CHECK-LABEL: func @testIfDropOutputShapes
+func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
+^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
+  // CHECK: "tf.If"
+  // CHECK-NOT: output_shapes
+  %1 = "tf.If"(%arg0, %arg1) {
+    then_branch = @testIfThen, else_branch = @testIfElse, is_stateless = false, output_shapes = [#tf.shape<>]
+  } : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %1 : tensor<2xf32>
+}
+
+// Check that output_shapes attribute is removed for tf.Whileß
+func @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
+func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
+// CHECK-LABEL: func @testWhileDropOutputShapes
+func @testWhileDropOutputShapes(tensor<*xf32>) -> (tensor<*xf32>) {
+^bb0(%arg0: tensor<*xf32>):
+  // CHECK: "tf.While"
+  // CHECK-NOT: output_shapes
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false,
+    output_shapes = [#tf.shape<>]
+  } : (tensor<*xf32>) -> (tensor<*xf32>)
+
+  return %1 : tensor<*xf32>
+}
