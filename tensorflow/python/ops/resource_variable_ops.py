@@ -474,6 +474,17 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       yield
 
+  def __array__(self):
+    """Allows direct conversion to a numpy array.
+
+    >>> np.array(tf.Variable([1.0]))
+    array([1.], dtype=float32)
+
+    Returns:
+      The variable value as a numpy array.
+    """
+    return self.numpy()
+
   def __nonzero__(self):
     return self.__bool__()
 
