@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.unique()`."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -24,6 +25,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -49,7 +51,8 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
     for test_case, expected in test_cases:
       current_test_case = test_case
       self.assertDatasetProduces(dataset, [
-          compat.as_bytes(element) if dtype == dtypes.string else element
+          compat.as_bytes(
+              element) if dtype == dtypes.string else element
           for element in expected
       ])
 
@@ -75,6 +78,36 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
         (["hello", "world"], ["hello", "world"]),
         (["foo", "bar", "baz", "baz", "bar", "foo"], ["foo", "bar", "baz"]),
     ])
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testTypeMismatch(self):
+
+    # raises InternalError when dtypes don't match.
+    # NOTE: Generating the following expected outputs can be considered/taken up as an
+    # enhancement in the experimental API.
+    with self.assertRaises(errors.InternalError):
+      self._testSimpleHelper(dtypes.string, [
+          (["hello", 1, 2, 1], ["hello"]),
+          (["hello", "world", 1], ["hello", "world"]),
+          (["hello", "hello", "world", 1, 2], ["hello", "world"]),
+          (["hello", "world", 1, 1, 2], ["hello", "world"]),
+          ([1, 2, "hello"], ["hello"]),
+          ([1, 1, 2, 3, 3, "hello"], ["hello"]),
+      ])
+
+      self._testSimpleHelper(dtypes.int32, [
+          ([1, "hello", "world"], [1]),
+          ([1, 2, 1, "hello", "hello", "world"], [1, 2]),
+          (["hello", 1, 2], [1, 2]),
+          (["hello", 1, 1, 2, 3, 3], [1, 2, 3]),
+      ])
+
+      self._testSimpleHelper(dtypes.int64, [
+          ([2, 3, "hello", "world"], [2, 3]),
+          ([2, 3, 3, "hello", "hello", "world"], [2, 3]),
+          (["hello", 2, 2], [2]),
+          (["hello", "hello", 1, 1, 2, 3], [1, 2, 3]),
+      ])
 
 
 if __name__ == "__main__":
