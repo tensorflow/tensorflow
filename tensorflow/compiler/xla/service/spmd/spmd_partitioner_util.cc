@@ -885,5 +885,46 @@ int64 ShardCountAtDim(const HloSharding& sharding, int64 dim) {
   return sharding.tile_assignment().dim(dim);
 }
 
+absl::optional<std::pair<int64, int64>> GetReshardAllToAllSourceTargetDims(
+    const HloSharding& source, const HloSharding& target) {
+  if (source.IsTileMaximal() || target.IsTileMaximal() ||
+      source.tile_assignment().num_dimensions() !=
+          target.tile_assignment().num_dimensions()) {
+    return absl::nullopt;
+  }
+  int64 source_dim = -1;
+  int64 target_dim = -1;
+  for (int64 i = 0; i < source.tile_assignment().num_dimensions(); ++i) {
+    if (source.tile_assignment().dim(i) > 1 &&
+        target.tile_assignment().dim(i) == 1) {
+      if (source_dim != -1) {
+        return absl::nullopt;
+      }
+      source_dim = i;
+    } else if (source.tile_assignment().dim(i) == 1 &&
+               target.tile_assignment().dim(i) > 1) {
+      if (target_dim != -1) {
+        return absl::nullopt;
+      }
+      target_dim = i;
+    } else if (source.tile_assignment().dim(i) !=
+               target.tile_assignment().dim(i)) {
+      return absl::nullopt;
+    }
+  }
+  if (source_dim == -1 || target_dim == -1 || source_dim == target_dim) {
+    return absl::nullopt;
+  }
+  return std::pair<int64, int64>(source_dim, target_dim);
+}
+
+bool CanReshardWithCollectivePermute(const HloSharding& source,
+                                     const HloSharding& target) {
+  return !source.IsTileMaximal() && !target.IsTileMaximal() &&
+         source.tile_assignment().dimensions() ==
+             target.tile_assignment().dimensions() &&
+         source.tile_assignment() != target.tile_assignment();
+}
+
 }  // namespace spmd
 }  // namespace xla
