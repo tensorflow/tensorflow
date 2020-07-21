@@ -49,16 +49,15 @@ class LSTMOpModel : public SingleOpModel {
     } else {
       input_to_input_weights_ = AddInput({weight_type, {n_cell, n_input}});
     }
-
     input_to_forget_weights_ = AddInput({weight_type, {n_cell, n_input}});
     input_to_cell_weights_ = AddInput({weight_type, {n_cell, n_input}});
     input_to_output_weights_ = AddInput({weight_type, {n_cell, n_input}});
+
     if (use_cifg) {
       recurrent_to_input_weights_ = AddNullInput();
     } else {
       recurrent_to_input_weights_ = AddInput({weight_type, {n_cell, n_output}});
     }
-
     recurrent_to_forget_weights_ = AddInput({weight_type, {n_cell, n_output}});
     recurrent_to_cell_weights_ = AddInput({weight_type, {n_cell, n_output}});
     recurrent_to_output_weights_ = AddInput({weight_type, {n_cell, n_output}});
@@ -88,13 +87,13 @@ class LSTMOpModel : public SingleOpModel {
 
     if (use_projection_weights) {
       projection_weights_ = AddInput({weight_type, {n_output, n_cell}});
-      if (use_projection_bias) {
-        projection_bias_ = AddInput({TensorType_FLOAT32, {n_output}});
-      } else {
-        projection_bias_ = AddNullInput();
-      }
     } else {
       projection_weights_ = AddNullInput();
+    }
+    if (use_projection_bias) {
+      CHECK(use_projection_weights);
+      projection_bias_ = AddInput({TensorType_FLOAT32, {n_output}});
+    } else {
       projection_bias_ = AddNullInput();
     }
 
@@ -104,22 +103,25 @@ class LSTMOpModel : public SingleOpModel {
 
     // Layer norm weights.
     if (!model_has_legacy_20_inputs) {
-      if (use_cifg) {
-        input_layer_norm_coefficients_ = AddNullInput();
+      if (is_layer_norm) {
+        if (use_cifg) {
+          input_layer_norm_coefficients_ = AddNullInput();
+        } else {
+          input_layer_norm_coefficients_ =
+              AddInput({TensorType_FLOAT32, {n_cell}});
+        }
+        forget_layer_norm_coefficients_ =
+            AddInput({TensorType_FLOAT32, {n_cell}});
+        cell_layer_norm_coefficients_ =
+            AddInput({TensorType_FLOAT32, {n_cell}});
+        output_layer_norm_coefficients_ =
+            AddInput({TensorType_FLOAT32, {n_cell}});
       } else {
-        input_layer_norm_coefficients_ =
-            is_layer_norm ? AddInput({TensorType_FLOAT32, {n_cell}})
-                          : AddNullInput();
+        input_layer_norm_coefficients_ = AddNullInput();
+        forget_layer_norm_coefficients_ = AddNullInput();
+        cell_layer_norm_coefficients_ = AddNullInput();
+        output_layer_norm_coefficients_ = AddNullInput();
       }
-      forget_layer_norm_coefficients_ =
-          is_layer_norm ? AddInput({TensorType_FLOAT32, {n_cell}})
-                        : AddNullInput();
-      cell_layer_norm_coefficients_ =
-          is_layer_norm ? AddInput({TensorType_FLOAT32, {n_cell}})
-                        : AddNullInput();
-      output_layer_norm_coefficients_ =
-          is_layer_norm ? AddInput({TensorType_FLOAT32, {n_cell}})
-                        : AddNullInput();
     }
 
     output_ = AddOutput({TensorType_FLOAT32, {n_output}});
@@ -263,8 +265,7 @@ class LSTMOpModel : public SingleOpModel {
   int n_output_;
 
  private:
-  template <typename T>
-  void PopulateTensor(int index, const std::vector<T>& data) {
+  void PopulateTensor(int index, const std::vector<float>& data) {
     // Nothing to do if tensor is an optional input or if data vector is empty.
     if ((index == kTfLiteOptionalTensor) || data.empty()) return;
     SingleOpModel::PopulateTensor(index, data);
@@ -1749,16 +1750,14 @@ class LSTMIntegerOpModel : public SingleOpModel {
                                       {n_output, n_cell},
                                       ranges[16].first,
                                       ranges[16].second});
-      if (use_projection_bias) {
-        projection_bias_ = AddInput({TensorType_INT32,
-                                     {n_output},
-                                     ranges[17].first,
-                                     ranges[17].second});
-      } else {
-        projection_bias_ = AddNullInput();
-      }
     } else {
       projection_weights_ = AddNullInput();
+    }
+    if (use_projection_bias) {
+      CHECK(use_projection_weights);
+      projection_bias_ = AddInput(
+          {TensorType_INT32, {n_output}, ranges[17].first, ranges[17].second});
+    } else {
       projection_bias_ = AddNullInput();
     }
 
