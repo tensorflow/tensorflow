@@ -13,34 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/selectors/subgraph.h"
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_SPECIAL_SELECTOR_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_SPECIAL_SELECTOR_H_
 
-#include <memory>
+#include <map>
+#include <set>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/cl/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
-    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
-    GPUOperationsSubgraph* gpu_subgraph) {
-  gpu_subgraph->operations.clear();
-  gpu_subgraph->new_tensors.clear();
-  gpu_subgraph->operations.push_back({});
-  for (int i = 0; i < inputs.size(); ++i) {
-    gpu_subgraph->operations[0].input_ids.push_back(inputs[i]->id);
-  }
-  for (int i = 0; i < outputs.size(); ++i) {
-    gpu_subgraph->operations[0].output_ids.push_back(outputs[i]->id);
-  }
-
-  return &gpu_subgraph->operations[0].operation;
-}
+absl::Status GPUSubgraphFromGraph(
+    const CreationContext& creation_context, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
+    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_SPECIAL_SELECTOR_H_
