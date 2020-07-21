@@ -357,6 +357,8 @@ filegroup(
 cc_library(
     name = "mutex",
     textual_hdrs = ["mutex.h"],
+    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
+    visibility = ["//tensorflow:__subpackages__"],
     deps = tf_platform_deps("mutex"),
 )
 
@@ -773,6 +775,8 @@ filegroup(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
+    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":platform",
         ":tstring",
