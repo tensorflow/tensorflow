@@ -171,7 +171,7 @@
       * Fix error checking supported operations in a model containing `HardSwish`. 
 
 ### Packaging Support 
-  * Added `tf.sysconfig.get_build_info()`. Returns a dict that describes the currently installed TensorFlow package, e.g. the NVIDIA CUDA and NVIDIA CuDNN versions that the package was built to support.
+  * Added `tf.sysconfig.get_build_info()`. Returns a dict that describes the build environment of the currently installed TensorFlow package, e.g. the NVIDIA CUDA and NVIDIA CuDNN versions used when TensorFlow was built.
   
 ### Profiler
   * Fix a subtle use-after-free issue in `XStatVisitor::RefValue()`.
