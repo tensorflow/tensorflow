@@ -5046,8 +5046,8 @@ def binary_crossentropy(target, output, from_logits=False):
   output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
 
   # Compute cross entropy from probabilities.
-  bce = target * math_ops.log(output + epsilon())
-  bce += (1 - target) * math_ops.log(1 - output + epsilon())
+  bce = target * math_ops.log(output)
+  bce += (1 - target) * math_ops.log(1 - output)
   return -bce
 
 
