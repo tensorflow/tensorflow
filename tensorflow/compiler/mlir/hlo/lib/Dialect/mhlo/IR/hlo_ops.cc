@@ -1468,7 +1468,7 @@ static LogicalResult Verify(PadOp op) {
 
 static LogicalResult Verify(ReshapeOp op) {
   // If the operand type is dynamically shaped there is nothing to verify.
-  auto operand_ty = op.operand().getType().cast<RankedTensorType>();
+  auto operand_ty = op.operand().getType().dyn_cast<RankedTensorType>();
   if (!operand_ty || !operand_ty.hasStaticShape()) return success();
 
   // If the operand type is statically shaped (not required) the number of
