@@ -122,27 +122,6 @@ class NestTest(parameterized.TestCase, test.TestCase):
     new_structure = nest.map_structure(lambda x: x, structure)
     self.assertEqual(structure, new_structure)
 
-  @parameterized.parameters(
-      slice(4),
-      slice(None),
-      # Because slice is overloaded, it does not take keyword args
-      slice(None, None, None),
-      slice(6, None, None),
-      slice(None, 4, None),
-      slice(None, None, 2),
-      slice(6, 2, None),
-      slice(None, 4, 5),
-      slice(3, None, 5),
-      slice(3, 7, 5),
-  )
-  @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testFlattenAndPackSlice(self, value):
-    structure = [value]
-    flat = nest.flatten(structure)
-    self.assertAllEqual(flat, [value.start, value.stop, value.step])
-    new_structure = nest.pack_sequence_as(structure, flat)
-    self.assertEqual(structure, new_structure)
-
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFlattenAndPack(self):
     structure = ((3, 4), 5, (6, 7, (9, 10), 8))

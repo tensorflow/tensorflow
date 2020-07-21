@@ -26,12 +26,9 @@ nest recognizes the following types of collections:
   4.orderedDict
   5.MutableMapping
   6.attr.s
-  7.slice
 
 attr.s decorated classes (http://www.attrs.org) are also supported, in the
 same way as `namedtuple`.
-
-Python slices get flattened into `[x.start, x.stop, x.step]`
 
 The utilities here assume (and do not check) that the nested structures form a
 'tree', i.e., no references in the structure of the input of these functions
@@ -123,7 +120,6 @@ def _is_namedtuple(instance, strict=False):
 # See the swig file (util.i) for documentation.
 _is_mapping_view = _pywrap_utils.IsMappingView
 _is_attrs = _pywrap_utils.IsAttrs
-_is_slice = _pywrap_utils.IsSlice
 _is_composite_tensor = _pywrap_utils.IsCompositeTensor
 _is_type_spec = _pywrap_utils.IsTypeSpec
 _is_mutable_mapping = _pywrap_utils.IsMutableMapping
@@ -194,8 +190,6 @@ def _sequence_like(instance, args):
     # For object proxies, first create the underlying type and then re-wrap it
     # in the proxy type.
     return type(instance)(_sequence_like(instance.__wrapped__, args))
-  elif _is_slice(instance):
-    return slice(*args)
   else:
     # Not a namedtuple
     return type(instance)(args)
@@ -250,10 +244,6 @@ def _yield_sorted_items(iterable):
     # Note: to allow CompositeTensors and their TypeSpecs to have matching
     # structures, we need to use the same key string here.
     yield iterable.value_type.__name__, iterable._component_specs  # pylint: disable=protected-access
-  elif _is_slice(iterable):
-    yield "start", iterable.start
-    yield "stop", iterable.stop
-    yield "step", iterable.step
   else:
     for item in enumerate(iterable):
       yield item
@@ -285,8 +275,7 @@ def is_nested(seq):
 def flatten(structure, expand_composites=False):
   """Returns a flat list from a given nested structure.
 
-  If nest is not a structure , tuple (or a namedtuple), dict, slice, or an
-  attrs class,
+  If nest is not a structure , tuple (or a namedtuple), dict, or an attrs class,
   then returns a single-element list:
     [nest].
 
@@ -297,8 +286,7 @@ def flatten(structure, expand_composites=False):
   repacks dicts and OrderedDicts after they have been flattened, and also allows
   flattening an OrderedDict and then repacking it back using a corresponding
   plain dict, or vice-versa. Dictionaries with non-sortable keys cannot be
-  flattened. `slice`s will get flattened into the form
-  `[x.start, x.stop, x.step]`.
+  flattened.
 
   Users must not modify any collections used in nest while this function is
   running.
@@ -1441,5 +1429,4 @@ _pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
 _pywrap_utils.RegisterType("MutableMapping", _collections_abc.MutableMapping)
 _pywrap_utils.RegisterType("Sequence", _collections_abc.Sequence)
 _pywrap_utils.RegisterType("MappingView", _collections_abc.MappingView)
-_pywrap_utils.RegisterType("Slice", slice)
 _pywrap_utils.RegisterType("ObjectProxy", _wrapt.ObjectProxy)
