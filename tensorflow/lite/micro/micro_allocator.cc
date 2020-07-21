@@ -681,17 +681,8 @@ TfLiteStatus MicroAllocator::FinishModelAllocation(
   return kTfLiteOk;
 }
 
-TfLiteStatus MicroAllocator::AllocatePersistentBuffer(size_t bytes,
-                                                      void** ptr) {
-  uint8_t* data = memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
-  if (data == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter_,
-                         "Failed to allocate persistent buffer of size %d",
-                         bytes);
-    return kTfLiteError;
-  }
-  (*ptr) = data;
-  return kTfLiteOk;
+void* MicroAllocator::AllocatePersistentBuffer(size_t bytes) {
+  return memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
 }
 
 TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,

@@ -47,10 +47,10 @@ ContextHelper::ContextHelper(ErrorReporter* error_reporter,
                              MicroAllocator* allocator, const Model* model)
     : allocator_(allocator), error_reporter_(error_reporter), model_(model) {}
 
-TfLiteStatus ContextHelper::AllocatePersistentBuffer(TfLiteContext* ctx,
-                                                     size_t bytes, void** ptr) {
+void* ContextHelper::AllocatePersistentBuffer(TfLiteContext* ctx,
+                                              size_t bytes) {
   return reinterpret_cast<ContextHelper*>(ctx->impl_)
-      ->allocator_->AllocatePersistentBuffer(bytes, ptr);
+      ->allocator_->AllocatePersistentBuffer(bytes);
 }
 
 TfLiteStatus ContextHelper::RequestScratchBufferInArena(TfLiteContext* ctx,

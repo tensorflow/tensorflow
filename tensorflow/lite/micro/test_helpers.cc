@@ -574,9 +574,7 @@ void* SimpleStatefulOp::Init(TfLiteContext* context, const char* buffer,
   TFLITE_DCHECK(context->GetScratchBuffer == nullptr);
   TFLITE_DCHECK(context->RequestScratchBufferInArena == nullptr);
 
-  void* raw;
-  TFLITE_DCHECK(context->AllocatePersistentBuffer(context, sizeof(OpData),
-                                                  &raw) == kTfLiteOk);
+  void* raw = context->AllocatePersistentBuffer(context, sizeof(OpData));
   OpData* data = reinterpret_cast<OpData*>(raw);
   *data = {};
   return raw;

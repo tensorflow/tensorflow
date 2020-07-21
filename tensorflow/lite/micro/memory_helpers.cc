@@ -140,9 +140,9 @@ TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
 
   output->bytes = size;
 
-  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-      context, TfLiteIntArrayGetSizeInBytes(size),
-      reinterpret_cast<void**>(&output->dims)));
+  output->dims =
+      reinterpret_cast<TfLiteIntArray*>(context->AllocatePersistentBuffer(
+          context, TfLiteIntArrayGetSizeInBytes(size)));
 
   output->dims->size = input->dims->size;
   for (int i = 0; i < dimensions_count; i++) {

@@ -703,12 +703,11 @@ typedef struct TfLiteContext {
   void* profiler;
 
   // Allocate persistent buffer which has the same life time as the interpreter.
+  // Returns nullptr on failure.
   // The memory is allocated from heap for TFL, and from tail in TFLM.
-  // If *ptr is not nullptr, the pointer will be reallocated.
-  // This method is only available in Prepare stage.
+  // This method is only available in Init or Prepare stage.
   // WARNING: This is an experimental interface that is subject to change.
-  TfLiteStatus (*AllocatePersistentBuffer)(struct TfLiteContext* ctx,
-                                           size_t bytes, void** ptr);
+  void* (*AllocatePersistentBuffer)(struct TfLiteContext* ctx, size_t bytes);
 
   // Allocate a buffer which will be deallocated right after invoke phase.
   // The memory is allocated from heap in TFL, and from volatile arena in TFLM.

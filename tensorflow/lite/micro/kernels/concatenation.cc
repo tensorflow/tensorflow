@@ -119,12 +119,7 @@ void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -184,15 +179,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       data->params.axis = CalculatePositiveAxis(params->axis, output);
       data->params.inputs_count = node->inputs->size;
 
-      float* input_scales = nullptr;
-      TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-          context, node->inputs->size * sizeof(float),
-          reinterpret_cast<void**>(&input_scales)));
+      float* input_scales =
+          reinterpret_cast<float*>(context->AllocatePersistentBuffer(
+              context, node->inputs->size * sizeof(float)));
 
-      int32_t* input_zero_points = nullptr;
-      TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-          context, node->inputs->size * sizeof(int32_t),
-          reinterpret_cast<void**>(&input_zero_points)));
+      int32_t* input_zero_points =
+          reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
+              context, node->inputs->size * sizeof(int32_t)));
 
       // Allocate persistent scale and zeropoint buffers.
       // Store input scale and zero point values in OpParams:
