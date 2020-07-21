@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -186,23 +187,6 @@ REGISTER_OP("BFloat16Output2")
     .Input("i: bfloat16")
     .Input("i1: bfloat16")
     .SetIsStateful();
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
-
-/////////////////////////////////////////////////////////////////////
-// Macros for handling registeration for various types
-/////////////////////////////////////////////////////////////////////
-
-#define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);
-
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
-#define REGISTER_TEST_BFLOAT16(TEST) \
-  REGISTER_TEST(TEST, DT_BFLOAT16, BFloat16Input);
-
-#define REGISTER_TEST_ALL_TYPES(TEST) \
-  REGISTER_TEST_FLOAT32(TEST);        \
-  REGISTER_TEST_BFLOAT16(TEST);
-#else
-#define REGISTER_TEST_ALL_TYPES(TEST) REGISTER_TEST_FLOAT32(TEST);
 #endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 /////////////////////////////////////////////////////////////////////

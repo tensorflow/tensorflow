@@ -1300,7 +1300,7 @@ def _make_class_weight_map_fn(class_weight):
     """Convert `class_weight` to `sample_weight`."""
     x, y, sw = unpack_x_y_sample_weight(data)
 
-    if nest.is_sequence(y):
+    if nest.is_nested(y):
       raise ValueError(
           "`class_weight` is only supported for Models with a single output.")
 
@@ -1496,7 +1496,7 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
     # there is no ambiguity. This also makes NumPy and Dataset
     # consistent in that the user does not have to wrap their Dataset
     # data in an unecessary tuple
-    if not nest.is_sequence(x):
+    if not nest.is_nested(x):
       return x
     else:
       return (x,)

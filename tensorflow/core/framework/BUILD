@@ -510,7 +510,7 @@ cc_library(
     srcs = ["tensor_testutil.cc"],
     hdrs = ["tensor_testutil.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -677,7 +677,11 @@ cc_library(
     name = "type_index",
     hdrs = ["type_index.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core/platform:types"],
+    deps = [
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 cc_library(

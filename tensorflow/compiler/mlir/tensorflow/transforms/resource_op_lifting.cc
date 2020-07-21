@@ -558,15 +558,13 @@ void AddLoadsStoresOutsideControlFlowOp(
     auto operand = caller->getOperand(index);
     builder.setInsertionPoint(caller);
     new_operands[index] = builder.create<TF::ReadVariableOp>(
-        caller->getLoc(), ArrayRef<Type>{new_type}, ArrayRef<Value>{operand},
-        ArrayRef<NamedAttribute>{});
+        caller->getLoc(), ArrayRef<Type>{new_type}, ArrayRef<Value>{operand});
     caller->setOperand(index, new_operands[index]);
     if (updated_index < 0) continue;
     builder.setInsertionPointAfter(caller);
     builder.create<TF::AssignVariableOp>(
         caller->getLoc(), ArrayRef<Type>{},
-        ArrayRef<Value>{operand, caller->getResult(updated_index)},
-        ArrayRef<NamedAttribute>{});
+        ArrayRef<Value>{operand, caller->getResult(updated_index)});
   }
 }
 
@@ -762,8 +760,11 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   for (auto branch : branches) {
     auto new_retvals =
         llvm::to_vector<4>(branch.front().getTerminator()->getOperands());
+    new_retvals.resize(new_retvals.size() + resource_arg_to_new_output.size());
     for (const auto& entry : resource_arg_to_new_output) {
-      new_retvals.push_back(branch.getArgument(entry.getFirst()));
+      int64_t resource_arg_index = entry.getFirst();
+      int64_t output_index = entry.getSecond();
+      new_retvals[output_index] = branch.getArgument(resource_arg_index);
     }
     auto old_return = branch.front().getTerminator();
     OpBuilder builder(old_return);

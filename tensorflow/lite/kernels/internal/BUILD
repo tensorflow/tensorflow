@@ -441,6 +441,7 @@ cc_library(
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
         "reference/binary_function.h",
+        "reference/broadcast_to.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
@@ -682,7 +683,9 @@ cc_library(
         ":portable_tensor_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
+        "@ruy//ruy/profiler:instrumentation",
     ],
 )
 

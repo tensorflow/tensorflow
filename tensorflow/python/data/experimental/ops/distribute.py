@@ -21,6 +21,7 @@ from tensorflow.python.data.experimental.ops.distribute_options import ExternalS
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
@@ -75,8 +76,12 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, num_replicas, use_fallback=True):
 
-    def recalculate_batch_size(output_shape):
+    def recalculate_batch_size(type_spec):
       """Recalculates the output_shape after dividing it by num_replicas."""
+      output_shape = type_spec._to_legacy_output_shapes()  # pylint: disable=protected-access
+      if not isinstance(output_shape, tensor_shape.TensorShape):
+        return None
+
       # If the output shape is unknown, we set the batch dimension to unknown.
       if output_shape.rank is None:
         return None
@@ -97,7 +102,7 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     def rebatch(type_spec):
       # pylint: disable=protected-access
-      batch_size = recalculate_batch_size(type_spec._to_legacy_output_shapes())
+      batch_size = recalculate_batch_size(type_spec)
       return type_spec._unbatch()._batch(batch_size)
       # pylint: enable=protected-access
 

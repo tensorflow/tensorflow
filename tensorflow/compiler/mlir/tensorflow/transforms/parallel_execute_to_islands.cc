@@ -190,7 +190,7 @@ tf_executor::IslandOp CreateOutputBarrierIsland(
   builder->setInsertionPoint(island_op);
   auto island_output_sink = builder->create<tf_executor::IslandOp>(
       island_op.getLoc(), llvm::to_vector<8>(island_op.getResultTypes()),
-      island_operands, llvm::ArrayRef<NamedAttribute>{});
+      island_operands);
   island_output_sink.body().push_back(new Block);
   return island_output_sink;
 }

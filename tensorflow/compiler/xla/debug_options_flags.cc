@@ -535,10 +535,10 @@ static void AllocateFlags() {
       flag_values->xla_gpu_force_conv_nchw(),
       "For cuDNN convolutions, always NCHW layouts."));
   flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_algorithm_blacklist_path",
-      string_setter_for(&DebugOptions::set_xla_gpu_algorithm_blacklist_path),
-      flag_values->xla_gpu_algorithm_blacklist_path(),
-      "An AlgorithmBlacklist text proto file as a blacklist of convolutions to "
+      "xla_gpu_algorithm_denylist_path",
+      string_setter_for(&DebugOptions::set_xla_gpu_algorithm_denylist_path),
+      flag_values->xla_gpu_algorithm_denylist_path(),
+      "An AlgorithmDenylist text proto file as a denylist of convolutions to "
       "avoid to use."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_deterministic_reductions",

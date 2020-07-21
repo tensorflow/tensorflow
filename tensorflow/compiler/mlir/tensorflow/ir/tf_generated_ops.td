@@ -745,6 +745,30 @@ def TF_AvgPool3DGradOp : TF_Op<"AvgPool3DGrad", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_AvgPool3DOp : TF_Op<"AvgPool3D", [NoSideEffect]> {
+  let summary = "Performs 3D average pooling on the input.";
+
+  let description = [{
+Each entry in `output` is the mean of the corresponding size `ksize`
+window in `value`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$value,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AvgPoolGradOp : TF_Op<"AvgPoolGrad", [NoSideEffect]> {
   let summary = "Computes gradients of the average pooling function.";
 

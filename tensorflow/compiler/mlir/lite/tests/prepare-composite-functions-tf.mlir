@@ -481,3 +481,15 @@ func @nms_padded_invalid_num_args(%arg0: tensor<100x4xf32>, %arg1: tensor<100xf3
 // expected-error @+1 {{TFLite does not support batched input for non_max_suppression_padded}}
 func @nms_padded_with_batches(%arg0: tensor<2x100x4xf32>, %arg1: tensor<2x100xf32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<i1>, %arg6: tensor<i1>, %arg7: tensor<i1>, %arg8: tensor<i32>) -> (tensor<2x10xi32>, tensor<i32>) attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"}
 }
+
+// -----
+
+module {
+// CHECK-LABEL: func @some_func
+// CHECK-LABEL: func @func_with_call
+func @some_func(%arg0: tensor<100xf32>) -> tensor<100xf32> attributes {tf.api_implements = "lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c"}
+func @func_with_call(%arg0: tensor<100xf32>) -> tensor<100xf32> {
+  %0 = call @some_func(%arg0) : (tensor<100xf32>) -> tensor<100xf32>
+  return %0 : tensor<100xf32>
+  }
+}

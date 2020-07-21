@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/experimental/gradients/math_grad.h"
+#include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
@@ -42,54 +44,9 @@ class CppGradients
   }
 };
 
-// Creates an Identity op.
-Status Identity(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
-  AbstractOperationPtr identity_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      identity_op->Reset("Identity", /*raw_device_name=*/nullptr));
-  if (isa<tracing::TracingOperation>(identity_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(identity_op.get())
-                           ->SetOpName(name));
-  }
-  TF_RETURN_IF_ERROR(identity_op->AddInput(inputs[0]));
-  int num_retvals = 1;
-  TF_RETURN_IF_ERROR(identity_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
-
-// =================== Register gradients for Add ============================
-class AddGradientFunction : public GradientFunction {
- public:
-  explicit AddGradientFunction(AbstractContext* ctx) : ctx_(ctx) {}
-  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
-                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
-    grad_outputs->resize(2);
-    std::vector<AbstractTensorHandle*> identity_outputs(1);
-    TF_RETURN_IF_ERROR(Identity(ctx_, {grad_inputs[0]},
-                                absl::MakeSpan(identity_outputs), "Id0"));
-    (*grad_outputs)[0] = identity_outputs[0];
-    TF_RETURN_IF_ERROR(Identity(ctx_, {grad_inputs[0]},
-                                absl::MakeSpan(identity_outputs), "Id1"));
-    (*grad_outputs)[1] = identity_outputs[0];
-    return Status::OK();
-  }
-  ~AddGradientFunction() override {}
-
- private:
-  AbstractContext* ctx_;
-};
-
-GradientFunction* AddRegisterer(const ForwardOperation& op) {
-  return new AddGradientFunction(op.ctx);
-}
-
 Status RegisterGradients(GradientRegistry* registry) {
   return registry->Register("Add", AddRegisterer);
 }
-
-// =================== End gradient registrations ============================
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,

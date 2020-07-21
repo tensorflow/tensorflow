@@ -972,9 +972,9 @@ double Node::OutputTime(absl::flat_hash_map<string, double>* input_times,
   return output_times[long_name()];
 }
 
-std::shared_ptr<Node> Node::Snapshot(std::shared_ptr<Node> output) const {
+std::shared_ptr<Node> Node::Snapshot() const {
   NodePairList node_pairs;
-  auto result = SnapshotHelper(output, &node_pairs);
+  auto result = SnapshotHelper(nullptr, &node_pairs);
 
   while (!node_pairs.empty()) {
     auto node_pair = node_pairs.front();
@@ -1346,7 +1346,7 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock lock(mu_);
-    snapshot = output_->Snapshot(nullptr);
+    snapshot = output_->Snapshot();
   }
   VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
   auto parameters = CollectTunableParameters(snapshot);
@@ -1422,7 +1422,7 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock lock(mu_);
-    snapshot = output_->Snapshot(nullptr);
+    snapshot = output_->Snapshot();
   }
   VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
   const double processing_time = TotalProcessingTime(snapshot);

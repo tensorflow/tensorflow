@@ -568,13 +568,14 @@ S3FileSystem::GetExecutor() {
 }
 
 Status S3FileSystem::NewRandomAccessFile(
-    const string& fname, std::unique_ptr<RandomAccessFile>* result) {
+    const string& fname,
+    std::unique_ptr<RandomAccessFile>* result /*, TransactionToken* token */) {
   return NewRandomAccessFile(fname, result, true);
 }
 
 Status S3FileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result,
-    bool use_multi_part_download) {
+    bool use_multi_part_download /*, TransactionToken* token */) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
 
@@ -587,8 +588,9 @@ Status S3FileSystem::NewRandomAccessFile(
   return Status::OK();
 }
 
-Status S3FileSystem::NewWritableFile(const string& fname,
-                                     std::unique_ptr<WritableFile>* result) {
+Status S3FileSystem::NewWritableFile(
+    const string& fname,
+    std::unique_ptr<WritableFile>* result /*, TransactionToken* token */) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
   result->reset(new S3WritableFile(
@@ -599,8 +601,9 @@ Status S3FileSystem::NewWritableFile(const string& fname,
   return Status::OK();
 }
 
-Status S3FileSystem::NewAppendableFile(const string& fname,
-                                       std::unique_ptr<WritableFile>* result) {
+Status S3FileSystem::NewAppendableFile(
+    const string& fname,
+    std::unique_ptr<WritableFile>* result /*, TransactionToken* token */) {
   std::unique_ptr<RandomAccessFile> reader;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
   std::unique_ptr<char[]> buffer(new char[kS3ReadAppendableFileBufferSize]);
@@ -634,7 +637,8 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
 }
 
 Status S3FileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>*
+                             result /*, TransactionToken* token */) {
   uint64 size;
   TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
   std::unique_ptr<char[]> data(new char[size]);
@@ -649,14 +653,16 @@ Status S3FileSystem::NewReadOnlyMemoryRegionFromFile(
   return Status::OK();
 }
 
-Status S3FileSystem::FileExists(const string& fname) {
+Status S3FileSystem::FileExists(
+    const string& fname /*, TransactionToken* token */) {
   FileStatistics stats;
   TF_RETURN_IF_ERROR(this->Stat(fname, &stats));
   return Status::OK();
 }
 
-Status S3FileSystem::GetChildren(const string& dir,
-                                 std::vector<string>* result) {
+Status S3FileSystem::GetChildren(
+    const string& dir,
+    std::vector<string>* result /*, TransactionToken* token */) {
   VLOG(1) << "GetChildren for path: " << dir;
   string bucket, prefix;
   TF_RETURN_IF_ERROR(ParseS3Path(dir, true, &bucket, &prefix));
@@ -703,7 +709,8 @@ Status S3FileSystem::GetChildren(const string& dir,
   return Status::OK();
 }
 
-Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
+Status S3FileSystem::Stat(
+    const string& fname, FileStatistics* stats /*, TransactionToken* token */) {
   VLOG(1) << "Stat on path: " << fname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, true, &bucket, &object));
@@ -765,12 +772,14 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
   return Status::OK();
 }
 
-Status S3FileSystem::GetMatchingPaths(const string& pattern,
-                                      std::vector<string>* results) {
+Status S3FileSystem::GetMatchingPaths(
+    const string& pattern,
+    std::vector<string>* results /*, TransactionToken* token */) {
   return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
-Status S3FileSystem::DeleteFile(const string& fname) {
+Status S3FileSystem::DeleteFile(
+    const string& fname /*, TransactionToken* token */) {
   VLOG(1) << "DeleteFile: " << fname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
@@ -786,7 +795,8 @@ Status S3FileSystem::DeleteFile(const string& fname) {
   return Status::OK();
 }
 
-Status S3FileSystem::CreateDir(const string& dirname) {
+Status S3FileSystem::CreateDir(
+    const string& dirname /*, TransactionToken* token */) {
   VLOG(1) << "CreateDir: " << dirname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(dirname, true, &bucket, &object));
@@ -813,7 +823,8 @@ Status S3FileSystem::CreateDir(const string& dirname) {
   return Status::OK();
 }
 
-Status S3FileSystem::DeleteDir(const string& dirname) {
+Status S3FileSystem::DeleteDir(
+    const string& dirname /*, TransactionToken* token */) {
   VLOG(1) << "DeleteDir: " << dirname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(dirname, false, &bucket, &object));
@@ -852,7 +863,8 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
   return Status::OK();
 }
 
-Status S3FileSystem::GetFileSize(const string& fname, uint64* file_size) {
+Status S3FileSystem::GetFileSize(
+    const string& fname, uint64* file_size /*, TransactionToken* token */) {
   FileStatistics stats;
   TF_RETURN_IF_ERROR(this->Stat(fname, &stats));
   *file_size = stats.length;
@@ -1123,7 +1135,8 @@ Status S3FileSystem::CompleteMultiPartCopy(
   return Status::OK();
 }
 
-Status S3FileSystem::RenameFile(const string& src, const string& target) {
+Status S3FileSystem::RenameFile(
+    const string& src, const string& target /*, TransactionToken* token */) {
   VLOG(1) << "RenameFile from: " << src << " to: " << target;
   string src_bucket, src_object, target_bucket, target_object;
   TF_RETURN_IF_ERROR(ParseS3Path(src, false, &src_bucket, &src_object));

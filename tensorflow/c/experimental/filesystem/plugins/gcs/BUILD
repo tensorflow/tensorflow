@@ -25,7 +25,9 @@ cc_library(
         "//tensorflow:windows": get_win_copts(),
     }),
     deps = [
+        ":expiring_lru_cache",
         ":gcs_helper",
+        ":ram_file_block_cache",
         "//tensorflow/c:env",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",

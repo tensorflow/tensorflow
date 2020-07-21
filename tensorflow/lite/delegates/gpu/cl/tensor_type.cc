@@ -395,7 +395,21 @@ absl::Status TensorDescriptor::PerformGetWHOffsetSelector(
         "GetWHOffset require two arguments(X and Y coordinates), but ",
         args.size(), " was passed"));
   }
-  *result = absl::StrCat(args[1], " * ", GetWidth(), " + ", args[0]);
+  if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
+    auto it = state_vars_.find("batch_id");
+    std::string batch_id;
+    if (it == state_vars_.end()) {
+      return absl::NotFoundError(
+          "Not found batch_id. Should be setted up by SetBatchRef(). method");
+    } else {
+      batch_id = it->second;
+    }
+    *result = absl::StrCat("((", args[1], ") * ", GetWidth(), " + (", args[0],
+                           ")) * batch + (", batch_id, ")");
+  } else {
+    *result =
+        absl::StrCat("(", args[1], ") * ", GetWidth(), " + (", args[0], ")");
+  }
   return absl::OkStatus();
 }
 

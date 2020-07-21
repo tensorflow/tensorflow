@@ -28,13 +28,14 @@ limitations under the License.
 namespace py = pybind11;
 
 PYBIND11_MODULE(_pywrap_server_lib, m) {
-  py::class_<tensorflow::data::MasterGrpcDataServer>(m, "MasterGrpcDataServer")
-      .def("start", &tensorflow::data::MasterGrpcDataServer::Start)
-      .def("stop", &tensorflow::data::MasterGrpcDataServer::Stop)
-      .def("join", &tensorflow::data::MasterGrpcDataServer::Join)
-      .def("bound_port", &tensorflow::data::MasterGrpcDataServer::BoundPort)
+  py::class_<tensorflow::data::DispatchGrpcDataServer>(m,
+                                                       "DispatchGrpcDataServer")
+      .def("start", &tensorflow::data::DispatchGrpcDataServer::Start)
+      .def("stop", &tensorflow::data::DispatchGrpcDataServer::Stop)
+      .def("join", &tensorflow::data::DispatchGrpcDataServer::Join)
+      .def("bound_port", &tensorflow::data::DispatchGrpcDataServer::BoundPort)
       .def("num_workers",
-           [](tensorflow::data::MasterGrpcDataServer* server) -> int {
+           [](tensorflow::data::DispatchGrpcDataServer* server) -> int {
              int num_workers;
              tensorflow::Status status = server->NumWorkers(&num_workers);
              tensorflow::MaybeRaiseFromStatus(status);
@@ -48,12 +49,12 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort);
 
   m.def(
-      "TF_DATA_NewMasterServer",
+      "TF_DATA_NewDispatchServer",
       [](int port, std::string protocol)
-          -> std::unique_ptr<tensorflow::data::MasterGrpcDataServer> {
-        std::unique_ptr<tensorflow::data::MasterGrpcDataServer> server;
+          -> std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> {
+        std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewMasterServer(port, protocol, &server);
+            tensorflow::data::NewDispatchServer(port, protocol, &server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
@@ -61,12 +62,12 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
 
   m.def(
       "TF_DATA_NewWorkerServer",
-      [](int port, std::string protocol, std::string master_address,
+      [](int port, std::string protocol, std::string dispatcher_address,
          std::string worker_address)
           -> std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> {
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
         tensorflow::Status status = tensorflow::data::NewWorkerServer(
-            port, protocol, master_address, worker_address, &server);
+            port, protocol, dispatcher_address, worker_address, &server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },

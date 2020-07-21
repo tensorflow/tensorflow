@@ -83,9 +83,13 @@ class HexagonDelegate : public SimpleDelegateInterface {
 
 TfLiteDelegate* TfLiteHexagonDelegateCreate(
     const TfLiteHexagonDelegateOptions* options) {
-  // return tflite::CreateDelegate(options);
-  return tflite::TfLiteDelegateFactory::CreateSimpleDelegate(
-      std::make_unique<tflite::HexagonDelegate>(options));
+  auto* initialized_delegate =
+      tflite::TfLiteDelegateFactory::CreateSimpleDelegate(
+          std::make_unique<tflite::HexagonDelegate>(options));
+  if (options->enable_dynamic_batch_size) {
+    initialized_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
+  }
+  return initialized_delegate;
 }
 
 TfLiteHexagonDelegateOptions TfLiteHexagonDelegateOptionsDefault() {

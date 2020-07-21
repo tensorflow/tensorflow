@@ -756,7 +756,7 @@ TEST(SnapshotTest, Model) {
     cur_node = cur_node->inputs().front();
   }
 
-  std::shared_ptr<Node> root_copy = root->Snapshot(nullptr);
+  std::shared_ptr<Node> root_copy = root->Snapshot();
   cur_node = root;
   std::shared_ptr<Node> cur_node_copy = root_copy;
 

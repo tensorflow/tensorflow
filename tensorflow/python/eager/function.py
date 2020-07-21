@@ -2163,6 +2163,7 @@ class ConcreteFunction(object):
     Returns:
       The actual call output.
     """
+    # TODO(jlchu): implement in C++.
     if self._func_graph.structured_outputs is None:
       return result
 

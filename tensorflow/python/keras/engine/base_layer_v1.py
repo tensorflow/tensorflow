@@ -454,7 +454,7 @@ class Layer(base_layer.Layer):
       self._handle_weight_regularization(name_in_scope,
                                          variable,
                                          regularizer)
-    if isinstance(variable, tf_variables.PartitionedVariable):
+    if base_layer_utils.is_split_variable(variable):
       for v in variable:
         backend.track_variable(v)
         if trainable:
@@ -1923,7 +1923,7 @@ class Layer(base_layer.Layer):
         regularization = regularizer(v)
       return regularization
 
-    if isinstance(variable, tf_variables.PartitionedVariable):
+    if base_layer_utils.is_split_variable(variable):
       for v in variable:
         self.add_loss(functools.partial(_loss_for_variable, v))
     else:
@@ -2194,7 +2194,7 @@ class Layer(base_layer.Layer):
     super(tracking.AutoTrackable, self).__delattr__(name)
 
     if (isinstance(existing_value, Layer)
-        or trackable_layer_utils.has_weights(existing_value)):
+        or base_layer_utils.has_weights(existing_value)):
       super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
@@ -2244,7 +2244,7 @@ class Layer(base_layer.Layer):
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
     if (getattr(self, '_auto_track_sub_layers', True) and
-        (isinstance(value, Layer) or trackable_layer_utils.has_weights(value))):
+        (isinstance(value, Layer) or base_layer_utils.has_weights(value))):
       self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.

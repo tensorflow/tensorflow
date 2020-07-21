@@ -28,19 +28,22 @@ py_library(
     name = "keras_benchmark_lib_pip",
     deps = [
         ":benchmark_util",
+        ":distribution_util",
         "//tensorflow/python/keras/benchmarks/saved_model_benchmarks:saved_model_benchmark_util",
     ],
 )
+
+COMMON_TAGS = [
+    "no_pip",  # b/161253163
+    "no_windows",  # b/160628318
+]
 
 py_test(
     name = "keras_cpu_benchmark_test",
     size = "large",
     srcs = ["keras_cpu_benchmark_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_pip",  # b/161253163
-        "no_windows",  # b/160628318
-    ],
+    tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -53,10 +56,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["eager_microbenchmarks_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_oss_py38",  # b/160170347
-        "no_windows",  # b/160269052
-    ],
+    tags = COMMON_TAGS,
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -71,15 +71,101 @@ cuda_py_test(
     ],
 )
 
-py_test(
-    name = "keras_examples_benchmark_test",
-    size = "medium",
-    srcs = ["keras_examples_benchmark_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_pip",  # b/161253163
-        "no_windows",  # b/160628318
+py_library(
+    name = "benchmark_util",
+    srcs = ["benchmark_util.py"],
+    deps = [
+        ":distribution_util",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
+)
+
+py_test(
+    name = "bidirectional_lstm_benchmark_test",
+    size = "medium",
+    srcs = ["keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "text_classification_transformer_benchmark_test",
+    srcs = ["keras_examples_benchmarks/text_classification_transformer_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "antirectifier_benchmark_test",
+    srcs = ["keras_examples_benchmarks/antirectifier_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "mnist_conv_benchmark_test",
+    srcs = ["keras_examples_benchmarks/mnist_conv_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "mnist_hierarchical_rnn_benchmark_test",
+    srcs = ["keras_examples_benchmarks/mnist_hierarchical_rnn_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "mnist_irnn_benchmark_test",
+    srcs = ["keras_examples_benchmarks/mnist_irnn_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "reuters_mlp_benchmark_test",
+    srcs = ["keras_examples_benchmarks/reuters_mlp_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "cifar10_cnn_benchmark_test",
+    srcs = ["keras_examples_benchmarks/cifar10_cnn_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -87,10 +173,9 @@ py_test(
 )
 
 py_library(
-    name = "benchmark_util",
-    srcs = ["benchmark_util.py"],
+    name = "distribution_util",
+    srcs = ["distribution_util.py"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
     ],
 )

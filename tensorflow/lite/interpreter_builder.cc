@@ -121,6 +121,8 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
   const char* filename_pywrap_tensorflow_internal =
 #if defined(_WIN32)
       "_pywrap_tensorflow_internal.pyd";
+#elif defined(__APPLE__)
+      "python/_pywrap_tensorflow_internal.so";
 #else
       "_pywrap_tensorflow_internal.so";
 #endif

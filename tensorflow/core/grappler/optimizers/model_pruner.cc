@@ -401,7 +401,7 @@ Status SplitIdentityNInputs(GraphDef* graph,
     }
 
     const int num_non_control_inputs = NumNonControlInputs(*node);
-    int terminal_second_size = terminal.second.size();
+    const int terminal_second_size = terminal.second.size();
     if (node->attr().count("T") == 0 ||
         node->attr().at("T").list().type_size() != num_non_control_inputs ||
         terminal_second_size >= num_non_control_inputs) {
