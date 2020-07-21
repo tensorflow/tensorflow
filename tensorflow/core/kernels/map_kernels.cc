@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/kernels/map_kernels.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -38,4 +41,11 @@ REGISTER_KERNEL_BUILDER(Name("TensorMapErase").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("TensorMapHasKey").Device(DEVICE_CPU),
                         TensorMapHasKey);
 
+#undef REGISTER_TENSOR_LIST_OPS_CPU
+
+#define REGISTER_TENSOR_LIST_OPS_CPU(T)
+
+REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
+                                         DEVICE_CPU, TensorMap,
+                                         TensorMapZerosLike<CPUDevice>);
 }

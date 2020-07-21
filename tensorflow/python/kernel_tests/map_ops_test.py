@@ -215,5 +215,8 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       g = tape.gradient(l * 5, v)
       self.assertAllClose(g, 5)
 
+      g2 = tape.gradient(e * 6, v2)
+      self.assertAllClose(g2, 6)
+
 if __name__ == '__main__':
   test.main()

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/tensor_map.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/util/tensor_ops_util.h"
 
 #include <iostream>
 
@@ -183,6 +184,18 @@ class TensorMapHasKey : public OpKernel {
   }
 };
 
+
+template <typename Device>
+Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) {
+  y->element_dtype = x.element_dtype;
+  y->element_shape = x.element_shape;
+  for (const std::pair<TensorKey,Tensor>& p : x.tensors()) {
+    Tensor val;
+    TF_RETURN_IF_ERROR(ZerosLikeTensor<Device>(c, p.second, &val));
+    y->tensors().emplace(p.first, val);
+  }
+  return Status::OK();
+}
 
 }  // namespace tensorflow
 
