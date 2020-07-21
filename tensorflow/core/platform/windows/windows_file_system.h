@@ -32,70 +32,55 @@ class WindowsFileSystem : public FileSystem {
 
   ~WindowsFileSystem() {}
 
-  Status NewRandomAccessFile(
-      const string& fname,
-      std::unique_ptr<RandomAccessFile>*
-          result /*, TransactionToken* token = nullptr */) override;
+  Status NewRandomAccessFile(const string& fname,
+                             std::unique_ptr<RandomAccessFile>* result,
+                             TransactionToken* token = nullptr) override;
 
-  Status NewWritableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr */) override;
+  Status NewWritableFile(const string& fname,
+                         std::unique_ptr<WritableFile>* result,
+                         TransactionToken* token = nullptr) override;
 
-  Status NewAppendableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr */) override;
+  Status NewAppendableFile(const string& fname,
+                           std::unique_ptr<WritableFile>* result,
+                           TransactionToken* token = nullptr) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>*
-          result /*, TransactionToken* token = nullptr */) override;
+      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result,
+      TransactionToken* token = nullptr) override;
 
-  Status FileExists(
-      const string& fname /*, TransactionToken* token = nullptr */) override;
+  Status FileExists(const string& fname,
+                    TransactionToken* token = nullptr) override;
 
-  Status GetChildren(
-      const string& dir,
-      std::vector<string>* result /*, TransactionToken* token = nullptr */)
-      override;
+  Status GetChildren(const string& dir, std::vector<string>* result,
+                     TransactionToken* token = nullptr) override;
 
-  Status GetMatchingPaths(
-      const string& pattern,
-      std::vector<string>* result /*, TransactionToken* token = nullptr */)
-      override;
+  Status GetMatchingPaths(const string& pattern, std::vector<string>* result,
+                          TransactionToken* token = nullptr) override;
 
-  bool Match(
-      const string& filename,
-      const string& pattern /*, TransactionToken* token = nullptr */) override;
+  bool Match(const string& filename, const string& pattern) override;
 
-  Status Stat(
-      const string& fname,
-      FileStatistics* stat /*, TransactionToken* token = nullptr */) override;
+  Status Stat(const string& fname, FileStatistics* stat,
+              TransactionToken* token = nullptr) override;
 
-  Status DeleteFile(
-      const string& fname /*, TransactionToken* token = nullptr */) override;
+  Status DeleteFile(const string& fname,
+                    TransactionToken* token = nullptr) override;
 
-  Status CreateDir(
-      const string& name /*, TransactionToken* token = nullptr */) override;
+  Status CreateDir(const string& name,
+                   TransactionToken* token = nullptr) override;
 
-  Status DeleteDir(
-      const string& name /*, TransactionToken* token = nullptr */) override;
+  Status DeleteDir(const string& name,
+                   TransactionToken* token = nullptr) override;
 
-  Status GetFileSize(
-      const string& fname,
-      uint64* size /*, TransactionToken* token = nullptr */) override;
+  Status GetFileSize(const string& fname, uint64* size,
+                     TransactionToken* token = nullptr) override;
 
-  Status IsDirectory(
-      const string& fname /*, TransactionToken* token = nullptr */) override;
+  Status IsDirectory(const string& fname,
+                     TransactionToken* token = nullptr) override;
 
-  Status RenameFile(
-      const string& src,
-      const string& target /*, TransactionToken* token = nullptr */) override;
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token = nullptr) override;
 
-  string TranslateName(
-      const string& name /*, TransactionToken* token = nullptr */)
-      const override {
+  string TranslateName(const string& name) const override {
     return name;
   }
 

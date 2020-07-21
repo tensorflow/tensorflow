@@ -975,8 +975,8 @@ GcsFileSystem::GcsFileSystem(
       additional_header_(additional_header) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
-    const string& fname,
-    std::unique_ptr<RandomAccessFile>* result /*, TransactionToken* token */) {
+    const string& fname, std::unique_ptr<RandomAccessFile>* result,
+    TransactionToken* token) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
@@ -1151,9 +1151,9 @@ void GcsFileSystem::ClearFileCaches(const string& fname) {
   // MatchingPathsCache as well.
 }
 
-Status GcsFileSystem::NewWritableFile(
-    const string& fname,
-    std::unique_ptr<WritableFile>* result /*, TransactionToken* token */) {
+Status GcsFileSystem::NewWritableFile(const string& fname,
+                                      std::unique_ptr<WritableFile>* result,
+                                      TransactionToken* token) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
@@ -1165,9 +1165,9 @@ Status GcsFileSystem::NewWritableFile(
 
 // Reads the file from GCS in chunks and stores it in a tmp file,
 // which is then passed to GcsWritableFile.
-Status GcsFileSystem::NewAppendableFile(
-    const string& fname,
-    std::unique_ptr<WritableFile>* result /*, TransactionToken* token */) {
+Status GcsFileSystem::NewAppendableFile(const string& fname,
+                                        std::unique_ptr<WritableFile>* result,
+                                        TransactionToken* token) {
   std::unique_ptr<RandomAccessFile> reader;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
   std::unique_ptr<char[]> buffer(new char[kReadAppendableFileBufferSize]);
@@ -1206,8 +1206,8 @@ Status GcsFileSystem::NewAppendableFile(
 }
 
 Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>*
-                             result /*, TransactionToken* token */) {
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result,
+    TransactionToken* token) {
   uint64 size;
   TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
   std::unique_ptr<char[]> data(new char[size]);
@@ -1222,8 +1222,7 @@ Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return Status::OK();
 }
 
-Status GcsFileSystem::FileExists(
-    const string& fname /*, TransactionToken* token */) {
+Status GcsFileSystem::FileExists(const string& fname, TransactionToken* token) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
@@ -1437,17 +1436,17 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
   return s;
 }
 
-Status GcsFileSystem::GetChildren(
-    const string& dirname,
-    std::vector<string>* result /*, TransactionToken* token */) {
+Status GcsFileSystem::GetChildren(const string& dirname,
+                                  std::vector<string>* result,
+                                  TransactionToken* token) {
   return GetChildrenBounded(dirname, UINT64_MAX, result,
                             false /* recursively */,
                             false /* include_self_directory_marker */);
 }
 
-Status GcsFileSystem::GetMatchingPaths(
-    const string& pattern,
-    std::vector<string>* results /*, TransactionToken* token */) {
+Status GcsFileSystem::GetMatchingPaths(const string& pattern,
+                                       std::vector<string>* results,
+                                       TransactionToken* token) {
   MatchingPathsCache::ComputeFunc compute_func =
       [this](const string& pattern, std::vector<string>* results) {
         results->clear();
@@ -1607,8 +1606,8 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
   }
 }
 
-Status GcsFileSystem::Stat(
-    const string& fname, FileStatistics* stat /*, TransactionToken* token */) {
+Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat,
+                           TransactionToken* token) {
   if (!stat) {
     return errors::Internal("'stat' cannot be nullptr.");
   }
@@ -1642,8 +1641,7 @@ Status GcsFileSystem::Stat(
   return errors::NotFound("The specified path ", fname, " was not found.");
 }
 
-Status GcsFileSystem::DeleteFile(
-    const string& fname /*, TransactionToken* token */) {
+Status GcsFileSystem::DeleteFile(const string& fname, TransactionToken* token) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
@@ -1659,8 +1657,8 @@ Status GcsFileSystem::DeleteFile(
   return Status::OK();
 }
 
-Status GcsFileSystem::CreateDir(
-    const string& dirname /*, TransactionToken* token */) {
+Status GcsFileSystem::CreateDir(const string& dirname,
+                                TransactionToken* token) {
   string dirname_with_slash = MaybeAppendSlash(dirname);
   VLOG(3) << "CreateDir: creating directory with dirname: " << dirname
           << " and dirname_with_slash: " << dirname_with_slash;
@@ -1709,8 +1707,8 @@ Status GcsFileSystem::CreateDir(
 
 // Checks that the directory is empty (i.e no objects with this prefix exist).
 // Deletes the GCS directory marker if it exists.
-Status GcsFileSystem::DeleteDir(
-    const string& dirname /*, TransactionToken* token */) {
+Status GcsFileSystem::DeleteDir(const string& dirname,
+                                TransactionToken* token) {
   std::vector<string> children;
   // A directory is considered empty either if there are no matching objects
   // with the corresponding name prefix or if there is exactly one matching
@@ -1730,8 +1728,8 @@ Status GcsFileSystem::DeleteDir(
   return Status::OK();
 }
 
-Status GcsFileSystem::GetFileSize(
-    const string& fname, uint64* file_size /*, TransactionToken* token */) {
+Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size,
+                                  TransactionToken* token) {
   if (!file_size) {
     return errors::Internal("'file_size' cannot be nullptr.");
   }
@@ -1746,8 +1744,8 @@ Status GcsFileSystem::GetFileSize(
   return Status::OK();
 }
 
-Status GcsFileSystem::RenameFile(
-    const string& src, const string& target /*, TransactionToken* token */) {
+Status GcsFileSystem::RenameFile(const string& src, const string& target,
+                                 TransactionToken* token) {
   if (!IsDirectory(src).ok()) {
     return RenameObject(src, target);
   }
@@ -1809,8 +1807,8 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
       [this, &src]() { return DeleteFile(src); }, retry_config_);
 }
 
-Status GcsFileSystem::IsDirectory(
-    const string& fname /*, TransactionToken* token */) {
+Status GcsFileSystem::IsDirectory(const string& fname,
+                                  TransactionToken* token) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
@@ -1836,9 +1834,10 @@ Status GcsFileSystem::IsDirectory(
   return errors::NotFound("The specified path ", fname, " was not found.");
 }
 
-Status GcsFileSystem::DeleteRecursively(
-    const string& dirname, int64* undeleted_files,
-    int64* undeleted_dirs /*, TransactionToken* token */) {
+Status GcsFileSystem::DeleteRecursively(const string& dirname,
+                                        int64* undeleted_files,
+                                        int64* undeleted_dirs,
+                                        TransactionToken* token) {
   if (!undeleted_files || !undeleted_dirs) {
     return errors::Internal(
         "'undeleted_files' and 'undeleted_dirs' cannot be nullptr.");
@@ -1879,7 +1878,7 @@ Status GcsFileSystem::DeleteRecursively(
 // Flushes all caches for filesystem metadata and file contents. Useful for
 // reclaiming memory once filesystem operations are done (e.g. model is loaded),
 // or for resetting the filesystem to a consistent state.
-void GcsFileSystem::FlushCaches(/* TransactionToken* token */) {
+void GcsFileSystem::FlushCaches(TransactionToken* token) {
   tf_shared_lock l(block_cache_lock_);
   file_block_cache_->Flush();
   stat_cache_->Clear();

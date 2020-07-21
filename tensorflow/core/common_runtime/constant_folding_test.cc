@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/constant_folding.h"
+
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/cc/ops/nn_ops.h"
-#include "tensorflow/core/common_runtime/constant_folding.h"
-
 #include "tensorflow/cc/ops/array_ops_internal.h"
+#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -689,7 +689,8 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
 
   ::tensorflow::Status NewReadOnlyMemoryRegionFromFile(
       const string& fname,
-      std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>* result) override {
+      std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>* result,
+      TransactionToken* token = nullptr) override {
     if (fname != kTestMemRegionName) {
       return ::tensorflow::errors::Unimplemented(
           "NewReadOnlyMemoryRegionFromFile unimplemented");

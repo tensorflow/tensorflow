@@ -61,8 +61,8 @@ class TestFileSystem : public NullFileSystem {
  public:
   ~TestFileSystem() override = default;
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
+      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result,
+      TransactionToken* token = nullptr) override {
     float val = 0;
     StringPiece scheme, host, path;
     io::ParseURI(fname, &scheme, &host, &path);

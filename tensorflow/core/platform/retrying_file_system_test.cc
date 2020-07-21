@@ -102,7 +102,7 @@ class MockFileSystem : public FileSystem {
   Status NewRandomAccessFile(
       const string& fname,
       std::unique_ptr<RandomAccessFile>*
-          result /*, TransactionToken* token = nullptr */) override {
+          result , TransactionToken* token = nullptr ) override {
     *result = std::move(random_access_file_to_return);
     return calls_.ConsumeNextCall("NewRandomAccessFile");
   }
@@ -110,7 +110,7 @@ class MockFileSystem : public FileSystem {
   Status NewWritableFile(
       const string& fname,
       std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr */) override {
+          result , TransactionToken* token = nullptr ) override {
     *result = std::move(writable_file_to_return);
     return calls_.ConsumeNextCall("NewWritableFile");
   }
@@ -118,7 +118,7 @@ class MockFileSystem : public FileSystem {
   Status NewAppendableFile(
       const string& fname,
       std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr */) override {
+          result , TransactionToken* token = nullptr ) override {
     *result = std::move(writable_file_to_return);
     return calls_.ConsumeNextCall("NewAppendableFile");
   }
@@ -126,74 +126,74 @@ class MockFileSystem : public FileSystem {
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>*
-          result /*, TransactionToken* token = nullptr */) override {
+          result , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("NewReadOnlyMemoryRegionFromFile");
   }
 
   Status FileExists(
-      const string& fname /*, TransactionToken* token = nullptr */) override {
+      const string& fname , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("FileExists");
   }
 
   Status GetChildren(
       const string& dir,
-      std::vector<string>* result /*, TransactionToken* token = nullptr */)
+      std::vector<string>* result , TransactionToken* token = nullptr )
       override {
     return calls_.ConsumeNextCall("GetChildren");
   }
 
   Status GetMatchingPaths(
       const string& dir,
-      std::vector<string>* result /*, TransactionToken* token = nullptr */)
+      std::vector<string>* result , TransactionToken* token = nullptr )
       override {
     return calls_.ConsumeNextCall("GetMatchingPaths");
   }
 
   Status Stat(
       const string& fname,
-      FileStatistics* stat /*, TransactionToken* token = nullptr */) override {
+      FileStatistics* stat , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("Stat");
   }
 
   Status DeleteFile(
-      const string& fname /*, TransactionToken* token = nullptr */) override {
+      const string& fname , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("DeleteFile");
   }
 
   Status CreateDir(
-      const string& dirname /*, TransactionToken* token = nullptr */) override {
+      const string& dirname , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("CreateDir");
   }
 
   Status DeleteDir(
-      const string& dirname /*, TransactionToken* token = nullptr */) override {
+      const string& dirname , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("DeleteDir");
   }
 
   Status GetFileSize(
       const string& fname,
-      uint64* file_size /*, TransactionToken* token = nullptr */) override {
+      uint64* file_size , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("GetFileSize");
   }
 
   Status RenameFile(
       const string& src,
-      const string& target /*, TransactionToken* token = nullptr */) override {
+      const string& target , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("RenameFile");
   }
 
   Status IsDirectory(
-      const string& dirname /*, TransactionToken* token = nullptr */) override {
+      const string& dirname , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("IsDirectory");
   }
 
   Status DeleteRecursively(
       const string& dirname, int64* undeleted_files,
-      int64* undeleted_dirs /*, TransactionToken* token = nullptr */) override {
+      int64* undeleted_dirs , TransactionToken* token = nullptr ) override {
     return calls_.ConsumeNextCall("DeleteRecursively");
   }
 
-  void FlushCaches(/* TransactionToken* token=nullptr */) override {
+  void FlushCaches(TransactionToken* token=nullptr) override {
     if (flushed_) {
       *flushed_ = true;
     }
