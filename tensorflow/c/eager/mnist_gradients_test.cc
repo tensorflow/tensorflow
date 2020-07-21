@@ -306,8 +306,6 @@ TEST_P(CppGradients, TestMatMulGrad) {
    *  Possible memory issue where the inputs and/or Op is not resetting the 2nd time?
    */
 
-  printArr(result_data, 4);
-
   outputs[0]->Release();
   outputs[1]->Release();
   TF_DeleteTensor(dA_tensor);
