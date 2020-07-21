@@ -166,6 +166,15 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         backend.eval(output_from_sigmoid),
         atol=1e-5)
 
+  def test_binary_crossentropy_loss_with_errors_equal_to_one(self):
+    target = backend.variable(np.ones(2, 2))
+    output = backend.variable(np.zeros(2, 2))
+    loss_value = losses.binary_crossentropy(target, output)
+    np.testing.assert_allclose(
+        backend.eval(loss_value),
+        -np.log(backend.epsilon()),
+        atol=1e-5)
+
   def test_get_bce(self):
     bce_fn = losses.get('bce')
     self.assertEqual(bce_fn, losses.binary_crossentropy)
