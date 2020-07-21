@@ -503,7 +503,6 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
   DVLOG(3) << prefix() << " Skip enter";
   RecordStart(ctx, /*stop_output=*/true);
   Status s = SkipInternal(ctx, num_to_skip, end_of_sequence, num_skipped);
-  if (s.ok() && !*end_of_sequence) RecordElement(ctx);
   RecordStop(ctx, /*start_output=*/true);
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
     s = errors::Internal("Iterator \"", params_.prefix,
@@ -527,6 +526,14 @@ Status DatasetBaseIterator::SkipInternal(
     if (*end_of_sequence) {
       return Status::OK();
     }
+    // RecordElement is used to count the number of element computed and
+    // help calculate the CPU time spent on a given iterator to do the
+    // autotuning.
+    // Here we only call RecordElement in the default implementation of
+    // SkipInternal (which trivially calls GetNextInternal) and assume
+    // that the overriden SkipInternal in the derived class will have
+    // negligible cost compare to its GetNextInternal.
+    RecordElement(ctx, &out_tensors);
     (*num_skipped)++;
   }
   return Status::OK();
