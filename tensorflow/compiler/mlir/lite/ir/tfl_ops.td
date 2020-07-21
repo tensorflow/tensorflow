@@ -4296,8 +4296,7 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let hasCanonicalizer = 1;
 }
 
-def TFL_CustomOp : Op<TFL_Dialect, "custom", [
-  NoSideEffect, NoQuantizableResult]> {
+def TFL_CustomOp : Op<TFL_Dialect, "custom", [NoSideEffect]> {
   let summary = "Custom op";
 
   let description = [{
@@ -4318,31 +4317,6 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
   let results = (outs Variadic<AnyTensor>:$output);
 
   let verifier = [{ return Verify(*this); }];
-}
-
-def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
-  // Currently the custom ops have no side effect
-  // TODO(karimnosseir): Revisit if this needs updating.
-  NoSideEffect,
-  NoQuantizableResult,
-  SingleBlockImplicitTerminator<"YieldOp">]> {
-  let summary = "Wrapper Op for TF custom ops.";
-
-  let description = [{
-    A wrapper op around any Custom TF op. These includes ops defined using
-    custom_opdefs or linked which are not defined in TF dialect.
-    This Op just wraps the custom op inside a region.
-    Note #1, this Op will not include TF Lite custom ops defined using CustomOp.
-    Note #2, this op is just internal representation inside the converter and
-    are not exposed/exported when the model is exported to Flatbuffer.
-  }];
-
-  let arguments = (ins
-    Variadic<TFL_TensorOfOrNone<[AnyType]>>:$input
-  );
-  let results = (outs Variadic<AnyTensor>:$output);
-
-  let regions = (region SizedRegion<1>:$body);
 }
 
 #endif // TFL_OPS
