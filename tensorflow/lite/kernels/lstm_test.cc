@@ -41,11 +41,7 @@ class LSTMOpModel : public SingleOpModel {
               bool use_projection_bias, float cell_clip, float proj_clip,
               const TensorType weight_type, bool model_has_legacy_20_inputs,
               bool is_layer_norm, bool asymmetric_quantize_inputs)
-      : n_batch_(n_batch),
-        n_input_(n_input),
-        n_cell_(n_cell),
-        n_output_(n_output),
-        weight_type_(weight_type) {
+      : n_input_(n_input), n_output_(n_output), weight_type_(weight_type) {
     input_ = AddInput({TensorType_FLOAT32, {n_batch, n_input}});
 
     if (use_cifg) {
@@ -103,8 +99,8 @@ class LSTMOpModel : public SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    output_state_ = AddInput({TensorType_FLOAT32, {n_batch, n_output}}, true);
-    cell_state_ = AddInput({TensorType_FLOAT32, {n_batch, n_cell}}, true);
+    AddInput({TensorType_FLOAT32, {n_batch, n_output}}, true);
+    AddInput({TensorType_FLOAT32, {n_batch, n_cell}}, true);
 
     // Layer norm weights.
     if (!model_has_legacy_20_inputs) {
@@ -231,8 +227,6 @@ class LSTMOpModel : public SingleOpModel {
 
   int num_inputs() { return n_input_; }
   int num_outputs() { return n_output_; }
-  int num_cells() { return n_cell_; }
-  int num_batches() { return n_batch_; }
 
  protected:
   int input_;
@@ -262,14 +256,10 @@ class LSTMOpModel : public SingleOpModel {
 
   int projection_weights_;
   int projection_bias_;
-  int output_state_;
-  int cell_state_;
 
   int output_;
 
-  int n_batch_;
   int n_input_;
-  int n_cell_;
   int n_output_;
 
  private:
@@ -1676,10 +1666,7 @@ class LSTMIntegerOpModel : public SingleOpModel {
                      bool use_8x8_8_implementation,
                      const std::vector<std::pair<float, float>>& ranges,
                      const std::vector<std::pair<float, int>>& intermediates)
-      : n_batch_(n_batch),
-        n_input_(n_input),
-        n_cell_(n_cell),
-        n_output_(n_output) {
+      : n_input_(n_input), n_output_(n_output) {
     input_ = AddInput({TensorType_INT8,
                        {n_batch, n_input},
                        ranges[0].first,
@@ -1776,16 +1763,16 @@ class LSTMIntegerOpModel : public SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    output_state_ = AddInput({TensorType_INT16,
-                              {n_batch, n_output},
-                              ranges[18].first,
-                              ranges[18].second},
-                             true);
-    cell_state_ = AddInput({TensorType_INT16,
-                            {n_batch, n_cell},
-                            ranges[19].first,
-                            ranges[19].second},
-                           true);
+    AddInput({TensorType_INT16,
+              {n_batch, n_output},
+              ranges[18].first,
+              ranges[18].second},
+             true);
+    AddInput({TensorType_INT16,
+              {n_batch, n_cell},
+              ranges[19].first,
+              ranges[19].second},
+             true);
 
     // Layer norm weights.
     if (use_layer_norm) {
@@ -1918,8 +1905,6 @@ class LSTMIntegerOpModel : public SingleOpModel {
 
   int num_inputs() { return n_input_; }
   int num_outputs() { return n_output_; }
-  int num_cells() { return n_cell_; }
-  int num_batches() { return n_batch_; }
 
  protected:
   int input_;
@@ -1951,12 +1936,8 @@ class LSTMIntegerOpModel : public SingleOpModel {
   int projection_bias_;
 
   int output_;
-  int output_state_;
-  int cell_state_;
 
-  int n_batch_;
   int n_input_;
-  int n_cell_;
   int n_output_;
 };
 
