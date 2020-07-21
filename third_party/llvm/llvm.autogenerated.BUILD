@@ -3188,6 +3188,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":BinaryFormat",
         ":DebugInfoCodeView",
         ":MC",
         ":Object",
