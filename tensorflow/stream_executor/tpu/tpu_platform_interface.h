@@ -33,6 +33,9 @@ class TpuPlatformInterface : public stream_executor::Platform {
   // is registered or an error occurred.
   static TpuPlatformInterface* GetRegisteredPlatform();
 
+  // Option to not initialize a platform if not necessary.
+  static TpuPlatformInterface* GetRegisteredPlatform(bool initialize_platform);
+
   virtual Status Reset() { return Reset(false); }
 
   virtual Status Reset(bool only_tear_down) = 0;

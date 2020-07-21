@@ -331,6 +331,7 @@ cc_library(
     name = "tpu_topology_external",
     srcs = ["tpu_topology.cc"],
     hdrs = ["tpu_topology.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":c_api_decl",
         "//tensorflow/core/platform:types",
