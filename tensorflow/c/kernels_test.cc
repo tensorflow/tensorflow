@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
+#include <iostream>
 struct MyCustomKernel {
   bool created;
   bool compute_called;
@@ -73,6 +74,12 @@ static void* MyCreateFunc(TF_OpKernelConstruction* ctx) {
   EXPECT_EQ(TF_FLOAT, type);
   TF_DeleteStatus(status);
 
+  // Exercise kernel NodeDef name read 
+  string_view name_string_view = TF_OpKernelConstruction_GetName(ctx); 
+  const char* kernel_name = "SomeKernelName";
+  const char* candidate_kernel_name = std::string(name_string_view.data, 
+                                                  name_string_view.len).c_str(); 
+  EXPECT_EQ(0, strcmp(kernel_name, candidate_kernel_name)); 
   return s;
 }
 
@@ -96,9 +103,11 @@ namespace tensorflow {
 
 static std::unique_ptr<OpKernel> GetFakeKernel(const char* device_name,
                                                const char* op_name,
+                                               const char* kernel_name,
                                                Status* status) {
   NodeDef def;
   def.set_op(op_name);
+  def.set_name(kernel_name);
   def.set_device(device_name);
   def.add_input("input1");
   def.add_input("input2");
@@ -144,13 +153,16 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
   {
     Status status;
     std::unique_ptr<OpKernel> kernel =
-        GetFakeKernel(device_name, op_name, &status);
+        GetFakeKernel(device_name, op_name, kernel_name, &status);
     TF_EXPECT_OK(status);
     ASSERT_NE(nullptr, kernel.get());
     kernel->Compute(nullptr);
   }
 
   ASSERT_TRUE(delete_called);
+}
+
+TEST(TestKernel, TestGetKernelName) { 
 }
 
 class DummyDevice : public DeviceBase {
@@ -233,7 +245,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     Status status;
     std::unique_ptr<OpKernel> kernel =
-        GetFakeKernel(device_name, op_name, &status);
+        GetFakeKernel(device_name, op_name, kernel_name, &status);
     TF_EXPECT_OK(status);
     ASSERT_NE(nullptr, kernel.get());
 
