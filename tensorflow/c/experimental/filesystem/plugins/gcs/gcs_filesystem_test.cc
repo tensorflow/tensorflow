@@ -412,6 +412,40 @@ TEST_F(GCSFilesystemTest, NewRandomAccessFile_Buffered_ReadAtEOF) {
   ASSERT_EQ(result, "") << "Result: " << result << "\n";
 }
 
+TEST_F(GCSFilesystemTest, NewRandomAccessFile_Buffered_CachedOutOfRange) {
+  tf_gcs_filesystem::InitTest(filesystem_, false, 10, 0, 0, 0, 0, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
+  std::string path = GetURIForPath("a_file");
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(InsertObject(path, "012345678", &gcs_file->gcs_client, status_));
+
+  TF_RandomAccessFile* file = new TF_RandomAccessFile;
+  tf_gcs_filesystem::NewRandomAccessFile(filesystem_, path.c_str(), file,
+                                         status_);
+  ASSERT_TF_OK(status_);
+
+  std::string result;
+  result.resize(5);
+  int64_t read = tf_random_access_file::Read(file, 0, result.length(), &result[0], status_);
+  ASSERT_EQ(read, 5) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(result, "01234") << "Result: " << result << "\n";
+
+  read = tf_random_access_file::Read(file, 4, result.length(), &result[0], status_);
+  ASSERT_EQ(read, 5) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  result.resize(read);
+  ASSERT_EQ(result, "45678") << "Result: " << result << "\n";
+
+  read = tf_random_access_file::Read(file, 5, result.length(), &result[0], status_);
+  ASSERT_EQ(read, 4) << "Read: " << read << "\n";
+  ASSERT_EQ(TF_GetCode(status_), TF_OUT_OF_RANGE) << TF_Message(status_);
+  result.resize(read);
+  ASSERT_EQ(result, "5678") << "Result: " << result << "\n";
+}
+
 }  // namespace
 }  // namespace tensorflow
 
