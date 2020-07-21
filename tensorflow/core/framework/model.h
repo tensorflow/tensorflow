@@ -492,7 +492,7 @@ class Node {
       const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Copy the node and add the (input, copy) pairs to the NodePairList.
-  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> clone_base,
+  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> cloned_output,
                                        NodePairList* node_pairs) const;
 
   // Compute total buffered bytes for the node and store in the total bytes map.

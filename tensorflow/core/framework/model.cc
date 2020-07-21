@@ -979,10 +979,10 @@ std::shared_ptr<Node> Node::Snapshot() const {
   while (!node_pairs.empty()) {
     auto node_pair = node_pairs.front();
     node_pairs.pop_front();
-    std::shared_ptr<Node> input_node = node_pair.first,
-                          parent_node_copy = node_pair.second;
-    parent_node_copy->add_input(
-        input_node->SnapshotHelper(parent_node_copy, &node_pairs));
+    std::shared_ptr<Node> current = node_pair.first,
+                          cloned_output = node_pair.second;
+    cloned_output->add_input(
+        current->SnapshotHelper(cloned_output, &node_pairs));
   }
   return result;
 }
@@ -1185,26 +1185,30 @@ void Node::DebugStringHelper(absl::flat_hash_map<string, string>* debug_strings)
 }
 
 std::shared_ptr<Node> Node::SnapshotHelper(
-    std::shared_ptr<Node> clone_base, Node::NodePairList* node_pairs) const {
+    std::shared_ptr<Node> cloned_output, Node::NodePairList* node_pairs) const {
   tf_shared_lock l(mu_);
-  std::shared_ptr<Node> result_node = Clone(clone_base);
+
+  // Clone current node(`this`), also set clone of its output node
+  // (`cloned_output`) to be the output node of the cloned node
+  // (`cloned_current`).
+  std::shared_ptr<Node> cloned_current = Clone(cloned_output);
   {
-    result_node->autotune_.store(autotune_);
-    result_node->buffered_bytes_.store(buffered_bytes_);
-    result_node->buffered_elements_.store(buffered_elements_);
-    result_node->bytes_consumed_.store(bytes_consumed_);
-    result_node->bytes_produced_.store(bytes_produced_);
-    result_node->num_elements_.store(num_elements_);
-    result_node->record_metrics_.store(false);
-    result_node->processing_time_.store(processing_time_);
-    mutex_lock l2(result_node->mu_);
-    result_node->parameters_ = parameters_;
+    cloned_current->autotune_.store(autotune_);
+    cloned_current->buffered_bytes_.store(buffered_bytes_);
+    cloned_current->buffered_elements_.store(buffered_elements_);
+    cloned_current->bytes_consumed_.store(bytes_consumed_);
+    cloned_current->bytes_produced_.store(bytes_produced_);
+    cloned_current->num_elements_.store(num_elements_);
+    cloned_current->record_metrics_.store(false);
+    cloned_current->processing_time_.store(processing_time_);
+    mutex_lock l2(cloned_current->mu_);
+    cloned_current->parameters_ = parameters_;
   }
 
   for (auto& input : inputs_) {
-    node_pairs->push_back(std::make_pair(input, result_node));
+    node_pairs->push_back(std::make_pair(input, cloned_current));
   }
-  return result_node;
+  return cloned_current;
 }
 
 void Node::TotalBufferedBytesHelper(
