@@ -24,6 +24,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
@@ -628,6 +629,15 @@ class OnesTest(test.TestCase):
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
         self.assertAllEqual(z, np.ones([2, 3]))
+
+  def testQintDtype(self):
+    @def_function.function(autograph=False)
+    def f():
+      return math_ops.cast(
+          array_ops.ones([2, 3], dtype=dtypes_lib.quint8), dtypes_lib.int32)
+
+    value = self.evaluate(f())
+    self.assertTrue(np.all(value))
 
 
 class OnesLikeTest(test.TestCase):
