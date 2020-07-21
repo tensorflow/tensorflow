@@ -507,7 +507,7 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   
   float expected_scores [6] = {13.0f, 18.0f, 17.0f, 24.0f, 21.0f, 30.0f};
   float tolerance = 1e-3;
-  
+
   for(int j = 0; j < 6; j++){
     ASSERT_NEAR(result_data[j], expected_scores[j], tolerance);
   }
