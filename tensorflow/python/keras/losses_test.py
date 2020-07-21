@@ -167,8 +167,8 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         atol=1e-5)
 
   def test_binary_crossentropy_loss_with_errors_equal_to_one(self):
-    target = backend.variable(np.ones(2, 2))
-    output = backend.variable(np.zeros(2, 2))
+    target = backend.variable(np.ones((2, 2)))
+    output = backend.variable(np.zeros((2, 2)))
     loss_value = losses.binary_crossentropy(target, output)
     np.testing.assert_allclose(
         backend.eval(loss_value),
