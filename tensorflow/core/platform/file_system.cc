@@ -441,7 +441,7 @@ std::string FileSystem::DecodeTransaction(const TransactionToken* token){
 // TODO(sami): Switch using StrCat when void* is supported
   if(token){
     std::stringstream oss;
-    oss<<"Token= "<<token->token<<", Owner="<<token->owner;
+    oss << "Token= " << token->token << ", Owner=" << token->owner;
     return oss.str();
   }
   return "No Transaction";
