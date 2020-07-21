@@ -93,7 +93,7 @@ class MatMulGradientFunction : public GradientFunction {
     (*grad_outputs)[0] = matmul_outputs[0];
 
     // Gradient for B
-    TF_RETURN_IF_ERROR(MatMul(ctx_, {upstream_grad},
+    TF_RETURN_IF_ERROR(MatMul(ctx_, {forward_inputs[0], upstream_grad},
                               absl::MakeSpan(matmul_outputs), "mm1", 
                               /*transpose_a = */true, /*transpose_b = */false));
 
@@ -114,6 +114,86 @@ GradientFunction* MatMulRegisterer(const ForwardOperation& op) {
  
 Status RegisterGradientMatMul(GradientRegistry* registry) {
   return registry->Register("MatMul", MatMulRegisterer);
+}
+
+// =================== Register gradients for Relu ============================
+class ReluGradientFunction : public GradientFunction {
+ public:
+  explicit ReluGradientFunction(AbstractContext* ctx, std::vector<AbstractTensorHandle*> f_inputs) : 
+            ctx_(ctx), forward_inputs(f_inputs) {}
+  
+  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
+    
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    AbstractTensorHandle* input_features = forward_inputs[0];
+    grad_outputs->resize(1);
+    std::vector<AbstractTensorHandle*> relugrad_outputs(1);
+
+    // Calculate Grad
+    TF_RETURN_IF_ERROR(ReluGrad(ctx_, {upstream_grad, input_features},
+                              absl::MakeSpan(relugrad_outputs), "relu_grad"));
+
+    (*grad_outputs)[0] = relugrad_outputs[0];
+
+    return Status::OK();
+  }
+  ~ReluGradientFunction() override {}
+
+ private:
+  AbstractContext* ctx_;
+  std::vector<AbstractTensorHandle*> forward_inputs;
+
+};
+
+GradientFunction* ReluRegisterer(const ForwardOperation& op) {
+  return new ReluGradientFunction(op.ctx, op.inputs);
+}
+
+Status RegisterGradientRelu(GradientRegistry* registry) {
+  return registry->Register("Relu", ReluRegisterer);
+}
+
+// =================== Register gradients for SparseSoftmaxCrossEntropyLoss ============================
+
+class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
+ public:
+  explicit SparseSoftmaxCrossEntropyLossGradientFunction(AbstractContext* ctx, std::vector<AbstractTensorHandle*> f_outputs) : 
+            ctx_(ctx), forward_outputs(f_outputs)  {}
+  
+  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
+    
+    // Forward Inputs : [scores, labels]
+    
+    //AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    // grad_outputs->resize(2);
+    // std::vector<AbstractTensorHandle*> sm_outputs(2);
+
+    // Calculate Grad
+    // TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx_, {forward_inputs[0], forward_inputs[1]},
+    //                           absl::MakeSpan(sm_outputs), "softmax_loss"));
+
+
+    // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd output.
+    (*grad_outputs)[0] = forward_outputs[1];
+
+    return Status::OK();
+  }
+  ~SparseSoftmaxCrossEntropyLossGradientFunction() override {}
+
+ private:
+  AbstractContext* ctx_;
+  std::vector<AbstractTensorHandle*> forward_outputs;
+
+};
+
+GradientFunction* SparseSoftmaxCrossEntropyLossRegisterer(const ForwardOperation& op) {
+  return new SparseSoftmaxCrossEntropyLossGradientFunction(op.ctx, op.outputs);
+}
+ 
+Status RegisterGradientSparseSoftmaxCrossEntropyLoss(GradientRegistry* registry) {
+  return registry->Register("SparseSoftmaxCrossEntropyWithLogits", SparseSoftmaxCrossEntropyLossRegisterer);
 }
 
 }  // namespace

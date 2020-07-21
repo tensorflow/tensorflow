@@ -72,6 +72,53 @@ Status MatMul(AbstractContext* ctx,
   return Status::OK();
 }
 
+// Softmax Loss given scores and labels, used by the SoftMaxLossGradient
+Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name){
+  
+  AbstractOperationPtr sm_loss_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      sm_loss_op->Reset("SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(sm_loss_op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(sm_loss_op.get())
+                           ->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[0])); // input scores
+  TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[1])); // labels
+
+
+  // Outputs will contain: [loss_vals, gradients]. 
+  int num_retvals = 2;
+  TF_RETURN_IF_ERROR(sm_loss_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+
+Status ReluGrad(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, 
+                const char* name) {
+  
+  AbstractOperationPtr relugrad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      relugrad_op->Reset("ReluGrad", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(relugrad_op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(relugrad_op.get())
+                           ->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[0])); //upstream grads
+  TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[1])); //relu inputs
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(relugrad_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle* const> inputs,
@@ -338,8 +385,11 @@ Status RunModel(Model model, AbstractContext* ctx,
       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
                              ->Finalize(&output_list, &func));
       scoped_func.reset(func);
-      output_list.outputs[0]->Release();
-      //output_list.outputs[1]->Release();
+
+      for(int i = 0; i < outputs.size(); i++) {
+        output_list.outputs[i]->Release();
+      }
+      
       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
     }
 
@@ -368,82 +418,6 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   return Status::OK();
 }
 
-
-// Get a scalar TensorHandle woth given value
-// Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-//                               AbstractTensorHandle** tensor) {
-  
-//   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-//       TF_NewStatus(), TF_DeleteStatus);
-//   TFE_Context* eager_ctx =
-//       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-//   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-//   TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
-//   *tensor =
-//       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-//   return Status::OK();
-// }
-
-
-// // Get a Matrix TensorHandle with given float values and dimensions
-// Status TestMatrixTensorHandleFloat(AbstractContext* ctx, float data[], int64_t dims[], 
-//                                    int num_dims, AbstractTensorHandle** tensor) {
-  
-//   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-//       TF_NewStatus(), TF_DeleteStatus);
-//   TFE_Context* eager_ctx =
-//       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-//   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-//   TFE_TensorHandle* input_eager = 
-//       TestMatrixTensorHandleFloat(eager_ctx, data, dims, num_dims);
-//   *tensor = 
-//       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-//   return Status::OK();
-// }
-
-// // Get a Matrix TensorHandle with given int values and dimensions
-// Status TestMatrixTensorHandleInt(AbstractContext* ctx, int data[], int64_t dims[], 
-//                                  int num_dims, AbstractTensorHandle** tensor) {
-  
-//   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-//       TF_NewStatus(), TF_DeleteStatus);
-//   TFE_Context* eager_ctx =
-//       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-//   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-//   TFE_TensorHandle* input_eager = 
-//       TestMatrixTensorHandleInt(eager_ctx, data, dims, num_dims);
-//   *tensor = 
-//       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-//   return Status::OK();
-// }
- 
-// Status getValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
-//   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-//       TF_NewStatus(), TF_DeleteStatus);
-//   TFE_TensorHandle* result_t =
-//       TF_AbstractTensorGetEagerTensor(wrap(t), status.get());
-//   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-//   *result_tensor = TFE_TensorHandleResolve(result_t, status.get());
-//   return Status::OK();
-// }
-
-// AbstractTensorHandlePtr getMatrixTensorHandleUtilFloat(AbstractContext* ctx, float vals[], int64_t dims[], int num_dims){
-
-//   AbstractTensorHandlePtr A;
-//   AbstractTensorHandle* a_raw = nullptr;
-//   Status s = TestMatrixTensorHandleFloat(ctx, vals, dims, num_dims, &a_raw);
-//   A.reset(a_raw);
-//   return A;
-// }
-
-// AbstractTensorHandlePtr getMatrixTensorHandleUtilInt(AbstractContext* ctx, int vals[], int64_t dims[], int num_dims){
-
-//   AbstractTensorHandlePtr A;
-//   AbstractTensorHandle* a_raw = nullptr;
-//   Status s = TestMatrixTensorHandleInt(ctx, vals, dims, num_dims, &a_raw);
-//   A.reset(a_raw);
-//   return A;
-// }
 
 // }  // namespace
 // }  // namespace internal

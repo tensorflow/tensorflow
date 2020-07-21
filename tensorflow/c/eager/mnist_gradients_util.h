@@ -41,6 +41,17 @@ Status MatMul(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name,
                 bool transpose_a, bool transpose_b);
 
+// Creates a ReluGrad op used for the ReluGradient
+Status ReluGrad(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, 
+                const char* name); 
+
+// Creates a SmCrossEntropyLoss op used for the SoftmaxLossGradient
+Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle* const> inputs,
