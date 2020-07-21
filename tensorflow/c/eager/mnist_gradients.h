@@ -166,9 +166,8 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
     
     // Forward Inputs : [scores, labels]
-    
-    // AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    grad_outputs->resize(2);
+
+    grad_outputs->resize(2); 
     std::vector<AbstractTensorHandle*> sm_outputs(2);
     
     // Calculate Grad
@@ -176,9 +175,13 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
                               absl::MakeSpan(sm_outputs), "softmax_loss"));
 
 
+
+    // TODO(amturati): fix error where we have to return the softmax loss as the 
+    // 2nd grad for the labels to avoid mangled stack trace
+
     // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd output.
-    (*grad_outputs)[0] = sm_outputs[0];
-    (*grad_outputs)[1] = sm_outputs[1];
+    (*grad_outputs)[0] = sm_outputs[1];  // return backprop for scores
+    (*grad_outputs)[1] = sm_outputs[0]; // nullptr;  <--- nullptr causes Mangled Stack Trace
 
     return Status::OK();
   }

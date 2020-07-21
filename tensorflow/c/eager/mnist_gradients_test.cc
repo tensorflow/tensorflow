@@ -169,12 +169,14 @@ TEST_P(CppGradients, TestAddGrad) {
   Status s = RegisterGradientAdd(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-  // Pseudo-code:
-  //
-  // tape.watch(x)
-  // tape.watch(y)
-  // y = x + y
-  // outputs = tape.gradient(y, [x, y])
+  /* Pseudo-code:
+   *
+   * tape.watch(x)
+   * tape.watch(y)
+   * y = x + y
+   * outputs = tape.gradient(y, [x, y])
+   */
+
   std::vector<AbstractTensorHandle*> outputs(2);
   s = RunModel(AddGradModel, ctx.get(), {x.get(), y.get()},
                absl::MakeSpan(outputs),
@@ -259,12 +261,14 @@ TEST_P(CppGradients, TestMatMulGrad) {
   Status s = RegisterGradientMatMul(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-  // Pseudo-code:
-  //
-  // tape.watch(A)
-  // tape.watch(B)
-  // Y = AB
-  // outputs = tape.gradient(Y, [A, B])
+  /* Pseudo-code:
+   *
+   * tape.watch(A)
+   * tape.watch(B)
+   * Y = AB
+   * outputs = tape.gradient(Y, [A, B])
+   */
+
   std::vector<AbstractTensorHandle*> outputs(2);
   // s = RunModel(MatMulGradModel, ctx.get(), {A.get(), B.get()},
   //              absl::MakeSpan(outputs),
@@ -503,6 +507,7 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   
   float expected_scores [6] = {13.0f, 18.0f, 17.0f, 24.0f, 21.0f, 30.0f};
   float tolerance = 1e-3;
+  
   for(int j = 0; j < 6; j++){
     ASSERT_NEAR(result_data[j], expected_scores[j], tolerance);
   }
@@ -531,9 +536,11 @@ Status ReluGradModel(AbstractContext* ctx,
       /*source_tensor_ids=*/{ToId(inputs[0])},
       source_tensors_that_are_targets,
       /*output_gradients=*/{}, &out_grads));
+  
   for (auto relu_output : relu_outputs) {
     relu_output->Release();
   }
+
   outputs[0] = out_grads[0];
   delete tape;
   return Status::OK();
@@ -562,11 +569,12 @@ TEST_P(CppGradients, TestReluGrad) {
   Status s = RegisterGradientRelu(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-  // Pseudo-code:
-  //
-  // tape.watch(X)
-  // Y = Relu(X)
-  // outputs = tape.gradient(Y, [X])
+  /* Pseudo-code:
+   *
+   * tape.watch(X)
+   * Y = Relu(X)
+   * outputs = tape.gradient(Y, [X])
+   */
   std::vector<AbstractTensorHandle*> outputs(1);
   s = RunModel(ReluGradModel, ctx.get(), {X.get()},
                absl::MakeSpan(outputs),
@@ -590,7 +598,7 @@ TEST_P(CppGradients, TestReluGrad) {
   TF_DeleteTensor(dX_tensor);
 }
 
-// Test Model to verify ReluGrad functionality
+// Test Model to verify SoftmaxGrad functionality
 Status SoftmaxLossGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
@@ -600,7 +608,7 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch scores.
   tape->Watch(ToId(inputs[1]));  // Watch labels.
-  std::vector<AbstractTensorHandle*> sm_outputs(1);
+  std::vector<AbstractTensorHandle*> sm_outputs(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, inputs,
                     absl::MakeSpan(sm_outputs), "softmax0", registry));  // Compute x*y.
   
@@ -621,9 +629,10 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
   outputs[1] = out_grads[1];
   delete tape;
   return Status::OK();
+
 }
 
-// Test Model to verify ReluGrad functionality
+// Test Model to verify Softmax Loss
 Status SoftmaxLossModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
@@ -638,13 +647,6 @@ Status SoftmaxLossModel(AbstractContext* ctx,
   
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
-
-  // std::vector<AbstractTensorHandle*> out_grads;
-  // TF_RETURN_IF_ERROR(tape->ComputeGradient(
-  //     vspace, /*target_tensor_ids=*/{ToId(sm_outputs[0])},
-  //     /*source_tensor_ids=*/{ToId(inputs[0])},
-  //     source_tensors_that_are_targets,
-  //     /*output_gradients=*/{}, &out_grads));
 
   outputs[0] = sm_outputs[0]; 
   outputs[1] = sm_outputs[1];
@@ -688,20 +690,24 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   Status s = RegisterGradientSparseSoftmaxCrossEntropyLoss(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-  // Pseudo-code:
-  //
-  // tape.watch(X)
-  // Y = SoftmaxLoss(X, labels)
-  // outputs = tape.gradient(Y, [X])
+  /* Pseudo-code:
+   *
+   * tape.watch(X)
+   * tape.watch(labels)
+   * loss = SoftmaxLoss(X, labels)
+   * outputs = tape.gradient(loss, [X, labels])
+   *
+   */ 
 
   std::vector<AbstractTensorHandle*> outputs(2);
   s = RunModel(SoftmaxLossGradModel, ctx.get(), {X.get(), y.get()},
                absl::MakeSpan(outputs),
                /*use_function=*/!std::get<2>(GetParam()), registry);
+
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* dX_tensor;
-  s = getValue(outputs[1], &dX_tensor);
+  s = getValue(outputs[0], &dX_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   
   float result_data[9] = {0};
@@ -710,7 +716,7 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   float expected_dX [9] =  {0.090f, -0.7553f, 0.6652f,
                             -0.9099f, 0.2447f, 0.6652f,
                             0.8437f, -0.8858f, 0.0420f}; 
-  float tolerance = 1e-2;
+  float tolerance = 1e-3;
   for(int j = 0; j < 9; j++){
     ASSERT_NEAR(result_data[j], expected_dX[j], tolerance);
   }  

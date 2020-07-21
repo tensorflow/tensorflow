@@ -89,7 +89,6 @@ Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[0])); // input scores
   TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[1])); // labels
 
-
   // Outputs will contain: [loss_vals, gradients]. 
   int num_retvals = 2;
   TF_RETURN_IF_ERROR(sm_loss_op->Execute(outputs, &num_retvals));
@@ -378,6 +377,7 @@ Status RunModel(Model model, AbstractContext* ctx,
       output_list.outputs.resize(outputs.size());
       TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
                                absl::MakeSpan(output_list.outputs), registry));
+      
       for (auto func_input : func_inputs) {
         func_input->Release();
       }
@@ -386,8 +386,8 @@ Status RunModel(Model model, AbstractContext* ctx,
                              ->Finalize(&output_list, &func));
       scoped_func.reset(func);
 
-      for(int i = 0; i < outputs.size(); i++) {
-        output_list.outputs[i]->Release();
+      for (auto output : output_list.outputs) {
+        output->Release();
       }
       
       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
