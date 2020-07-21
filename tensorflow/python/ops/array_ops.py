@@ -2806,6 +2806,8 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = False
     elif dtype == dtypes.string:
       zero = ""
+    elif dtype.is_quantized:
+      zero = np.zeros([]).astype(dtype.as_numpy_dtype)
     else:
       zero = 0
 
