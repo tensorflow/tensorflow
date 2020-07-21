@@ -21,6 +21,7 @@ import time
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import testing
@@ -29,11 +30,14 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
@@ -80,6 +84,30 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = _make_distributed_dataset(ds, dispatcher_address)
     results = [elem.numpy() for elem in ds]
     self.assertEqual(list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeSparse(self):
+    dispatcher_address = self.create_cluster(1)
+    element = sparse_tensor.SparseTensor(
+        indices=[[0]],
+        values=constant_op.constant([0], dtype=dtypes.int32),
+        dense_shape=[1])
+    ds = dataset_ops.Dataset.from_tensors(element)
+    ds = _make_distributed_dataset(ds, dispatcher_address)
+    results = [sparse_ops.sparse_tensor_to_dense(elem) for elem in ds]
+    self.assertAllEqual(results, [[0]])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeRagged(self):
+    dispatcher_address = self.create_cluster(1)
+    ds = dataset_ops.Dataset.from_tensor_slices([1, 5, 3, 2, 8])
+    ds = ds.map(math_ops.range)
+    ds = ds.apply(batching.dense_to_ragged_batch(2))
+    ds = _make_distributed_dataset(ds, dispatcher_address)
+    results = [elem.to_tensor() for elem in ds]
+    self.assertAllEqual(results[0], [[0, 0, 0, 0, 0], [0, 1, 2, 3, 4]])
+    self.assertAllEqual(results[1], [[0, 1, 2], [0, 1, 0]])
+    self.assertAllEqual(results[2], [[0, 1, 2, 3, 4, 5, 6, 7]])
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDifferentShuffleOrders(self):
