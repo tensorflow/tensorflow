@@ -439,8 +439,12 @@ class InputReplicationMode(enum.Enum):
     Replicas will dequeue from the local Dataset on their worker.
     `tf.distribute.Strategy` doesn't manage any state sharing between such
     separate input pipelines.
+  * `PER_REPLICA`: The input function will be called on each replica seperately.
+    `tf.distribute.Strategy` doesn't manage any state sharing between such
+    separate input pipelines.
   """
   PER_WORKER = "PER_WORKER"
+  PER_REPLICA = "PER_REPLICA"
 
 
 @tf_export("distribute.InputContext")
@@ -1071,6 +1075,7 @@ class StrategyBase(object):
     # pylint: disable=line-too-long
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
+<<<<<<< HEAD
     The argument `dataset_fn` that users pass in is an input function that has a
     `tf.distribute.InputContext` argument and returns a `tf.data.Dataset`
     instance. It is expected that the returned dataset from `dataset_fn` is
@@ -1088,6 +1093,14 @@ class StrategyBase(object):
     specify your own batching and sharding logic. (In contrast,
     `tf.distribute.experimental_distribute_dataset` does batching and sharding
     for you.)For example, where
+=======
+    `dataset_fn` will be called once for each worker in the strategy. Each
+    replica on that worker will dequeue one batch of inputs from the local
+    `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
+    from the `Dataset` every step).
+
+    This method can be used for several purposes. For example, where
+>>>>>>> 87a7ad3be2... Adding per-replica dataset distribution
     `experimental_distribute_dataset` is unable to shard the input files, this
     method might be used to manually shard the dataset (avoiding the slow
     fallback behavior in `experimental_distribute_dataset`). In cases where the
@@ -1118,6 +1131,7 @@ class StrategyBase(object):
     snippet](https://www.tensorflow.org/tutorials/distribute/input#caveats)
     for an example of how to order outputs.
 
+<<<<<<< HEAD
     Note: Stateful dataset transformations are currently not supported with
     `tf.distribute.experimental_distribute_dataset` or
     `tf.distribute.distribute_datasets_from_function`. Any stateful
@@ -1129,6 +1143,23 @@ class StrategyBase(object):
     For a tutorial on more usage and properties of this method, refer to the
     [tutorial on distributed input](https://www.tensorflow.org/tutorials/distribute/input#tfdistributestrategyexperimental_distribute_datasets_from_function)).
     If you are interested in last partial batch handling, read [this section](https://www.tensorflow.org/tutorials/distribute/input#partial_batches).
+=======
+    In the case where you want to specify datasets `PER_REPLICA`, that is having 
+    a separate dataset per each device, you can specify as follows.
+
+    ```python
+    train_dist_dataset = strategy.experimental_distribute_datasets_from_function(
+        train_dataset_fn,
+        distribute_lib.InputReplicationMode.PER_REPLICA)
+
+    train_dist_iterator = iter(train_dist_dataset)
+        for epoch in range(NUM_EPOCHS):
+        total_loss = 0.0
+        for iteration in range(ITERATIONS):
+            data = next(train_dist_iterator)
+            total_loss += distributed_train_step(data)
+    ```
+>>>>>>> 9598cf19be... apply review changes
 
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and

@@ -35,6 +35,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -106,7 +107,8 @@ def get_distributed_dataset(dataset,
 def get_distributed_datasets_from_function(dataset_fn,
                                            input_workers,
                                            input_contexts,
-                                           strategy):
+                                           strategy,
+                                           replication_mode=InputReplicationMode.PER_WORKER):
   """Returns a distributed dataset from the given input function.
 
   This is a common function that is used by all strategies to return a
@@ -129,18 +131,24 @@ def get_distributed_datasets_from_function(dataset_fn,
     A distributed dataset instance.
   """
   if tf2.enabled():
-    return DistributedDatasetsFromFunction(
-        dataset_fn,
-        input_workers,
-        input_contexts,
-        strategy)
+    if strategy.extended.replication_mode == distribute_lib.InputReplicationMode.PER_WORKER:
+      return DistributedDatasetsFromFunction(
+          dataset_fn,
+          input_workers,
+          input_contexts,
+          strategy)
+    else:
+          return DistributedDatasetsFromFunctionForReplicas(
+          dataset_fn,
+          input_workers,
+          input_contexts,
+          strategy)
   else:
     return DistributedDatasetsFromFunctionV1(
         dataset_fn,
         input_workers,
         input_contexts,
         strategy)
-
 
 @tf_export("distribute.DistributedIterator", v1=[])
 class DistributedIteratorInterface(collections_abc.Iterator,
@@ -668,6 +676,21 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     replicas = results
 
     return distribute_utils.regroup(replicas)
+
+class DistributedIteratorForReplicas(DistributedIterator):
+  """Input Iterator for a distributed dataset on replicas."""
+  def __init__(self, input_workers, iterators, strategy):
+    super(DistributedIteratorForReplicas, self).__init__(input_workers, iterators, strategy)
+
+  def get_next(self, name=None):
+    """Returns the next input from the iterator for all replicas."""
+    if not self._enable_get_next_as_optional:
+      replicas = []
+      for iterator in self._iterators:
+        with ops.device(iterator._worker):
+          next_out = iterator.get_next_as_list_static_shapes(iterator._worker)
+          replicas.append(next_out)
+      return values.regroup(replicas)
 
 
 class DistributedIteratorV1(DistributedIteratorBase):
@@ -1200,6 +1223,47 @@ class DistributedDatasetsFromFunction(_IterableInput):
     return self._element_spec
 
 
+class DistributedDatasetsFromFunctionForReplicas(_IterableInput):
+  """Inputs created from dataset function."""
+
+  def __init__(self, dataset_fn, input_workers, input_contexts, strategy):
+    super(DistributedDatasetsFromFunctionForReplicas, self).__init__(
+        input_workers=input_workers)
+
+    self._dataset_fn = dataset_fn
+    self._input_workers = input_workers
+    self._input_contexts = input_contexts
+    self._strategy = strategy
+    self._element_spec = None
+
+
+  def __iter__(self):
+    if not (context.executing_eagerly() or
+            ops.get_default_graph().building_function):
+      raise RuntimeError("__iter__() is only supported inside of tf.function "
+                         "or when eager execution is enabled.")
+
+    iterators, element_spec = _create_iterators_per_replica_with_input_context(
+        self._input_contexts, self._input_workers, self._dataset_fn)
+    iterator = DistributedIteratorForReplicas(self._input_workers, iterators, self._strategy)
+    self._element_spec = _create_distributed_tensor_spec(
+      self._strategy,	element_spec)	
+    iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+    return iterator
+
+  @property	
+  def element_spec(self):	
+    """The type specification of an element of this dataset."""	
+    if self._element_spec is None:	
+      raise ValueError("You must create an iterator before calling "	
+                       "`element_spec` on the distributed dataset or iterator. "	
+                       "This is because the dataset function is not called "	
+                       "before an iterator is created.")	
+    return self._element_spec
+
+
+
+
 class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
   """Inputs created from dataset function."""
 
@@ -1689,6 +1753,17 @@ class _SingleWorkerDatasetIterator(_SingleWorkerDatasetIteratorBase):
     return dataset_ops.get_legacy_output_types(self._iterator)
 
 
+class _SingleReplicaDatasetIterator(_SingleWorkerDatasetIterator):
+  def __init__(self, dataset, device):
+    super(_SingleReplicaDatasetIterator, self).__init__(dataset, device, [])
+
+  def _make_iterator(self):
+    """Make appropriate iterator on the dataset."""
+    with ops.device(self._worker):
+      self._iterator = iter(self._dataset)
+
+
+
 class _SingleWorkerCallableIterator(object):
   """Iterator for a single tensor-returning callable."""
 
@@ -1720,6 +1795,22 @@ class _SingleWorkerCallableIterator(object):
   def initialize(self):
     # TODO(petebu) Should this throw an exception instead?
     return []
+
+
+def _create_iterators_per_replica_with_input_context(input_contexts,
+                                                    input_workers,
+                                                    dataset_fn):
+ """Create a multidevice iterator per workers given a dataset function."""
+  iterators = []
+  for i, ctx in enumerate(input_contexts):
+    devices = input_workers.compute_devices_for_worker(i)
+    with ops.device(devices[0]):
+      dataset = dataset_fn(ctx)
+      # Wrapping dataset here (ex. applying options) might result in moving it to the CPU
+      iterator = _SingleReplicaDatasetIterator(dataset, devices[0])
+      iterators.append(iterator)
+  return iterators, dataset.element_spec
+
 
 
 def _create_iterators_per_worker(worker_datasets, input_workers,

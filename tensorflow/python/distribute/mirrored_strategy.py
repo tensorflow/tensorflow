@@ -267,9 +267,11 @@ class MirroredStrategy(distribute_lib.Strategy):
       the particular hardware is available.
   """
 
-  def __init__(self, devices=None, cross_device_ops=None):
-    extended = MirroredExtended(
-        self, devices=devices, cross_device_ops=cross_device_ops)
+  def __init__(self, devices=None, cross_device_ops=None,
+               replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    extended = MirroredExtended(self, devices=devices, 
+                                cross_device_ops=cross_device_ops, 
+                                replication_mode=replication_mode)
     super(MirroredStrategy, self).__init__(extended)
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
         "MirroredStrategy")
@@ -292,7 +294,8 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missin
 class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
-  def __init__(self, container_strategy, devices=None, cross_device_ops=None):
+  def __init__(self, container_strategy, devices=None, cross_device_ops=None,
+               replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
     super(MirroredExtended, self).__init__(container_strategy)
     if context.executing_eagerly():
       if devices and not _is_device_list_single_worker(devices):
@@ -313,6 +316,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
+    self._replication_mode = replication_mode
     self._initialize_strategy(devices)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
@@ -337,8 +341,13 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _initialize_single_worker(self, devices):
     """Initializes the object for single-worker training."""
     self._devices = tuple(device_util.canonicalize(d) for d in devices)
-    self._input_workers_devices = (
-        (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
+    if self._replication_mode == distribute_lib.InputReplicationMode.PER_WORKER:
+      self._input_workers_devices = (
+          (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
+    else:
+      self._input_workers_devices = (
+        tuple((device_util.canonicalize("/device:CPU:0", d),(d,)) for d in devices))
+        
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
         cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice(
@@ -713,6 +722,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   @property
   def worker_devices(self):
     return self._devices
+  
+  @property
+  def replication_mode(self):
+    return self._replication_mode
 
   @property
   def worker_devices_by_replica(self):
