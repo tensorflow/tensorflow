@@ -14,9 +14,9 @@ namespace xcore {
 
 constexpr int num_xcore_ops = 13;
 
-class XcoreOpsResolver : public MicroMutableOpResolver<num_xcore_ops> {
+class XCoreOpsResolver : public MicroMutableOpResolver<num_xcore_ops> {
  public:
-  XcoreOpsResolver() {}
+  XCoreOpsResolver() {}
   void AddXC();
 
   TfLiteStatus AddXC_ArgMax() {

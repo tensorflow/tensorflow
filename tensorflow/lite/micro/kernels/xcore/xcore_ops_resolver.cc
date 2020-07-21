@@ -7,7 +7,7 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-void XcoreOpsResolver::AddXC() {
+void XCoreOpsResolver::AddXC() {
   AddSoftmax();
   AddPad();
   AddXC_ArgMax();
