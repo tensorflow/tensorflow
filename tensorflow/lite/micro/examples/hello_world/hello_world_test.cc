@@ -44,7 +44,8 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Minimum arena size, at the time of writing. After allocating tensors
   // you can retrieve this value by invoking interpreter.arena_used_bytes().
-  const int model_arena_size = 2468;
+  const int model_arena_size = 2736;
+
   /* Extra headroom for model + alignment + future interpreter changes */
   const int extra_arena_size = 570 + 16 + 100;
   const int tensor_arena_size = model_arena_size + extra_arena_size;

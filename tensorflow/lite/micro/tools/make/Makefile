@@ -127,6 +127,7 @@ $(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
 $(wildcard tensorflow/lite/micro/testing/*model.cc) \
+$(wildcard tensorflow/lite/micro/testing/*_supp.cc) \
 tensorflow/lite/c/common.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \

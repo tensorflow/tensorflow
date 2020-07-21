@@ -30,11 +30,13 @@ namespace tflite {
 namespace testing {
 
 // Note: These methods are deprecated, do not use.  See b/141332970.
-
-// TODO(kreeger): Don't use this anymore in our tests. Optimized compiler
-// settings can play with pointer placement on the stack (b/140130236).
+// USE WITH CARE!! Returns pointer to data member of argument
+// so this object's lifetime must outlive any access to its underlying
+// data via this pointer.
+// Pass-by lvalue ref of argument protects against simple programmer
+// oops but is by no means foolproof.
 inline TfLiteIntArray* IntArrayFromInitializer(
-    std::initializer_list<int> int_initializer) {
+    std::initializer_list<int> &int_initializer) {
   return IntArrayFromInts(int_initializer.begin());
 }
 

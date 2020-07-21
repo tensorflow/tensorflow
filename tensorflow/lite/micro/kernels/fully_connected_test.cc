@@ -67,9 +67,9 @@ TfLiteStatus TestFullyConnectedFloat(
   if (registration->init) {
     user_data = registration->init(&context, init_data, init_data_size);
   }
-  int inputs_array_data[] = {3, 0, 1, 2};
+  int inputs_array_data[] = {inputs_size, 0, 1, 2};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  int outputs_array_data[] = {1, 3};
+  int outputs_array_data[] = {outputs_size, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   TfLiteNode node;

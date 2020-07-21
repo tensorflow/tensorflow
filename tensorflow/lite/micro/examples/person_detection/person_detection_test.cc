@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/lite/version.h"
 
 // Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 93 * 1024;
+// Arena "over-sized" for reference ops need space for additional persisitent
+// buffers for pre-computed values in portable_optimized kernels
+constexpr int tensor_arena_size = 99 * 1024;
 uint8_t tensor_arena[tensor_arena_size];
 
 TF_LITE_MICRO_TESTS_BEGIN

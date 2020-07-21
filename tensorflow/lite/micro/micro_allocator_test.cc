@@ -338,7 +338,7 @@ TF_LITE_MICRO_TEST(TestAllocationForComplexModelAllocation) {
   TfLiteEvalTensor* eval_tensors = nullptr;
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
-  constexpr size_t arena_size = 2048;
+  constexpr size_t arena_size = 2048+256;
   uint8_t arena[arena_size];
   tflite::MicroAllocator* allocator =
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);

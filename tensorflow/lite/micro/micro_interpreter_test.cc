@@ -247,7 +247,8 @@ TF_LITE_MICRO_TEST(TestIncompleteInitialization) {
 
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
 
-  constexpr size_t allocator_buffer_size = 2048;
+  constexpr bool is_64bit_target = sizeof(void *) > 4u;
+  constexpr size_t allocator_buffer_size = is_64bit_target ? 2048  : 1024;
   uint8_t allocator_buffer[allocator_buffer_size];
 
   tflite::MicroInterpreter interpreter(model, op_resolver, allocator_buffer,
@@ -288,8 +289,8 @@ TF_LITE_MICRO_TEST(TestIncompleteInitializationAllocationsWithSmallArena) {
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
 
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
-
-  constexpr size_t allocator_buffer_size = 500;
+  constexpr bool is_64bit_target = sizeof(void *) > 4u;
+  constexpr size_t allocator_buffer_size = is_64bit_target ? 500 : 250;
   uint8_t allocator_buffer[allocator_buffer_size];
 
   tflite::RecordingMicroAllocator* allocator =

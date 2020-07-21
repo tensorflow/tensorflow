@@ -681,16 +681,72 @@ TfLiteStatus MicroAllocator::FinishModelAllocation(
   return kTfLiteOk;
 }
 
+
 TfLiteStatus MicroAllocator::AllocatePersistentBuffer(size_t bytes,
                                                       void** ptr) {
-  uint8_t* data = memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
-  if (data == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter_,
-                         "Failed to allocate persistent buffer of size %d",
-                         bytes);
-    return kTfLiteError;
+
+  // Table of ScratchBufferHandle "floats" at start of Tail during
+  // prepare phase to enable allocatino of both Scratch and Persistent buffers
+  uint8_t* data;
+  
+  if (scratch_buffer_handles_ != nullptr ) {
+
+    // Table of scratch buffer handles present... needs to be relocated.
+    if ( reinterpret_cast<uint8_t*>(scratch_buffer_handles_) !=
+          memory_allocator_->GetTail()) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Internal error: AllocateFromTail called directly"
+                         "between two RequestScratchBufferInArena calls.");
+       return kTfLiteError;
+     }
+
+     size_t sbh_table_size = scratch_buffer_count_ * sizeof(internal::ScratchBufferHandle);
+     internal::ScratchBufferHandle *relocated_sbh_table;
+
+     uint8_t* align_head;
+     // How much of scatch buffer can we pessimistically use when kBufferAlignment
+     // aligned.
+     if (sbh_table_size <= bytes) {
+      size_t additional_needed = bytes-sbh_table_size;
+      align_head = memory_allocator_->AllocateFromTail(additional_needed, kBufferAlignment);
+      data = align_head;
+      relocated_sbh_table = 
+        reinterpret_cast<internal::ScratchBufferHandle*>( 
+          memory_allocator_->AllocateFromTail(sbh_table_size, alignof(internal::ScratchBufferHandle)));
+     } else {
+       // Move head to ensure sufficient space under alignment constraint
+      align_head = memory_allocator_->AllocateFromTail(0, kBufferAlignment);
+      size_t unused_aligned_space = (sbh_table_size-bytes)/kBufferAlignment*kBufferAlignment;
+      data = align_head + unused_aligned_space;
+      relocated_sbh_table =  
+        reinterpret_cast<internal::ScratchBufferHandle*>( 
+          memory_allocator_->AllocateFromTail(sbh_table_size-unused_aligned_space,
+                                              alignof(internal::ScratchBufferHandle)));
+     }
+     // Check all allocation actually succeeded
+    if( align_head == 0 || relocated_sbh_table == 0 ) {
+          TF_LITE_REPORT_ERROR(error_reporter_,
+                          "Failed to allocate persistent buffer of size %d",
+                          bytes);
+      return kTfLiteError;
+    }
+     // Relocate scratch buffer table - we're copying from low addr to high
+     // to lower address so overlapping ranges o.k.
+     std::copy(scratch_buffer_handles_, scratch_buffer_handles_+scratch_buffer_count_, relocated_sbh_table);
+     scratch_buffer_handles_ = relocated_sbh_table;
+  } else {
+
+    // No table of scratch buffer handles.  Can allocate space directly from tail
+    data = memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
+    if (data == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                          "Failed to allocate persistent buffer of size %d",
+                          bytes);
+      return kTfLiteError;
+    }
   }
   (*ptr) = data;
+
   return kTfLiteOk;
 }
 
@@ -704,7 +760,7 @@ TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
       reinterpret_cast<uint8_t*>(scratch_buffer_handles_) !=
           memory_allocator_->GetTail()) {
     TF_LITE_REPORT_ERROR(error_reporter_,
-                         "Internal error: AllocateFromTail can not be called "
+                         "Internal error: AllocateFromTail can not be called directly"
                          "between two RequestScratchBufferInArena calls.");
     return kTfLiteError;
   }

@@ -22,5 +22,20 @@ int main(int argc, char** argv) {
   TF_LITE_REPORT_ERROR(error_reporter, "Badly-formed format string %");
   TF_LITE_REPORT_ERROR(error_reporter,
                        "Another % badly-formed %% format string");
+
+  // Workaround gcc C/C++ horror-show.  For 32-bit targets  va_list is simply an alias for
+  // char *, gcc-7 (at least) converts the second string constant to const char * 
+  // only a warning that C++ actually forbids this with the result that
+  // MicroErrorReporter::Report(const char* format, va_list args) 
+  // is called rather than
+  // MicroErrorReporter::Report(const char* format, ...) 
+  // with predictably painful results.  
+  // TODO The clean solution for this would to remove the 
+  // overload of ErrorReporter::Report. However, this would be a breaking API change...
+  //
+#if __GNUG__ 
+  TF_LITE_REPORT_ERROR(error_reporter, "~~~%s~~~", "ALL TESTS PASSED", 0/*dummy*/);
+#else
   TF_LITE_REPORT_ERROR(error_reporter, "~~~%s~~~", "ALL TESTS PASSED");
+#endif
 }
