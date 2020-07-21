@@ -30,37 +30,26 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_stream.h"
+
+namespace ApiConverter {
+static SE_ExecutableRunOptions ToC(
+    const xla::ServiceExecutableRunOptions& options) {
+  SE_ExecutableRunOptions se_options;
+  se_options.allocator = ApiConverter::ToC(options.run_options().allocator());
+  se_options.device_ordinal = options.run_options().device_ordinal();
+  auto impl =
+      const_cast<stream_executor::Stream*>(options.stream())->implementation();
+  se_options.stream = static_cast<TpuStream*>(impl)->se_stream();
+  return se_options;
+}
+}  // namespace ApiConverter
 
 namespace xla {
 
 namespace {
 
 using ::tensorflow::tpu::ExecutorApiFn;
-
-// TODO(power) -- dedup
-inline xla::ShapedBuffer CShapedBufferToXLAShapedBuffer(
-    XLA_ShapedBuffer* c_buffer) {
-  xla::Shape xla_on_host_shape =
-      TpuConversions::CShapeToXlaShape(&c_buffer->on_host_shape);
-  xla::Shape xla_on_device_shape =
-      TpuConversions::CShapeToXlaShape(&c_buffer->on_device_shape);
-
-  xla::ShapeTree<stream_executor::DeviceMemoryBase> xla_shape_tree(
-      xla_on_device_shape);
-  size_t i = 0;
-  for (auto& pair : xla_shape_tree) {
-    pair.second = TpuConversions::SE_DeviceMemoryBaseToDeviceMemoryBase(
-        c_buffer->bases[i]);
-    i++;
-  }
-
-  xla::ShapedBuffer xla_shaped_buffer(
-      xla_on_host_shape, xla_on_device_shape,
-      tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform(),
-      c_buffer->device_ordinal);
-  xla_shaped_buffer.set_buffers(xla_shape_tree);
-  return xla_shaped_buffer;
-}
 
 class TpuExecutable : public Executable {
  public:
@@ -77,21 +66,17 @@ class TpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override {
-    SE_ExecutableRunOptions se_run_options =
-        TpuConversions::ExecutableRunOptionsToSE_ExecutableRunOptions(
-            *run_options);
+    SE_ExecutableRunOptions se_run_options = ApiConverter::ToC(*run_options);
     SE_ExecutionInput** se_args = new SE_ExecutionInput*[arguments.size()];
     for (int i = 0; i < arguments.size(); ++i) {
       auto& arg = arguments[i];
       se_args[i] = new SE_ExecutionInput;
 
-      TpuConversions::XlaShapeToCShape(arg.shape(),
-                                       &se_args[i]->shape_tree.shape);
+      ApiConverter::ToC(arg.shape(), &se_args[i]->shape_tree.shape);
       auto* arg_buffers = arg.MutableBuffers();
       absl::InlinedVector<SE_MaybeOwningDeviceMemory, 2> se_buffers;
       for (auto& pair : *arg_buffers) {
-        se_buffers.push_back(
-            TpuConversions::SEMaybeOwningDeviceMemoryToC(pair.second));
+        se_buffers.push_back(ApiConverter::ToC(pair.second));
       }
       se_args[i]->shape_tree.buffers =
           new SE_MaybeOwningDeviceMemory[se_buffers.size()];
@@ -99,16 +84,14 @@ class TpuExecutable : public Executable {
         se_args[i]->shape_tree.buffers[j] = se_buffers[j];
       }
 
-      TpuConversions::XlaShapeToCShape(arg.shape(), &se_args[i]->dynamic_shape);
-      TpuConversions::XlaShapeToCShape(arg.host_shape(),
-                                       &se_args[i]->host_shape);
+      ApiConverter::ToC(arg.shape(), &se_args[i]->dynamic_shape);
+      ApiConverter::ToC(arg.host_shape(), &se_args[i]->host_shape);
       const auto& unowned_indices = arg.unowned_indices();
       se_args[i]->unowned_indices_size = unowned_indices.size();
       se_args[i]->unowned_indices = new XLA_ShapeIndex[unowned_indices.size()];
       int j = 0;
       for (auto& idx : unowned_indices) {
-        se_args[i]->unowned_indices[j] =
-            TpuConversions::XlaShapeIndexToCShapeIndex(idx);
+        se_args[i]->unowned_indices[j] = ApiConverter::ToC(idx);
         ++j;
       }
     }
@@ -122,20 +105,19 @@ class TpuExecutable : public Executable {
     }
 
     xla::ScopedShapedBuffer result(
-        CShapedBufferToXLAShapedBuffer(&se_execution_output.result),
+        ApiConverter::FromC(&se_execution_output.result),
         run_options->stream()->parent()->GetAllocator());
 
     ExecutionOutput output(std::move(result));
     for (int i = 0; i < se_execution_output.aliased_indices_size; ++i) {
-      output.AddAliasedIndex(TpuConversions::CShapeIndexToXlaShapeIndex(
-          &se_execution_output.aliased_indices[i]));
+      output.AddAliasedIndex(
+          ApiConverter::FromC(&se_execution_output.aliased_indices[i]));
     }
 
     for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
       output.AddToBeReleased(
-          TpuConversions::COwningDeviceMemToSEOwningDeviceMem(
-              &se_execution_output.to_be_released[i],
-              run_options->stream()->parent()->GetAllocator())
+          ApiConverter::FromC(&se_execution_output.to_be_released[i],
+                              run_options->stream()->parent()->GetAllocator())
               .Release()
               .value());
     }
@@ -164,13 +146,12 @@ XLA_HloModuleConfig HloModuleConfigToC(const xla::HloModuleConfig& config) {
   }
   if (config.has_entry_computation_layout()) {
     auto layout = config.entry_computation_layout();
-    TpuConversions::XlaShapeToCShape(
-        layout.result_layout().shape(),
-        &hlo_config.entry_computation_layout.result_layout);
+    ApiConverter::ToC(layout.result_layout().shape(),
+                      &hlo_config.entry_computation_layout.result_layout);
     hlo_config.entry_computation_layout.parameter_layouts =
         new XLA_Shape[layout.parameter_count()];
     for (int i = 0; i < layout.parameter_count(); ++i) {
-      TpuConversions::XlaShapeToCShape(
+      ApiConverter::ToC(
           layout.parameter_layout(i).shape(),
           &hlo_config.entry_computation_layout.parameter_layouts[i]);
     }
@@ -196,7 +177,7 @@ class TpuCompiler : public Compiler {
     XLA_HloModule hlo_module;
     hlo_module.module_config = HloModuleConfigToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
-    auto allocator = TpuConversions::AllocatorToSE_Allocator(device_allocator);
+    auto allocator = ApiConverter::ToC(device_allocator);
     XLA_HloModule result;
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
@@ -229,7 +210,7 @@ class TpuCompiler : public Compiler {
     XLA_HloModule hlo_module;
     hlo_module.module_config = HloModuleConfigToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
-    auto allocator = TpuConversions::AllocatorToSE_Allocator(device_allocator);
+    auto allocator = ApiConverter::ToC(device_allocator);
 
     SE_Executable* result;
     StatusHelper status;
@@ -272,8 +253,7 @@ class TpuCompiler : public Compiler {
       }
     }
 
-    SE_DeviceMemoryAllocator allocator =
-        TpuConversions::AllocatorToSE_Allocator(device_allocator);
+    SE_DeviceMemoryAllocator allocator = ApiConverter::ToC(device_allocator);
 
     SE_Executable** se_executables = new SE_Executable*[module_group->size()];
 
@@ -311,10 +291,10 @@ class TpuCompiler : public Compiler {
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
     return [this](const xla::Shape& shape) {
       XLA_Shape c_shape;
-      TpuConversions::XlaShapeToCShape(shape, &c_shape);
+      ApiConverter::ToC(shape, &c_shape);
       int64 bytes =
           ExecutorApiFn()->TpuCompiler_ShapeSizeFn(compiler_, &c_shape);
-      TpuConversions::CShapeCleanup(&c_shape);
+      ApiConverter::Free(&c_shape);
       return bytes;
     };
   }

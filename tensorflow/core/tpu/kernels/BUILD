@@ -441,6 +441,7 @@ cc_library(
     deps = [
         ":tpu_mesh_state_c_api_hdrs",
         "//tensorflow/core/tpu:libtftpu_header",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = True,

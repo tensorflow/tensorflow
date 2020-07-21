@@ -109,32 +109,32 @@ void ExitCountdown(Env* env) {
 xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
-  TpuConversions::XlaShapeToCShape(host_shape, &c_host_shape);
+  ApiConverter::ToC(host_shape, &c_host_shape);
   tensorflow::tpu::ExecuteApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
-  xla::Shape device_shape = TpuConversions::CShapeToXlaShape(&c_device_shape);
-  TpuConversions::CShapeCleanup(&c_host_shape);
-  TpuConversions::CShapeCleanup(&c_device_shape);
+  xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
+  ApiConverter::Free(&c_host_shape);
+  ApiConverter::Free(&c_device_shape);
   return device_shape;
 }
 
 int64 ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
-  TpuConversions::XlaShapeToCShape(shape, &c_shape);
+  ApiConverter::ToC(shape, &c_shape);
   int64 size =
       tensorflow::tpu::ExecuteApiFn()->HardwareLayout_ShapeSizeCompactFn(
           &c_shape);
-  TpuConversions::CShapeCleanup(&c_shape);
+  ApiConverter::Free(&c_shape);
   return size;
 }
 
 int64 ShapeSizeCompactRaw(const xla::Shape& shape) {
   XLA_Shape c_shape;
-  TpuConversions::XlaShapeToCShape(shape, &c_shape);
+  ApiConverter::ToC(shape, &c_shape);
   int64 size =
       tensorflow::tpu::ExecuteApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
           &c_shape);
-  TpuConversions::CShapeCleanup(&c_shape);
+  ApiConverter::Free(&c_shape);
   return size;
 }
 
@@ -241,17 +241,16 @@ xla::Status UpdateDynamicInputs(
             // After getting the data onto the host, transpose the data to
             // the correct layout by delinearizing it and linearizing it again.
             XLA_Shape c_runtime_shape, c_compile_time_shape;
-            TpuConversions::XlaShapeToCShape(runtime_shape, &c_runtime_shape);
-            TpuConversions::XlaShapeToCShape(compile_time_shape,
-                                             &c_compile_time_shape);
+            ApiConverter::ToC(runtime_shape, &c_runtime_shape);
+            ApiConverter::ToC(compile_time_shape, &c_compile_time_shape);
             StatusHelper status;
             tensorflow::tpu::ExecuteApiFn()
                 ->TpuExecute_RuntimeInputToPaddedDataFn(
                     raw_input_runtime->data(), raw_input_runtime->size(),
                     padded_data->data(), padded_data->size(), &c_runtime_shape,
                     &c_compile_time_shape, status.c_status);
-            TpuConversions::CShapeCleanup(&c_runtime_shape);
-            TpuConversions::CShapeCleanup(&c_compile_time_shape);
+            ApiConverter::Free(&c_runtime_shape);
+            ApiConverter::Free(&c_compile_time_shape);
             return status.status();
           });
           // Allocate new input and transfer the padded and transposed data to

@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_C_API_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_C_API_H_
 
-#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
 typedef struct XLA_TpuNodeContext XLA_TpuNodeContext;
 
