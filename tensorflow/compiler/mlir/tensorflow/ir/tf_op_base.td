@@ -332,7 +332,7 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
 // This returns a list of shapes so it is used for variadic operands that
 // can have different shapes.
 class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
-  "mlir::TF::OperandShapeRange",
+  "::mlir::TF::OperandShapeRange",
   "auto values = getODSOperands(" # idx # ");\n"
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
           "mlir::TF::OperandShapeIterator(values.end())};",

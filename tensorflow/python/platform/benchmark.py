@@ -430,9 +430,13 @@ def _run_benchmarks(regex):
 
   Args:
     regex: The string regular expression to match Benchmark classes against.
+
+  Raises:
+    ValueError: If no benchmarks were selected by the input regex.
   """
   registry = list(GLOBAL_BENCHMARK_REGISTRY)
 
+  selected_benchmarks = []
   # Match benchmarks in registry against regex
   for benchmark in registry:
     benchmark_name = "%s.%s" % (benchmark.__module__, benchmark.__name__)
@@ -448,12 +452,16 @@ def _run_benchmarks(regex):
         continue
       full_benchmark_name = "%s.%s" % (benchmark_name, attr)
       if regex == "all" or re.search(regex, full_benchmark_name):
+        selected_benchmarks.append(full_benchmark_name)
         # Instantiate the class if it hasn't been instantiated
         benchmark_instance = benchmark_instance or benchmark()
         # Get the method tied to the class
         instance_benchmark_fn = getattr(benchmark_instance, attr)
         # Call the instance method
         instance_benchmark_fn()
+
+  if not selected_benchmarks:
+    raise ValueError("No benchmarks matched the pattern: '{}'".format(regex))
 
 
 def benchmarks_main(true_main, argv=None):

@@ -510,6 +510,10 @@ class TFLiteConverterBase(object):
       if not self._saved_model_exported_names:
         self._saved_model_exported_names = []
       self._saved_model_version = saved_model_proto.saved_model_schema_version
+      if self._saved_model_version == 0:
+        self.saved_model_dir = None
+        logging.warning("SavedModel schema version is zero.")
+        return
       if self._saved_model_version not in [1, 2]:
         raise ValueError("SavedModel file format({0}) is not supported".format(
             self._saved_model_version))

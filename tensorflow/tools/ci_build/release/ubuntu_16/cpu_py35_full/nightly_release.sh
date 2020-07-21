@@ -32,7 +32,7 @@ export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3.5)
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package

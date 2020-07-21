@@ -30,6 +30,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.feature_column import dense_features_v2 as df
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -44,9 +46,9 @@ def _initialized_session(config=None):
   return sess
 
 
-class DenseFeaturesTest(test.TestCase):
+class DenseFeaturesTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_retrieving_input(self):
     features = {'a': [0.]}
     dense_features = df.DenseFeatures(fc.numeric_column('a'))

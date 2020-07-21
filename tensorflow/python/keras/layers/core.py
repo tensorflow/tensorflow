@@ -679,7 +679,7 @@ class Flatten(Layer):
         return array_ops.reshape(inputs, flattened_shape)
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.as_shape(input_shape).as_list()
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
     else:

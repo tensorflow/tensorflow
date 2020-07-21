@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_TF_SAVED_MODEL_IMPL_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_TF_SAVED_MODEL_IMPL_H_
 
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
+#include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -63,8 +68,19 @@ class TFSavedModelAPI : public SavedModelAPI {
   ~TFSavedModelAPI() override = default;
 
  private:
-  TFSavedModelAPI() = default;
-  std::vector<ConcreteFunction> functions_;
+  TFSavedModelAPI(
+      const std::string& directory, SavedModelV2Bundle bundle,
+      std::unordered_map<int, std::unique_ptr<TensorHandleConvertible>>
+          revived_objects,
+      std::unordered_map<std::string, std::unique_ptr<TFConcreteFunction>>
+          concrete_functions);
+
+  std::string directory_;
+  SavedModelV2Bundle bundle_;
+  std::unordered_map<int, std::unique_ptr<TensorHandleConvertible>>
+      revived_objects_;
+  std::unordered_map<std::string, std::unique_ptr<TFConcreteFunction>>
+      concrete_functions_;
 };
 
 }  // namespace tensorflow

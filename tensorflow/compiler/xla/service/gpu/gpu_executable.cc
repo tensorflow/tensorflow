@@ -81,7 +81,6 @@ GpuExecutable::GpuExecutable(
 #endif
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
                                              assignment_);
-  ComputeThunkAnnotations();
 }
 
 GpuExecutable::~GpuExecutable() {
@@ -100,12 +99,6 @@ GpuExecutable::~GpuExecutable() {
     for (const auto& pair : module_globals_) {
       CHECK(pair.first->SynchronizeAllActivity());
     }
-  }
-}
-
-void GpuExecutable::ComputeThunkAnnotations() {
-  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    thunk->ComputeAnnotations();
   }
 }
 
@@ -196,8 +189,8 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    VLOG(2) << "Executing the thunk for " << thunk->name() << " on stream "
-            << stream_no;
+    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
+            << " on stream " << stream_no;
     const GpuExecutableRunOptions* gpu_options =
         run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{

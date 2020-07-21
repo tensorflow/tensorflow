@@ -45,9 +45,9 @@ Status TestCluster::Initialize() {
         "Test cluster has already been initialized.");
   }
   initialized_ = true;
-  TF_RETURN_IF_ERROR(NewMasterServer(/*port=*/0, kProtocol, &master_));
-  TF_RETURN_IF_ERROR(master_->Start());
-  master_address_ = absl::StrCat("localhost:", master_->BoundPort());
+  TF_RETURN_IF_ERROR(NewDispatchServer(/*port=*/0, kProtocol, &dispatcher_));
+  TF_RETURN_IF_ERROR(dispatcher_->Start());
+  dispatcher_address_ = absl::StrCat("localhost:", dispatcher_->BoundPort());
   workers_.reserve(num_workers_);
   worker_addresses_.reserve(num_workers_);
   for (int i = 0; i < num_workers_; ++i) {
@@ -59,14 +59,14 @@ Status TestCluster::Initialize() {
 Status TestCluster::AddWorker() {
   std::unique_ptr<WorkerGrpcDataServer> worker;
   TF_RETURN_IF_ERROR(
-      NewWorkerServer(/*port=*/0, kProtocol, master_address_, &worker));
+      NewWorkerServer(/*port=*/0, kProtocol, dispatcher_address_, &worker));
   TF_RETURN_IF_ERROR(worker->Start());
   worker_addresses_.push_back(absl::StrCat("localhost:", worker->BoundPort()));
   workers_.push_back(std::move(worker));
   return Status::OK();
 }
 
-std::string TestCluster::MasterAddress() { return master_address_; }
+std::string TestCluster::DispatcherAddress() { return dispatcher_address_; }
 
 std::string TestCluster::WorkerAddress(int index) {
   DCHECK_GE(index, 0);

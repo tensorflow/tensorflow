@@ -687,10 +687,12 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
       auto retval = func.front().getTerminator()->getOperand(result_index);
       assert(result.getType() == retval.getType());
       auto aliasing_arg = retval.dyn_cast<BlockArgument>();
+      if (!aliasing_arg)
+        return op.emitOpError("unsupported output: ")
+               << "resource does not alias input";
       if (common_aliasing_arg_num == kUnassigned)
         common_aliasing_arg_num = aliasing_arg.getArgNumber();
-      if (!aliasing_arg ||
-          aliasing_arg.getArgNumber() != common_aliasing_arg_num)
+      if (aliasing_arg.getArgNumber() != common_aliasing_arg_num)
         return op.emitOpError("unsupported output: ")
                << "resource does not alias a single input";
     }
@@ -760,8 +762,11 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   for (auto branch : branches) {
     auto new_retvals =
         llvm::to_vector<4>(branch.front().getTerminator()->getOperands());
+    new_retvals.resize(new_retvals.size() + resource_arg_to_new_output.size());
     for (const auto& entry : resource_arg_to_new_output) {
-      new_retvals.push_back(branch.getArgument(entry.getFirst()));
+      int64_t resource_arg_index = entry.getFirst();
+      int64_t output_index = entry.getSecond();
+      new_retvals[output_index] = branch.getArgument(resource_arg_index);
     }
     auto old_return = branch.front().getTerminator();
     OpBuilder builder(old_return);

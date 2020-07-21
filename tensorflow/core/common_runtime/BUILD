@@ -42,11 +42,13 @@ load(
     "mkl_deps",
 )
 
+default_package_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+]
+
 package(
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    default_visibility = default_package_visibility,
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -56,6 +58,7 @@ tf_cuda_library(
         "composite_device.h",
         "device.h",
         "device_factory.h",
+        "device_mgr.h",
         "function.h",
         "function_optimization_registry.h",
         "gradients.h",
@@ -757,6 +760,10 @@ cc_library(
         "shape_refiner.h",
     ],
     copts = tf_copts(),
+    visibility = default_package_visibility + [
+        "//platforms/performance/autograppler:__subpackages__",
+        "//platforms/performance/tf_sim:__subpackages__",
+    ],
     deps = [
         ":device",
         ":device_factory",
@@ -959,6 +966,10 @@ cc_library(
     srcs = ["lower_functional_ops.cc"],
     hdrs = ["lower_functional_ops.h"],
     copts = tf_copts(),
+    visibility = default_package_visibility + [
+        "//platforms/performance/autograppler:__subpackages__",
+        "//platforms/performance/tf_sim:__subpackages__",
+    ],
     deps = [
         ":function_utils",
         ":inline_function_utils",

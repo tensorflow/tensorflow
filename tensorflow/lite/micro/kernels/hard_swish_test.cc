@@ -151,10 +151,6 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
                                 float output_max, float tolerated_bias,
                                 float* float_input_values,
                                 float* float_ref_output_values) {
-  const float quantized_type_range =
-      static_cast<float>(std::numeric_limits<T>::max()) -
-      static_cast<float>(std::numeric_limits<T>::min());
-
   const float input_scale = ScaleFromMinMax<T>(input_min, input_max);
   const float output_scale = ScaleFromMinMax<T>(output_min, output_max);
 
@@ -187,13 +183,6 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
 
   const int input_dims_data[] = {2, 1, size};
   const int output_dims_data[] = {2, 1, size};
-
-  // The numerical error for any 8bit quantized function is at least one half
-  // times the quantization step: 0.5 * (kOutMax - kOutMin) / 256.
-  // To that we add again the quantization step (kOutMax - kOutMin) / 256
-  // to allow for an off-by-one rounding error.
-  const float kTolerance =
-      std::max(input_max - input_min, output_max - output_min) * (1.5f / 256.f);
 
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);

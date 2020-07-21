@@ -657,6 +657,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "types"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "uint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

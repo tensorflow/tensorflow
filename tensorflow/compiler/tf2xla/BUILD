@@ -27,6 +27,7 @@ package_group(
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tests/...",
         "//tensorflow/compiler/tf2xla/...",
+        "//tensorflow/core/tpu/...",
         "//tensorflow/python/compiler/...",
     ],
 )

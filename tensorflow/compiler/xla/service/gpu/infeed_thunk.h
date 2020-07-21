@@ -43,6 +43,7 @@ class InfeedThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   const ShapeTree<BufferAllocation::Slice> infeed_slices_;
 };
 

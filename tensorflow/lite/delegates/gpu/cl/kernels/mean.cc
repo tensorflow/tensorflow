@@ -93,21 +93,19 @@ std::string GetMeanKernelCode(const OperationDef& op_def,
 }
 }  // namespace
 
-Mean::Mean(Mean&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+Mean::Mean(Mean&& operation) : GPUOperation(std::move(operation)) {}
 
 Mean& Mean::operator=(Mean&& operation) {
   if (this != &operation) {
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
 absl::Status Mean::Compile(const CreationContext& creation_context) {
+  // must be: (x * y) % 4 = 0;
+  // must be: z = 1;
+  work_group_size_ = int3(16, 16, 1);
   if (creation_context.device->IsAdreno3xx()) {
     work_group_size_ = int3(16, 8, 1);
   }
@@ -131,8 +129,7 @@ absl::Status Mean::BindArguments() {
   const double size_1 = total_size / size_0;
   RETURN_IF_ERROR(args_.SetFloat("inv_multiplier_1", 1.0 / size_1));
   RETURN_IF_ERROR(args_.SetFloat("inv_multiplier_2", 1.0 / size_0));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Mean::GetGridSize() const {
@@ -140,11 +137,6 @@ int3 Mean::GetGridSize() const {
   const int grid_y = work_group_size_.y;
   const int grid_z = dst_[0]->Slices() * dst_[0]->Batch();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Mean::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 Mean CreateMean(const OperationDef& definition) { return Mean(definition); }

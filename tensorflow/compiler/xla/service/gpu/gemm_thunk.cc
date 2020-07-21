@@ -40,6 +40,7 @@ GemmThunk::GemmThunk(ThunkInfo thunk_info,
                      bool implements_whole_instruction,
                      const GemmBackendConfig &backend_config)
     : Thunk(Kind::kGemm, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
@@ -51,11 +52,11 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
     return params.buffer_allocations->GetDeviceAddress(slice);
   };
 
-  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction();
+  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction_;
   se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-  return RunGemm(hlo_instruction(), backend_config_, lhs_data, rhs_data,
+  return RunGemm(hlo_instruction_, backend_config_, lhs_data, rhs_data,
                  output_data, params.stream, implements_whole_instruction_,
                  profile_index(), params.profiler);
 }
@@ -82,24 +83,28 @@ static bool DoGemmWithAlgorithm(
   // Converts from an XLA PrimitiveType to a blas::ComputationType, which is
   // used to specify the precision with which matmul computations should be
   // performed, separately from the precision of the inputs and result.
-  se::blas::ComputationType computation_type = [&](PrimitiveType type) {
-    switch (type) {
-      case F16:
-        // Use F32 as computation type for F16 as we currently only implement
-        // the cuDNN pseudo half configuration for half precision.
-        return se::blas::ComputationType::kF32;
-      case F32:
-        return se::blas::ComputationType::kF32;
-      case F64:
-        return se::blas::ComputationType::kF64;
-      case C64:
-        return se::blas::ComputationType::kComplexF32;
-      case C128:
-        return se::blas::ComputationType::kComplexF64;
-      default:
-        LOG(FATAL) << "Unsupported type.";
-    }
-  }(type);
+  se::blas::ComputationType computation_type;
+  switch (type) {
+    case F16:
+      // Use F32 as computation type for F16 as we currently only implement
+      // the cuDNN pseudo half configuration for half precision.
+      computation_type = se::blas::ComputationType::kF32;
+      break;
+    case F32:
+      computation_type = se::blas::ComputationType::kF32;
+      break;
+    case F64:
+      computation_type = se::blas::ComputationType::kF64;
+      break;
+    case C64:
+      computation_type = se::blas::ComputationType::kComplexF32;
+      break;
+    case C128:
+      computation_type = se::blas::ComputationType::kComplexF64;
+      break;
+    default:
+      return false;
+  }
 
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
@@ -296,7 +301,7 @@ Status RunGemm(const HloInstruction *gemm,
             stream, best_algorithm,
             /*output_profile_result=*/profile_result);
       default:
-        LOG(FATAL) << "Unsupported type.";
+        return false;
     }
   }();
 

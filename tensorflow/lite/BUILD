@@ -625,6 +625,16 @@ cc_library(
 )
 
 cc_test(
+    name = "type_to_tflitetype_test",
+    size = "small",
+    srcs = ["type_to_tflitetype_test.cc"],
+    deps = [
+        ":type_to_tflitetype",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "minimal_logging_test",
     size = "small",
     srcs = ["minimal_logging_test.cc"],
@@ -640,8 +650,12 @@ cc_test(
 cc_library(
     name = "shared_library",
     hdrs = ["shared_library.h"],
-    copts = TFLITE_DEFAULT_COPTS,
     linkopts = if_not_windows(["-ldl"]),
+)
+
+cc_library(
+    name = "macros",
+    hdrs = ["core/macros.h"],
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.

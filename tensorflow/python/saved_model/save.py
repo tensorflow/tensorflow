@@ -960,15 +960,16 @@ def save(obj, export_dir, signatures=None, options=None):
   Args:
     obj: A trackable object to export.
     export_dir: A directory in which to write the SavedModel.
-    signatures: Optional, either a `tf.function` with an input signature
-      specified or the result of `f.get_concrete_function` on a
-      `@tf.function`-decorated function `f`, in which case `f` will be used to
-      generate a signature for the SavedModel under the default serving
-      signature key. `signatures` may also be a dictionary, in which case it
-      maps from signature keys to either `tf.function` instances with input
-      signatures or concrete functions. The keys of such a dictionary may be
-      arbitrary strings, but will typically be from the
-      `tf.saved_model.signature_constants` module.
+    signatures: Optional, one of three types:
+      * a `tf.function` with an input signature specified, which will use the
+        default serving signature key,
+      * the result of `f.get_concrete_function` on a `@tf.function`-decorated
+        function `f`, in which case `f` will be used to generate a signature for
+        the SavedModel under the default serving signature key,
+      * a dictionary, which maps signature keys to either `tf.function`
+        instances with input signatures or concrete functions. Keys of such a
+        dictionary may be arbitrary strings, but will typically be from the
+        `tf.saved_model.signature_constants` module.
     options: Optional, `tf.saved_model.SaveOptions` object that specifies
       options for saving.
 
@@ -1142,6 +1143,6 @@ def _build_meta_graph(obj,
                       options,
                       meta_graph_def=None):
   """Creates a MetaGraph under a SaveContext."""
-  with save_context.save_context():
+  with save_context.save_context(options):
     return _build_meta_graph_impl(obj, export_dir, signatures, options,
                                   meta_graph_def)
