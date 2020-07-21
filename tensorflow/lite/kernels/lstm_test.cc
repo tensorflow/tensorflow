@@ -38,9 +38,9 @@ class LSTMOpModel : public SingleOpModel {
  public:
   LSTMOpModel(int n_batch, int n_input, int n_cell, int n_output, bool use_cifg,
               bool use_peephole, bool use_projection_weights,
-              bool use_projection_bias, float cell_clip, float proj_clip,
-              const TensorType weight_type, bool model_has_legacy_20_inputs,
-              bool is_layer_norm, bool asymmetric_quantize_inputs)
+              bool use_projection_bias, const TensorType weight_type,
+              bool model_has_legacy_20_inputs, bool is_layer_norm,
+              bool asymmetric_quantize_inputs)
       : n_input_(n_input), n_output_(n_output), weight_type_(weight_type) {
     input_ = AddInput({TensorType_FLOAT32, {n_batch, n_input}});
 
@@ -126,11 +126,12 @@ class LSTMOpModel : public SingleOpModel {
 
     output_ = AddOutput({TensorType_FLOAT32, {n_output}});
 
+    // TODO(b/161825581): Add tests where cell_clip and/or proj_clip is not the
+    // default 0.
     SetBuiltinOp(
         BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
-        CreateLSTMOptions(builder_, ActivationFunctionType_TANH, cell_clip,
-                          proj_clip, ::tflite::LSTMKernelType_FULL,
-                          asymmetric_quantize_inputs)
+        CreateLSTMOptions(builder_, ActivationFunctionType_TANH,
+                          LSTMKernelType_FULL, asymmetric_quantize_inputs)
             .Union());
 
     BuildInterpreter({});  // Input sizes are already set up.
@@ -456,7 +457,6 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
                    /*use_cifg=*/false, /*use_peephole=*/false,
                    /*use_projection_weights=*/false,
                    /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                    /*weight_type=*/TensorType_FLOAT32,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/false);
@@ -479,7 +479,6 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingNoLayerNormLstmTest,
                    /*use_cifg=*/false, /*use_peephole=*/false,
                    /*use_projection_weights=*/false,
                    /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                    /*weight_type=*/TensorType_FLOAT32,
                    /*model_has_legacy_20_inputs=*/false,
                    /*is_layer_norm=*/false,
@@ -503,8 +502,7 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmTest,
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/false, /*use_peephole=*/false,
                    /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false, /*cell_clip=*/0.0,
-                   /*proj_clip=*/0.0,
+                   /*use_projection_bias=*/false,
                    /*weight_type=*/TensorType_UINT8,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
@@ -530,8 +528,7 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmInt8Test,
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/false, /*use_peephole=*/false,
                    /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false, /*cell_clip=*/0.0,
-                   /*proj_clip=*/0.0,
+                   /*use_projection_bias=*/false,
                    /*weight_type=*/TensorType_INT8,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
@@ -598,7 +595,6 @@ TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
                    /*use_cifg=*/true, /*use_peephole=*/true,
                    /*use_projection_weights=*/false,
                    /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                    /*weight_type=*/TensorType_FLOAT32,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/false);
@@ -622,7 +618,6 @@ TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmTest,
                    /*use_cifg=*/true, /*use_peephole=*/true,
                    /*use_projection_weights=*/false,
                    /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                    /*weight_type=*/TensorType_UINT8,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
@@ -647,7 +642,6 @@ TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmInt8Test,
                    /*use_cifg=*/true, /*use_peephole=*/true,
                    /*use_projection_weights=*/false,
                    /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                    /*weight_type=*/TensorType_INT8,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
@@ -1264,7 +1258,6 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest, LstmBlackBoxTest) {
                    /*use_cifg=*/false, /*use_peephole=*/true,
                    /*use_projection_weights=*/true,
                    /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                    /*weight_type=*/TensorType_FLOAT32,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/false);
@@ -1287,7 +1280,6 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLstmTest,
                    /*use_cifg=*/false, /*use_peephole=*/true,
                    /*use_projection_weights=*/true,
                    /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                    /*weight_type=*/TensorType_UINT8,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
@@ -1312,7 +1304,6 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLstmInt8Test,
                    /*use_cifg=*/false, /*use_peephole=*/true,
                    /*use_projection_weights=*/true,
                    /*use_projection_bias=*/false,
-                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                    /*weight_type=*/TensorType_INT8,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
@@ -1393,14 +1384,12 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, cell_clip, proj_clip,
+      /*use_projection_bias=*/false,
       /*weight_type=*/TensorType_FLOAT32, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/false);
 
@@ -1431,14 +1420,12 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, cell_clip, proj_clip,
+      /*use_projection_bias=*/false,
       /*weight_type=*/TensorType_UINT8, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
 
@@ -1471,14 +1458,12 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, cell_clip, proj_clip,
+      /*use_projection_bias=*/false,
       /*weight_type=*/TensorType_INT8, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
 
@@ -1552,14 +1537,12 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, cell_clip, proj_clip,
+      /*use_projection_bias=*/false,
       /*weight_type=*/TensorType_FLOAT32, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/false);
 
@@ -1590,14 +1573,12 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, cell_clip, proj_clip,
+      /*use_projection_bias=*/false,
       /*weight_type=*/TensorType_UINT8, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
 
@@ -1629,14 +1610,12 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, cell_clip, proj_clip,
+      /*use_projection_bias=*/false,
       /*weight_type=*/TensorType_INT8, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
 
@@ -1663,8 +1642,7 @@ class LSTMIntegerOpModel : public SingleOpModel {
   LSTMIntegerOpModel(int n_batch, int n_input, int n_cell, int n_output,
                      bool use_cifg, bool use_peephole,
                      bool use_projection_weights, bool use_projection_bias,
-                     bool use_layer_norm, float cell_clip, float proj_clip,
-                     bool use_8x8_8_implementation,
+                     bool use_layer_norm, bool use_8x8_8_implementation,
                      const std::vector<std::pair<float, float>>& ranges,
                      const std::vector<std::pair<float, int>>& intermediates)
       : n_input_(n_input), n_output_(n_output) {
@@ -1804,10 +1782,11 @@ class LSTMIntegerOpModel : public SingleOpModel {
                          ranges[24].first,
                          ranges[24].second});
 
-    SetBuiltinOp(BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
-                 CreateLSTMOptions(builder_, ActivationFunctionType_TANH,
-                                   cell_clip, proj_clip)
-                     .Union());
+    // TODO(b/161825581): Add tests where cell_clip and/or proj_clip is not the
+    // default 0.
+    SetBuiltinOp(
+        BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
+        CreateLSTMOptions(builder_, ActivationFunctionType_TANH).Union());
 
     BuildInterpreter({});  // Input sizes are already set
   }
@@ -1946,8 +1925,6 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   // Model related weights.
   const std::vector<float> input_to_input_weights = {
@@ -2042,7 +2019,7 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
                           /*use_cifg=*/false, /*use_peephole=*/false,
                           /*use_projection_weights=*/true,
                           /*use_projection_bias=*/false,
-                          /*use_layer_norm=*/true, cell_clip, proj_clip,
+                          /*use_layer_norm=*/true,
                           /*use_8x8_8_implementation=*/false, ranges,
                           intermediates);
 
@@ -2108,8 +2085,6 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionYesPeephole) {
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   // Model related weights.
   const std::vector<float> input_to_input_weights = {
@@ -2210,7 +2185,7 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionYesPeephole) {
                           /*use_cifg=*/false, /*use_peephole=*/true,
                           /*use_projection_weights=*/true,
                           /*use_projection_bias=*/false,
-                          /*use_layer_norm=*/true, cell_clip, proj_clip,
+                          /*use_layer_norm=*/true,
                           /*use_8x8_8_implementation=*/false, ranges,
                           intermediates);
 
@@ -2280,8 +2255,6 @@ TEST(LSTMIntegerOpModel, CifgYesLayerNormNoYesProjectionNoPeephole_8x8_8) {
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float cell_clip = 0.0;
-  const float proj_clip = 0.0;
 
   // Model related weights.
   const std::vector<float> input_to_input_weights = {
@@ -2379,7 +2352,7 @@ TEST(LSTMIntegerOpModel, CifgYesLayerNormNoYesProjectionNoPeephole_8x8_8) {
                           /*use_cifg=*/true, /*use_peephole=*/false,
                           /*use_projection_weights=*/true,
                           /*use_projection_bias=*/true,
-                          /*use_layer_norm=*/true, cell_clip, proj_clip,
+                          /*use_layer_norm=*/true,
                           /*use_8x8_8_implementation=*/true, ranges,
                           intermediates);
 
@@ -2451,7 +2424,6 @@ TEST(LSTMOpModel, InvalidTypeTest) {
                                 /*use_cifg=*/false, /*use_peephole=*/false,
                                 /*use_projection_weights=*/false,
                                 /*use_projection_bias=*/false,
-                                /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                                 /*weight_type=*/TensorType_INT32,
                                 /*model_has_legacy_20_inputs=*/true,
                                 /*is_layer_norm=*/false,
@@ -2462,7 +2434,6 @@ TEST(LSTMOpModel, InvalidTypeTest) {
                                 /*use_cifg=*/false, /*use_peephole=*/false,
                                 /*use_projection_weights=*/false,
                                 /*use_projection_bias=*/false,
-                                /*cell_clip=*/0.0, /*proj_clip=*/0.0,
                                 /*weight_type=*/TensorType_COMPLEX64,
                                 /*model_has_legacy_20_inputs=*/true,
                                 /*is_layer_norm=*/false,
