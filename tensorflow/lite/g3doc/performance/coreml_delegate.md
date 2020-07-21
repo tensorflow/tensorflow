@@ -184,6 +184,7 @@ Following ops are supported by the Core ML delegate.
         1]`, `[B, 1, H, W]`, `[B, 1, 1, 1]`.
 *   AveragePool2D
 *   Concat
+    *   Concatenation should be done along the channel axis.
 *   Conv2D
     *   Weights and bias should be constant.
 *   DepthwiseConv2D
