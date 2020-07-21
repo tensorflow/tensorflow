@@ -154,8 +154,7 @@ TF::TPUCopyWithLayoutOp BuildCopyWithLayout(tf_device::LaunchOp execute_launch,
                                             Value input, OpBuilder* builder) {
   return builder->create<TF::TPUCopyWithLayoutOp>(
       execute_launch.getLoc(), llvm::ArrayRef<Type>{input.getType()},
-      llvm::ArrayRef<Value>{input, get_layout.layout()},
-      llvm::ArrayRef<NamedAttribute>{});
+      llvm::ArrayRef<Value>{input, get_layout.layout()});
 }
 
 // Performs transformation for a non-replicated input.

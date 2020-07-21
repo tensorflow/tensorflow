@@ -2129,8 +2129,6 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
   if (options_.enable_dot_strength_reduction() &&
-      (ShapeUtil::ElementIsFloating(dot->shape()) ||
-       ShapeUtil::ElementIsComplex(dot->shape())) &&
       ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
             dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
         lhs->shape().rank()) ||
@@ -2192,9 +2190,9 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     std::vector<int64> reduce_dims(
         dot->dot_dimension_numbers().lhs_contracting_dimensions_size());
     PrimitiveType dot_type =
-        ShapeUtil::ElementIsComplex(dot->shape())
-            ? dot->shape().element_type()
-            : dot->shape().element_type() == F64 ? F64 : F32;
+        ShapeUtil::ElementIsFloating(dot->shape())
+            ? (dot->shape().element_type() == F64 ? F64 : F32)
+            : dot->shape().element_type();
     new_dot = AsType(new_dot, dot_type);
     const int64 outer_dims = std::max(rhs_outer_dims, lhs_outer_dims);
     absl::c_iota(
@@ -4137,13 +4135,13 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
         new_dnums.add_rhs_contracting_dimensions(
             dnums.rhs_batch_dimensions(batch_dim));
         new_dnums.add_lhs_contracting_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
+            dnums.lhs_batch_dimensions(batch_dim));
         ++removed_dims;
       } else {
         new_dnums.add_rhs_batch_dimensions(
             dnums.rhs_batch_dimensions(batch_dim));
         new_dnums.add_lhs_batch_dimensions(
-            dnums.rhs_batch_dimensions(batch_dim));
+            dnums.lhs_batch_dimensions(batch_dim));
       }
     }
     std::vector<int64> reduce_dims;
@@ -4697,15 +4695,17 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   for (int64 spatial_dim = 0;
        spatial_dim < dnums.input_spatial_dimensions_size(); ++spatial_dim) {
     const int64 kernel_size = window_dims[spatial_dim].size();
-    kernel_product *= kernel_size;
     const int64 dilated_kernel_size =
         1 + (kernel_size - 1) * window_dims[spatial_dim].window_dilation();
 
     const int64 input_size =
         input->shape().dimensions(dnums.input_spatial_dimensions(spatial_dim));
-    swapped_kernel_product *= input_size;
     const int64 dilated_input_size =
         1 + (input_size - 1) * window_dims[spatial_dim].base_dilation();
+    // Don't decide to swap if the input size is one, since many convolution
+    // implementations can easily hand that special case efficiently.
+    kernel_product *= kernel_size;
+    swapped_kernel_product *= input_size == 1 ? kernel_size : input_size;
 
     auto new_dim = swapped_window.add_dimensions();
     new_dim->set_size(input_size);

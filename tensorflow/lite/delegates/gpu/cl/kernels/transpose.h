@@ -28,8 +28,8 @@ class Transpose : public GPUOperation {
  public:
   Transpose(const OperationDef& definition, const TransposeAttributes& attr)
       : GPUOperation(definition), attr_(attr) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -39,9 +39,6 @@ class Transpose : public GPUOperation {
   Transpose& operator=(const Transpose&) = delete;
 
  private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   TransposeAttributes attr_;
 };
 

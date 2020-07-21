@@ -180,7 +180,7 @@ def set_callback_parameters(callback_list,
 
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
-  return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
+  return (hasattr(data, '__next__') or hasattr(data, 'next') or isinstance(
       data, (Sequence, iterator_ops.Iterator, iterator_ops.OwnedIterator)))
 
 
@@ -2139,7 +2139,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       raise ValueError(profile_batch_error_message)
 
     if self._start_batch > 0:
-      profiler.warmup()  # Improve the profiling accuracy.
+      # Warm up and improve the profiling accuracy.
+      profiler.start('')
+      profiler.stop(save=False)
     # True when a trace is running.
     self._is_tracing = False
 

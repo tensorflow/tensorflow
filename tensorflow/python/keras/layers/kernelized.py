@@ -236,8 +236,8 @@ class RandomFourierFeatures(base_layer.Layer):
 
   def get_config(self):
     kernel_initializer = self.kernel_initializer
-    if isinstance(self.kernel_initializer, init_ops.Initializer):
-      kernel_initializer = initializers.serialize(self.kernel_initializer)
+    if not isinstance(kernel_initializer, six.string_types):
+      kernel_initializer = initializers.serialize(kernel_initializer)
     config = {
         'output_dim': self.output_dim,
         'kernel_initializer': kernel_initializer,

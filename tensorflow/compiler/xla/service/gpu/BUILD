@@ -170,7 +170,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -1168,6 +1167,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_4d_expander",
         "//tensorflow/compiler/xla/service:dot_decomposer",
@@ -1675,7 +1675,7 @@ cc_library(
 tf_cc_test(
     name = "hlo_algorithm_blacklist_test",
     srcs = ["hlo_algorithm_blacklist_test.cc"],
-    data = ["data/hlo_algorithm_blacklist.pbtxt"],
+    data = ["data/hlo_algorithm_denylist.pbtxt"],
     tags = ["no_pip"],
     deps = [
         ":hlo_algorithm_blacklist",

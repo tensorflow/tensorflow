@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
@@ -308,43 +309,6 @@ Status Split(OpKernelContext* context, const Tensor& input,
   }
   return split_status;
 }
-
-// Wrapper class to allow both lock-free construction and concurrent updates on
-// a shared 'status'.
-class ThreadSafeStatus {
- public:
-  const Status& status() const& TF_LOCKS_EXCLUDED(mutex_) {
-    tf_shared_lock lock(mutex_);
-    return status_;
-  }
-  Status status() && TF_LOCKS_EXCLUDED(mutex_) {
-    tf_shared_lock lock(mutex_);
-    return std::move(status_);
-  }
-
-  // Retains the first error status: replaces the current status with
-  // `new_status` if `new_status` is not OK and the previous status is OK.
-  void Update(const Status& new_status) TF_LOCKS_EXCLUDED(mutex_) {
-    if (new_status.ok()) {
-      return;
-    }
-
-    mutex_lock lock(mutex_);
-    status_.Update(new_status);
-  }
-  void Update(Status&& new_status) TF_LOCKS_EXCLUDED(mutex_) {
-    if (new_status.ok()) {
-      return;
-    }
-
-    mutex_lock lock(mutex_);
-    status_.Update(std::forward<Status>(new_status));
-  }
-
- private:
-  mutable mutex mutex_;
-  Status status_ TF_GUARDED_BY(mutex_);
-};
 
 // A class encapsulating the state and logic for batching tensors.
 class BatchResource : public ResourceBase {
@@ -1060,11 +1024,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
       enable_large_batch_splitting_ = false;
     }
 
-    if (enable_large_batch_splitting_ && (!allowed_batch_sizes_.empty())) {
-      max_execution_batch_size_ = *allowed_batch_sizes_.rbegin();
-    } else {
-      max_execution_batch_size_ = max_batch_size_;
-    }
     OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
   }
 
@@ -1124,7 +1083,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
   string batcher_queue_;
   int32 num_batch_threads_;
   int32 max_batch_size_;
-  int32 max_execution_batch_size_;
   int32 batch_timeout_micros_;
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;

@@ -591,7 +591,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a = tf.keras.layers.Input((None, 10))
   >>> tf.shape(a)
-  <tf.Tensor ... shape=(3,) dtype=int32>
+  <... shape=(3,) dtype=int32...>
 
   In these cases, using `tf.Tensor.shape` will return more informative results.
 

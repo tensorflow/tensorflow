@@ -159,10 +159,10 @@ if (delegate == nullptr) {
 interpreter->ModifyGraphWithDelegate(delegate);
 ```
 
-The delegate creation logic reads device's machine id (e.g. iPhone11,1)
-to determine its Neural Engine availability. See the
+The delegate creation logic reads device's machine id (e.g. iPhone11,1) to
+determine its Neural Engine availability. See the
 [code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/coreml/coreml_delegate.mm)
-for more detail. Alternatively, you can implement your own set of blacklist
+for more detail. Alternatively, you can implement your own set of denylist
 devices using other libraries such as
 [DeviceKit](https://github.com/devicekit/DeviceKit).
 

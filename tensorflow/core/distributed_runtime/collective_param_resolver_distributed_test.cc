@@ -327,7 +327,8 @@ class MockNcclReducer : public CollectiveImplementationInterface {
   Status InitializeCollectiveParams(CollectiveParams*) override {
     return Status::OK();
   }
-  Status InitializeCollectiveContext(CollectiveContext*) override {
+  Status InitializeCollectiveContext(
+      std::shared_ptr<CollectiveContext>) override {
     return Status::OK();
   }
   Status InitializeCollectiveGroupRuntimeDetails(

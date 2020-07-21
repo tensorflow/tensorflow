@@ -219,6 +219,16 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       value_index += num_values
     self.assertDatasetProduces(dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoOutputShapes(self):
+    # Some datasets, e.g. datasets with None tensors, have components without
+    # output shapes. Test that this doesn't break rebatching shape inference
+    # logic.
+    dataset = dataset_ops.Dataset.range(4)
+    dataset = dataset.map(lambda x: (x, None))
+    dataset = dataset.batch(4, drop_remainder=True)
+    _ = distribute._RebatchDataset(dataset, num_replicas=2)
+
 
 if __name__ == "__main__":
   test.main()

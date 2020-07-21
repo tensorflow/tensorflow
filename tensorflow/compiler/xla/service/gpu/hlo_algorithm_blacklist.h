@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_ALGORITHM_BLACKLIST_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_ALGORITHM_BLACKLIST_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
 
 #include <vector>
 
@@ -24,13 +24,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::Span<const stream_executor::dnn::AlgorithmDesc>
-GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
-                             tensorflow::CudnnVersion cudnn_version,
-                             const std::string& blas_version,
-                             const std::string& hlo);
+absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
+    tensorflow::ComputeCapability cc, tensorflow::CudnnVersion cudnn_version,
+    const std::string& blas_version, const std::string& hlo);
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_ALGORITHM_BLACKLIST_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_

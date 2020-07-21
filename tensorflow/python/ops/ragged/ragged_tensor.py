@@ -825,6 +825,27 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     value_shape = self._values.shape[1:]
     return tensor_shape.TensorShape([nrows, ncols]).concatenate(value_shape)
 
+  def get_shape(self):
+    """The statically known shape of this ragged tensor.
+
+    Returns:
+      A `TensorShape` containing the statically known shape of this ragged
+      tensor.  Ragged dimensions have a size of `None`.
+
+    Alias for `shape` property.
+
+    Examples:
+
+    >>> tf.ragged.constant([[0], [1, 2]]).get_shape()
+    TensorShape([2, None])
+
+    >>> tf.ragged.constant(
+    ...    [[[0, 1]], [[1, 2], [3, 4]]], ragged_rank=1).get_shape()
+    TensorShape([2, None, 2])
+
+    """
+    return self.shape
+
   @property
   def ragged_rank(self):
     """The number of times the RaggedTensor's flat_values is partitioned.

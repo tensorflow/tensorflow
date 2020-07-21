@@ -174,7 +174,7 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
     return map_fn(nested)
 
   # Recursively convert.
-  if not nest.is_sequence(nested):
+  if not nest.is_nested(nested):
     raise ValueError(
         'Received non-atomic and non-sequence element: {}'.format(nested))
   if nest._is_mapping(nested):
@@ -284,7 +284,7 @@ def convert_inner_node_data(nested, wrap=False):
       return True
     if _is_serialized_node_data(nested):
       return True
-    return not nest.is_sequence(nested)
+    return not nest.is_nested(nested)
 
   def _convert_object_or_list(nested):
     """Convert b/t `ListWrapper` object and list representations."""

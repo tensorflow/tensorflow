@@ -996,5 +996,13 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
   return result;
 }
 
+size_t GetModelTensorCount(const Model* model) {
+  auto* subgraphs = model->subgraphs();
+  if (subgraphs) {
+    return (*subgraphs)[0]->tensors()->size();
+  }
+  return 0;
+}
+
 }  // namespace testing
 }  // namespace tflite

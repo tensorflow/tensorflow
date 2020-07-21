@@ -48,6 +48,10 @@ namespace {
 using absl::StrCat;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
+// Literals can be used as DMA targets, which can require alignment. We
+// force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
+// alignment.
+constexpr int kMinimumAlignment = 64;
 
 // Converts between little and big endian.
 //
@@ -133,12 +137,14 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
     }
   } else if (shape.IsArray()) {
     if (allocate_arrays) {
-      // Literals can be used as DMA targets, which can require alignment. We
-      // force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
-      // alignment.
-      constexpr int kMinimumAlignment = 64;
       piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
           piece->size_bytes(), kMinimumAlignment)));
+      if (shape.is_dynamic()) {
+        CHECK_EQ(piece->dynamic_size_buffer(), nullptr);
+        piece->set_dynamic_size_buffer(
+            static_cast<int32*>(tensorflow::port::AlignedMalloc(
+                piece->dynamic_size_buffer_bytes(), kMinimumAlignment)));
+      }
     }
   } else {
     // If the shape is neither an array nor tuple, then it must be
@@ -171,6 +177,9 @@ void Literal::DeallocateBuffers() {
         if (piece->buffer() != nullptr) {
           tensorflow::port::AlignedFree(piece->buffer());
         }
+        if (piece->dynamic_size_buffer() != nullptr) {
+          tensorflow::port::AlignedFree(piece->dynamic_size_buffer());
+        }
       });
 }
 
@@ -197,6 +206,15 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
         }
       });
   return literal;
+}
+
+int32 LiteralBase::GetDynamicSize(int64 dim_index) const {
+  return GetDynamicSize(dim_index, {});
+}
+
+int32 LiteralBase::GetDynamicSize(int64 dim_index,
+                                  const ShapeIndex& shape_index) const {
+  return piece(shape_index).GetDynamicSize(dim_index);
 }
 
 absl::optional<int64> LiteralBase::GetFirstInteger() const {
@@ -381,7 +399,9 @@ std::vector<Literal> Literal::DecomposeTuple() {
 
           // Move the respective buffer over to the element Literal.
           dest_piece->set_buffer(src_piece.buffer());
+          dest_piece->set_dynamic_size_buffer(src_piece.dynamic_size_buffer());
           src_piece.set_buffer(nullptr);
+          src_piece.set_dynamic_size_buffer(nullptr);
         });
   }
   // Set this literal to be nil-shaped.
@@ -407,23 +427,51 @@ void CopyElementsBetween(absl::Span<NativeT> dest,
         src[IndexUtil::MultidimensionalIndexToLinearIndex(src_shape, index)];
   } while (IndexUtil::BumpIndices(dest_shape, absl::MakeSpan(index)));
 }
-
 }  // namespace
 
-Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src) {
+int32 LiteralBase::Piece::GetDynamicSize(int64 dim_index) const {
+  CHECK(LayoutUtil::IsDenseArray(subshape()));
+  if (!subshape_->is_dynamic_dimension(dim_index)) {
+    // This is a static dimension, return size.
+    return subshape_->dimensions(dim_index);
+  }
+  CHECK_NE(dynamic_size_buffer(), nullptr);
+  return dynamic_size_buffer_[dim_index];
+}
+
+void LiteralBase::Piece::SetDynamicSize(int64 dim_index, int32 size) {
+  CHECK(LayoutUtil::IsDenseArray(subshape()));
+  CHECK(subshape_->is_dynamic_dimension(dim_index));
+  if (dynamic_size_buffer() == nullptr) {
+    // Lazily initialize the dynamic size buffer.
+    set_dynamic_size_buffer(static_cast<int32*>(tensorflow::port::AlignedMalloc(
+        dynamic_size_buffer_bytes(), kMinimumAlignment)));
+    /*for (int64 i = 0; i < subshape().rank(); ++i) {
+      // Initialized to -1 to help debug.
+      dynamic_size_buffer_[i] = -1;
+    }*/
+  }
+  dynamic_size_buffer_[dim_index] = size;
+}
+
+Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
+                                    bool only_dynamic_bound) {
   CHECK(subshape_ != nullptr);
   CHECK(src.subshape_ != nullptr);
   if (ShapeUtil::Equal(subshape(), src.subshape())) {
     // If the layouts are equal it's faster just to memcpy.
     memcpy(buffer(), src.buffer(), src.size_bytes());
   } else {
-    TF_RET_CHECK(ShapeUtil::Compatible(src.subshape(), subshape()));
     std::vector<int64> origin(subshape().rank(), 0);
     switch (subshape().element_type()) {
-#define COPY_ELEMENTS(XLA_T, NATIVE_T)                                    \
-  case (XLA_T):                                                           \
-    CopyElementsBetween<NATIVE_T>(data<NATIVE_T>(), src.data<NATIVE_T>(), \
-                                  subshape(), src.subshape());            \
+#define COPY_ELEMENTS(XLA_T, NATIVE_T)                                      \
+  case (XLA_T):                                                             \
+    if (only_dynamic_bound) {                                               \
+      CopyElementsWithDynamicBound<NATIVE_T>(src);                          \
+    } else {                                                                \
+      CopyElementsBetween<NATIVE_T>(data<NATIVE_T>(), src.data<NATIVE_T>(), \
+                                    subshape(), src.subshape());            \
+    }                                                                       \
     break;
       COPY_ELEMENTS(U8, uint8);
       COPY_ELEMENTS(U16, uint16);
@@ -447,21 +495,54 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src) {
             PrimitiveType_Name(subshape().element_type()));
     }
   }
+  DCHECK_EQ(dynamic_size_buffer_bytes(), src.dynamic_size_buffer_bytes());
+  if (subshape().is_dynamic() && src.subshape().is_dynamic()) {
+    CHECK_NE(dynamic_size_buffer_, nullptr);
+    CHECK_NE(src.dynamic_size_buffer_, nullptr);
+    memcpy(dynamic_size_buffer(), src.dynamic_size_buffer(),
+           src.dynamic_size_buffer_bytes());
+  }
   return Status::OK();
+}
+
+void MutableLiteralBase::SetDynamicSize(int64 dim_index, int32 size) {
+  return SetDynamicSize(dim_index, {}, size);
+}
+
+void MutableLiteralBase::SetDynamicSize(int64 dim_index,
+                                        const ShapeIndex& shape_index,
+                                        int32 size) {
+  Shape* subshape_ = ShapeUtil::GetMutableSubshape(shape_.get(), shape_index);
+  CHECK_GE(subshape_->dimensions(dim_index), size);
+  if (subshape_->dimensions(dim_index) == size) {
+    subshape_->set_dynamic_dimension(dim_index, false);
+    return;
+  }
+  subshape_->set_dynamic_dimension(dim_index, true);
+  piece(shape_index).SetDynamicSize(dim_index, size);
 }
 
 Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
                                     const ShapeIndex& dest_shape_index,
-                                    const ShapeIndex& src_shape_index) {
+                                    const ShapeIndex& src_shape_index,
+                                    bool only_dynamic_bound) {
   const Shape& dest_subshape =
       ShapeUtil::GetSubshape(shape(), dest_shape_index);
   const Shape& src_subshape =
       ShapeUtil::GetSubshape(src_literal.shape(), src_shape_index);
-  if (!ShapeUtil::Compatible(dest_subshape, src_subshape)) {
-    return InvalidArgument(
-        "Destination subshape incompatible with source subshape: %s vs %s",
-        ShapeUtil::HumanString(dest_subshape),
-        ShapeUtil::HumanString(src_subshape));
+  if (only_dynamic_bound) {
+    auto bound_shape = dest_subshape.is_static() ? src_subshape : dest_subshape;
+    auto compact_shape =
+        dest_subshape.is_static() ? dest_subshape : src_subshape;
+    CHECK(ShapeUtil::DynamicShapeIsCompatible(compact_shape, bound_shape))
+        << compact_shape.ToString() << " vs " << bound_shape.ToString();
+  } else {
+    if (!ShapeUtil::Compatible(dest_subshape, src_subshape)) {
+      return InvalidArgument(
+          "Destination subshape incompatible with source subshape: %s vs %s",
+          ShapeUtil::HumanString(dest_subshape),
+          ShapeUtil::HumanString(src_subshape));
+    }
   }
   return root_piece_->ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
@@ -486,7 +567,9 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
         for (int64 i = dest_shape_index.size(); i < index.size(); ++i) {
           src_piece_index.push_back(index[i]);
         }
-        TF_RETURN_IF_ERROR(piece->CopyFrom(src_literal.piece(src_piece_index)));
+        TF_RETURN_IF_ERROR(
+            piece->CopyFrom(src_literal.piece(src_piece_index),
+                            /*only_dynamic_bound=*/only_dynamic_bound));
         return Status::OK();
       });
 }
@@ -514,7 +597,9 @@ Status Literal::MoveFrom(Literal&& src_literal,
         }
         Piece& dest_piece = piece(dest_index);
         tensorflow::port::AlignedFree(dest_piece.buffer());
+        tensorflow::port::AlignedFree(dest_piece.dynamic_size_buffer());
         dest_piece.set_buffer(src_piece.buffer());
+        dest_piece.set_dynamic_size_buffer(src_piece.dynamic_size_buffer());
       });
 
   src_literal.shape_ = absl::make_unique<Shape>(ShapeUtil::MakeNil());
@@ -629,6 +714,41 @@ Literal LiteralBase::Relayout(const Shape& shape_with_layout) const {
   return result;
 }
 
+Literal LiteralBase::ToBoundedDynamic(const Shape& bounded_shape) const {
+  CHECK(bounded_shape.is_dynamic());
+  Literal result(bounded_shape);
+  ShapeUtil::ForEachSubshape(
+      shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return;
+        }
+        for (int64 i = 0; i < subshape.rank(); ++i) {
+          result.SetDynamicSize(i, subshape.dimensions(i));
+        }
+      });
+  TF_CHECK_OK(result.CopyFrom(*this, {}, {}, /*only_dynamic_bound=*/true));
+
+  return result;
+}
+
+Literal LiteralBase::ToStatic() const {
+  // Create new shape with 'new_layout' set at the given shape index.
+  Shape new_shape = shape();
+  ShapeUtil::ForEachMutableSubshape(
+      &new_shape, [this](Shape* subshape, const ShapeIndex& index) {
+        if (!subshape->IsArray()) {
+          return;
+        }
+        for (int64 i = 0; i < subshape->rank(); ++i) {
+          subshape->set_dynamic_dimension(i, false);
+          subshape->set_dimensions(i, GetDynamicSize(i, index));
+        }
+      });
+  Literal result(new_shape);
+  TF_CHECK_OK(result.CopyFrom(*this, {}, {}, /*only_dynamic_bound=*/true));
+  return result;
+}
+
 StatusOr<Literal> LiteralBase::Broadcast(
     const Shape& result_shape, absl::Span<const int64> dimensions) const {
   if (!shape().IsArray()) {
@@ -652,6 +772,11 @@ StatusOr<Literal> LiteralBase::Broadcast(
   const int64 primitive_size =
       ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
 
+  for (int64 i = 0; i < dimensions.size(); ++i) {
+    int64 dynamic_size = GetDynamicSize(i);
+    result.SetDynamicSize(dimensions[i], dynamic_size);
+  }
+
   ShapeUtil::ForEachIndex(
       result_shape, [&](absl::Span<const int64> output_index) {
         for (int64 i = 0; i < dimensions.size(); ++i) {
@@ -673,6 +798,9 @@ StatusOr<Literal> LiteralBase::Reshape(
     absl::Span<const int64> dimensions) const {
   if (!shape().IsArray()) {
     return InvalidArgument("Reshape does not support tuples.");
+  }
+  if (shape().is_dynamic()) {
+    return Unimplemented("Dynamic reshape is not implemented.");
   }
   Literal output;
   if (!LayoutUtil::IsMonotonicWithDim0Major(shape().layout())) {
@@ -728,6 +856,9 @@ Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
     layout->add_minor_to_major(inverse_permutation[index]);
   }
   Literal new_literal(permuted_shape);
+  for (int64 i = 0; i < shape().rank(); i++) {
+    new_literal.SetDynamicSize(inverse_permutation[i], GetDynamicSize(i));
+  }
   DCHECK_EQ(ShapeUtil::ByteSizeOf(new_literal.shape()),
             ShapeUtil::ByteSizeOf(shape()));
   std::memcpy(new_literal.untyped_data(), untyped_data(), size_bytes());
@@ -747,6 +878,14 @@ Literal LiteralBase::SliceInternal(
               return Get<NativeT>(new_indices);
             })
             .ok());
+  for (int64 dnum = 0; dnum < shape().rank(); ++dnum) {
+    if (shape().is_dynamic_dimension(dnum)) {
+      int64 dynamic_size = GetDynamicSize(dnum) - start_indices[dnum];
+      CHECK_GE(dynamic_size, 0) << GetDynamicSize(dnum);
+      dynamic_size = std::min(dynamic_size, result_shape.dimensions(dnum));
+      result_literal.SetDynamicSize(dnum, dynamic_size);
+    }
+  }
   return result_literal;
 }
 
@@ -763,9 +902,10 @@ Literal LiteralBase::Slice(absl::Span<const int64> start_indices,
     CHECK_GE(dimension, 0) << "dnum = " << dnum;
     result_dimensions.push_back(dimension);
   }
-  const auto result_shape =
+  auto result_shape =
       ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
                                      LayoutUtil::MinorToMajor(shape()));
+  ShapeUtil::CopyDynamicDimensions(&result_shape, shape());
   switch (result_shape.element_type()) {
     case PRED:
       return SliceInternal<bool>(result_shape, start_indices);
@@ -1082,11 +1222,24 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
 
   if (print_shape) {
     pieces->push_back(ShapeToString(print_layout, subshape));
+    if (subshape.is_dynamic()) {
+      pieces->push_back("(");
+      for (int64 i = 0; i < subshape.dimensions_size(); ++i) {
+        pieces->push_back(StrCat(literal.GetDynamicSize(i, shape_index)));
+        if (i < subshape.dimensions_size() - 1) {
+          pieces->push_back(",");
+        }
+      }
+      pieces->push_back(")");
+    }
     pieces->push_back(" ");
   }
   std::vector<int64> indices = {};
-  std::vector<int64> dimensions(subshape.dimensions().begin(),
-                                subshape.dimensions().end());
+  std::vector<int64> dimensions;
+  dimensions.reserve(subshape.rank());
+  for (int64 i = 0; i < subshape.rank(); ++i) {
+    dimensions.push_back(literal.GetDynamicSize(i, shape_index));
+  }
   to_string_recursive(dimensions, &indices);
 }
 
@@ -1375,12 +1528,43 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
 }
 
 template <typename NativeT>
+void LiteralBase::Piece::CopyElementsWithDynamicBound(
+    const LiteralBase::Piece& src) {
+  auto dest_shape = subshape();
+  auto src_shape = src.subshape();
+
+  // At least one shape has to be static as bound.
+  CHECK(dest_shape.is_static() || src_shape.is_static());
+  auto bound_shape = dest_shape.is_static() ? src_shape : dest_shape;
+  if (ShapeUtil::IsZeroElementArray(dest_shape)) {
+    return;
+  }
+  std::vector<int64> index(dest_shape.rank());
+  do {
+    bool out_of_bound = false;
+    for (int64 i = 0; i < index.size(); ++i) {
+      // Do not copy elements beyond dynamic bound.
+      if (index[i] >= GetDynamicSize(i) || index[i] >= src.GetDynamicSize(i)) {
+        out_of_bound = true;
+      }
+    }
+    if (out_of_bound) {
+      continue;
+    }
+    data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape,
+                                                                  index)] =
+        src.data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
+            src_shape, index)];
+  } while (IndexUtil::BumpIndices(bound_shape, absl::MakeSpan(index)));
+}
+
+template <typename NativeT>
 bool LiteralBase::Piece::EqualElementsInternal(
     const LiteralBase::Piece& other, std::vector<int64>* multi_index) const {
   if (multi_index->size() == subshape().rank()) {
     return (Get<NativeT>(*multi_index) == other.Get<NativeT>(*multi_index));
   }
-  for (int64 i = 0; i < subshape().dimensions(multi_index->size()); ++i) {
+  for (int64 i = 0; i < GetDynamicSize(multi_index->size()); ++i) {
     multi_index->push_back(i);
     if (!EqualElementsInternal<NativeT>(other, multi_index)) {
       return false;
@@ -1390,10 +1574,24 @@ bool LiteralBase::Piece::EqualElementsInternal(
   return true;
 }
 
-bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
+bool LiteralBase::Piece::EqualDynamicSize(
+    const LiteralBase::Piece& other) const {
   DCHECK(ShapeUtil::Compatible(subshape(), other.subshape()));
+  if (subshape().is_static()) {
+    return true;
+  }
 
-  if (ShapeUtil::Equal(subshape(), other.subshape()) &&
+  for (int64 i = 0; i < subshape().rank(); ++i) {
+    if (GetDynamicSize(i) != other.GetDynamicSize(i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
+  if (subshape().is_static() &&
+      ShapeUtil::Equal(subshape(), other.subshape()) &&
       LayoutUtil::IsDenseArray(subshape())) {
     CHECK_EQ(size_bytes(), other.size_bytes());
     return memcmp(buffer(), other.buffer(), size_bytes()) == 0;
@@ -1436,17 +1634,33 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
 }
 
 bool LiteralBase::operator==(const LiteralBase& other) const {
-  if (!ShapeUtil::Compatible(shape(), other.shape())) {
+  // Checking the structure of tuple literals. Checks for dense arrays are
+  // performed below.
+  if (!ShapeUtil::EqualStructure(shape(), other.shape())) {
     return false;
   }
 
   return root_piece().ForEachSubpieceWithBool(
       [&](const ShapeIndex& index, const Piece& piece) {
+        const Piece& other_piece = other.piece(index);
+        const Shape& subshape = piece.subshape();
+        const Shape& other_subshape = other_piece.subshape();
+        if (subshape.element_type() != other_subshape.element_type()) {
+          return false;
+        }
         if (!piece.subshape().IsArray()) {
           return true;
         }
+        if (subshape.rank() != other_subshape.rank()) {
+          return false;
+        }
 
-        const Piece& other_piece = other.piece(index);
+        for (int64 i = 0; i < subshape.rank(); ++i) {
+          if (piece.GetDynamicSize(i) != other_piece.GetDynamicSize(i)) {
+            return false;
+          }
+        }
+
         if (!piece.EqualElements(other_piece)) {
           return false;
         }
@@ -2035,6 +2249,7 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
     }
   } else if (shape.IsArray()) {
     dest_piece->set_buffer(src_piece->buffer());
+    dest_piece->set_dynamic_size_buffer(src_piece->dynamic_size_buffer());
   } else {
     // If the shape is neither an array nor tuple, then it must be
     // zero-sized. Otherwise, some memory needs to be allocated for it.

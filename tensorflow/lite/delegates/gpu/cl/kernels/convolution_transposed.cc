@@ -362,9 +362,7 @@ absl::Status ConvolutionTransposed::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x));
   RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
   RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
-  RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetInt("kernel_size_y", kernel_size_.y);
 }
 
 int3 ConvolutionTransposed::GetGridSize() const {
@@ -377,14 +375,8 @@ int3 ConvolutionTransposed::GetGridSize() const {
 }
 
 absl::Status ConvolutionTransposed::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &work_group_size_);
-}
-
-absl::Status ConvolutionTransposed::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
 }
 
 absl::Status CreateConvolutionTransposed(

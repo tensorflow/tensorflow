@@ -65,8 +65,11 @@ TF_LITE_MICRO_TEST(TestOperations) {
   using tflite::MicroMutableOpResolver;
   using tflite::OpResolver;
 
-  static TfLiteRegistration r = {tflite::MockInit, tflite::MockFree,
-                                 tflite::MockPrepare, tflite::MockInvoke};
+  static TfLiteRegistration r = {};
+  r.init = tflite::MockInit;
+  r.free = tflite::MockFree;
+  r.prepare = tflite::MockPrepare;
+  r.invoke = tflite::MockInvoke;
 
   MicroMutableOpResolver<1> micro_op_resolver;
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
@@ -78,20 +81,21 @@ TF_LITE_MICRO_TEST(TestOperations) {
 
   tflite::MicroOpResolver* resolver = &micro_op_resolver;
 
-  TF_LITE_MICRO_EXPECT_EQ(1, micro_op_resolver.GetRegistrationLength());
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1),
+                          micro_op_resolver.GetRegistrationLength());
 
   const TfLiteRegistration* registration =
       resolver->FindOp(BuiltinOperator_RELU);
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration);
+  TF_LITE_MICRO_EXPECT(nullptr == registration);
 
   registration = resolver->FindOp("mock_custom");
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration->init(nullptr, nullptr, 0));
+  TF_LITE_MICRO_EXPECT(nullptr != registration);
+  TF_LITE_MICRO_EXPECT(nullptr == registration->init(nullptr, nullptr, 0));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(nullptr, nullptr));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(nullptr, nullptr));
 
   registration = resolver->FindOp("nonexistent_custom");
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration);
+  TF_LITE_MICRO_EXPECT(nullptr == registration);
 }
 
 TF_LITE_MICRO_TEST(TestErrorReporting) {
@@ -99,8 +103,11 @@ TF_LITE_MICRO_TEST(TestErrorReporting) {
   using tflite::BuiltinOperator_RELU;
   using tflite::MicroMutableOpResolver;
 
-  static TfLiteRegistration r = {tflite::MockInit, tflite::MockFree,
-                                 tflite::MockPrepare, tflite::MockInvoke};
+  static TfLiteRegistration r = {};
+  r.init = tflite::MockInit;
+  r.free = tflite::MockFree;
+  r.prepare = tflite::MockPrepare;
+  r.invoke = tflite::MockInvoke;
 
   tflite::MockErrorReporter mock_reporter;
   MicroMutableOpResolver<1> micro_op_resolver(&mock_reporter);

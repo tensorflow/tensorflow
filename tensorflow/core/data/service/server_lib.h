@@ -25,7 +25,7 @@ namespace data {
 
 // Forward declared because transitively depending on .grpc.pb.h files causes
 // issues in the pywrap build.
-class GrpcMasterImpl;
+class GrpcDispatcherImpl;
 class GrpcWorkerImpl;
 
 // A grpc server for the tf.data service.
@@ -35,7 +35,7 @@ class GrpcDataServerBase {
   // server will find an available port in `Start()`. The chosen port can be
   // found in the output of `Target()`.
   //
-  // master_address is only needed for worker data servers.
+  // dispatcher_address is only needed for worker data servers.
   GrpcDataServerBase(int requested_port, const std::string& protocol);
   virtual ~GrpcDataServerBase() {}
 
@@ -70,12 +70,12 @@ class GrpcDataServerBase {
   std::unique_ptr<grpc::Server> server_;
 };
 
-class MasterGrpcDataServer : public GrpcDataServerBase {
+class DispatchGrpcDataServer : public GrpcDataServerBase {
  public:
-  MasterGrpcDataServer(int requested_port, const std::string& protocol);
-  ~MasterGrpcDataServer() override;
+  DispatchGrpcDataServer(int requested_port, const std::string& protocol);
+  ~DispatchGrpcDataServer() override;
 
-  // Returns the number of workers registerd with the master.
+  // Returns the number of workers registerd with the dispatcher.
   Status NumWorkers(int* num_workers);
 
  protected:
@@ -83,14 +83,14 @@ class MasterGrpcDataServer : public GrpcDataServerBase {
   Status StartServiceInternal() override { return Status::OK(); }
 
  private:
-  // Owned. We use a raw pointer because GrpcMasterImpl is forward-declared.
-  GrpcMasterImpl* service_;
+  // Owned. We use a raw pointer because GrpcDispatcherImpl is forward-declared.
+  GrpcDispatcherImpl* service_;
 };
 
 class WorkerGrpcDataServer : public GrpcDataServerBase {
  public:
   WorkerGrpcDataServer(int requested_port, const std::string& protocol,
-                       const std::string& master_address,
+                       const std::string& dispatcher_address,
                        const std::string& worker_address);
   ~WorkerGrpcDataServer() override;
 
@@ -99,15 +99,15 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   Status StartServiceInternal() override;
 
  private:
-  const std::string master_address_;
+  const std::string dispatcher_address_;
   const std::string worker_address_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
   GrpcWorkerImpl* service_;
 };
 
-// Creates a master tf.data server and stores it in `*out_server`.
-Status NewMasterServer(int port, const std::string& protocol,
-                       std::unique_ptr<MasterGrpcDataServer>* out_server);
+// Creates a dispatch tf.data server and stores it in `*out_server`.
+Status NewDispatchServer(int port, const std::string& protocol,
+                         std::unique_ptr<DispatchGrpcDataServer>* out_server);
 
 // Creates a worker tf.data server and stores it in `*out_server`.
 //
@@ -115,18 +115,18 @@ Status NewMasterServer(int port, const std::string& protocol,
 // will be chosen in Start(). This value can be queried with BoundPort().
 //
 // The worker_address argument is optional. If left empty, it will default to
-// "localhost:%port%". When the worker registers with the master, the worker
-// will report the worker address, so that the master can tell clients where to
-// read from. The address may contain the placeholder "%port%", which will be
+// "localhost:%port%". When the worker registers with the dispatcher, the worker
+// will report the worker address, so that the dispatcher can tell clients where
+// to read from. The address may contain the placeholder "%port%", which will be
 // replaced with the value of BoundPort().
 Status NewWorkerServer(int port, const std::string& protocol,
-                       const std::string& master_address,
+                       const std::string& dispatcher_address,
                        const std::string& worker_address,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server);
 
 // Creates a worker using the default worker_address.
 Status NewWorkerServer(int port, const std::string& protocol,
-                       const std::string& master_address,
+                       const std::string& dispatcher_address,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server);
 
 }  // namespace data

@@ -403,8 +403,7 @@ absl::Status Winograd4x4To36::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("padding_y", -padding_.prepended.h));
   RETURN_IF_ERROR(args_.SetInt("tiles_total", tiles_total));
   RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Winograd4x4To36::GetGridSize() const {
@@ -417,19 +416,13 @@ int3 Winograd4x4To36::GetGridSize() const {
 absl::Status Winograd4x4To36::Tune(const TuningParameters& params) {
   switch (params.tuning_type) {
     case TuningType::EXHAUSTIVE:
-      RETURN_IF_ERROR(BindArguments());
-      return GetBestWorkGroup(params, kernel_, GetGridSize(),
-                              &work_group_size_);
+      RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+      return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
     case TuningType::FAST:
     default:
       work_group_size_ = SelectBestWorkGroup();
       return absl::OkStatus();
   }
-}
-
-absl::Status Winograd4x4To36::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
@@ -506,8 +499,7 @@ absl::Status Winograd36To4x4::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
   RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Winograd36To4x4::GetGridSize() const {
@@ -522,9 +514,8 @@ int3 Winograd36To4x4::GetGridSize() const {
 absl::Status Winograd36To4x4::Tune(const TuningParameters& params) {
   switch (params.tuning_type) {
     case TuningType::EXHAUSTIVE:
-      RETURN_IF_ERROR(BindArguments());
-      return GetBestWorkGroup(params, kernel_, GetGridSize(),
-                              &work_group_size_);
+      RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+      return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
     case TuningType::FAST:
     default:
       work_group_size_ = SelectBestWorkGroup();
@@ -532,10 +523,6 @@ absl::Status Winograd36To4x4::Tune(const TuningParameters& params) {
   }
 }
 
-absl::Status Winograd36To4x4::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
 
 absl::Status CreateWinograd36To4x4(
     const CreationContext& creation_context, const OperationDef& definition,

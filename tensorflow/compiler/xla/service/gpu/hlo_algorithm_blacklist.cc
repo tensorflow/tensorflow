@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-constexpr char kDefaultBlacklist[] = R"pb(
+constexpr char kDefaultDenylist[] = R"pb(
   entries {
     hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
     cc { major: 7 }
@@ -41,28 +41,26 @@ constexpr char kDefaultBlacklist[] = R"pb(
   }
 )pb";
 
-absl::Span<const stream_executor::dnn::AlgorithmDesc>
-GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
-                             tensorflow::CudnnVersion cudnn_version,
-                             const std::string& blas_version,
-                             const std::string& hlo) {
+absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
+    tensorflow::ComputeCapability cc, tensorflow::CudnnVersion cudnn_version,
+    const std::string& blas_version, const std::string& hlo) {
   // Key is the tuple of canonicalized hlo, compute capability major/minor,
   // cudnn version major/minor/patch, blas version.
   using MapType = absl::flat_hash_map<
       std::tuple<std::string, int, int, int, int, int, std::string>,
       std::vector<stream_executor::dnn::AlgorithmDesc>>;
 
-  static MapType* blacklist = [] {
+  static MapType* denylist = [] {
     MapType* list = new MapType();
-    AlgorithmBlacklist proto;
+    AlgorithmDenylist proto;
     std::string file_path =
-        GetDebugOptionsFromFlags().xla_gpu_algorithm_blacklist_path();
+        GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path();
     if (!file_path.empty()) {
       TF_CHECK_OK(tensorflow::ReadTextProto(tensorflow::Env::Default(),
                                             file_path, &proto));
     } else {
       CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
-          std::string(kDefaultBlacklist), &proto));
+          std::string(kDefaultDenylist), &proto));
     }
     for (const auto& entry : proto.entries()) {
       for (const auto& algo : entry.algos()) {
@@ -77,10 +75,10 @@ GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
     return list;
   }();
 
-  auto iter = blacklist->find(std::make_tuple(
+  auto iter = denylist->find(std::make_tuple(
       hlo, cc.major(), cc.minor(), cudnn_version.major(), cudnn_version.minor(),
       cudnn_version.patch(), std::string(blas_version)));
-  if (iter != blacklist->end()) {
+  if (iter != denylist->end()) {
     return iter->second;
   }
   return {};

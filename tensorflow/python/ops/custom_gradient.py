@@ -354,9 +354,27 @@ def _graph_mode_decorator(f, args, kwargs):
   variables_in_tape = frozenset([
       v.ref() for v in variable_watcher.watched_variables()
   ])
+
+  graphs = {getattr(o, "graph", None) for o in flat_result}
+  # Not all results may be tensors. However, we want to ensure all tensor
+  # outputs are from the same graph and get a list of captured inputs for
+  # variable search
+  graphs.discard(None)  # Discard non-graph outputs
+  if graphs:
+    if len(graphs) > 1:
+      raise ValueError(
+          "All custom_gradient outputs should be from the same graph")
+    output_graph = graphs.pop()
+    filtered_input_tensors = []
+    for i in args:
+      if i.graph == output_graph:
+        filtered_input_tensors.append(i)
+  else:
+    filtered_input_tensors = args
+
   variables_in_subgraph = frozenset([
-      v.ref()
-      for v in _get_dependent_variables(input_ops=args, output_ops=flat_result)
+      v.ref() for v in _get_dependent_variables(
+          input_ops=filtered_input_tensors, output_ops=flat_result)
   ])
   variables = list(
       [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])

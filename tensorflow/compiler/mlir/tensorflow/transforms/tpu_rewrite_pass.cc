@@ -473,9 +473,8 @@ LogicalResult BuildExecuteOp(
   if (failed(result)) return failure();
 
   // TPUExecute has same output types as cluster_func.
-  *execute_op = builder->create<TF::TPUExecuteOp>(
-      cluster_func.getLoc(), output_types, inputs,
-      llvm::ArrayRef<NamedAttribute>{});
+  *execute_op = builder->create<TF::TPUExecuteOp>(cluster_func.getLoc(),
+                                                  output_types, inputs);
   return success();
 }
 

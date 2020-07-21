@@ -32,45 +32,32 @@ cc_library(
     textual_hdrs = ["include/mlir/IR/DialectSymbolRegistry.def"],
 )
 
-gentbl(
-    name = "OpAsmInterfacesIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-op-interface-decls",
-            "include/mlir/IR/OpAsmInterface.h.inc",
-        ),
-        (
-            "-gen-op-interface-defs",
-            "include/mlir/IR/OpAsmInterface.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/IR/OpAsmInterface.td",
-    td_srcs = [
-        ":OpBaseTdFiles",
-    ],
-)
-
-gentbl(
-    name = "SymbolInterfacesIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-op-interface-decls",
-            "include/mlir/IR/SymbolInterfaces.h.inc",
-        ),
-        (
-            "-gen-op-interface-defs",
-            "include/mlir/IR/SymbolInterfaces.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/IR/SymbolInterfaces.td",
-    td_srcs = [
-        ":OpBaseTdFiles",
-    ],
-)
+[
+    gentbl(
+        name = name + "IncGen",
+        strip_include_prefix = "include",
+        tbl_outs = [
+            (
+                "-gen-op-interface-decls",
+                "include/mlir/IR/" + name + ".h.inc",
+            ),
+            (
+                "-gen-op-interface-defs",
+                "include/mlir/IR/" + name + ".cpp.inc",
+            ),
+        ],
+        tblgen = ":mlir-tblgen",
+        td_file = "include/mlir/IR/" + name + ".td",
+        td_srcs = [
+            ":OpBaseTdFiles",
+        ],
+    )
+    for name in [
+        "OpAsmInterface",
+        "RegionKindInterface",
+        "SymbolInterfaces",
+    ]
+]
 
 cc_library(
     name = "IR",
@@ -88,7 +75,8 @@ cc_library(
         ":CallOpInterfacesIncGen",
         ":DialectSymbolRegistry",
         ":InferTypeOpInterfaceIncGen",
-        ":OpAsmInterfacesIncGen",
+        ":OpAsmInterfaceIncGen",
+        ":RegionKindInterfaceIncGen",
         ":SideEffectInterfacesIncGen",
         ":Support",
         ":SymbolInterfacesIncGen",
@@ -399,7 +387,7 @@ filegroup(
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
-        "include/mlir/Interfaces/VectorUnrollInterface.td",
+        "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         ":OpBaseTdFiles",
     ],
@@ -659,13 +647,13 @@ cc_library(
 )
 
 cc_library(
-    name = "VectorUnrollInterface",
-    srcs = ["lib/Interfaces/VectorUnrollInterface.cpp"],
-    hdrs = ["include/mlir/Interfaces/VectorUnrollInterface.h"],
+    name = "VectorInterfaces",
+    srcs = ["lib/Interfaces/VectorInterfaces.cpp"],
+    hdrs = ["include/mlir/Interfaces/VectorInterfaces.h"],
     includes = ["include"],
     deps = [
         ":IR",
-        ":VectorUnrollInterfaceIncGen",
+        ":VectorInterfacesIncGen",
     ],
 )
 
@@ -867,7 +855,7 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOpsIncGen",
         ":Support",
-        ":VectorUnrollInterface",
+        ":VectorInterfaces",
         ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
@@ -930,9 +918,9 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        ":VectorInterfaces",
         ":VectorOpsIncGen",
         ":VectorTransformPatternsIncGen",
-        ":VectorUnrollInterface",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -2139,20 +2127,20 @@ gentbl(
 )
 
 gentbl(
-    name = "VectorUnrollInterfaceIncGen",
+    name = "VectorInterfacesIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-op-interface-decls",
-            "include/mlir/Interfaces/VectorUnrollInterface.h.inc",
+            "include/mlir/Interfaces/VectorInterfaces.h.inc",
         ),
         (
             "-gen-op-interface-defs",
-            "include/mlir/Interfaces/VectorUnrollInterface.cpp.inc",
+            "include/mlir/Interfaces/VectorInterfaces.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Interfaces/VectorUnrollInterface.td",
+    td_file = "include/mlir/Interfaces/VectorInterfaces.td",
     td_srcs = [
         ":OpBaseTdFiles",
     ],
@@ -3283,6 +3271,7 @@ cc_library(
         ":QuantPassIncGen",
         ":SideEffectInterfaces",
         ":StandardOps",
+        ":TransformUtils",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -3598,7 +3587,7 @@ filegroup(
     name = "VectorOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/Vector/VectorOps.td",
-        "include/mlir/Interfaces/VectorUnrollInterface.td",
+        "include/mlir/Interfaces/VectorInterfaces.td",
         ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
@@ -3728,20 +3717,17 @@ exports_files(
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
-        "include/mlir/Interfaces/VectorUnrollInterface.td",
+        "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
         "include/mlir/IR/OpAsmInterface.td",
         "include/mlir/IR/OpBase.td",
+        "include/mlir/IR/RegionKindInterface.td",
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Transforms/InliningUtils.h",
-    ],
-    visibility = [":friends"],
-)
-
-exports_files(
-    [
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
     ],

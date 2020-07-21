@@ -25,10 +25,12 @@ load(
     "if_static",
 )
 
+default_package_visibility = [
+    "//tensorflow/core:__subpackages__",
+]
+
 package(
-    default_visibility = [
-        "//tensorflow/core:__subpackages__",
-    ],
+    default_visibility = default_package_visibility,
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -61,6 +63,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "abstract_stack_trace.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -313,6 +316,7 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
+        "abstract_stack_trace.h",
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
@@ -437,6 +441,22 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "abstract_stack_trace",
+    hdrs = ["abstract_stack_trace.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime/eager:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/eager:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
+)
+
 tf_cuda_library(
     name = "gpu_cuda_alias",
     hdrs = ["gpu_cuda_alias.h"],
@@ -540,6 +560,7 @@ cc_library(
     name = "incremental_barrier",
     srcs = ["incremental_barrier.cc"],
     hdrs = ["incremental_barrier.h"],
+    visibility = default_package_visibility + ["//tensorflow_serving:__subpackages__"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/functional:bind_front",

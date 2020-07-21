@@ -314,10 +314,13 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
     } else if (h->Type() == TensorHandle::REMOTE) {
       // Only serialize the resource dtype and shape of the first handle, since
       // all handles are of the same resource dtype and shape.
+      // If src_device is on the same task of target_device, the handle is a
+      // local handle on the target device, which means the resource dtype and
+      // shape are known on the target device.
       Device* src_device = absl::get<Device*>(h->device());
       const bool serialize_resource_dtype_and_shape =
           (i == 0) && (h->dtype == DT_RESOURCE) &&
-          (ctx->OnSameTask(src_device, target_device));
+          (!ctx->OnSameTask(src_device, target_device));
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
           h, /*wait_until_ready=*/false,
           op->add_handles()->mutable_remote_handle(), src_device,

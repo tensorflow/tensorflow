@@ -412,7 +412,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
-        "notap",  # TODO(b/161144880): flaky
         "notsan",
     ],
     deps = [

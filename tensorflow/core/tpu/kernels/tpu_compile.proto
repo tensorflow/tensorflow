@@ -171,15 +171,15 @@ message TpuCompilationRequestProto {
   repeated TensorProto guaranteed_constants = 7;
 
   // MLIR module definition.
-  optional string mlir_module = 8;
+  string mlir_module = 8;
 
   // A set of named functions used as the input to lowering to Hlo when mlir is
   // not used.
-  optional FunctionDefLibrary fdef_lib = 9;
+  FunctionDefLibrary fdef_lib = 9;
 
   // The version of the graph definition used to lower TF function to Hlo.
-  optional int32 graph_def_version = 10;
+  int32 graph_def_version = 10;
 
   // Function containing the computation to compile.
-  optional NameAttrList function = 11;
+  NameAttrList function = 11;
 }

@@ -192,7 +192,7 @@ class BaseDenseAttention(Layer):
         raise ValueError(
             '{} layer mask must be a list, '
             'namely [query_mask, value_mask].'.format(class_name))
-      if len(mask) != 2:
+      if len(mask) < 2 or len(mask) > len(inputs):
         raise ValueError(
             '{} layer mask must be a list of length 2, namely [query_mask, '
             'value_mask]. Given length: {}'.format(class_name, len(mask)))
@@ -266,7 +266,7 @@ class Attention(BaseDenseAttention):
   value_input = tf.keras.Input(shape=(None,), dtype='int32')
 
   # Embedding lookup.
-  token_embedding = tf.keras.layers.Embedding(max_tokens, dimension)
+  token_embedding = tf.keras.layers.Embedding(input_dim=1000, output_dim=64)
   # Query embeddings of shape [batch_size, Tq, dimension].
   query_embeddings = token_embedding(query_input)
   # Value embeddings of shape [batch_size, Tv, dimension].
