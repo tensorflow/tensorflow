@@ -1,4 +1,4 @@
-#include "lib_ops/api/arg_min_max.h"
+#include "operators/arg_min_max.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"

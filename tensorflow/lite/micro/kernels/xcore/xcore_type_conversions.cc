@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "lib_ops/api/type_conversions.h"
+#include "operators/type_conversions.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"

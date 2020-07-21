@@ -1,8 +1,7 @@
+#include "operators/activations.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-
-#include "lib_ops/api/activations.h"
 
 namespace tflite {
 namespace ops {

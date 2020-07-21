@@ -1,4 +1,4 @@
-#include "lib_ops/api/fully_connected.h"
+#include "operators/fully_connected.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"

@@ -1,9 +1,9 @@
 #ifndef XCORE_CUSTOM_OPTIONS_H_
 #define XCORE_CUSTOM_OPTIONS_H_
 
-#include "lib_ops/api/conv2d.h"
-#include "lib_ops/api/planning.h"
-#include "lib_ops/api/pooling.h"
+#include "operators/conv2d.h"
+#include "operators/planning.h"
+#include "operators/pooling.h"
 
 namespace tflite {
 namespace ops {
