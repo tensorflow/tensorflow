@@ -54,7 +54,8 @@
 *   `tf.function`/AutoGraph:
     * <ADD RELEASE NOTES HERE>
 *   `tf.lite`:
-    * <ADD RELEASE NOTES HERE>
+    * Better support for ops with high-dimensional broadcasting inputs by adding
+  `BroadcastTo` ops when necessary.
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
 *   Math and Linear Algebra:

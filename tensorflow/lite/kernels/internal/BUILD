@@ -441,6 +441,7 @@ cc_library(
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
         "reference/binary_function.h",
+        "reference/broadcast_to.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
