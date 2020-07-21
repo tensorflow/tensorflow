@@ -37,9 +37,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
@@ -88,7 +88,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
         [3.0 - 3.0 * 0.01 - 2.0 * 0.01, 4.0 - 3.0 * 0.01 - 2.0 * 0.01],
         self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithLearningRateDecay(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       learning_rate = 3.0
@@ -96,7 +95,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       sgd = gradient_descent.SGD(learning_rate=learning_rate, decay=decay)
       self._test_basic_sgd_with_learning_rate_decay(sgd, dtype)
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithLearningRateInverseTimeDecay(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       learning_rate = learning_rate_schedule.InverseTimeDecay(
@@ -104,7 +102,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       sgd = gradient_descent.SGD(learning_rate=learning_rate)
       self._test_basic_sgd_with_learning_rate_decay(sgd, dtype)
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithLearningRateInverseTimeDecaySerializeAndDeserialize(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       learning_rate = learning_rate_schedule.InverseTimeDecay(
@@ -113,7 +110,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       sgd = gradient_descent.SGD.from_config(sgd.get_config())
       self._test_basic_sgd_with_learning_rate_decay(sgd, dtype)
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicCallableParams(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
@@ -132,7 +128,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                          self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
@@ -149,7 +144,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
                                          self.evaluate(var0))
       self.assertAllCloseAccordingToType([3.0 - 1.0], self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
@@ -190,7 +184,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                          self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testGradWrtRef(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       opt = gradient_descent.SGD(3.0)
@@ -202,7 +195,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       for grad, _ in grads_and_vars:
         self.assertAllCloseAccordingToType([1.0], self.evaluate(grad))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparseBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
@@ -224,7 +216,6 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
                                           self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparseBasicWithLearningRateDecay(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
@@ -291,6 +282,7 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
 
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def _update_nesterov_momentum_numpy(self, var, accum, g, lr, momentum):
@@ -298,7 +290,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     var += (accum * momentum - g * lr)
     return var, accum
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasic(self):
     for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       var0 = variables.Variable([1.0, 2.0], dtype=dtype, name="var0")
@@ -358,7 +349,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
               3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
           ]), self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testNesterovMomentum(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([1.0, 2.0], dtype=dtype, name="var0")
@@ -385,7 +375,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(var0_np, self.evaluate(var0))
         self.assertAllClose(var1_np, self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparseNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -432,7 +421,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(var0_np, self.evaluate(var0))
         self.assertAllClose(var1_np, self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
@@ -453,7 +441,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
       # Validate updated params
       self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeWith2DIndicesForEmbeddingLookup(self):
     var0 = variables.Variable(array_ops.ones([2, 2]))
 
@@ -466,7 +453,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testTensorLearningRateAndMomentum(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
@@ -525,7 +511,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
               3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
           ]), self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable(array_ops.zeros([4, 2], dtype=dtype))
@@ -600,7 +585,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
           ]),
           self.evaluate(var1)[2])
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
@@ -668,7 +652,6 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
               3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
           ]), self.evaluate(var1))
 
-  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testConfig(self):
     opt = gradient_descent.SGD(learning_rate=1.0, momentum=0.9, nesterov=True)
     config = opt.get_config()
