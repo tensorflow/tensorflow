@@ -197,16 +197,24 @@ LogicalResult HandleWhileOp(
   if (!signature_change) return success();
   // Create the new while op.
   auto new_while_operands = llvm::to_vector<8>(while_op.getOperands());
+  auto new_output_shapes =
+      llvm::to_vector<8>(while_op.output_shapes().getValue());
   OpBuilder builder(while_op);
   assert(while_op.getNumOperands() == while_op.getNumResults());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     auto it = data_var_to_size_var.find(while_op.getOperand(i));
     if (it == data_var_to_size_var.end()) continue;
     new_while_operands.push_back(it->getSecond());
+    if (!new_output_shapes.empty()) {
+      // Size is a scalar shape.
+      new_output_shapes.push_back(
+          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
+    }
   }
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
                                   new_while_operands, while_op.getAttrs());
+  new_while.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     if (!getElementTypeOrSelf(while_op.getOperand(i).getType())
              .isa<TF::ResourceType>()) {

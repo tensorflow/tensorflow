@@ -190,14 +190,22 @@ LogicalResult HandleWhileOp(
   }
   // Create the new while op.
   auto new_while_operands = llvm::to_vector<8>(while_op.getOperands());
+  auto new_output_shapes =
+      llvm::to_vector<8>(while_op.output_shapes().getValue());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     auto it = buffer_to_size->find(while_op.getOperand(i));
     if (it == buffer_to_size->end()) continue;
     new_while_operands.push_back(it->getSecond().size);
+    if (!new_output_shapes.empty()) {
+      // Size is a scalar shape.
+      new_output_shapes.push_back(
+          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
+    }
   }
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
                                   new_while_operands, while_op.getAttrs());
+  new_while.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_while.getResult(std::get<0>(entry))] = {
         new_while.getResult(std::get<1>(entry)), std::get<2>(entry)};

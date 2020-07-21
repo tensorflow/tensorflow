@@ -56,7 +56,7 @@ func @propagate_if_op(
       "tf.If"(%arg1, %id0, %var_handle) {
           then_branch = @if_then,
           else_branch = @if_else,
-          is_stateless = false}
+          output_shapes = [], is_stateless = false}
         : (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
            tensor<*x!tf.resource<tensor<32xf32>>>) -> ()
       tf_executor.yield
@@ -128,7 +128,8 @@ func @propagate_while_op(
       // CHECK-NEXT: "tf.While"
       "tf.While"(%arg1, %id0, %var_handle) {
           body = @while_body,
-          cond = @while_cond, is_stateless = false}
+          cond = @while_cond,
+          output_shapes = [], is_stateless = false}
         : (tensor<i32>, tensor<*x!tf.resource<tensor<32xf32>>>,
            tensor<*x!tf.resource<tensor<32xf32>>>) ->
           (tensor<i32>, tensor<*x!tf.resource<tensor<32xf32>>>,
@@ -208,7 +209,8 @@ func @error_on_conflict_multiple_callers(
         : () -> tensor<*x!tf.resource<tensor<32xf32>>>
       "tf.If"(%arg1, %id0, %var_handle) {
           then_branch = @if_then_and_else,
-          else_branch = @if_then_and_else, is_stateless = false}
+          else_branch = @if_then_and_else,
+          output_shapes = [], is_stateless = false}
         : (tensor<i1>, tensor<*x!tf.resource<tensor<32xf32>>>,
            tensor<*x!tf.resource<tensor<32xf32>>>) -> ()
       "tf.If"(%arg1, %var_handle, %id0) {

@@ -2066,14 +2066,6 @@ static LogicalResult Verify(WhileOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// WhileOp canonicalization.
-//===----------------------------------------------------------------------===//
-void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context) {
-  results.insert<DropAttributes<WhileOp>>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // WhileRegionOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(WhileRegionOp op) {

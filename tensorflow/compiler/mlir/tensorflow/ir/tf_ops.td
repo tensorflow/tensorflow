@@ -225,25 +225,12 @@ else_branch: A function that takes 'inputs' and returns a list of
   TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let verifier = [{
     return Verify(*this);
   }];
 
   let hasCanonicalizer = 1;
-
-  let extraClassDeclaration = [{
-    // Get the then branch function.
-    FuncOp then_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(then_branch());
-    }
-
-    // Get the else branch function.
-    FuncOp else_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(else_branch());
-    }
-  }];
 }
 
 def TF_YieldOp : TF_Op<"Yield",
@@ -625,6 +612,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
@@ -637,23 +625,9 @@ body: A function that takes a list of tensors and returns another
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let verifier = [{
     return Verify(*this);
-  }];
-  let hasCanonicalizer = 1;
-
-  let extraClassDeclaration = [{
-    // Get the condition function.
-    FuncOp cond_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(cond());
-    }
-
-    // Get the body function.
-    FuncOp body_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(body());
-    }
   }];
 }
 

@@ -262,6 +262,22 @@ bool InferShapeForCall(Operation* op) {
   return changed;
 }
 
+// Infer the shape IfRegion outputs based on the shapes of the then and else
+// yields.
+bool InferShapeForIfRegion(IfRegionOp op) {
+  bool changed = false;
+
+  Operation* then_yield = op.then_branch().front().getTerminator();
+  Operation* else_yield = op.else_branch().front().getTerminator();
+  for (auto result : zip(op.getResults(), then_yield->getOperandTypes(),
+                         else_yield->getOperandTypes())) {
+    // If then and else types do not match, skip refinement for that result.
+    if (std::get<1>(result) != std::get<2>(result)) continue;
+    changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
+              changed;
+  }
+  return changed;
+}
 bool InferShapeForCast(CastOp op, Dialect* tf_dialect) {
   Value result = op.getResult();
   if (!CanBeRefined(result.getType())) return false;
@@ -288,37 +304,6 @@ bool InferShapeForCast(CastOp op, Dialect* tf_dialect) {
   UpdateTypeAndInsertIncompatibleUseCasts(tf_dialect, new_type, op,
                                           op.getResult());
   return true;
-}
-
-// Infer the shape IfOp outputs based on the shapes of the then and else
-// function result types.
-bool InferShapeForIf(IfOp op) {
-  bool changed = false;
-  for (auto it :
-       llvm::zip(op.getResults(), op.then_func().getType().getResults(),
-                 op.else_func().getType().getResults())) {
-    // If then and else types do not match, skip refinement for that result.
-    if (std::get<1>(it) != std::get<2>(it)) continue;
-    changed = RefineResultType(op, std::get<0>(it), std::get<1>(it)) || changed;
-  }
-  return changed;
-}
-
-// Infer the shape IfRegion outputs based on the shapes of the then and else
-// yields.
-bool InferShapeForIfRegion(IfRegionOp op) {
-  bool changed = false;
-
-  Operation* then_yield = op.then_branch().front().getTerminator();
-  Operation* else_yield = op.else_branch().front().getTerminator();
-  for (auto result : zip(op.getResults(), then_yield->getOperandTypes(),
-                         else_yield->getOperandTypes())) {
-    // If then and else types do not match, skip refinement for that result.
-    if (std::get<1>(result) != std::get<2>(result)) continue;
-    changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
-              changed;
-  }
-  return changed;
 }
 
 bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti,
@@ -783,22 +768,16 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
           op))
     return InferShapeForCall(op);
 
+  // Handle IfRegion operations by infering return shape from the then and else
+  // branches.
+  if (auto if_region = dyn_cast<IfRegionOp>(op))
+    return InferShapeForIfRegion(if_region);
+
   // tf.Cast are only inferred if they have at least one user in the TF dialect
   // or feeding into the function return. This is necessary to avoid inserting
   // casts which cannot be refined.
   if (auto cast_op = dyn_cast<CastOp>(op))
     return InferShapeForCast(cast_op, tf_dialect_);
-
-  // Handle IfOp here by inferring the shape from the else/then function
-  // results. Since `output_shapes` is a derived attribute, avoid going down the
-  // TF InferenceContext path as IfOp shape inference is implemented as just
-  // a lookup of the output_shapes attribute.
-  if (auto if_op = dyn_cast<IfOp>(op)) return InferShapeForIf(if_op);
-
-  // Handle IfRegion operations by infering return shape from the then and else
-  // branches.
-  if (auto if_region = dyn_cast<IfRegionOp>(op))
-    return InferShapeForIfRegion(if_region);
 
   StringRef op_name = op->getName().getStringRef();
   // Drop the `tf.` prefix to query TF registry.

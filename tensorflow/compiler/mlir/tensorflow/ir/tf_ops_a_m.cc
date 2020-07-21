@@ -1615,10 +1615,6 @@ static LogicalResult Verify(IfOp op) {
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// IfOp canonicalization.
-//===----------------------------------------------------------------------===//
-
 class FoldConstantIfOp : public OpRewritePattern<TF::IfOp> {
  public:
   explicit FoldConstantIfOp(MLIRContext *context)
@@ -1666,7 +1662,7 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
 
 void IfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                        MLIRContext *context) {
-  results.insert<FoldConstantIfOp, DropAttributes<IfOp>>(context);
+  results.insert<FoldConstantIfOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

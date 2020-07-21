@@ -365,6 +365,16 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
       while_op.getLoc(),
       append_types(llvm::to_vector<4>(while_op.getResultTypes())),
       new_while_operands, while_op.getAttrs());
+  if (new_while_op.output_shapes().size() != 0) {
+    auto new_output_shapes = llvm::to_vector<4>(new_while_op.output_shapes());
+    // VarHandleOp is a scalar shape resource.
+    for (int64_t i = 0; i < state_vars.size(); ++i) {
+      new_output_shapes.push_back(
+          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
+    }
+    new_while_op.setAttr("output_shapes",
+                         builder.getArrayAttr(new_output_shapes));
+  }
   while_op.replaceAllUsesWith(
       new_while_op.getResults().take_front(while_op.getNumResults()));
   while_op.erase();

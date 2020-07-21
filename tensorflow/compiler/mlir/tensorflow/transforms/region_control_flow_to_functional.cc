@@ -373,7 +373,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   OpBuilder builder(while_region);
   auto while_op = builder.create<WhileOp>(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
-      while_region.parallel_iterations(), while_region.is_stateless());
+      builder.getArrayAttr({}), while_region.parallel_iterations(),
+      while_region.is_stateless());
 
   // Redirect old results to new results.
   for (auto it : llvm::zip(
