@@ -149,29 +149,28 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
                                          self.evaluate(var0))
       self.assertAllCloseAccordingToType([3.0 - 1.0], self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeSparseResourceVariable(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
-        var1 = variables.Variable([3.0], dtype=dtype)
-        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
+      var1 = variables.Variable([3.0], dtype=dtype)
+      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
-        def loss():
-          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
-          pred += var1  # pylint: disable=cell-var-from-loop
-          return pred * pred
+      def loss():
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+        pred += var1  # pylint: disable=cell-var-from-loop
+        return pred * pred
 
-        sgd_op = gradient_descent.SGD(1.0).minimize(loss, [var0, var1])
-        self.evaluate(variables.global_variables_initializer())
-        # Run 1 step of sgd
-        self.evaluate(sgd_op)
-        # Validate updated params
-        np_pred = 1.0 * 4.0 + 2.0 * 5.0 + 3.0
-        np_grad = 2 * np_pred
-        self.assertAllCloseAccordingToType(
-            [[1.0 - np_grad * 4.0, 2.0 - np_grad * 5.0]], self.evaluate(var0))
-        self.assertAllCloseAccordingToType([3.0 - np_grad], self.evaluate(var1))
+      sgd_op = gradient_descent.SGD(1.0).minimize(loss, [var0, var1])
+      self.evaluate(variables.global_variables_initializer())
+      # Run 1 step of sgd
+      self.evaluate(sgd_op)
+      # Validate updated params
+      np_pred = 1.0 * 4.0 + 2.0 * 5.0 + 3.0
+      np_grad = 2 * np_pred
+      self.assertAllCloseAccordingToType(
+          [[1.0 - np_grad * 4.0, 2.0 - np_grad * 5.0]], self.evaluate(var0))
+      self.assertAllCloseAccordingToType([3.0 - np_grad], self.evaluate(var1))
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -191,72 +190,72 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                          self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testGradWrtRef(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        opt = gradient_descent.SGD(3.0)
-        values = [1.0, 3.0]
-        vars_ = [variables.Variable([v], dtype=dtype) for v in values]
-        loss = lambda: vars_[0] + vars_[1]  # pylint: disable=cell-var-from-loop
-        grads_and_vars = opt._compute_gradients(loss, vars_)
-        self.evaluate(variables.global_variables_initializer())
-        for grad, _ in grads_and_vars:
-          self.assertAllCloseAccordingToType([1.0], self.evaluate(grad))
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      opt = gradient_descent.SGD(3.0)
+      values = [1.0, 3.0]
+      vars_ = [variables.Variable([v], dtype=dtype) for v in values]
+      loss = lambda: vars_[0] + vars_[1]  # pylint: disable=cell-var-from-loop
+      grads_and_vars = opt._compute_gradients(loss, vars_)
+      self.evaluate(variables.global_variables_initializer())
+      for grad, _ in grads_and_vars:
+        self.assertAllCloseAccordingToType([1.0], self.evaluate(grad))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparseBasic(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
-        var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
-        grads0 = ops.IndexedSlices(
-            constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
-            constant_op.constant([0]), constant_op.constant([2, 1]))
-        grads1 = ops.IndexedSlices(
-            constant_op.constant([0.01], shape=[1, 1], dtype=dtype),
-            constant_op.constant([1]), constant_op.constant([2, 1]))
-        sgd_op = gradient_descent.SGD(3.0).apply_gradients(
-            zip([grads0, grads1], [var0, var1]))
-        self.evaluate(variables.global_variables_initializer())
-        # Run 1 step of sgd
-        self.evaluate(sgd_op)
-        # Validate updated params
-        self.assertAllCloseAccordingToType([[1.0 - 3.0 * 0.1], [2.0]],
-                                           self.evaluate(var0))
-        self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
-                                           self.evaluate(var1))
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
+      var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
+      grads0 = ops.IndexedSlices(
+          constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
+          constant_op.constant([0]), constant_op.constant([2, 1]))
+      grads1 = ops.IndexedSlices(
+          constant_op.constant([0.01], shape=[1, 1], dtype=dtype),
+          constant_op.constant([1]), constant_op.constant([2, 1]))
+      sgd_op = gradient_descent.SGD(3.0).apply_gradients(
+          zip([grads0, grads1], [var0, var1]))
+      self.evaluate(variables.global_variables_initializer())
+      # Run 1 step of sgd
+      self.evaluate(sgd_op)
+      # Validate updated params
+      self.assertAllCloseAccordingToType([[1.0 - 3.0 * 0.1], [2.0]],
+                                          self.evaluate(var0))
+      self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
+                                          self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparseBasicWithLearningRateDecay(self):
-    # TODO(tanzheny, omalleyt): Fix test in eager mode.
-    with ops.Graph().as_default():
-      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
-        var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
-        grads0 = ops.IndexedSlices(
-            constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
-            constant_op.constant([0]), constant_op.constant([2, 1]))
-        grads1 = ops.IndexedSlices(
-            constant_op.constant([0.01], shape=[1, 1], dtype=dtype),
-            constant_op.constant([1]), constant_op.constant([2, 1]))
-        sgd_op = gradient_descent.SGD(
-            3.0, decay=0.5).apply_gradients(
-                zip([grads0, grads1], [var0, var1]))
-        self.evaluate(variables.global_variables_initializer())
-        # Run 2 steps of sgd
-        self.evaluate(sgd_op)
-        # Validate updated params
-        self.assertAllCloseAccordingToType([[1.0 - 3.0 * 0.1], [2.0]],
-                                           self.evaluate(var0))
-        self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
-                                           self.evaluate(var1))
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
+      var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
+      grads0 = ops.IndexedSlices(
+          constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
+          constant_op.constant([0]), constant_op.constant([2, 1]))
+      grads1 = ops.IndexedSlices(
+          constant_op.constant([0.01], shape=[1, 1], dtype=dtype),
+          constant_op.constant([1]), constant_op.constant([2, 1]))
 
-        self.evaluate(sgd_op)
-        # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[1.0 - 3.0 * 0.1 - 2.0 * 0.1], [2.0]], self.evaluate(var0))
-        self.assertAllCloseAccordingToType(
-            [[3.0], [4.0 - 3.0 * 0.01 - 2.0 * 0.01]], self.evaluate(var1))
+      opt = gradient_descent.SGD(3.0, decay=0.5)
+      update_op = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      self.evaluate(variables.global_variables_initializer())
+      # Run 2 steps of sgd
+      self.evaluate(update_op)
+      # Validate updated params
+      self.assertAllCloseAccordingToType([[1.0 - 3.0 * 0.1], [2.0]],
+                                          self.evaluate(var0))
+      self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
+                                          self.evaluate(var1))
+
+      if context.executing_eagerly():
+        opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      else:
+        self.evaluate(update_op)
+      # Validate updated params
+      self.assertAllCloseAccordingToType(
+          [[1.0 - 3.0 * 0.1 - 2.0 * 0.1], [2.0]], self.evaluate(var0))
+      self.assertAllCloseAccordingToType(
+          [[3.0], [4.0 - 3.0 * 0.01 - 2.0 * 0.01]], self.evaluate(var1))
 
   def testCapturingInDefunWhileExecutingEagerly(self):
     with context.eager_mode():
