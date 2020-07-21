@@ -228,6 +228,10 @@ TEST_F(GraphOptimizerStageTest, AddNodes) {
   NodeDef* empty_node_by_name;
   TF_CHECK_OK(stage.GetInputNode("Add_2", &empty_node_by_name));
   EXPECT_EQ(empty_node, empty_node_by_name);
+
+  // Check that AddEmptyNode adds a unique suffix if the node already exists.
+  NodeDef* unique_empty_node = stage.AddEmptyNode("Add_2");
+  EXPECT_EQ(unique_empty_node->name(), "Add_2_0");
 }
 
 }  // namespace
