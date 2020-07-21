@@ -212,9 +212,9 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       self.evaluate(sgd_op)
       # Validate updated params
       self.assertAllCloseAccordingToType([[1.0 - 3.0 * 0.1], [2.0]],
-                                          self.evaluate(var0))
+                                         self.evaluate(var0))
       self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
-                                          self.evaluate(var1))
+                                         self.evaluate(var1))
 
   def testSparseBasicWithLearningRateDecay(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -234,9 +234,9 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       self.evaluate(update_op)
       # Validate updated params
       self.assertAllCloseAccordingToType([[1.0 - 3.0 * 0.1], [2.0]],
-                                          self.evaluate(var0))
+                                         self.evaluate(var0))
       self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
-                                          self.evaluate(var1))
+                                         self.evaluate(var1))
 
       if context.executing_eagerly():
         opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
@@ -402,8 +402,8 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
                               constant_op.constant([0, 1]),
                               constant_op.constant([2]))
         grads_and_vars.append([
-          (y, var0),
-          (constant_op.constant([3.0, 3.0], dtype=dtype), var1)])
+            (y, var0),
+            (constant_op.constant([3.0, 3.0], dtype=dtype), var1)])
       if not context.executing_eagerly():
         opt_update = []
         for t in range(1, 5):
