@@ -32,7 +32,7 @@ export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
-bazel build --config=release_cpu_linux tensorflow/tools/pip_package:build_pip_package
+bazel build --config=release_cpu_linux --host_force_python=PY3 tensorflow/tools/pip_package:build_pip_package
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 
