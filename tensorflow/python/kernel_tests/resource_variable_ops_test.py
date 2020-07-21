@@ -1194,8 +1194,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v2 = resource_variable_ops.ResourceVariable(
           initial_value=callable_init, name="var7")
       self.assertEqual("var7:0", v2.name)
-      self.assertAllEqual(np.array(v2), v2.read_value().numpy())
-      self.assertAllEqual(v2.numpy(), v2.read_value().numpy())
       self.assertAllEqual(2 * init.numpy(), v2.read_value().numpy())
 
       # Test assign_add.
