@@ -110,6 +110,9 @@ def get_json_type(obj):
   if type(obj).__name__ == type.__name__:
     return obj.__name__
 
+  if isinstance(obj, tensor_shape.Dimension):
+    return obj.value
+
   if isinstance(obj, tensor_shape.TensorShape):
     return obj.as_list()
 
