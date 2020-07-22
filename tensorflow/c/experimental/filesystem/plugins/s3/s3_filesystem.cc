@@ -1021,6 +1021,40 @@ void CreateDir(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
+void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  if (object.back() != '/') object.push_back('/');
+  Aws::S3::Model::ListObjectsRequest list_objects_request;
+  list_objects_request.WithBucket(bucket).WithPrefix(object).WithMaxKeys(2);
+  list_objects_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+  auto list_objects_outcome =
+      s3_file->s3_client->ListObjects(list_objects_request);
+  if (list_objects_outcome.IsSuccess()) {
+    auto contents = list_objects_outcome.GetResult().GetContents();
+    if (contents.size() > 1 ||
+        (contents.size() == 1 && contents[0].GetKey() != object)) {
+      TF_SetStatus(status, TF_UNKNOWN,
+                   "Cannot delete a non-empty directory. "
+                   "This operation will be retried in case this "
+                   "is due to S3's eventual consistency.");
+    }
+    if (contents.size() == 1 && contents[0].GetKey() == object) {
+      Aws::String dir_path = path;
+      if (dir_path.back() != '/') dir_path.push_back('/');
+      DeleteFile(filesystem, dir_path.c_str(), status);
+    }
+  } else {
+    TF_SetStatusFromAWSError(list_objects_outcome.GetError(), status);
+  }
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_s3_filesystem
