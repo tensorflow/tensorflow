@@ -390,10 +390,12 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
             << " seconds to give time for TPUCompileOp to finished.";
   env->SleepForMicroseconds(kSleepSeconds * 1000000);
   if (done->load()) {
-    // If the TPUCompileOp has finished, then terminate peacefully.
+    // If the TpuCompileOp has finished, then terminate peacefully.
     return;
   }
 
+  LOG(ERROR) << "Aborting process due to cancelled TpuCompileOp. This "
+             << "termination is to ensure a consistent state.";
   std::exit(42);
 }
 
