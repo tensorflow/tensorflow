@@ -558,7 +558,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     # We only support integer types for post training integer quantization
     # as we have statistical information to quantize the input and output.
     if quant_mode.is_post_training_integer_quantize():
-      all_types = default_types + [constants.INT8, constants.INT16, constants.QUANTIZED_UINT8]
+      all_types = default_types + [constants.INT8, constants.QUANTIZED_UINT8, constants.INT16]
       if self.inference_input_type not in all_types or \
           self.inference_output_type not in all_types:
         all_types_names = ["tf." + t.name for t in all_types]

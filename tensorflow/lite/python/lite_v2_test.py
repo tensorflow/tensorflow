@@ -73,7 +73,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
   @parameterized.named_parameters(
       ('_INT8InputOutput', lite.constants.INT8),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
   @test_util.run_v2_only
   def testInvalidFloat(self, inference_input_output_type):
     root = self._getSimpleVariableModel()
@@ -194,7 +195,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
   @parameterized.named_parameters(
       ('_INT8InputOutput', lite.constants.INT8),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
   @test_util.run_v2_only
   def testInvalidPostTrainingDynamicRangeQuantization(
       self, inference_input_output_type):
