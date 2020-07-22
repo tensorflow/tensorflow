@@ -179,3 +179,18 @@ py_library(
         "//tensorflow:tensorflow_py",
     ],
 )
+
+# Run memory profiler on Keras model.
+# Please make sure `meomry_profiler` is installed.
+# To run the memory profiler:
+# With CPU:
+#   bazel run -c opt model_memory_profile -- --model=YOUR_MODEL_NAME
+# With GPU:
+#   bazel run -c opt --config=cuda model_memory_profile -- --model=YOUR_MODEL_NAME
+py_binary(
+    name = "model_memory_profile",
+    srcs = ["model_memory_profile.py"],
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = ["//tensorflow:tensorflow_py"],
+)
