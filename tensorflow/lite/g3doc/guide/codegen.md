@@ -27,7 +27,7 @@ Lite model with typed objects such as `Bitmap` and `Rect`.
 The usefulness of the code generator depend on the completeness of the
 TensorFlow Lite model's metadata entry. Refer to the `<Codegen usage>` section
 under relevant fields in
-[metadata_schema.fbs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs),
+[metadata_schema.fbs](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs),
 to see how the codegen tool parses each field.
 
 ### Generate Wrapper Code
