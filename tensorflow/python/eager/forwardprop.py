@@ -218,7 +218,7 @@ pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
 
 
 @tf_export("autodiff.ForwardAccumulator", v1=[])
-class ForwardAccumulator(object):
+class ForwardAccumulator():
   """Computes Jacobian-vector products ("JVP"s) using forward-mode autodiff.
 
   Compare to `tf.GradientTape` which computes vector-Jacobian products ("VJP"s)
@@ -327,7 +327,6 @@ class ForwardAccumulator(object):
   """
 
   def __init__(self, primals, tangents, use_batch=False):
- 
     """Specify tensors to watch and their Jacobian-vector products.
 
     Mathematically, `tangents` is a vector right-multiplying the Jacobian matrix

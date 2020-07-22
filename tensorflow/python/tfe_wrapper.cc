@@ -369,30 +369,28 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
 
   // // TFE_Context Logic
-  m.def(
-      "TFE_NewContext",
-      [](const TFE_ContextOptions* opts) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        TFE_Context* context = TFE_NewContext(opts, status.get());
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return tensorflow::PyoOrThrow(tensorflow::OutputTFE_Context(context));
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_NewContext",
+        [](const TFE_ContextOptions* opts) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          TFE_Context* context = TFE_NewContext(opts, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return tensorflow::PyoOrThrow(tensorflow::OutputTFE_Context(context));
+        },
+        py::return_value_policy::reference);
   m.def("TFE_DeleteContext", [](py::handle& o) {
     TFE_DeleteContext(tensorflow::InputTFE_Context(o));
   });
-  m.def(
-      "TFE_ContextListDevices",
-      [](py::handle& o) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_ContextListDevices(tensorflow::InputTFE_Context(o),
-                                             status.get());
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_ContextListDevices",
+        [](py::handle& o) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_ContextListDevices(tensorflow::InputTFE_Context(o),
+                                               status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_HostAddressSpace", [](py::handle& o, TF_Buffer& buf) {
     TFE_HostAddressSpace(tensorflow::InputTFE_Context(o), &buf);
   });
@@ -535,13 +533,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
 
   // TFE_Executor logic
-  m.def(
-      "TFE_NewExecutor",
-      [](const bool is_async) {
-        TFE_Executor* exc = TFE_NewExecutor(is_async);
-        return exc;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_NewExecutor",
+        [](const bool is_async) {
+          TFE_Executor* exc = TFE_NewExecutor(is_async);
+          return exc;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_DeleteExecutor", &TFE_DeleteExecutor);
   m.def("TFE_ExecutorIsAsync", &TFE_ExecutorIsAsync);
   m.def("TFE_ExecutorWaitForAllPendingNodes", [](TFE_Executor& exc) {
@@ -731,7 +728,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   // TFE_Py_ForwardAccumulator logic.
   m.def("TFE_Py_ForwardAccumulatorNew", [](const py::handle& use_batch) {
-    return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew(use_batch.ptr()));
+    return tensorflow::PyoOrThrow(
+        TFE_Py_ForwardAccumulatorNew(use_batch.ptr()));
   });
 
   m.def("TFE_Py_ForwardAccumulatorSetAdd", [](const py::handle& accumulator) {
@@ -854,48 +852,45 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_MonitoringCounterCellIncrementBy",
         &TFE_MonitoringCounterCellIncrementBy);
   m.def("TFE_MonitoringCounterCellValue", &TFE_MonitoringCounterCellValue);
-  m.def(
-      "TFE_MonitoringNewCounter0",
-      [](const char* name, const char* description) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output =
-            TFE_MonitoringNewCounter0(name, status.get(), description);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewCounter0",
+        [](const char* name, const char* description) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output =
+              TFE_MonitoringNewCounter0(name, status.get(), description);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteCounter0", &TFE_MonitoringDeleteCounter0,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellCounter0", &TFE_MonitoringGetCellCounter0,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewCounter1",
-      [](const char* name, const char* description, const char* label1) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output =
-            TFE_MonitoringNewCounter1(name, status.get(), description, label1);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewCounter1",
+        [](const char* name, const char* description, const char* label1) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewCounter1(name, status.get(),
+                                                  description, label1);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteCounter1", &TFE_MonitoringDeleteCounter1,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellCounter1", &TFE_MonitoringGetCellCounter1,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewCounter2",
-      [](const char* name, const char* description, const char* label1,
-         const char* label2) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_MonitoringNewCounter2(name, status.get(), description,
-                                                label1, label2);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewCounter2",
+        [](const char* name, const char* description, const char* label1,
+           const char* label2) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewCounter2(name, status.get(),
+                                                  description, label1, label2);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteCounter2", &TFE_MonitoringDeleteCounter2,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellCounter2", &TFE_MonitoringGetCellCounter2,
@@ -904,48 +899,45 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // TFE_MonitoringIntGauge Logic
   m.def("TFE_MonitoringIntGaugeCellSet", &TFE_MonitoringIntGaugeCellSet);
   m.def("TFE_MonitoringIntGaugeCellValue", &TFE_MonitoringIntGaugeCellValue);
-  m.def(
-      "TFE_MonitoringNewIntGauge0",
-      [](const char* name, const char* description) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output =
-            TFE_MonitoringNewIntGauge0(name, status.get(), description);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewIntGauge0",
+        [](const char* name, const char* description) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output =
+              TFE_MonitoringNewIntGauge0(name, status.get(), description);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteIntGauge0", &TFE_MonitoringDeleteIntGauge0,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellIntGauge0", &TFE_MonitoringGetCellIntGauge0,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewIntGauge1",
-      [](const char* name, const char* description, const char* label1) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output =
-            TFE_MonitoringNewIntGauge1(name, status.get(), description, label1);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewIntGauge1",
+        [](const char* name, const char* description, const char* label1) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewIntGauge1(name, status.get(),
+                                                   description, label1);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteIntGauge1", &TFE_MonitoringDeleteIntGauge1,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellIntGauge1", &TFE_MonitoringGetCellIntGauge1,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewIntGauge2",
-      [](const char* name, const char* description, const char* label1,
-         const char* label2) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_MonitoringNewIntGauge2(name, status.get(),
-                                                 description, label1, label2);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewIntGauge2",
+        [](const char* name, const char* description, const char* label1,
+           const char* label2) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewIntGauge2(name, status.get(),
+                                                   description, label1, label2);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteIntGauge2", &TFE_MonitoringDeleteIntGauge2,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellIntGauge2", &TFE_MonitoringGetCellIntGauge2,
@@ -953,48 +945,45 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_MonitoringStringGaugeCellSet", &TFE_MonitoringStringGaugeCellSet);
   m.def("TFE_MonitoringStringGaugeCellValue",
         &TFE_MonitoringStringGaugeCellValue);
-  m.def(
-      "TFE_MonitoringNewStringGauge0",
-      [](const char* name, const char* description) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output =
-            TFE_MonitoringNewStringGauge0(name, status.get(), description);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewStringGauge0",
+        [](const char* name, const char* description) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output =
+              TFE_MonitoringNewStringGauge0(name, status.get(), description);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
 
   // TFE_MonitoringStringGauge Logic
   m.def("TFE_MonitoringDeleteStringGauge0", &TFE_MonitoringDeleteStringGauge0);
   m.def("TFE_MonitoringGetCellStringGauge0", &TFE_MonitoringGetCellStringGauge0,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewStringGauge1",
-      [](const char* name, const char* description, const char* label1) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_MonitoringNewStringGauge1(name, status.get(),
-                                                    description, label1);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewStringGauge1",
+        [](const char* name, const char* description, const char* label1) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewStringGauge1(name, status.get(),
+                                                      description, label1);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteStringGauge1", &TFE_MonitoringDeleteStringGauge1);
   m.def("TFE_MonitoringGetCellStringGauge1", &TFE_MonitoringGetCellStringGauge1,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewStringGauge2",
-      [](const char* name, const char* description, const char* label1,
-         const char* label2) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_MonitoringNewStringGauge2(
-            name, status.get(), description, label1, label2);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewStringGauge2",
+        [](const char* name, const char* description, const char* label1,
+           const char* label2) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewStringGauge2(
+              name, status.get(), description, label1, label2);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteStringGauge2", &TFE_MonitoringDeleteStringGauge2);
   m.def("TFE_MonitoringGetCellStringGauge2", &TFE_MonitoringGetCellStringGauge2,
         py::return_value_policy::reference);
@@ -1002,48 +991,45 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // TFE_MonitoringBoolGauge Logic
   m.def("TFE_MonitoringBoolGaugeCellSet", &TFE_MonitoringBoolGaugeCellSet);
   m.def("TFE_MonitoringBoolGaugeCellValue", &TFE_MonitoringBoolGaugeCellValue);
-  m.def(
-      "TFE_MonitoringNewBoolGauge0",
-      [](const char* name, const char* description) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output =
-            TFE_MonitoringNewBoolGauge0(name, status.get(), description);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewBoolGauge0",
+        [](const char* name, const char* description) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output =
+              TFE_MonitoringNewBoolGauge0(name, status.get(), description);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteBoolGauge0", &TFE_MonitoringDeleteBoolGauge0,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellBoolGauge0", &TFE_MonitoringGetCellBoolGauge0,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewBoolGauge1",
-      [](const char* name, const char* description, const char* label1) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_MonitoringNewBoolGauge1(name, status.get(),
-                                                  description, label1);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewBoolGauge1",
+        [](const char* name, const char* description, const char* label1) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewBoolGauge1(name, status.get(),
+                                                    description, label1);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteBoolGauge1", &TFE_MonitoringDeleteBoolGauge1,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellBoolGauge1", &TFE_MonitoringGetCellBoolGauge1,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewBoolGauge2",
-      [](const char* name, const char* description, const char* label1,
-         const char* label2) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_MonitoringNewBoolGauge2(name, status.get(),
-                                                  description, label1, label2);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewBoolGauge2",
+        [](const char* name, const char* description, const char* label1,
+           const char* label2) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewBoolGauge2(
+              name, status.get(), description, label1, label2);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteBoolGauge2", &TFE_MonitoringDeleteBoolGauge2,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellBoolGauge2", &TFE_MonitoringGetCellBoolGauge2,
@@ -1057,50 +1043,47 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteBuckets", &TFE_MonitoringDeleteBuckets,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewSampler0",
-      [](const char* name, TFE_MonitoringBuckets* buckets,
-         const char* description) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output =
-            TFE_MonitoringNewSampler0(name, buckets, status.get(), description);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewSampler0",
+        [](const char* name, TFE_MonitoringBuckets* buckets,
+           const char* description) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewSampler0(name, buckets, status.get(),
+                                                  description);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteSampler0", &TFE_MonitoringDeleteSampler0,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellSampler0", &TFE_MonitoringGetCellSampler0,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewSampler1",
-      [](const char* name, TFE_MonitoringBuckets* buckets,
-         const char* description, const char* label1) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_MonitoringNewSampler1(name, buckets, status.get(),
-                                                description, label1);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewSampler1",
+        [](const char* name, TFE_MonitoringBuckets* buckets,
+           const char* description, const char* label1) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewSampler1(name, buckets, status.get(),
+                                                  description, label1);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteSampler1", &TFE_MonitoringDeleteSampler1,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellSampler1", &TFE_MonitoringGetCellSampler1,
         py::return_value_policy::reference);
-  m.def(
-      "TFE_MonitoringNewSampler2",
-      [](const char* name, TFE_MonitoringBuckets* buckets,
-         const char* description, const char* label1, const char* label2) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        auto output = TFE_MonitoringNewSampler2(name, buckets, status.get(),
-                                                description, label1, label2);
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      },
-      py::return_value_policy::reference);
+  m.def("TFE_MonitoringNewSampler2",
+        [](const char* name, TFE_MonitoringBuckets* buckets,
+           const char* description, const char* label1, const char* label2) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto output = TFE_MonitoringNewSampler2(name, buckets, status.get(),
+                                                  description, label1, label2);
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        },
+        py::return_value_policy::reference);
   m.def("TFE_MonitoringDeleteSampler2", &TFE_MonitoringDeleteSampler2,
         py::return_value_policy::reference);
   m.def("TFE_MonitoringGetCellSampler2", &TFE_MonitoringGetCellSampler2,

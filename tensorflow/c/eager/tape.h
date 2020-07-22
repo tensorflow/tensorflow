@@ -335,14 +335,13 @@ class ForwardAccumulator {
   std::stack<AccumulatorCallState> call_state_;
 };
 
-template<typename Gradient, typename BackwardFunction, typename TapeTensor> 
+template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 class ForwardBatchAccumulator
-		: public ForwardAccumulator<Gradient, BackwardFunction, TapeTensor> {
+    : public ForwardAccumulator<Gradient, BackwardFunction, TapeTensor> {
  public:
-  
   bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids,
                     gtl::ArraySlice<tensorflow::DataType> dtypes);
-  
+
   Status Accumulate(
       const string& op_type, const std::vector<TapeTensor>& input_tensors,
       const std::vector<TapeTensor>& output_tensors,
@@ -350,8 +349,9 @@ class ForwardBatchAccumulator
       gtl::ArraySlice<tensorflow::DataType> input_dtypes,
       const ForwardFunction<Gradient>* forward_function,
       const std::function<BackwardFunction*()>& backward_function_getter,
-      const std::function<void(BackwardFunction*)>& backward_function_deleter) override;
- 
+      const std::function<void(BackwardFunction*)>& backward_function_deleter)
+      override;
+
  private:
   Status ForwardpropFromTape(
       const std::vector<TapeTensor>& output_tensors,
@@ -362,20 +362,20 @@ class ForwardBatchAccumulator
 
   std::unordered_map<int64, Gradient*> accumulated_gradients_;
 
-	const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace_;
+  const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace_;
 
   struct AccumulatorCallState {
     AccumulatorCallState(
         GradientTape<Gradient, BackwardFunction, TapeTensor>* backward_tape,
         bool accumulating)
         : backward_tape(backward_tape), accumulating(accumulating) {}
-    
-		GradientTape<Gradient, BackwardFunction, TapeTensor>* backward_tape;
-    
-		bool accumulating;
+
+    GradientTape<Gradient, BackwardFunction, TapeTensor>* backward_tape;
+
+    bool accumulating;
   };
-  
-	std::stack<AccumulatorCallState> call_state_;
+
+  std::stack<AccumulatorCallState> call_state_;
 };
 
 // Template instantiations here
@@ -1127,7 +1127,8 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
 }
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
-Status ForwardBatchAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
+Status
+ForwardBatchAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
     const string& op_type, const std::vector<TapeTensor>& input_tensors,
     const std::vector<TapeTensor>& output_tensors,
     gtl::ArraySlice<int64> input_tensor_id,
@@ -1167,10 +1168,9 @@ Status ForwardBatchAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumula
   }
 
   std::vector<Gradient*> forward_grads;
-  if (forward_function==nullptr) {
-    //Raise apt error
-  }
-  else {
+  if (forward_function == nullptr) {
+    // Raise apt error
+  } else {
     TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads, true));
   }
   for (int i = 0; i < forward_grads.size(); ++i) {
