@@ -275,6 +275,7 @@ cc_library(
     hdrs = ["tpu_platform_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor:stream_executor_headers",

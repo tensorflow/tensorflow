@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
 namespace tensorflow {
@@ -72,16 +73,19 @@ TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform() {
 /* static */
 TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform(
     bool initialize_platform) {
+  static auto* mu = new mutex;
   static bool requested_initialize_platform = initialize_platform;
   static TpuPlatformInterface* tpu_registered_platform =
       GetRegisteredPlatformStatic(initialize_platform);
 
+  mutex_lock lock(*mu);
   if (!requested_initialize_platform && initialize_platform) {
     // If the first time this function is called, we did not request
     // initializing the platform, but the next caller wants the platform
     // initialized, we will call GetRegisteredPlatformStatic again to initialize
     // the platform.
     tpu_registered_platform = GetRegisteredPlatformStatic(initialize_platform);
+    requested_initialize_platform = true;
   }
 
   return tpu_registered_platform;
