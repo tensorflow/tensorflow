@@ -36,7 +36,8 @@ from tensorflow.python.ops import variables
 
 class TFFunctionTest(test.TestCase, parameterized.TestCase):
 
-  def setup(self):
+  def setUp(self):
+    super().setUp()
     # Clear the state for every test.
     def_function.run_functions_eagerly(False)
 
@@ -105,6 +106,8 @@ class TFFunctionTest(test.TestCase, parameterized.TestCase):
       ))
   def testReadVariableInsideFunction(self, distribution, run_functions_eagerly):
 
+    def_function.run_functions_eagerly(run_functions_eagerly)
+
     # Get devices on which variables will be placed. Default strategy does not
     # define this, so assume cpu:0 in that case.
     try:
@@ -127,11 +130,15 @@ class TFFunctionTest(test.TestCase, parameterized.TestCase):
     def read():
       return v.read_value()
 
-    for i, d in enumerate(devices):
-      with ops.device(d):
-        # Verify that the value from each device is read, when in that device
-        # scope.
-        self.assertEqual(math_ops.cast(i, dtypes.float32), read())
+    # Verify that the value from each device is read, when in that device
+    # scope. Doing this inside strategy scope is needed to force function
+    # retracing on each device, otherwise `read()` will only be traced once
+    # on the first device and following variable read will always read the value
+    # on the first replica.
+    with distribution.scope():
+      for i, d in enumerate(devices):
+        with ops.device(d):
+          self.assertEqual(math_ops.cast(i, dtypes.float32), read())
 
 
 if __name__ == "__main__":
