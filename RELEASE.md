@@ -56,6 +56,8 @@
 *   `tf.lite`:
     * Better support for ops with high-dimensional broadcasting inputs by adding
   `BroadcastTo` ops when necessary.
+    * `TFLiteConverter`:
+      * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (tf.int8, tf.uint8) instead of defaulting to float type (tf.float32).
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
 *   Math and Linear Algebra:
@@ -68,7 +70,7 @@
     * <ADD RELEASE NOTES HERE>
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
-  and "denylist" where possible. Please see 
+  and "denylist" where possible. Please see
   https://developers.google.com/style/word-list#blacklist for more context.
     * <ADD RELEASE NOTES HERE>
 
