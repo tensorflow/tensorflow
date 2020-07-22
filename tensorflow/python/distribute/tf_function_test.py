@@ -32,6 +32,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
 
 
 class TFFunctionTest(test.TestCase, parameterized.TestCase):
@@ -139,6 +141,31 @@ class TFFunctionTest(test.TestCase, parameterized.TestCase):
       for i, d in enumerate(devices):
         with ops.device(d):
           self.assertEqual(math_ops.cast(i, dtypes.float32), read())
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def testRetraceOnSaving(self, distribution):
+    with distribution.scope():
+      v = variables.Variable(0.)
+
+    tracing_count = [0]
+
+    @def_function.function
+    def func():
+      tracing_count[0] += 1
+      return v + 1.
+
+    distribution.run(func)
+    prev_tracing_count = tracing_count[0]
+    with save_context.save_context(save_options.SaveOptions()):
+      func()
+    self.assertEqual(prev_tracing_count + 1, tracing_count[0])
+
+    prev_tracing_count = tracing_count[0]
+    with save_context.save_context(save_options.SaveOptions()):
+      func()
+    self.assertEqual(prev_tracing_count, tracing_count[0])
 
 
 if __name__ == "__main__":
