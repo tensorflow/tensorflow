@@ -648,6 +648,7 @@ tpu_py_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
+        ":strategy_test_lib",
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
