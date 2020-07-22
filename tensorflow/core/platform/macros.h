@@ -120,6 +120,7 @@ limitations under the License.
   do {                          \
   } while (0)
 #endif
+
 namespace tensorflow {
 namespace internal {
 template <typename T>
