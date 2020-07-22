@@ -19,7 +19,7 @@ ifeq ($(TARGET), arc_emsdp)
   ARC_TOOLCHAIN := mwdt
 
 
-  BUILD_ARC_MLI := true
+  BUILD_ARC_MLI := false
   ARC_MLI_PRE_COMPILED_TARGET := emsdp_em11d_em9d_dfss
 
 ifneq ($(filter no_arc_mli,$(ALL_TAGS)),)
