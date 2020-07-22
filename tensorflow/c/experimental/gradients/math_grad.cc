@@ -71,6 +71,117 @@ class ExpGradientFunction : public GradientFunction {
   AbstractTensorHandlePtr exp_;
 };
 
+class MatMulGradientFunction : public GradientFunction {
+ public:
+  explicit MatMulGradientFunction(AbstractContext* ctx, std::vector<AbstractTensorHandle*> f_inputs) : 
+            ctx_(ctx), forward_inputs(f_inputs) {}
+  
+  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
+    
+    /* Given upstream grad U and a matmul op A*B, the gradients are:
+     *      
+     *    dA = U * B.T   
+     *    dB = A.T * U
+     *
+     *    where A.T means `transpose(A)`
+     */
+
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    grad_outputs->resize(2);
+    std::vector<AbstractTensorHandle*> matmul_outputs(1);
+
+    // Gradient for A
+    TF_RETURN_IF_ERROR(MatMul(ctx_, {upstream_grad, forward_inputs[1]},
+                              absl::MakeSpan(matmul_outputs), "mm0",  
+                              /*transpose_a = */false, /*transpose_b = */true));
+
+    (*grad_outputs)[0] = matmul_outputs[0];
+
+    // Gradient for B
+    TF_RETURN_IF_ERROR(MatMul(ctx_, {forward_inputs[0], upstream_grad},
+                              absl::MakeSpan(matmul_outputs), "mm1", 
+                              /*transpose_a = */true, /*transpose_b = */false));
+
+    (*grad_outputs)[1] = matmul_outputs[0];
+    return Status::OK();
+  }
+  ~MatMulGradientFunction() override {}
+
+ private:
+  AbstractContext* ctx_;
+  std::vector<AbstractTensorHandle*> forward_inputs;
+
+};
+
+class ReluGradientFunction : public GradientFunction {
+ public:
+  explicit ReluGradientFunction(AbstractContext* ctx, std::vector<AbstractTensorHandle*> f_inputs) : 
+            ctx_(ctx), forward_inputs(f_inputs) {}
+  
+  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
+    
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    AbstractTensorHandle* input_features = forward_inputs[0];
+    grad_outputs->resize(1);
+    std::vector<AbstractTensorHandle*> relugrad_outputs(1);
+
+    // Calculate Grad
+    TF_RETURN_IF_ERROR(ReluGrad(ctx_, {upstream_grad, input_features},
+                              absl::MakeSpan(relugrad_outputs), "relu_grad"));
+
+    (*grad_outputs)[0] = relugrad_outputs[0];
+
+    return Status::OK();
+  }
+  ~ReluGradientFunction() override {}
+
+ private:
+  AbstractContext* ctx_;
+  std::vector<AbstractTensorHandle*> forward_inputs;
+
+};
+
+class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
+ public:
+  explicit SparseSoftmaxCrossEntropyLossGradientFunction(AbstractContext* ctx, 
+            std::vector<AbstractTensorHandle*> f_inputs, std::vector<AbstractTensorHandle*> f_outputs) : 
+            ctx_(ctx), forward_inputs(f_inputs), forward_outputs(f_outputs)  {}
+  
+  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
+    
+    // Forward Inputs : [scores, labels]
+
+    grad_outputs->resize(2); 
+    std::vector<AbstractTensorHandle*> sm_outputs(2);
+    
+    // Calculate Grad
+    TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx_, {forward_inputs[0], forward_inputs[1]},
+                              absl::MakeSpan(sm_outputs), "softmax_loss"));
+
+
+
+    // TODO(amturati): fix error where we have to return the softmax loss as the 
+    // 2nd grad for the labels to avoid mangled stack trace
+
+    // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd output.
+    (*grad_outputs)[0] = sm_outputs[1];  // return backprop for scores
+    (*grad_outputs)[1] = sm_outputs[0]; // nullptr;  <--- nullptr causes Mangled Stack Trace
+
+    return Status::OK();
+  }
+  ~SparseSoftmaxCrossEntropyLossGradientFunction() override {}
+
+ private:
+  AbstractContext* ctx_;
+  std::vector<AbstractTensorHandle*> forward_inputs;
+  std::vector<AbstractTensorHandle*> forward_outputs;
+
+};
+
+
 }  // namespace
 
 BackwardFunction* AddRegisterer(const ForwardOperation& op) {
