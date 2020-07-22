@@ -2014,6 +2014,80 @@ TEST_F(AlgebraicSimplifierTest, RemoveUnaryConcatenate) {
   EXPECT_THAT(computation->root_instruction(), param0);
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceReverse) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY test {
+  param = f32[6,7,32] parameter(0)
+  constant = f32[] constant(0)
+  pad = f32[8,7,32] pad(param, constant), padding=1_1x0_0x0_0
+  rev = f32[8,7,32] reverse(pad), dimensions={0,2}
+  slice = f32[1,7,32] slice(rev), slice={[2:3:1], [0:7:1], [0:32:1]}
+  ROOT tuple = (f32[1,7,32]) tuple(slice)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  HloComputation* computation = module->entry_computation();
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Tuple(m::Reverse(m::Slice(m::Pad())))));
+  const HloInstruction* slice =
+      computation->root_instruction()->operand(0)->operand(0);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(slice->shape(), ShapeUtil::MakeShape(F32, {1, 7, 32})));
+  // slice start,limit of 0th and 2nd dimensions are changed
+  // while 1st dimension's slice start, limit remains the same since
+  // it is not reversed.
+  EXPECT_EQ(slice->slice_starts(0), 5);
+  EXPECT_EQ(slice->slice_limits(0), 6);
+  EXPECT_EQ(slice->slice_starts(1), 0);
+  EXPECT_EQ(slice->slice_limits(1), 7);
+  EXPECT_EQ(slice->slice_starts(2), 0);
+  EXPECT_EQ(slice->slice_limits(2), 32);
+  EXPECT_EQ(slice->slice_strides(0), 1);
+  EXPECT_EQ(slice->slice_strides(1), 1);
+  EXPECT_EQ(slice->slice_strides(2), 1);
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceReverseNonUnitEvenOddStrides) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY test {
+  param = f32[6,7,32] parameter(0)
+  constant = f32[] constant(0)
+  pad = f32[8,7,32] pad(param, constant), padding=1_1x0_0x0_0
+  rev = f32[8,7,32] reverse(pad), dimensions={0,1,2}
+  slice = f32[1,2,7] slice(rev), slice={[2:3:2], [0:7:4], [0:32:5]}
+  ROOT tuple = (f32[1,2,7]) tuple(slice)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  HloComputation* computation = module->entry_computation();
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Tuple(m::Reverse(m::Slice(m::Pad())))));
+  const HloInstruction* slice =
+      computation->root_instruction()->operand(0)->operand(0);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(slice->shape(), ShapeUtil::MakeShape(F32, {1, 2, 7})));
+  // slice start,limit of all dimensions are changed
+  EXPECT_EQ(slice->slice_starts(0), 5);
+  EXPECT_EQ(slice->slice_limits(0), 6);
+  EXPECT_EQ(slice->slice_starts(1), 2);
+  EXPECT_EQ(slice->slice_limits(1), 7);
+  EXPECT_EQ(slice->slice_starts(2), 1);
+  EXPECT_EQ(slice->slice_limits(2), 32);
+  EXPECT_EQ(slice->slice_strides(0), 2);
+  EXPECT_EQ(slice->slice_strides(1), 4);
+  EXPECT_EQ(slice->slice_strides(2), 5);
+}
+
 // Test that empty operands of concatenates are removed.
 TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
   auto m = CreateNewVerifiedModule();

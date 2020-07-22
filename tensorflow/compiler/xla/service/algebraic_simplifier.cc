@@ -509,6 +509,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
+  // Tries to convert slice(reverse(X)) into reverse(slice(X))
+  StatusOr<bool> TryToReorderSliceAndReverse(HloInstruction* slice);
+
   // Tries to simplify `(and (< a N) (< a K))` in cases where `N <= K` into
   // `(< a N)`. This is crucial for being able to figure out the loop trip
   // count.
@@ -3574,6 +3577,52 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
   return false;
 }
 
+// Allowing a slice to move through a reverse with any necessary updates to the
+// slice config.
+StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReverse(
+    HloInstruction* slice) {
+  VLOG(2) << "Entered TryToReorderSliceAndReverse for slice:"
+          << slice->ToString();
+  if (Match(slice, m::Slice(m::Reverse()))) {
+    HloInstruction* reverse = slice->mutable_operand(0);
+    HloInstruction* reverse_operand = reverse->mutable_operand(0);
+    std::vector<int64> new_starts = slice->slice_starts();
+    std::vector<int64> new_limits = slice->slice_limits();
+    std::vector<int64> new_strides = slice->slice_strides();
+    for (auto rdim : reverse->dimensions()) {
+      int64 start = slice->slice_starts(rdim);
+      int64 limit = slice->slice_limits(rdim);
+      int64 stride = slice->slice_strides(rdim);
+      // find_nth allows us to compute the appropriate index to begin
+      // with during reverse even in the presence of non-unit strides
+      int64 find_nth = (limit - start - 1) / stride;
+      find_nth = start + find_nth * stride;
+      limit = find_nth + 1;
+      new_starts[rdim] =
+          (reverse->shape().dimensions(rdim) - start) - (limit - start);
+      new_limits[rdim] = reverse->shape().dimensions(rdim) - start;
+      VLOG(2) << "Analyzing dim:" << rdim << " (start,limit):" << start << ","
+              << limit << " and new (start, limit):" << new_starts[rdim] << ","
+              << new_limits[rdim];
+    }
+    // New slice formed from the reverse_operand, but strides and shape of the
+    // slice output remains the same. New slice's starts and limits are updated
+    // for ONLY the reversed dimensions as indicated above.
+    HloInstruction* new_slice = computation_->AddInstruction(
+        HloInstruction::CreateSlice(slice->shape(), reverse_operand, new_starts,
+                                    new_limits, new_strides));
+    simplifier_->UpdateLayout(new_slice->mutable_shape());
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+        slice, HloInstruction::CreateReverse(new_slice->shape(), new_slice,
+                                             reverse->dimensions())));
+    // We do not delete the old reverse, since there might be another
+    // consumer of that reverse (i.e., full reverse output). DCE should take
+    // care of any deletion that is necessary if there was no use of reverse.
+    return true;
+  }
+  return false;
+}
+
 Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Delete no-op slices, i.e. where shape = operand shape.
   if (ReplaceInstructionIfSameShape(slice, slice->mutable_operand(0))) {
@@ -3728,6 +3777,15 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   if (replaced) {
     return Status::OK();
   }
+
+  bool reversed = false;
+  if (Match(slice, m::Slice(m::Reverse(m::Op())))) {
+    TF_ASSIGN_OR_RETURN(reversed, TryToReorderSliceAndReverse(slice));
+  }
+  if (reversed) {
+    return Status::OK();
+  }
+
   return Status::OK();
 }
 
