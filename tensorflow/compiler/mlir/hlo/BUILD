@@ -690,7 +690,9 @@ cc_library(
     deps = [
         ":hlo",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -720,6 +722,7 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
