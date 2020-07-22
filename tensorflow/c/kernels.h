@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/c_api.h"
 
 // Macro to control visibility of exported symbols in the shared library (.so,
 // .dylib, .dll).
@@ -45,6 +46,7 @@ extern "C" {
 #endif
 
 typedef struct TF_Tensor TF_Tensor;
+typedef struct TF_StringView TF_StringView; 
 
 // --------------------------------------------------------------------------
 // C API for TensorFlow Kernels.
@@ -184,17 +186,8 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
     TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* val,
     TF_Status* status);
 
-// Used to pass strings across the C API. The caller does not take ownership 
-// of the underlying data pointer and is not responsible for freeing it. 
-struct string_view { 
-  const char* data; 
-  size_t len; 
-};
-
-typedef struct string_view string_view; 
-
 // Returns the name of the user-defined NodeDef for this OpKernel. 
-TF_CAPI_EXPORT extern string_view TF_OpKernelConstruction_GetName( 
+TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName( 
     TF_OpKernelConstruction* ctx); 
 
 // Allocates Tensor for output at given index. Caller takes ownership of
