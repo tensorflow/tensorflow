@@ -730,8 +730,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         });
 
   // TFE_Py_ForwardAccumulator logic.
-  m.def("TFE_Py_ForwardAccumulatorNew", []() {
-    return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew());
+  m.def("TFE_Py_ForwardAccumulatorNew", [](const py::handle& use_batch) {
+    return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew(use_batch.ptr()));
   });
 
   m.def("TFE_Py_ForwardAccumulatorSetAdd", [](const py::handle& accumulator) {
