@@ -585,7 +585,7 @@ def get_translation_matrix(translations, name=None):
     A tensor of shape (num_images, 8) projective transforms which can be given
       to `transform`.
   """
-  with ops.name_scope(name, 'translation_matrix'):
+  with K.name_scope(name or 'translation_matrix'):
     num_translations = array_ops.shape(translations)[0]
     # The translation matrix looks like:
     #     [[1 0 -dx]
@@ -665,7 +665,7 @@ def transform(images,
     TypeError: If `image` is an invalid type.
     ValueError: If output shape is not 1-D int32 Tensor.
   """
-  with ops.name_scope(name, 'transform'):
+  with K.name_scope(name or 'transform'):
     if output_shape is None:
       output_shape = array_ops.shape(images)[1:3]
       if not context.executing_eagerly():
@@ -708,7 +708,7 @@ def get_rotation_matrix(angles, image_height, image_width, name=None):
        `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
        where `k = c0 x + c1 y + 1`.
   """
-  with ops.name_scope(name, 'rotation_matrix'):
+  with K.name_scope(name or 'rotation_matrix'):
     x_offset = ((image_width - 1) - (math_ops.cos(angles) *
                                      (image_width - 1) - math_ops.sin(angles) *
                                      (image_height - 1))) / 2.0
@@ -1015,7 +1015,7 @@ def get_zoom_matrix(zooms, image_height, image_width, name=None):
        `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
        where `k = c0 x + c1 y + 1`.
   """
-  with ops.name_scope(name, 'zoom_matrix'):
+  with K.name_scope(name or 'zoom_matrix'):
     num_zooms = array_ops.shape(zooms)[0]
     # The zoom matrix looks like:
     #     [[zx 0 0]
