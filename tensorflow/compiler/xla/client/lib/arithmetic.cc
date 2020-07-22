@@ -66,14 +66,38 @@ XlaComputation CreateScalarGeComputation(PrimitiveType type,
 
 XlaComputation CreateScalarMaxComputation(PrimitiveType type,
                                           XlaBuilder* builder) {
-  return CreateScalarComputation(
-      "max", type, builder, [](XlaOp lhs, XlaOp rhs) { return Max(lhs, rhs); });
+  if (primitive_util::IsFloatingPointType(type) ||
+      primitive_util::IsComplexType(type)) {
+    return CreateScalarComputation(
+        "max", type, builder, [](XlaOp lhs, XlaOp rhs) {
+          XlaOp lhs_is_nan = Ne(lhs, lhs);
+          XlaOp rhs_is_nan = Ne(rhs, rhs);
+          return Select(lhs_is_nan, Select(rhs_is_nan, lhs, rhs),
+                        Select(rhs_is_nan, lhs, Max(lhs, rhs)));
+        });
+  } else {
+    return CreateScalarComputation(
+        "max", type, builder,
+        [](XlaOp lhs, XlaOp rhs) { return Max(lhs, rhs); });
+  }
 }
 
 XlaComputation CreateScalarMinComputation(PrimitiveType type,
                                           XlaBuilder* builder) {
-  return CreateScalarComputation(
-      "min", type, builder, [](XlaOp lhs, XlaOp rhs) { return Min(lhs, rhs); });
+  if (primitive_util::IsFloatingPointType(type) ||
+      primitive_util::IsComplexType(type)) {
+    return CreateScalarComputation(
+        "min", type, builder, [](XlaOp lhs, XlaOp rhs) {
+          XlaOp lhs_is_nan = Ne(lhs, lhs);
+          XlaOp rhs_is_nan = Ne(rhs, rhs);
+          return Select(lhs_is_nan, Select(rhs_is_nan, lhs, rhs),
+                        Select(rhs_is_nan, lhs, Min(lhs, rhs)));
+        });
+  } else {
+    return CreateScalarComputation(
+        "min", type, builder,
+        [](XlaOp lhs, XlaOp rhs) { return Min(lhs, rhs); });
+  }
 }
 
 XlaComputation CreateScalarAndComputation(PrimitiveType type,
@@ -127,7 +151,21 @@ XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
   XlaOp rhs_index =
       Parameter(b, 3, ShapeUtil::MakeShape(index_type, {}), "rhs_index");
 
-  XlaOp cmp = is_min ? Le(lhs_value, rhs_value) : Ge(lhs_value, rhs_value);
+  XlaOp cmp;
+  if (primitive_util::IsFloatingPointType(value_type) ||
+      primitive_util::IsComplexType(value_type)) {
+    XlaOp lhs_is_nan = Ne(lhs_value, lhs_value);
+    XlaOp rhs_is_nan = Ne(rhs_value, rhs_value);
+
+    if (is_min) {
+      cmp = Or(Le(lhs_value, rhs_value), rhs_is_nan);
+    } else {
+      cmp = Or(Ge(lhs_value, rhs_value), rhs_is_nan);
+    }
+  } else {
+    cmp = is_min ? Le(lhs_value, rhs_value) : Ge(lhs_value, rhs_value);
+  }
+
   XlaOp max = Select(cmp, lhs_value, rhs_value);
   XlaOp arg_max = Select(cmp, lhs_index, rhs_index);
   if (stable) {
@@ -200,18 +238,29 @@ XlaOp ArgMinMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
                                  /*on_true=*/iota,
                                  /*on_false=*/
                                  max_idx);
-      return Reduce(select_mask, max_idx,
-                    CreateScalarMinComputation(output_type, builder),
-                    /*dimensions_to_reduce=*/{axis});
+      XlaOp result = Reduce(select_mask, max_idx,
+                            CreateScalarMinComputation(output_type, builder),
+                            /*dimensions_to_reduce=*/{axis});
+      // Maybe all values are NANs, so this will cause index to be INT_MAX or
+      // INT_MIN
+      return Select(Eq(result, max_idx),
+                    /*on_true=*/Zero(builder, output_type),
+                    /*on_false=*/
+                    result);
     } else {
       XlaOp min_idx = MinValue(builder, output_type);
       XlaOp select_mask = Select(Eq(input, reduced_input, broadcast_dims),
                                  /*on_true=*/iota,
                                  /*on_false=*/
                                  min_idx);
-      return Reduce(select_mask, min_idx,
-                    CreateScalarMaxComputation(output_type, builder),
-                    /*dimensions_to_reduce=*/{axis});
+      XlaOp result = Reduce(select_mask, min_idx,
+                            CreateScalarMaxComputation(output_type, builder),
+                            /*dimensions_to_reduce=*/{axis});
+      // Maybe all values are NANs, so this will cause index to be INT_MAX or
+      // INT_MIN
+      return Select(Eq(result, min_idx),
+                    /*on_true=*/Zero(builder, output_type),
+                    /*on_false=*/result);
     }
   });
 }

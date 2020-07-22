@@ -112,6 +112,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* EmitIntegralMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                                bool is_signed);
 
+  llvm::Value* EmitComplexMax(llvm::Value* lhs_value, llvm::Value* rhs_value);
+
+  llvm::Value* EmitComplexMin(llvm::Value* lhs_value, llvm::Value* rhs_value);
+
   virtual StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
                                            llvm::Value* lhs, llvm::Value* rhs);
 

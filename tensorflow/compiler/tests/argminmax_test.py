@@ -49,7 +49,6 @@ class ArgMinMaxTest(xla_test.XLATestCase):
       self.assertAllEqual(result, expected)
 
   def testArgMinMax(self):
-    # Complex numbers do not support argmin/argmax.
     minmax_types = self.all_types & {np.int32, np.int64}
     for dtype in self.int_types | self.float_types | self.complex_types:
       # output_type is a numpy data type that is used to specify the desired
@@ -106,22 +105,22 @@ class ArgMinMaxTest(xla_test.XLATestCase):
             math_ops.argmax,
             axis=0,
             output_type=output_type,
-            op_input=np.array([np.nan, 6, 7, -1, 4, np.nan], dtype=dtype),
+            op_input=np.array([np.nan, 6.0, 7.0, -1.0, 4.0, np.nan, -50.0], dtype=dtype),
             expected=output_type(2))
         self._assertOpOutputMatchesExpected(
             math_ops.argmax,
             axis=0,
             output_type=output_type,
-            op_input=np.array([np.nan, np.nan], dtype=dtype),
-            expected=output_type(0))
+            op_input=np.array([np.nan, np.nan, 1.0], dtype=dtype),
+            expected=output_type(2))
 
         # argmin NAN tests (ignore nan in tensor)
         self._assertOpOutputMatchesExpected(
             math_ops.argmin,
             axis=0,
             output_type=output_type,
-            op_input=np.array([np.nan, 6, 7, -1, 4, np.nan], dtype=dtype),
-            expected=output_type(3))
+            op_input=np.array([np.nan, 6.0, 7.0, -1.0, 4.0, np.nan, -50.0], dtype=dtype),
+            expected=output_type(6))
         self._assertOpOutputMatchesExpected(
             math_ops.argmin,
             axis=0,
@@ -129,28 +128,28 @@ class ArgMinMaxTest(xla_test.XLATestCase):
             op_input=np.array([np.nan, np.nan], dtype=dtype),
             expected=output_type(0))
 
-    def testInf(self):
-      minmax_types = self.all_types & {np.int32, np.int64}
-      for dtype in self.float_types:
-        # output_type is a numpy data type that is used to specify the desired
-        # output type of the op as well as to convert the Python number to the
-        # array scalar of the type.
-        for output_type in minmax_types:
-          # Argmax Inf tests
-          self._assertOpOutputMatchesExpected(
-              math_ops.argmax,
-              axis=0,
-              output_type=output_type,
-              op_input=np.array([-np.inf, np.inf, np.nan], dtype=dtype),
-              expected=output_type(1))
+  def testInf(self):
+    minmax_types = self.all_types & {np.int32, np.int64}
+    for dtype in self.float_types:
+      # output_type is a numpy data type that is used to specify the desired
+      # output type of the op as well as to convert the Python number to the
+      # array scalar of the type.
+      for output_type in minmax_types:
+        # Argmax Inf tests
+        self._assertOpOutputMatchesExpected(
+            math_ops.argmax,
+            axis=0,
+            output_type=output_type,
+            op_input=np.array([-np.inf, np.inf, np.nan], dtype=dtype),
+            expected=output_type(1))
 
-          # Argmin Inf tests
-          self._assertOpOutputMatchesExpected(
-              math_ops.argmin,
-              axis=0,
-              output_type=output_type,
-              op_input=np.array([-np.inf, np.inf, np.nan], dtype=dtype),
-              expected=output_type(0))
+        # Argmin Inf tests
+        self._assertOpOutputMatchesExpected(
+            math_ops.argmin,
+            axis=0,
+            output_type=output_type,
+            op_input=np.array([-np.inf, np.inf, np.nan], dtype=dtype),
+            expected=output_type(0))
 
   def testComplex(self):
     # Test complex numbers support of argmin/argmax.
