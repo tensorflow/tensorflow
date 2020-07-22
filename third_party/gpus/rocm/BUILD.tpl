@@ -109,6 +109,7 @@ cc_library(
         ":rocfft",
         ":hiprand",
         ":miopen",
+        ":roctracer",
     ],
 )
 
@@ -145,11 +146,9 @@ cc_import(
     visibility = ["//visibility:public"],
 )
 
-cc_import(
+cc_library(
     name = "roctracer",
-    hdrs = glob(["rocm/include/roctracer/**",]),
-    shared_library = "rocm/lib/%{roctracer_lib}",
-    visibility = ["//visibility:public"],
+    data = ["rocm/lib/%{roctracer_lib}"],
 )
 
 %{copy_rules}
