@@ -65,10 +65,3 @@ def InsertGrad(op, dmap):
                                    lambda: tensor_map_erase(dmap, k, v.dtype)[0],
                                    lambda: dmap)
   return map_grad, key_grad, value_grad
-
-@ops.RegisterGradient("TensorMapErase")
-def EraseGrad(op, dmap, dval):
-  _, k = op.inputs
-  key_grad = None
-  map_grad = dmap
-  return map_grad, key_grad
