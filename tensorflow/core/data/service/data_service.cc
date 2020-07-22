@@ -18,8 +18,8 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
+#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/master.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 
@@ -54,8 +54,8 @@ std::string ProcessingModeToString(ProcessingMode mode) {
   }
 }
 
-Status DataServiceMasterClient::RegisterDataset(GraphDef dataset,
-                                                int64* dataset_id) {
+Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
+                                                    int64* dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset()->mutable_graph() = dataset;
@@ -69,9 +69,9 @@ Status DataServiceMasterClient::RegisterDataset(GraphDef dataset,
   return Status::OK();
 }
 
-Status DataServiceMasterClient::CreateJob(int64 dataset_id,
-                                          ProcessingMode processing_mode,
-                                          int64* job_id) {
+Status DataServiceDispatcherClient::CreateJob(int64 dataset_id,
+                                              ProcessingMode processing_mode,
+                                              int64* job_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   CreateJobRequest req;
   req.set_dataset_id(dataset_id);
@@ -88,11 +88,9 @@ Status DataServiceMasterClient::CreateJob(int64 dataset_id,
   return Status::OK();
 }
 
-Status DataServiceMasterClient::GetOrCreateJob(int64 dataset_id,
-                                               ProcessingMode processing_mode,
-                                               const std::string& job_name,
-                                               int job_name_index,
-                                               int64* job_id) {
+Status DataServiceDispatcherClient::GetOrCreateJob(
+    int64 dataset_id, ProcessingMode processing_mode,
+    const std::string& job_name, int job_name_index, int64* job_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
@@ -112,9 +110,9 @@ Status DataServiceMasterClient::GetOrCreateJob(int64 dataset_id,
   return Status::OK();
 }
 
-Status DataServiceMasterClient::GetTasks(int64 job_id,
-                                         std::vector<TaskInfo>* tasks,
-                                         bool* job_finished) {
+Status DataServiceDispatcherClient::GetTasks(int64 job_id,
+                                             std::vector<TaskInfo>* tasks,
+                                             bool* job_finished) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetTasksRequest req;
   req.set_job_id(job_id);
@@ -132,7 +130,8 @@ Status DataServiceMasterClient::GetTasks(int64 job_id,
   return Status::OK();
 }
 
-Status DataServiceMasterClient::GetWorkers(std::vector<WorkerInfo>* workers) {
+Status DataServiceDispatcherClient::GetWorkers(
+    std::vector<WorkerInfo>* workers) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetWorkersRequest req;
   GetWorkersResponse resp;
@@ -148,12 +147,12 @@ Status DataServiceMasterClient::GetWorkers(std::vector<WorkerInfo>* workers) {
   return Status::OK();
 }
 
-Status DataServiceMasterClient::EnsureInitialized() {
+Status DataServiceDispatcherClient::EnsureInitialized() {
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
   auto channel = grpc::CreateChannel(address_, credentials);
-  stub_ = MasterService::NewStub(channel);
+  stub_ = DispatcherService::NewStub(channel);
   return Status::OK();
 }
 
@@ -187,10 +186,11 @@ Status DataServiceWorkerClient::EnsureInitialized() {
   return Status::OK();
 }
 
-Status CreateDataServiceMasterClient(
+Status CreateDataServiceDispatcherClient(
     const std::string& address, const std::string& protocol,
-    std::unique_ptr<DataServiceMasterClient>* out) {
-  auto client = absl::make_unique<DataServiceMasterClient>(address, protocol);
+    std::unique_ptr<DataServiceDispatcherClient>* out) {
+  auto client =
+      absl::make_unique<DataServiceDispatcherClient>(address, protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
   *out = std::move(client);
   return Status::OK();

@@ -34,9 +34,6 @@ make -f tensorflow/lite/micro/tools/make/Makefile \
 
 echo "Starting to run micro tests at `date`"
 
-echo "Running Arduino tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_arduino.sh
-
 echo "Running bluepill tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
 
@@ -51,5 +48,8 @@ tensorflow/lite/micro/tools/ci_build/test_x86.sh
 
 echo "Running stm32f4 tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh
+
+echo "Running Arduino tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 
 echo "Finished all micro tests at `date`"

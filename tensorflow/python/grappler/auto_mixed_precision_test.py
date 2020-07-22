@@ -59,8 +59,8 @@ def _input(shape):
 def _weight(shape):
   """Generates a weight of a given shape."""
   # Note that the lambda is needed to allow construction inside loops.
-  return variables.Variable(
-      lambda: init_ops.glorot_uniform_initializer(seed=0)(shape))
+  return variables.Variable(lambda: init_ops.glorot_uniform_initializer(seed=0)
+                            (shape))
 
 
 def _bias(shape):
@@ -201,14 +201,14 @@ def _recurrent_lstm(c, h):
 def _make_node_with_color(color, input_tensor, name=None):
   """Returns a node representative of the specified list type."""
   color = color.lower()
-  if color == 'w':  # White node
+  if color == 'w':  # Allow node
     weights = _weight(input_tensor.get_shape().as_list())
     return math_ops.matmul(input_tensor, weights, name=name)
-  if color == 'g':  # Gray node
+  if color == 'g':  # Infer node
     return math_ops.add(input_tensor, 0.1, name=name)
   if color == 'c':  # Clear node
     return nn.relu(input_tensor, name=name)
-  if color == 'b':  # Black node
+  if color == 'b':  # Deny node
     return math_ops.pow(math_ops.pow(input_tensor, 2.), 0.5, name=name)
   raise ValueError('Invalid node color: ' + str(color))
 
@@ -371,8 +371,8 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
     The loop has different node colors in different sections of the graph. The
     arguments must be strings where each character represents the color of a
-    node in that section of the graph: w = white, g = gray, c = clear,
-    b = black. CAPITALIZED characters indicate that the node is expected to be
+    node in that section of the graph: w = allow, g = infer, c = clear,
+    b = deny. CAPITALIZED characters indicate that the node is expected to be
     changed to DT_HALF during graph optimization.
 
     inp -> loop [ body ] -> out.

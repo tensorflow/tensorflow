@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the operations used in the XLA dialect.
+// This file defines the operations used in the MHLO dialect.
 
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -59,12 +60,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_patterns.cc.inc"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.cc.inc"
 namespace mhlo {
 
-Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
-                                              Attribute value, Type type,
-                                              Location loc) {
+Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
   if (value.isa<ElementsAttr>())
@@ -214,6 +215,52 @@ static LogicalResult Verify(IotaOp op) {
   return success();
 }
 
+// Iota operations across multiple dimensions can be reduced to an iota and a
+// ranked broadcast.
+struct IotaBroadcast : public OpRewritePattern<IotaOp> {
+  using OpRewritePattern<IotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(IotaOp iota,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = iota.getType().cast<ShapedType>();
+    if (!result_ty.hasRank() || result_ty.getRank() < 2) {
+      return failure();
+    }
+
+    auto iota_dimension = iota.iota_dimension();
+
+    auto iota_type = RankedTensorType::get(
+        {result_ty.getDimSize(iota_dimension.getLimitedValue())},
+        result_ty.getElementType());
+
+    auto new_iota = rewriter.create<IotaOp>(iota.getLoc(), iota_type,
+                                            rewriter.getI64IntegerAttr(0));
+
+    auto broadcast_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, rewriter.getIntegerType(64)),
+        {iota_dimension});
+    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(iota, result_ty, new_iota,
+                                                  broadcast_attr);
+    return success();
+  }
+};
+
+void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* context) {
+  results.insert<IotaBroadcast>(context);
+}
+
+OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
+  auto dimension = iota_dimension().getLimitedValue();
+  auto result_ty = getResult().getType().cast<ShapedType>();
+  if (result_ty.hasRank() && result_ty.getDimSize(dimension) == 1) {
+    Builder builder(getContext());
+    return builder.getZeroAttr(result_ty);
+  }
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicIotaOp
 //===----------------------------------------------------------------------===//
@@ -235,11 +282,63 @@ struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
   }
 };
 
+// Dynamic Iota operations across multiple dimensions can be reduced to an iota
+// and a ranked broadcast.
+struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
+  using OpRewritePattern<DynamicIotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicIotaOp iota,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = iota.getType().cast<ShapedType>();
+    if (!result_ty.hasRank() || result_ty.getRank() < 2) {
+      return failure();
+    }
+
+    auto iota_dimension = iota.iota_dimension();
+    auto iota_dimension_int = iota_dimension.getLimitedValue();
+
+    auto converted_shape = rewriter.create<IndexCastOp>(
+        iota.getLoc(),
+        RankedTensorType::get(
+            iota.output_shape().getType().cast<ShapedType>().getShape(),
+            rewriter.getI64Type()),
+        iota.output_shape());
+
+    auto sliced_shape = rewriter.create<SliceOp>(
+        iota.getLoc(), converted_shape,
+        GetI64ElementsAttr(iota_dimension_int, &rewriter),
+        GetI64ElementsAttr(iota_dimension_int + 1, &rewriter),
+        GetI64ElementsAttr(1, &rewriter));
+
+    auto converted_sliced_shape = rewriter.create<IndexCastOp>(
+        iota.getLoc(),
+        RankedTensorType::get(
+            {1},
+            iota.output_shape().getType().cast<ShapedType>().getElementType()),
+        sliced_shape);
+
+    auto iota_type = RankedTensorType::get(
+        {result_ty.getDimSize(iota_dimension_int)}, result_ty.getElementType());
+
+    auto new_iota = rewriter.create<DynamicIotaOp>(
+        iota.getLoc(), iota_type, converted_sliced_shape,
+        rewriter.getI64IntegerAttr(0));
+
+    auto broadcast_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, rewriter.getIntegerType(64)),
+        {iota_dimension});
+    rewriter.replaceOpWithNewOp<DynamicBroadcastInDimOp>(
+        iota, result_ty, new_iota, iota.output_shape(), broadcast_attr);
+    return success();
+  }
+};
+
 }  // namespace
 
 void DynamicIotaOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicIotaIsStatic>(context);
+  results.insert<DynamicIotaBroadcast>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -318,7 +417,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return xla::ConvertElementsAttr(elementsAttr,
+    return hlo::ConvertElementsAttr(elementsAttr,
                                     getElementTypeOrSelf(getResult()));
   }
 
@@ -534,17 +633,25 @@ static LogicalResult Verify(BroadcastInDimOp op) {
   return success();
 }
 
-OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute>) {
+OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
   auto type = getType().cast<RankedTensorType>();
-  if (type != getOperand().getType()) {
-    return nullptr;
+  if (type == getOperand().getType()) {
+    auto broadcast_values = broadcast_dimensions().getValues<int64_t>();
+    if (!std::equal(broadcast_values.begin(), broadcast_values.end(),
+                    llvm::seq<int64_t>(0, type.getRank()).begin())) {
+      return {};
+    }
+    return getOperand();
   }
-  auto broadcast_values = broadcast_dimensions().getValues<int64_t>();
-  if (!std::equal(broadcast_values.begin(), broadcast_values.end(),
-                  llvm::seq<int64_t>(0, type.getRank()).begin())) {
-    return nullptr;
-  }
-  return getOperand();
+
+  // Constant fold when an operand is a splat tensor attribute.
+  if (!attrs[0] || !type.hasStaticShape()) return {};
+  auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
+  if (!splatOperandAttr) return {};
+  // MLIR core bug (https://bugs.llvm.org/show_bug.cgi?id=46588): dense element
+  // attribute iterator not implemented for complex element types.
+  if (type.getElementType().isa<ComplexType>()) return {};
+  return SplatElementsAttr::get(type, splatOperandAttr.getSplatValue());
 }
 
 //===----------------------------------------------------------------------===//
@@ -639,7 +746,8 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
 
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic>(context);
+  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic,
+                 DynamicBroadcastToOwnShape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1360,7 +1468,7 @@ static LogicalResult Verify(PadOp op) {
 
 static LogicalResult Verify(ReshapeOp op) {
   // If the operand type is dynamically shaped there is nothing to verify.
-  auto operand_ty = op.operand().getType().cast<RankedTensorType>();
+  auto operand_ty = op.operand().getType().dyn_cast<RankedTensorType>();
   if (!operand_ty || !operand_ty.hasStaticShape()) return success();
 
   // If the operand type is statically shaped (not required) the number of
@@ -2041,7 +2149,7 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
 // mhlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-XlaHloDialect::XlaHloDialect(MLIRContext* context)
+MhloDialect::MhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -2049,11 +2157,9 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
-  // Support unknown operations because not all XLA operations are registered.
-  // allowUnknownOperations();
 }
 
-Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
+Type MhloDialect::parseType(DialectAsmParser& parser) const {
   StringRef data_type;
   if (parser.parseKeyword(&data_type)) return Type();
 
@@ -2062,7 +2168,7 @@ Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
   return nullptr;
 }
 
-void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
+void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
   if (type.isa<TokenType>()) {
     os << "token";
     return;

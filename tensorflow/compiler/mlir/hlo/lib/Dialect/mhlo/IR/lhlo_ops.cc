@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the operations used in the XLA dialect.
+// This file defines the operations used in the LMHLO dialect.
 
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
@@ -46,9 +46,9 @@ limitations under the License.
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_structs.cc.inc"
-namespace xla_lhlo {
+namespace lmhlo {
 
-XlaLhloDialect::XlaLhloDialect(MLIRContext *context)
+LmhloDialect::LmhloDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -138,5 +138,5 @@ void FusionOp::build(OpBuilder &builder, OperationState &result,
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

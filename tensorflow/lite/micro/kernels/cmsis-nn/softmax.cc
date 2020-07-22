@@ -102,8 +102,6 @@ void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
           op_data, GetTensorShape(input), GetTensorData<int8_t>(input),
           GetTensorShape(output), GetTensorData<int16_t>(output));
     } else {
-      const unsigned int num_dims = NumDimensions(input);
-
       const int trailing_dim = input_shape.DimensionsCount() - 1;
       const int outer_size =
           MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);

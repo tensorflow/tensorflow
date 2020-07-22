@@ -645,6 +645,39 @@ to quickly diagnose whether the source code is available for a function.
 
 #### Source code of lambda functions
 
+##### Changes in TF 2.4
+
+Key Point: When nesting lambda functions, use distinguishing argument names
+to avoid parse errors.
+
+The Python runtime exposes the source code of lambda functions, however it
+may omit parts of the actual body, or include surrounding code. This may make it
+impossible to parse the exact source code of the lambda function (see
+https://github.com/tensorflow/tensorflow/issues/39832).
+
+AutoGraph uses alternate methods to parse the source code more robustly, but
+in rare cases it may be unable to distinguish between nested lambda functions
+of identical signatures.
+
+Example:
+
+```
+l = lambda x: lambda x: x + 1
+```
+
+AutoGraph raises an error for the code above because the parser cannot
+distinguish between the two function signatures. To work around this limitation,
+use distinct argument names:
+
+```
+l = lambda outer_x: lambda inner_x: inner_x + 1
+```
+
+##### TF 2.3 and older
+
+In older versions of TensorFlow, the loading code for lambda functions is not
+robust. Follow the guidance below to avoid errors.
+
 Important: Declare lambda functions on single lines to make sure their source
 code loads correctly.
 

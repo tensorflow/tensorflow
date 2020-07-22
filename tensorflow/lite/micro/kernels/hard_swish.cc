@@ -34,12 +34,8 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 void* HardSwishInit(TfLiteContext* context, const char* buffer, size_t length) {
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(HardSwishParams),
-                                        &data) == kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(HardSwishParams));
 }
 
 TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {

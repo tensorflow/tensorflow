@@ -986,10 +986,7 @@ DotImplementationStrategy GetDotImplementationStrategy(
 
   if (IsAlignedGemm(dot_info, target_machine_features)) {
     if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
-      return primitive_util::IsFloatingPointType(
-                 dot_info.result_shape.element_type())
-                 ? DotImplementationStrategy::kLinalgMatmul
-                 : DotImplementationStrategy::kTiledLlvmIrGemm;
+      return DotImplementationStrategy::kLinalgMatmul;
     }
     return DotImplementationStrategy::kEigen;
   }

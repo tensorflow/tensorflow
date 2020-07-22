@@ -57,7 +57,8 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_r
             "$(location %s)" % td_file,
             "-I$(GENDIR)",
         ] + td_includes_cmd
-        rule_suffix = "_".join(opts.replace("-", "_").replace("=", "_").split(" "))
+        first_opt = opts.split(" ", 1)[0]
+        rule_suffix = "_{}_{}".format(first_opt.replace("-", "_").replace("=", "_"), str(hash(opts)))
 
         # Rule to generate code using generated shell script.
         native.genrule(

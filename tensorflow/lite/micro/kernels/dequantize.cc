@@ -38,12 +38,7 @@ struct OpData {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -146,9 +141,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace dequantize
 
 TfLiteRegistration Register_DEQUANTIZE() {
-  // TODO(b/149408647): Once we remove AddBuiltin from MicroOpResolver and
-  // completely switch to the templated AddBuiltin from MicroMutableOpResolver,
-  // this struct no longer needs to be static and can be returned by value.
   return {/*init=*/dequantize::Init,
           /*free=*/nullptr,
           /*prepare=*/dequantize::Prepare,

@@ -21,10 +21,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:internal",
     ],
-    packages = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests/...",
-    ],
 )
 
 package_group(
@@ -34,7 +30,6 @@ package_group(
     ],
     packages = [
         # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests/...",
         "//platforms/xla/tests/neural_nets",
     ],
 )
@@ -936,7 +931,7 @@ tf_xla_py_test(
     srcs = ["pooling_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 20,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -956,7 +951,7 @@ tf_xla_py_test(
     srcs = ["pooling_ops_3d_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 20,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],

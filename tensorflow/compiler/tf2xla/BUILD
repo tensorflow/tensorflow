@@ -27,6 +27,7 @@ package_group(
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tests/...",
         "//tensorflow/compiler/tf2xla/...",
+        "//tensorflow/core/tpu/...",
         "//tensorflow/python/compiler/...",
     ],
 )
@@ -704,6 +705,7 @@ cc_library(
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:core_cpu",

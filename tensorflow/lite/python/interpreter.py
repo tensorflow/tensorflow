@@ -21,11 +21,12 @@ from __future__ import print_function
 import ctypes
 import platform
 import sys
+import os
 
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
-if not __file__.endswith('tflite_runtime/interpreter.py'):
+if not os.path.splitext(__file__)[0].endswith('tflite_runtime/interpreter'):
   # This file is part of tensorflow package.
   from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
@@ -525,6 +526,27 @@ class Interpreter(object):
 
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
+
+  # Experimental and subject to change.
+  def _native_interpreter(self):
+    """Returns the underlying InterpreterWrapper object.
+
+    This allows users to extend tflite.Interpreter's functionality in custom cpp
+    function. For example,
+    at cpp level:
+      void SomeNewFeature(InterpreterWrapper* wrapper) {
+        // Get access to tflite::Interpreter
+        auto* interpreter = wrapper->interpreter();
+        // ...
+      }
+    at python level:
+      def some_new_feature(interpreter):
+        _cpp_to_py_wrapper.SomeNewFeature(interpreter._native_interpreter())
+
+    Note: This approach is fragile. Users must guarantee the C++ extension build
+    is consistent with the tflite.Interpreter's underlying C++ build.
+    """
+    return self._interpreter
 
 
 class InterpreterWithCustomOps(Interpreter):

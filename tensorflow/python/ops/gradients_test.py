@@ -1670,7 +1670,7 @@ class GradPassThroughTest(test_util.TensorFlowTestCase):
 
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
-      self.assertAllClose(grads[0].eval(), 6.0)
+      self.assertAllClose(grads[0], 6.0)
 
     # Verify that variables involved in the wrapped op do not receive gradients.
     y = custom_gradient.grad_pass_through(lambda v: x * v)(z)

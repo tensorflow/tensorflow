@@ -17,6 +17,8 @@ package_group(
 cc_library(
     name = "spmd_partitioner",
     srcs = [
+        "convolution_handler.cc",
+        "dot_handler.cc",
         "spmd_partitioner.cc",
         "spmd_partitioner_util.cc",
     ],

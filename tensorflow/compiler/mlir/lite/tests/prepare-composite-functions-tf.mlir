@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-prepare-composite-funcs-tf %s -split-input-file | FileCheck %s
+// RUN: tf-opt -tfl-prepare-composite-funcs-tf %s -split-input-file -verify-diagnostics | FileCheck %s
 
 module{
 func @embedding(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*xf32> attributes  {tf._implements = "embedding_matmul", tf._reference = "mlir"} {
@@ -452,4 +452,44 @@ func @inference_standard_lstm_time_major_cannot_fuse(%arg0: tensor<?x8x8xf32>, %
 // CHECK:           [[VAL_12:%.*]] = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
 // CHECK:           return [[VAL_11]], [[VAL_10]], [[VAL_11]], [[VAL_11]], [[VAL_12]] : tensor<?x10xf32>, tensor<?x8x10xf32>, tensor<?x10xf32>, tensor<?x10xf32>, tensor<f32>
 // CHECK:         }
+}
+
+// -----
+
+module {
+func @nms_padded(%arg0: tensor<100x4xf32>, %arg1: tensor<100xf32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<i1>, %arg6: tensor<i1>, %arg7: tensor<i1>, %arg8: tensor<i32>) -> (tensor<1x10xi32>, tensor<i32>) attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"} {
+  %0 = "tf.Const"() {value = dense<1> : tensor<1x10xi32>} : () -> tensor<1x10xi32>
+  %1 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<i32>
+  return %0, %1 : tensor<1x10xi32>, tensor<i32>
+}
+
+// CHECK:       func @nms_padded(%[[VAL_119:.*]]: tensor<100x4xf32>, %[[VAL_120:.*]]: tensor<100xf32>, %[[VAL_121:.*]]: tensor<i32>, %[[VAL_122:.*]]: tensor<f32>, %[[VAL_123:.*]]: tensor<f32>, %[[VAL_124:.*]]: tensor<i1>, %[[VAL_125:.*]]: tensor<i1>, %[[VAL_126:.*]]: tensor<i1>, %[[VAL_127:.*]]: tensor<i32>) -> (tensor<1x10xi32>, tensor<i32>) attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"} {
+// CHECK:         %[[VAL_128:.*]], %[[VAL_129:.*]] = "tfl.non_max_suppression_v4"(%[[VAL_119]], %[[VAL_120]], %[[VAL_121]], %[[VAL_122]], %[[VAL_123]]) : (tensor<100x4xf32>, tensor<100xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<1x10xi32>, tensor<i32>)
+// CHECK:         return %[[VAL_128]], %[[VAL_129]] : tensor<1x10xi32>, tensor<i32>
+// CHECK:       }
+}
+
+// -----
+
+module {
+// expected-error @+1 {{Invalid number of results from non_max_suppression_padded_v2}}
+func @nms_padded_invalid_num_results(%arg0: tensor<100x4xf32>, %arg1: tensor<100xf32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<i1>, %arg6: tensor<i1>, %arg7: tensor<i1>, %arg8: tensor<i32>) -> () attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"}
+
+// expected-error @+1 {{Invalid number of arguments to non_max_suppression_padded_v2}}
+func @nms_padded_invalid_num_args(%arg0: tensor<100x4xf32>, %arg1: tensor<100xf32>, %arg2: tensor<i32>, %arg3: tensor<f32>) -> (tensor<1x10xi32>, tensor<i32>) attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"}
+
+// expected-error @+1 {{TFLite does not support batched input for non_max_suppression_padded}}
+func @nms_padded_with_batches(%arg0: tensor<2x100x4xf32>, %arg1: tensor<2x100xf32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<i1>, %arg6: tensor<i1>, %arg7: tensor<i1>, %arg8: tensor<i32>) -> (tensor<2x10xi32>, tensor<i32>) attributes  {tf._implements = "non_max_suppression_padded_v2", tf._reference = "mlir"}
+}
+
+// -----
+
+module {
+// CHECK-LABEL: func @some_func
+// CHECK-LABEL: func @func_with_call
+func @some_func(%arg0: tensor<100xf32>) -> tensor<100xf32> attributes {tf.api_implements = "lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c"}
+func @func_with_call(%arg0: tensor<100xf32>) -> tensor<100xf32> {
+  %0 = call @some_func(%arg0) : (tensor<100xf32>) -> tensor<100xf32>
+  return %0 : tensor<100xf32>
+  }
 }

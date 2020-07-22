@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
-#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_impl.h"
+#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_api.h"
 #include "tensorflow/c/experimental/saved_model/internal/concrete_function_list_type.h"
 #include "tensorflow/c/experimental/saved_model/internal/concrete_function_type.h"
 #include "tensorflow/c/experimental/saved_model/internal/saved_model_api_type.h"
@@ -44,8 +44,8 @@ TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
     status->status = tensorflow::errors::Unimplemented(
         "TFRT SavedModel implementation will be added in the future");
   } else {
-    std::unique_ptr<tensorflow::TFSavedModelAPIImpl> saved_model;
-    status->status = tensorflow::TFSavedModelAPIImpl::Load(
+    std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;
+    status->status = tensorflow::TFSavedModelAPI::Load(
         dirname, absl::nullopt,
         tensorflow::down_cast<tensorflow::EagerContext*>(
             tensorflow::unwrap(ctx)),
@@ -74,8 +74,8 @@ TF_SavedModel* TF_LoadSavedModelWithTags(const char* dirname, TFE_Context* ctx,
     status->status = tensorflow::errors::Unimplemented(
         "TFRT SavedModel implementation will be added in the future");
   } else {
-    std::unique_ptr<tensorflow::TFSavedModelAPIImpl> saved_model;
-    status->status = tensorflow::TFSavedModelAPIImpl::Load(
+    std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;
+    status->status = tensorflow::TFSavedModelAPI::Load(
         dirname, tagset,
         tensorflow::down_cast<tensorflow::EagerContext*>(
             tensorflow::unwrap(ctx)),

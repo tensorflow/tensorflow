@@ -45,13 +45,13 @@ class LowerComplex : public PassWrapper<LowerComplex, FunctionPass> {
  public:
   explicit LowerComplex() : PassWrapper<LowerComplex, FunctionPass>() {}
 
-  /// Performs the lowering to XLA dialect.
+  /// Performs the lowering to MHLO dialect.
   void runOnFunction() override;
 };
 }  // end anonymous namespace
 
 namespace mlir {
-namespace xla {
+namespace mhlo {
 namespace {
 
 #include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_lower_complex.inc"
@@ -62,18 +62,18 @@ void PopulateComplexLoweringPatterns(MLIRContext* context,
                                      OwningRewritePatternList* patterns) {
   populateWithGenerated(context, patterns);
 }
-}  // end namespace xla
+}  // end namespace mhlo
 }  // end namespace mlir
 
 // Lowers the complex operations that can be represented using other operations.
 void LowerComplex::runOnFunction() {
   // Add lowering patterns to the list.
   OwningRewritePatternList patterns;
-  mlir::xla::PopulateComplexLoweringPatterns(&getContext(), &patterns);
+  mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
   applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LowerComplex> pass(
-    "test-xla-lower-complex",
+    "mhlo-test-lower-complex",
     "Lower complex operations into non-complex operations");

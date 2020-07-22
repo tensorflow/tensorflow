@@ -158,7 +158,7 @@ class CastOpTest(test.TestCase):
       self.evaluate(math_ops.cast(x, dtype))
 
   def testNotImplemented(self):
-    self._OpError(np.arange(0, 10), dtypes.string, "Cast.*int64.*string.*")
+    self._OpError(np.arange(0, 10), dtypes.string, "Cast.*int.*string.*")
 
   def testCastToTypeOfVariable(self):
     with self.cached_session():

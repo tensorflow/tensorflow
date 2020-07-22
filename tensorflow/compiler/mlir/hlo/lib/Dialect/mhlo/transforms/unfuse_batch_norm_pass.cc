@@ -42,5 +42,5 @@ struct TestUnfuseBatchNormPass
 }  // namespace mlir
 
 static mlir::PassRegistration<mlir::mhlo::TestUnfuseBatchNormPass> pass(
-    "test-xla-unfuse-batch-norm",
+    "mhlo-test-unfuse-batch-norm",
     "Test pass for materializing 'broadcast_dimensions' attributes");

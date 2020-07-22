@@ -237,7 +237,7 @@ def _parse_func_attrs(attributes):
     A dict of attributes where the key is the name of attribute and the value
       is the AttrValue proto.
   Raises:
-    ValueError: If the kwargs contains unwhitelisted name or unsupported value
+    ValueError: If the kwargs contains unallowlisted name or unsupported value
       types.
   """
   attrs = {}
@@ -261,6 +261,8 @@ def _parse_func_attrs(attributes):
 
 class _InterpolateFunctionError(object):
   """Context Manager that interpolates the exception from 'top_level_func'."""
+
+  __slots__ = ["_func"]
 
   def __init__(self, top_level_func):
     self._func = top_level_func
@@ -377,6 +379,8 @@ def _enclosing_xla_context():
 
 class _EagerDefinedFunctionDeleter(object):
   """Unregister function from eager context."""
+
+  __slots__ = ["name"]
 
   def __init__(self, name):
     self.name = name
@@ -1410,6 +1414,10 @@ _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
 class _ForwardBackwardCall(object):
   """Holds the state of a function call between execution and recording."""
 
+  __slots__ = [
+      "_functions", "_inference_args", "_input_tangents", "_tape_watching"
+  ]
+
   def __init__(self, functions, inference_args, input_tangents, tape_watching):
     """Collects information about the function call.
 
@@ -2155,6 +2163,7 @@ class ConcreteFunction(object):
     Returns:
       The actual call output.
     """
+    # TODO(jlchu): implement in C++.
     if self._func_graph.structured_outputs is None:
       return result
 
@@ -2739,6 +2748,11 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
 class FunctionCache(object):
   """A lightweight container for cached functions.
   """
+
+  __slots__ = [
+      "missed", "primary", "arg_relaxed_specs", "arg_relaxed",
+      "_garbage_collectors"
+  ]
 
   def __init__(self):
     # The set of functions that have been missed; entries are CacheKey with
@@ -3625,9 +3639,9 @@ def defun_with_attributes(func=None,
     input_signature: same as defun()'s input_signature.
     attributes: A dictionary of arguments which will be added to function def as
       attributes. Currently only support primitive types as value, and only
-      whitelisted attribute name is allowed. Unwhitelisted attribute name or
+      allowlisted attribute name is allowed. Unallowlisted attribute name or
       unsupported value will result into ValueError. `func_name` is also one of
-      the whitelisted argument which is a python string, and sets the name for
+      the allowlisted argument which is a python string, and sets the name for
       this `ConcreteFunction` in the graph.
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
@@ -3771,6 +3785,8 @@ def class_method_to_instance_method(original_function, instance):
 class _FunctionGarbageCollector(object):
   """Cleans up cycles when a defun goes out of scope."""
 
+  __slots__ = ["_cache"]
+
   def __init__(self, cache):
     self._cache = cache
 
@@ -3787,6 +3803,8 @@ class _FunctionGarbageCollector(object):
 
 class ConcreteFunctionGarbageCollector(object):
   """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
+
+  __slots__ = ["_func_graph"]
 
   def __init__(self, func_graph):
     self._func_graph = func_graph
@@ -3806,6 +3824,8 @@ class ConcreteFunctionGarbageCollector(object):
 
 class _Marker(object):
   """Markers used to pretty-print nested args in function signatures."""
+
+  __slots__ = ["_s"]
 
   def __init__(self, s):
     self._s = s

@@ -873,19 +873,27 @@ class BatchTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testSingleThreadKeepInput(self):
     self._testKeepInputHelper(1, False)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testSingleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(1, True)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testMultipleThreadKeepInput(self):
     self._testKeepInputHelper(5, False)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testMultipleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(5, True)
 
@@ -1487,19 +1495,27 @@ class BatchJoinTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testSingleThreadKeepInput(self):
     self._testKeepInputHelper(1, False)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testSingleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(1, True)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testMultipleThreadKeepInput(self):
     self._testKeepInputHelper(5, False)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testMultipleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(5, True)
 
@@ -1910,19 +1926,27 @@ class ShuffleBatchTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testSingleThreadKeepInput(self):
     self._testKeepInputHelper(1, False)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testSingleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(1, True)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testMultipleThreadKeepInput(self):
     self._testKeepInputHelper(5, False)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testMultipleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(5, True)
 
@@ -2314,19 +2338,27 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testSingleThreadKeepInput(self):
     self._testKeepInputHelper(1, False)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testSingleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(1, True)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testMultipleThreadKeepInput(self):
     self._testKeepInputHelper(5, False)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("Input pipelines based on Queues are not supported "
+                         "when eager execution is enabled. TF2 uses tf.data "
+                         "instead.")
   def testMultipleThreadKeepInputEnqueueMany(self):
     self._testKeepInputHelper(5, True)
 

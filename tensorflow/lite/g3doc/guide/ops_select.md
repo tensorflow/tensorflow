@@ -39,8 +39,8 @@ for `target_spec.supported_ops`:
 
 *   `TFLITE_BUILTINS` - Converts models using TensorFlow Lite builtin ops.
 *   `SELECT_TF_OPS` - Converts models using TensorFlow ops. The exact subset of
-    supported ops can be found in the whitelist at
-    `lite/delegates/flex/whitelisted_flex_ops.cc`.
+    supported ops can be found in the allowlist at
+    `lite/delegates/flex/allowlisted_flex_ops.cc`.
 
 Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
 

@@ -87,6 +87,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // changed constants out of tf_device.Launch.
   func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
   func_pm.addPass(CreateTPUHostComputationExpansionPass());
+  pm.addNestedPass<FuncOp>(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.
@@ -107,6 +108,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  pm.addPass(TF::CreateTFShapeInferencePass());
   // For V1 compatibility, we process a module where the graph does not have
   // feeds and fetched. We extract first the TPU computation in a submodule,
   // where it'll be in a function with args and returned values, much more like

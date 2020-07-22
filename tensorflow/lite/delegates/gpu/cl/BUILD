@@ -9,23 +9,34 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+config_setting(
+    name = "opencl_delegate_no_gl",
+    values = {"copt": "-DCL_DELEGATE_NO_GL"},
+)
+
 cc_library(
     name = "api",
     srcs = ["api.cc"],
     hdrs = ["api.h"],
-    deps = [
+    deps = select({
+        ":opencl_delegate_no_gl": [],
+        "//conditions:default": [
+            ":egl_sync",
+            ":gl_interop",
+        ],
+    }) + [
         ":cl_command_queue",
         ":cl_errors",
         ":cl_event",
-        ":egl_sync",
         ":environment",
-        ":gl_interop",
         ":inference_context",
         ":opencl_wrapper",
         ":precision",
         ":tensor",
         ":tensor_type",
         ":tensor_type_util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu/cl/kernels:converter",
         "//tensorflow/lite/delegates/gpu/common:data_type",
@@ -33,8 +44,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -357,6 +366,7 @@ cc_library(
         ":tensor_type",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/selectors:operation_selector",
+        "//tensorflow/lite/delegates/gpu/cl/selectors:special_selector",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",

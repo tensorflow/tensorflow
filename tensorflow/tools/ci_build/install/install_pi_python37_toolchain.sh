@@ -23,6 +23,8 @@ echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial-backports main rest
 sed -i 's#deb http://archive.ubuntu.com/ubuntu/#deb [arch=amd64] http://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list
 yes | add-apt-repository ppa:deadsnakes/ppa
 apt-get update
-apt-get install -y python3.7 python3-numpy python3.7-dev python3-pip
+apt-get install -y python3.7 python3.7-dev
+#/usr/local/bin/python3.7 is needed to use /install/install_pip_packages_by_version.sh
+ln -sf /usr/bin/python3.7 /usr/local/bin/python3.7
 apt-get install -y libpython3.7-dev:armhf
 apt-get install -y libpython3.7-dev:arm64

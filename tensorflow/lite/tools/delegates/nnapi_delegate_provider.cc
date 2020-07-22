@@ -14,11 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/delegates/delegate_provider.h"
-#include "tensorflow/lite/tools/evaluation/utils.h"
-#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
-#endif
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 namespace tflite {
 namespace tools {
@@ -26,7 +25,6 @@ namespace tools {
 class NnapiDelegateProvider : public DelegateProvider {
  public:
   NnapiDelegateProvider() {
-#if defined(__ANDROID__)
     default_params_.AddParam("use_nnapi", ToolParam::Create<bool>(false));
     default_params_.AddParam("nnapi_execution_preference",
                              ToolParam::Create<std::string>(""));
@@ -38,7 +36,6 @@ class NnapiDelegateProvider : public DelegateProvider {
                              ToolParam::Create<bool>(false));
     default_params_.AddParam("nnapi_allow_fp16",
                              ToolParam::Create<bool>(false));
-#endif
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -53,32 +50,28 @@ REGISTER_DELEGATE_PROVIDER(NnapiDelegateProvider);
 
 std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
   std::vector<Flag> flags = {
-#if defined(__ANDROID__)
-    CreateFlag<bool>("use_nnapi", params, "use nnapi delegate api"),
-    CreateFlag<std::string>("nnapi_execution_preference", params,
-                            "execution preference for nnapi delegate. Should "
-                            "be one of the following: fast_single_answer, "
-                            "sustained_speed, low_power, undefined"),
-    CreateFlag<std::string>("nnapi_execution_priority", params,
-                            "The model execution priority in nnapi, and it "
-                            "should be one of the following: default, low, "
-                            "medium and high. This requires Android 11+."),
-    CreateFlag<std::string>(
-        "nnapi_accelerator_name", params,
-        "the name of the nnapi accelerator to use (requires Android Q+)"),
-    CreateFlag<bool>("disable_nnapi_cpu", params,
-                     "Disable the NNAPI CPU device"),
-    CreateFlag<bool>("nnapi_allow_fp16", params,
-                     "Allow fp32 computation to be run in fp16")
-#endif
-  };
+      CreateFlag<bool>("use_nnapi", params, "use nnapi delegate api"),
+      CreateFlag<std::string>("nnapi_execution_preference", params,
+                              "execution preference for nnapi delegate. Should "
+                              "be one of the following: fast_single_answer, "
+                              "sustained_speed, low_power, undefined"),
+      CreateFlag<std::string>("nnapi_execution_priority", params,
+                              "The model execution priority in nnapi, and it "
+                              "should be one of the following: default, low, "
+                              "medium and high. This requires Android 11+."),
+      CreateFlag<std::string>(
+          "nnapi_accelerator_name", params,
+          "the name of the nnapi accelerator to use (requires Android Q+)"),
+      CreateFlag<bool>("disable_nnapi_cpu", params,
+                       "Disable the NNAPI CPU device"),
+      CreateFlag<bool>("nnapi_allow_fp16", params,
+                       "Allow fp32 computation to be run in fp16")};
 
   return flags;
 }
 
 void NnapiDelegateProvider::LogParams(const ToolParams& params,
                                       bool verbose) const {
-#if defined(__ANDROID__)
   LOG_TOOL_PARAM(params, bool, "use_nnapi", "Use NNAPI", verbose);
   if (!params.Get<bool>("use_nnapi")) return;
 
@@ -100,13 +93,11 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params,
                  verbose);
   LOG_TOOL_PARAM(params, bool, "nnapi_allow_fp16", "Allow fp16 in NNAPI",
                  verbose);
-#endif
 }
 
 TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
-#if defined(__ANDROID__)
   if (params.Get<bool>("use_nnapi")) {
     StatefulNnApiDelegate::Options options;
     std::string accelerator_name =
@@ -171,13 +162,19 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
     }
 
     int max_delegated_partitions = params.Get<int>("max_delegated_partitions");
-    if (max_delegated_partitions > 0) {
+    if (max_delegated_partitions >= 0) {
       options.max_number_delegated_partitions = max_delegated_partitions;
     }
-    delegate = evaluation::CreateNNAPIDelegate(options);
-    if (!delegate.get()) {
+    const auto* nnapi_impl = NnApiImplementation();
+    if (!nnapi_impl->nnapi_exists) {
       TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
+      return delegate;
     }
+    return TfLiteDelegatePtr(
+        new StatefulNnApiDelegate(nnapi_impl, options),
+        [](TfLiteDelegate* delegate) {
+          delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+        });
   } else if (!params.Get<std::string>("nnapi_accelerator_name").empty()) {
     TFLITE_LOG(WARN)
         << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
@@ -188,7 +185,6 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
                      << params.Get<std::string>("nnapi_execution_preference")
                      << ") to be used.";
   }
-#endif
   return delegate;
 }
 

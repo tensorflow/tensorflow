@@ -233,10 +233,31 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                      \
   } while (0)
 
+// Define TFL_CAPI_EXPORT macro to export a function properly with a shared
+// library.
+#ifdef SWIG
+#define TFL_CAPI_EXPORT
+#else
+#if defined(_WIN32)
+#ifdef TFL_COMPILE_LIBRARY
+#define TFL_CAPI_EXPORT __declspec(dllexport)
+#else
+#define TFL_CAPI_EXPORT __declspec(dllimport)
+#endif  // TFL_COMPILE_LIBRARY
+#else
+#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
+#endif  // _WIN32
+#endif  // SWIG
+
 // Single-precision complex data type compatible with the C99 definition.
 typedef struct TfLiteComplex64 {
   float re, im;  // real and imaginary parts, respectively.
 } TfLiteComplex64;
+
+// Double-precision complex data type compatible with the C99 definition.
+typedef struct TfLiteComplex128 {
+  double re, im;  // real and imaginary parts, respectively.
+} TfLiteComplex128;
 
 // Half precision data type compatible with the C99 definition.
 typedef struct TfLiteFloat16 {
@@ -257,10 +278,14 @@ typedef enum {
   kTfLiteInt8 = 9,
   kTfLiteFloat16 = 10,
   kTfLiteFloat64 = 11,
+  kTfLiteComplex128 = 12,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
+
+// Return the size of given type in bytes. Return 0 in in case of string.
+int TfLiteTypeGetSize(TfLiteType type);
 
 // SupportedQuantizationTypes.
 typedef enum TfLiteQuantizationType {
@@ -313,12 +338,14 @@ typedef union TfLitePtrUnion {
   int64_t* i64;
   float* f;
   TfLiteFloat16* f16;
+  double* f64;
   char* raw;
   const char* raw_const;
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
   TfLiteComplex64* c64;
+  TfLiteComplex128* c128;
   int8_t* int8;
   /* Only use this member. */
   void* data;
@@ -477,7 +504,7 @@ typedef struct TfLiteNode {
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
 } TfLiteNode;
-#else
+#else  // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.
 //
 // Specific reduced TfLiteTensor struct for TF Micro runtime. This struct
@@ -558,6 +585,24 @@ typedef struct TfLiteNode {
   int custom_initial_data_size;
 } TfLiteNode;
 #endif  // TF_LITE_STATIC_MEMORY
+
+// Light-weight tensor struct for TF Micro runtime. Provides the minimal amount
+// of information required for a kernel to run during TfLiteRegistration::Eval.
+// TODO(b/160955687): Move this field into TF_LITE_STATIC_MEMORY when TFLM
+// builds with this flag by default internally.
+typedef struct TfLiteEvalTensor {
+  // A union of data pointers. The appropriate type should be used for a typed
+  // tensor based on `type`.
+  TfLitePtrUnion data;
+
+  // A pointer to a structure representing the dimensionality interpretation
+  // that the buffer should have.
+  TfLiteIntArray* dims;
+
+  // The data type specification for data stored in `data`. This affects
+  // what member of `data` union should be used.
+  TfLiteType type;
+} TfLiteEvalTensor;
 
 #ifndef TF_LITE_STATIC_MEMORY
 // Free data memory of tensor `t`.
@@ -674,12 +719,11 @@ typedef struct TfLiteContext {
   void* profiler;
 
   // Allocate persistent buffer which has the same life time as the interpreter.
+  // Returns nullptr on failure.
   // The memory is allocated from heap for TFL, and from tail in TFLM.
-  // If *ptr is not nullptr, the pointer will be reallocated.
-  // This method is only available in Prepare stage.
+  // This method is only available in Init or Prepare stage.
   // WARNING: This is an experimental interface that is subject to change.
-  TfLiteStatus (*AllocatePersistentBuffer)(struct TfLiteContext* ctx,
-                                           size_t bytes, void** ptr);
+  void* (*AllocatePersistentBuffer)(struct TfLiteContext* ctx, size_t bytes);
 
   // Allocate a buffer which will be deallocated right after invoke phase.
   // The memory is allocated from heap in TFL, and from volatile arena in TFLM.
@@ -734,6 +778,18 @@ typedef struct TfLiteContext {
   TfLiteStatus (*PreviewDelegatePartitioning)(
       struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegateParams** partition_params_array, int* num_partitions);
+
+  // Returns a TfLiteTensor struct for a given index.
+  // WARNING: This is an experimental interface that is subject to change.
+  // WARNING: This method may not be available on all platforms.
+  TfLiteTensor* (*GetTensor)(const struct TfLiteContext* context,
+                             int tensor_idx);
+
+  // Returns a TfLiteEvalTensor struct for a given index.
+  // WARNING: This is an experimental interface that is subject to change.
+  // WARNING: This method may not be available on all platforms.
+  TfLiteEvalTensor* (*GetEvalTensor)(const struct TfLiteContext* context,
+                                     int tensor_idx);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {

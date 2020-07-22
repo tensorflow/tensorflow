@@ -27,7 +27,6 @@ from tensorflow.python.keras import metrics as metrics_mod
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.util import nest
 
 
@@ -63,7 +62,7 @@ class Container(object):
     struct = map_to_output_names(outputs, self._output_names, struct)
     struct = map_missing_dict_keys(outputs, struct)
     # Allow passing one object that applies to all outputs.
-    if not nest.is_sequence(struct) and nest.is_sequence(outputs):
+    if not nest.is_nested(struct) and nest.is_nested(outputs):
       struct = nest.map_structure(lambda _: struct, outputs)
     return struct
 
@@ -268,7 +267,7 @@ class LossesContainer(Container):
     return loss
 
   def _should_broadcast(self, obj):
-    return not nest.is_sequence(obj)
+    return not nest.is_nested(obj)
 
   def _copy_object(self, obj):
     return obj  # Losses don't need to be copied.
@@ -479,11 +478,11 @@ class MetricsContainer(Container):
 
   def _should_broadcast(self, obj):
     # e.g. 'mse'.
-    if not nest.is_sequence(obj):
+    if not nest.is_nested(obj):
       return True
     # e.g. ['mse'] or ['mse', 'mae'].
     return (isinstance(obj, (list, tuple)) and
-            not any(nest.is_sequence(o) for o in obj))
+            not any(nest.is_nested(o) for o in obj))
 
   def _copy_object(self, obj):
     if isinstance(obj, metrics_mod.Metric):
@@ -573,10 +572,10 @@ def map_to_output_names(y_pred, output_names, struct):
   Returns:
     `struct` mapped to a list in same order as `output_names`.
   """
-  single_output = not nest.is_sequence(y_pred)
+  single_output = not nest.is_nested(y_pred)
   outputs_are_flat_list = (not single_output and
                            isinstance(y_pred, (list, tuple)) and
-                           not any(nest.is_sequence(y_p) for y_p in y_pred))
+                           not any(nest.is_nested(y_p) for y_p in y_pred))
 
   if (single_output or outputs_are_flat_list) and isinstance(struct, dict):
     output_names = output_names or create_pseudo_output_names(y_pred)
@@ -634,7 +633,7 @@ def apply_mask(y_p, sw, mask):
     mask = math_ops.cast(mask, y_p.dtype)
     if sw is not None:
       mask, _, sw = (
-          tf_losses_utils.squeeze_or_expand_dimensions(mask, sample_weight=sw))
+          losses_utils.squeeze_or_expand_dimensions(mask, sample_weight=sw))
       sw *= mask
     else:
       sw = mask

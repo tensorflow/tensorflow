@@ -32,6 +32,7 @@ namespace {
 
 const absl::string_view kIterator = "Iterator";
 const absl::string_view kSeparator = "::";
+const absl::string_view kIteratorPrefix = "Iterator::";
 
 }  // namespace
 
@@ -53,6 +54,10 @@ bool IsTfOpType(absl::string_view op_type) {
 bool IsJaxOpType(absl::string_view op_type) {
   static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_]*"};
   return RE2::FullMatch(op_type, *kJaxOpTypeRegEx);
+}
+
+bool IsIteratorEventName(absl::string_view event_name) {
+  return absl::StartsWith(event_name, kIteratorPrefix);
 }
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {

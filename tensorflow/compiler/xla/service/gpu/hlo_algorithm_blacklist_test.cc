@@ -26,22 +26,22 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class BlacklistTest : public testing::Test {
+class DenylistTest : public testing::Test {
  protected:
-  BlacklistTest() {
+  DenylistTest() {
     tensorflow::setenv(
         "XLA_FLAGS",
         absl::StrCat(
-            "--xla_gpu_algorithm_blacklist_path=",
+            "--xla_gpu_algorithm_denylist_path=",
             tensorflow::GetDataDependencyFilepath(tensorflow::io::JoinPath(
                 "tensorflow", "compiler", "xla", "service", "gpu", "data",
-                "hlo_algorithm_blacklist.pbtxt")))
+                "hlo_algorithm_denylist.pbtxt")))
             .data(),
         0);
   }
 };
 
-TEST_F(BlacklistTest, DefaultTest) {
+TEST_F(DenylistTest, DefaultTest) {
   tensorflow::ComputeCapability cc;
   cc.set_major(7);
   cc.set_minor(0);
@@ -49,7 +49,7 @@ TEST_F(BlacklistTest, DefaultTest) {
   cudnn_version.set_major(7);
   cudnn_version.set_minor(6);
   cudnn_version.set_patch(2);
-  auto list = GetBlacklistedConvAlgorithms(
+  auto list = GetDisabledConvAlgorithms(
       cc, cudnn_version, /*blas_version=*/"9000",
       R"((f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(f16[256,224,224,4]{3,2,1,0}, f16[7,7,4,64]{2,1,0,3}), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config="{conv_result_scale:1}")");
   ASSERT_EQ(4, list.size());
@@ -59,7 +59,7 @@ TEST_F(BlacklistTest, DefaultTest) {
   EXPECT_EQ(stream_executor::dnn::AlgorithmDesc(1, true), list[3]);
 }
 
-TEST_F(BlacklistTest, NegativeTest) {
+TEST_F(DenylistTest, NegativeTest) {
   tensorflow::ComputeCapability cc;
   cc.set_major(7);
   cc.set_minor(0);
@@ -68,7 +68,7 @@ TEST_F(BlacklistTest, NegativeTest) {
   cudnn_version.set_minor(6);
   cudnn_version.set_minor(2);
   auto list =
-      GetBlacklistedConvAlgorithms(cc, cudnn_version, "9000", R"(invalid hlo)");
+      GetDisabledConvAlgorithms(cc, cudnn_version, "9000", R"(invalid hlo)");
   ASSERT_EQ(0, list.size());
 }
 

@@ -1181,7 +1181,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
       instr_shape = StrCat(
           absl::string_view(instr_shape).substr(0, kMaxShapeLen - 3), "...");
     }
-    lines.push_back(instr_shape);
+    lines.push_back(HtmlLikeStringSanitize(instr_shape));
   }
   if (debug_options_.xla_hlo_graph_addresses()) {
     lines.push_back(StrFormat("[%p]", instr));

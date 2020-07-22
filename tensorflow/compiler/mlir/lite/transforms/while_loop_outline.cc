@@ -143,8 +143,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
       type = FunctionType::get(types, result_types, &getContext());
     }
 
-    auto outlined_func = builder.create<FuncOp>(while_op.getLoc(), name, type,
-                                                ArrayRef<NamedAttribute>{});
+    auto outlined_func = builder.create<FuncOp>(while_op.getLoc(), name, type);
     outlined_func.getBody().takeBody(region);
     Region& func_region = outlined_func.getBody();
 

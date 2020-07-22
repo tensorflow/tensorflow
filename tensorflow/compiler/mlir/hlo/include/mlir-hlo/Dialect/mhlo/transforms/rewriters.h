@@ -38,8 +38,15 @@ void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
 void PopulateComplexLoweringPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
-void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
-                              MLIRContext *ctx);
+void PopulateOptimizeMHLOPatterns(MLIRContext *context,
+                                  OwningRewritePatternList *patterns);
+
+// Rewrite patterns for gather to equivalent torch index select legalization.
+void PopulateGatherToTorchIndexSelectPatterns(
+    mlir::MLIRContext *context, OwningRewritePatternList *patterns);
+
+void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
+                               MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(
@@ -75,32 +82,32 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
 
 }  // namespace mhlo
 
-namespace xla_lhlo {
+namespace lmhlo {
 
 /// Collect a set of patterns to convert from the LHLO dialect to LLVM.
 void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
                                           LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns);
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 
-namespace xla_chlo {
+namespace chlo {
 
 // Populates a collection of conversion patterns for legalizing client-HLO to
 // HLO.
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns);
 
-}  // namespace xla_chlo
+}  // namespace chlo
 
-namespace xla {
+namespace hlo {
 
 // Populates a pattern that translates the standard TanhOp to an approximation
 // that does not use intrinsics.
 void PopulateTanhToApproximationPatterns(MLIRContext *context,
                                          OwningRewritePatternList *patterns);
 
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_

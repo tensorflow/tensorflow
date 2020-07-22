@@ -20,6 +20,7 @@ import contextlib
 import os
 import re
 import zipfile
+from absl import logging
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
@@ -35,6 +36,8 @@ from tensorflow.python.keras.datasets import mnist
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import nest
 
 
@@ -105,7 +108,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
 
     num_workers = 4
 
-    def proc_func(model_path):
+    def proc_func(model_path, checkpoint_dir):
       global_batch_size = per_worker_batch_size * num_workers
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
       with strategy.scope():
@@ -129,7 +132,8 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
           callbacks=callbacks)
 
       def _is_chief(task_type, task_id):
-        return task_type == 'chief' or (task_type == 'worker' and task_id == 0)
+        return task_type is None or task_type == 'chief' or (
+            task_type == 'worker' and task_id == 0)
 
       def _get_temp_dir(dirpath, task_id):
         base_dirpath = 'workertemp_' + str(task_id)
@@ -163,13 +167,45 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
       loaded_model = keras.saving.save.load_model(model_path)
       loaded_model.fit(multi_worker_dataset, epochs=2, steps_per_epoch=20)
 
-    model_path = os.path.join(self.get_temp_dir(), 'ckpt.tf')
+      checkpoint = tracking_util.Checkpoint(model=multi_worker_model)
+      write_checkpoint_dir = write_filepath(checkpoint_dir, task_type, task_id)
+      checkpoint_manager = checkpoint_management.CheckpointManager(
+          checkpoint, directory=write_checkpoint_dir, max_to_keep=1)
+
+      checkpoint_manager.save()
+      if not _is_chief(task_type, task_id):
+        file_io.delete_recursively_v2(write_checkpoint_dir)
+
+      # Make sure chief finishes saving before non-chief's assertions.
+      multi_process_runner.barrier().wait()
+
+      if not file_io.file_exists(checkpoint_dir):
+        raise RuntimeError()
+      if file_io.file_exists(write_checkpoint_dir) != _is_chief(
+          task_type, task_id):
+        raise RuntimeError()
+
+      latest_checkpoint = checkpoint_management.latest_checkpoint(
+          checkpoint_dir)
+      checkpoint.restore(latest_checkpoint)
+      multi_worker_model.fit(multi_worker_dataset, epochs=2, steps_per_epoch=20)
+
+      logging.info('testMultiWorkerTutorial successfully ends')
+
+    model_path = os.path.join(self.get_temp_dir(), 'model.tf')
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'ckpt')
     with test_util.skip_if_error(self, errors_impl.UnavailableError):
       mpr_result = multi_process_runner.run(
           proc_func,
           multi_worker_test_base.create_cluster_spec(num_workers=num_workers),
-          args=(model_path,),
+          args=(model_path, checkpoint_dir),
           list_stdout=True)
+
+    self.assertTrue(
+        any([
+            'testMultiWorkerTutorial successfully ends' in msg
+            for msg in mpr_result.stdout
+        ]))
 
     def extract_accuracy(worker_id, input_string):
       match = re.match(

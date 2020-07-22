@@ -305,7 +305,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     self.assertEqual(out_2.shape.as_list(), [None, 1, 5])
 
     ph_3 = keras.backend.placeholder(shape=(None, 1, 18))
-    with self.assertRaisesRegex(ValueError, 'is incompatible with layer'):
+    with self.assertRaisesRegex(ValueError, 'is incompatible with'):
       time_dist(ph_3)
 
   def test_TimeDistributed_with_invalid_dimensions(self):
@@ -333,7 +333,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         keras.layers.RNN(keras.layers.SimpleRNNCell(10), stateful=True))
     self.assertFalse(td2._always_use_reshape)
 
-    # Custom layers are not whitelisted for the fast reshape implementation.
+    # Custom layers are not allowlisted for the fast reshape implementation.
     td3 = keras.layers.TimeDistributed(NoReshapeLayer())
     self.assertFalse(td3._always_use_reshape)
 

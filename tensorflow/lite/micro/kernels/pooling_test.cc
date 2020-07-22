@@ -54,8 +54,13 @@ void TestAveragePoolingFloat(std::initializer_list<int> input_dims_data,
       resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
-                                   filter_width, filter_height, activation};
+  TfLitePoolParams builtin_data = {padding,
+                                   stride_width,
+                                   stride_height,
+                                   filter_width,
+                                   filter_height,
+                                   activation,
+                                   {}};
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
   void* user_data = nullptr;
@@ -122,8 +127,13 @@ void TestAveragePoolingQuantized(
       resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
-                                   filter_width, filter_height, activation};
+  TfLitePoolParams builtin_data = {padding,
+                                   stride_width,
+                                   stride_height,
+                                   filter_width,
+                                   filter_height,
+                                   activation,
+                                   {}};
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
   void* user_data = nullptr;
@@ -185,10 +195,13 @@ void TestMaxPoolFloat(std::initializer_list<int> input_dims_data,
       resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLitePoolParams builtin_data = {
-      padding,      stride_width,  stride_height,
-      filter_width, filter_height, activation,
-  };
+  TfLitePoolParams builtin_data = {padding,
+                                   stride_width,
+                                   stride_height,
+                                   filter_width,
+                                   filter_height,
+                                   activation,
+                                   {}};
 
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
@@ -255,10 +268,13 @@ void TestMaxPoolQuantized(std::initializer_list<int> input_dims_data,
       resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLitePoolParams builtin_data = {
-      padding,      stride_width,  stride_height,
-      filter_width, filter_height, activation,
-  };
+  TfLitePoolParams builtin_data = {padding,
+                                   stride_width,
+                                   stride_height,
+                                   filter_width,
+                                   filter_height,
+                                   activation,
+                                   {}};
 
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;

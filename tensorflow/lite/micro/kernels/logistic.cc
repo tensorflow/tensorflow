@@ -54,6 +54,8 @@ TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
         static_cast<double>(input->params.scale) *
         static_cast<double>(1 << (31 - kInputIntegerBits));
 
+    data->input_zero_point = input->params.zero_point;
+
     const double q = std::frexp(input_real_multiplier, &data->input_left_shift);
     data->input_multiplier = static_cast<int32_t>(TfLiteRound(q * (1ll << 31)));
 
@@ -64,11 +66,24 @@ TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
 }
 }  // namespace
 
+void* LogisticInit(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
+}
+
+TfLiteStatus LogisticPrepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  OpData* data = static_cast<OpData*>(node->user_data);
+
+  return CalculateArithmeticOpData(context, node, data);
+}
+
 TfLiteStatus LogisticEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  OpData data;
-  CalculateArithmeticOpData(context, node, &data);
+
+  TFLITE_DCHECK(node->user_data != nullptr);
+  OpData* data = static_cast<OpData*>(node->user_data);
 
   if (input->type == kTfLiteFloat32) {
     switch (output->type) {
@@ -88,8 +103,8 @@ TfLiteStatus LogisticEval(TfLiteContext* context, TfLiteNode* node) {
     switch (output->type) {
       case kTfLiteInt8: {
         reference_integer_ops::Logistic(
-            input->params.zero_point, data.input_range_radius,
-            data.input_multiplier, data.input_left_shift,
+            data->input_zero_point, data->input_range_radius,
+            data->input_multiplier, data->input_left_shift,
             NumElements(input->dims), GetTensorData<int8_t>(input),
             GetTensorData<int8_t>(output));
         return kTfLiteOk;
@@ -114,9 +129,9 @@ TfLiteStatus LogisticEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration Register_LOGISTIC() {
-  return {/*init=*/nullptr,
+  return {/*init=*/activations::LogisticInit,
           /*free=*/nullptr,
-          /*prepare=*/nullptr,
+          /*prepare=*/activations::LogisticPrepare,
           /*invoke=*/activations::LogisticEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,

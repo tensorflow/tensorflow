@@ -36,7 +36,7 @@ convolution's input to [batch\_size, height // stride, width // stride, 3 \*
 stride \* stride] and the kernel to [kernel\_size // stride, kernel\_size //
 stride, 3 \* stride \* stride, out\_channel] to improve TPU MXU utilization.
 
-![drawings](images/sapce_to_depth_transform.png)
+![drawings](images/space_to_depth_transform.png)
 
 This optimization can be automatically done by the graph optimizer where weight
 transformation is done at variable loading time and the input transformation is
@@ -55,7 +55,7 @@ transformation:
     Space-to-depth performs the following permutation, which is equivalent to
     `tf.nn.space_to_depth`.
 
-    ```
+    ```python
     images = tf.reshape(images, [batch, h // block_size, block_size,
                                w // block_size, block_size, c])
     images = tf.transpose(images, [0, 1, 3, 2, 4, 5])
@@ -74,7 +74,7 @@ transformation:
     add additional cost to TPU device time. Below is the logic to transform the
     kernel of shape [7, 7, 3, 64] to [4, 4, 12, 84].
 
-    ```
+    ```python
     conv0 = tf.compat.v1.layers.Conv2D(
      filters=filters,
      kernel_size=kernel_size,
@@ -136,7 +136,7 @@ transformation:
 
 #### Pseudo MLIR code before and after RewritePass
 
-```
+```mlir
 // Example: original program:
 //
 module {
@@ -148,7 +148,8 @@ module {
    }
    func @_func(%input: tensor<2x224x224x3xf32>,
                %filter: tensor<7x7x3x64xf32>) {
-     %6 = "tf.Conv2D"(%input, %filter)  {strides = [1, 2, 2, 1]}:             (tensor<2x230x230x3xf32>, tensor<7x7x3x64xf32>) ->
+     %6 = "tf.Conv2D"(%input, %filter)  {strides = [1, 2, 2, 1]}:
+                 (tensor<2x230x230x3xf32>, tensor<7x7x3x64xf32>) ->
       tensor<2x112x112x64xf32>
    }
 }

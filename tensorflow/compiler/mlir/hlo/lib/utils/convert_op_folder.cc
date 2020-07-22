@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
 namespace mlir {
-namespace xla {
+namespace hlo {
 
 mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
                                        mlir::Type new_type) {
@@ -82,5 +82,5 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
       }));
 }
 
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir

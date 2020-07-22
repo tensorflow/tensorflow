@@ -34,7 +34,7 @@ namespace {
 
 class ReductionVectorizationTest : public GpuCodegenTest {};
 
-TEST_F(ReductionVectorizationTest, Power2) {
+TEST_F(ReductionVectorizationTest, DISABLED_Power2) {
   const char* hlo_text = R"(
 HloModule ReducePower2
 
@@ -82,7 +82,7 @@ CHECK: ld.global.nc.f32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ReductionVectorizationTest, TileFit) {
+TEST_F(ReductionVectorizationTest, DISABLED_TileFit) {
   const char* hlo_text = R"(
 HloModule ReduceTileFit
 
@@ -130,7 +130,7 @@ CHECK: ld.global.nc.f32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ReductionVectorizationTest, EvenColumns) {
+TEST_F(ReductionVectorizationTest, DISABLED_EvenColumns) {
   const char* hlo_text = R"(
 HloModule ReducePower2
 
@@ -183,7 +183,7 @@ CHECK: ld.global.nc.f32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ReductionVectorizationTest, DisabledOddColumns) {
+TEST_F(ReductionVectorizationTest, DISABLED_DisabledOddColumns) {
   const char* hlo_text = R"(
 HloModule ReduceTileFit
 
@@ -212,7 +212,7 @@ CHECK-NOT: ld.global.u64
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ReductionVectorizationTest, Exp) {
+TEST_F(ReductionVectorizationTest, DISABLED_Exp) {
   const char* hlo_text = R"(
 HloModule DisableSin
 
@@ -262,7 +262,7 @@ CHECK: ld.global.nc.f32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ReductionVectorizationTest, DisableSin) {
+TEST_F(ReductionVectorizationTest, DISABLED_DisableSin) {
   const char* hlo_text = R"(
 HloModule DisableSin
 
