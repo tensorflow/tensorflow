@@ -40,8 +40,12 @@
     truncating inputs such as from int64 to int32.
   * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensror` arguments.
 * `tf.data`:
+    * Added new `tf.data.experimental.service.register_dataset` and
+     `tf.data.experimental.service.from_dataset_id` APIs to enable one process
+      to register a dataset with the tf.data service, and another process to
+      consume data from the dataset.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
-  the complement of `select_cols`; at most one of these should be specified.
+      the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding
       transformations such as `take` and `shard` to happen earlier in the
       dataset when it is safe to do so. The optimization can be disabled via
