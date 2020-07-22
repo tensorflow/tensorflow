@@ -3053,7 +3053,12 @@ def ones(shape, dtype=dtypes.float32, name=None):
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
-    one = True if dtype == dtypes.bool else 1
+    if dtype == dtypes.bool:
+      one = True
+    elif dtype.is_quantized:
+      one = np.ones([]).astype(dtype.as_numpy_dtype)
+    else:
+      one = 1
     if not isinstance(shape, ops.Tensor):
       try:
         if not context.executing_eagerly():
