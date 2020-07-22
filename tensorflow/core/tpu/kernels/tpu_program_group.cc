@@ -62,8 +62,8 @@ StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
   size_t count = 0;
   StatusHelper status;
   VLOG(1) << "Run TpuCompile_CompileAheadOfTime.";
-  TpuCompile_CompileAheadOfTime(serialized_aot_request, &xla_tpu_programs,
-                                &count, status.c_status);
+  CompileApiFn()->TpuCompile_CompileAheadOfTimeFn(
+      serialized_aot_request, &xla_tpu_programs, &count, status.c_status);
   VLOG(1) << "Run CompileAheadOfTime completed.";
   if (!status.status().ok()) {
     return status.status();
@@ -159,7 +159,8 @@ int64_t TpuProgramGroup::program_size() const {
 bool TpuProgramGroup::LogProgramMemorySummary() {
   bool success = true;
   for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
-    success &= TpuProgram_LogProgramMemorySummary(tpu_program);
+    success &=
+        TpuProgramApiFn()->TpuProgram_LogProgramMemorySummaryFn(tpu_program);
   }
   return success;
 }
@@ -167,7 +168,8 @@ bool TpuProgramGroup::LogProgramMemorySummary() {
 void TpuProgramGroup::UnloadAndDestroyPrograms() {
   for (XLA_TpuProgram* tpu_program : tpu_programs_) {
     StatusHelper status;
-    TpuProgram_UnloadAndDestroy(tpu_program, status.c_status);
+    TpuProgramApiFn()->TpuProgram_UnloadAndDestroyFn(tpu_program,
+                                                     status.c_status);
     auto s = status.status();
     if (!s.ok()) {
       LOG(ERROR) << "TpuProgramGroup::UnloadPrograms(): " << s.ToString();

@@ -1,3 +1,4 @@
+#include "third_party/tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 namespace {
 
 tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
@@ -181,6 +182,9 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Free);
 
+  TFTPU_SET_FN(executor_fn, XlaShapeToTpuShapeRepresentation);
+  TFTPU_SET_FN(executor_fn, XlaShapeToTpuPaddedShape);
+
   return tensorflow::Status::OK();
 }
 
@@ -202,7 +206,6 @@ tensorflow::Status SetTpuUtilStructFns(void* library_handle) {
   TFTPU_SET_FN(util_fn, TpuTopology_AvailableCoreCount);
   TFTPU_SET_FN(util_fn, TpuCompile_IsTpuCompilationEnabled);
   TFTPU_SET_FN(util_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
-  TFTPU_SET_FN(util_fn, TpuCompile_ToTpuShapeRepresentation);
   TFTPU_SET_FN(util_fn, TpuCompile_CreateCompilationCacheKey);
   TFTPU_SET_FN(util_fn, TpuCompile_DestroyCompilationCacheKey);
   TFTPU_SET_FN(util_fn, TpuCompile_CreateGuaranteedConstFingerprint);
