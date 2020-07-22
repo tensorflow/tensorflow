@@ -290,8 +290,6 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
-  TFLITE_LOG(INFO) << "HELLOOOO";
-
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
@@ -311,11 +309,13 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(bias), GetTensorData<float>(bias),
         GetTensorShape(output), GetTensorData<float>(output));
   } else {
-    TFLITE_LOG(INFO) << "HELLOOOO222";
-
+    RuntimeShape filter_shape = GetTensorShape(filter);
+    if (filter_shape.Dims(3) == 4) {
+      filter_shape.SetDim(3, 2);
+    }
     optimized_ops::DepthwiseConv<float, float>(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
-        GetTensorShape(filter), GetTensorData<float>(filter),
+        filter_shape, GetTensorData<float>(filter),
         GetTensorShape(bias), GetTensorData<float>(bias),
         GetTensorShape(output), GetTensorData<float>(output),
         CpuBackendContext::GetFromContext(context));

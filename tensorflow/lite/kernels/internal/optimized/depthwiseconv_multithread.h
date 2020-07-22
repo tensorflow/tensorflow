@@ -85,7 +85,7 @@ inline int HowManyConvThreads(const RuntimeShape& output_shape,
   static constexpr int kMinMulPerThread = 1 << 13;  // 8k
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
-  const int num_muls = filter_shape.FlatSize() * output_shape.Dims(1) * output_shape.Dims(2);
+  const int num_muls = output_shape.FlatSize() * filter_shape.Dims(1) * filter_shape.Dims(2);
   // Try to avoid real runtime divisions if possible by dividing by a
   // compile-time constant.
   int thread_count = std::max(1, num_muls / kMinMulPerThread);
@@ -126,11 +126,6 @@ inline void DepthwiseConv(const DepthwiseParams& params,
                           T* output_data,
                           CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("DepthwiseConv");
-  TFLITE_LOG(INFO) << "MULTITHREAD";
-  // if (filter_shape.Dims(3) == 4) {
-  //   filter_shape.SetDim(3, 2);
-  //   TFLITE_LOG(INFO) << " new shape "<<filter_shape.Dims(3);
-  // }
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);

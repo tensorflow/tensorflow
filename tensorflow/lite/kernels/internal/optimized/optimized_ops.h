@@ -1428,23 +1428,26 @@ inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shap
   const int gemm_input_dims = gemm_input_shape->DimensionsCount();
   int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
   int n = filter_shape.Dims(0);
-  if (n == 15) n=5;
-  else if (n==128) {
-    n= 64;
-  }
-  else if (n==64) {
-    n=32;
-  }
+  // if (n == 15) n=5;
+  // else if (n==128) {
+  //   n= 64;
+  // }
+  // else if (n==64) {
+  //   n=32;
+  // }
 
-  else if (n==32) {
-    n=16;
+  // else if (n==32) {
+  //   n=16;
+  // }
+  // else if (n==16){
+  //   n=8;
+  // } 
+  // else if (n==2){
+  //   n=1;
+  // } 
+  if (n== input_shape.Dims(3)){
+    n = n/8;
   }
-  else if (n==16){
-    n=8;
-  } 
-  else if (n==2){
-    n=1;
-  } 
   int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)

@@ -100,6 +100,7 @@ struct FloatDepthwiseConvKernel<false, 2, 1> {
     const float32x2_t filters = vld1_f32(filter_ptr);
     const float32x4_t filters_dup2 = vcombine_f32(filters, filters);
     int outp = 0;
+    // TFLITE_LOG(INFO) << "NUM OUTPUT PIXELS " << num_output_pixels;
     // Handle 8 output pixels at a time.
     for (; outp <= num_output_pixels - 8; outp += 8) {
       // Load the inputs
@@ -322,7 +323,6 @@ struct FloatDepthwiseConvKernel<true, 0, 2> {
                   const float* input_ptr, int input_ptr_increment,
                   const float* filter_ptr, float* acc_buffer_ptr) {
     // Handle one output pixel at a time.
-    // TFLITE_LOG(INFO) << "LMAOOO";
     for (int outp = 0; outp < num_output_pixels; outp++) {
       const float* local_filter_ptr = filter_ptr;
       const float* local_input_ptr = input_ptr;
@@ -743,7 +743,6 @@ struct FloatDepthwiseConvKernel<true, 4, 1> {
                   const float* input_ptr, int input_ptr_increment,
                   const float* filter_ptr, float* acc_buffer_ptr) {
     float32x4_t filter = vld1q_f32(filter_ptr);
-
     // Handle one output pixel at a time.
     for (int outp = 0; outp < num_output_pixels; outp++) {
       // Load the inputs
@@ -775,19 +774,22 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
   // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
-  TFLITE_LOG(INFO) << "EXCITING";
+  TFLITE_LOG(INFO) << "Start/end " << out_x_buffer_start << " " << out_x_buffer_end;
   static_assert(kFixedDepthMultiplier || !kFixedInputDepth, "");
   static_assert(kFixedInputDepth || kAllowStrided, "");
   TFLITE_DCHECK(stride == 1 || kAllowStrided);
   if (kFixedInputDepth) {
     TFLITE_DCHECK_EQ(input_depth, kFixedInputDepth);
+    // TFLITE_LOG(INFO) << "INPUT DEPTH CEHCK" << input_depth << " vs " << kFixedInputDepth;
   }
   if (kFixedDepthMultiplier) {
     TFLITE_DCHECK_EQ(depth_multiplier, kFixedDepthMultiplier);
   }
-  TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
-  TFLITE_LOG(INFO) << "LOL " << input_depth;
-  const int input_ptr_increment = stride * input_depth;
+  // TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
+  int old_input_depth = output_depth/depth_multiplier;
+  int filter_depth = input_depth*depth_multiplier;
+  // TFLITE_LOG(INFO) << "old input depth " << old_input_depth;
+  const int input_ptr_increment = stride * old_input_depth;
   const float* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     // For the current (filter_x, filter_y) point in the filter,
@@ -817,6 +819,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
       out_x_loop_end_unclamped =
           pad_width + input_width - dilation_factor * filter_x;
     }
+    // TFLITE_LOG(INFO) << "Clamp Start/end " << out_x_loop_start_unclamped << " " << out_x_loop_end_unclamped;
     // The kernel will have to iterate on the segment of the
     // output row that starts at out_x_loop_start and out_x_loop_end.
     const int out_x_loop_start =
@@ -824,12 +827,20 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
     const int out_x_loop_end =
         std::min(out_x_buffer_end, out_x_loop_end_unclamped);
     // TFLITE_LOG(INFO) << "shift " << (out_x_loop_start - out_x_buffer_start) * output_depth << " " <<output_depth;
+    
     float* acc_buffer_ptr =
-        acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
+        acc_buffer + (out_x_loop_start - out_x_buffer_start) * filter_depth;
+    // TFLITE_LOG(INFO) << acc_buffer_ptr;
+    // TFLITE_LOG(INFO) << (out_x_loop_start - out_x_buffer_start) * filter_depth << " " << (out_x_loop_start - out_x_buffer_start);
     const int in_x_origin =
         (out_x_loop_start * stride) - pad_width + dilation_factor * filter_x;
-    const float* input_ptr = input_data + in_x_origin * input_depth;
+    // TFLITE_LOG(INFO) << in_x_origin << " INPUT PTR " << input_data + in_x_origin * old_input_depth;
+    const float* input_ptr = input_data + in_x_origin * old_input_depth;
     const int num_output_pixels = out_x_loop_end - out_x_loop_start;
+
+    // for(int a =(out_x_loop_start - out_x_buffer_start) * output_depth; a<2*(out_x_loop_start - out_x_buffer_start) * output_depth; a++){
+    //   TFLITE_LOG(INFO) << "pre acc " << a << ": "  << acc_buffer[a];
+    // } 
     FloatDepthwiseConvKernel<kAllowStrided, kFixedInputDepth,
                              kFixedDepthMultiplier>::Run(num_output_pixels,
                                                          input_depth,
@@ -838,7 +849,10 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
                                                          input_ptr_increment,
                                                          filter_base_ptr,
                                                          acc_buffer_ptr);
-    filter_base_ptr += output_depth; //add filter depth
+    // for(int a =(out_x_loop_start - out_x_buffer_start) * output_depth; a<2*(out_x_loop_start - out_x_buffer_start) * output_depth; a++){
+    //   TFLITE_LOG(INFO) << "post acc " << a << ": "  << acc_buffer[a];
+    // }
+    filter_base_ptr += output_depth; //change to filter depth
   }
 }
 
@@ -926,17 +940,20 @@ inline void DepthwiseConvImpl(
   TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
+  const int output_depth = output_shape.Dims(3);
+  const int filter_depth = filter_shape.Dims(3);
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
-  const int input_depth = input_shape.Dims(3);
+  // const int input_depth = input_shape.Dims(3);
+  const int input_depth = input_shape.Dims(3) * filter_depth/output_depth; // need to include a check for integer
+  const int old_input_depth = input_shape.Dims(3);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
-  TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
+  // TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
-
+  TFLITE_LOG(INFO) << "INPUT DEPTH " << input_depth;
   static const int kAccBufferMaxSize = 4832;
   float acc_buffer[kAccBufferMaxSize];
   TFLITE_DCHECK_GE(kAccBufferMaxSize, output_depth);
@@ -1009,8 +1026,8 @@ inline void DepthwiseConvImpl(
   int row_start = 0;
   int row_end = output_height;
   int output_ptr_offset = 0;
-  TFLITE_LOG(INFO) << "Float " << thread_dim;
-  TFLITE_LOG(INFO) << "Output depth " << output_depth;
+  // TFLITE_LOG(INFO) << "Float " << thread_dim;
+  // TFLITE_LOG(INFO) << "Output depth " << output_depth;
   switch (thread_dim) {
     case 0:
       // Multithread along with the batch axis
@@ -1044,23 +1061,25 @@ inline void DepthwiseConvImpl(
           std::min(filter_height,
                    (input_height - in_y_origin + dilation_height_factor - 1) /
                        dilation_height_factor);
+      TFLITE_LOG(INFO) << "output pixels acc buffer " << kOutputPixelsInAccBuffer;
       for (int out_x_buffer_start = 0; out_x_buffer_start < output_width;
            out_x_buffer_start += kOutputPixelsInAccBuffer) {
         const int out_x_buffer_end = std::min(
             output_width, out_x_buffer_start + kOutputPixelsInAccBuffer);
+        // TFLITE_LOG(INFO) << out_x_buffer_start << " output XXX buffer end " << out_x_buffer_end;
         // We call a 'pixel' a group of activation that share all but the
         // 'depth'/'channel' coordinate. num_output_pixels is the number of
         // output pixels that we will accumulate in this loop iteration.
         const int num_output_pixels = out_x_buffer_end - out_x_buffer_start;
         // Initialize our local accumulator with the bias values, so we don't
-        // have to add them later.
-        DepthwiseConvInitAccBuffer(num_output_pixels, output_depth, bias_data,
+        // have to add them later."
+        DepthwiseConvInitAccBuffer(num_output_pixels, filter_depth, bias_data,
                                    acc_buffer);
         // Accumulation loop. Most of the time should be spent in here.
-        TFLITE_LOG(INFO) << "Filter start end " << filter_y_start << filter_y_end;
-        TFLITE_LOG(INFO) << "DEPTH MULTIPLIER " << depth_multiplier;
+        // TFLITE_LOG(INFO) << "Filter start end " << filter_y_start << filter_y_end;
+        // TFLITE_LOG(INFO) << "DEPTH MULTIPLIER " << depth_multiplier;
         for(int a =0; a<num_output_pixels*output_depth; a++){
-          TFLITE_LOG(INFO) << "pre acc " << a << ": "  << acc_buffer[a];
+          TFLITE_LOG(INFO) << "pre acc buffer " << a << ": "  << acc_buffer[a];
         }
         for (int filter_y = filter_y_start; filter_y < filter_y_end;
              ++filter_y) {
@@ -1074,11 +1093,11 @@ inline void DepthwiseConvImpl(
         }
         // TFLITE_LOG(INFO) << "acc buffer " << i << ", " 
         for(int a =0; a<num_output_pixels*output_depth; a++){
-          TFLITE_LOG(INFO) << "out " << a << ": "  << acc_buffer[a];
+          TFLITE_LOG(INFO) << "post acc buffer " << a << ": "  << acc_buffer[a];
         }
         // Finished accumulating. Now store to destination.
-        
-        const int num_output_values = output_depth * num_output_pixels;
+        const int num_output_values = filter_depth * num_output_pixels;
+        // TFLITE_LOG(INFO) << num_output_pixels << " pixels num output values " << num_output_values;
         int i = 0;
 // TODO(benoitjacob) optimized code goes here
 #ifdef USE_NEON
