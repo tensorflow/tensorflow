@@ -235,7 +235,6 @@ Status MatMulGradModel(AbstractContext* ctx,
 }
 
 
-// TODO: fix graph mode test by using RunModel to verify
 TEST_P(CppGradients, TestMatMulGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -270,12 +269,9 @@ TEST_P(CppGradients, TestMatMulGrad) {
    */
 
   std::vector<AbstractTensorHandle*> outputs(2);
-  // s = RunModel(MatMulGradModel, ctx.get(), {A.get(), B.get()},
-  //              absl::MakeSpan(outputs),
-  //              /*use_function=*/!std::get<2>(GetParam()), registry);
-  // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  s = MatMulGradModel(ctx.get(), {A.get(), B.get()}, absl::MakeSpan(outputs), registry);
+  s = RunModel(MatMulGradModel, ctx.get(), {A.get(), B.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* dA_tensor;
@@ -461,7 +457,6 @@ Status MatMulTransposeModel(AbstractContext* ctx,
   return Status::OK();
 }
 
-// TODO: fix graph mode test by using RunModel to verify
 TEST_P(CppGradients, TestMatMulTranspose) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -490,11 +485,10 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   // Run the MatMul Op
   std::vector<AbstractTensorHandle*> outputs(1);
   
-  // Status s = RunModel(MatMulTransposeModel, ctx.get(), {X.get(), W1.get()},
-  //              absl::MakeSpan(outputs),
-  //              /*use_function=*/!std::get<2>(GetParam()), registry);
+  Status s = RunModel(MatMulTransposeModel, ctx.get(), {X.get(), W1.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
 
-  Status s = MatMulTransposeModel(ctx.get(), {X.get(), W1.get()}, absl::MakeSpan(outputs), registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   
   // Verify the Results
