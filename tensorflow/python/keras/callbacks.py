@@ -1107,7 +1107,7 @@ class ModelCheckpoint(Callback):
         quantity monitored will not be overwritten. If `filepath` doesn't contain 
         formatting options like `{epoch}` then `filepath` will be overwritten 
         by each new better model.
-      mode: one of `{auto, min, max}`. If `save_best_only=True`, the decision to
+      mode: one of {'auto', 'min', 'max'}. If `save_best_only=True`, the decision to
         overwrite the current save file is made based on either the maximization
         or the minimization of the monitored quantity. For `val_acc`, this
         should be `max`, for `val_loss` this should be `min`, etc. In `auto`
