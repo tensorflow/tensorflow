@@ -70,12 +70,8 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//learning/brain/contrib/...",
-        "//learning/brain/research/...",
-        "//learning/faster_training/...",
         "//tensorflow/...",
         "//tensorflow_text/...",
-        "//third_party/car/...",
     ],
 )
 
@@ -659,16 +655,13 @@ cc_library(
     name = "batch_kernels",
     srcs = ["batch_kernels.cc"],
     deps = [
-        ":concat_lib_hdrs",
         ":ops_util_hdrs",
-        ":split_lib_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/batching_util:batch_resource_base",
+        "//tensorflow/core/kernels/batching_util:concat_split_util",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
-        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
-        "//tensorflow/core/util:incremental_barrier",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,

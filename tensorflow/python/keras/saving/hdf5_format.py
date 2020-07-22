@@ -31,11 +31,10 @@ from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.utils import conv_utils
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import serialization
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -111,7 +110,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
     for k, v in model_metadata.items():
       if isinstance(v, (dict, list, tuple)):
         f.attrs[k] = json.dumps(
-            v, default=serialization.get_json_type).encode('utf8')
+            v, default=json_utils.get_json_type).encode('utf8')
       else:
         f.attrs[k] = v
 

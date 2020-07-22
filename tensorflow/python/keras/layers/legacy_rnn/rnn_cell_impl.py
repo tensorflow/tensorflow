@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_wrapper_impl
 from tensorflow.python.keras.utils import tf_utils
@@ -133,7 +134,7 @@ def _concat(prefix, suffix, static=False):
       raise ValueError("prefix tensor must be either a scalar or vector, "
                        "but saw tensor: %s" % p)
   else:
-    p = tensor_shape.as_shape(prefix)
+    p = tensor_shape.TensorShape(prefix)
     p_static = p.as_list() if p.ndims is not None else None
     p = (
         constant_op.constant(p.as_list(), dtype=dtypes.int32)
@@ -147,14 +148,14 @@ def _concat(prefix, suffix, static=False):
       raise ValueError("suffix tensor must be either a scalar or vector, "
                        "but saw tensor: %s" % s)
   else:
-    s = tensor_shape.as_shape(suffix)
+    s = tensor_shape.TensorShape(suffix)
     s_static = s.as_list() if s.ndims is not None else None
     s = (
         constant_op.constant(s.as_list(), dtype=dtypes.int32)
         if s.is_fully_defined() else None)
 
   if static:
-    shape = tensor_shape.as_shape(p_static).concatenate(s_static)
+    shape = tensor_shape.TensorShape(p_static).concatenate(s_static)
     shape = shape.as_list() if shape.ndims is not None else None
   else:
     if p is None or s is None:
@@ -250,7 +251,7 @@ class RNNCell(base_layer.Layer):
     else:
       trainable = (
           variable in tf_variables.trainable_variables() or
-          (isinstance(variable, tf_variables.PartitionedVariable) and
+          (base_layer_utils.is_split_variable(variable) and
            list(variable)[0] in tf_variables.trainable_variables()))
     if trainable and all(variable is not v for v in self._trainable_weights):
       self._trainable_weights.append(variable)
@@ -1234,7 +1235,7 @@ class MultiRNNCell(RNNCell):
     super(MultiRNNCell, self).__init__()
     if not cells:
       raise ValueError("Must specify at least one cell for MultiRNNCell.")
-    if not nest.is_sequence(cells):
+    if not nest.is_nested(cells):
       raise TypeError("cells must be a list or tuple, but saw: %s." % cells)
 
     if len(set(id(cell) for cell in cells)) < len(cells):
@@ -1251,7 +1252,7 @@ class MultiRNNCell(RNNCell):
         self._track_trackable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
-      if any(nest.is_sequence(c.state_size) for c in self._cells):
+      if any(nest.is_nested(c.state_size) for c in self._cells):
         raise ValueError("Some cells return tuples of states, but the flag "
                          "state_is_tuple is not set.  State sizes are: %s" %
                          str([c.state_size for c in self._cells]))
@@ -1308,7 +1309,7 @@ class MultiRNNCell(RNNCell):
     for i, cell in enumerate(self._cells):
       with vs.variable_scope("cell_%d" % i):
         if self._state_is_tuple:
-          if not nest.is_sequence(state):
+          if not nest.is_nested(state):
             raise ValueError(
                 "Expected state to be a tuple of length %d, but received: %s" %
                 (len(self.state_size), state))

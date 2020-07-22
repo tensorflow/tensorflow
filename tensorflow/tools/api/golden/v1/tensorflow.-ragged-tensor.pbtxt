@@ -93,6 +93,10 @@ tf_class {
     argspec: "args=[\'cls\', \'values\', \'value_rowids\', \'nrows\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
+    name: "get_shape"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "merge_dims"
     argspec: "args=[\'self\', \'outer_axis\', \'inner_axis\'], varargs=None, keywords=None, defaults=None"
   }

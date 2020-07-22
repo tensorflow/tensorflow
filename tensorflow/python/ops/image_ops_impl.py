@@ -432,7 +432,8 @@ def _random_flip(image, flip_index, seed, scope_name):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+
+    def f_rank3():
       uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
       mirror_cond = math_ops.less(uniform_random, .5)
       result = control_flow_ops.cond(
@@ -441,7 +442,8 @@ def _random_flip(image, flip_index, seed, scope_name):
           lambda: image,
           name=scope)
       return fix_image_flip_shape(image, result)
-    elif shape.ndims == 4:
+
+    def f_rank4():
       batch_size = array_ops.shape(image)[0]
       uniform_random = random_ops.random_uniform([batch_size],
                                                  0,
@@ -452,6 +454,14 @@ def _random_flip(image, flip_index, seed, scope_name):
       flips = math_ops.cast(flips, image.dtype)
       flipped_input = array_ops.reverse(image, [flip_index + 1])
       return flips * flipped_input + (1 - flips) * image
+
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    if shape.ndims == 3:
+      return f_rank3()
+    elif shape.ndims == 4:
+      return f_rank4()
     else:
       raise ValueError(
           '\'image\' (shape %s) must have either 3 or 4 dimensions.' % shape)
@@ -550,10 +560,20 @@ def _flip(image, flip_index, scope_name):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+
+    def f_rank3():
       return fix_image_flip_shape(image, array_ops.reverse(image, [flip_index]))
-    elif shape.ndims == 4:
+
+    def f_rank4():
       return array_ops.reverse(image, [flip_index + 1])
+
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
+      return f_rank3()
+    elif shape.ndims == 4:
+      return f_rank4()
     else:
       raise ValueError(
           '\'image\' (shape %s)must have either 3 or 4 dimensions.' % shape)
@@ -600,7 +620,17 @@ def rot90(image, k=1, name=None):
     k = math_ops.mod(k, 4)
 
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+
+      def f_rank3():
+        return _rot90_3D(image, k, scope)
+
+      def f_rank4():
+        return _rot90_4D(image, k, scope)
+
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
       return _rot90_3D(image, k, scope)
     elif shape.ndims == 4:
       return _rot90_4D(image, k, scope)
@@ -723,7 +753,17 @@ def transpose(image, name=None):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+
+      def f_rank3():
+        return array_ops.transpose(image, [1, 0, 2], name=name)
+
+      def f_rank4():
+        return array_ops.transpose(image, [0, 2, 1, 3], name=name)
+
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
       return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
       return array_ops.transpose(image, [0, 2, 1, 3], name=name)
@@ -1794,7 +1834,7 @@ def random_contrast(image, lower, upper, seed=None):
   """Adjust the contrast of an image or images by a random factor.
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
-  picked in the interval `[lower, upper]`.
+  picked in the interval `[lower, upper)`.
 
   Args:
     image: An image tensor with 3 or more dimensions.
@@ -1824,7 +1864,6 @@ def random_contrast(image, lower, upper, seed=None):
   if lower < 0:
     raise ValueError('lower must be non-negative.')
 
-  # Generate an a float in [lower, upper]
   contrast_factor = random_ops.random_uniform([], lower, upper, seed=seed)
   return adjust_contrast(image, contrast_factor)
 
@@ -2182,7 +2221,7 @@ def random_hue(image, max_delta, seed=None):
   """Adjust the hue of RGB images by a random factor.
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
-  picked in the interval `[-max_delta, max_delta]`.
+  picked in the interval `[-max_delta, max_delta)`.
 
   `max_delta` must be in the interval `[0, 0.5]`.
 
@@ -2392,7 +2431,7 @@ def random_saturation(image, lower, upper, seed=None):
   """Adjust the saturation of RGB images by a random factor.
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
-  picked in the interval `[lower, upper]`.
+  picked in the interval `[lower, upper)`.
 
   Usage Example:
 
@@ -2428,7 +2467,6 @@ def random_saturation(image, lower, upper, seed=None):
   if lower < 0:
     raise ValueError('lower must be non-negative.')
 
-  # Pick a float in [lower, upper]
   saturation_factor = random_ops.random_uniform([], lower, upper, seed=seed)
   return adjust_saturation(image, saturation_factor)
 
@@ -2635,7 +2673,7 @@ def decode_image(contents,
     ValueError: On incorrect number of channels.
   """
   with ops.name_scope(name, 'decode_image'):
-    if compat.forward_compatible(2020, 7, 14):
+    if compat.forward_compatible(2020, 8, 14):
       channels = 0 if channels is None else channels
       if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
         dest_dtype = dtype

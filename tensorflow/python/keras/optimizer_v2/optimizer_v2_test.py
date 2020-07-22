@@ -59,6 +59,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum
 from tensorflow.python.training import training_util
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 _DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
@@ -72,7 +73,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testBasic(self):
     for dtype in _DATA_TYPES:
-      with test_util.use_gpu():
+      with testing_utils.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
@@ -137,7 +138,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testPrecomputedGradient(self):
     for dtype in _DATA_TYPES:
-      with test_util.use_gpu():
+      with testing_utils.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
@@ -161,7 +162,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testNoGradients(self):
     for dtype in _DATA_TYPES:
-      with test_util.use_gpu():
+      with testing_utils.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0  # pylint: disable=cell-var-from-loop
@@ -173,7 +174,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testNoGradientsForAnyVariables_Minimize(self):
     for dtype in _DATA_TYPES:
-      with test_util.use_gpu():
+      with testing_utils.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: constant_op.constant(5.0)
@@ -186,7 +187,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testNoGradientsForAnyVariables_ApplyGradients(self):
     for dtype in _DATA_TYPES:
-      with test_util.use_gpu():
+      with testing_utils.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         sgd_op = gradient_descent.SGD(3.0)
@@ -197,7 +198,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testGradientsAsVariables(self):
     for i, dtype in enumerate(_DATA_TYPES):
-      with test_util.use_gpu():
+      with testing_utils.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
@@ -235,7 +236,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testComputeGradientsWithTensors(self):
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       x = ops.convert_to_tensor_v2(1.0)
 
       def f():
@@ -255,7 +256,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testConstraint(self):
     constraint_01 = lambda x: clip_ops.clip_by_value(x, -0.1, 0.)
     constraint_0 = lambda x: clip_ops.clip_by_value(x, 0., 1.)
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       var0 = variables.Variable([1.0, 2.0],
                                 constraint=constraint_01)
       var1 = variables.Variable([3.0, 4.0],
@@ -277,14 +278,14 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testIterationWithoutMinimize(self):
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       sgd = gradient_descent.SGD(3.0)
       self.evaluate(sgd.iterations.initializer)
       self.assertEqual(0, self.evaluate(sgd.iterations))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testConfig(self):
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       opt = gradient_descent.SGD(learning_rate=1.0)
       config = opt.get_config()
       opt2 = gradient_descent.SGD.from_config(config)
@@ -304,7 +305,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testConfigWithLearningRateDecay(self):
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
       for decay_schedule in [
           learning_rate_schedule.InverseTimeDecay(
@@ -335,7 +336,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testGradClipValue(self):
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       var = variables.Variable([1.0, 2.0])
       loss = lambda: 3 * var
       opt = gradient_descent.SGD(learning_rate=1.0, clipvalue=1.0)
@@ -346,7 +347,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testGradClipNorm(self):
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       var = variables.Variable([1.0])
       loss = lambda: 3 * var
       opt = gradient_descent.SGD(learning_rate=1.0, clipnorm=1.0)
@@ -367,7 +368,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testWeights(self):
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       opt1 = adam.Adam(learning_rate=1.0)
       var1 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
       loss1 = lambda: 3 * var1
@@ -644,6 +645,23 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
     self.evaluate(opt_op)
     self.assertAllClose([0.7, 1.7], self.evaluate(var))
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testRestoringIterationsWithoutAnOptimizer(self):
+    opt = gradient_descent.SGD(3.0)
+    opt.iterations.assign(5)
+    checkpoint = trackable_utils.Checkpoint(optimizer=opt)
+    path = checkpoint.save(self.get_temp_dir())
+
+    # Following verifies that the `iterations` can be restored with the absence
+    # of an `Optimizer` object (using a `Checkpoint` as a placeholder).
+    iterations_var = variables.Variable(0, dtype=dtypes.int64)
+    optimizer_checkpoint = trackable_utils.Checkpoint(iter=iterations_var)
+    checkpoint_to_restore = trackable_utils.Checkpoint(
+        optimizer=optimizer_checkpoint)
+    checkpoint_to_restore.restore(path)
+
+    self.assertEqual(5, self.evaluate(iterations_var))
+
 
 @keras_parameterized.run_all_keras_modes
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):
@@ -653,7 +671,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
       self.skipTest(
           'v1 optimizer does not run in eager mode')
     np.random.seed(1331)
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       train_samples = 20
       input_dim = 3
       num_classes = 2
@@ -739,7 +757,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
       self.skipTest(
           'v1 optimizer does not run in eager mode')
     np.random.seed(1331)
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       train_samples = 20
       input_dim = 3
       num_classes = 2
@@ -796,7 +814,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
       self.skipTest(
           'v1 optimizer does not run in eager mode')
     np.random.seed(1331)
-    with test_util.use_gpu():
+    with testing_utils.use_gpu():
       train_samples = 20
       input_dim = 3
       num_classes = 2

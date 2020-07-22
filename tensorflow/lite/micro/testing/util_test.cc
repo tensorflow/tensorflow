@@ -21,10 +21,10 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(ArgumentsExecutedOnlyOnce) {
   float count = 0.;
   // Make sure either argument is executed once after macro expansion.
-  TF_LITE_MICRO_EXPECT_NEAR(0, count++, 0.1);
-  TF_LITE_MICRO_EXPECT_NEAR(1, count++, 0.1);
-  TF_LITE_MICRO_EXPECT_NEAR(count++, 2, 0.1);
-  TF_LITE_MICRO_EXPECT_NEAR(count++, 3, 0.1);
+  TF_LITE_MICRO_EXPECT_NEAR(0, count++, 0.1f);
+  TF_LITE_MICRO_EXPECT_NEAR(1, count++, 0.1f);
+  TF_LITE_MICRO_EXPECT_NEAR(count++, 2, 0.1f);
+  TF_LITE_MICRO_EXPECT_NEAR(count++, 3, 0.1f);
 }
 
 TF_LITE_MICRO_TESTS_END

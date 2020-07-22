@@ -85,6 +85,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OperatorNotAllowedInGraphError"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "OutOfRangeError"
     mtype: "<type \'type\'>"
   }

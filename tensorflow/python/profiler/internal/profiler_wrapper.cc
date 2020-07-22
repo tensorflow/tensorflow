@@ -20,9 +20,16 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
+#include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
@@ -31,6 +38,10 @@ limitations under the License.
 namespace py = ::pybind11;
 
 namespace {
+
+using ::tensorflow::profiler::KERNEL_STATS_DB;
+using ::tensorflow::profiler::OP_METRICS_DB;
+using ::tensorflow::profiler::STEP_DB;
 
 tensorflow::ProfileRequest MakeProfileRequest(
     const tensorflow::string& logdir, const tensorflow::string& session_id,
@@ -162,4 +173,59 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     return content;
   });
+
+  m.def("xspace_to_trace_events", [](const py::bytes& serialized_xspace_proto) {
+    tensorflow::string content;
+    tensorflow::profiler::XSpace xspace;
+    xspace.ParseFromString(serialized_xspace_proto);
+    tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, &content);
+    return py::bytes(content);
+  });
+
+  m.def("xspace_to_overview_page",
+        [](const py::bytes& serialized_xspace_proto) {
+          tensorflow::profiler::XSpace xspace;
+          xspace.ParseFromString(serialized_xspace_proto);
+          tensorflow::profiler::OverviewPage overview_page =
+              tensorflow::profiler::ConvertOpStatsToOverviewPage(
+                  ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB}));
+          return py::bytes(overview_page.SerializeAsString());
+        });
+
+  m.def("xspace_to_input_pipeline",
+        [](const py::bytes& serialized_xspace_proto) {
+          tensorflow::profiler::XSpace xspace;
+          xspace.ParseFromString(serialized_xspace_proto);
+          tensorflow::profiler::InputPipelineAnalysisResult input_pipeline =
+              tensorflow::profiler::ConvertOpStatsToInputPipelineAnalysis(
+                  ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB}));
+          return py::bytes(input_pipeline.SerializeAsString());
+        });
+
+  m.def("xspace_to_tf_stats", [](const py::bytes& serialized_xspace_proto) {
+    tensorflow::profiler::XSpace xspace;
+    xspace.ParseFromString(serialized_xspace_proto);
+    tensorflow::profiler::TfStatsDatabase tf_stats_db =
+        tensorflow::profiler::ConvertOpStatsToTfStats(
+            ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB}));
+    return py::bytes(tf_stats_db.SerializeAsString());
+  });
+
+  m.def("xspace_to_kernel_stats", [](const py::bytes& serialized_xspace_proto) {
+    tensorflow::profiler::XSpace xspace;
+    xspace.ParseFromString(serialized_xspace_proto);
+    tensorflow::profiler::OpStats op_stats =
+        ConvertXSpaceToOpStats(xspace, {KERNEL_STATS_DB});
+    return py::bytes(op_stats.kernel_stats_db().SerializeAsString());
+  });
+
+  m.def("xspace_to_memory_profile",
+        [](const py::bytes& serialized_xspace_proto) {
+          tensorflow::profiler::XSpace xspace;
+          xspace.ParseFromString(serialized_xspace_proto);
+          std::string json_output;
+          tensorflow::profiler::ConvertXSpaceToMemoryProfileJson(xspace,
+                                                                 &json_output);
+          return py::bytes(json_output);
+        });
 };

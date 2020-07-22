@@ -109,9 +109,8 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  void* raw;
-  context->AllocatePersistentBuffer(context, sizeof(int), &raw);
-  return raw;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(int));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {

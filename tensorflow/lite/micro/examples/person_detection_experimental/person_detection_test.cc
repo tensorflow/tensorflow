@@ -34,13 +34,12 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestInvoke) {
   // Set up logging.
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_person_detect_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    TF_LITE_REPORT_ERROR(error_reporter,
+    TF_LITE_REPORT_ERROR(&micro_error_reporter,
                          "Model provided is schema version %d not equal "
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
@@ -60,7 +59,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Build an interpreter to run the model with.
   tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
+                                       tensor_arena_size,
+                                       &micro_error_reporter);
   interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.
@@ -76,15 +76,13 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, input->type);
 
   // Copy an image with a person into the memory area used for the input.
-  for (int i = 0; i < input->bytes; ++i) {
-    // Subtract 128 to convert between uint8 and int8.
-    input->data.int8[i] = g_person_data[i] - 128;
-  }
+  TFLITE_DCHECK_EQ(input->bytes, static_cast<size_t>(g_person_data_size));
+  memcpy(input->data.int8, g_person_data, input->bytes);
 
   // Run the model on this input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -99,20 +97,18 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // Make sure that the expected "Person" score is higher than the other class.
   int8_t person_score = output->data.int8[kPersonIndex];
   int8_t no_person_score = output->data.int8[kNotAPersonIndex];
-  TF_LITE_REPORT_ERROR(error_reporter,
+  TF_LITE_REPORT_ERROR(&micro_error_reporter,
                        "person data.  person score: %d, no person score: %d\n",
                        person_score, no_person_score);
   TF_LITE_MICRO_EXPECT_GT(person_score, no_person_score);
 
-  // Now test with a blank image.
-  for (int i = 0; i < input->bytes; ++i) {
-    input->data.int8[i] = 0;
-  }
+  // TODO(b/161461076): Update model to make this work on real negative inputs.
+  memset(input->data.int8, 0, input->bytes);
 
   // Run the model on this "No Person" input.
   invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -128,12 +124,12 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   person_score = output->data.int8[kPersonIndex];
   no_person_score = output->data.int8[kNotAPersonIndex];
   TF_LITE_REPORT_ERROR(
-      error_reporter,
+      &micro_error_reporter,
       "no person data.  person score: %d, no person score: %d\n", person_score,
       no_person_score);
   TF_LITE_MICRO_EXPECT_GT(no_person_score, person_score);
 
-  TF_LITE_REPORT_ERROR(error_reporter, "Ran successfully\n");
+  TF_LITE_REPORT_ERROR(&micro_error_reporter, "Ran successfully\n");
 }
 
 TF_LITE_MICRO_TESTS_END

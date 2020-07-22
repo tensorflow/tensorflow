@@ -171,7 +171,7 @@ class SharedBatchScheduler
     // For usage of `split_input_task_func`, please see its comment.
     bool enable_large_batch_splitting = false;
 
-    // `input_task`: a unit of task to be splitted (raw pointer not owned).
+    // `input_task`: a unit of task to be split.
     // `first_output_task_size`: task size of first output.
     // `max_batch_size`: Maximum size of each batch.
     // `output_tasks`: A list of output tasks after split.
@@ -711,7 +711,7 @@ Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
     std::vector<std::unique_ptr<TaskType>> output_tasks;
 
     if (input_task_size <= open_batch_remaining_slot) {
-      // This is the fast path when input doesn't need to be splitted.
+      // This is the fast path when input doesn't need to be split.
       output_tasks.push_back(std::move(*task));
     } else {
       TF_RETURN_IF_ERROR(SplitInputBatchIntoSubtasks(task, &output_tasks));

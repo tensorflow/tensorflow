@@ -16,7 +16,7 @@
 
 This module provides a subset of numpy APIs, built on top of TensorFlow
 operations. Please see documentation here:
-https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/ops/numpy_ops.
+https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/ops/numpy_ops/README.md
 """
 # TODO(wangpeng): Append `np_export`ed symbols to the comments above.
 

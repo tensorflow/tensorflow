@@ -107,6 +107,25 @@ gentbl(
 )
 
 gentbl(
+    name = "hlo_ops_pattern_gen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_patterns.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/mhlo/IR/hlo_patterns.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeOps.td",
+    ],
+)
+
+gentbl(
     name = "lhlo_ops_inc_gen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -203,6 +222,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        "hlo_ops_pattern_gen",
         ":canonicalize_inc_gen",
         ":chlo_ops_inc_gen",
         ":convert_op_folder",
@@ -549,6 +569,26 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_gather_to_torch_index_select",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_gather_to_torch_index_select.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "legalize_tanh_to_approximation",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_tanh_to_approximation.cc"],
     hdrs = [
@@ -590,6 +630,7 @@ cc_library(
         "lib/Dialect/mhlo/transforms/generated_lower_complex.inc",
         "lib/Dialect/mhlo/transforms/lower_complex.cc",
         "lib/Dialect/mhlo/transforms/lower_general_dot.cc",
+        "lib/Dialect/mhlo/transforms/optimize_mhlo.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
@@ -649,7 +690,9 @@ cc_library(
     deps = [
         ":hlo",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -661,6 +704,7 @@ cc_library(
         "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_pass.cc",
         "lib/Dialect/mhlo/transforms/lhlo_legalize_to_llvm_pass.cc",
         "lib/Dialect/mhlo/transforms/materialize_broadcasts_pass.cc",
+        "lib/Dialect/mhlo/transforms/optimize_mhlo_pass.cc",
         "lib/Dialect/mhlo/transforms/test_infer_shaped_type_pass.cc",
         "lib/Dialect/mhlo/transforms/unfuse_batch_norm_pass.cc",
     ],
@@ -678,6 +722,7 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
@@ -695,6 +740,7 @@ cc_library(
         ":hlo_dialect_registration",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
+        ":legalize_gather_to_torch_index_select",
         ":legalize_tanh_to_approximation",
         ":legalize_to_linalg",
         ":legalize_to_standard",

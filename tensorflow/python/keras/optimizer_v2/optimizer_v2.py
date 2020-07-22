@@ -43,9 +43,9 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import revived_types
@@ -1150,13 +1150,16 @@ class OptimizerV2(trackable.Trackable):
     raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_scatter_add(self, x, i, v):
-    with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
+    with ops.control_dependencies([
+        gen_resource_variable_ops.ResourceScatterAdd(
+            resource=x.handle, indices=i, updates=v)
+    ]):
       return x.value()
 
   def _resource_scatter_update(self, x, i, v):
     with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_update(x.handle, i, v)]):
+        [gen_resource_variable_ops.ResourceScatterUpdate(
+            resource=x.handle, indices=i, updates=v)]):
       return x.value()
 
   @property

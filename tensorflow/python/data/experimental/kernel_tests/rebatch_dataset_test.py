@@ -219,6 +219,70 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       value_index += num_values
     self.assertDatasetProduces(dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoOutputShapes(self):
+    # Some datasets, e.g. datasets with None tensors, have components without
+    # output shapes. Test that this doesn't break rebatching shape inference
+    # logic.
+    dataset = dataset_ops.Dataset.range(4)
+    dataset = dataset.map(lambda x: (x, None))
+    dataset = dataset.batch(4, drop_remainder=True)
+    _ = distribute._RebatchDataset(dataset, num_replicas=2)
+
+
+class ComputeBatchSizeTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeKnown(self):
+    # When drop_remainder=True, batch size can be inferred from the type spec.
+    dataset = dataset_ops.Dataset.range(32).batch(4, drop_remainder=True)
+    dataset = dataset_ops.Dataset.zip((dataset, dataset))
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeKnownAndMismatched(self):
+    # Return -1 when different components have different batch sizes.
+    dataset = dataset_ops.Dataset.range(32)
+    dataset = dataset_ops.Dataset.zip((dataset.batch(4, drop_remainder=True),
+                                       dataset.batch(8, drop_remainder=True)))
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(-1, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeUnknown(self):
+    dataset = dataset_ops.Dataset.range(32).batch(4)
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeWithPassthrough(self):
+    dataset = dataset_ops.Dataset.range(32).batch(4)
+    dataset = dataset.take(5)
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeWithPassthroughInvalid(self):
+    dataset = dataset_ops.Dataset.range(32).batch(4)
+    dataset = dataset.map(lambda x: x + 1)
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(-1, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeWithZip(self):
+    dataset = dataset_ops.Dataset.range(32).batch(4)
+    dataset = dataset_ops.Dataset.zip((dataset, dataset))
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeWithZipMismatched(self):
+    dataset = dataset_ops.Dataset.range(32)
+    dataset = dataset_ops.Dataset.zip((dataset.batch(4), dataset.batch(8)))
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(-1, self.evaluate(batch_size))
+
 
 if __name__ == "__main__":
   test.main()

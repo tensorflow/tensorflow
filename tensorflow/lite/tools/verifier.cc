@@ -384,6 +384,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_COMPLEX64:
       bytes_required *= sizeof(std::complex<float>);
       break;
+    case TensorType_COMPLEX128:
+      bytes_required *= sizeof(std::complex<double>);
+      break;
     default:
       ReportError(error_reporter, "Tensor %s invalid type: %d",
                   NameOrEmptyString(tensor.name()), tensor.type());

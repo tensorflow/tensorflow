@@ -175,7 +175,8 @@ Status TapeVSpace::CallBackwardFunction(
     gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
     std::vector<AbstractTensorHandle*>* result) const {
   if (backward_function == nullptr) return Status::OK();
-  return backward_function->Compute(output_gradients, result);
+  Context ctx = {ctx_};
+  return backward_function->Compute(&ctx, output_gradients, result);
 }
 
 // Looks up the ID of a Gradient.

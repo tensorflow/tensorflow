@@ -57,7 +57,7 @@ ops.NotDifferentiable("TPUReplicatedInput")
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
-_BLACKLISTED_OPS = set([
+_DENYLISTED_OPS = set([
     "Placeholder",
 ])
 
@@ -526,7 +526,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def AddOp(self, op):
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_OPS:
+    if op.type in _DENYLISTED_OPS:
       logging.error("Operation of type %s (%s) is not supported on the TPU. "
                     "Execution will fail if this op is used in the graph. " %
                     (op.type, op.name))
@@ -1947,7 +1947,9 @@ def rewrite(computation,
   # pylint: enable=indexing-exception
 
   # Operations that indicate some error in the user's inference graph.
-_BLACKLISTED_INFERENCE_OPS = set([
+
+
+_DENYLISTED_INFERENCE_OPS = set([
     "ReadVariableOp",
     "AssignVariableOp",
     "AssignAddVariableOp",
@@ -1993,7 +1995,7 @@ class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if self._check_ops and op.type in _BLACKLISTED_INFERENCE_OPS:
+    if self._check_ops and op.type in _DENYLISTED_INFERENCE_OPS:
       raise NotImplementedError(
           "Operation of type %s (%s) is not supported on the TPU for inference."
           " Execution will fail if this op is used in the graph. Make sure your"

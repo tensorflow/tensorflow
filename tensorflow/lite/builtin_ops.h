@@ -153,6 +153,7 @@ typedef enum {
   kTfLiteBuiltinDensify = 124,
   kTfLiteBuiltinSegmentSum = 125,
   kTfLiteBuiltinBatchMatmul = 126,
+  kTfLiteBuiltinBroadcastTo = 127,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

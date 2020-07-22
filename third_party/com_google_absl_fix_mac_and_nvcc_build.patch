@@ -1,103 +1,8 @@
---- ./absl/time/internal/cctz/BUILD.bazel	2019-09-23 13:20:52.000000000 -0700
-+++ ./absl/time/internal/cctz/BUILD.bazel.fixed	2019-09-23 13:20:48.000000000 -0700
-@@ -74,15 +74,6 @@
-         "include/cctz/time_zone.h",
-         "include/cctz/zone_info_source.h",
-     ],
--    linkopts = select({
--        ":osx": [
--            "-framework Foundation",
--        ],
--        ":ios": [
--            "-framework Foundation",
--        ],
--        "//conditions:default": [],
--    }),
-     visibility = ["//visibility:public"],
-     deps = [
-         ":civil_time",
---- ./absl/strings/string_view.h	2019-09-23 13:20:52.000000000 -0700
-+++ ./absl/strings/string_view.h.fixed	2019-09-23 13:20:48.000000000 -0700
-@@ -283,7 +283,14 @@
-   // Returns the ith element of the `string_view` using the array operator.
-   // Note that this operator does not perform any bounds checking.
-   constexpr const_reference operator[](size_type i) const {
-+#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
-+    // An NVCC bug treats the original return expression as a non-constant,
-+    // which is not allowed in a constexpr function.  This will be fixed in the
-+    // CUDA 10.2 release.
-+    return ptr_[i];
-+#else
-     return ABSL_ASSERT(i < size()), ptr_[i];
-+#endif
-   }
- 
-   // string_view::at()
-@@ -292,25 +299,46 @@
-   // and an exception of type `std::out_of_range` will be thrown on invalid
-   // access.
-   constexpr const_reference at(size_type i) const {
-+#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
-+    // An NVCC bug treats the original return expression as a non-constant,
-+    // which is not allowed in a constexpr function.  This will be fixed in the
-+    // CUDA 10.2 release.
-+    return ptr_[i];
-+#else
-     return ABSL_PREDICT_TRUE(i < size())
-                ? ptr_[i]
-                : ((void)base_internal::ThrowStdOutOfRange(
-                       "absl::string_view::at"),
-                   ptr_[i]);
-+#endif
-   }
- 
-   // string_view::front()
-   //
-   // Returns the first element of a `string_view`.
-   constexpr const_reference front() const {
-+#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
-+    // An NVCC bug treats the original return expression as a non-constant,
-+    // which is not allowed in a constexpr function.  This will be fixed in the
-+    // CUDA 10.2 release.
-+    return ptr_[0];
-+#else
-     return ABSL_ASSERT(!empty()), ptr_[0];
-+#endif
-   }
- 
-   // string_view::back()
-   //
-   // Returns the last element of a `string_view`.
-   constexpr const_reference back() const {
-+#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
-+    // An NVCC bug treats the original return expression as a non-constant,
-+    // which is not allowed in a constexpr function.  This will be fixed in the
-+    // CUDA 10.2 release.
-+    return ptr_[size() - 1];
-+#else
-     return ABSL_ASSERT(!empty()), ptr_[size() - 1];
-+#endif
-   }
- 
-   // string_view::data()
-@@ -519,7 +547,14 @@
-       (std::numeric_limits<difference_type>::max)();
- 
-   static constexpr size_type CheckLengthInternal(size_type len) {
-+#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
-+    // An NVCC bug treats the original return expression as a non-constant,
-+    // which is not allowed in a constexpr function.  This will be fixed in the
-+    // CUDA 10.2 release.
-+    return len;
-+#else
-     return (void)ABSL_ASSERT(len <= kMaxSize), len;
-+#endif
-   }
- 
-   static constexpr size_type StrlenInternal(const char* str) {
---- ./absl/container/internal/compressed_tuple.h	2020-03-04 12:57:37.000000000 -0800
-+++ ./absl/container/internal/compressed_tuple.h.fixed	2019-06-20 11:54:01.000000000 -0700
-@@ -32,7 +32,6 @@ Revert to commit 43ef2148c0936ebf7cb4be6b19927a9d9d145b8f as commit e9324d926a9189e222741fce6e676f0944661a72 includes a change not compatible with CUDA on Windows.
+diff --git a/absl/container/internal/compressed_tuple.h b/absl/container/internal/compressed_tuple.h
+index 4bfe92f..01db713 100644
+--- a/absl/container/internal/compressed_tuple.h
++++ b/absl/container/internal/compressed_tuple.h
+@@ -32,7 +32,6 @@
  #ifndef ABSL_CONTAINER_INTERNAL_COMPRESSED_TUPLE_H_
  #define ABSL_CONTAINER_INTERNAL_COMPRESSED_TUPLE_H_
  
@@ -105,7 +10,7 @@
  #include <tuple>
  #include <type_traits>
  #include <utility>
-@@ -77,110 +76,61 @@
+@@ -77,110 +76,61 @@ constexpr bool IsFinal() {
  #endif
  }
  
@@ -234,7 +139,7 @@
  //
  // To access the members, use member .get<N>() function.
  //
-@@ -196,58 +146,36 @@
+@@ -196,58 +146,36 @@ using TupleMoveConstructible = typename std::conditional<
  template <typename... Ts>
  class ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC CompressedTuple
      : private internal_compressed_tuple::CompressedTupleImpl<
@@ -302,3 +207,104 @@
    }
  };
  
+diff --git a/absl/strings/string_view.h b/absl/strings/string_view.h
+index 1861ea6..c7a916b 100644
+--- a/absl/strings/string_view.h
++++ b/absl/strings/string_view.h
+@@ -283,7 +283,14 @@ class string_view {
+   // Returns the ith element of the `string_view` using the array operator.
+   // Note that this operator does not perform any bounds checking.
+   constexpr const_reference operator[](size_type i) const {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return ptr_[i];
++#else
+     return ABSL_ASSERT(i < size()), ptr_[i];
++#endif
+   }
+ 
+   // string_view::at()
+@@ -292,25 +299,46 @@ class string_view {
+   // and an exception of type `std::out_of_range` will be thrown on invalid
+   // access.
+   constexpr const_reference at(size_type i) const {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return ptr_[i];
++#else
+     return ABSL_PREDICT_TRUE(i < size())
+                ? ptr_[i]
+                : ((void)base_internal::ThrowStdOutOfRange(
+                       "absl::string_view::at"),
+                   ptr_[i]);
++#endif
+   }
+ 
+   // string_view::front()
+   //
+   // Returns the first element of a `string_view`.
+   constexpr const_reference front() const {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return ptr_[0];
++#else
+     return ABSL_ASSERT(!empty()), ptr_[0];
++#endif
+   }
+ 
+   // string_view::back()
+   //
+   // Returns the last element of a `string_view`.
+   constexpr const_reference back() const {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return ptr_[size() - 1];
++#else
+     return ABSL_ASSERT(!empty()), ptr_[size() - 1];
++#endif
+   }
+ 
+   // string_view::data()
+@@ -519,7 +547,14 @@ class string_view {
+       (std::numeric_limits<difference_type>::max)();
+ 
+   static constexpr size_type CheckLengthInternal(size_type len) {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return len;
++#else
+     return (void)ABSL_ASSERT(len <= kMaxSize), len;
++#endif
+   }
+ 
+   static constexpr size_type StrlenInternal(const char* str) {
+diff --git a/absl/time/internal/cctz/BUILD.bazel b/absl/time/internal/cctz/BUILD.bazel
+index 7a53c81..159b0f0 100644
+--- a/absl/time/internal/cctz/BUILD.bazel
++++ b/absl/time/internal/cctz/BUILD.bazel
+@@ -74,15 +74,6 @@ cc_library(
+         "include/cctz/time_zone.h",
+         "include/cctz/zone_info_source.h",
+     ],
+-    linkopts = select({
+-        ":osx": [
+-            "-framework Foundation",
+-        ],
+-        ":ios": [
+-            "-framework Foundation",
+-        ],
+-        "//conditions:default": [],
+-    }),
+     visibility = ["//visibility:public"],
+     deps = [
+         ":civil_time",

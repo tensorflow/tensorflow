@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
-// clang-format off
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
-// clang-format on
 #include "tensorflow/core/kernels/training_ops.h"
 
 #include <algorithm>  // NOLINT
@@ -26,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/util.h"
 

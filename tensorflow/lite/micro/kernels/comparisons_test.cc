@@ -45,10 +45,15 @@ void TestComparison(tflite::BuiltinOperator op, TfLiteTensor* tensors,
   const int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
+  void* user_data = nullptr;
+  if (registration->init) {
+    user_data = registration->init(&context, /*buffer=*/nullptr, /*length=*/0);
+  }
+
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.user_data = nullptr;
+  node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
@@ -127,7 +132,6 @@ void TestComparisonQuantizedUInt8(tflite::BuiltinOperator op,
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
 
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input1_data, input1_quantized, input1_dims,
@@ -151,7 +155,6 @@ void TestComparisonQuantizedInt8(tflite::BuiltinOperator op,
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
 
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input1_data, input1_quantized, input1_dims,
@@ -744,8 +747,6 @@ TF_LITE_MICRO_TEST(GreaterUInt8EqualQuantized) {
 
   const float input1_scale = 0.5;
   const int input1_zero_point = 128;
-  const float input2_scale = 0.25;
-  const int input2_zero_point = 125;
   uint8_t input1_quantized[4];
   uint8_t input2_quantized[4];
 
@@ -769,8 +770,6 @@ TF_LITE_MICRO_TEST(LessQuantizedUInt8) {
 
   const float input1_scale = 0.5;
   const int input1_zero_point = 128;
-  const float input2_scale = 0.25;
-  const int input2_zero_point = 125;
   uint8_t input1_quantized[4];
   uint8_t input2_quantized[4];
 
@@ -794,8 +793,6 @@ TF_LITE_MICRO_TEST(LessEqualQuantizedUInt8) {
 
   const float input1_scale = 0.5;
   const int input1_zero_point = 128;
-  const float input2_scale = 0.25;
-  const int input2_zero_point = 125;
   uint8_t input1_quantized[4];
   uint8_t input2_quantized[4];
 
@@ -824,8 +821,6 @@ TF_LITE_MICRO_TEST(EqualQuantizedUInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = 128;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 125;
     uint8_t input1_quantized[6];
     uint8_t input2_quantized[6];
 
@@ -855,8 +850,6 @@ TF_LITE_MICRO_TEST(NotEqualQuantizedUInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = 128;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 125;
     uint8_t input1_quantized[6];
     uint8_t input2_quantized[6];
 
@@ -886,8 +879,6 @@ TF_LITE_MICRO_TEST(NotEqualQuantizedInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = -9;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 9;
     int8_t input1_quantized[6];
     int8_t input2_quantized[6];
 
@@ -917,8 +908,6 @@ TF_LITE_MICRO_TEST(GreaterQuantizedUInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = 128;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 125;
     uint8_t input1_quantized[6];
     uint8_t input2_quantized[6];
 
@@ -948,8 +937,6 @@ TF_LITE_MICRO_TEST(GreaterQuantizedInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = -9;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 9;
     int8_t input1_quantized[6];
     int8_t input2_quantized[6];
 
@@ -979,8 +966,6 @@ TF_LITE_MICRO_TEST(GreaterEqualQuantizedUInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = 128;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 125;
     uint8_t input1_quantized[6];
     uint8_t input2_quantized[6];
 
@@ -1010,8 +995,6 @@ TF_LITE_MICRO_TEST(GreaterEqualQuantizedInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = -9;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 9;
     int8_t input1_quantized[6];
     int8_t input2_quantized[6];
 
@@ -1041,8 +1024,6 @@ TF_LITE_MICRO_TEST(LessQuantizedUInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = 128;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 125;
     uint8_t input1_quantized[6];
     uint8_t input2_quantized[6];
 
@@ -1072,8 +1053,6 @@ TF_LITE_MICRO_TEST(LessQuantizedInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = -9;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 9;
     int8_t input1_quantized[6];
     int8_t input2_quantized[6];
 
@@ -1103,8 +1082,6 @@ TF_LITE_MICRO_TEST(LessEqualQuantizedUInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = 128;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 125;
     uint8_t input1_quantized[6];
     uint8_t input2_quantized[6];
 
@@ -1134,8 +1111,6 @@ TF_LITE_MICRO_TEST(LessEqualQuantizedInt8WithBroadcast) {
 
     const float input1_scale = 0.5;
     const int input1_zero_point = -9;
-    const float input2_scale = 0.25;
-    const int input2_zero_point = 9;
     int8_t input1_quantized[6];
     int8_t input2_quantized[6];
 

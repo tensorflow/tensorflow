@@ -1201,6 +1201,12 @@ class HloInstruction {
   // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
   Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
 
+  // Same as ReplaceAllUsesWith, but only replace given set of users.
+  Status ReplaceUsesWith(absl::Span<HloInstruction* const> users,
+                         HloInstruction* new_producer);
+  Status ReplaceAllUsesWithDifferentShape(
+      absl::Span<HloInstruction* const> users, HloInstruction* new_producer);
+
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
   // complete. If ignore_control_predecessors is true, instructions only

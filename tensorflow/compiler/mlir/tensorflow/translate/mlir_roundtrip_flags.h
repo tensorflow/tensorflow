@@ -96,6 +96,23 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
                            const std::vector<string>& node_dtypes,
                            const std::vector<std::vector<int>>& node_shapes,
                            GraphImportConfig::InputArrays* inputs);
+
+// Parses shapes from the given string into shapes_vector which is a structured
+// format.
+// NOTE: If shapes_str is empty, shapes_vector will also be empty.
+Status ParseNodeShapes(absl::string_view shapes_str,
+                       std::vector<std::vector<int>>& shapes_vector);
+
+// Parses names from the given string into the names_vector.
+// NOTE: If names_str is empty, names_vector will also be empty.
+Status ParseNodeNames(absl::string_view names_str,
+                      std::vector<std::string>& names_vector);
+
+// Parses data types from the given string into the data_type_vector.
+// NOTE: If data_types_str is empty, data_type_vector will also be empty.
+Status ParseNodeDataTypes(absl::string_view data_types_str,
+                          std::vector<std::string>& data_type_vector);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_

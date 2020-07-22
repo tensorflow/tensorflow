@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// Represents the four lists of ops: the allow list, gray list, black list, and
+// Represents the four lists of ops: the allow list, infer list, deny list, and
 // clear list. These lists determine which ops are converted to fp16/bf16
 // (referred to as 'f16' for short) and which ops stay as fp32.
 class AutoMixedPrecisionLists {
@@ -36,13 +36,13 @@ class AutoMixedPrecisionLists {
   virtual gtl::FlatSet<string> AllowList() = 0;
   // Returns the set of ops that can run in f16 and are considered numerically-
   // safe (for execution in f16), but which may be made unsafe by an upstream
-  // blacklist op.
-  virtual gtl::FlatSet<string> GrayList() = 0;
+  // denylist op.
+  virtual gtl::FlatSet<string> InferList() = 0;
   // Returns the set of ops that are considered numerically-dangerous (i.e.,
   // unsafe for execution in f16) and whose effects may also be observed in
   // downstream nodes (e.g. for f16, in Exp -> Add, the Add is unsafe due to
   // the Exp).
-  virtual gtl::FlatSet<string> BlackList() = 0;
+  virtual gtl::FlatSet<string> DenyList() = 0;
   // Returns the set of ops that do not have numerically-significant effects
   // (i.e., they are always considered safe for execution in f16 precision), and
   // can run in f16.
@@ -51,10 +51,11 @@ class AutoMixedPrecisionLists {
  protected:
   // Adds or removes ops from list if certain environmental variables are set.
   static void UpdateList(const string& list_name, gtl::FlatSet<string>* list) {
-    CHECK(list_name == "ALLOWLIST" || list_name == "GRAYLIST" ||  // Crash OK.
-          list_name == "BLACKLIST" || list_name == "CLEARLIST" ||
+    CHECK(list_name == "ALLOWLIST" || list_name == "INFERLIST" ||  // Crash OK.
+          list_name == "DENYLIST" || list_name == "CLEARLIST" ||
           // TODO(reedwm): for bkwds compat; remove when no longer necessary:
-          list_name == "WHITELIST");
+          list_name == "WHITELIST" || list_name == "GRAYLIST" ||
+          list_name == "BLACKLIST");
     string add_env_var =
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_" + list_name + "_ADD";
     string remove_env_var =
@@ -154,7 +155,7 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
     return list;
   }
 
-  gtl::FlatSet<string> GrayList() override {
+  gtl::FlatSet<string> InferList() override {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
@@ -204,11 +205,14 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "Tanh",
         "TanhGrad",
     };
+    UpdateList("INFERLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
     UpdateList("GRAYLIST", &list);
     return list;
   }
 
-  gtl::FlatSet<string> BlackList() override {
+  gtl::FlatSet<string> DenyList() override {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
@@ -224,6 +228,9 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "SparseSoftmaxCrossEntropyWithLogits",
         "Sum",
     };
+    UpdateList("DENYLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
     UpdateList("BLACKLIST", &list);
     return list;
   }
@@ -344,7 +351,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
   AutoMixedPrecisionListsMkl() {}
 
   // Only ops which are supported by MKL in bfloat16 should be added to the
-  // allow list, gray list, or clear list.
+  // allow list, infer list, or clear list.
   gtl::FlatSet<string> AllowList() override {
     auto list = gtl::FlatSet<string>{"Conv2D",
                                      "Conv2DBackpropFilter",
@@ -360,10 +367,13 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "BatchMatMulV2"};
 
     UpdateList("ALLOWLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
+    UpdateList("WHITELIST", &list);
     return list;
   }
 
-  gtl::FlatSet<string> GrayList() override {
+  gtl::FlatSet<string> InferList() override {
     auto list = gtl::FlatSet<string>{
         "Add",
         "AddN",
@@ -384,11 +394,14 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "Mul",
         "Sub",
     };
+    UpdateList("INFERLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
     UpdateList("GRAYLIST", &list);
     return list;
   }
 
-  gtl::FlatSet<string> BlackList() override {
+  gtl::FlatSet<string> DenyList() override {
     auto list = gtl::FlatSet<string>{
         "Exp",
         "Expm1",
@@ -401,6 +414,9 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "SparseSoftmaxCrossEntropyWithLogits",
         "Sum",
     };
+    UpdateList("DENYLIST", &list);
+    // For backwards compatibility, keeping the original env variable here.
+    // TODO(reedwm): This should be removed if we don't have active users.
     UpdateList("BLACKLIST", &list);
     return list;
   }

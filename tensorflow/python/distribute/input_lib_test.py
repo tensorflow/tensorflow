@@ -1144,7 +1144,6 @@ class DistributedIteratorMultiWorkerTest(
           expected_values = [[[0, 1]], [[2, 3]], [[4]]]
           input_context = None
 
-        strategy.extended.experimental_enable_get_next_as_optional = True
         self._test_input_iteration(
             input_type,
             api_type,

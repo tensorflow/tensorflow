@@ -90,8 +90,6 @@ py_library(
         "//tensorflow/python:control_flow_v2_func_graphs",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
@@ -318,6 +316,21 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "keras_tensor_test",
+    size = "small",
+    srcs = ["keras_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -37,8 +37,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.util import nest
+
+
+newaxis = np_export.np_export_constant(__name__, 'newaxis', np.newaxis)
 
 
 @np_utils.np_doc('empty')

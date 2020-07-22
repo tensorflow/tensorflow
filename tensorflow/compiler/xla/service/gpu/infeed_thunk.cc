@@ -25,13 +25,15 @@ namespace gpu {
 InfeedThunk::InfeedThunk(
     ThunkInfo thunk_info,
     const ShapeTree<BufferAllocation::Slice>& infeed_slices)
-    : Thunk(Kind::kInfeed, thunk_info), infeed_slices_(infeed_slices) {}
+    : Thunk(Kind::kInfeed, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
+      infeed_slices_(infeed_slices) {}
 
 Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
   auto& buffer_allocations = *params.buffer_allocations;
 
-  VLOG(2) << "Infeeding to GPU: " << hlo_instruction()->ToString();
+  VLOG(2) << "Infeeding to GPU: " << hlo_instruction_->ToString();
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
