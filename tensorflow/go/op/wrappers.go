@@ -28338,6 +28338,9 @@ func AvgPool3DDataFormat(value string) AvgPool3DAttr {
 
 // Performs 3D average pooling on the input.
 //
+// Each entry in `output` is the mean of the corresponding size `ksize` window in
+// `value`.
+//
 // Arguments:
 //	input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 //	ksize: 1-D tensor of length 5. The size of the window for each dimension of
