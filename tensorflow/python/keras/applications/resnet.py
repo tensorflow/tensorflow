@@ -220,7 +220,7 @@ def ResNet(stack_fn,
         cache_subdir='models',
         file_hash=file_hash)
     by_name = True if 'resnext' in model_name else False
-    model.load_weights(weights_path by_name=by_name)
+    model.load_weights(weights_path, by_name=by_name)
   elif weights is not None:
     model.load_weights(weights)
 
