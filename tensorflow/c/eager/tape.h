@@ -177,12 +177,12 @@ class GradientTape {
 template <typename Gradient>
 class ForwardFunction
     : public std::function<Status(const std::vector<Gradient*>&,
-                                  std::vector<Gradient*>*)> {
+                                  std::vector<Gradient*>*, bool)> {
  public:
   template <typename lambda_type>
   explicit ForwardFunction(lambda_type lambda)
       : std::function<Status(const std::vector<Gradient*>&,
-                             std::vector<Gradient*>*)>(lambda) {}
+                             std::vector<Gradient*>*, bool)>(lambda) {}
 };
 
 // Computes Jacobian-vector products using forward-mode automatic
@@ -1105,7 +1105,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
         output_tensors, backward_function_getter, backward_function_deleter,
         in_grads, &forward_grads));
   } else {
-    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads));
+    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads, false));
   }
   for (int i = 0; i < forward_grads.size(); ++i) {
     if (forward_grads[i] != nullptr) {
@@ -1171,7 +1171,7 @@ Status ForwardBatchAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumula
     //Raise apt error
   }
   else {
-    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads));
+    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads, true));
   }
   for (int i = 0; i < forward_grads.size(); ++i) {
     if (forward_grads[i] != nullptr) {
