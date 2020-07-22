@@ -112,13 +112,11 @@ absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
     case kTfLiteActReluN1To1:
     case kTfLiteActRelu6:
     case kTfLiteActTanh:
+    case kTfLiteActSigmoid:
       return absl::OkStatus();
     case kTfLiteActSignBit:
       return absl::UnimplementedError(
           "TfLiteFusedActivation.kTfLiteActSignBit");
-    case kTfLiteActSigmoid:
-      return absl::UnimplementedError(
-          "TfLiteFusedActivation.kTfLiteActSigmoid");
 
       // Do not add default; we want compilation error rather than run-time
       // error.
@@ -159,6 +157,13 @@ absl::Status MaybeFuseActivation(TfLiteFusedActivation fused_activation,
       activation_node->operation.type = ToString(OperationType::TANH);
       return absl::OkStatus();
     }
+    case kTfLiteActSigmoid: {
+      Node* activation_node;
+      RETURN_IF_ERROR(
+          NewPassthroughNode(graph, node, outputs[0], &activation_node));
+      activation_node->operation.type = ToString(OperationType::SIGMOID);
+      return absl::OkStatus();
+    } break;
     default:
       return absl::NotFoundError(
           absl::StrCat("Unsupported fused activation: ", fused_activation));
