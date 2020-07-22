@@ -323,7 +323,8 @@ TEST(OpsTest, ShapeInferenceScalarShape) {
   TF_ShapeHandle* TF_scalar_shape = TF_ShapeInferenceContextScalar(C_CTX(&c)); 
   shape_inference::ShapeHandle* scalar_shape = 
       reinterpret_cast<shape_inference::ShapeHandle*>(TF_scalar_shape); 
-  ASSERT_EQ("[]", c.DebugString(*scalar_shape)); 
+  ASSERT_EQ("[]", c.DebugString(*scalar_shape));
+  TF_DeleteShapeHandle(TF_scalar_shape); 
 }
 
 }  // namespace
