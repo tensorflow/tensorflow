@@ -60,6 +60,21 @@ TEST(ElementwiseOneArgumentTest, Cos) {
               Pointwise(FloatNear(1e-6), {1.0, -1.0, -1.0, 0.540302}));
 }
 
+TEST(ElementwiseOneArgumentTest, Elu) {
+  OperationType op_type = OperationType::ELU;
+  const BHWC shape(1, 1, 1, 7);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(model.PopulateTensor(
+      0, {0.0f, 1.0f, -1.0f, 100.0f, -100.0f, 0.01f, -0.01f}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.0f, 1.0f, std::exp(-1.0f) - 1.0f,
+                                          100.0f, std::exp(-100.0f) - 1.0f,
+                                          0.01f, std::exp(-0.01f) - 1.0f}));
+}
+
 TEST(ElementwiseOneArgumentTest, Exp) {
   OperationType op_type = OperationType::EXP;
   const BHWC shape(1, 1, 1, 7);
