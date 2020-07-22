@@ -1836,6 +1836,9 @@ Operation *AvgPoolDivideByCount(
   return result;
 }
 
+Value GetAvgPoolInput(TF::AvgPoolOp op) { return op.value(); }
+Value GetAvgPoolInput(TF::AvgPool3DOp op) { return op.input(); }
+
 // Converts AvgPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with add as the reduction function. The reduction result is
 // then divided by the number of elements in the window.
@@ -1846,8 +1849,9 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
+    Value input_value = GetAvgPoolInput(op);
     auto input_type =
-        op.value().getType().template dyn_cast<RankedTensorType>();
+        input_value.getType().template dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
 
     // We will do accumulation first; use a larger bitwidth if suitable.
@@ -1861,8 +1865,6 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
           RankedTensorType::get(ranked_type.getShape(), sum_element_type);
     else
       result_type = UnrankedTensorType::get(sum_element_type);
-
-    Value input_value = op.value();
 
     // Convert if we need enlarge the element type's bitwidth.
     if (input_element_type != sum_element_type)
