@@ -968,7 +968,7 @@ class DistributedDataset(_IterableInput):
       try:
         # pylint: disable=protected-access
         with ops.colocate_with(dataset._variant_tensor):
-          dataset = distribute._RebatchDataset(dataset, split_batch_by)
+          dataset = distribute._LegacyRebatchDataset(dataset, split_batch_by)
           # Add a prefetch to pipeline rebatching for performance.
           # TODO(rachelim): Instead of inserting an extra prefetch stage here,
           # leverage static graph rewrites to insert _RebatchDataset before

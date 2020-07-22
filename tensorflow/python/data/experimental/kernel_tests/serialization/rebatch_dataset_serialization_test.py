@@ -27,7 +27,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class RebatchDatasetSerializationTest(
+class LegacyRebatchDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase,
     parameterized.TestCase):
 
@@ -35,12 +35,12 @@ class RebatchDatasetSerializationTest(
   def testCore(self):
 
     def build_dataset(num_elements, batch_size):
-      return distribute._RebatchDataset(
+      return distribute._LegacyRebatchDataset(
           dataset_ops.Dataset.range(num_elements).batch(
               4 * batch_size, drop_remainder=True),
           num_replicas=4)
 
-    self.run_core_tests(lambda: build_dataset(200, 10), 20)
+    self.run_core_tests(lambda: build_dataset(64, 8), 8)
 
 
 if __name__ == "__main__":
