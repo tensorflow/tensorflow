@@ -51,8 +51,10 @@
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
     * <ADD RELEASE NOTES HERE>
-*   `tf.function`/AutoGraph:
-    * <ADD RELEASE NOTES HERE>
+* `tf.function` / AutoGraph:
+  * Added `experimental_follow_type_hints` argument for `tf.function`. When
+    True, the function may use type annotations to optimize the tracing
+    performance.
 *   `tf.lite`:
     * Better support for ops with high-dimensional broadcasting inputs by adding
   `BroadcastTo` ops when necessary.
