@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
+#include "tensorflow/c/experimental/ops/array_ops.h"
+
 using namespace tensorflow;
 using namespace tensorflow::gradients; 
 using namespace tensorflow::gradients::internal; 
@@ -51,6 +53,10 @@ using namespace tensorflow::gradients::internal;
 // Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
 //                 absl::Span<AbstractTensorHandle* const> inputs,
 //                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+
+// ========================== tape  ==============================
+
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/mnist_gradients_util.h"
-//#include "tensorflow/c/eager/mnist_gradients.h"
+
 
 #include <memory>
 
@@ -49,7 +49,6 @@ class CppGradients
 
 
 // ========================= Util Functions ==============================
-
 void printArr(float data[], int n)
 {
   std::cout << std::endl << "[";
@@ -137,7 +136,6 @@ AbstractTensorHandlePtr getMatrixTensorHandleUtilInt(AbstractContext* ctx, int v
 }
 
 // ============================== Start Tests =================================================
-
 
 TEST_P(CppGradients, TestAddGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -818,34 +816,6 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
 
 }
 
-// Test Model to verify Softmax Loss
-Status SoftmaxLossModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
- 
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch scores
-  std::vector<AbstractTensorHandle*> sm_outputs(2);
-  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, inputs, absl::MakeSpan(sm_outputs), 
-      "sm0", registry));  // Softmax(X, labels)
-  
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  outputs[0] = sm_outputs[0]; 
-  outputs[1] = sm_outputs[1];
-
-  for (auto sm_output : sm_outputs) {
-    sm_output->Release();
-  }
-
-  delete tape;
-  return Status::OK();
-}
-
-
 
 TEST_P(CppGradients, TestSoftmaxLossGrad) {
 
@@ -911,7 +881,6 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   outputs[1]->Release();
   TF_DeleteTensor(dX_tensor);
 }
-
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
 // supported. It is needed for AddN op which is used for gradient aggregation.

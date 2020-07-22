@@ -49,48 +49,48 @@ class CppGradients
   }
 };
 
-// Creates an Identity op.
-Status Identity(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
-  AbstractOperationPtr identity_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      identity_op->Reset("Identity", /*raw_device_name=*/nullptr));
-  if (isa<tracing::TracingOperation>(identity_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(identity_op.get())
-                           ->SetOpName(name));
-  }
-  TF_RETURN_IF_ERROR(identity_op->AddInput(inputs[0]));
-  int num_retvals = 1;
-  TF_RETURN_IF_ERROR(identity_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
+// // Creates an Identity op.
+// Status Identity(AbstractContext* ctx,
+//                 absl::Span<AbstractTensorHandle* const> inputs,
+//                 absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+//   AbstractOperationPtr identity_op(ctx->CreateOperation());
+//   TF_RETURN_IF_ERROR(
+//       identity_op->Reset("Identity", /*raw_device_name=*/nullptr));
+//   if (isa<tracing::TracingOperation>(identity_op.get())) {
+//     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(identity_op.get())
+//                            ->SetOpName(name));
+//   }
+//   TF_RETURN_IF_ERROR(identity_op->AddInput(inputs[0]));
+//   int num_retvals = 1;
+//   TF_RETURN_IF_ERROR(identity_op->Execute(outputs, &num_retvals));
+//   return Status::OK();
+// }
 
-// =================== Register gradients for Add ============================
-class AddGradientFunction : public GradientFunction {
- public:
-  explicit AddGradientFunction(AbstractContext* ctx) : ctx_(ctx) {}
-  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
-                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
-    grad_outputs->resize(2);
-    std::vector<AbstractTensorHandle*> identity_outputs(1);
-    TF_RETURN_IF_ERROR(Identity(ctx_, {grad_inputs[0]},
-                                absl::MakeSpan(identity_outputs), "Id0"));
-    (*grad_outputs)[0] = identity_outputs[0];
-    TF_RETURN_IF_ERROR(Identity(ctx_, {grad_inputs[0]},
-                                absl::MakeSpan(identity_outputs), "Id1"));
-    (*grad_outputs)[1] = identity_outputs[0];
-    return Status::OK();
-  }
-  ~AddGradientFunction() override {}
+// // =================== Register gradients for Add ============================
+// class AddGradientFunction : public GradientFunction {
+//  public:
+//   explicit AddGradientFunction(AbstractContext* ctx) : ctx_(ctx) {}
+//   Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+//                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
+//     grad_outputs->resize(2);
+//     std::vector<AbstractTensorHandle*> identity_outputs(1);
+//     TF_RETURN_IF_ERROR(Identity(ctx_, {grad_inputs[0]},
+//                                 absl::MakeSpan(identity_outputs), "Id0"));
+//     (*grad_outputs)[0] = identity_outputs[0];
+//     TF_RETURN_IF_ERROR(Identity(ctx_, {grad_inputs[0]},
+//                                 absl::MakeSpan(identity_outputs), "Id1"));
+//     (*grad_outputs)[1] = identity_outputs[0];
+//     return Status::OK();
+//   }
+//   ~AddGradientFunction() override {}
 
- private:
-  AbstractContext* ctx_;
-};
+//  private:
+//   AbstractContext* ctx_;
+// };
 
-GradientFunction* AddRegisterer(const ForwardOperation& op) {
-  return new AddGradientFunction(op.ctx);
-}
+// GradientFunction* AddRegisterer(const ForwardOperation& op) {
+//   return new AddGradientFunction(op.ctx);
+// }
  
 Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Add", AddRegisterer));
@@ -100,7 +100,7 @@ Status RegisterGradients(GradientRegistry* registry) {
 }
 
 
-// =================== End gradient registrations ============================
+// // =================== End gradient registrations ============================
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
@@ -419,7 +419,7 @@ TEST_P(CppGradients, TestAddGrad) {
   }
 
   GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
+  Status s = RegisterGradientAdd(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Pseudo-code:
