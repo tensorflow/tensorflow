@@ -3088,6 +3088,17 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
                                             HloOpcode::kMultiply, lhs, lhs));
   }
 
+  // Pow(A, 3) is used in GELU.
+  VLOG(10) << "trying transform [pow(A, 3) => A*A*A]: " << power->ToString();
+  if (IsAll(rhs, 3)) {
+    HloInstruction * tmp = computation_->AddInstruction(
+        HloInstruction::CreateBinary(
+            power->shape(), HloOpcode::kMultiply, lhs, lhs));
+    return ReplaceWithNewInstruction(
+        power, HloInstruction::CreateBinary(power->shape(),
+                                            HloOpcode::kMultiply, lhs, tmp));
+  }
+
   VLOG(10) << "trying transform [pow(A, -1) => 1/A]: " << power->ToString();
   if (IsAll(rhs, -1)) {
     return ReplaceWithNewInstruction(
