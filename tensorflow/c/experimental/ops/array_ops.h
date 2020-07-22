@@ -22,9 +22,50 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ops {
+
+// ============== Ops used for Gradient Computation =============================
+
 Status Identity(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status MatMul(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name,
+                bool transpose_a, bool transpose_b); 
+
+Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status ReluGrad(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, 
+                const char* name);
+
+// ======================= Tape Operations ==================
+
+// Status Add(AbstractContext* ctx, Tape* tape,
+//            absl::Span<AbstractTensorHandle* const> inputs,
+//            absl::Span<AbstractTensorHandle*> outputs,
+//            const GradientRegistry& registry);
+
+// Status MatMul(AbstractContext* ctx, Tape* tape,
+//            absl::Span<AbstractTensorHandle* const> inputs,
+//            absl::Span<AbstractTensorHandle*> outputs, const char* name,
+//            bool transpose_a, bool transpose_b,
+//            const GradientRegistry& registry); 
+
+// Status Relu(AbstractContext* ctx, Tape* tape,
+//            absl::Span<AbstractTensorHandle* const> inputs,
+//            absl::Span<AbstractTensorHandle*> outputs, const char* name,
+//            const GradientRegistry& registry); 
+
+// Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx, Tape* tape,
+//            absl::Span<AbstractTensorHandle* const> inputs,
+//            absl::Span<AbstractTensorHandle*> outputs, const char* name,
+//            const GradientRegistry& registry);
+
 }  // namespace ops
 }  // namespace tensorflow
 
