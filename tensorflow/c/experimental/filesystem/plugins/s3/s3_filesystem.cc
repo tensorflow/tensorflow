@@ -24,6 +24,7 @@ limitations under the License.
 #include <aws/s3/model/CompletedPart.h>
 #include <aws/s3/model/CopyObjectRequest.h>
 #include <aws/s3/model/CreateMultipartUploadRequest.h>
+#include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadBucketRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
@@ -959,6 +960,24 @@ void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
   else
     MultiPartCopy(copy_src, bucket_dst, object_dst, num_parts, file_size,
                   s3_file, status);
+}
+
+void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  Aws::S3::Model::DeleteObjectRequest delete_object_request;
+  delete_object_request.WithBucket(bucket).WithKey(object);
+  auto delete_object_outcome =
+      s3_file->s3_client->DeleteObject(delete_object_request);
+  if (!delete_object_outcome.IsSuccess())
+    TF_SetStatusFromAWSError(delete_object_outcome.GetError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
 }
 
 // TODO(vnvo2409): Implement later
