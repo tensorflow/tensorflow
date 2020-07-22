@@ -138,7 +138,7 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build ${EXTRA_BUILD_FLAGS} \
+bazel build --config=release_gpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 
