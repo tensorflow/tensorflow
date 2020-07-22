@@ -980,6 +980,47 @@ void DeleteFile(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
+void CreateDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, true, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  if (object.empty()) {
+    Aws::S3::Model::HeadBucketRequest head_bucket_request;
+    head_bucket_request.WithBucket(bucket);
+    auto head_bucket_outcome =
+        s3_file->s3_client->HeadBucket(head_bucket_request);
+    if (!head_bucket_outcome.IsSuccess())
+      TF_SetStatusFromAWSError(head_bucket_outcome.GetError(), status);
+    else
+      TF_SetStatus(status, TF_OK, "");
+    return;
+  }
+
+  Aws::String dir_path = path;
+  if (dir_path.back() != '/') dir_path.push_back('/');
+
+  PathExists(filesystem, dir_path.c_str(), status);
+  if (TF_GetCode(status) == TF_OK) {
+    std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile * file)> file(
+        new TF_WritableFile, [](TF_WritableFile* file) {
+          if (file != nullptr) {
+            if (file->plugin_file != nullptr) tf_writable_file::Cleanup(file);
+            delete file;
+          }
+        });
+    file->plugin_file = nullptr;
+    NewWritableFile(filesystem, dir_path.c_str(), file.get(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+    tf_writable_file::Close(file.get(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_s3_filesystem
