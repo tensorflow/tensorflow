@@ -33,6 +33,7 @@ from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -1174,6 +1175,43 @@ class Function(object):
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
 
+  def validate_annotations(self):
+    """Ensures type annotations and input_signature match.
+
+    Raises:
+      ValueError when type annotations do not match input_signature.
+    """
+    if self.input_signature is None:
+      return
+    for spec in self.input_signature:
+      if not isinstance(spec, tensor_spec.TensorSpec):
+        return
+    input_signature_dtypes = tuple(tensor.dtype for tensor
+                                   in self.input_signature)
+    if len(self.function_spec.arg_names) != len(input_signature_dtypes):
+      return
+
+    arg_dtype_list = zip(self.function_spec.arg_names,
+                         input_signature_dtypes)
+    # A dict mapping from arg name to input signature dtype
+    arg_to_dtype = dict(arg_dtype_list)
+    type_annotations = self.function_spec.fullargspec.annotations
+    for arg, annot in type_annotations.items():
+      # Only verify annotations that are perameterized
+      if not hasattr(annot, '__args__') or len(annot.__args__) != 1:
+        return
+      annotation_dtype = annot.__args__[0]
+      input_signature_dtype = arg_to_dtype.get(arg)
+      # Type annotation is not a Tensor
+      if annot.__origin__ != ops.Tensor:
+        return
+      if annotation_dtype != input_signature_dtype.__class__:
+        raise ValueError(
+            "type mismatch for argument '%s': type annotation "\
+            "specifies %s, but input_signature specifies %s" %
+            (arg, annotation_dtype.__name__,
+             input_signature_dtype.__class__.__name__))
+
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
@@ -1431,18 +1469,20 @@ def function(func=None,
       name = inner_function.__name__
     except AttributeError:
       name = "function"
+    f = Function(
+        inner_function,
+        name,
+        input_signature=input_signature,
+        autograph=autograph,
+        experimental_autograph_options=experimental_autograph_options,
+        experimental_relax_shapes=experimental_relax_shapes,
+        experimental_compile=experimental_compile,
+        experimental_implements=experimental_implements)
+    f.validate_annotations()
     return tf_decorator.make_decorator(
         inner_function,
         decorator_name="tf.function",
-        decorator_func=Function(
-            inner_function,
-            name,
-            input_signature=input_signature,
-            autograph=autograph,
-            experimental_autograph_options=experimental_autograph_options,
-            experimental_relax_shapes=experimental_relax_shapes,
-            experimental_compile=experimental_compile,
-            experimental_implements=experimental_implements))
+        decorator_func=f)
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:
