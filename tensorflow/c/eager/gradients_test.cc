@@ -99,6 +99,9 @@ Status RegisterGradients(GradientRegistry* registry) {
   return Status::OK();
 }
 
+
+// =================== End gradient registrations ============================
+
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle* const> inputs,
