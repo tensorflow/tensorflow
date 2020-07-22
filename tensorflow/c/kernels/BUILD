@@ -67,17 +67,6 @@ tf_gen_op_libs(
     ],
 )
 
-tf_cc_test(
-    name = "histogram_summary_op_test",
-    srcs = ["histogram_summary_op_test.cc"],
-    deps = [
-        ":histogram_op_lib",
-        ":histogram_summary_op",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib"
-    ],
-)
-
 # Changes to the Android srcs here should be replicated in
 # tensorflow/contrib/makefile/tf_op_files.txt.
 #
