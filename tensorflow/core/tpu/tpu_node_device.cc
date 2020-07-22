@@ -90,6 +90,9 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   ApiConverter::StackHelper<XLA_Shape> tpu_shape;
   tpu::ExecutorApiFn()->XlaShapeToTpuPaddedShapeFn(
       &se_shape.value, &tpu_shape.value, status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
   *shape = tpu_shape.AsCpp<xla::Shape>();
   return Status::OK();
 }
