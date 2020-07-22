@@ -46,7 +46,6 @@ extern "C" {
 #endif
 
 typedef struct TF_Tensor TF_Tensor;
-typedef struct TF_StringView TF_StringView; 
 
 // --------------------------------------------------------------------------
 // C API for TensorFlow Kernels.
