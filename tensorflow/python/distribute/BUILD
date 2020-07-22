@@ -984,6 +984,7 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":reduce_util",
         ":strategy_combinations",
+        ":tpu_strategy",
         ":values",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
