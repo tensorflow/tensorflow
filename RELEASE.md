@@ -76,7 +76,7 @@
     * Add `tf.saved_model.LoadOptions` with [`experimental_io_device`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/saved_model/LoadOptions?hl=en) as arg with default value `None` to choose the I/O device for loading models and weights.
      * Update `tf.saved_model.SaveOptions` with [`experimental_io_device`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/saved_model/SaveOptions?hl=en) as arg with default value `None` to choose the I/O device for saving models and weights.
   * GPU
-    * No longer includes PTX kernels for GPU except for sm_70 to reduce binary size.
+    * No longer includes PTX kernels for GPU except for sm_70 to reduce binary size. On systems with NVIDIA® Ampere GPUs (CUDA architecture 8.0) or newer, kernels are JIT-compiled from PTX and TensorFlow can take over 30 minutes to start up. This overhead can be limited to the first start up by increasing the default JIT cache size with: `export CUDA_CACHE_MAXSIZE=2147483648`.:
   * Others
     * Retain parent namescope for ops added inside `tf.while_loop`/`tf.cond`/`tf.switch_case`.
     * Update `tf.vectorized_map` to support vectorizing `tf.while_loop` and TensorList operations.
