@@ -51,8 +51,7 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
     for test_case, expected in test_cases:
       current_test_case = test_case
       self.assertDatasetProduces(dataset, [
-          compat.as_bytes(
-              element) if dtype == dtypes.string else element
+          compat.as_bytes(element) if dtype == dtypes.string else element
           for element in expected
       ])
 
@@ -83,8 +82,6 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testTypeMismatch(self):
 
     # raises InternalError when dtypes don't match.
-    # NOTE: Generating the following expected outputs can be considered/taken up as an
-    # enhancement in the experimental API.
     with self.assertRaises(errors.InternalError):
       self._testSimpleHelper(dtypes.string, [
           (["hello", 1, 2, 1], ["hello"]),
