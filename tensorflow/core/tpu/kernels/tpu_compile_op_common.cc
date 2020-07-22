@@ -189,6 +189,7 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
     XlaCompiler::Argument& arg = args->back();
     arg.type = proto_arg.dtype();
     arg.shape = arg_shapes[i];
+    arg.node_name = proto_arg.name();
     switch (proto_arg.kind()) {
       case tpu::TPUCompileMetadataProto::Arg::PARAMETER:
         arg.kind = XlaCompiler::Argument::kParameter;
