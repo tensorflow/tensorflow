@@ -188,7 +188,8 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
           xspace.ParseFromString(serialized_xspace_proto);
           tensorflow::profiler::OverviewPage overview_page =
               tensorflow::profiler::ConvertOpStatsToOverviewPage(
-                  ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB}));
+                  ConvertXSpaceToOpStats(
+                      xspace, {OP_METRICS_DB, STEP_DB, KERNEL_STATS_DB}));
           return py::bytes(overview_page.SerializeAsString());
         });
 
