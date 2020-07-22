@@ -280,6 +280,8 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::memory> diff_dst_mem;
 
     // Memory descriptors.
+    std::shared_ptr<mkldnn::memory::desc> src_md;
+    std::shared_ptr<mkldnn::memory::desc> dst_md;
     std::shared_ptr<mkldnn::memory::desc> diff_src_md;
     std::shared_ptr<mkldnn::memory::desc> diff_dst_md;
 
@@ -306,6 +308,8 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
           ws_mem(nullptr),
           diff_src_mem(nullptr),
           diff_dst_mem(nullptr),
+          src_md(nullptr),
+          dst_md(nullptr),
           diff_src_md(nullptr),
           diff_dst_md(nullptr),
           fwd_desc(nullptr),
