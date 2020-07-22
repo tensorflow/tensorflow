@@ -506,8 +506,6 @@ class Progbar(object):
         others will be averaged by the progbar before display.
       interval: Minimum visual progress update interval (in seconds).
       unit_name: Display name for step counts (usually "step" or "sample").
-      ignore_first: Whether to ignore the duration of the first step when
-        estimating the ETA.
   """
 
   def __init__(self,
@@ -516,8 +514,7 @@ class Progbar(object):
                verbose=1,
                interval=0.05,
                stateful_metrics=None,
-               unit_name='step',
-               ignore_first=True):
+               unit_name='step'):
     self.target = target
     self.width = width
     self.verbose = verbose
@@ -542,7 +539,6 @@ class Progbar(object):
     self._start = time.time()
     self._last_update = 0
 
-    self._ignore_first = ignore_first
     self._time_after_first_step = None
 
   def update(self, current, values=None, finalize=None):
@@ -686,11 +682,9 @@ class Progbar(object):
     Given the step number `current` and the corresponding time `now`
     this function returns an estimate for how long a single step
     takes. If this is called before one step has been completed
-    (i.e. `current == 0`) then zero is given as an estimate. If
-    `ignore_first` is set for this `Progbar` instance, then
-    the duration estimate ignores the duration of the (assumed to
-    be non-representative) first step for estimates when more steps
-    are available (i.e. `current>1`).
+    (i.e. `current == 0`) then zero is given as an estimate. The duration
+    estimate ignores the duration of the (assumed to be non-representative)
+    first step for estimates when more steps are available (i.e. `current>1`).
     Arguments:
       current: Index of current step.
       now: The current time.
@@ -704,8 +698,7 @@ class Progbar(object):
       # 2) somebody is calling the progress bar and supplies step one mulitple
       #    times, e.g. as part of a finalizing call
       # in these cases, we just fall back to the simple calculation
-      can_estimate = self._time_after_first_step is not None and current > 1
-      if self._ignore_first and can_estimate:
+      if self._time_after_first_step is not None and current > 1:
         time_per_unit = (now - self._time_after_first_step) / (current - 1)
       else:
         time_per_unit = (now - self._start) / current
