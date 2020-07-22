@@ -374,8 +374,12 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     return tf.keras.Sequential(QLinear(3, input_shape=(2,)))
 
+  @parameterized.named_parameters(
+      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT),
+      ('_INT8InputOutput', lite.constants.INT8),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
   @test_util.run_v2_only
-  def testTrainingTimeQuantization(self):
+  def testTrainingTimeQuantization(self, inference_input_output_type):
     model = self._getTrainingTimeQuantizedModel()
 
     float_converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -384,37 +388,24 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     quantized_converter = lite.TFLiteConverterV2.from_keras_model(model)
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
-    # Ensure that the quantized weights tflite model is smaller.
-    self.assertLess(len(quantized_tflite), len(float_tflite))
-
     interpreter = Interpreter(model_content=quantized_tflite)
-    self.assertEqual(np.float32, interpreter.get_input_details()[0]['dtype'])
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details[0]['dtype'])
 
-  @parameterized.named_parameters(
-      ('_INT8InputOutput', lite.constants.INT8),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
-  def testInvalidTrainingTimeQuantization(self, inference_input_output_type):
-    # We currently don't support integer inference_input_type and
-    # inference_output_type flags for training time quantization.
-
-    model = self._getTrainingTimeQuantizedModel()
-
-    converter = lite.TFLiteConverterV2.from_keras_model(model)
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    quantized_converter = lite.TFLiteConverterV2.from_keras_model(model)
-    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    with self.assertRaises(ValueError) as error:
-      quantized_converter.inference_input_type = inference_input_output_type
-      quantized_converter.inference_output_type = inference_input_output_type
-      quantized_converter.convert()
-    self.assertEqual(
-        'The inference_input_type and inference_output_type '
-        'must be tf.float32.', str(error.exception))
+    # Ensure that the quantized tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
 
   @test_util.run_v2_only
   def testNewQuantizer(self):

@@ -1686,10 +1686,20 @@ distribute_py_test(
     ],
     deps = [
         ":combinations",
+        ":device_util",
         ":strategy_combinations",
+        ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

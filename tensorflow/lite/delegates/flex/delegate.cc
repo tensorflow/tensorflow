@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/kernel.h"
 #include "tensorflow/lite/delegates/flex/util.h"
@@ -30,7 +31,7 @@ limitations under the License.
 namespace tflite {
 
 // Corresponding weak declaration found in lite/interpreter_builder.cc.
-#if !defined(_WIN32)
+#if TFLITE_HAS_ATTRIBUTE_WEAK
 // If weak symbol is not supported (Windows), it can use
 // TF_AcquireFlexDelegate() path instead.
 TfLiteDelegateUniquePtr AcquireFlexDelegate() {

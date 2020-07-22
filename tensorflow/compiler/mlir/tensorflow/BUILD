@@ -729,6 +729,7 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
+        "transforms/mark_ops_for_outside_compilation.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/parallel_execute_to_islands.cc",

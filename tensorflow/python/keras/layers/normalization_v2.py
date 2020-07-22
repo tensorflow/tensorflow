@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -158,7 +158,7 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
 
   def _calculate_mean_and_var(self, x, axes, keep_dims):
 
-    with ops.name_scope('moments', values=[x, axes]):
+    with backend.name_scope('moments'):
       # The dynamic range of fp16 is too limited to support the collection of
       # sufficient statistics. As a workaround we simply perform the operations
       # on 32-bit floats before converting the mean and variance back to fp16

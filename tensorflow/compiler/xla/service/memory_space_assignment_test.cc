@@ -286,6 +286,92 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   MemorySpaceAssignmentCostAnalysis::Cache cache_;
 };
 
+// For testing purposes, we define a cost analysis where we can control the
+// elapsed times of each HLO and asynchronous copy.
+class FakeMemorySpaceAssignmentCostAnalysis
+    : public MemorySpaceAssignmentCostAnalysis {
+ public:
+  static StatusOr<std::unique_ptr<FakeMemorySpaceAssignmentCostAnalysis>>
+  Create(const HloCostAnalysis& cost_analysis, const HloModule& module) {
+    TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
+    TF_ASSIGN_OR_RETURN(auto hlo_live_range,
+                        HloLiveRange::Run(module.schedule(), *alias_analysis,
+                                          module.entry_computation()));
+    auto call_graph = CallGraph::Build(&module);
+    return absl::WrapUnique(new FakeMemorySpaceAssignmentCostAnalysis(
+        cost_analysis, /*async_copy_bandwidth_bytes_per_second=*/1,
+        /*alternate_mem_bandwidth_bytes_per_second=*/1,
+        std::move(alias_analysis), std::move(hlo_live_range),
+        std::move(call_graph)));
+  }
+
+  float GetInstructionElapsed(
+      const HloInstruction& instruction) const override {
+    if (get_instruction_elapsed_override_) {
+      return get_instruction_elapsed_override_(instruction);
+    }
+    return 1.0;
+  }
+
+  float GetInstructionElapsedInAlternateMemory(
+      const HloInstruction& instruction,
+      absl::optional<int64> operand_in_alternate_mem,
+      bool output_in_alternate_mem) const override {
+    if (get_instruction_elapsed_in_alternate_memory_override_) {
+      return get_instruction_elapsed_in_alternate_memory_override_(
+          instruction, operand_in_alternate_mem, output_in_alternate_mem);
+    }
+    if (operand_in_alternate_mem) {
+      return 0.5;
+    } else {
+      return 1.0;
+    }
+  }
+
+  float GetAsyncCopyElapsed(const Shape& shape) const override {
+    if (get_async_copy_elapsed_override_) {
+      return get_async_copy_elapsed_override_(shape);
+    }
+    return 3.0;
+  }
+
+  // The following methods can be used to override what the above API calls
+  // return.
+  void SetOverrideForGetInstructionElapsed(
+      std::function<float(const HloInstruction&)> function) {
+    get_instruction_elapsed_override_ = function;
+  }
+  void SetOverrideForGetInstructionElapsedInAlternateMemory(
+      std::function<float(const HloInstruction&, absl::optional<int64>, bool)>
+          function) {
+    get_instruction_elapsed_in_alternate_memory_override_ = function;
+  }
+  void SetOverrideForGetAsyncCopyElapsed(
+      std::function<float(const Shape&)> function) {
+    get_async_copy_elapsed_override_ = function;
+  }
+
+ protected:
+  FakeMemorySpaceAssignmentCostAnalysis(
+      const HloCostAnalysis& cost_analysis,
+      float async_copy_bandwidth_bytes_per_second,
+      float alternate_mem_bandwidth_bytes_per_second,
+      std::unique_ptr<HloAliasAnalysis> alias_analysis,
+      std::unique_ptr<HloLiveRange> hlo_live_range,
+      std::unique_ptr<CallGraph> call_graph)
+      : MemorySpaceAssignmentCostAnalysis(
+            cost_analysis, async_copy_bandwidth_bytes_per_second,
+            alternate_mem_bandwidth_bytes_per_second, std::move(alias_analysis),
+            std::move(hlo_live_range), std::move(call_graph)) {}
+
+ private:
+  std::function<float(const HloInstruction&)>
+      get_instruction_elapsed_override_ = nullptr;
+  std::function<float(const HloInstruction&, absl::optional<int64>, bool)>
+      get_instruction_elapsed_in_alternate_memory_override_ = nullptr;
+  std::function<float(const Shape&)> get_async_copy_elapsed_override_ = nullptr;
+};
+
 TEST_P(MemorySpaceAssignmentTest, ParameterOnly) {
   // A module consisting of a single parameter. Inputs/outputs are currently
   // excluded from memory space assignment.
@@ -3750,6 +3836,123 @@ TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
                     buffer_interval_compare, &prefetch_interval_picker);
 }
 
+TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
+  // This tests the case where an earlier placed smaller buffer may block a
+  // larger buffer due to asynchronous copy ordering. The smaller buffer (the
+  // operand of sin) will be placed first. The cos, whose operand is 3 times
+  // larger than sin's, needs longer time for the asynhronous copy. The cos is
+  // placed right after sin, leading to a copy ordering violation:
+  //
+  // param1------------------>CS----->CD->sin
+  // param0------------->CS------------------->CD->cos
+  //
+  // To fix this, we need to move copy done for cos earlier and ensure both of
+  // these buffers get alternate memory allocations:
+  //
+  // param1------------------>CS----->CD->sin
+  // param0-->CS------------------->CD------------>cos
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[2,4] negate(param1)
+    b = f32[2,4] negate(a)
+    c = f32[2,4] negate(b)
+    d = f32[2,4] negate(c)
+    e = f32[2,4] negate(d)
+    f = f32[2,4] negate(e)
+    g = f32[2,4] negate(f)
+    h = f32[2,4] negate(g)
+    i = f32[2,4] negate(h)
+    j = f32[2,4] negate(i)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] negate(k)
+    m = f32[2,4] negate(l)
+    n = f32[2,4] negate(m)
+    sin = f32[2,4] sine(param1)
+    o = f32[2,4] negate(n)
+    cos = f32[8,3] cosine(param0)
+    ROOT tuple = (f32[8,3], f32[2,4], f32[2,4]) tuple(cos, sin, o)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kSin:
+              return 0;
+            case HloOpcode::kCos:
+              return 1;
+            case HloOpcode::kTanh:
+              return 2;
+            default:
+              return 3;
+          }
+        };
+
+        auto get_user_priority = [&](const HloValue& value) {
+          int priority = INT_MAX;
+          for (const auto& use : value.uses()) {
+            priority = std::min(priority,
+                                get_opcode_priority(use.instruction->opcode()));
+          }
+          return priority;
+        };
+
+        return get_user_priority(*a.buffer) < get_user_priority(*b.buffer);
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeMemorySpaceAssignmentCostAnalysis::Create(
+                              hlo_cost_analysis, *module));
+  cost_analysis->SetOverrideForGetAsyncCopyElapsed([](const Shape& shape) {
+    // This should return 2 for f32[2,4] and 6 for f32[8,3].
+    return ShapeSize(shape) / 16;
+  });
+  CostAnalysisPrefetchIntervalPicker interval_picker(
+      *cost_analysis,
+      /*min_async_copy_to_overlap_ratio=*/1.0,
+      /*max_async_copy_to_overlap_ratio=*/4.0,
+      /*preferred_async_copy_to_overlap_ratio=*/1.5);
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    buffer_interval_compare, &interval_picker);
+
+  // Check that both cos and sin could get their operands prefetched.
+  const HloInstruction* cos =
+      module->entry_computation()->GetInstructionWithName("cos");
+  const HloInstruction* sin =
+      module->entry_computation()->GetInstructionWithName("sin");
+  EXPECT_THAT(sin->operand(0),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(1)));
+  EXPECT_THAT(cos->operand(0),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(0)));
+
+  // Sanity check that the cos' operand copy-done is scheduled earlier than
+  // sin's operand.
+  auto find_schedule_index = [&](const HloInstruction* instruction) {
+    const auto& instructions =
+        module->schedule().sequence(module->entry_computation()).instructions();
+    for (int i = 0; i < instructions.size(); ++i) {
+      if (instruction == instructions[i]) {
+        return i;
+      }
+    }
+    CHECK(false);
+    return -1;
+  };
+  EXPECT_GT(find_schedule_index(sin->operand(0)),
+            find_schedule_index(cos->operand(0)));
+}
+
 TEST_P(MemorySpaceAssignmentTest, Determinism) {
   // Run memory space assignment a few times to make sure every time it compiles
   // to the same thing.
@@ -4045,57 +4248,6 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
-
-// For testing purposes, we define a cost analysis where we can control the
-// elapsed times of each HLO and asynchronous copy.
-class FakeMemorySpaceAssignmentCostAnalysis
-    : public MemorySpaceAssignmentCostAnalysis {
- public:
-  static StatusOr<std::unique_ptr<FakeMemorySpaceAssignmentCostAnalysis>>
-  Create(const HloCostAnalysis& cost_analysis, const HloModule& module) {
-    TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
-    TF_ASSIGN_OR_RETURN(auto hlo_live_range,
-                        HloLiveRange::Run(module.schedule(), *alias_analysis,
-                                          module.entry_computation()));
-    auto call_graph = CallGraph::Build(&module);
-    return absl::WrapUnique(new FakeMemorySpaceAssignmentCostAnalysis(
-        cost_analysis, /*async_copy_bandwidth_bytes_per_second=*/1,
-        /*alternate_mem_bandwidth_bytes_per_second=*/1,
-        std::move(alias_analysis), std::move(hlo_live_range),
-        std::move(call_graph)));
-  }
-
-  float GetInstructionElapsed(
-      const HloInstruction& instruction) const override {
-    return 1.0;
-  }
-
-  float GetInstructionElapsedInAlternateMemory(
-      const HloInstruction& instruction,
-      absl::optional<int64> operand_in_alternate_mem,
-      bool output_in_alternate_mem) const override {
-    if (operand_in_alternate_mem) {
-      return 0.5;
-    } else {
-      return 1.0;
-    }
-  }
-
-  float GetAsyncCopyElapsed(const Shape& shape) const override { return 3.0; }
-
- protected:
-  FakeMemorySpaceAssignmentCostAnalysis(
-      const HloCostAnalysis& cost_analysis,
-      float async_copy_bandwidth_bytes_per_second,
-      float alternate_mem_bandwidth_bytes_per_second,
-      std::unique_ptr<HloAliasAnalysis> alias_analysis,
-      std::unique_ptr<HloLiveRange> hlo_live_range,
-      std::unique_ptr<CallGraph> call_graph)
-      : MemorySpaceAssignmentCostAnalysis(
-            cost_analysis, async_copy_bandwidth_bytes_per_second,
-            alternate_mem_bandwidth_bytes_per_second, std::move(alias_analysis),
-            std::move(hlo_live_range), std::move(call_graph)) {}
-};
 
 using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;
 

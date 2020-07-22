@@ -49,6 +49,7 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "no_mac",  # TODO(b/129706424): Re-enable this test on Mac.
+        "nomsan",  # TODO(b/161902335): Re-enable.
         "notsan",  # TODO(b/161829717): Re-enable.
     ],
     deps = [

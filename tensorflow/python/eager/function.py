@@ -66,6 +66,8 @@ from tensorflow.python.ops import resource_variable_ops
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -150,6 +152,7 @@ CacheKey = collections.namedtuple("CacheKey", [
     "device_functions",
     "colocation_stack",
     "in_cross_replica_context",
+    "variable_policy",
     "xla_context_id",
 ])
 
@@ -2851,6 +2854,10 @@ class Function(object):
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._experimental_compile = experimental_compile
 
+    # A boolean indicating whether the function has been traced with
+    # distribution strategy.
+    self._traced_with_distribution_strategy = False
+
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
     with self._lock:
@@ -3067,10 +3074,24 @@ class Function(object):
     except (AttributeError, IndexError):
       pass
 
+    # If the function has been traced with a distribution strategy, it might
+    # need to be retraced at saving time as DistributedVariable created under
+    # distribution strategy may want different tracing behavior at training and
+    # saving, e.g, it wants to resolve to the primary component at saving time,
+    # but wants resolve to the component residing in the current device at
+    # training time. We achieve this by adding variable_policy to the function
+    # cache key.
+    if save_context.in_save_context(
+    ) and self._traced_with_distribution_strategy:
+      variable_policy = (
+          save_context.get_save_options().experimental_variable_policy)
+    else:
+      variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
+
     return CacheKey(
         _make_input_signature_hashable(input_signature), parent_graph,
         device_functions, colocation_stack, in_cross_replica_context,
-        xla_context_id)
+        variable_policy, xla_context_id)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -3240,6 +3261,10 @@ class Function(object):
       self._function_cache.missed.add(call_context_key)
       graph_function = self._create_graph_function(args, kwargs)
       self._function_cache.primary[cache_key] = graph_function
+
+      if ops.get_default_graph()._distribution_strategy_stack:
+        self._traced_with_distribution_strategy = True
+
       return graph_function, args, kwargs
 
 

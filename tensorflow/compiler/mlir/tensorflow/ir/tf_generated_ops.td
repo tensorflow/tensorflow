@@ -87,7 +87,7 @@ tf.math.acosh(x) ==> [nan nan 0. 0.62236255 5.9914584 9.903487 inf]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, SameOperandsAndResultElementType]>,
+def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, SameOperandsAndResultElementType, TF_LayoutAgnostic]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -136,7 +136,7 @@ Inputs must be of same size and shape.
   let hasFolder = 1;
 }
 
-def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, SameOperandsAndResultElementType]>,
+def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, SameOperandsAndResultElementType, TF_LayoutAgnostic]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -725,6 +725,30 @@ window in `value`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_AvgPool3DOp : TF_Op<"AvgPool3D", [NoSideEffect]> {
+  let summary = "Performs 3D average pooling on the input.";
+
+  let description = [{
+Each entry in `output` is the mean of the corresponding size `ksize` window in
+`value`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$input,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AvgPool3DGradOp : TF_Op<"AvgPool3DGrad", [NoSideEffect]> {
   let summary = "Computes gradients of average pooling function.";
 
@@ -743,30 +767,6 @@ def TF_AvgPool3DGradOp : TF_Op<"AvgPool3DGrad", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
-}
-
-def TF_AvgPool3DOp : TF_Op<"AvgPool3D", [NoSideEffect]> {
-  let summary = "Performs 3D average pooling on the input.";
-
-  let description = [{
-Each entry in `output` is the mean of the corresponding size `ksize`
-window in `value`.
-  }];
-
-  let arguments = (ins
-    TF_FpTensor:$value,
-
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
-    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
-    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
-    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
-  );
-
-  let results = (outs
-    TF_FpTensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_AvgPoolGradOp : TF_Op<"AvgPoolGrad", [NoSideEffect]> {
@@ -4229,6 +4229,29 @@ Where to extract the key and value from a line is specified by `key_index` and
   );
 
   let results = (outs);
+}
+
+def TF_InplaceUpdateOp : TF_Op<"InplaceUpdate", [NoSideEffect]> {
+  let summary = "Updates specified rows 'i' with values 'v'.";
+
+  let description = [{
+Computes `x[i, :] = v; return x`.
+
+Originally this function is mutative however for compilation we make this
+operation create / operate on a copy of `x`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$x,
+    I32Tensor:$i,
+    TF_Tensor:$v
+  );
+
+  let results = (outs
+    TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_InvOp : TF_Op<"Inv", [NoSideEffect, SameOperandsAndResultType]> {

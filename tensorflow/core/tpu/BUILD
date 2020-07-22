@@ -159,6 +159,9 @@ cc_library(
         "//tensorflow:oss": [
             ":tpu_node_device",
             ":tpu_system_device",
+            "//tensorflow/core/tpu/ops:tpu_compile_op",
+            "//tensorflow/core/tpu/ops:tpu_execute_op",
+            "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
             "//tensorflow/stream_executor/tpu:tpu_executor",
             "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
             "//tensorflow/core/tpu:tpu_on_demand_compiler",

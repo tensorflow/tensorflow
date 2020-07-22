@@ -238,6 +238,28 @@ cc_library(
 )
 
 cc_library(
+    name = "constant_utils",
+    srcs = [
+        "utils/constant_utils.cc",
+    ],
+    hdrs = [
+        "utils/constant_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "lstm_utils",
     srcs = [
         "utils/lstm_utils.cc",
@@ -346,6 +368,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":constant_utils",
         ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",

@@ -2310,3 +2310,21 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>)
   return %0#0 : tensor<i32>
 }
+
+// -----
+
+// CHECK-LABEL: testBroadcastToWithI32ShapeTensor
+func @testBroadcastToWithI32ShapeTensor(tensor<?x?x?x?x?x?xf32>, tensor<8xi32>) -> tensor<?x?x?x?x?x?x?x?xf32> {
+^bb0(%arg0: tensor<?x?x?x?x?x?xf32>, %arg1: tensor<8xi32>):
+  // CHECK: "tfl.broadcast_to"(%arg0, %arg1)
+  %0 = "tfl.broadcast_to"(%arg0, %arg1): (tensor<?x?x?x?x?x?xf32>, tensor<8xi32>) -> tensor<?x?x?x?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?x?x?x?xf32>
+}
+
+// CHECK-LABEL: testBroadcastToWithI64ShapeTensor
+func @testBroadcastToWithI64ShapeTensor(tensor<?x?x?x?x?x?xf32>, tensor<8xi64>) -> tensor<?x?x?x?x?x?x?x?xf32> {
+^bb0(%arg0: tensor<?x?x?x?x?x?xf32>, %arg1: tensor<8xi64>):
+  // CHECK: "tfl.broadcast_to"(%arg0, %arg1)
+  %0 = "tfl.broadcast_to"(%arg0, %arg1): (tensor<?x?x?x?x?x?xf32>, tensor<8xi64>) -> tensor<?x?x?x?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?x?x?x?xf32>
+}

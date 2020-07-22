@@ -189,6 +189,7 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
     XlaCompiler::Argument& arg = args->back();
     arg.type = proto_arg.dtype();
     arg.shape = arg_shapes[i];
+    arg.node_name = proto_arg.name();
     switch (proto_arg.kind()) {
       case tpu::TPUCompileMetadataProto::Arg::PARAMETER:
         arg.kind = XlaCompiler::Argument::kParameter;
@@ -390,10 +391,12 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
             << " seconds to give time for TPUCompileOp to finished.";
   env->SleepForMicroseconds(kSleepSeconds * 1000000);
   if (done->load()) {
-    // If the TPUCompileOp has finished, then terminate peacefully.
+    // If the TpuCompileOp has finished, then terminate peacefully.
     return;
   }
 
+  LOG(ERROR) << "Aborting process due to cancelled TpuCompileOp. This "
+             << "termination is to ensure a consistent state.";
   std::exit(42);
 }
 

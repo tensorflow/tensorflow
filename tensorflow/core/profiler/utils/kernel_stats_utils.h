@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 
@@ -52,6 +53,10 @@ void SortKernelsByTotalDurationDesc(KernelStatsDb* kernel_stats_db);
 
 // Groups and aggregate common reports into destination KernelStatsDb.
 void GroupKernelReports(std::vector<KernelReport>* reports, KernelStatsDb* dst);
+
+// Groups KernelReport in <kernel_stats_db> by tensorflow operation name.
+absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
+GroupKernelReportsByOpName(const KernelStatsDb& kernel_stats_db);
 
 }  // namespace profiler
 }  // namespace tensorflow

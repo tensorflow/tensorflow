@@ -292,6 +292,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass();
 std::unique_ptr<OperationPass<FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 
+// Creates a pass that marks unsupported ops in device cluster for outside
+// compilation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMarkOpsForOutsideCompilationPass();
+
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<ModuleOp>>

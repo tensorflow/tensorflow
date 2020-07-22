@@ -41,6 +41,14 @@ class ElementwiseOneArgument : public NodeShader {
       case OperationType::COS:
         source = "value_0 = cos(value_0);";
         break;
+      case OperationType::ELU:
+        source = R"(
+            value_0.x = value_0.x < 0.0 ? exp(value_0.x) - 1.0 : value_0.x;
+            value_0.y = value_0.y < 0.0 ? exp(value_0.y) - 1.0 : value_0.y;
+            value_0.z = value_0.z < 0.0 ? exp(value_0.z) - 1.0 : value_0.z;
+            value_0.w = value_0.w < 0.0 ? exp(value_0.w) - 1.0 : value_0.w;
+        )";
+        break;
       case OperationType::EXP:
         source = "value_0 = exp(value_0);";
         break;
@@ -212,6 +220,7 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
   switch (operation_type) {
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::ELU:
     case OperationType::EXP:
     case OperationType::LOG:
     case OperationType::HARD_SWISH:

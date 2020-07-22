@@ -2641,6 +2641,10 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       break;
     case kTfLiteBuiltinDiv:
       return std::make_unique<ElementwiseOperationParser>(OperationType::DIV);
+    case kTfLiteBuiltinElu:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::ELU);
+    case kTfLiteBuiltinExp:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::EXP);
     case kTfLiteBuiltinFullyConnected:
       return std::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinHardSwish:

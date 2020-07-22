@@ -401,6 +401,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )

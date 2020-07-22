@@ -2198,10 +2198,14 @@ def pywrap_tensorflow_macro(
 #    Note that this only works on Windows. See the definition of
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
-def py_test(deps = [], data = [], kernels = [], **kwargs):
+def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs):
     # Python version placeholder
     if kwargs.get("python_version", None) == "PY3":
         kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
+
+    if not exec_properties:
+        exec_properties = tf_exec_properties(kwargs)
+
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
@@ -2212,7 +2216,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
         }),
-        exec_properties = tf_exec_properties(kwargs),
+        exec_properties = exec_properties,
         **kwargs
     )
 
