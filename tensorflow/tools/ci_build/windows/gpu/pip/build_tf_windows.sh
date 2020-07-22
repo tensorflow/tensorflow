@@ -138,7 +138,7 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build --announce_rc --config=opt --define=no_tensorflow_py_deps=true \
+bazel \
   --output_filter=^$ \
   ${EXTRA_BUILD_FLAGS} \
   tensorflow/tools/pip_package:build_pip_package || exit $?

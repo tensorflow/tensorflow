@@ -156,11 +156,17 @@ class EventForest {
               const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
               XSpace* space);
 
+  EventForest(const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
+              XPlane* plane);
+
   const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
 
   const GroupMetadataMap& GetGroupMetadataMap() const {
     return group_metadata_map_;
   }
+
+  // Connects tf.data events across threads.
+  void ProcessTfDataEvents();
 
  private:
   // Creates an EventNode for each event in event_node_map and connect events

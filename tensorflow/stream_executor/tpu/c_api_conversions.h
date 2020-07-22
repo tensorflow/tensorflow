@@ -35,6 +35,8 @@ namespace ApiConverter {
 
 // se::DeviceMemoryBase
 SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base);
+void ToC(const stream_executor::DeviceMemoryBase& base,
+         SE_DeviceMemoryBase* se_base);
 stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
 void Free(SE_DeviceMemoryBase*);
 

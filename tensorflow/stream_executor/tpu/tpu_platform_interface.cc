@@ -17,16 +17,18 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
 namespace tensorflow {
 namespace tpu {
 
 namespace {
-TpuPlatformInterface* GetRegisteredPlatformStatic() {
+TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform) {
   // Prefer TpuPlatform if it's registered.
   auto status_or_tpu_platform =
-      stream_executor::MultiPlatformManager::PlatformWithName("TPU");
+      stream_executor::MultiPlatformManager::PlatformWithName(
+          "TPU", initialize_platform);
   if (status_or_tpu_platform.ok()) {
     return static_cast<TpuPlatformInterface*>(
         status_or_tpu_platform.ValueOrDie());
@@ -43,7 +45,8 @@ TpuPlatformInterface* GetRegisteredPlatformStatic() {
           [](const stream_executor::Platform* platform) {
             return dynamic_cast<const TpuPlatformInterface*>(platform) !=
                    nullptr;
-          });
+          },
+          initialize_platform);
   if (!status_or_other_tpu_platforms.ok()) {
     LOG(WARNING) << "Error when getting other TPU platforms: "
                  << status_or_tpu_platform.status();
@@ -64,9 +67,27 @@ TpuPlatformInterface* GetRegisteredPlatformStatic() {
 
 /* static */
 TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform() {
-  // Use a local static variable to avoid data races during initialization.
+  return GetRegisteredPlatform(/*initialize_platform=*/true);
+}
+
+/* static */
+TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform(
+    bool initialize_platform) {
+  static auto* mu = new mutex;
+  static bool requested_initialize_platform = initialize_platform;
   static TpuPlatformInterface* tpu_registered_platform =
-      GetRegisteredPlatformStatic();
+      GetRegisteredPlatformStatic(initialize_platform);
+
+  mutex_lock lock(*mu);
+  if (!requested_initialize_platform && initialize_platform) {
+    // If the first time this function is called, we did not request
+    // initializing the platform, but the next caller wants the platform
+    // initialized, we will call GetRegisteredPlatformStatic again to initialize
+    // the platform.
+    tpu_registered_platform = GetRegisteredPlatformStatic(initialize_platform);
+    requested_initialize_platform = true;
+  }
+
   return tpu_registered_platform;
 }
 

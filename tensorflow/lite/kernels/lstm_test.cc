@@ -294,7 +294,7 @@ class LSTMOpModel : public SingleOpModel {
   const TensorType weight_type_;
 };
 
-class BaseLstmTest : public ::testing::TestWithParam<bool> {
+class BaseLstmOpTest : public ::testing::TestWithParam<bool> {
  protected:
   // Weights of the LSTM model. Some are optional.
   std::vector<float> input_to_input_weights_;
@@ -397,7 +397,8 @@ class BaseLstmTest : public ::testing::TestWithParam<bool> {
   }
 };
 
-class NoCifgNoPeepholeNoProjectionNoClippingLstmTest : public BaseLstmTest {
+class NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest
+    : public BaseLstmOpTest {
   void SetUp() override {
     input_to_input_weights_ = {-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912,  -0.15680569,
@@ -446,7 +447,7 @@ class NoCifgNoPeepholeNoProjectionNoClippingLstmTest : public BaseLstmTest {
   }
 };
 
-TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
+TEST_F(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, Float) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
@@ -464,11 +465,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-class NoCifgNoPeepholeNoProjectionNoClippingNoLayerNormLstmTest
-    : public NoCifgNoPeepholeNoProjectionNoClippingLstmTest {};
-
-TEST_F(NoCifgNoPeepholeNoProjectionNoClippingNoLayerNormLstmTest,
-       LstmBlackBoxTest) {
+TEST_F(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, With24Inputs) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
@@ -487,8 +484,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingNoLayerNormLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmTest,
-       HybridLstmBlackBoxTestUint8) {
+TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, HybridUint8) {
   // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
@@ -511,11 +507,7 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmTest,
                 /*tolerance=*/0.0157651);
 }
 
-class NoCifgNoPeepholeNoProjectionNoClippingLstmInt8Test
-    : public NoCifgNoPeepholeNoProjectionNoClippingLstmTest {};
-
-TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmInt8Test,
-       HybridLstmBlackBoxTestInt8) {
+TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, HybridInt8) {
   if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
     return;
   }
@@ -537,7 +529,8 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingLstmInt8Test,
                 /*tolerance=*/0.0157651);
 }
 
-class CifgNoPeepholeNoProjectionNoClippingLstmTest : public BaseLstmTest {
+class Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest
+    : public BaseLstmOpTest {
   void SetUp() override {
     input_to_cell_weights_ = {-0.49770179, -0.27711356, -0.09624726,
                               0.05100781,  0.04717243,  0.48944736,
@@ -584,7 +577,7 @@ class CifgNoPeepholeNoProjectionNoClippingLstmTest : public BaseLstmTest {
   }
 };
 
-TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
+TEST_F(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, Float) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
@@ -602,8 +595,7 @@ TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmTest,
-       HybridLstmBlackBoxTestUint8) {
+TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, HybridUint8) {
   // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
@@ -624,11 +616,8 @@ TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmTest,
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.03573);
 }
-class CifgNoPeepholeNoProjectionNoClippingLstmInt8Test
-    : public CifgNoPeepholeNoProjectionNoClippingLstmTest {};
 
-TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmInt8Test,
-       HybridLstmBlackBoxTestInt8) {
+TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, HybridInt8) {
   if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
     return;
   }
@@ -649,7 +638,8 @@ TEST_P(CifgNoPeepholeNoProjectionNoClippingLstmInt8Test,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.03573);
 }
 
-class NoCifgPeepholeProjectionNoClippingLstmTest : public BaseLstmTest {
+class NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest
+    : public BaseLstmOpTest {
   void SetUp() override {
     input_to_input_weights_ = {
         0.021393683,  0.06124551,    0.046905167,  -0.014657677,  -0.03149463,
@@ -1248,7 +1238,7 @@ class NoCifgPeepholeProjectionNoClippingLstmTest : public BaseLstmTest {
   }
 };
 
-TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest, LstmBlackBoxTest) {
+TEST_F(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, Float) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 20;
@@ -1265,8 +1255,7 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest, LstmBlackBoxTest) {
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-TEST_P(NoCifgPeepholeProjectionNoClippingLstmTest,
-       HybridLstmBlackBoxTestUint8) {
+TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, HybridUint8) {
   // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
@@ -1287,11 +1276,7 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.00467);
 }
 
-class NoCifgPeepholeProjectionNoClippingLstmInt8Test
-    : public NoCifgPeepholeProjectionNoClippingLstmTest {};
-
-TEST_P(NoCifgPeepholeProjectionNoClippingLstmInt8Test,
-       HybridLstmBlackBoxTestInt8) {
+TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, HybridInt8) {
   if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
     return;
   }
@@ -1311,8 +1296,7 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLstmInt8Test,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.0015);
 }
 
-class NoCifgPeepholeProjectionNoClippingLayerNormLstmTest
-    : public BaseLstmTest {
+class NoCifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
   void SetUp() override {
     input_to_input_weights_ = {0.5,  0.6,  0.7,  -0.8, -0.9, 0.1,  0.2,
                                0.3,  -0.4, 0.5,  -0.8, 0.7,  -0.6, 0.5,
@@ -1378,8 +1362,7 @@ class NoCifgPeepholeProjectionNoClippingLayerNormLstmTest
   }
 };
 
-TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
-       LayerNormLstmBlackBoxTest) {
+TEST_F(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, Float) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 4;
@@ -1410,8 +1393,7 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm);
 }
 
-TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
-       HybridLayerNormLstmBlackBoxTestUint8) {
+TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
   // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
@@ -1446,11 +1428,7 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
                 /*tolerance=*/0.0010907);
 }
 
-class NoCifgPeepholeProjectionNoClippingLayerNormLstmInt8Test
-    : public NoCifgPeepholeProjectionNoClippingLayerNormLstmTest {};
-
-TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
-       HybridLayerNormLstmBlackBoxTestInt8) {
+TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
   if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
     return;
   }
@@ -1485,7 +1463,7 @@ TEST_P(NoCifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
                 /*tolerance=*/1.06e-3);
 }
 
-class CifgPeepholeProjectionNoClippingLayerNormLstmTest : public BaseLstmTest {
+class Cifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
   void SetUp() override {
     input_to_forget_weights_ = {-0.6, -0.1, 0.3,  0.2,  0.9,  -0.5, -0.2,
                                 -0.4, 0.3,  -0.8, -0.4, 0.3,  -0.5, -0.4,
@@ -1531,8 +1509,7 @@ class CifgPeepholeProjectionNoClippingLayerNormLstmTest : public BaseLstmTest {
   }
 };
 
-TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
-       LayerNormLstmBlackBoxTest) {
+TEST_F(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, Float) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 4;
@@ -1564,8 +1541,7 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm);
 }
 
-TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
-       HybridLayerNormLstmBlackBoxTestUint8) {
+TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
   }
@@ -1601,11 +1577,7 @@ TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
                 /*tolerance=*/0.0009021);
 }
 
-class CifgPeepholeProjectionNoClippingLayerNormLstmInt8Test
-    : public CifgPeepholeProjectionNoClippingLayerNormLstmTest {};
-
-TEST_P(CifgPeepholeProjectionNoClippingLayerNormLstmInt8Test,
-       HybridLayerNormLstmBlackBoxTestInt8) {
+TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 4;
@@ -1919,7 +1891,7 @@ class LSTMIntegerOpModel : public SingleOpModel {
   int n_output_;
 };
 
-TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
+TEST(IntegerLstm, NoCifg_NoPeephole_Projection_LayerNorm) {
   // Hyper parameters.
   const int n_batch = 2;
   const int n_input = 5;
@@ -2079,7 +2051,7 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionNoPeephole) {
   }
 }
 
-TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionYesPeephole) {
+TEST(IntegerLstm, NoCifg_Peephole_Projection_LayerNorm) {
   // Hyper parameters.
   const int n_batch = 2;
   const int n_input = 5;
@@ -2249,7 +2221,7 @@ TEST(LSTMIntegerOpModel, NoCifgYesLayerNormNoYesProjectionYesPeephole) {
   }
 }
 
-TEST(LSTMIntegerOpModel, CifgYesLayerNormNoYesProjectionNoPeephole_8x8_8) {
+TEST(IntegerLstm, Cifg_NoPeephole_Projection_LayerNorm_8x8_8) {
   // Hyper parameters.
   const int n_batch = 2;
   const int n_input = 5;
@@ -2414,7 +2386,7 @@ TEST(LSTMIntegerOpModel, CifgYesLayerNormNoYesProjectionNoPeephole_8x8_8) {
 }
 
 #ifdef GTEST_HAS_DEATH_TEST
-TEST(LSTMOpModel, InvalidTypeTest) {
+TEST(LstmOpTest, InvalidTypes) {
   const int n_batch = 1;
   const int n_input = 2;
   const int n_cell = 4;
@@ -2446,17 +2418,11 @@ TEST(LSTMOpModel, InvalidTypeTest) {
 #define QUANTIZE_PARAMETER_TEST(test) \
   INSTANTIATE_TEST_SUITE_P(test, test, ::testing::Bool())
 
-QUANTIZE_PARAMETER_TEST(NoCifgNoPeepholeNoProjectionNoClippingLstmTest);
-QUANTIZE_PARAMETER_TEST(NoCifgNoPeepholeNoProjectionNoClippingLstmInt8Test);
-QUANTIZE_PARAMETER_TEST(CifgNoPeepholeNoProjectionNoClippingLstmTest);
-QUANTIZE_PARAMETER_TEST(CifgNoPeepholeNoProjectionNoClippingLstmInt8Test);
-QUANTIZE_PARAMETER_TEST(NoCifgPeepholeProjectionNoClippingLstmTest);
-QUANTIZE_PARAMETER_TEST(NoCifgPeepholeProjectionNoClippingLstmInt8Test);
-QUANTIZE_PARAMETER_TEST(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest);
-QUANTIZE_PARAMETER_TEST(
-    NoCifgPeepholeProjectionNoClippingLayerNormLstmInt8Test);
-QUANTIZE_PARAMETER_TEST(CifgPeepholeProjectionNoClippingLayerNormLstmTest);
-QUANTIZE_PARAMETER_TEST(CifgPeepholeProjectionNoClippingLayerNormLstmInt8Test);
+QUANTIZE_PARAMETER_TEST(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest);
+QUANTIZE_PARAMETER_TEST(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest);
+QUANTIZE_PARAMETER_TEST(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest);
+QUANTIZE_PARAMETER_TEST(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest);
+QUANTIZE_PARAMETER_TEST(Cifg_Peephole_Projection_LayerNorm_LstmOpTest);
 #undef QUANTIZE_PARAMETER_TEST
 
 }  // namespace

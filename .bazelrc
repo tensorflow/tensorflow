@@ -81,11 +81,13 @@
 #
 # Release build options (for all operating systems)
 #     release_common:       Common options for all builds on all operating systems.
+#     release_windows_common:    Common options for all builds on Windows.
 #     release_gpu_common:   Common options for GPU builds on Linux and Windows.
 #     release_cpu_linux:    Toolchain and CUDA options for Linux CPU builds.
 #     release_cpu_macos:    Toolchain and CUDA options for MacOS CPU builds.
 #     release_gpu_linux:    Toolchain and CUDA options for Linux GPU builds.
 #     release_cpu_windows:    Toolchain and CUDA options for Windows CPU builds.
+#     release_gpu_windows:    Toolchain and CUDA options for Windows GPU builds.
 
 # Allow builds using libc++ as a linker library
 # This is mostly for OSSFuzz, so we also pass in the flags from environment to clean build file
@@ -572,5 +574,10 @@ build:release_gpu_linux --config=release_gpu_common
 build:release_gpu_linux --config=avx_linux
 build:release_gpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
 
-build:release_cpu_windows --config=release_common
-build:release_cpu_windows --announce_rc
+build:release_windows_common --config=release_common
+build:release_windows_common --define=no_tensorflow_py_deps=true
+build:release_windows_common --announce_rc
+
+build:release_cpu_windows --config=release_windows_common
+
+build:release_gpu_windows --config=release_windows_common

@@ -1722,6 +1722,31 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertFalse(cb_list._should_call_test_batch_hooks)
     self.assertFalse(cb_list._should_call_predict_batch_hooks)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_change_tf_functions_during_fit(self):
+
+    class ChangeFunctions(keras.callbacks.Callback):
+
+      def on_epoch_end(self, epochs, logs=None):
+
+        def new_fn(iterator):
+          raise ValueError('New function substituted successfully.')
+
+        self.model.train_function = new_fn
+        self.model.test_function = new_fn
+        self.model.predict_function = new_fn
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.fit(x, y, batch_size=2, epochs=2, callbacks=[ChangeFunctions()])
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.evaluate(x, y, batch_size=2)
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.predict(x, batch_size=2)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was

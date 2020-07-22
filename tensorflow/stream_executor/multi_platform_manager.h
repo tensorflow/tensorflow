@@ -130,6 +130,10 @@ class MultiPlatformManager {
   static port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
       const std::function<bool(const Platform*)>& filter);
 
+  static port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
+      const std::function<bool(const Platform*)>& filter,
+      bool initialize_platform);
+
   // Although the MultiPlatformManager "owns" its platforms, it holds them as
   // undecorated pointers to prevent races during program exit (between this
   // object's data and the underlying platforms (e.g., CUDA, OpenCL).

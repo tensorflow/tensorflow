@@ -243,9 +243,10 @@ CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest/NonLayerNormLstmBlackBo
 -.+UnidirectionalLstmTest/.+
 
 # lstm_test
--.+LstmTest/Hybrid.+Int8
--LSTMOpModel/InvalidTypeTest
-.+LstmTest/.+,29
+-LstmOpTest/InvalidTypes
+.+LstmOpTest/Float,29
+-.+LstmOpTest/HybridInt8
+.+LstmOpTest/HybridUint8,29
 
 # maximum_minimum_test
 MaxMinOpTest/.+nt8Test,29

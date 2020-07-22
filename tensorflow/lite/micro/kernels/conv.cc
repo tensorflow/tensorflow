@@ -42,6 +42,12 @@ constexpr int kConvQuantizedDimension = 0;
 
 struct OpData {
   TfLitePaddingValues padding;
+
+  // Cached tensor zero point values for quantized operations.
+  int32_t input_zero_point;
+  int32_t filter_zero_point;
+  int32_t output_zero_point;
+
   // The scaling factor from input to output (aka the 'real multiplier') can
   // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
@@ -158,9 +164,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       affine_quantization->zero_point->size);
   }
 
-  return CalculateOpData(context, node, params, input_width, input_height,
-                         filter_width, filter_height, output_width,
-                         output_height, input->type, data);
+  TF_LITE_ENSURE_STATUS(CalculateOpData(
+      context, node, params, input_width, input_height, filter_width,
+      filter_height, output_width, output_height, input->type, data));
+
+  data->input_zero_point = input->params.zero_point;
+  data->filter_zero_point = filter->params.zero_point;
+  data->output_zero_point = output->params.zero_point;
+
+  return kTfLiteOk;
 }  // namespace conv
 
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
@@ -168,9 +180,9 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    const TfLiteTensor* input, const TfLiteTensor* filter,
                    const TfLiteTensor* bias, TfLiteTensor* im2col,
                    TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
-  const int32_t input_offset = -input->params.zero_point;
-  const int32_t filter_offset = -filter->params.zero_point;
-  const int32_t output_offset = output->params.zero_point;
+  const int32_t input_offset = -data.input_zero_point;
+  const int32_t filter_offset = -data.filter_zero_point;
+  const int32_t output_offset = data.output_zero_point;
 
   // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
@@ -204,8 +216,8 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteTensor* im2col) {
   // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
-  op_params.input_offset = -input->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
+  op_params.input_offset = -data.input_zero_point;
+  op_params.output_offset = data.output_zero_point;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
   op_params.dilation_height_factor = params->dilation_height_factor;

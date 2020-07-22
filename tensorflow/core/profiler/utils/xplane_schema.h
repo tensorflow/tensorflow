@@ -84,6 +84,15 @@ enum HostEventType {
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
+  kIterator,
+  kPrefetchProduce,
+  kPrefetchConsume,
+  kParallelInterleaveProduce,
+  kParallelInterleaveConsume,
+  kParallelMapProduce,
+  kParallelMapConsume,
+  kMapAndBatchProduce,
+  kMapAndBatchConsume,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.
@@ -124,6 +133,8 @@ enum StatType {
   kTensorShapes,
   kKpiName,
   kKpiValue,
+  kElementId,
+  kParentId,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,

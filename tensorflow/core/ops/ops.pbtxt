@@ -7892,6 +7892,17 @@ op {
   }
 }
 op {
+  name: "ComputeBatchSize"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+}
+op {
   name: "Concat"
   input_arg {
     name: "concat_dim"
