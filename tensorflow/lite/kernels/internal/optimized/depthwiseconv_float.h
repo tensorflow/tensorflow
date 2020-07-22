@@ -774,7 +774,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
   // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
-  TFLITE_LOG(INFO) << "Start/end " << out_x_buffer_start << " " << out_x_buffer_end;
+  // TFLITE_LOG(INFO) << "Start/end " << out_x_buffer_start << " " << out_x_buffer_end;
   static_assert(kFixedDepthMultiplier || !kFixedInputDepth, "");
   static_assert(kFixedInputDepth || kAllowStrided, "");
   TFLITE_DCHECK(stride == 1 || kAllowStrided);
@@ -953,7 +953,7 @@ inline void DepthwiseConvImpl(
   const int output_width = output_shape.Dims(2);
   // TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
-  TFLITE_LOG(INFO) << "INPUT DEPTH " << input_depth;
+  // TFLITE_LOG(INFO) << "INPUT DEPTH " << input_depth;
   static const int kAccBufferMaxSize = 4832;
   float acc_buffer[kAccBufferMaxSize];
   TFLITE_DCHECK_GE(kAccBufferMaxSize, output_depth);
@@ -1052,7 +1052,11 @@ inline void DepthwiseConvImpl(
       (output_height + row_start - row_end) * output_width * output_depth;
 
   for (int b = batch_start; b < batch_end; ++b) {
-    for (int out_y = row_start; out_y < row_end; ++out_y) {
+    //  for(int j=0; j<64; j++){
+    //       output_ptr[j] = -1;
+    //       TFLITE_LOG(INFO) << "pre out buffer " << j << ": "  << output_ptr[j];
+    //     }
+    for (int out_y = row_start; out_y < row_end; ++out_y) { 
       const int in_y_origin = (out_y * stride_height) - pad_height;
       const int filter_y_start =
           std::max(0, (-in_y_origin + dilation_height_factor - 1) /
@@ -1061,7 +1065,7 @@ inline void DepthwiseConvImpl(
           std::min(filter_height,
                    (input_height - in_y_origin + dilation_height_factor - 1) /
                        dilation_height_factor);
-      TFLITE_LOG(INFO) << "output pixels acc buffer " << kOutputPixelsInAccBuffer;
+      // TFLITE_LOG(INFO) << "output pixels acc buffer " << kOutputPixelsInAccBuffer;
       for (int out_x_buffer_start = 0; out_x_buffer_start < output_width;
            out_x_buffer_start += kOutputPixelsInAccBuffer) {
         const int out_x_buffer_end = std::min(
@@ -1078,9 +1082,10 @@ inline void DepthwiseConvImpl(
         // Accumulation loop. Most of the time should be spent in here.
         // TFLITE_LOG(INFO) << "Filter start end " << filter_y_start << filter_y_end;
         // TFLITE_LOG(INFO) << "DEPTH MULTIPLIER " << depth_multiplier;
-        for(int a =0; a<num_output_pixels*output_depth; a++){
-          TFLITE_LOG(INFO) << "pre acc buffer " << a << ": "  << acc_buffer[a];
-        }
+        // for(int a =0; a<num_output_pixels*filter_depth; a++){
+        //   TFLITE_LOG(INFO) << "pre acc buffer " << a << ": "  << acc_buffer[a];
+        // }
+        // TFLITE_LOG(INFO) << "";
         for (int filter_y = filter_y_start; filter_y < filter_y_end;
              ++filter_y) {
           const int in_y = in_y_origin + dilation_height_factor * filter_y;
@@ -1092,53 +1097,101 @@ inline void DepthwiseConvImpl(
               out_x_buffer_end, output_depth, acc_buffer);
         }
         // TFLITE_LOG(INFO) << "acc buffer " << i << ", " 
-        for(int a =0; a<num_output_pixels*output_depth; a++){
-          TFLITE_LOG(INFO) << "post acc buffer " << a << ": "  << acc_buffer[a];
-        }
+        // for(int a =0; a<num_output_pixels*filter_depth; a++){
+        //   TFLITE_LOG(INFO) << "post acc buffer " << a << ": "  << acc_buffer[a];
+        // }
         // Finished accumulating. Now store to destination.
-        const int num_output_values = filter_depth * num_output_pixels;
+        float* output_start_ptr = output_ptr;
+        const int num_output_values = output_depth * num_output_pixels;
+        // for(int j=0; j<num_output_values; j++){
+        //   output_ptr[j] = -1;
+        //   TFLITE_LOG(INFO) << "pre out buffer " << j << ": "  << output_ptr[j];
+        // }
         // TFLITE_LOG(INFO) << num_output_pixels << " pixels num output values " << num_output_values;
         int i = 0;
+        int a = 0;
+        const float* input_start = &input_data[b*input_batch_stride + out_y*input_height_stride];
 // TODO(benoitjacob) optimized code goes here
 #ifdef USE_NEON
         // Handle 16 values at a time
-        for (; i <= num_output_values - 16; i += 16) {
-          float32x4_t acc[4];
-          for (int k = 0; k < 4; k++) {
-            acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
-          }
-          for (int k = 0; k < 4; k++) {
-            acc[k] = vmaxq_f32(
-                vdupq_n_f32(output_activation_min),
-                vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
-          }
-          for (int k = 0; k < 4; k++) {
-            vst1q_f32(output_ptr + 4 * k, acc[k]);
-          }
-          output_ptr += 16;
-        }
-        // Handle 4 values at a time
+        // for (; i <= num_output_values - 16; i += 16) {
+        //   float32x4_t acc[4];
+        //   for (int k = 0; k < 4; k++) {
+        //     acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
+        //   }
+        //   for (int k = 0; k < 4; k++) {
+        //     acc[k] = vmaxq_f32(
+        //         vdupq_n_f32(output_activation_min),
+        //         vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
+        //   }
+        //   for (int k = 0; k < 4; k++) {
+        //     vst1q_f32(output_ptr + 4 * k, acc[k]);
+        //   }
+        //   output_ptr += 16;
+        // }
+        // // Handle 4 values at a time
         for (; i <= num_output_values - 4; i += 4) {
-          float32x4_t acc = vld1q_f32(acc_buffer + i);
+          if(i%output_depth <= filter_depth-4){
+            float32x4_t acc = vld1q_f32(acc_buffer + a);
 
-          acc = vmaxq_f32(vdupq_n_f32(output_activation_min),
-                          vminq_f32(vdupq_n_f32(output_activation_max), acc));
+            acc = vmaxq_f32(vdupq_n_f32(output_activation_min),
+                            vminq_f32(vdupq_n_f32(output_activation_max), acc));
+            vst1q_f32(output_ptr, acc);
+            a += 4;
+          }
+          else{
+            if(%output_depth < filter_depth) {
+              int k = filter_depth - i%output_depth; //between 1 to 3
+              for(int j=0; j<4; j++){
+                if (j < k) {
+                  output_ptr[j] = std::max(output_activation_min, std::min(acc_buffer[a+j], output_activation_max));
+                }
+                else{
+                  output_ptr[j] = input_start[i+j];   
+                }
+              } 
+              a += k;
+            }
+            else{
+              float32x4_t inp = vld1q_f32(input_start + i);
+              vst1q_f32(output_ptr, inp);
 
-          vst1q_f32(output_ptr, acc);
+              // memcpy(output_ptr, input_start+i, 4*sizeof(float));
+              // for(int j=0; j<4; j++){
+              //   output_ptr[j] = input_start[i+j]; 
+              // } //replace with memcpy
+            }
+          }
           output_ptr += 4;
+          
         }
 #endif
-        // Handle leftover values, one by one. This is very slow.
+//         // Handle leftover values, one by one. This is very slow.
+        
         for (; i < num_output_values; i++) {
-          float acc = acc_buffer[i];
-          acc = std::max(output_activation_min,
-                         std::min(output_activation_max, acc));
-
+          float acc;
+          if(i%output_depth < filter_depth)
+          {
+            acc = acc_buffer[a];
+            a++;
+            acc = std::max(output_activation_min, std::min(output_activation_max, acc));
+          }
+          else {
+            acc = input_start[i];
+          }
           *output_ptr++ = acc;
         }
+        // for(int j=0;j<num_output_values; j++){
+        //   TFLITE_LOG( INFO) << "post out buffer " << j << ": "  << output_start_ptr[j];
+        // }
+        // TFLITE_LOG(INFO) << "i: " << i << " a: " << a;
       }
     }
+    
     output_ptr += batch_step;
+    // for(int j=0; j<64; j++){
+    //       TFLITE_LOG(INFO) << "final input/outputt buffer " << j << ": "  << input_data[j] << " " << output_data[j];
+    //     }
   }
 }
 
