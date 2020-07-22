@@ -1,5 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -7,11 +5,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-cuda_py_test(
+py_binary(
     name = "micro_benchmarks",
     srcs = ["micro_benchmarks.py"],
     python_version = "PY3",
-    shard_count = 5,
     deps = [
         ":numpy_mlp",
         ":tf_numpy_mlp",
