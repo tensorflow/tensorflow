@@ -134,7 +134,10 @@ class LSTMOpModel : public SingleOpModel {
                           LSTMKernelType_FULL, asymmetric_quantize_inputs)
             .Union());
 
-    BuildInterpreter({});  // Input sizes are already set up.
+    // Input shapes are already set up, no need to pass them again.
+    BuildInterpreter(/*input_shapes=*/{}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false);
   }
 
   void SetInputToInputWeights(const std::vector<float>& f) {
@@ -329,15 +332,11 @@ class BaseLstmOpTest
 
   // Compares output up to tolerance to the result of the lstm given the input.
   void VerifyGoldens(LSTMOpModel* lstm, float tolerance) {
-    // Weights are set twice:
-    // - The delegate, if used, needs to know the scales and zero-points of
-    //   quantized tensors, which are computed dynamically when weights are set,
-    //   so weights have to be set before applying the delegate.
-    // - Applying a delegate will invalidate the tensor data so weights have to
-    //   be set a second time.
+    // The delegate, if used, needs to know the scales and zero-points of
+    // quantized tensors, which are computed dynamically when weights are set,
+    // so weights have to be set before applying the delegate.
     SetAllWeightsAndBiases(lstm);
     lstm->ApplyDelegate();
-    SetAllWeightsAndBiases(lstm);
 
     const int num_batches = lstm_input_.size();
     EXPECT_GT(num_batches, 0);
