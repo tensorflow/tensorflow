@@ -585,6 +585,7 @@ tflite_micro_cc_test(
         "circular_buffer_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         ":micro_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
