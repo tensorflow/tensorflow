@@ -1154,7 +1154,9 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     # Call layer on its inputs, thus creating the node
     # and building the layer if needed.
     if input_tensors is not None:
-      input_tensors = base_layer_utils.unnest_if_single_tensor(input_tensors)
+      if not layer._preserve_input_structure_in_config:
+        input_tensors = (
+            base_layer_utils.unnest_if_single_tensor(input_tensors))
       output_tensors = layer(input_tensors, **kwargs)
 
       # Update node index map.

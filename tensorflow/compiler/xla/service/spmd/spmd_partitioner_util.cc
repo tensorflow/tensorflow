@@ -885,37 +885,89 @@ int64 ShardCountAtDim(const HloSharding& sharding, int64 dim) {
   return sharding.tile_assignment().dim(dim);
 }
 
-absl::optional<std::pair<int64, int64>> GetReshardAllToAllSourceTargetDims(
-    const HloSharding& source, const HloSharding& target) {
+absl::optional<std::vector<std::pair<int64, int64>>>
+GetReshardAllToAllSourceTargetDims(const HloSharding& source,
+                                   const HloSharding& target) {
   if (source.IsTileMaximal() || target.IsTileMaximal() ||
       source.tile_assignment().num_dimensions() !=
           target.tile_assignment().num_dimensions()) {
     return absl::nullopt;
   }
-  int64 source_dim = -1;
-  int64 target_dim = -1;
+  // Record partition count to index for indices that have different partition
+  // counts on source and target.
+  std::map<int64, std::vector<int64>> source_size_to_dim;
+  std::map<int64, std::vector<int64>> target_size_to_dim;
   for (int64 i = 0; i < source.tile_assignment().num_dimensions(); ++i) {
-    if (source.tile_assignment().dim(i) > 1 &&
-        target.tile_assignment().dim(i) == 1) {
-      if (source_dim != -1) {
-        return absl::nullopt;
-      }
-      source_dim = i;
-    } else if (source.tile_assignment().dim(i) == 1 &&
-               target.tile_assignment().dim(i) > 1) {
-      if (target_dim != -1) {
-        return absl::nullopt;
-      }
-      target_dim = i;
-    } else if (source.tile_assignment().dim(i) !=
-               target.tile_assignment().dim(i)) {
+    if (source.tile_assignment().dim(i) == target.tile_assignment().dim(i)) {
+      continue;
+    }
+    source_size_to_dim[source.tile_assignment().dim(i)].push_back(i);
+    target_size_to_dim[target.tile_assignment().dim(i)].push_back(i);
+  }
+  // In order to shard via AllToAll, source_size_to_dim and target_size_to_dim
+  // must have the same distribution.
+  if (source_size_to_dim.empty() ||
+      source_size_to_dim.size() != target_size_to_dim.size()) {
+    return absl::nullopt;
+  }
+  for (const auto& entry : source_size_to_dim) {
+    auto target_it = target_size_to_dim.find(entry.first);
+    if (target_it == target_size_to_dim.end() ||
+        target_it->second.size() != entry.second.size()) {
       return absl::nullopt;
     }
   }
-  if (source_dim == -1 || target_dim == -1 || source_dim == target_dim) {
-    return absl::nullopt;
+  std::vector<std::pair<int64, int64>> result;
+  auto remove_entry = [](int64 size, int64 dim,
+                         std::map<int64, std::vector<int64>>& size_to_dim) {
+    size_to_dim[size].erase(
+        std::remove_if(size_to_dim[size].begin(), size_to_dim[size].end(),
+                       [dim](int64 a) { return a == dim; }),
+        size_to_dim[size].end());
+    if (size_to_dim[size].empty()) {
+      size_to_dim.erase(size);
+    }
+  };
+  // Find one pair of dimensions to swap at a time.
+  while (!source_size_to_dim.empty()) {
+    int64 source_size = source_size_to_dim.begin()->first;
+    int64 i = source_size_to_dim.begin()->second.back();
+    int64 target_i_size = target.tile_assignment().dim(i);
+    if (target_i_size == source_size) {
+      remove_entry(source_size, i, source_size_to_dim);
+      remove_entry(source_size, i, target_size_to_dim);
+      continue;
+    }
+    auto j_it = source_size_to_dim[target_i_size].begin();
+    int64 j = *j_it;
+    if (source_size == 1) {
+      // If possible, find a j where the target partition count is not one, so
+      // that when we swap, the resulting size-1 dimension will still be useful
+      // to other dimensions.
+      while (target.tile_assignment().dim(j) == 1) {
+        if (++j_it == source_size_to_dim[target_i_size].end()) {
+          break;
+        }
+        j = *j_it;
+      }
+    } else if (target_i_size % source_size == 0) {
+      // If possible, find a j where the target partition count is source_size,
+      // so that we can do a single swap.
+      while (target.tile_assignment().dim(j) != source_size) {
+        if (++j_it == source_size_to_dim[target_i_size].end()) {
+          break;
+        }
+        j = *j_it;
+      }
+    } else {
+      return absl::nullopt;
+    }
+    result.emplace_back(j, i);
+    remove_entry(target_i_size, i, target_size_to_dim);
+    source_size_to_dim.begin()->second.back() = j;
+    remove_entry(target_i_size, j, source_size_to_dim);
   }
-  return std::pair<int64, int64>(source_dim, target_dim);
+  return result;
 }
 
 bool CanReshardWithCollectivePermute(const HloSharding& source,

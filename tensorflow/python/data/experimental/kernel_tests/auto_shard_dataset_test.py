@@ -394,14 +394,27 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       self.evaluate(self.getNext(dataset)())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testShardWithRebatch(self):
-    # Tests that Rebatch is a passthrough op.
+  def testShardWithLegacyRebatch(self):
+    # Tests that RebatchDatasetV1 is a passthrough op.
     dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
     dataset = dataset.apply(
         testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
     dataset = dataset.batch(5)
-    dataset = distribute._RebatchDataset(dataset, num_replicas=1)
+    dataset = distribute._LegacyRebatchDataset(dataset, num_replicas=1)
+    dataset = distribute._AutoShardDataset(dataset, 5, 3)
+    nxt = self.getNext(dataset)
+    self.evaluate(nxt())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShardWithRebatch(self):
+    # Tests that RebatchDatasetV2 is a passthrough op.
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.apply(
+        testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = distribute._RebatchDataset(dataset, batch_sizes=5)
     dataset = distribute._AutoShardDataset(dataset, 5, 3)
     nxt = self.getNext(dataset)
     self.evaluate(nxt())

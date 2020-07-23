@@ -500,6 +500,7 @@ cc_library(
     deps = [
         ":Affine",
         ":IR",
+        ":Support",
         "@llvm-project//llvm:Support",
     ],
 )

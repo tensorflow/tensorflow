@@ -2153,6 +2153,58 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditional) {
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
+  // Tests a spurious verification failure when there are nested conditionals
+  // and the innermost conditional computation reuses the buffer. Here, both the
+  // parameter of true_computation2 and neg2 will get the same buffer. Make sure
+  // that verification doesn't claim a failure in this case.
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation2 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    neg1 = f32[3]{0} negate(gte)
+    neg2 = f32[3]{0} negate(neg1)
+    ROOT neg3 = f32[3]{0} negate(neg2)
+  }
+
+  false_computation2 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg4 = f32[3]{0} negate(gte)
+  }
+
+  true_computation1 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    slice = f32[1]{0} slice(gte), slice={[0:1]}
+    bitcast = f32[] bitcast(slice)
+    constant = f32[] constant(0.0)
+    compare = pred[] compare(bitcast, constant), direction=GT
+    tuple = (f32[3]{0}) tuple(gte)
+    ROOT conditional = f32[3]{0} conditional(compare, tuple, tuple), true_computation=true_computation2, false_computation=false_computation2
+  }
+
+  false_computation1 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg5 = f32[3]{0} negate(gte)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation1, false_computation=false_computation1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
 TEST_P(MemorySpaceAssignmentTest,
        RequestIdentifierShouldNotBeAllocatedInAlternateMem) {
   // Ensure that request identifier returned by Send/Recv HLOs are not allocated

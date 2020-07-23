@@ -9734,6 +9734,22 @@ For internal use only.
   );
 }
 
+def TF_TPUOrdinalSelectorOp : TF_Op<"TPUOrdinalSelector", []> {
+  let summary = "A TPU core selector Op.";
+
+  let description = [{
+This Op produces a set of TPU cores (for warm-up) or a single TPU core
+(for regular inference) to execute the TPU program on. The output is
+consumed by TPUPartitionedCall.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    I32Tensor:$device_ordinals
+  );
+}
+
 def TF_TPUReplicatedInputOp : TF_Op<"TPUReplicatedInput", [NoSideEffect]> {
   let summary = "Connects N inputs to an N-way replicated TPU computation.";
 

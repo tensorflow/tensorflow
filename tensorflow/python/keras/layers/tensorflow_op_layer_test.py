@@ -295,6 +295,57 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllEqual([layer.name for layer in model.layers],
                         [layer.name for layer in new_model.layers])
 
+  def test_stack_preserves_correct_shape(self):
+    ## Test stack([x])
+    inp = keras.Input(shape=(), dtype='float32')
+
+    out = array_ops.stack([inp])
+    model = keras.Model(
+        inputs=inp,
+        outputs=out)
+    model.compile(
+        adam.Adam(0.001),
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    x = array_ops.ones(shape=(4, 4))
+    expected = array_ops.stack([x])
+    self.assertAllEqual(expected.shape, (1, 4, 4))
+
+    self.assertAllEqual(model(x).shape, (1, 4, 4))
+    self.assertAllEqual(model(x), expected)
+
+    config = model.get_config()
+    model = keras.Model.from_config(config)
+
+    self.assertAllEqual(model(x).shape, (1, 4, 4))
+    self.assertAllEqual(model(x), expected)
+
+    ## Test stack(x)
+    inp = keras.Input(shape=(), dtype='float32')
+
+    out = array_ops.stack(inp)
+    model = keras.Model(
+        inputs=inp,
+        outputs=out)
+    model.compile(
+        adam.Adam(0.001),
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    x = array_ops.ones(shape=(4, 4))
+    expected = array_ops.stack(x)
+    self.assertAllEqual(expected.shape, (4, 4))
+
+    self.assertAllEqual(model(x).shape, (4, 4))
+    self.assertAllEqual(model(x), expected)
+
+    config = model.get_config()
+    model = keras.Model.from_config(config)
+
+    self.assertAllEqual(model(x).shape, (4, 4))
+    self.assertAllEqual(model(x), expected)
+
   def test_getitem_slice_with_step_only(self):
     if not context.executing_eagerly():
       self.skipTest('Complex slicing like this fails in v1')
@@ -360,10 +411,8 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
 
-    # TODO(b/161925288): Fix the bug then uncomment:
-    # # Make sure it can be successfully saved and loaded
-    # config = model.get_config()
-    # model = keras.Model.from_config(config)
+    config = model.get_config()
+    model = keras.Model.from_config(config)
 
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
@@ -396,10 +445,9 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
 
-    # TODO(b/161925288): Fix the bug then uncomment:
-    # # Make sure it can be successfully saved and loaded
-    # config = model.get_config()
-    # model = keras.Model.from_config(config)
+    # Make sure it can be successfully saved and loaded
+    config = model.get_config()
+    model = keras.Model.from_config(config)
 
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
@@ -526,6 +574,14 @@ class AutoLambdaTest(keras_parameterized.TestCase):
 
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
+  def test_left_hand_numpy_multiplication(self):
+    x = np.asarray([3.0])
+    inputs = keras.Input(shape=(4,))
+    outputs = x * inputs
+    model = keras.Model(inputs, outputs)
+    ones = array_ops.ones((5, 4), dtype='float32')
+    self.assertAllEqual(model(ones), 3.0 * ones)
 
   def test_numerical_correctness_simple(self):
     x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])

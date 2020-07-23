@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_blacklist.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_denylist.h"
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"

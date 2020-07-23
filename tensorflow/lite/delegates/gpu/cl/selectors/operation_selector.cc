@@ -382,6 +382,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       return absl::OkStatus();
     }
     case OperationType::ABS:
+    case OperationType::COPY:
     case OperationType::COS:
     case OperationType::ELU:
     case OperationType::EXP:

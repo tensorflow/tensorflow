@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -42,13 +42,16 @@ TfLiteStatus ValidateDepthwiseConvGoldens(
     const T* expected_output_data, int output_length,
     TfLiteDepthwiseConvParams* conv_params, float tolerance, int tensors_size,
     TfLiteTensor* tensors) {
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
+  int inputs_array_data[] = {3, 0, 1, 2};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 3};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_DEPTHWISE_CONV_2D);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+  const TfLiteRegistration registration =
+      tflite::ops::micro::Register_DEPTHWISE_CONV_2D();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(conv_params), micro_test::reporter);
 
   int input_depth = tensors[0].dims->data[3];
   int output_depth = tensors[1].dims->data[3];
@@ -60,32 +63,13 @@ TfLiteStatus ValidateDepthwiseConvGoldens(
   conv_params->depth_multiplier = depth_mul;
 
   const char* init_data = reinterpret_cast<const char*>(conv_params);
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
-  int inputs_array_data[] = {3, 0, 1, 2};
-  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  int outputs_array_data[] = {1, 3};
-  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(conv_params);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  if (registration->prepare) {
-    TF_LITE_ENSURE_OK(context, registration->prepare(&context, &node));
+  // TODO(b/154240825): Use a test macro here which fails and returns.
+  TfLiteStatus status = runner.InitAndPrepare(init_data);
+  if (status != kTfLiteOk) {
+    return status;
   }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_ENSURE_OK(context, registration->invoke(&context, &node));
-
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   const T* output_data = tflite::GetTensorData<T>(&tensors[kOutputTensorIndex]);
   for (int i = 0; i < output_length; ++i) {

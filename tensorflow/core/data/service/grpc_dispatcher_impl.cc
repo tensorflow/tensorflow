@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "grpcpp/server_context.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -25,9 +26,9 @@ using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::Status;
 
-GrpcDispatcherImpl::GrpcDispatcherImpl(ServerBuilder* server_builder,
-                                       const std::string& protocol)
-    : impl_(protocol) {
+GrpcDispatcherImpl::GrpcDispatcherImpl(
+    ServerBuilder* server_builder, const experimental::DispatcherConfig& config)
+    : impl_(config) {
   server_builder->RegisterService(this);
   VLOG(1) << "Registered data service dispatcher";
 }

@@ -1307,6 +1307,10 @@ class TFOpLambda(Layer):
 
     super(TFOpLambda, self).__init__(**kwargs)
 
+    # Preserve all argument data structures when saving/loading a config
+    # (e.g., don't unnest lists that contain one element)
+    self._preserve_input_structure_in_config = True
+
     # Warning on every invocation will be quite irksome in Eager mode.
     self._already_warned = False
 

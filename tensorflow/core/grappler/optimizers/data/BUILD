@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/kernels/data:dataset_utils",
     ] + tf_protos_all(),
     alwayslink = 1,
 )

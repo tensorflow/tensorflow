@@ -377,10 +377,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
   // Dynimically allocate per-channel quantization parameters.
   op_data->per_channel_output_multiplier =
-      reinterpret_cast<int32_t>(context->AllocatePersistentBuffer(
+      reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
   op_data->per_channel_output_shift =
-      reinterpret_cast<int32_t>(context->AllocatePersistentBuffer(
+      reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
 
   // All per-channel quantized tensors need valid zero point and scale arrays.

@@ -245,7 +245,7 @@ TfLiteStatus EvalQuantizedPerChannel(
   RuntimeShape output_shape = GetTensorShape(output);
   RuntimeShape bias_shape = GetTensorShape(bias);
 
-  // Sanity check.
+  // Consistency check.
   TFLITE_DCHECK_LE(conv_params.activation.min, conv_params.activation.max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);

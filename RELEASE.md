@@ -31,7 +31,6 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 * TF Core:
-  * <ADD RELEASE NOTES HERE>
   * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
     type annotation for variables representing a Tensor or a value that can be
     converted to Tensor by `tf.convert_to_tensor`.
@@ -39,9 +38,18 @@
     tf.convert_to_tensor behavior. This avoids operations like tf.reshape
     truncating inputs such as from int64 to int32.
   * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensror` arguments.
+  * The Python bitwise operators for `Tensor` (`__and__`, `__or__`, `__xor__`
+    and `__invert__` now support non-`bool` arguments and apply the
+    corresponding bitwise ops. `bool` arguments continue to be supported and
+    dispatch to logical ops. This brings them more in line with Python and NumPy
+    benavior.
 * `tf.data`:
+    * Added new `tf.data.experimental.service.register_dataset` and
+     `tf.data.experimental.service.from_dataset_id` APIs to enable one process
+      to register a dataset with the tf.data service, and another process to
+      consume data from the dataset.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
-  the complement of `select_cols`; at most one of these should be specified.
+      the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding
       transformations such as `take` and `shard` to happen earlier in the
       dataset when it is safe to do so. The optimization can be disabled via
@@ -51,13 +59,13 @@
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
     * <ADD RELEASE NOTES HERE>
-*   `tf.function`/AutoGraph:
-    * <ADD RELEASE NOTES HERE>
+* `tf.function` / AutoGraph:
+  * Added `experimental_follow_type_hints` argument for `tf.function`. When
+    True, the function may use type annotations to optimize the tracing
+    performance.
 *   `tf.lite`:
     * Better support for ops with high-dimensional broadcasting inputs by adding
   `BroadcastTo` ops when necessary.
-    * `TFLiteConverter`:
-      * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (tf.int8, tf.uint8) instead of defaulting to float type (tf.float32).
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
 *   Math and Linear Algebra:
@@ -70,7 +78,7 @@
     * <ADD RELEASE NOTES HERE>
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
-  and "denylist" where possible. Please see
+  and "denylist" where possible. Please see 
   https://developers.google.com/style/word-list#blacklist for more context.
     * <ADD RELEASE NOTES HERE>
 

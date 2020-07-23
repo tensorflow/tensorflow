@@ -54,6 +54,7 @@ _VERSION = '2.4.0'
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
     'astunparse == 1.6.3',
+    'flatbuffers >= 1.12',
     'gast == 0.3.3',
     'google_pasta >= 0.1.8',
     'h5py >= 2.10.0, < 2.11.0',
@@ -88,7 +89,7 @@ if '--project_name' in sys.argv:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.3.0a0, < 2.4.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.4.0a0, < 3.0.0a0'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 

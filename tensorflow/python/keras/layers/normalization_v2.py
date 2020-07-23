@@ -208,9 +208,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
 class BatchNormalization(normalization.BatchNormalizationBase):
 
   __doc__ = normalization.replace_in_base_docstring([
-      ('{{TRAINABLE_ATTRIBUTE_NOTE}}',
-       '''
-  **About setting `layer.trainable = False` on a `BatchNormalization layer:**
+      ('{{TRAINABLE_ATTRIBUTE_NOTE}}', '''
+  **About setting `layer.trainable = False` on a `BatchNormalization` layer:**
 
   The meaning of setting `layer.trainable = False` is to freeze the layer,
   i.e. its internal state will not change during training:
@@ -242,6 +241,7 @@ class BatchNormalization(normalization.BatchNormalizationBase):
       attribute is changed after calling `compile()` on a model,
       the new value doesn't take effect for this model
       until `compile()` is called again.
-      ''')])
+      ''')
+  ])
 
   _USE_V2_BEHAVIOR = True

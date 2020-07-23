@@ -158,6 +158,7 @@ tflite_micro_cc_test(
         "depthwise_conv_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:op_resolvers",
@@ -224,6 +225,7 @@ tflite_micro_cc_test(
         "conv_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:op_resolvers",
@@ -321,6 +323,7 @@ tflite_micro_cc_test(
         "arg_min_max_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -333,6 +336,7 @@ tflite_micro_cc_test(
         "comparisons_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -345,6 +349,7 @@ tflite_micro_cc_test(
         "ceil_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -420,6 +425,7 @@ tflite_micro_cc_test(
         "add_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -544,6 +550,7 @@ tflite_micro_cc_test(
         "concatenation_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -582,6 +589,7 @@ tflite_micro_cc_test(
         "circular_buffer_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         ":micro_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",

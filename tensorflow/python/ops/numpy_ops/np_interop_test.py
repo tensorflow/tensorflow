@@ -281,8 +281,7 @@ class InteropTest(tf.test.TestCase):
     a = np.ones((batch_size, 32, 32))
     c = tf.vectorized_map(outer_product, a)
 
-    # # TODO(nareshmodi): vectorized_map doesn't rewrap tensors in ndarray.
-    # self.assertIsInstance(c, np.ndarray)
+    self.assertIsInstance(c, np.ndarray)
     self.assertEqual(c.shape, (batch_size, 32, 32, 32, 32))
 
   def testJacobian(self):

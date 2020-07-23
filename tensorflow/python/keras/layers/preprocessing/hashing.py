@@ -27,7 +27,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
@@ -40,7 +40,7 @@ _DEFAULT_SALT_KEY = [0xDECAFCAFFE, 0xDECAFCAFFE]
 
 
 @keras_export('keras.layers.experimental.preprocessing.Hashing')
-class Hashing(Layer):
+class Hashing(base_preprocessing_layer.PreprocessingLayer):
   """Implements categorical feature hashing, also known as "hashing trick".
 
   This layer transforms single or multiple categorical inputs to hashed output.
@@ -137,6 +137,7 @@ class Hashing(Layer):
     if num_bins is None or num_bins <= 0:
       raise ValueError('`num_bins` cannot be `None` or non-positive values.')
     super(Hashing, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Hashing')
     self.num_bins = num_bins
     self.strong_hash = True if salt is not None else False
     if salt is not None:

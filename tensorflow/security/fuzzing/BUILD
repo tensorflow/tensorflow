@@ -65,3 +65,11 @@ tf_fuzz_target(
         "//tensorflow/core/platform:stringpiece",
     ],
 )
+
+tf_fuzz_target(
+    name = "stringprintf_fuzz",
+    srcs = ["stringprintf_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:stringprintf",
+    ],
+)
