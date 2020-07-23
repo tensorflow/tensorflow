@@ -45,6 +45,7 @@ limitations under the License.
 constexpr char kS3FileSystemAllocationTag[] = "S3FileSystemAllocation";
 constexpr char kS3ClientAllocationTag[] = "S3ClientAllocation";
 constexpr int64_t kS3TimeoutMsec = 300000;  // 5 min
+constexpr int kS3GetChildrenMaxKeys = 100;
 
 constexpr char kExecutorTag[] = "TransferManagerExecutorAllocation";
 constexpr int kExecutorPoolSize = 25;
@@ -1055,7 +1056,60 @@ void DeleteDir(const TF_Filesystem* filesystem, const char* path,
   }
 }
 
-// TODO(vnvo2409): Implement later
+int GetChildren(const TF_Filesystem* filesystem, const char* path,
+                char*** entries, TF_Status* status) {
+  Aws::String bucket, prefix;
+  ParseS3Path(path, true, &bucket, &prefix, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+  if (!prefix.empty() && prefix.back() != '/') prefix.push_back('/');
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  Aws::S3::Model::ListObjectsRequest list_objects_request;
+  list_objects_request.WithBucket(bucket)
+      .WithPrefix(prefix)
+      .WithMaxKeys(kS3GetChildrenMaxKeys)
+      .WithDelimiter("/");
+  list_objects_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+
+  Aws::S3::Model::ListObjectsResult list_objects_result;
+  std::vector<Aws::String> result;
+  do {
+    auto list_objects_outcome =
+        s3_file->s3_client->ListObjects(list_objects_request);
+    if (!list_objects_outcome.IsSuccess()) {
+      TF_SetStatusFromAWSError(list_objects_outcome.GetError(), status);
+      return -1;
+    }
+
+    list_objects_result = list_objects_outcome.GetResult();
+    for (const auto& object : list_objects_result.GetCommonPrefixes()) {
+      Aws::String s = object.GetPrefix();
+      s.erase(s.length() - 1);
+      Aws::String entry = s.substr(prefix.length());
+      if (entry.length() > 0) {
+        result.push_back(entry);
+      }
+    }
+    for (const auto& object : list_objects_result.GetContents()) {
+      Aws::String s = object.GetKey();
+      Aws::String entry = s.substr(prefix.length());
+      if (entry.length() > 0) {
+        result.push_back(entry);
+      }
+    }
+    list_objects_result.SetMarker(list_objects_result.GetNextMarker());
+  } while (list_objects_result.GetIsTruncated());
+
+  int num_entries = result.size();
+  *entries = static_cast<char**>(
+      plugin_memory_allocate(num_entries * sizeof((*entries)[0])));
+  for (int i = 0; i < num_entries; i++)
+    (*entries)[i] = strdup(result[i].c_str());
+  TF_SetStatus(status, TF_OK, "");
+}
 
 }  // namespace tf_s3_filesystem
 
