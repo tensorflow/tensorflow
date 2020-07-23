@@ -265,10 +265,12 @@ HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
 // Check if a dimension is sharded.
 int64 ShardCountAtDim(const HloSharding& sharding, int64 dim);
 
-// Returns the pair of source and target dimensions is the resharding can be
-// done via all-to-all.
-absl::optional<std::pair<int64, int64>> GetReshardAllToAllSourceTargetDims(
-    const HloSharding& source, const HloSharding& target);
+// Returns the list of source-target pairs of dimensions to swap during
+// resharding via all-to-all. Reshard can be done by swapping each pair at a
+// time.
+absl::optional<std::vector<std::pair<int64, int64>>>
+GetReshardAllToAllSourceTargetDims(const HloSharding& source,
+                                   const HloSharding& target);
 
 // Returns whether the resharding can be done via collective-permute.
 bool CanReshardWithCollectivePermute(const HloSharding& source,

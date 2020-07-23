@@ -267,8 +267,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
 
   if (auto src_tgt_dims =
           GetReshardAllToAllSourceTargetDims(sharding(), target)) {
-    return ReshardWithAllToAll(target, src_tgt_dims->first,
-                               src_tgt_dims->second);
+    return ReshardWithAllToAll(target, *src_tgt_dims);
   }
 
   // If not replicated yet, first replicate and then reshard to use one of the
@@ -734,40 +733,82 @@ PartitionedHlo PartitionedHlo::Broadcast() const {
   return PartitionedHlo(result, base_shape_, state_);
 }
 
-PartitionedHlo PartitionedHlo::ReshardWithAllToAll(const HloSharding& target,
-                                                   int64 source_dim,
-                                                   int64 target_dim) const {
-  const int64 group_size = sharding().tile_assignment().dim(source_dim);
-
-  // If the device order is different in the target, fix the order with
-  // ReshardWithCollectivePermute.
-  std::vector<int64> xpose_dims(target.tile_assignment().num_dimensions());
-  std::iota(xpose_dims.begin(), xpose_dims.end(), 0);
-  xpose_dims[source_dim] = target_dim;
-  xpose_dims[target_dim] = source_dim;
-  auto input_sharding_fixed_device_order =
-      hlo_sharding_util::TransposeSharding(target, xpose_dims);
-  if (input_sharding_fixed_device_order != sharding()) {
-    auto fixed_order =
-        ReshardWithCollectivePermute(input_sharding_fixed_device_order);
-    return fixed_order.ReshardWithAllToAll(target, source_dim, target_dim);
+PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
+    const HloSharding& target,
+    absl::Span<const std::pair<int64, int64>> source_target_dims) const {
+  if (source_target_dims.empty()) {
+    if (target == sharding()) {
+      return *this;
+    }
+    // If the device order is different in the target, fix the order with
+    // ReshardWithCollectivePermute.
+    return ReshardWithCollectivePermute(target);
   }
 
-  auto padded_hlo =
-      PadBaseShapeBeforeUnevenTiledSharding(hlo_, target, state_.b);
+  // Swap one pair of dimensions.
+  int64 source_dim = source_target_dims[0].first;
+  int64 target_dim = source_target_dims[0].second;
+  const int64 group_size = sharding().tile_assignment().dim(source_dim) /
+                           sharding().tile_assignment().dim(target_dim);
 
-  // The order of ids in the group must follow the target sharding.
-  std::vector<ReplicaGroup> groups(target.tile_assignment().num_elements() /
-                                   group_size);
-  target.tile_assignment().Each(
+  auto temp_target_tile = sharding().tile_assignment();
+  {
+    std::vector<int64> reshape_tile_dims(temp_target_tile.num_dimensions() + 2);
+    int64 i = 0;
+    int64 added_source_dim = -1;
+    int64 added_target_dim = -1;
+    for (int64 j = 0; j < temp_target_tile.num_dimensions(); ++j) {
+      if (source_dim == j) {
+        reshape_tile_dims[i] = temp_target_tile.dim(j) / group_size;
+        reshape_tile_dims[++i] = group_size;
+        added_source_dim = i;
+      } else if (target_dim == j) {
+        reshape_tile_dims[i] = temp_target_tile.dim(j);
+        reshape_tile_dims[++i] = 1;
+        added_target_dim = i;
+      } else {
+        reshape_tile_dims[i] = temp_target_tile.dim(j);
+      }
+      ++i;
+    }
+    temp_target_tile.Reshape(reshape_tile_dims);
+    std::vector<int64> xpose_dims(temp_target_tile.num_dimensions());
+    std::iota(xpose_dims.begin(), xpose_dims.end(), 0);
+    xpose_dims[added_source_dim] = added_target_dim;
+    xpose_dims[added_target_dim] = added_source_dim;
+    temp_target_tile = hlo_sharding_util::TransposeSharding(
+                           HloSharding::Tile(temp_target_tile), xpose_dims)
+                           .tile_assignment();
+    auto temp_target_tile_dims = sharding().tile_assignment().dimensions();
+    temp_target_tile_dims[source_dim] =
+        sharding().tile_assignment().dim(target_dim);
+    temp_target_tile_dims[target_dim] =
+        sharding().tile_assignment().dim(source_dim);
+    temp_target_tile.Reshape(temp_target_tile_dims);
+  }
+  auto temp_target = HloSharding::Tile(temp_target_tile);
+
+  auto padded_shape = hlo_->shape();
+  padded_shape.set_dimensions(
+      target_dim,
+      RoundUpToNearest(padded_shape.dimensions(target_dim),
+                       temp_target.tile_assignment().dim(target_dim)));
+  auto padded_hlo = PadToShape(hlo_, padded_shape, state_.b);
+
+  // The order of ids in the group must follow the temp_target sharding.
+  std::vector<ReplicaGroup> groups(
+      temp_target.tile_assignment().num_elements() / group_size);
+  temp_target.tile_assignment().Each(
       [&](absl::Span<const int64> indices, int64 device) {
         int64 group_id = 0;
         for (int64 dim = 0; dim < indices.size(); ++dim) {
           if (dim == target_dim) {
-            continue;
+            group_id *= temp_target.tile_assignment().dim(dim) / group_size;
+            group_id += indices[dim] / group_size;
+          } else {
+            group_id *= temp_target.tile_assignment().dim(dim);
+            group_id += indices[dim];
           }
-          group_id *= target.tile_assignment().dim(dim);
-          group_id += indices[dim];
         }
         groups[group_id].add_replica_ids(device);
       });
@@ -819,14 +860,17 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(const HloSharding& target,
   result = state_.b->AddInstruction(
       HloInstruction::CreateReshape(new_shape, transpose));
 
-  const Shape result_shape = MakePartitionedShape(base_shape_, target);
+  const Shape result_shape = MakePartitionedShape(base_shape_, temp_target);
   if (result_shape != result->shape()) {
     result = state_.b->AddInstruction(HloInstruction::CreateSlice(
         result_shape, result, std::vector<int64>(result_shape.rank(), 0),
         result_shape.dimensions(), std::vector<int64>(result_shape.rank(), 1)));
   }
-  result->set_sharding(target);
-  return PartitionedHlo(result, base_shape_, state_);
+  result->set_sharding(temp_target);
+  auto remaining_source_target_dims = source_target_dims;
+  remaining_source_target_dims.remove_prefix(1);
+  return PartitionedHlo(result, base_shape_, state_)
+      .ReshardWithAllToAll(target, remaining_source_target_dims);
 }
 
 PartitionedHlo PartitionedHlo::ReshardWithCollectivePermute(
@@ -837,9 +881,7 @@ PartitionedHlo PartitionedHlo::ReshardWithCollectivePermute(
   sharding().tile_assignment().Each(
       [&](absl::Span<const int64> indices, int64 src_device) {
         int64 dst_device = target.tile_assignment()(indices);
-        if (dst_device != src_device) {
-          src_dst_pairs.emplace_back(src_device, dst_device);
-        }
+        src_dst_pairs.emplace_back(src_device, dst_device);
       });
   auto cp =
       state_.collective_ops_creator.create_cross_partition_collective_permute(
