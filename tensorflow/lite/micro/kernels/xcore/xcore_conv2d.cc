@@ -20,18 +20,19 @@ namespace conv {
 namespace shallow {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2DParams conv2d_params;
-  ::xcore::ExecutionPlan execution_plan;
-
-  if (buffer)
-    parse_custom_options(context, buffer, length, conv2d_params,
-                         &execution_plan);
-
+  // construct operator wrapper
   void *data = nullptr;
   context->AllocatePersistentBuffer(
       context, sizeof(::xcore::conv::Conv2D_Shallow), &data);
-  ::xcore::conv::Conv2D_Shallow *op =
-      new (data)::xcore::conv::Conv2D_Shallow(conv2d_params, execution_plan);
+  ::xcore::conv::Conv2D_Shallow *op = new (data)::xcore::conv::Conv2D_Shallow();
+
+  // parse custom options
+  if (buffer)
+    parse_custom_options(context, buffer, length, op->params,
+                         &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
 
   return op;
 }
@@ -93,18 +94,20 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 namespace deep {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2DParams conv2d_params;
-  ::xcore::ExecutionPlan execution_plan;
-
-  if (buffer)
-    parse_custom_options(context, buffer, length, conv2d_params,
-                         &execution_plan);
-
+  // construct operator wrapper
   void *data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_Deep),
                                     &data);
-  ::xcore::conv::Conv2D_Deep *op =
-      new (data)::xcore::conv::Conv2D_Deep(conv2d_params, execution_plan);
+  ::xcore::conv::Conv2D_Deep *op = new (data)::xcore::conv::Conv2D_Deep();
+
+  // parse custom options
+  if (buffer)
+    parse_custom_options(context, buffer, length, op->params,
+                         &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
+
   return op;
 }
 
@@ -160,20 +163,21 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 namespace n1x1 {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2DParams conv2d_params;
-  ::xcore::ExecutionPlan execution_plan;
-
-  if (buffer)
-    parse_custom_options(context, buffer, length, conv2d_params,
-                         &execution_plan);
-
+  // construct operator wrapper
   void *data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_1x1),
                                     &data);
-  ::xcore::conv::Conv2D_1x1 *op =
-      new (data)::xcore::conv::Conv2D_1x1(conv2d_params, execution_plan);
+  ::xcore::conv::Conv2D_1x1 *op = new (data)::xcore::conv::Conv2D_1x1();
 
-  return data;
+  // parse custom options
+  if (buffer)
+    parse_custom_options(context, buffer, length, op->params,
+                         &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
+
+  return op;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
@@ -229,18 +233,20 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 namespace depthwise {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2DParams conv2d_params;
-  ::xcore::ExecutionPlan execution_plan;
-
-  if (buffer)
-    parse_custom_options(context, buffer, length, conv2d_params,
-                         &execution_plan);
-
+  // construct operator wrapper
   void *data = nullptr;
   context->AllocatePersistentBuffer(
       context, sizeof(::xcore::conv::Conv2D_Depthwise), &data);
   ::xcore::conv::Conv2D_Depthwise *op =
-      new (data)::xcore::conv::Conv2D_Depthwise(conv2d_params, execution_plan);
+      new (data)::xcore::conv::Conv2D_Depthwise();
+
+  // parse custom options
+  if (buffer)
+    parse_custom_options(context, buffer, length, op->params,
+                         &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
 
   return op;
 }

@@ -11,14 +11,18 @@ namespace xcore {
 namespace fully_connected {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::ExecutionPlan execution_plan;
-  if (buffer) parse_custom_options(context, buffer, length, &execution_plan);
-
+  // construct operator wrapper
   void* data = nullptr;
   context->AllocatePersistentBuffer(
       context, sizeof(::xcore::fully_connected::FullyConnected_16), &data);
   ::xcore::fully_connected::FullyConnected_16* op =
-      new (data)::xcore::fully_connected::FullyConnected_16(execution_plan);
+      new (data)::xcore::fully_connected::FullyConnected_16();
+
+  if (buffer)
+    parse_custom_options(context, buffer, length, &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
 
   return op;
 }

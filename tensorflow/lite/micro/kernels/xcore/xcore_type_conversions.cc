@@ -13,14 +13,19 @@ namespace xcore {
 namespace type_conversions {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::ExecutionPlan execution_plan;
-  if (buffer) parse_custom_options(context, buffer, length, &execution_plan);
-
+  // construct operator wrapper
   void* data = nullptr;
   context->AllocatePersistentBuffer(
       context, sizeof(::xcore::type_conversions::Requantize_16_to_8), &data);
   ::xcore::type_conversions::Requantize_16_to_8* op =
-      new (data)::xcore::type_conversions::Requantize_16_to_8(execution_plan);
+      new (data)::xcore::type_conversions::Requantize_16_to_8();
+
+  // parse custom options
+  if (buffer)
+    parse_custom_options(context, buffer, length, &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
 
   return op;
 }

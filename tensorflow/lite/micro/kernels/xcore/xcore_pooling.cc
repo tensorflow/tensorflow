@@ -27,18 +27,19 @@ T unpack(const uint8_t* buffer) {
 namespace maxpool {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::pooling::PoolingParams pooling_params;
-  ::xcore::ExecutionPlan execution_plan;
-
-  if (buffer)
-    parse_custom_options(context, buffer, length, pooling_params,
-                         &execution_plan);
-
+  // construct operator wrapper
   void* data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::pooling::MaxPool),
                                     &data);
-  ::xcore::pooling::MaxPool* op =
-      new (data)::xcore::pooling::MaxPool(pooling_params, execution_plan);
+  ::xcore::pooling::MaxPool* op = new (data)::xcore::pooling::MaxPool();
+
+  // parse custom options
+  if (buffer)
+    parse_custom_options(context, buffer, length, op->params,
+                         &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
 
   return op;
 }
@@ -86,18 +87,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 namespace avgpool {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::pooling::PoolingParams pooling_params;
-  ::xcore::ExecutionPlan execution_plan;
-
-  if (buffer)
-    parse_custom_options(context, buffer, length, pooling_params,
-                         &execution_plan);
-
+  // construct operator wrapper
   void* data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::pooling::AvgPool),
                                     &data);
-  ::xcore::pooling::AvgPool* op =
-      new (data)::xcore::pooling::AvgPool(pooling_params, execution_plan);
+  ::xcore::pooling::AvgPool* op = new (data)::xcore::pooling::AvgPool();
+
+  // parse custom options
+  if (buffer)
+    parse_custom_options(context, buffer, length, op->params,
+                         &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
 
   return op;
 }
@@ -145,15 +147,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 namespace avgpool_global {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::ExecutionPlan execution_plan;
-
-  if (buffer) parse_custom_options(context, buffer, length, &execution_plan);
-
+  // construct operator wrapper
   void* data = nullptr;
   context->AllocatePersistentBuffer(
       context, sizeof(::xcore::pooling::AvgPool_Global), &data);
   ::xcore::pooling::AvgPool_Global* op =
-      new (data)::xcore::pooling::AvgPool_Global(execution_plan);
+      new (data)::xcore::pooling::AvgPool_Global();
+
+  // parse custom options
+  if (buffer)
+    parse_custom_options(context, buffer, length, &op->execution_plan);
+
+  // initialize operator wrapper
+  op->Init(context);
 
   return op;
 }
