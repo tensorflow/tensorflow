@@ -282,7 +282,7 @@ class OptimizerV2(trackable.Trackable):
     you should be able to use the _set_hyper()/state.get_hyper()
     facility instead.
 
-    This class in stateful and thread-compatible.
+    This class is stateful and thread-compatible.
 
     Args:
       name: A non-empty string.  The name to use for accumulators created
