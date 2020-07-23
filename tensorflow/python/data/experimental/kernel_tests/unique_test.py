@@ -78,60 +78,93 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
         (["foo", "bar", "baz", "baz", "bar", "foo"], ["foo", "bar", "baz"]),
     ])
 
+  def _checkDatasetRaises(self, dtype, test_cases, error):
+    """Test whether the dataset raises the appropriate errors
+    while generating the outputs.
+
+    Args:
+      dtype: The actual `dtype` of the elements in each test case.
+      test_cases: A list of lists. The dataset will be created from the list items.
+      error: The expected error to be raised when a corrupted item in encountered.
+    """
+
+    current_test_case = []
+    dataset = dataset_ops.Dataset.from_generator(lambda: current_test_case,
+                                                 dtype).apply(unique.unique())
+
+    for test_case in test_cases:
+      current_test_case = test_case
+      with self.assertRaises(error):
+        _ = self.getDatasetOutput(dataset)
+
   @combinations.generate(test_base.graph_only_combinations())
-  def testTypeMismatch(self):
+  def testStringTypeMismatch(self):
+    """Should raise InternalError when element type doesn't match
+    with dtypes.string."""
 
-    # Placeholder values are needed to fill in the expected array with dummy value so that,
-    # when the dataset generates the element and observes that there is a type mismatch,
-    # it raises the proper error and not an OutOfRangeError which occurs when it is unable
-    # to fetch an element to compare from the expected array in the first place.
-    string_placeholder = ""
-    int32_placeholder = 0
-    int64_placeholder = 0
-
-    # raises InternalError when element type doesn't match with dtypes.string.
-    string_cases = [
-        (["hello", 1, 2, 1], ["hello"]),
-        (["hello", "world", 1], ["hello", "world"]),
-        (["hello", "hello", "world", 1, 2], ["hello", "world"]),
-        (["hello", "world", 1, 1, 2], ["hello", "world"]),
-        # In the following cases, when the first element (i.e 1) of the dataset is generated,
-        # it validates the type and immediately raises the error. This is unlike the above cases,
-        # wherein the dtype of the starting elements are as expected to start with,
-        # and the dataset has to loop until it reaches the incorrect dtype element.
-        # Until then we need to make sure that data with correct type has to match
-        # for testing purposes. Similar logic applies to dtype.int32 and dtype.64 as well.
-        ([1, 2, "hello"], [string_placeholder]),
-        ([1, 1, 2, 3, 3, "hello"], [string_placeholder]),
+    test_cases = [
+        ["hello", 1],
+        ["hello", "hello", "world", 3],
+        ["hello", 1, 1],
+        ["hello", "world", 1, 2],
+        [1, "hello"],
+        [1, 2, "hello"],
+        [1, 3, "hello", "world"],
+        [1, 1, "hello", "hello"]
     ]
+    self._checkDatasetRaises(dtype=dtypes.string, test_cases=test_cases,
+                             error=errors.InternalError)
 
-    # handle each case independently so that an error raised by a single case doesn't interfere
-    # with the other ones. As per self._testSimpleHelper functionality.
-    for case in string_cases:
-      with self.assertRaises(errors.InternalError):
-        self._testSimpleHelper(dtypes.string, [case])
+  @combinations.generate(test_base.graph_only_combinations())
+  def testInt32TypeMismatch(self):
+    """Should raise InvalidArgumentError when element type doesn't
+    match with dtypes.int32"""
 
-    # raises InvalidArgumentError when element type doesn't match with dtypes.int32.
-    int32_cases = [
-        ([1, "hello", "world"], [1]),
-        ([1, 2, 1, "hello", "hello", "world"], [1, 2]),
-        (["hello", 1, 2], [int32_placeholder]),
-        (["hello", 1, 1, 2, 3, 3], [int32_placeholder]),
+    test_cases = [
+        [1, "foo"],
+        [1, 2, "bar"],
+        [1, 3, "foo", "bar"],
+        [1, 4, "foo", "foo"],
+        ["bar", 1],
+        ["bar", "foo", 2],
+        ["bar", "bar", "foo", 3],
+        ["foo", 1, 1],
+        ["bar", "bar", 1, 1],
     ]
-    for case in int32_cases:
-      with self.assertRaises(errors.InvalidArgumentError):
-        self._testSimpleHelper(dtypes.int32, [case])
+    self._checkDatasetRaises(dtype=dtypes.int32, test_cases=test_cases,
+                             error=errors.InvalidArgumentError)
 
-    # raises InvalidArgumentError when element type doesn't match with dtypes.int64.
-    int64_cases = [
-        ([2, 3, "hello", "world"], [2, 3]),
-        ([2, 3, 3, "hello", "hello", "world"], [2, 3]),
-        (["hello", 2, 2], [int64_placeholder]),
-        (["hello", "hello", 1, 1, 2, 3], [int64_placeholder]),
+  @combinations.generate(test_base.graph_only_combinations())
+  def testInt64TypeMismatch(self):
+    """Should raise InvalidArgumentError when element type doesn't
+    match with dtypes.int64."""
+
+    test_cases = [
+        [2, "hello"],
+        [3, 2, "hello"],
+        [5, 3, "hello", "world"],
+        [6, 7, "hello", "hello"],
+        ["hello", 6],
+        ["hello", "world", 8],
+        ["hello", "hello", "world", 8],
+        ["hello", 9, 9],
+        ["hello", "world", 10, 10],
     ]
-    for case in int64_cases:
-      with self.assertRaises(errors.InvalidArgumentError):
-        self._testSimpleHelper(dtypes.int64, [case])
+    self._checkDatasetRaises(dtype=dtypes.int64, test_cases=test_cases,
+                             error=errors.InvalidArgumentError)
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testUnsupportedTypes(self):
+    """Should raise TypeError when element type doesn't match with the
+    dtypes.int64, dtypes.int32 or dtypes.string (supported types)."""
+
+    sample_unsupported_types = [dtypes.bool, dtypes.double, dtypes.complex64,
+                                dtypes.float32, dtypes.float64, dtypes.qint16, dtypes.qint32]
+    current_test_case = []
+    for dtype in sample_unsupported_types:
+      with self.assertRaises(TypeError):
+        _ = dataset_ops.Dataset.from_generator(lambda: current_test_case,
+                                               dtype).apply(unique.unique())
 
 
 if __name__ == "__main__":
