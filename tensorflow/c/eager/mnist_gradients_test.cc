@@ -287,9 +287,21 @@ TEST_P(CppGradients, TestMatMulGrad) {
     ASSERT_NEAR(result_data[j], expected_dA[j], tolerance);
   }  
 
+  TF_Tensor* dB_tensor;
+  s = getValue(outputs[1], &dB_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  
+  memcpy(&result_data[0], TF_TensorData(dB_tensor), TF_TensorByteSize(dB_tensor));
+  
+  float expected_dB [4] =  {4.0f, 4.0f, 6.0f, 6.0f}; 
+  for(int j = 0; j < 4; j++){
+    ASSERT_NEAR(result_data[j], expected_dB[j], tolerance);
+  }  
+
   outputs[0]->Release();
   outputs[1]->Release();
   TF_DeleteTensor(dA_tensor);
+  TF_DeleteTensor(dB_tensor);
 }
 
 // Computes
@@ -881,6 +893,150 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   outputs[1]->Release();
   TF_DeleteTensor(dX_tensor);
 }
+
+Status MNISTGradModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry) {
+  
+  AbstractTensorHandle* X = inputs[0];
+  AbstractTensorHandle* W1 = inputs[1];
+  AbstractTensorHandle* W2 = inputs[2];
+  AbstractTensorHandle* y_labels = inputs[3];                    
+
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/true);
+  tape->Watch(ToId(X));  // Watch X.
+  tape->Watch(ToId(W1));  // Watch W1.
+  tape->Watch(ToId(W2));  // Watch W1.
+  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {X, W1}, absl::MakeSpan(temp_outputs), 
+      "matmul0", /*transpose_a=*/false, /*transpose_b=*/false, registry));  // Compute X*W1
+  
+  AbstractTensorHandle* mm = temp_outputs[0];
+
+  TF_RETURN_IF_ERROR(Relu(ctx, tape, {mm}, absl::MakeSpan(temp_outputs),  // Relu(X*W1)
+      "relu0", registry)); 
+
+  AbstractTensorHandle* hidden = temp_outputs[0];
+  
+  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {hidden, W2}, absl::MakeSpan(temp_outputs), 
+      "matmul1", /*transpose_a=*/false, /*transpose_b=*/false, registry));  // W2*Relu(X*W1)
+  
+  AbstractTensorHandle* scores = temp_outputs[0];
+  
+  temp_outputs.resize(2);
+  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs), 
+      "softmaxloss", registry));  // W2*Relu(X*W1)
+
+  AbstractTensorHandle* loss = temp_outputs[0];
+
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(loss)},
+      /*source_tensor_ids=*/{ToId(W1), ToId(W2)},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads));
+  
+  for (auto temp_output : temp_outputs) {
+    temp_output->Release();
+  }
+
+  outputs[0] = out_grads[0];  // dW1
+  outputs[1] = out_grads[1];  // dW2
+  delete tape;
+  return Status::OK();
+}
+
+TEST_P(CppGradients, TestMNISTGrad) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  // X = data
+  float X_vals [] = {1.0f, 2.0f, 3.0f, 4.0f}; 
+  int64_t X_dims [] = {2,2};
+  int num_dims = 2;
+  AbstractTensorHandlePtr X = getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
+ 
+  // W1 = first weights
+  float W1_vals [] = {-1.0f, 10.0f, .5f, 1.0f};
+  int64_t dims [] = {2,2};
+  AbstractTensorHandlePtr W1 = getMatrixTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
+ 
+  // W2 = second weights
+  float W2_vals [] = {.1f, .2f, .3f, -.5f};
+  AbstractTensorHandlePtr W2 = getMatrixTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
+
+  // y = labels
+  int y_vals [] = {1, 1};
+  int64_t y_dims [] = {2};
+  num_dims = sizeof(y_dims)/sizeof(y_dims[0]);
+  AbstractTensorHandlePtr y = getMatrixTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
+
+  // Register Grads 
+  GradientRegistry registry;
+  Status s = RegisterGradientMatMul(&registry);
+  s = RegisterGradientRelu(&registry);
+  s = RegisterGradientSparseSoftmaxCrossEntropyLoss(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  /* Pseudo-code:
+   *
+   * tape.watch(A)
+   * tape.watch(B)
+   * mm = AB
+   * hidden = Relu(AB)
+   * outputs = tape.gradient(hidden, [A, B])
+   *
+   */
+
+  std::vector<AbstractTensorHandle*> outputs(2);
+  s = RunModel(MNISTGradModel, ctx.get(), {X.get(), W1.get(), W2.get(), y.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  float tolerance = 1e-3;
+  TF_Tensor* dW1_tensor;
+  s = getValue(outputs[0], &dW1_tensor); 
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message(); 
+  
+  float result_data[4] = {0};
+  memcpy(&result_data[0], TF_TensorData(dW1_tensor), TF_TensorByteSize(dW1_tensor));
+  
+  float expected_dW1 [4] = {0.0f, 3.2f, 0.0f, 4.8f}; ;        //dLoss      
+  for(int j = 0; j < 4; j++){
+    ASSERT_NEAR(result_data[j], expected_dW1[j], tolerance);
+  }  
+
+  TF_Tensor* dW2_tensor;
+  s = getValue(outputs[1], &dW2_tensor); 
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message(); 
+
+  memcpy(&result_data[0], TF_TensorData(dW2_tensor), TF_TensorByteSize(dW2_tensor));
+     
+  float expected_dW2 [4] = {0.0f, 0.0f, 46.0f, -46.0f};   //dLoss
+  for(int j = 0; j < 4; j++){
+    ASSERT_NEAR(result_data[j], expected_dW2[j], tolerance);
+  }  
+
+  outputs[0]->Release();
+  outputs[1]->Release();
+  TF_DeleteTensor(dW1_tensor);
+  TF_DeleteTensor(dW2_tensor);
+}
+
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
 // supported. It is needed for AddN op which is used for gradient aggregation.

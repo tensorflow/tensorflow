@@ -157,40 +157,6 @@ Status AddGradModel(AbstractContext* ctx,
   return Status::OK();
 }
 
-// Computes
-// y = inputs[0] * inputs[1]
-// return grad(y, {inputs[0], inputs[1]})
-Status MatMulGradModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch x.
-  tape->Watch(ToId(inputs[1]));  // Watch y.
-  std::vector<AbstractTensorHandle*> mm_outputs(1);
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, inputs, absl::MakeSpan(mm_outputs), 
-      "matmul0", /*transpose_a=*/false, /*transpose_b=*/false, registry));  // Compute x*y.
-  
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(mm_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
-  for (auto mm_output : mm_outputs) {
-    mm_output->Release();
-  }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
-  delete tape;
-  return Status::OK();
-}
-
 Status MNISTForwardModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
@@ -261,10 +227,6 @@ Status CreateParamsForInputs(AbstractContext* ctx,
   }
   return Status::OK();
 }
-
-// using Model = std::function<Status(
-//     AbstractContext*, absl::Span<AbstractTensorHandle* const>,
-//     absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
 
 // Runs `model` maybe wrapped in a function.
 Status RunModel(Model model, AbstractContext* ctx,

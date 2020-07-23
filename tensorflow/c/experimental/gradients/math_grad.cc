@@ -91,6 +91,7 @@ class MatMulGradientFunction : public GradientFunction {
     grad_outputs->resize(2);
     std::vector<AbstractTensorHandle*> matmul_outputs(1);
 
+    
     // Gradient for A
     TF_RETURN_IF_ERROR(MatMul(ctx_, {upstream_grad, forward_inputs[1]},
                               absl::MakeSpan(matmul_outputs), "mm0",  
@@ -98,12 +99,15 @@ class MatMulGradientFunction : public GradientFunction {
 
     (*grad_outputs)[0] = matmul_outputs[0];
 
+    
     // Gradient for B
     TF_RETURN_IF_ERROR(MatMul(ctx_, {forward_inputs[0], upstream_grad},
                               absl::MakeSpan(matmul_outputs), "mm1", 
                               /*transpose_a = */true, /*transpose_b = */false));
 
     (*grad_outputs)[1] = matmul_outputs[0];
+
+    counter += 2; //update counter for names 
     return Status::OK();
   }
   ~MatMulGradientFunction() override {}
@@ -111,6 +115,7 @@ class MatMulGradientFunction : public GradientFunction {
  private:
   AbstractContext* ctx_;
   std::vector<AbstractTensorHandle*> forward_inputs;
+  long counter;
 
 };
 
