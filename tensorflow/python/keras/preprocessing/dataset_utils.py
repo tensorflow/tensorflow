@@ -216,9 +216,9 @@ def check_validation_split_arg(validation_split, subset, shuffle, seed):
 
   Args:
     shuffle: Whether to shuffle the data. Either True or False.
-    seed: Optional random seed for shuffling and transformations.
-    validation_split: Optional float between 0 and 1,
-        fraction of data to reserve for validation.
+    seed: random seed for shuffling and transformations.
+    validation_split: float between 0 and 1,
+      fraction of data to reserve for validation.
     subset: One of "training" or "validation".
         Only used if `validation_split` is set.
   """
