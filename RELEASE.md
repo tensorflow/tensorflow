@@ -64,8 +64,7 @@
     True, the function may use type annotations to optimize the tracing
     performance.
 *   `tf.lite`:
-    * Better support for ops with high-dimensional broadcasting inputs by adding
-  `BroadcastTo` ops when necessary.
+    * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
 *   Math and Linear Algebra:
