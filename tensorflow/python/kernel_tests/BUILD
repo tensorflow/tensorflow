@@ -3533,6 +3533,7 @@ cuda_py_test(
     srcs = ["tensordot_op_test.py"],
     tags = ["no_rocm"],
     shard_count = 20,
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
