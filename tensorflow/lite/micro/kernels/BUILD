@@ -158,6 +158,7 @@ tflite_micro_cc_test(
         "depthwise_conv_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:op_resolvers",
