@@ -510,7 +510,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("batch_sizes_index"),
                                                batch_sizes_index_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("offset"), offset_));
-        if (batch_sizes_index_ != 0) {
+        if (offset_ != -1) {
           for (int i = 0; i < tensors_.size(); ++i) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
                 full_name(strings::StrCat("tensors[", i, "]")), tensors_[i]));
@@ -532,7 +532,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("offset"), &offset_));
 
         tensors_.clear();
-        if (batch_sizes_index_ > 0) {
+        if (offset_ != -1) {
           tensors_.resize(dataset()->output_dtypes().size());
           for (int i = 0; i < tensors_.size(); ++i) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(

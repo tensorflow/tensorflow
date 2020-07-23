@@ -43,5 +43,21 @@ class LegacyRebatchDatasetSerializationTest(
     self.run_core_tests(lambda: build_dataset(64, 8), 8)
 
 
+class RebatchDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+
+    def build_dataset(num_elements, batch_size):
+      return distribute._RebatchDataset(
+          dataset_ops.Dataset.range(num_elements).batch(
+              2 * batch_size, drop_remainder=True),
+          batch_sizes=[batch_size, batch_size])
+
+    self.run_core_tests(lambda: build_dataset(64, 8), 8)
+
+
 if __name__ == "__main__":
   test.main()
