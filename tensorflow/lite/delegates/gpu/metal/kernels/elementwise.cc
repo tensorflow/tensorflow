@@ -50,6 +50,7 @@ std::string OneInputFunctor(OperationType op_type, const std::string& value) {
       {OperationType::SQUARE, "$0 * $0"},
       {OperationType::SIGMOID, "1.0 / (1.0 + exp(-1.0 * $0))"},
       {OperationType::TANH, "tanh($0)"},
+      {OperationType::COPY, "$0"},
   };
 
   if (functors.find(op_type) == functors.end()) {

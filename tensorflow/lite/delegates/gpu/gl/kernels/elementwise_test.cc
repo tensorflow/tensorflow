@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/test_util.h"
 
+using ::testing::FloatEq;
 using ::testing::FloatNear;
 using ::testing::Pointwise;
 
@@ -58,6 +59,17 @@ TEST(ElementwiseOneArgumentTest, Cos) {
   ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1.0, -1.0, -1.0, 0.540302}));
+}
+
+TEST(ElementwiseOneArgumentTest, Copy) {
+  OperationType op_type = OperationType::COPY;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatEq(), {0.0, -6.2, 2.0, 4.0}));
 }
 
 TEST(ElementwiseOneArgumentTest, Elu) {

@@ -364,6 +364,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           absl::any_cast<SpaceToDepthAttributes>(node->operation.attributes));
       break;
     case OperationType::ABS:
+    case OperationType::COPY:
     case OperationType::COS:
     case OperationType::ELU:
     case OperationType::EXP:
