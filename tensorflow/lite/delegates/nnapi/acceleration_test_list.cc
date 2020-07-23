@@ -245,20 +245,20 @@ CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest/NonLayerNormLstmBlackBo
 # lstm_test
 -LstmOpTest/InvalidTypes
 # Float
-.+_LstmOpTest\.Test/0,29
-.+_LstmOpTest\.Test/1,29
-.+_LstmOpTest\.Test/2,29
-.+_LstmOpTest\.Test/3,29
+Parameterized/LstmOpTest.+/0,29
+Parameterized/LstmOpTest.+/1,29
+Parameterized/LstmOpTest.+/2,29
+Parameterized/LstmOpTest.+/3,29
 # HybridUint8
-.+_LstmOpTest\.Test/4,29
-.+_LstmOpTest\.Test/5,29
-.+_LstmOpTest\.Test/6,29
-.+_LstmOpTest\.Test/7,29
+Parameterized/LstmOpTest.+/4,29
+Parameterized/LstmOpTest.+/5,29
+Parameterized/LstmOpTest.+/6,29
+Parameterized/LstmOpTest.+/7,29
 # HybridInt8
--.+_LstmOpTest\.Test/8
--.+_LstmOpTest\.Test/9
--.+_LstmOpTest\.Test/10
--.+_LstmOpTest\.Test/11
+-Parameterized/LstmOpTest.+/8
+-Parameterized/LstmOpTest.+/9
+-Parameterized/LstmOpTest.+/10
+-Parameterized/LstmOpTest.+/11
 
 # maximum_minimum_test
 MaxMinOpTest/.+nt8Test,29
