@@ -53,7 +53,6 @@ tf_kernel_library(
     prefix = "histogram_summary_op",
     deps = [
         "//tensorflow/c:kernels",
-        "//tensorflow/c:ops",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
     ],

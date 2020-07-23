@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,21 +13,15 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/c/kernels.h"
-#include "tensorflow/c/ops.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
 // Used to delete tensor and status in its destructor upon kernel return. 
-typedef struct Params{ 
+typedef struct Params { 
   TF_Tensor* tags; 
   TF_Tensor* values; 
   TF_Status* status; 
