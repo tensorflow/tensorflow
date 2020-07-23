@@ -237,7 +237,7 @@ int64 InstructionCountPrefetchIntervalPicker::PreferredEvictionEndTime(
 
 int64 InstructionCountPrefetchIntervalPicker::LatestPrefetchStartTime(
     const HloUse& use, int64 start_time, int64 end_time) const {
-  return end_time_ - min_overlap_count_;
+  return end_time - min_overlap_count_;
 }
 
 void InstructionCountPrefetchIntervalPicker::Begin(const HloUse& use,
