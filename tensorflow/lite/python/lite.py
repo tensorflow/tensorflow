@@ -202,8 +202,11 @@ class QuantizationMode(object):
   def is_post_training_integer_quantize(self):
     """Post training integer quantization."""
     return (self.post_training_int8_no_float() or
-            self.post_training_int8_allow_float() or
-            self.post_training_int16x8_no_float() or
+            self.post_training_int8_allow_float())
+
+  def is_post_training_integer_quantize_16x8(self):
+    """Post training 16x8 integer quantization."""
+    return (self.post_training_int16x8_no_float() or
             self.post_training_int16x8_allow_float())
 
   def training_time_int8_allow_float(self):
@@ -253,7 +256,8 @@ class QuantizationMode(object):
 
   def converter_flags(self, inference_ty=None, inference_input_ty=None):
     """Flags to the converter."""
-    if self.is_post_training_integer_quantize():
+    if self.is_post_training_integer_quantize() or \
+      self.is_post_training_integer_quantize_16x8():
       # The inference_input_type is for the quantizer, then we need to keep the
       # converter inference_input_type to float.
       inference_input_ty = constants.FLOAT
@@ -558,13 +562,17 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     # We only support integer types for post training integer quantization
     # as we have statistical information to quantize the input and output.
     if quant_mode.is_post_training_integer_quantize():
-      all_types = default_types + [constants.INT8, constants.QUANTIZED_UINT8,\
-        constants.INT16]
+      all_types = default_types + [constants.INT8, constants.QUANTIZED_UINT8]
       if self.inference_input_type not in all_types or \
           self.inference_output_type not in all_types:
         all_types_names = ["tf." + t.name for t in all_types]
         raise ValueError("The inference_input_type and inference_output_type "
                          "must be in {}.".format(all_types_names))
+    elif quant_mode.is_post_training_integer_quantize_16x8():
+      if self.inference_input_type != constants.INT16 or \
+          self.inference_output_type != constants.INT16:
+        raise ValueError("The inference_input_type and inference_output_type "
+                         "must be constants.INT16.")
     elif self.inference_input_type not in default_types or \
         self.inference_output_type not in default_types:
       raise ValueError("The inference_input_type and inference_output_type "
