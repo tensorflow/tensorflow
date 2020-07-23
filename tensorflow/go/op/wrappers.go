@@ -10140,6 +10140,34 @@ func TensorArraySizeV2(scope *Scope, handle tf.Output, flow_in tf.Output) (size 
 	return op.Output(0)
 }
 
+// Creates a dataset that changes the batch size.
+//
+// Creates a dataset that rebatches elements from `input_dataset` into new batch
+// sizes.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	batch_sizes: A vector of integers representing the size of batches to produce. These values
+// are cycled through in order.
+//
+//
+//
+func RebatchDatasetV2(scope *Scope, input_dataset tf.Output, batch_sizes tf.Output, drop_remainder tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "RebatchDatasetV2",
+		Input: []tf.Input{
+			input_dataset, batch_sizes, drop_remainder,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RebatchDatasetAttr is an optional argument to RebatchDataset.
 type RebatchDatasetAttr func(optionalAttr)
 
