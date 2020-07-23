@@ -575,6 +575,14 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
 
+  def test_left_hand_numpy_multiplication(self):
+    x = np.asarray([3.0])
+    inputs = keras.Input(shape=(4,))
+    outputs = x * inputs
+    model = keras.Model(inputs, outputs)
+    ones = array_ops.ones((5, 4), dtype='float32')
+    self.assertAllEqual(model(ones), 3.0 * ones)
+
   def test_numerical_correctness_simple(self):
     x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))
