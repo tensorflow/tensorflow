@@ -29,7 +29,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.3.1'
+        classpath 'com.android.tools.build:gradle:4.0.1'
         classpath 'org.apache.httpcomponents:httpclient:4.5.4'
     }
 }
