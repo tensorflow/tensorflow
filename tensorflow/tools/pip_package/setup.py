@@ -54,6 +54,7 @@ _VERSION = '2.4.0'
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
     'astunparse == 1.6.3',
+    'flatbuffers >= 1.12',
     'gast == 0.3.3',
     'google_pasta >= 0.1.8',
     'h5py >= 2.10.0, < 2.11.0',
