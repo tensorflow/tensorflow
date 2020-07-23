@@ -83,9 +83,10 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
     while generating the outputs.
 
     Args:
-      dtype: The actual `dtype` of the elements in each test case.
-      test_cases: A list of lists. The dataset will be created from the list items.
-      error: The expected error to be raised when a corrupted item in encountered.
+      dtype: The expected `dtype` of the elements in each test case.
+      test_cases: A list of lists. The dataset will be created from the
+        list items.
+      error: The expected error to be raised.
     """
 
     current_test_case = []
@@ -95,7 +96,7 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
     for test_case in test_cases:
       current_test_case = test_case
       with self.assertRaises(error):
-        _ = self.getDatasetOutput(dataset)
+        self.getDatasetOutput(dataset)
 
   @combinations.generate(test_base.graph_only_combinations())
   def testStringTypeMismatch(self):
@@ -115,10 +116,12 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._checkDatasetRaises(dtype=dtypes.string, test_cases=test_cases,
                              error=errors.InternalError)
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testInt32TypeMismatch(self):
+  @combinations.generate(combinations.times(
+      test_base.graph_only_combinations(),
+      combinations.combine(dtype=[dtypes.int32, dtypes.int64])))
+  def testIntTypeMismatch(self, dtype):
     """Should raise InvalidArgumentError when element type doesn't
-    match with dtypes.int32"""
+    match with dtypes.int32, dtypes.int64"""
 
     test_cases = [
         [1, "foo"],
@@ -131,26 +134,7 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
         ["foo", 1, 1],
         ["bar", "bar", 1, 1],
     ]
-    self._checkDatasetRaises(dtype=dtypes.int32, test_cases=test_cases,
-                             error=errors.InvalidArgumentError)
-
-  @combinations.generate(test_base.graph_only_combinations())
-  def testInt64TypeMismatch(self):
-    """Should raise InvalidArgumentError when element type doesn't
-    match with dtypes.int64."""
-
-    test_cases = [
-        [2, "hello"],
-        [3, 2, "hello"],
-        [5, 3, "hello", "world"],
-        [6, 7, "hello", "hello"],
-        ["hello", 6],
-        ["hello", "world", 8],
-        ["hello", "hello", "world", 8],
-        ["hello", 9, 9],
-        ["hello", "world", 10, 10],
-    ]
-    self._checkDatasetRaises(dtype=dtypes.int64, test_cases=test_cases,
+    self._checkDatasetRaises(dtype=dtype, test_cases=test_cases,
                              error=errors.InvalidArgumentError)
 
   @combinations.generate(test_base.graph_only_combinations())
@@ -158,12 +142,10 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
     """Should raise TypeError when element type doesn't match with the
     dtypes.int64, dtypes.int32 or dtypes.string (supported types)."""
 
-    sample_unsupported_types = [dtypes.bool, dtypes.double, dtypes.complex64,
-                                dtypes.float32, dtypes.float64, dtypes.qint16, dtypes.qint32]
-    current_test_case = []
-    for dtype in sample_unsupported_types:
+    for dtype in [dtypes.bool, dtypes.double, dtypes.complex64,
+                  dtypes.float32, dtypes.float64, dtypes.qint16, dtypes.qint32]:
       with self.assertRaises(TypeError):
-        _ = dataset_ops.Dataset.from_generator(lambda: current_test_case,
+        _ = dataset_ops.Dataset.from_generator(lambda: [],
                                                dtype).apply(unique.unique())
 
 
