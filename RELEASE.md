@@ -31,7 +31,6 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 * TF Core:
-  * <ADD RELEASE NOTES HERE>
   * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
     type annotation for variables representing a Tensor or a value that can be
     converted to Tensor by `tf.convert_to_tensor`.
@@ -39,6 +38,11 @@
     tf.convert_to_tensor behavior. This avoids operations like tf.reshape
     truncating inputs such as from int64 to int32.
   * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensror` arguments.
+  * The Python bitwise operators for `Tensor` (`__and__`, `__or__`, `__xor__`
+    and `__invert__` now support non-`bool` arguments and apply the
+    corresponding bitwise ops. `bool` arguments continue to be supported and
+    dispatch to logical ops. This brings them more in line with Python and NumPy
+    benavior.
 * `tf.data`:
     * Added new `tf.data.experimental.service.register_dataset` and
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
