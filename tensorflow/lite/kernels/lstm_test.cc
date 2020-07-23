@@ -2221,15 +2221,13 @@ TEST(LstmOpTest, InvalidTypes) {
 #endif
 
 // Test parameter controls asymmetric_quantize_inputs in LSTMOpModel.
-#define QUANTIZE_PARAMETER_TEST(test)                                \
-  INSTANTIATE_TEST_SUITE_P(                                          \
-      test, test,                                                    \
-      ::testing::ValuesIn(std::vector<std::tuple<TensorType, bool>>{ \
-          {TensorType_FLOAT32, false},                               \
-          {TensorType_UINT8, false},                                 \
-          {TensorType_UINT8, true},                                  \
-          {TensorType_INT8, false},                                  \
-          {TensorType_INT8, true}}))
+#define QUANTIZE_PARAMETER_TEST(test)                             \
+  INSTANTIATE_TEST_SUITE_P(                                       \
+      test, test,                                                 \
+      ::testing::Combine(                                         \
+          ::testing::Values(TensorType_FLOAT32, TensorType_UINT8, \
+                            TensorType_UINT8),                    \
+          ::testing::Bool()))
 
 QUANTIZE_PARAMETER_TEST(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest);
 QUANTIZE_PARAMETER_TEST(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest);

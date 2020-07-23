@@ -246,12 +246,13 @@ CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest/NonLayerNormLstmBlackBo
 -LstmOpTest/InvalidTypes
 # Float
 .+_LstmOpTest\.Test/0,29
-# HybridUint8
 .+_LstmOpTest\.Test/1,29
+# HybridUint8
 .+_LstmOpTest\.Test/2,29
+.+_LstmOpTest\.Test/3,29
 # HybridInt8
--.+_LstmOpTest\.Test/3
 -.+_LstmOpTest\.Test/4
+-.+_LstmOpTest\.Test/5
 
 # maximum_minimum_test
 MaxMinOpTest/.+nt8Test,29
