@@ -224,6 +224,7 @@ tflite_micro_cc_test(
         "conv_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:op_resolvers",

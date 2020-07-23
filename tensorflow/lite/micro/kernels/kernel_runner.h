@@ -39,7 +39,7 @@ class KernelRunner {
   // Calls init and prepare on the kernel (i.e. TfLiteRegistration) struct. Any
   // exceptions will be reported through the error_reporter and returned as a
   // status code here.
-  TfLiteStatus InitAndPrepare();
+  TfLiteStatus InitAndPrepare(const char* init_data = nullptr);
 
   // Calls init, prepare, and invoke on a given TfLiteRegistration pointer.
   // After successful invoke, results will be available in the output tensor as

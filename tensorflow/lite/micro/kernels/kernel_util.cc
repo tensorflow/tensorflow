@@ -18,7 +18,6 @@ limitations under the License.
 namespace tflite {
 namespace micro {
 
-// Returns the TfLiteEvalTensor struct for a given input index in a node.
 const TfLiteEvalTensor* GetEvalInput(const TfLiteContext* context,
                                      const TfLiteNode* node, int index) {
   TFLITE_DCHECK(context != nullptr);
@@ -26,7 +25,6 @@ const TfLiteEvalTensor* GetEvalInput(const TfLiteContext* context,
   return context->GetEvalTensor(context, node->inputs->data[index]);
 }
 
-// Returns the TfLiteEvalTensor struct for a given output index in a node.
 TfLiteEvalTensor* GetEvalOutput(const TfLiteContext* context,
                                 const TfLiteNode* node, int index) {
   TFLITE_DCHECK(context != nullptr);
@@ -35,7 +33,9 @@ TfLiteEvalTensor* GetEvalOutput(const TfLiteContext* context,
 }
 
 const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
-  TFLITE_DCHECK(tensor != nullptr);
+  if (tensor == nullptr) {
+    return RuntimeShape();
+  }
   TfLiteIntArray* dims = tensor->dims;
   const int dims_size = dims->size;
   const int32_t* dims_data = reinterpret_cast<const int32_t*>(dims->data);
