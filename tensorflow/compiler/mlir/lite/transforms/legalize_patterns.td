@@ -256,7 +256,7 @@ def LegalizeAddv2 : Pat<(TF_AddV2Op $lhs, $rhs),
                         (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
 def LegalizeBiasAdd : Pat<
   (TF_BiasAddOp F32Tensor:$l, F32Tensor:$r, IsDataFormatNHWC:$data_format),
-  (TF_AddV2Op $l, $r)>;
+  (TFL_AddOp $l, $r, TFL_AF_None)>;
 def LegalizeSub : Pat<(TF_SubOp $lhs, $rhs),
                       (TFL_SubOp $lhs, $rhs, TFL_AF_None)>;
 def LegalizeMul : Pat<(TF_MulOp $lhs, $rhs),
