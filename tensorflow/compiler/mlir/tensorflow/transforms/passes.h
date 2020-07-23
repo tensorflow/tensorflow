@@ -161,6 +161,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 
 // Creates function pass to select device index/fold tf.DeviceIndex.
 std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
+
+// Creates function pass to replace InitializeTableFromTextFileV2Ops with
+// LookupTableImportV2Op ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 }  // namespace TF
 
 namespace tf_executor {
