@@ -1236,7 +1236,12 @@ bool ReduceTransposer::IsAlongAxis(const Tensor& tensor,
     return false;
   }
   for (int i = 0; i < axis_size; ++i) {
-    int local_axis = tensor.flat<int>()(i);
+    int local_axis = 0;
+    if (tensor.dtype() == DT_INT32) {
+      local_axis = tensor.flat<int32>()(i);
+    } else {
+      local_axis = tensor.flat<int64>()(i);
+    }
     if (local_axis < 0) {
       local_axis += rank;
     }
