@@ -3,7 +3,6 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/framework/types.proto";
 
 message DatasetDef {
   // We represent datasets as tensorflow GraphDefs which define the operations
