@@ -76,6 +76,31 @@ int ASharedMemory_create(const char* name, size_t size) {
   }
   return fd;
 }
+
+// Determine the NnApi version from loaded entry points
+uint32_t CalculateAndroidSdkVersion(NnApi const& nnapi) {
+  // Test for specific NNAPI 1.0, 1.1, 1.2 and 1.3 functions
+  bool has_10 = nnapi.ANeuralNetworksMemory_createFromFd != nullptr;
+  bool has_11 =
+      nnapi.ANeuralNetworksModel_relaxComputationFloat32toFloat16 != nullptr;
+  bool has_12 = nnapi.ANeuralNetworks_getDeviceCount != nullptr;
+  bool has_13 = nnapi.ANeuralNetworksCompilation_setTimeout != nullptr;
+
+  uint32_t sdk_version = 0;
+  if (has_10) {
+    sdk_version = 27;
+  }
+  if (sdk_version == 27 && has_11) {
+    sdk_version = 28;
+  }
+  if (sdk_version == 28 && has_12) {
+    sdk_version = 29;
+  }
+  if (sdk_version == 29 && has_13) {
+    sdk_version = 30;
+  }
+  return sdk_version;
+}
 #endif  // __ANDROID__
 
 #define LOAD_FUNCTION(handle, name)         \
@@ -237,6 +262,21 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksMemory_createFromDesc);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemory_copy);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksEvent_createFromSyncFenceFd);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksEvent_getSyncFenceFd);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_startComputeWithDependencies);
+
+#ifndef __ANDROID__
+  // If libneuralnetworks.so is loaded, but android_sdk_version is not set,
+  // then determine android_sdk_version by testing which functions are
+  // available.
+  if (nnapi.nnapi_exists && nnapi.android_sdk_version == 0) {
+    nnapi.android_sdk_version = CalculateAndroidSdkVersion(nnapi);
+  }
+#endif  // __ANDROID__
 
   return nnapi;
 }

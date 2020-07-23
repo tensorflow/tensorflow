@@ -357,6 +357,8 @@ filegroup(
 cc_library(
     name = "mutex",
     textual_hdrs = ["mutex.h"],
+    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
+    visibility = ["//tensorflow:__subpackages__"],
     deps = tf_platform_deps("mutex"),
 )
 
@@ -773,6 +775,8 @@ filegroup(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
+    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":platform",
         ":tstring",
@@ -951,6 +955,12 @@ cc_library(
     srcs = ["tf32_utils.cc"],
     hdrs = ["tf32_utils.h"],
     copts = tf_copts(),
+    alwayslink = 1,
+)
+
+filegroup(
+    name = "tf32_hdr",
+    srcs = ["tf32_utils.h"],
 )
 
 tf_cc_tests(
@@ -1534,6 +1544,7 @@ filegroup(
         "raw_coding.h",
         "refcount.h",
         "resource.h",
+        "regexp.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",

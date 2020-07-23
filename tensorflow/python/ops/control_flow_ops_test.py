@@ -201,8 +201,8 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       one = constant_op.constant(1)
       less_op = math_ops.less(zero, one)
       _, switch_true = control_flow_ops.switch(data, less_op)
-      self.assertAllEqual([1, 2, 3], switch_true.values.eval())
-      self.assertAllEqual([0, 1, 2], switch_true.indices.eval())
+      self.assertAllEqual([1, 2, 3], switch_true.values)
+      self.assertAllEqual([0, 1, 2], switch_true.indices)
 
   @test_util.run_deprecated_v1
   def testIndexedSlicesGradient(self):

@@ -242,5 +242,21 @@ void GroupKernelReports(std::vector<KernelReport>* reports,
   }
 }
 
+absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
+GroupKernelReportsByOpName(const KernelStatsDb& kernel_stats_db) {
+  absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
+      grouped_kernel_reports;
+  for (const KernelReport& kernel_report : kernel_stats_db.reports()) {
+    std::vector<const KernelReport*>& kernel_reports =
+        grouped_kernel_reports[kernel_report.op_name()];
+    kernel_reports.push_back(&kernel_report);
+    // Verifies operations with the same name have the same TensorCore
+    // eligibility.
+    DCHECK_EQ(kernel_reports.front()->is_op_tensor_core_eligible(),
+              kernel_reports.back()->is_op_tensor_core_eligible());
+  }
+  return grouped_kernel_reports;
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

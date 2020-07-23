@@ -8,6 +8,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
 
 package(
     default_visibility = [":friends"],
@@ -137,6 +138,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:tree_reduction_rewriter",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
+        "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_to_select",
         "//tensorflow/compiler/xla/service:slow_operation_alarm",
         "//tensorflow/compiler/xla/service:scatter_expander",
@@ -203,7 +205,9 @@ cc_library(
         ],
         "//conditions:default": [
         ],
-    }),
+    }) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -471,6 +475,7 @@ cc_library(
         ":cpu_runtime",
         ":ir_emission_utils",
         ":mlir_emitter",
+        ":mlir_matmul_codegen_strategy",
         ":target_machine_features",
         ":tiled_dot_emitter",
         ":vector_support_library",
@@ -611,7 +616,8 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
@@ -699,6 +705,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:types",
@@ -1102,12 +1109,33 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:Linker",
+        "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:LinalgToLLVM",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TargetLLVMIR",
+        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
+    ],
+)
+
+cc_library(
+    name = "mlir_matmul_codegen_strategy",
+    srcs = ["mlir_matmul_codegen_strategy.cc"],
+    hdrs = ["mlir_matmul_codegen_strategy.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorOps",
+        "@llvm-project//mlir:VectorToSCF",
     ],
 )

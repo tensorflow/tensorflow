@@ -499,6 +499,34 @@ tpu_py_test(
     ],
 )
 
+tpu_py_test(
+    name = "tpu_embedding_v2_correctness_test",
+    srcs = [
+        "tpu_embedding_v2_correctness_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding",
+        ":tpu_embedding_v2",
+        ":tpu_strategy_util",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/training/tracking:util",
+        "//third_party/py/numpy",
+    ],
+)
+
 tf_py_test(
     name = "tpu_embedding_v2_cpu_test",
     srcs = [
@@ -530,6 +558,13 @@ tpu_py_test(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
     ],
+)
+
+# NOTE this target should only be depended on by the tpu_test_wrapper macro.
+py_library(
+    name = "tpu_test_deps",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/python:client_testlib"],
 )
 
 tf_proto_library(

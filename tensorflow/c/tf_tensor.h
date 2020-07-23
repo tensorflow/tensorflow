@@ -48,6 +48,24 @@ limitations under the License.
 extern "C" {
 #endif
 
+// Macro used to calculate struct size for maintaining ABI stability across 
+// different struct implementations. 
+#ifndef TF_OFFSET_OF_END
+#define TF_OFFSET_OF_END(TYPE, MEMBER) (offsetof(TYPE, MEMBER) + \
+    sizeof(((TYPE *)0)->MEMBER))
+#endif // TF_OFFSET_OF_END
+
+// Allocator Attributes used for tensor allocation. 
+typedef struct TF_AllocatorAttributes { 
+  size_t struct_size; 
+  // Set boolean to 0 for CPU allocation, else 1. 
+  unsigned char on_host; 
+} TF_AllocatorAttributes; 
+
+
+#define TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE \
+    TF_OFFSET_OF_END(TF_AllocatorAttributes, on_host) 
+
 // --------------------------------------------------------------------------
 // TF_Tensor holds a multi-dimensional array of elements of a single data type.
 // For all types other than TF_STRING, the data buffer stores elements

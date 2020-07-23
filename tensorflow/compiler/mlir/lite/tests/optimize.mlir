@@ -992,3 +992,13 @@ func @RemoveCast(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: return %arg0
 }
 
+func @squaredDifferenceReluRemoveRelu(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %1 = "tfl.relu"(%0) : (tensor<1xf32>) -> tensor<1xf32>
+  return %1: tensor<1xf32>
+
+// CHECK-LABEL: squaredDifferenceReluRemoveRelu
+// CHECK:  %[[RESULT:.*]] = tfl.squared_difference %arg0, %arg1 : tensor<1xf32>
+// CHECK:  return %[[RESULT]]
+}
+

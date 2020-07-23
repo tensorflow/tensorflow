@@ -106,6 +106,7 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":simple_memory_arena",
+        ":util",
         "//tensorflow/lite/c:common",
     ],
 )
@@ -246,6 +247,7 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
+        ":shared_library",
         ":simple_memory_arena",
         ":string",
         ":tflite_with_xnnpack_optional",
@@ -623,6 +625,16 @@ cc_library(
 )
 
 cc_test(
+    name = "type_to_tflitetype_test",
+    size = "small",
+    srcs = ["type_to_tflitetype_test.cc"],
+    deps = [
+        ":type_to_tflitetype",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "minimal_logging_test",
     size = "small",
     srcs = ["minimal_logging_test.cc"],
@@ -633,6 +645,17 @@ cc_test(
         ":minimal_logging",
         "@com_google_googletest//:gtest",
     ],
+)
+
+cc_library(
+    name = "shared_library",
+    hdrs = ["shared_library.h"],
+    linkopts = if_not_windows(["-ldl"]),
+)
+
+cc_library(
+    name = "macros",
+    hdrs = ["core/macros.h"],
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.

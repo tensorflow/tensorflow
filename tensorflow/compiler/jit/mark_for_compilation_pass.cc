@@ -1096,33 +1096,33 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-absl::flat_hash_set<string> GetOrCreateWhitelist() {
-  absl::flat_hash_map<string, std::vector<string>>* whitelist_table =
-      tensorflow::GetWhitelistTable();
+absl::flat_hash_set<string> GetOrCreateAllowlist() {
+  absl::flat_hash_map<string, std::vector<string>>* allowlist_table =
+      tensorflow::GetAllowlistTable();
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  absl::flat_hash_set<string> whitelist;
+  absl::flat_hash_set<string> allowlist;
 
   for (auto s : absl::StrSplit(flags->tf_xla_ops_to_cluster, ',')) {
     if (s == "FUSIBLE") {
-      for (auto pair : *whitelist_table) {
-        whitelist.insert(pair.second.begin(), pair.second.end());
+      for (auto pair : *allowlist_table) {
+        allowlist.insert(pair.second.begin(), pair.second.end());
       }
-    } else if (whitelist_table->contains(s)) {
-      auto v = whitelist_table->at(s);
-      whitelist.insert(v.begin(), v.end());
+    } else if (allowlist_table->contains(s)) {
+      auto v = allowlist_table->at(s);
+      allowlist.insert(v.begin(), v.end());
     } else if (!s.empty()) {
       // Should be a user provided TF operation.
-      whitelist.insert(string(s));
+      allowlist.insert(string(s));
     }
   }
 
-  if (VLOG_IS_ON(2) && !whitelist.empty()) {
-    std::vector<string> vwhitelist(whitelist.begin(), whitelist.end());
-    absl::c_sort(vwhitelist);
+  if (VLOG_IS_ON(2) && !allowlist.empty()) {
+    std::vector<string> vallowlist(allowlist.begin(), allowlist.end());
+    absl::c_sort(vallowlist);
     VLOG(2) << "XLA clustering will only consider the following TF operations: "
-            << absl::StrJoin(vwhitelist, " ");
+            << absl::StrJoin(vallowlist, " ");
   }
-  return whitelist;
+  return allowlist;
 }
 
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
@@ -1156,12 +1156,12 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
 
-  auto whitelist = GetOrCreateWhitelist();
+  auto allowlist = GetOrCreateAllowlist();
 
   std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
   // Check that user's provided TF operation really exists.
-  for (const auto& s : whitelist) {
+  for (const auto& s : allowlist) {
     if (!all_ops.contains(string(s))) {
       return errors::InvalidArgument(
           "The operation '", s,
@@ -1206,7 +1206,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    if (!whitelist.empty() && !whitelist.contains(node->def().op())) {
+    if (!allowlist.empty() && !allowlist.contains(node->def().op())) {
       VLOG(1) << "Rejecting TF operation " << node->def().op()
               << " as it is not listed in --tf_xla_ops_to_cluster.";
       continue;
@@ -1781,7 +1781,7 @@ Status MarkForCompilationPass::RunForTest(
   return MarkForCompilation(options, debug_options);
 }
 
-absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
+absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
   // Table format: category name: {list of TF operations in that category}
   static absl::flat_hash_map<string, std::vector<string>>* result =
       new absl::flat_hash_map<string, std::vector<string>>{
@@ -1845,7 +1845,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
 namespace testing {
 void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
 
-absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
+absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
   absl::flat_hash_set<string> result{"AdjustContrastv2",
                                      "AdjustHue",
                                      "AdjustSaturation",

@@ -37,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import build_info
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
@@ -490,7 +491,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
           (device_type == _GPU_DEVICE_NAME
            or (device_type is None and context.num_gpus() > 0))
           and
-          (mask is None or is_sequence_right_padded(mask, self.time_major)))
+          (mask is None or is_cudnn_supported_inputs(mask, self.time_major)))
       # Under eager context, check the device placement and prefer the
       if can_use_gpu:
         last_output, outputs, new_h, runtime = gpu_gru(**gpu_gru_kwargs)
@@ -735,7 +736,7 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
           go_backwards=go_backwards,
           sequence_lengths=sequence_lengths)
 
-    def input_right_padded():
+    def cudnn_gru_fn():
       return gpu_gru(
           inputs=inputs,
           init_h=init_h,
@@ -747,7 +748,7 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
           go_backwards=go_backwards,
           sequence_lengths=sequence_lengths)
 
-    def input_not_right_padded():
+    def standard_gru_fn():
       return standard_gru(
           inputs=inputs,
           init_h=init_h,
@@ -761,9 +762,9 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
           zero_output_for_mask=zero_output_for_mask)
 
     return control_flow_ops.cond(
-        is_sequence_right_padded(mask, time_major),
-        true_fn=input_right_padded,
-        false_fn=input_not_right_padded)
+        is_cudnn_supported_inputs(mask, time_major),
+        true_fn=cudnn_gru_fn,
+        false_fn=standard_gru_fn)
 
   # Each time a `tf.function` is called, we will give it a unique
   # identifiable API name, so that Grappler won't get confused when it
@@ -1169,7 +1170,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
             (device_type == _GPU_DEVICE_NAME
              or (device_type is None and context.num_gpus() > 0))
             and
-            (mask is None or is_sequence_right_padded(mask, self.time_major)))
+            (mask is None or is_cudnn_supported_inputs(mask, self.time_major)))
         # Under eager context, check the device placement and prefer the
         # GPU implementation when GPU is available.
         if can_use_gpu:
@@ -1506,7 +1507,7 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
           go_backwards=go_backwards,
           sequence_lengths=sequence_lengths)
 
-    def input_right_padded():
+    def cudnn_lstm_fn():
       return gpu_lstm(
           inputs=inputs,
           init_h=init_h,
@@ -1519,7 +1520,7 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
           go_backwards=go_backwards,
           sequence_lengths=sequence_lengths)
 
-    def input_not_right_padded():
+    def stardard_lstm_fn():
       return standard_lstm(
           inputs=inputs,
           init_h=init_h,
@@ -1534,9 +1535,9 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
           zero_output_for_mask=zero_output_for_mask)
 
     return control_flow_ops.cond(
-        is_sequence_right_padded(mask, time_major),
-        true_fn=input_right_padded,
-        false_fn=input_not_right_padded)
+        is_cudnn_supported_inputs(mask, time_major),
+        true_fn=cudnn_lstm_fn,
+        false_fn=stardard_lstm_fn)
 
   # Each time a `tf.function` is called, we will give it a unique
   # identifiable API name, so that Grappler won't get confused when it
@@ -1561,7 +1562,7 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
   return last_output, outputs, new_h, new_c, runtime
 
 
-def is_sequence_right_padded(mask, time_major):
+def is_sequence_right_padded(mask):
   """Check the mask tensor and see if it right padded.
 
   For CuDNN kernel, it uses the sequence length param to skip the tailing
@@ -1578,20 +1579,38 @@ def is_sequence_right_padded(mask, time_major):
   pollute the internal states.
 
   Args:
-    mask: the Boolean tensor with shape [batch, timestep] or [timestep, batch]
-      when time_major is True.
-    time_major: Boolean, whether the input mask is time major or batch major.
+    mask: the Boolean tensor with shape [batch, timestep]
 
   Returns:
     boolean scalar tensor, whether the mask is strictly right padded.
   """
-  if time_major:
-    mask = array_ops.transpose(mask)
   max_seq_length = array_ops.shape(mask)[1]
   count_of_true = math_ops.reduce_sum(math_ops.cast(mask, dtypes.int32), axis=1)
   right_padded_mask = array_ops.sequence_mask(
       count_of_true, maxlen=max_seq_length)
   return math_ops.reduce_all(math_ops.equal(mask, right_padded_mask))
+
+
+def has_fully_masked_sequence(mask):
+  # See https://github.com/tensorflow/tensorflow/issues/33148 for more details.
+  # Cudnn kernel will error out if the input sequence contains any fully masked
+  # data. We walk around this issue by rerouting the computation to standard
+  # kernel, until the issue on cudnn side has been fixed.
+  # For a fully masked sequence, it will contain all Falses. To make it easy to
+  # check, we inverse the boolean, check if any of the seqence has all True.
+  return math_ops.reduce_any(
+      math_ops.reduce_all(
+          math_ops.logical_not(mask),
+          axis=1))
+
+
+def is_cudnn_supported_inputs(mask, time_major):
+  if time_major:
+    mask = array_ops.transpose(mask)
+
+  return math_ops.logical_and(
+      is_sequence_right_padded(mask),
+      math_ops.logical_not(has_fully_masked_sequence(mask)))
 
 
 def calculate_sequence_by_mask(mask, time_major):
@@ -1646,7 +1665,7 @@ def _runtime(runtime_name):
 
 
 def _read_variable_value(v):
-  """Read the value of a resource variable if it is variable."""
-  if resource_variable_ops.is_resource_variable(v):
+  """Read the value of a variable if it is variable."""
+  if isinstance(v, variables.Variable):
     return v.read_value()
   return v

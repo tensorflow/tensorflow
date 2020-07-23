@@ -41,6 +41,7 @@ enum TensorType : byte {
   COMPLEX64 = 8,
   INT8 = 9,
   FLOAT64 = 10,
+  COMPLEX128 = 11,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -348,7 +349,8 @@ enum BuiltinOperator : byte {
   SELECT_V2 = 123,
   DENSIFY = 124,
   SEGMENT_SUM = 125,
-  BATCH_MATMUL = 126
+  BATCH_MATMUL = 126,
+  BROADCAST_TO = 127
 }
 
 
@@ -454,7 +456,8 @@ union BuiltinOptions {
   SelectV2Options,
   DensifyOptions,
   SegmentSumOptions,
-  BatchMatMulOptions
+  BatchMatMulOptions,
+  BroadcastToOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -972,6 +975,9 @@ table SegmentSumOptions {
 table BatchMatMulOptions {
   adj_x:bool;
   adj_y:bool;
+}
+
+table BroadcastToOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

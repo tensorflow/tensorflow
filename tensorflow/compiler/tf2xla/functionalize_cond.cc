@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
+#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -811,12 +812,14 @@ Status Conditional::BuildIfNode(Graph* graph,
           << PartialTensorShapeUtils::PartialShapeListString(output_shapes);
 
   builder.Attr("Tcond", DT_BOOL);
-  // Add all underscore attributes, these need to be propagated.
-  for (const auto& attr : predicate_.node->def().attr()) {
-    const string& name(attr.first);
-    const AttrValue& value(attr.second);
-    if (absl::StartsWith(name, "_")) {
-      builder.Attr(name, value);
+  // Add some internal attributes which need to be propagated.
+  // TODO(b/160275126): attributes shouldn't be hard-coded here
+  for (const char* attr_name :
+       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
+        kTpuReplicateAttrName}) {
+    string attr_val;
+    if (GetNodeAttr(predicate_.node->def(), attr_name, &attr_val).ok()) {
+      builder.Attr(attr_name, attr_val);
     }
   }
   builder.Device(predicate_.node->assigned_device_name());

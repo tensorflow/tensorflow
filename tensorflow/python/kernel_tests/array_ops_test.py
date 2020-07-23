@@ -149,7 +149,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(masked_tensor.get_shape()[leading:],
                           masked_arr.shape[leading:])
 
-      self.assertAllClose(masked_arr, masked_tensor.eval())
+      self.assertAllClose(masked_arr, masked_tensor)
 
   @test_util.run_deprecated_v1
   def testMaskDim1ArrDim2Axis1(self):
@@ -201,7 +201,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     tf_result = array_ops.boolean_mask(arr, mask)
     self.assertAllEqual(numpy_result.shape[1:], tf_result.get_shape()[1:])
     with self.cached_session():
-      self.assertAllClose(numpy_result, tf_result.eval())
+      self.assertAllClose(numpy_result, tf_result)
 
   @test_util.run_deprecated_v1
   def testEmptyInput1D(self):
@@ -211,7 +211,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     tf_result = array_ops.boolean_mask(arr, mask)
     self.assertAllEqual(numpy_result.shape[1:], tf_result.get_shape()[1:])
     with self.cached_session():
-      self.assertAllClose(numpy_result, tf_result.eval())
+      self.assertAllClose(numpy_result, tf_result)
 
   @test_util.run_deprecated_v1
   def testEmptyOutput(self):
@@ -530,7 +530,7 @@ class MeshgridTest(test_util.TensorFlowTestCase):
       tf_out = array_ops.meshgrid(x, y, indexing=index)
       with self.cached_session(use_gpu=use_gpu):
         for xx, yy in zip(numpy_out, tf_out):
-          self.assertAllEqual(xx, yy.eval())
+          self.assertAllEqual(xx, yy)
 
   def _compareDiffType(self, n, np_dtype, use_gpu):
     inputs = []
@@ -544,7 +544,7 @@ class MeshgridTest(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=use_gpu):
         tf_out = array_ops.meshgrid(*inputs, indexing=index)
         for x_np, x_tf in zip(numpy_out, tf_out):
-          self.assertAllEqual(x_np, x_tf.eval())
+          self.assertAllEqual(x_np, x_tf)
 
   @test_util.run_deprecated_v1
   def testCompare(self):
@@ -1067,7 +1067,7 @@ class StridedSliceBenchmark(test_lib.Benchmark):
   """Benchmark new strided slice operation on non-trivial case."""
 
   def run_and_time(self, slice_op):
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
     for _ in range(10):
       _ = slice_op.eval()
     iters = 1000
@@ -1227,6 +1227,14 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_small_val))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorStridedSliceAssign(self):
+    @def_function.function
+    def assign(x):
+      y = x + 1
+      return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
+    self.assertAllEqual([0, 1], self.evaluate(assign(array_ops.zeros([2]))))
+
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
@@ -1277,7 +1285,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       res = array_ops.sequence_mask(constant_op.constant([1, 3, 2]), 5)
       self.assertAllEqual(res.get_shape(), [3, 5])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
@@ -1289,7 +1297,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant([0, 1, 4]), dtype=dtypes.float32)
       self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
   @test_util.run_deprecated_v1
@@ -1298,24 +1306,24 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       res = array_ops.sequence_mask(constant_op.constant([0, 1, 4]))
       self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
-          res.eval(), [[False, False, False, False],
-                       [True, False, False, False], [True, True, True, True]])
+          res, [[False, False, False, False], [True, False, False, False],
+                [True, True, True, True]])
 
   @test_util.run_deprecated_v1
   def testTwoDimensional(self):
     with self.cached_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)
       self.assertAllEqual(res.get_shape(), [1, 3, 5])
-      self.assertAllEqual(res.eval(), [[[True, False, False, False, False],
-                                        [True, True, True, False, False],
-                                        [True, True, False, False, False]]])
+      self.assertAllEqual(res, [[[True, False, False, False, False],
+                                 [True, True, True, False, False],
+                                 [True, True, False, False, False]]])
 
       # test dtype and default maxlen:
       res = array_ops.sequence_mask(
           constant_op.constant([[0, 1, 4], [1, 2, 3]]), dtype=dtypes.float32)
       self.assertAllEqual(res.get_shape().as_list(), [2, 3, 4])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]],
            [[1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 1.0, 0.0]]])
 
@@ -1334,7 +1342,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant(5, dtype=maxlen_dtype))
       self.assertAllEqual(res.get_shape(), [3, 5])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
@@ -1410,7 +1418,7 @@ class InvertPermutationTest(test_util.TensorFlowTestCase):
           x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
           y = array_ops.invert_permutation(x)
           self.assertAllEqual(y.get_shape(), [5])
-          self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
+          self.assertAllEqual(y, [2, 4, 3, 0, 1])
 
 
 class UnravelIndexTest(test_util.TensorFlowTestCase):
@@ -1424,17 +1432,17 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
           indices_1 = constant_op.constant(1621, dtype=dtype)
           dims_1 = constant_op.constant([6, 7, 8, 9], dtype=dtype)
           out_1 = array_ops.unravel_index(indices_1, dims_1)
-          self.assertAllEqual(out_1.eval(), [3, 1, 4, 1])
+          self.assertAllEqual(out_1, [3, 1, 4, 1])
 
           indices_2 = constant_op.constant([1621], dtype=dtype)
           dims_2 = constant_op.constant([6, 7, 8, 9], dtype=dtype)
           out_2 = array_ops.unravel_index(indices_2, dims_2)
-          self.assertAllEqual(out_2.eval(), [[3], [1], [4], [1]])
+          self.assertAllEqual(out_2, [[3], [1], [4], [1]])
 
           indices_3 = constant_op.constant([22, 41, 37], dtype=dtype)
           dims_3 = constant_op.constant([7, 6], dtype=dtype)
           out_3 = array_ops.unravel_index(indices_3, dims_3)
-          self.assertAllEqual(out_3.eval(), [[3, 6, 6], [4, 5, 1]])
+          self.assertAllEqual(out_3, [[3, 6, 6], [4, 5, 1]])
 
   # Test case for GitHub issue 40204.
   def testUnravelIndexZeroDim(self):
@@ -1492,7 +1500,7 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
         with self.cached_session(use_gpu=True):
           x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
           y = gen_array_ops.snapshot(x)
-          self.assertAllEqual(y.eval(), [0, 1, 2, 3])
+          self.assertAllEqual(y, [0, 1, 2, 3])
 
 
 @test_util.run_all_in_graph_and_eager_modes

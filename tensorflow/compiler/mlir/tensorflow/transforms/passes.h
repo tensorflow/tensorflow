@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
@@ -147,6 +149,10 @@ CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
+
+// Addds the HLO to TF rewrite patterns to the specified pattern list.
+void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
+                                     MLIRContext* context);
 
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be
 // generally used beyond exporting to runtimes that supports these ops. In the
@@ -286,6 +292,16 @@ CreateTPUExtractHeadTailOutsideCompilationPass();
 // TPU computation by adding outside compilation attribute to identity/cast ops
 // that are only used for host computation.
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass();
+
+// Creates a pass that updates inputs to TPU embedding layer enqueue ops so that
+// correct ops are invoked during training and evaluation.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
+
+// Creates a pass that marks unsupported ops in device cluster for outside
+// compilation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMarkOpsForOutsideCompilationPass();
 
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.

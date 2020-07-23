@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/micro_utils.h"
 
 namespace tflite {
@@ -45,14 +46,20 @@ inline void ArgMinMaxHelper(const RuntimeShape& input1_shape,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* axis = GetInput(context, node, kAxis);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* axis =
+      tflite::micro::GetEvalInput(context, node, kAxis);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
-#define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type)            \
-  ArgMinMaxHelper(GetTensorShape(input), GetTensorData<data_type>(input), \
-                  GetTensorData<axis_type>(axis), GetTensorShape(output), \
-                  GetTensorData<output_type>(output), is_arg_max)
+#define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type)       \
+  ArgMinMaxHelper(tflite::micro::GetTensorShape(input),              \
+                  tflite::micro::GetTensorData<data_type>(input),    \
+                  tflite::micro::GetTensorData<axis_type>(axis),     \
+                  tflite::micro::GetTensorShape(output),             \
+                  tflite::micro::GetTensorData<output_type>(output), \
+                  is_arg_max)
   if (axis->type == kTfLiteInt32) {
     if (output->type == kTfLiteInt32) {
       switch (input->type) {
@@ -98,28 +105,26 @@ TfLiteStatus ArgMaxEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace arg_min_max
 
-TfLiteRegistration* Register_ARG_MAX() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/arg_min_max::ArgMaxEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_ARG_MAX() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/arg_min_max::ArgMaxEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-TfLiteRegistration* Register_ARG_MIN() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/arg_min_max::ArgMinEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_ARG_MIN() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/arg_min_max::ArgMinEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

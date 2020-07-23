@@ -52,7 +52,7 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
     native.py_test(
         name = name,
         srcs = ["@llvm-project//llvm:lit"],
-        tags = tags + ["no_windows"],
+        tags = tags + ["no_pip", "no_windows"],
         args = [
             "tensorflow/compiler/mlir/" + paths.basename(data[-1]) + " --config-prefix=runlit -v",
         ] + features,

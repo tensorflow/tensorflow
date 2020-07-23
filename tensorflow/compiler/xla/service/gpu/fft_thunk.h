@@ -62,11 +62,11 @@ class FftThunk : public Thunk {
  public:
   // Constructs a thunk for launching an FFT on a stream.
   // Semantics of null hlo_instruction argument are as in Thunk.
-  FftThunk(FftType fft_type, absl::Span<const int64> fft_length,
+  FftThunk(ThunkInfo thunk_info, FftType fft_type,
+           absl::Span<const int64> fft_length,
            const BufferAllocation::Slice& input_buffer,
            const BufferAllocation::Slice& output_buffer,
-           const Shape& input_shape, const Shape& output_shape,
-           const HloInstruction* hlo);
+           const Shape& input_shape, const Shape& output_shape);
 
   FftThunk(const FftThunk&) = delete;             // Cannot share fft_plan_
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_

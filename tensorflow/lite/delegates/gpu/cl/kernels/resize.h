@@ -27,9 +27,8 @@ namespace cl {
 
 class Resize : public GPUOperation {
  public:
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -45,12 +44,7 @@ class Resize : public GPUOperation {
   Resize(const OperationDef& definition, const Resize2DAttributes& attr)
       : GPUOperation(definition), attr_(attr) {}
 
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   Resize2DAttributes attr_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 Resize CreateResize(const OperationDef& definition,
@@ -58,9 +52,8 @@ Resize CreateResize(const OperationDef& definition,
 
 class Resize3D : public GPUOperation {
  public:
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -76,12 +69,7 @@ class Resize3D : public GPUOperation {
   Resize3D(const OperationDef& definition, const Resize3DAttributes& attr)
       : GPUOperation(definition), attr_(attr) {}
 
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   Resize3DAttributes attr_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 Resize3D CreateResize3D(const OperationDef& definition,

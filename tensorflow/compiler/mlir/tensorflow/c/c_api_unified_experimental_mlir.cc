@@ -93,7 +93,14 @@ class MlirTensor : public TracingTensorHandle {
   explicit MlirTensor(Value value)
       : TracingTensorHandle(kMlir), value_(value) {}
 
-  void Release() override { delete this; }
+  tensorflow::DataType DataType() const override {
+    tensorflow::DataType type;
+    Status s = ConvertScalarTypeToDataType(value_.getType(), &type);
+    if (!s.ok()) {
+      return tensorflow::DT_INVALID;
+    }
+    return type;
+  }
 
   Value getValue() { return value_; }
 
@@ -127,7 +134,7 @@ class MlirAbstractOp : public TracingOperation {
   Status SetDeviceName(const char* name) override;
 
   Status AddInput(AbstractTensorHandle* input) override;
-  Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) override;
+  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override;
 
@@ -209,6 +216,7 @@ class MlirFunction : public AbstractFunction {
   std::unique_ptr<MLIRContext> context_;
   OwningModuleRef module_;
   FuncOp func_;
+  std::unique_ptr<tensorflow::FunctionDef> fdef_;
 };
 
 class MlirFunctionContext : public TracingContext {
@@ -463,7 +471,8 @@ Status MlirAbstractOp::SetDeviceName(const char* name) {
   return Status::OK();
 }
 
-Status MlirAbstractOp::AddInputList(absl::Span<AbstractTensorHandle*> inputs) {
+Status MlirAbstractOp::AddInputList(
+    absl::Span<AbstractTensorHandle* const> inputs) {
   return tensorflow::errors::Unimplemented(
       "AddInputList has not been implemented yet.");
 }
@@ -547,6 +556,10 @@ Status MlirAbstractOp::SetAttrFunctionList(
 }
 
 Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
+  if (fdef_) {
+    *f = fdef_.get();
+    return Status::OK();
+  }
   PassManager pm(func_.getContext());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
@@ -559,8 +572,11 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   tensorflow::GraphExportConfig configs;
-  *f = new tensorflow::FunctionDef();
-  return ConvertMlirFunctionToFunctionLibraryDef(func_, configs, *f);
+  fdef_.reset(new tensorflow::FunctionDef());
+  TF_RETURN_IF_ERROR(
+      ConvertMlirFunctionToFunctionLibraryDef(func_, configs, fdef_.get()));
+  *f = fdef_.get();
+  return Status::OK();
 }
 
 Status MlirAbstractOp::Execute(absl::Span<AbstractTensorHandle*> retvals,

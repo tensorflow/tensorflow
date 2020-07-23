@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -46,6 +47,24 @@ ENTRY gds {
   p = s32[3,4] parameter(0)
   size0 = s32[] get-dimension-size(p), dimensions={0}
   size1 = s32[] get-dimension-size(p), dimensions={1}
+  ROOT mul = s32[] multiply(size0, size1)
+})")
+                    .ValueOrDie();
+  HloGetDimensionSizeRewriter pass;
+  EXPECT_TRUE(pass.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Multiply(op::Constant(), op::Constant()));
+}
+
+TEST_F(HloGetDimensionSizeRewriterTest, GetSetSetDimensionSizeRewriter) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule _
+ENTRY gds {
+  p = s32[3,4] parameter(0)
+  size0 = s32[] get-dimension-size(p), dimensions={0}
+  p_copy = s32[3,4] copy(p)
+  p_copy_dynamic = s32[<=3, 4] set-dimension-size(p_copy, size0), dimensions={0}
+  size1 = s32[] get-dimension-size(p_copy_dynamic), dimensions={0}
   ROOT mul = s32[] multiply(size0, size1)
 })")
                     .ValueOrDie();

@@ -2241,7 +2241,7 @@ class RawRNNTest(test.TestCase):
       r = rnn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
       loop_state = loop_state.stack()
-      self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state.eval())
+      self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state)
 
   @test_util.run_v1_only("b/124229375")
   def testEmitDifferentStructureThanCellOutput(self):

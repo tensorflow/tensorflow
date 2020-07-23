@@ -51,16 +51,16 @@ limitations under the License.
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace mlir_gpu {
 namespace {
 
-using ::mlir::xla_lhlo::FusionOp;
+using ::mlir::lmhlo::FusionOp;
 
 // Replaces a FusionOp by the operations contained in its region.
 struct FusionOpRemover
@@ -392,7 +392,7 @@ struct RewriteKernelSignature
   }
 };
 
-// Extract_element(xla_hlo_scalars_to_dimension_tensor(v_i), i) -> v_i
+// Extract_element(mhlo_scalars_to_dimension_tensor(v_i), i) -> v_i
 //
 // We need to direct fusion to the inner loops. This cannot be done with
 // a passmanager alone ATM, as nested pass managers require operations to
@@ -457,20 +457,20 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   }
 
   // Legalize from HLO to LHLO.
-  pm.addPass(::mlir::xla_hlo::createLegalizeToLhloPass());
+  pm.addPass(::mlir::mhlo::createLegalizeToLhloPass());
   // Moving `AllocOp`s and inserting missing `DeallocOp`s
   pm.addPass(::mlir::createBufferPlacementPass());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Remove unnecessary LHLO copies.
-  pm.addPass(::mlir::xla_lhlo::createLhloCopyRemovalPass());
+  pm.addPass(::mlir::lmhlo::createLhloCopyRemovalPass());
   // Transform LHLO operations to LinAlg.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
+  pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
-  pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg(/*use_parallel_loops=*/true,
-                                                    tiling_for_unrolling));
+  pm.addPass(::mlir::lmhlo::createLhloFuseLinalg(/*use_parallel_loops=*/true,
+                                                 tiling_for_unrolling));
   // Legalize reduce operations directly to GPU dialect.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeToGpuPass());
+  pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform the Linalg operations inside of the loop nest into parallel
   // loops.
   pm.addPass(::mlir::createConvertLinalgToParallelLoopsPass());
@@ -512,7 +512,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Approximate of requested.
   if (options.use_approximations) {
     pm.addNestedPass<::mlir::FuncOp>(
-        ::mlir::xla::createLegalizeTanhToApproximationPass());
+        ::mlir::hlo::createLegalizeTanhToApproximationPass());
   }
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(absl::make_unique<MoveScalarComputationsIntoGpuLaunch>());

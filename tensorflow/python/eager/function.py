@@ -66,6 +66,8 @@ from tensorflow.python.ops import resource_variable_ops
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -150,6 +152,7 @@ CacheKey = collections.namedtuple("CacheKey", [
     "device_functions",
     "colocation_stack",
     "in_cross_replica_context",
+    "variable_policy",
     "xla_context_id",
 ])
 
@@ -237,7 +240,7 @@ def _parse_func_attrs(attributes):
     A dict of attributes where the key is the name of attribute and the value
       is the AttrValue proto.
   Raises:
-    ValueError: If the kwargs contains unwhitelisted name or unsupported value
+    ValueError: If the kwargs contains unallowlisted name or unsupported value
       types.
   """
   attrs = {}
@@ -261,6 +264,8 @@ def _parse_func_attrs(attributes):
 
 class _InterpolateFunctionError(object):
   """Context Manager that interpolates the exception from 'top_level_func'."""
+
+  __slots__ = ["_func"]
 
   def __init__(self, top_level_func):
     self._func = top_level_func
@@ -377,6 +382,8 @@ def _enclosing_xla_context():
 
 class _EagerDefinedFunctionDeleter(object):
   """Unregister function from eager context."""
+
+  __slots__ = ["name"]
 
   def __init__(self, name):
     self.name = name
@@ -1410,6 +1417,10 @@ _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
 class _ForwardBackwardCall(object):
   """Holds the state of a function call between execution and recording."""
 
+  __slots__ = [
+      "_functions", "_inference_args", "_input_tangents", "_tape_watching"
+  ]
+
   def __init__(self, functions, inference_args, input_tangents, tape_watching):
     """Collects information about the function call.
 
@@ -2155,6 +2166,7 @@ class ConcreteFunction(object):
     Returns:
       The actual call output.
     """
+    # TODO(jlchu): implement in C++.
     if self._func_graph.structured_outputs is None:
       return result
 
@@ -2312,8 +2324,10 @@ class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
   @staticmethod
-  def from_function_and_signature(python_function, input_signature,
-                                  is_pure=False):
+  def from_function_and_signature(python_function,
+                                  input_signature,
+                                  is_pure=False,
+                                  experimental_follow_type_hints=False):
     """Create a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -2321,6 +2335,7 @@ class FunctionSpec(object):
       input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
+      experimental_follow_type_hints: see `tf.function`
 
     Returns:
       instance of FunctionSpec
@@ -2398,13 +2413,19 @@ class FunctionSpec(object):
     name = getattr(python_function, "__name__", "f")
 
     return FunctionSpec(
-        fullargspec, is_method, input_signature, is_pure=is_pure, name=name)
+        fullargspec,
+        is_method,
+        input_signature,
+        is_pure=is_pure,
+        experimental_follow_type_hints=experimental_follow_type_hints,
+        name=name)
 
   def __init__(self,
                fullargspec,
                is_method,
                input_signature,
                is_pure=False,
+               experimental_follow_type_hints=False,
                name=None):
     """Constructs a FunctionSpec describing a python function.
 
@@ -2414,11 +2435,13 @@ class FunctionSpec(object):
       input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
         will be converted to tensors and no variable changes allowed.
+      experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
     """
     self._fullargspec = fullargspec
     self._is_method = is_method
     self._is_pure = is_pure
+    self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
     self._name = name or "f"
@@ -2525,6 +2548,44 @@ class FunctionSpec(object):
     kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
     return tuple(args), kwargs
 
+  def _convert_annotated_args_to_tensors(self, args, kwargs):
+    """Attempts to autobox arguments annotated as tf.Tensor."""
+    if self.input_signature is not None:
+      return
+
+    args = list(args)
+    for i, arg in enumerate(args):
+      # See
+      # https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
+      if i < len(self._fullargspec.args):
+        arg_annotation = self._fullargspec.annotations.get(
+            self._fullargspec.args[i])
+        # TODO(rahulkamat): Change to TensorLike (here ans below).
+        if arg_annotation == ops.Tensor:
+          args[i] = ops.convert_to_tensor(arg)
+      else:
+        varargs_annotation = self._fullargspec.annotations.get(
+            self._fullargspec.varargs)
+        if varargs_annotation == ops.Tensor:
+          args[i] = ops.convert_to_tensor(arg)
+
+    for kw, v in kwargs.items():
+      if kw in self._fullargspec.kwonlyargs:
+        kwonlyarg_annotation = self._fullargspec.annotations.get(kw)
+        if kwonlyarg_annotation == ops.Tensor:
+          kwargs[kw] = ops.convert_to_tensor(v)
+      elif self._fullargspec.varkw is not None:
+        varkw_annotation = self._fullargspec.annotations.get(
+            self._fullargspec.varkw)
+        if kw in self._fullargspec.args:
+          arg_annotation = self._fullargspec.annotations.get(kw)
+          if arg_annotation == ops.Tensor:
+            kwargs[kw] = ops.convert_to_tensor(v)
+        elif varkw_annotation == ops.Tensor:
+          kwargs[kw] = ops.convert_to_tensor(v)
+
+    return tuple(args), kwargs
+
   def canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
 
@@ -2557,6 +2618,8 @@ class FunctionSpec(object):
     """
     if self._is_pure:
       args, kwargs = self._convert_variables_to_tensors(args, kwargs)
+    if self._experimental_follow_type_hints:
+      args, kwargs = self._convert_annotated_args_to_tensors(args, kwargs)
     if self._input_signature is not None:
       if len(args) > len(self._input_signature):
         raise TypeError("{} takes {} positional arguments (as specified by the "
@@ -2740,6 +2803,11 @@ class FunctionCache(object):
   """A lightweight container for cached functions.
   """
 
+  __slots__ = [
+      "missed", "primary", "arg_relaxed_specs", "arg_relaxed",
+      "_garbage_collectors"
+  ]
+
   def __init__(self):
     # The set of functions that have been missed; entries are CacheKey with
     # input_signature `None` (e.g. a "call context key")
@@ -2788,7 +2856,8 @@ class Function(object):
                autograph_options=None,
                experimental_relax_shapes=False,
                capture_by_value=None,
-               experimental_compile=None):
+               experimental_compile=None,
+               experimental_follow_type_hints=False):
     """Initializes a `Function`.
 
     Args:
@@ -2812,6 +2881,7 @@ class Function(object):
         default to False.
       experimental_compile: Force-compile the function with XLA, cf.
         def_function.Function doc on experimental_compile.
+      experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -2820,7 +2890,10 @@ class Function(object):
     self._python_function = python_function
     pure_function = attributes and IMPLEMENTS_ATTRIBUTE_NAME in attributes
     self._function_spec = FunctionSpec.from_function_and_signature(
-        python_function, input_signature, is_pure=pure_function)
+        python_function,
+        input_signature,
+        is_pure=pure_function,
+        experimental_follow_type_hints=experimental_follow_type_hints)
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
@@ -2836,6 +2909,11 @@ class Function(object):
     # functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._experimental_compile = experimental_compile
+    self._experimental_follow_type_hints = experimental_follow_type_hints
+
+    # A boolean indicating whether the function has been traced with
+    # distribution strategy.
+    self._traced_with_distribution_strategy = False
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
@@ -3053,10 +3131,24 @@ class Function(object):
     except (AttributeError, IndexError):
       pass
 
+    # If the function has been traced with a distribution strategy, it might
+    # need to be retraced at saving time as DistributedVariable created under
+    # distribution strategy may want different tracing behavior at training and
+    # saving, e.g, it wants to resolve to the primary component at saving time,
+    # but wants resolve to the component residing in the current device at
+    # training time. We achieve this by adding variable_policy to the function
+    # cache key.
+    if save_context.in_save_context(
+    ) and self._traced_with_distribution_strategy:
+      variable_policy = (
+          save_context.get_save_options().experimental_variable_policy)
+    else:
+      variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
+
     return CacheKey(
         _make_input_signature_hashable(input_signature), parent_graph,
         device_functions, colocation_stack, in_cross_replica_context,
-        xla_context_id)
+        variable_policy, xla_context_id)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -3226,6 +3318,10 @@ class Function(object):
       self._function_cache.missed.add(call_context_key)
       graph_function = self._create_graph_function(args, kwargs)
       self._function_cache.primary[cache_key] = graph_function
+
+      if ops.get_default_graph()._distribution_strategy_stack:
+        self._traced_with_distribution_strategy = True
+
       return graph_function, args, kwargs
 
 
@@ -3612,7 +3708,8 @@ def defun_with_attributes(func=None,
                           autograph=True,
                           experimental_autograph_options=None,
                           experimental_compile=None,
-                          experimental_relax_shapes=False):
+                          experimental_relax_shapes=False,
+                          experimental_follow_type_hints=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
@@ -3625,15 +3722,16 @@ def defun_with_attributes(func=None,
     input_signature: same as defun()'s input_signature.
     attributes: A dictionary of arguments which will be added to function def as
       attributes. Currently only support primitive types as value, and only
-      whitelisted attribute name is allowed. Unwhitelisted attribute name or
+      allowlisted attribute name is allowed. Unallowlisted attribute name or
       unsupported value will result into ValueError. `func_name` is also one of
-      the whitelisted argument which is a python string, and sets the name for
+      the allowlisted argument which is a python string, and sets the name for
       this `ConcreteFunction` in the graph.
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
     experimental_compile: same as defun()'s experimental_compile.
     experimental_relax_shapes: same as defun()'s experimental_relax_shapes
+    experimental_follow_type_hints: see `tf.function`.
 
   Returns:
     Same as the return value of defun, with attributes added to the function in
@@ -3661,7 +3759,8 @@ def defun_with_attributes(func=None,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
             experimental_compile=experimental_compile,
-            experimental_relax_shapes=experimental_relax_shapes))
+            experimental_relax_shapes=experimental_relax_shapes,
+            experimental_follow_type_hints=experimental_follow_type_hints))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
@@ -3771,6 +3870,8 @@ def class_method_to_instance_method(original_function, instance):
 class _FunctionGarbageCollector(object):
   """Cleans up cycles when a defun goes out of scope."""
 
+  __slots__ = ["_cache"]
+
   def __init__(self, cache):
     self._cache = cache
 
@@ -3787,6 +3888,8 @@ class _FunctionGarbageCollector(object):
 
 class ConcreteFunctionGarbageCollector(object):
   """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
+
+  __slots__ = ["_func_graph"]
 
   def __init__(self, func_graph):
     self._func_graph = func_graph
@@ -3806,6 +3909,8 @@ class ConcreteFunctionGarbageCollector(object):
 
 class _Marker(object):
   """Markers used to pretty-print nested args in function signatures."""
+
+  __slots__ = ["_s"]
 
   def __init__(self, s):
     self._s = s

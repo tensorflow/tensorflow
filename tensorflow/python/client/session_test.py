@@ -115,7 +115,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             'CPU': 2, 'GPU': 0
         })) as sess:
       inp = constant_op.constant(10.0, name='W1')
-      self.assertAllEqual(inp.eval(), 10.0)
+      self.assertAllEqual(inp, 10.0)
 
       num_cpu_devices = 0
       num_gpu_devices = 0
@@ -133,7 +133,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session(
         config=config_pb2.ConfigProto(use_per_session_threads=True)):
       inp = constant_op.constant(10.0, name='W1')
-      self.assertAllEqual(inp.eval(), 10.0)
+      self.assertAllEqual(inp, 10.0)
 
   def testSessionInterOpThreadPool(self):
     config_pb = config_pb2.ConfigProto()
@@ -1235,11 +1235,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(sess.graph_def.node), 1)
       d = constant_op.constant(6.0, name='d')
       self.assertEqual(len(sess.graph_def.node), 2)
-      self.assertAllEqual(c.eval(), 5.0)
-      self.assertAllEqual(d.eval(), 6.0)
+      self.assertAllEqual(c, 5.0)
+      self.assertAllEqual(d, 6.0)
       e = constant_op.constant(7.0, name='e')
       self.assertEqual(len(sess.graph_def.node), 3)
-      self.assertAllEqual(e.eval(), 7.0)
+      self.assertAllEqual(e, 7.0)
 
   def testUseAfterClose(self):
     with session.Session() as sess:
@@ -1299,10 +1299,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[2, 3])
       c = math_ops.matmul(a, b)
-      self.assertAllEqual([[4.0, 4.0, 4.0]], c.eval())
+      self.assertAllEqual([[4.0, 4.0, 4.0]], c)
       d = constant_op.constant([1.0, 2.0, 3.0], shape=[3, 1])
       e = math_ops.matmul(c, d)
-      self.assertAllEqual([[24.0]], e.eval())
+      self.assertAllEqual([[24.0]], e)
       sess.close()
 
   @test_util.run_v1_only('b/120545219')
@@ -1549,7 +1549,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             [compat.as_bytes(str(i)) for i in xrange(size)],
             dtype=np.object).reshape(shape) if size > 0 else []
         c = constant_op.constant(c_list)
-        self.assertAllEqual(c.eval(), c_list)
+        self.assertAllEqual(c, c_list)
 
   def testStringFeed(self):
     with session.Session() as sess:

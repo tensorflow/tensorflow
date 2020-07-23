@@ -43,9 +43,9 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import revived_types
@@ -639,7 +639,7 @@ class OptimizerV2(trackable.Trackable):
         # symbolic then the step update should be carried out under a graph
         # context. (eager updates execute immediately)
         with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
-          with ops.control_dependencies(update_ops):
+          with ops.control_dependencies([control_flow_ops.group(update_ops)]):
             return self._iterations.assign_add(1, read_value=False)
 
       return self._iterations.assign_add(1)
@@ -813,6 +813,9 @@ class OptimizerV2(trackable.Trackable):
       for name, value in sorted(self._hyper.items()):
         if isinstance(value,
                       (ops.Tensor, tf_variables.Variable)) or callable(value):
+          # The check for `callable` covers the usage when `value` is a
+          # `LearningRateSchedule`, in which case it does not need to create a
+          # variable.
           continue
         else:
           self._hyper[name] = self.add_weight(
@@ -1147,13 +1150,16 @@ class OptimizerV2(trackable.Trackable):
     raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_scatter_add(self, x, i, v):
-    with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
+    with ops.control_dependencies([
+        gen_resource_variable_ops.ResourceScatterAdd(
+            resource=x.handle, indices=i, updates=v)
+    ]):
       return x.value()
 
   def _resource_scatter_update(self, x, i, v):
     with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_update(x.handle, i, v)]):
+        [gen_resource_variable_ops.ResourceScatterUpdate(
+            resource=x.handle, indices=i, updates=v)]):
       return x.value()
 
   @property

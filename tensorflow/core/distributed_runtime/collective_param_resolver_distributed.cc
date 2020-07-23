@@ -220,31 +220,33 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
     const CompleteGroupResponse& resp) {
   // Build a new record from resp.
   std::unique_ptr<GroupRec> gr(new GroupRec);
-  mutex_lock grl(gr->mu);
-  gr->group.device_type = DeviceType(resp.device_type());
-  gr->group.group_key = resp.group_key();
-  gr->group.group_size = resp.group_size();
-  gr->group.num_tasks = resp.num_tasks();
-  if (resp.device_name_size() != gr->group.group_size) {
-    return errors::Internal(
-        "CompleteGroupResponse group_size doesn't match device_name list");
+  {
+    mutex_lock grl(gr->mu);
+    gr->group.device_type = DeviceType(resp.device_type());
+    gr->group.group_key = resp.group_key();
+    gr->group.group_size = resp.group_size();
+    gr->group.num_tasks = resp.num_tasks();
+    if (resp.device_name_size() != gr->group.group_size) {
+      return errors::Internal(
+          "CompleteGroupResponse group_size doesn't match device_name list");
+    }
+    for (const string& dn : resp.device_name()) {
+      gr->device_set.insert(dn);
+      gr->device_list.push_back(dn);
+    }
+    if (resp.task_name_size() != gr->group.group_size) {
+      return errors::Internal(
+          "CompleteGroupResponse group_size doesn't match task_name list");
+    }
+    for (const string& tn : resp.task_name()) {
+      gr->task_list.push_back(tn);
+      gr->task_set.insert(tn);
+    }
+    CHECK_EQ(gr->task_set.size(), gr->group.num_tasks);
+    gr->group.runtime_details.communicator_key = resp.communicator_key();
+    VLOG(2) << "Group communicator_key="
+            << absl::CEscape(gr->group.runtime_details.communicator_key);
   }
-  for (const string& dn : resp.device_name()) {
-    gr->device_set.insert(dn);
-    gr->device_list.push_back(dn);
-  }
-  if (resp.task_name_size() != gr->group.group_size) {
-    return errors::Internal(
-        "CompleteGroupResponse group_size doesn't match task_name list");
-  }
-  for (const string& tn : resp.task_name()) {
-    gr->task_list.push_back(tn);
-    gr->task_set.insert(tn);
-  }
-  CHECK_EQ(gr->task_set.size(), gr->group.num_tasks);
-  gr->group.runtime_details.communicator_key = resp.communicator_key();
-  VLOG(2) << "Group communicator_key="
-          << absl::CEscape(gr->group.runtime_details.communicator_key);
   {
     // Group membership should never change. Once a record is in group_table_
     // it never gets removed.

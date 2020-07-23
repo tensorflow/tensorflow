@@ -11,8 +11,13 @@ load(
 licenses(["notice"])  # Apache 2.0
 
 config_setting(
-    name = "xtensa_hifimini_legacy",
+    name = "xtensa_hifimini",
     define_values = {"tflm_build": "xtensa_hifimini"},
+)
+
+config_setting(
+    name = "xtensa_hifimini_staging",
+    define_values = {"tflm_build": "xtensa_hifimini_staging"},
 )
 
 package_group(
@@ -63,14 +68,28 @@ cc_library(
             "softmax.cc",
             "svdf.cc",
         ],
-        ":xtensa_hifimini_legacy": [
-            "xtensa_hifimini_legacy/conv.cc",
-            "xtensa_hifimini_legacy/depthwise_conv.cc",
-            "xtensa_hifimini_legacy/fixedpoint_utils.h",
-            "xtensa_hifimini_legacy/fully_connected.cc",
-            "xtensa_hifimini_legacy/quantize.cc",
-            "xtensa_hifimini_legacy/softmax.cc",
-            "xtensa_hifimini_legacy/svdf.cc",
+        ":xtensa_hifimini": [
+            "xtensa_hifimini/conv.cc",
+            "xtensa_hifimini/depthwise_conv.cc",
+            "xtensa_hifimini/fixedpoint_utils.h",
+            "xtensa_hifimini/fully_connected.cc",
+            "xtensa_hifimini/quantize.cc",
+            "xtensa_hifimini/softmax.cc",
+            "xtensa_hifimini/svdf.cc",
+        ],
+        ":xtensa_hifimini_staging": [
+            # TODO(b/144176795): finer granularity would help reduce the
+            # duplication of srcs in the BUILD rules (in this case conv.cc and
+            # depthwise_conv.cc). We are falling back to reference kernels in
+            # case the optimized kernels are not implemented to match the
+            # behavior that we get with the Makefiles.
+            "conv.cc",
+            "depthwise_conv.cc",
+            "xtensa_hifimini/fixedpoint_utils.h",
+            "xtensa_hifimini_staging/fully_connected.cc",
+            "xtensa_hifimini_staging/quantize.cc",
+            "xtensa_hifimini_staging/softmax.cc",
+            "xtensa_hifimini_staging/svdf.cc",
         ],
     }),
     hdrs = ["micro_ops.h"],
@@ -78,15 +97,13 @@ cc_library(
     #build_for_embedded = True,
     copts = micro_copts(),
     visibility = [
-        # Needed for micro:op_resolvers but visibility can not be
-        # finer-grained than a package.
-        #":micro_top_level",
-        # Currently setting to public for legacy reasons. Can be made more
-        # restrictive once cl/314173854 lands.
-        "//visibility:public",
+        # Needed for micro:op_resolvers but visibility can not be finer-grained
+        # than a package.
+        ":micro_top_level",
     ],
     deps = [
         ":activation_utils",
+        ":kernel_util",
         ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
@@ -98,10 +115,11 @@ cc_library(
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
     ] + select({
         "//conditions:default": [],
-        ":xtensa_hifimini_legacy": [
+        ":xtensa_hifimini": [
             #"//third_party/xtensa/cstub64s:hifi_mini",
         ],
     }),
@@ -153,11 +171,13 @@ tflite_micro_cc_test(
         "fully_connected_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -301,6 +321,7 @@ tflite_micro_cc_test(
         "arg_min_max_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -325,6 +346,7 @@ tflite_micro_cc_test(
         "ceil_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -400,6 +422,7 @@ tflite_micro_cc_test(
         "add_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -457,6 +480,33 @@ tflite_micro_cc_test(
 )
 
 cc_library(
+    name = "kernel_runner",
+    srcs = [
+        "kernel_runner.cc",
+    ],
+    hdrs = ["kernel_runner.h"],
+    build_for_embedded = True,
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro:micro_framework",
+    ],
+)
+
+cc_library(
+    name = "kernel_util",
+    srcs = [
+        "kernel_util.cc",
+    ],
+    hdrs = ["kernel_util.h"],
+    build_for_embedded = True,
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:types",
+    ],
+)
+
+cc_library(
     name = "micro_utils",
     hdrs = ["micro_utils.h"],
     build_for_embedded = True,
@@ -484,6 +534,7 @@ tflite_micro_cc_test(
         "activations_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -534,6 +585,7 @@ tflite_micro_cc_test(
         "circular_buffer_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         ":micro_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",

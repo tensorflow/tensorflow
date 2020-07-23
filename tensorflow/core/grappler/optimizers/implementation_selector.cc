@@ -327,7 +327,7 @@ void RewriteDeviceIndexOp(utils::MutableNodeView* device_index_node,
   // Modifies the DeviceIndex node to be an Const op with correct device index.
   auto node = device_index_node->node();
   node->set_op(kConstOp);
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["dtype"].set_type(DT_INT32);
   auto* tensor = (*node->mutable_attr())["value"].mutable_tensor();
   tensor->set_dtype(DT_INT32);

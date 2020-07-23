@@ -1775,8 +1775,8 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       initial_rec = rec.eval()
       for _ in range(10):
         self.evaluate([prec_op, rec_op])
-        self.assertAllClose(initial_prec, prec.eval())
-        self.assertAllClose(initial_rec, rec.eval())
+        self.assertAllClose(initial_prec, prec)
+        self.assertAllClose(initial_rec, rec)
 
   # TODO(nsilberman): fix tests (passing but incorrect).
   @test_util.run_deprecated_v1
@@ -3852,7 +3852,7 @@ class MeanIOUTest(test.TestCase):
     with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
+      self.assertAllEqual([[0, 0], [40, 0]], update_op)
       self.assertEqual(0., miou.eval())
 
   @test_util.run_deprecated_v1
@@ -3884,7 +3884,7 @@ class MeanIOUTest(test.TestCase):
       miou, update_op = metrics.mean_iou(
           labels, predictions, num_classes, weights=weights)
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
+      self.assertAllEqual([[2, 0], [2, 4]], update_op)
       desired_miou = np.mean([2. / 4., 4. / 6.])
       self.assertAlmostEqual(desired_miou, miou.eval())
 
@@ -3904,7 +3904,7 @@ class MeanIOUTest(test.TestCase):
     with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual([[7, 4, 3], [3, 5, 2], [0, 0, 0]], update_op.eval())
+      self.assertAllEqual([[7, 4, 3], [3, 5, 2], [0, 0, 0]], update_op)
       self.assertAlmostEqual(
           1 / 3 * (7 / (7 + 3 + 7) + 5 / (5 + 4 + 5) + 0 / (0 + 5 + 0)),
           miou.eval())
@@ -3917,7 +3917,7 @@ class MeanIOUTest(test.TestCase):
     with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual([[1, 0], [0, 0]], update_op.eval())
+      self.assertAllEqual([[1, 0], [0, 0]], update_op)
       self.assertAlmostEqual(1, miou.eval())
 
   @test_util.run_deprecated_v1
@@ -3936,7 +3936,7 @@ class MeanIOUTest(test.TestCase):
     with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual([[9, 5, 0], [3, 7, 0], [0, 0, 0]], update_op.eval())
+      self.assertAllEqual([[9, 5, 0], [3, 7, 0], [0, 0, 0]], update_op)
       self.assertAlmostEqual(
           1 / 2 * (9 / (9 + 3 + 5) + 7 / (7 + 5 + 3)), miou.eval())
 
@@ -4151,7 +4151,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual([0.0, 0.0], update_op.eval())
+      self.assertAllEqual([0.0, 0.0], update_op)
       self.assertEqual(0., mean_accuracy.eval())
 
   @test_util.run_deprecated_v1
@@ -4172,7 +4172,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
           labels, predictions, num_classes, weights=weights)
       self.evaluate(variables.local_variables_initializer())
       desired_accuracy = np.array([2. / 2., 4. / 6.], dtype=np.float32)
-      self.assertAllEqual(desired_accuracy, update_op.eval())
+      self.assertAllEqual(desired_accuracy, update_op)
       desired_mean_accuracy = np.mean(desired_accuracy)
       self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
 
@@ -4205,9 +4205,9 @@ class FalseNegativesTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllClose(0., tn.eval())
-      self.assertAllClose(3., tn_update_op.eval())
-      self.assertAllClose(3., tn.eval())
+      self.assertAllClose(0., tn)
+      self.assertAllClose(3., tn_update_op)
+      self.assertAllClose(3., tn)
 
   @test_util.run_deprecated_v1
   def testWeighted(self):
@@ -4225,9 +4225,9 @@ class FalseNegativesTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllClose(0., tn.eval())
-      self.assertAllClose(5., tn_update_op.eval())
-      self.assertAllClose(5., tn.eval())
+      self.assertAllClose(0., tn)
+      self.assertAllClose(5., tn_update_op)
+      self.assertAllClose(5., tn)
 
 
 class FalseNegativesAtThresholdsTest(test.TestCase):
@@ -4257,9 +4257,9 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual((0, 0, 0), fn.eval())
-      self.assertAllEqual((0, 2, 3), fn_update_op.eval())
-      self.assertAllEqual((0, 2, 3), fn.eval())
+      self.assertAllEqual((0, 0, 0), fn)
+      self.assertAllEqual((0, 2, 3), fn_update_op)
+      self.assertAllEqual((0, 2, 3), fn)
 
   @test_util.run_deprecated_v1
   def testWeighted(self):
@@ -4277,9 +4277,9 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual((0.0, 0.0, 0.0), fn.eval())
-      self.assertAllEqual((0.0, 8.0, 11.0), fn_update_op.eval())
-      self.assertAllEqual((0.0, 8.0, 11.0), fn.eval())
+      self.assertAllEqual((0.0, 0.0, 0.0), fn)
+      self.assertAllEqual((0.0, 8.0, 11.0), fn_update_op)
+      self.assertAllEqual((0.0, 8.0, 11.0), fn)
 
 
 class FalsePositivesTest(test.TestCase):
@@ -4310,9 +4310,9 @@ class FalsePositivesTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllClose(0., tn.eval())
-      self.assertAllClose(7., tn_update_op.eval())
-      self.assertAllClose(7., tn.eval())
+      self.assertAllClose(0., tn)
+      self.assertAllClose(7., tn_update_op)
+      self.assertAllClose(7., tn)
 
   @test_util.run_deprecated_v1
   def testWeighted(self):
@@ -4330,9 +4330,9 @@ class FalsePositivesTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllClose(0., tn.eval())
-      self.assertAllClose(14., tn_update_op.eval())
-      self.assertAllClose(14., tn.eval())
+      self.assertAllClose(0., tn)
+      self.assertAllClose(14., tn_update_op)
+      self.assertAllClose(14., tn)
 
 
 class FalsePositivesAtThresholdsTest(test.TestCase):
@@ -4362,9 +4362,9 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual((0, 0, 0), fp.eval())
-      self.assertAllEqual((7, 4, 2), fp_update_op.eval())
-      self.assertAllEqual((7, 4, 2), fp.eval())
+      self.assertAllEqual((0, 0, 0), fp)
+      self.assertAllEqual((7, 4, 2), fp_update_op)
+      self.assertAllEqual((7, 4, 2), fp)
 
   @test_util.run_deprecated_v1
   def testWeighted(self):
@@ -4384,9 +4384,9 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual((0.0, 0.0, 0.0), fp.eval())
-      self.assertAllEqual((125.0, 42.0, 12.0), fp_update_op.eval())
-      self.assertAllEqual((125.0, 42.0, 12.0), fp.eval())
+      self.assertAllEqual((0.0, 0.0, 0.0), fp)
+      self.assertAllEqual((125.0, 42.0, 12.0), fp_update_op)
+      self.assertAllEqual((125.0, 42.0, 12.0), fp)
 
 
 class TrueNegativesTest(test.TestCase):
@@ -4417,9 +4417,9 @@ class TrueNegativesTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllClose(0., tn.eval())
-      self.assertAllClose(3., tn_update_op.eval())
-      self.assertAllClose(3., tn.eval())
+      self.assertAllClose(0., tn)
+      self.assertAllClose(3., tn_update_op)
+      self.assertAllClose(3., tn)
 
   @test_util.run_deprecated_v1
   def testWeighted(self):
@@ -4437,9 +4437,9 @@ class TrueNegativesTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllClose(0., tn.eval())
-      self.assertAllClose(4., tn_update_op.eval())
-      self.assertAllClose(4., tn.eval())
+      self.assertAllClose(0., tn)
+      self.assertAllClose(4., tn_update_op)
+      self.assertAllClose(4., tn)
 
 
 class TrueNegativesAtThresholdsTest(test.TestCase):
@@ -4469,9 +4469,9 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual((0, 0, 0), tn.eval())
-      self.assertAllEqual((2, 5, 7), tn_update_op.eval())
-      self.assertAllEqual((2, 5, 7), tn.eval())
+      self.assertAllEqual((0, 0, 0), tn)
+      self.assertAllEqual((2, 5, 7), tn_update_op)
+      self.assertAllEqual((2, 5, 7), tn)
 
   @test_util.run_deprecated_v1
   def testWeighted(self):
@@ -4489,9 +4489,9 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual((0.0, 0.0, 0.0), tn.eval())
-      self.assertAllEqual((5.0, 15.0, 23.0), tn_update_op.eval())
-      self.assertAllEqual((5.0, 15.0, 23.0), tn.eval())
+      self.assertAllEqual((0.0, 0.0, 0.0), tn)
+      self.assertAllEqual((5.0, 15.0, 23.0), tn_update_op)
+      self.assertAllEqual((5.0, 15.0, 23.0), tn)
 
 
 class TruePositivesTest(test.TestCase):
@@ -4522,9 +4522,9 @@ class TruePositivesTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllClose(0., tn.eval())
-      self.assertAllClose(7., tn_update_op.eval())
-      self.assertAllClose(7., tn.eval())
+      self.assertAllClose(0., tn)
+      self.assertAllClose(7., tn_update_op)
+      self.assertAllClose(7., tn)
 
   @test_util.run_deprecated_v1
   def testWeighted(self):
@@ -4542,9 +4542,9 @@ class TruePositivesTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllClose(0., tn.eval())
-      self.assertAllClose(12., tn_update_op.eval())
-      self.assertAllClose(12., tn.eval())
+      self.assertAllClose(0., tn)
+      self.assertAllClose(12., tn_update_op)
+      self.assertAllClose(12., tn)
 
 
 class TruePositivesAtThresholdsTest(test.TestCase):
@@ -4574,9 +4574,9 @@ class TruePositivesAtThresholdsTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual((0, 0, 0), tp.eval())
-      self.assertAllEqual((3, 1, 0), tp_update_op.eval())
-      self.assertAllEqual((3, 1, 0), tp.eval())
+      self.assertAllEqual((0, 0, 0), tp)
+      self.assertAllEqual((3, 1, 0), tp_update_op)
+      self.assertAllEqual((3, 1, 0), tp)
 
   @test_util.run_deprecated_v1
   def testWeighted(self):
@@ -4592,9 +4592,9 @@ class TruePositivesAtThresholdsTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAllEqual((0.0, 0.0, 0.0), tp.eval())
-      self.assertAllEqual((111.0, 37.0, 0.0), tp_update_op.eval())
-      self.assertAllEqual((111.0, 37.0, 0.0), tp.eval())
+      self.assertAllEqual((0.0, 0.0, 0.0), tp)
+      self.assertAllEqual((111.0, 37.0, 0.0), tp_update_op)
+      self.assertAllEqual((111.0, 37.0, 0.0), tp)
 
 
 if __name__ == '__main__':

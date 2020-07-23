@@ -1,0 +1,5 @@
+func @Abs(%arg0: tensor<?xf99>) -> tensor<?xf99> {
+  %0 = "tf.Abs"(%arg0) { }
+    : (tensor<?xf99>) -> tensor<?xf99>
+  return %0 : tensor<?xf99>
+}

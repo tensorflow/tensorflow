@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
+#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -435,12 +436,14 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   builder.Attr("T", arg_types);
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
-  // Add all underscore attributes, these need to be propagated.
-  for (const auto& attr : frame->loop_cond->def().attr()) {
-    const string& name(attr.first);
-    const AttrValue& value(attr.second);
-    if (absl::StartsWith(name, "_")) {
-      builder.Attr(name, value);
+  // Add some internal attributes which need to be propagated.
+  // TODO(b/160275126): attributes shouldn't be hard-coded here
+  for (const char* attr_name :
+       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
+        kTpuReplicateAttrName}) {
+    string attr_val;
+    if (GetNodeAttr(frame->loop_cond->def(), attr_name, &attr_val).ok()) {
+      builder.Attr(attr_name, attr_val);
     }
   }
   std::vector<NodeDefBuilder::NodeOut> inputs;

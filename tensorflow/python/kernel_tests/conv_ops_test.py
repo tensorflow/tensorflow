@@ -2943,7 +2943,7 @@ class Conv2DBenchmark(test.Benchmark):
         x = convolutional.conv2d(x, num_outputs, [1, kernel_w])
       outputs = x
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       num_iterations = 4
       for iter_index in xrange(num_iterations):
         start = time.time()
@@ -2959,7 +2959,7 @@ class Conv2DBenchmark(test.Benchmark):
     config.graph_options.rewrite_options.dependency_optimization = (
         rewriter_config_pb2.RewriterConfig.OFF)
     with session_lib.Session(config=config) as session:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.run_op_benchmark(
           session, op, burn_iters=burn_iters, min_iters=num_iters, name=name)
 

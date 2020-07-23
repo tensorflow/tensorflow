@@ -24,6 +24,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
@@ -430,11 +431,11 @@ class ZerosTest(test.TestCase):
       z = array_ops.zeros([2, 3])
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.zeros([2, 3]))
+      self.assertAllEqual(z, np.zeros([2, 3]))
       z = array_ops.zeros(array_ops.shape(d))
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.zeros([2, 3]))
+      self.assertAllEqual(z, np.zeros([2, 3]))
       # Test explicit type control
       for dtype in [
           dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
@@ -610,11 +611,11 @@ class OnesTest(test.TestCase):
       z = array_ops.ones([2, 3])
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.ones([2, 3]))
+      self.assertAllEqual(z, np.ones([2, 3]))
       z = array_ops.ones(array_ops.shape(d))
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.ones([2, 3]))
+      self.assertAllEqual(z, np.ones([2, 3]))
       # Test explicit type control
       for dtype in (dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
                     dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
@@ -623,11 +624,21 @@ class OnesTest(test.TestCase):
         z = array_ops.ones([2, 3], dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        self.assertAllEqual(z.eval(), np.ones([2, 3]))
+        self.assertAllEqual(z, np.ones([2, 3]))
         z = array_ops.ones(array_ops.shape(d), dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        self.assertAllEqual(z.eval(), np.ones([2, 3]))
+        self.assertAllEqual(z, np.ones([2, 3]))
+
+  def testQintDtype(self):
+
+    @def_function.function(autograph=False)
+    def f():
+      return math_ops.cast(
+          array_ops.ones([2, 3], dtype=dtypes_lib.quint8), dtypes_lib.int32)
+
+    value = self.evaluate(f())
+    self.assertTrue(np.all(value))
 
 
 class OnesLikeTest(test.TestCase):

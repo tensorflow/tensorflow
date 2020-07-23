@@ -18,10 +18,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
 namespace tensorflow {
 
@@ -32,7 +30,7 @@ using Status = ::stream_executor::port::Status;
 template <typename T>
 using StatusOr = ::stream_executor::port::StatusOr<T>;
 
-TpuPlatform::TpuPlatform() {
+TpuPlatform::TpuPlatform() : name_("TPU") {
   platform_ = tpu::ExecutorApiFn()->TpuPlatform_NewFn();
 }
 
@@ -109,10 +107,7 @@ TpuPlatform::GetUncachedExecutor(
   return TpuPlatform::kId;
 }
 
-const std::string& TpuPlatform::Name() const {
-  static std::string* name = new std::string("TPU");
-  return *name;
-}
+const std::string& TpuPlatform::Name() const { return name_; }
 
 int64 TpuPlatform::TpuMemoryLimit() {
   return tpu::ExecutorApiFn()->TpuPlatform_TpuMemoryLimitFn(platform_);
@@ -121,6 +116,27 @@ int64 TpuPlatform::TpuMemoryLimit() {
 bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
   return tpu::ExecutorApiFn()
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
+}
+
+const tensorflow::tpu::TpuTopologyPtr TpuPlatform::GetTopologyPtr() {
+  return tpu::ExecutorApiFn()->TpuPlatform_GetTopologyPtrFn(platform_);
+}
+
+void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
+                              SE_Event* val) {
+  tensorflow::mutex_lock lock(event_map_mu_);
+  event_map_[key] = val;
+}
+
+SE_Event* TpuPlatform::LookupEvent(
+    stream_executor::internal::EventInterface* key) {
+  tensorflow::tf_shared_lock lock(event_map_mu_);
+  return event_map_.at(key);
+}
+
+void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
+  tensorflow::mutex_lock lock(event_map_mu_);
+  event_map_.erase(key);
 }
 
 Status TpuPlatform::TpusPerHost(int* tpus) {
@@ -134,7 +150,7 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
 Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
   TF_Status* status = TF_NewStatus();
   tpu::ConfigApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
-      reinterpret_cast<int64_t*>(&memory_limit), status);
+      reinterpret_cast<int64_t*>(memory_limit), status);
   auto ret_status = StatusFromTF_Status(status);
   TF_DeleteStatus(status);
   return ret_status;

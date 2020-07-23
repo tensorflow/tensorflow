@@ -329,13 +329,13 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       y1 = math_ops.square(y)
       y2 = math_ops.square(y1)
       g = gradients.gradients([y, y2], x)
-      self.assertAllClose(17502.0, g[0].eval())
+      self.assertAllClose(17502.0, g[0])
       g = gradients.gradients(y + y2, x)
-      self.assertAllClose(17502.0, g[0].eval())
+      self.assertAllClose(17502.0, g[0])
       z = array_ops.identity(y)
       z2 = array_ops.identity(y2)
       g = gradients.gradients([z, z2], x)
-      self.assertAllClose(17502.0, g[0].eval())
+      self.assertAllClose(17502.0, g[0])
 
   @test_util.run_v1_only("b/120545219")
   def testPartialDerivatives(self):
@@ -838,7 +838,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       np_val = np.random.rand(4, 4, 4, 4).astype(np.float32)
       c = constant_op.constant(np_val)
       c_sparse = math_ops._as_indexed_slices(c)
-      self.assertAllEqual(np_val.shape, c_sparse.dense_shape.eval())
+      self.assertAllEqual(np_val.shape, c_sparse.dense_shape)
       c_dense = math_ops.multiply(c_sparse, 1.0)
       self.assertAllClose(np_val, self.evaluate(c_dense))
 
@@ -857,7 +857,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         sparse_list.append(c_sparse)
       packed_dense = array_ops.stack(dense_list)
       packed_sparse = array_ops.stack(sparse_list)
-      self.assertAllClose(packed_dense.eval(), self.evaluate(packed_sparse))
+      self.assertAllClose(packed_dense, self.evaluate(packed_sparse))
 
   @test_util.run_v1_only("b/120545219")
   def testInt64Indices(self):
@@ -868,7 +868,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       c_sparse = ops.IndexedSlices(
           c_sparse.values,
           math_ops.cast(c_sparse.indices, dtypes.int64), c_sparse.dense_shape)
-      self.assertAllEqual(np_val.shape, c_sparse.dense_shape.eval())
+      self.assertAllEqual(np_val.shape, c_sparse.dense_shape)
       c_dense = math_ops.multiply(c_sparse, 1.0)
       self.assertAllClose(np_val, self.evaluate(c_dense))
 
@@ -1347,7 +1347,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       g, = gradients_impl.gradients(output, alpha)
       self.evaluate(variables.global_variables_initializer())
-      self.assertAllEqual(g.eval(), [2.0])
+      self.assertAllEqual(g, [2.0])
       self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
 
   def testRecursiveCustomGradient(self):
@@ -1670,7 +1670,7 @@ class GradPassThroughTest(test_util.TensorFlowTestCase):
 
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
-      self.assertAllClose(grads[0].eval(), 6.0)
+      self.assertAllClose(grads[0], 6.0)
 
     # Verify that variables involved in the wrapped op do not receive gradients.
     y = custom_gradient.grad_pass_through(lambda v: x * v)(z)

@@ -280,7 +280,7 @@ class NumericColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([price]))
     self.assertIn('price', features)
     with self.cached_session():
-      self.assertAllEqual([[20., 110.]], features['price'].eval())
+      self.assertAllEqual([[20., 110.]], features['price'])
 
   @test_util.run_deprecated_v1
   def test_parse_example_with_default_value(self):
@@ -303,7 +303,7 @@ class NumericColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([price]))
     self.assertIn('price', features)
     with self.cached_session():
-      self.assertAllEqual([[20., 110.], [11., 11.]], features['price'].eval())
+      self.assertAllEqual([[20., 110.], [11., 11.]], features['price'])
 
   def test_normalizer_fn_must_be_callable(self):
     with self.assertRaisesRegex(TypeError, 'must be a callable'):
@@ -318,7 +318,7 @@ class NumericColumnTest(test.TestCase):
     price = fc._numeric_column('price', shape=[2], normalizer_fn=_increment_two)
     output = _transform_features({'price': [[1., 2.], [5., 6.]]}, [price])
     with self.cached_session():
-      self.assertAllEqual([[3., 4.], [7., 8.]], output[price].eval())
+      self.assertAllEqual([[3., 4.], [7., 8.]], output[price])
 
   @test_util.run_deprecated_v1
   def test_get_dense_tensor(self):
@@ -454,7 +454,7 @@ class BucketizedColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([bucketized_price]))
     self.assertIn('price', features)
     with self.cached_session():
-      self.assertAllEqual([[20., 110.]], features['price'].eval())
+      self.assertAllEqual([[20., 110.]], features['price'])
 
   @test_util.run_deprecated_v1
   def test_transform_feature(self):
@@ -751,10 +751,9 @@ class HashedCategoricalColumnTest(test.TestCase):
     expected_values = [6, 4, 1]
     with self.cached_session():
       self.assertEqual(dtypes.int64, output.values.dtype)
-      self.assertAllEqual(expected_values, output.values.eval())
-      self.assertAllEqual(wire_tensor.indices.eval(), output.indices.eval())
-      self.assertAllEqual(wire_tensor.dense_shape.eval(),
-                          output.dense_shape.eval())
+      self.assertAllEqual(expected_values, output.values)
+      self.assertAllEqual(wire_tensor.indices, output.indices)
+      self.assertAllEqual(wire_tensor.dense_shape, output.dense_shape.eval())
 
   def test_tensor_dtype_should_be_string_or_integer(self):
     string_fc = fc._categorical_column_with_hash_bucket(
@@ -807,7 +806,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [3, 7, 5]
     with self.cached_session():
-      self.assertAllEqual(expected_values, output.values.eval())
+      self.assertAllEqual(expected_values, output.values)
 
   @test_util.run_deprecated_v1
   def test_int32_64_is_compatible(self):
@@ -822,7 +821,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [3, 7, 5]
     with self.cached_session():
-      self.assertAllEqual(expected_values, output.values.eval())
+      self.assertAllEqual(expected_values, output.values)
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors(self):
@@ -1022,12 +1021,12 @@ class CrossedColumnTest(test.TestCase):
     self.assertIn('price', features)
     self.assertIn('wire', features)
     with self.cached_session():
-      self.assertAllEqual([[20., 110.]], features['price'].eval())
+      self.assertAllEqual([[20., 110.]], features['price'])
       wire_sparse = features['wire']
-      self.assertAllEqual([[0, 0], [0, 1]], wire_sparse.indices.eval())
+      self.assertAllEqual([[0, 0], [0, 1]], wire_sparse.indices)
       # Use byte constants to pass the open-source test.
-      self.assertAllEqual([b'omar', b'stringer'], wire_sparse.values.eval())
-      self.assertAllEqual([1, 2], wire_sparse.dense_shape.eval())
+      self.assertAllEqual([b'omar', b'stringer'], wire_sparse.values)
+      self.assertAllEqual([1, 2], wire_sparse.dense_shape)
 
   @test_util.run_deprecated_v1
   def test_transform_feature(self):
@@ -1672,12 +1671,12 @@ class LinearModelTest(test.TestCase):
       with _initialized_session():
         self.assertEqual([0.], cols_to_vars['bias'][0].eval())
         # Partitioning shards the [2, 1] price1 var into 2 [1, 1] Variables.
-        self.assertAllEqual([[0.]], cols_to_vars[price1][0].eval())
-        self.assertAllEqual([[0.]], cols_to_vars[price1][1].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price1][0])
+        self.assertAllEqual([[0.]], cols_to_vars[price1][1])
         # Partitioning shards the [3, 1] price2 var into a [2, 1] Variable and
         # a [1, 1] Variable.
-        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0].eval())
-        self.assertAllEqual([[0.]], cols_to_vars[price2][1].eval())
+        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0])
+        self.assertAllEqual([[0.]], cols_to_vars[price2][1])
 
   def test_fills_cols_to_output_tensors(self):
     # Provide three _DenseColumn's to input_layer: a _NumericColumn, a
@@ -2340,12 +2339,12 @@ class _LinearModelTest(test.TestCase):
       with _initialized_session():
         self.assertEqual([0.], cols_to_vars['bias'][0].eval())
         # Partitioning shards the [2, 1] price1 var into 2 [1, 1] Variables.
-        self.assertAllEqual([[0.]], cols_to_vars[price1][0].eval())
-        self.assertAllEqual([[0.]], cols_to_vars[price1][1].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price1][0])
+        self.assertAllEqual([[0.]], cols_to_vars[price1][1])
         # Partitioning shards the [3, 1] price2 var into a [2, 1] Variable and
         # a [1, 1] Variable.
-        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0].eval())
-        self.assertAllEqual([[0.]], cols_to_vars[price2][1].eval())
+        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0])
+        self.assertAllEqual([[0.]], cols_to_vars[price2][1])
 
   def test_dense_collection(self):
     price = fc._numeric_column('price')
@@ -4560,9 +4559,9 @@ class TransformFeaturesTest(test.TestCase):
                                         [bucketized_price, hashed_sparse])
       with _initialized_session():
         self.assertIn(bucketized_price.name, transformed[bucketized_price].name)
-        self.assertAllEqual([[0], [3]], transformed[bucketized_price].eval())
+        self.assertAllEqual([[0], [3]], transformed[bucketized_price])
         self.assertIn(hashed_sparse.name, transformed[hashed_sparse].name)
-        self.assertAllEqual([6, 4, 1], transformed[hashed_sparse].values.eval())
+        self.assertAllEqual([6, 4, 1], transformed[hashed_sparse].values)
 
   def test_column_order(self):
     """When the column is both dense and sparse, uses sparse tensors."""
@@ -5044,7 +5043,7 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     for v in global_vars:
       self.assertIsInstance(v, variables_lib.Variable)
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
     if use_safe_embedding_lookup:
@@ -5114,7 +5113,7 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     self.assertCountEqual(('embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   @test_util.run_deprecated_v1
@@ -5211,7 +5210,7 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     self.assertCountEqual(('embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, embedding_lookup.eval(
           feed_dict={
               input_indices: sparse_input.indices,
@@ -5275,7 +5274,7 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     self.assertCountEqual(('embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   @test_util.run_deprecated_v1
@@ -5495,7 +5494,7 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in trainable_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, trainable_vars[0].eval())
+      self.assertAllEqual(embedding_values, trainable_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
 
   @test_util.run_deprecated_v1
@@ -5555,7 +5554,7 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     self.assertCountEqual([],
                           ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
 
 
@@ -6295,7 +6294,7 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
       self.assertCountEqual([], tuple([v.name for v in trainable_vars]))
     shared_embedding_vars = global_vars
     with _initialized_session():
-      self.assertAllEqual(embedding_values, shared_embedding_vars[0].eval())
+      self.assertAllEqual(embedding_values, shared_embedding_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
 
   @test_util.run_deprecated_v1

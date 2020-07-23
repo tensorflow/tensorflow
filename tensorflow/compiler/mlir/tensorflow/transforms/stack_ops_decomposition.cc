@@ -409,11 +409,9 @@ LogicalResult HandleStackV2Op(
               ArrayRef<TensorType>{buffer.getType().cast<TensorType>()},
               stack.getContext()));
   auto local_var = builder.create<TF::MlirLocalVarOp>(
-      stack.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{},
-      ArrayRef<NamedAttribute>{});
+      stack.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
   auto local_size_var = builder.create<TF::MlirLocalVarOp>(
-      stack.getLoc(), ArrayRef<Type>{size_var_type}, ArrayRef<Value>{},
-      ArrayRef<NamedAttribute>{});
+      stack.getLoc(), ArrayRef<Type>{size_var_type}, ArrayRef<Value>{});
   // Zero-initialize the local vars.
   cutil::WriteLocalVariable(local_size_var,
                             cutil::GetR1Const({0LL}, builder, stack.getLoc()),
@@ -446,8 +444,7 @@ LogicalResult HandleStackPushV2Op(
   cutil::WriteLocalVariable(push.handle(), stack_val, builder, push.getLoc());
   index = builder.create<TF::AddV2Op>(
       push.getLoc(), ArrayRef<Type>{index.getType()},
-      ArrayRef<Value>{index, cutil::GetR1Const({1}, builder, push.getLoc())},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{index, cutil::GetR1Const({1}, builder, push.getLoc())});
   cutil::WriteLocalVariable(it->getSecond(), index, builder, push.getLoc());
   push.erase();
   return success();
@@ -467,8 +464,7 @@ LogicalResult HandleStackPopV2Op(
   auto size = cutil::ReadLocalVariable(it->getSecond(), builder, pop.getLoc());
   auto new_size = builder.create<TF::SubOp>(
       pop.getLoc(), ArrayRef<Type>{size.getType()},
-      ArrayRef<Value>{size, cutil::GetR1Const({1}, builder, pop.getLoc())},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{size, cutil::GetR1Const({1}, builder, pop.getLoc())});
   auto pop_val = cutil::GetElement(new_size, stack_val, builder, pop.getLoc());
   pop.replaceAllUsesWith(pop_val);
   // Update the size.
@@ -488,7 +484,7 @@ LogicalResult DecomposeStackOpsInternal(
     llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       // Removes identity nodes in the block. The device computation does not
       // need such nodes to carry information.
       op.replaceAllUsesWith(op.getOperands());

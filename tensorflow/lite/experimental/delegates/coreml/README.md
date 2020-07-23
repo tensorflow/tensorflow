@@ -72,20 +72,34 @@ Following ops are supported by the Core ML delegate.
     *   Weights and bias should be constant.
 *   DepthwiseConv2D
     *   Weights and bias should be constant.
+*   FullyConnected (aka Dense or InnerProduct)
+    *   Weights and bias (if present) should be constant.
+    *   Only supports single-batch case. Input dimensions should be 1, except
+        the last dimension.
 *   Hardswish
 *   Logistic (aka Sigmoid)
 *   MaxPool2D
+*   MirrorPad
+    *   Only 4D input with `REFLECT` mode is supported. Padding should be
+        constant, and is only allowed for H and W dimensions.
 *   Mul
     *   Only certain shapes are broadcastable. In Core ML tensor layout,
         following tensor shapes are broadcastable. `[B, C, H, W]`, `[B, C, 1,
         1]`, `[B, 1, H, W]`, `[B, 1, 1, 1]`.
+*   Pad and PadV2
+    *   Only 4D input is supported. Padding should be constant, and is only
+        allowed for H and W dimensions.
 *   Relu
 *   ReluN1To1
 *   Relu6
 *   Reshape
+    *   Only supported when target Core ML version is 2, not supported when
+        targeting Core ML 3.
 *   ResizeBilinear
 *   SoftMax
 *   Tanh
+*   TransposeConv
+    *   Weights should be constant.
 
 ## FAQ
 

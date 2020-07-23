@@ -17,6 +17,8 @@
 
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/expiring_lru_cache.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/ram_file_block_cache.h"
 #include "tensorflow/c/tf_status.h"
 
 void ParseGCSPath(const std::string& fname, bool object_empty_ok,
@@ -28,7 +30,40 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
              char* buffer, TF_Status* status);
 }  // namespace tf_random_access_file
 
+namespace tf_writable_file {
+void Cleanup(TF_WritableFile* file);
+void Append(const TF_WritableFile* file, const char* buffer, size_t n,
+            TF_Status* status);
+int64_t Tell(const TF_WritableFile* file, TF_Status* status);
+void Flush(const TF_WritableFile* file, TF_Status* status);
+void Sync(const TF_WritableFile* file, TF_Status* status);
+void Close(const TF_WritableFile* file, TF_Status* status);
+}  // namespace tf_writable_file
+
+namespace tf_read_only_memory_region {
+void Cleanup(TF_ReadOnlyMemoryRegion* region);
+const void* Data(const TF_ReadOnlyMemoryRegion* region);
+uint64_t Length(const TF_ReadOnlyMemoryRegion* region);
+}  // namespace tf_read_only_memory_region
+
 namespace tf_gcs_filesystem {
+typedef struct GcsFileStat {
+  TF_FileStatistics base;
+  int64_t generation_number;
+} GcsFileStat;
+
+typedef struct GCSFile {
+  google::cloud::storage::Client gcs_client;  // owned
+  bool compose;
+  absl::Mutex block_cache_lock;
+  std::shared_ptr<RamFileBlockCache> file_block_cache
+      ABSL_GUARDED_BY(block_cache_lock);
+  uint64_t block_size;  // Reads smaller than block_size will trigger a read
+                        // of block_size.
+  std::unique_ptr<ExpiringLRUCache<GcsFileStat>> stat_cache;
+  GCSFile(google::cloud::storage::Client&& gcs_client);
+} GCSFile;
+
 void Init(TF_Filesystem* filesystem, TF_Status* status);
 void Cleanup(TF_Filesystem* filesystem);
 void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
@@ -37,6 +72,10 @@ void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                      TF_WritableFile* file, TF_Status* status);
 void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
                        TF_WritableFile* file, TF_Status* status);
+void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
+                                     const char* path,
+                                     TF_ReadOnlyMemoryRegion* region,
+                                     TF_Status* status);
 }  // namespace tf_gcs_filesystem
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_GCS_GCS_FILESYSTEM_H_

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -434,6 +435,12 @@ void SampleSnapshots(
                b.aggregation_stats().free_memory_bytes();
       });
   snapshots->erase(snapshots->begin() + max_num_snapshots, snapshots->end());
+  // Sort the memory_profile_snapshots by time_offset_ps (ascending) after
+  // sampling.
+  absl::c_sort(*snapshots, [](const MemoryProfileSnapshot& a,
+                              const MemoryProfileSnapshot& b) {
+    return a.time_offset_ps() < b.time_offset_ps();
+  });
 }
 
 // Post-process the memory profile to correctly update proto fields, and break
@@ -475,6 +482,23 @@ void ProcessMemoryProfileProto(int64 max_num_snapshots,
   }
 }
 
+template <typename Proto>
+Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
+  protobuf::util::JsonPrintOptions json_options;
+  json_options.always_print_primitive_fields = true;
+  auto status = protobuf::util::MessageToJsonString(proto_output, json_output,
+                                                    json_options);
+  if (!status.ok()) {
+    // Convert error_msg google::protobuf::StringPiece (or absl::string_view) to
+    // tensorflow::StringPiece.
+    auto error_msg = status.message();
+    return errors::Internal(
+        "Could not convert proto to JSON string: ",
+        absl::string_view(error_msg.data(), error_msg.length()));
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
@@ -482,6 +506,16 @@ MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
   MemoryProfile memory_profile = GenerateMemoryProfile(&host_plane);
   ProcessMemoryProfileProto(max_num_snapshots, &memory_profile);
   return memory_profile;
+}
+
+Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
+                                        std::string* json_output) {
+  if (const XPlane* host_plane =
+          FindPlaneWithName(xspace, kHostThreadsPlaneName)) {
+    MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
+    TF_RETURN_IF_ERROR(ConvertProtoToJson(memory_profile, json_output));
+  }
+  return Status::OK();
 }
 
 }  // namespace profiler

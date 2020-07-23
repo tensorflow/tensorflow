@@ -1429,19 +1429,68 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, IntegerDotCodegen) {
+XLA_TEST_F(DotOperationTextTest, S32IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
 
 ENTRY SmallIntegerDot {
-  arg0 = s32[1,2,2] parameter(0)
-  arg1 = s32[1,2,1] parameter(1)
-  ROOT dot = s32[1,2,1] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  arg0 = s32[5,55,8] iota(), iota_dimension=1
+  arg1 = s32[5,8,200] iota(), iota_dimension=2
+  ROOT dot = s32[5,55,200] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 }
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, S32IotaSquaredDot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s32[16,2] iota(), iota_dimension=0
+  a = s32[16,2] multiply(arg0, arg0)
+  r = s32[16,2] multiply(a, a)
+  arg1 = s32[2,98] iota(), iota_dimension=1
+  b = s32[2,98] multiply(arg1, arg1)
+  s = s32[2,98] multiply(b, b)
+  ROOT dot = s32[16,98] dot(r, s), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S8Dot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s8[20,2] parameter(0)
+  arg1 = s8[2,20] parameter(1)
+  ROOT dot = s8[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, S32Dot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s32[20,55] parameter(0)
+  arg1 = s32[55,20] parameter(1)
+  ROOT dot = s32[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
 XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {

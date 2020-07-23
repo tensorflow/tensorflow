@@ -44,7 +44,7 @@ class RollTest(test_util.TensorFlowTestCase):
     expected_roll = np.roll(np_input, shift, axis)
     with self.cached_session(use_gpu=True):
       roll = manip_ops.roll(np_input, shift, axis)
-      self.assertAllEqual(roll.eval(), expected_roll)
+      self.assertAllEqual(roll, expected_roll)
 
   def _testGradient(self, np_input, shift, axis):
     with self.cached_session(use_gpu=True):

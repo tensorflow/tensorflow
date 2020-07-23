@@ -1856,5 +1856,46 @@ TEST_F(XlaCompilerTest, DoNotConstantFoldShapeOp) {
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
+TEST_F(XlaCompilerTest, AliasResourceUpdates) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Const<int32>(scope.WithOpName("A"), {1, 2});
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
+  auto write = ops::AssignAddVariableOp(scope, var, a);
+  auto read = ops::ReadVariableOp(
+      scope.WithControlDependencies(std::vector<Operation>{write}), var,
+      DT_INT32);
+  auto d = ops::_Retval(scope.WithOpName("D"), read, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kConstant;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+  args[0].constant_value = Tensor(DT_INT32, {1, 1});
+  args[0].initialized = true;
+
+  args[1].kind = XlaCompiler::Argument::kResource;
+  args[1].resource_kind = XlaResource::kVariable;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2});
+
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.alias_resource_update = true;
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                     args, &result));
+
+  const xla::HloInputOutputAliasProto& alias =
+      result.computation->proto().input_output_alias();
+  EXPECT_EQ(alias.entries_size(), 1);
+  EXPECT_EQ(alias.entries(0).parameter_number(), 0);
+}
+
 }  // namespace
 }  // namespace tensorflow

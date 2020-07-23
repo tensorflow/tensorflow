@@ -193,6 +193,22 @@ Status ValidateInputTypeAndPlacement(
     for (int i = 0; i < n_inputs; ++i) {
       TensorHandle* handle = handles[i];
       Device* expected_device = kernel->InputDevice(i);
+      if (!kernel->IsFunction() && handle->Type() == TensorHandle::PACKED) {
+        // Extract a handle on the op device from a packed input.
+        // This happens when a function is marked for XLA compilation.
+        // MaybePackInputTensor guarantees that a primitive op has no packed
+        // input at this point.
+        for (int j = 0; j < handle->NumPackedHandles(); ++j) {
+          TensorHandle* h = nullptr;
+          TF_RETURN_IF_ERROR(handle->ExtractPackedHandle(j, &h));
+          if ((h->op_device() != nullptr) &&
+              (h->op_device()->name() == op->DeviceName())) {
+            op->UpdateInput(i, h);
+            handle = h;
+            break;
+          }
+        }
+      }
       auto handle_device_variant = handle->DeviceOrHostCPU(*ctx);
       if (VariantDeviceIsCustom(handle_device_variant)) {
         return errors::Unimplemented(
@@ -470,20 +486,8 @@ Status GetOrCreateKernelAndDevice(
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
-      PrioritizedDeviceTypeVector supported_devs;
-      auto device_type_list = ctx.prioritized_device_type_list();
       TF_RETURN_IF_ERROR(
-          SupportedDeviceTypesForNode(*device_type_list, ndef, &supported_devs,
-                                      &ctx.HostCPU()->parsed_name()));
-      if (supported_devs.empty()) {
-        return errors::NotFound(
-            "Could not find device for node: ",
-            errors::FormatNodeNameForError(ndef.name()), " = ", ndef.op(), "[",
-            SummarizeAttrs(ndef), "]", "\nAll kernels registered for op ",
-            ndef.op(), ":\n", KernelsRegisteredForOp(ndef.op()));
-      }
-      TF_RETURN_IF_ERROR(ctx.SelectDevice(op->GetDeviceParsedName(),
-                                          supported_devs, DT_INVALID, &device));
+          ctx.SelectDevice(op->GetDeviceParsedName(), ndef, &device));
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();
@@ -630,7 +634,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     auto node = absl::make_unique<AsyncExecuteNode>(
         &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
         graph_collector, op->GetCancellationManager(),
-        absl::Span<TensorHandle*>(retvals, num_outputs));
+        absl::Span<TensorHandle*>(retvals, num_outputs), op->GetStackTrace());
     // Release the inputs from the eager operation since the AsyncExecuteNode
     // would have taken ownership. This allows the inputs to be forwarded if
     // possible.

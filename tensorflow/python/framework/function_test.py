@@ -350,8 +350,8 @@ class FunctionTest(test.TestCase):
                 do_constant_folding=True)))
 
     with self.session(graph=g, config=cfg):
-      self.assertAllClose(y.eval(), 6.)
-      self.assertAllClose(dx.eval(), 2.)
+      self.assertAllClose(y, 6.)
+      self.assertAllClose(dx, 2.)
 
   def _testZNoDepOnY(self, use_const_grad_ys):
 
@@ -423,7 +423,7 @@ class FunctionTest(test.TestCase):
 
     with ops.Graph().as_default(), self.cached_session():
       z = Foo(constant_op.constant(3.0))
-      self.assertAllEqual(z.eval(), 6.0)
+      self.assertAllEqual(z, 6.0)
 
   def testAssertOp(self):
 
@@ -437,10 +437,10 @@ class FunctionTest(test.TestCase):
     self.assertEqual([("Assert", "Assert")], Foo.stateful_ops)
     g = ops.Graph()
     with g.as_default(), self.cached_session():
-      self.assertAllEqual(Foo(constant_op.constant(3.0)).eval(), 6.0)
+      self.assertAllEqual(Foo(constant_op.constant(3.0)), 6.0)
       with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                   "assertion failed.*-3"):
-        self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
+        self.assertAllEqual(Foo(constant_op.constant(-3.0)), 6.0)
 
   @test_util.run_deprecated_v1
   def testAssertWrapper(self):
@@ -537,8 +537,8 @@ class FunctionTest(test.TestCase):
       z = Foo(v)
 
     with self.session(graph=g):
-      variables.global_variables_initializer().run()
-      self.assertAllEqual(z.eval(), 101.)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual(z, 101.)
 
   @test_util.run_deprecated_v1
   def testResourceVarAsImplicitInput(self):
@@ -561,7 +561,7 @@ class FunctionTest(test.TestCase):
 
     with self.session(graph=g):
       v.initializer.run()
-      self.assertAllEqual(expected_val.eval(), self.evaluate(actual_val))
+      self.assertAllEqual(expected_val, self.evaluate(actual_val))
       self.assertAllEqual(expected_shape, self.evaluate(actual_shape))
 
   def testDefineErrors(self):
@@ -675,7 +675,7 @@ class FunctionTest(test.TestCase):
     with ops.Graph().as_default():
       z = CubeXPlusY(3.0, -2.0)
       with self.cached_session():
-        self.assertAllEqual(z.eval(), 25.0)
+        self.assertAllEqual(z, 25.0)
 
   def testNestedDefinedFunction(self):
 
@@ -691,7 +691,7 @@ class FunctionTest(test.TestCase):
     with ops.Graph().as_default():
       z = CubeXPlusY(3.0, -2.0)
       with self.cached_session():
-        self.assertAllEqual(z.eval(), 25.0)
+        self.assertAllEqual(z, 25.0)
 
   def testUnusedFunction(self):
     invoked = False
@@ -772,9 +772,9 @@ class FunctionTest(test.TestCase):
       z = Bar()
 
     with self.session(graph=g):
-      variables.global_variables_initializer().run()
-      self.assertAllEqual(y.eval(), [[12.0]])
-      self.assertAllEqual(z.eval(), [[1.0]])
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual(y, [[12.0]])
+      self.assertAllEqual(z, [[1.0]])
 
   def testCaptureControls(self):
     g = ops.Graph()
@@ -1043,7 +1043,7 @@ class FunctionTest(test.TestCase):
         self.assertFalse(all(val4 == val2))
 
   @test_util.run_v1_only("currently failing on v2")
-  def testStatefulFunctionWithWhitelisting(self):
+  def testStatefulFunctionWithAllowlisting(self):
     t = random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
 
     @function.Defun(capture_by_value=True)
@@ -1054,8 +1054,8 @@ class FunctionTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "Cannot capture a stateful node"):
       res = StatefulFn()
 
-    # This time we whitelist this op, so that its recreated.
-    @function.Defun(capture_by_value=True, whitelisted_stateful_ops=set([t.op]))
+    # This time we allowlist this op, so that its recreated.
+    @function.Defun(capture_by_value=True, allowlisted_stateful_ops=set([t.op]))
     def StatefulFn2():
       return t + constant_op.constant(3, dtype=dtypes.int32)
 
@@ -1418,8 +1418,8 @@ class FunctionOverloadTest(test.TestCase):
       y = Sinh(constant_op.constant(0.25, dtypes.float64))
 
     with self.session(graph=g):
-      self.assertAllClose(x.eval(), np.sinh(0.25))
-      self.assertAllClose(y.eval(), np.sinh(0.25))
+      self.assertAllClose(x, np.sinh(0.25))
+      self.assertAllClose(y, np.sinh(0.25))
 
   def testGradient(self):
 
@@ -1439,7 +1439,7 @@ class FunctionOverloadTest(test.TestCase):
         dx, = gradients_impl.gradients(y, x)
 
         with self.session(graph=g):
-          self.assertAllClose(dx.eval(), 0.25)
+          self.assertAllClose(dx, 0.25)
 
   def testDocString(self):
 
@@ -1483,7 +1483,7 @@ class FunctionCaptureByValueTest(test.TestCase):
     self.assertEqual(0, len(Foo.captured_inputs))
 
     with self.session(graph=g):
-      self.assertAllEqual(y.eval(), [[12.0]])
+      self.assertAllEqual(y, [[12.0]])
 
 
 class UnrollLSTMTest(test.TestCase):

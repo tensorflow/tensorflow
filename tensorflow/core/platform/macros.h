@@ -121,4 +121,13 @@ limitations under the License.
   } while (0)
 #endif
 
+namespace tensorflow {
+namespace internal {
+template <typename T>
+void remove_unused_variable_compiler_warning(const T&){};
+}
+}  // namespace tensorflow
+#define TF_UNUSED_VARIABLE(x) \
+  tensorflow::internal::remove_unused_variable_compiler_warning(x)
+
 #endif  // TENSORFLOW_CORE_PLATFORM_MACROS_H_

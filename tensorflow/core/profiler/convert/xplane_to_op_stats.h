@@ -16,18 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
+enum OpStatsKind {
+  OP_METRICS_DB,
+  STEP_DB,
+  KERNEL_STATS_DB,
+};
+
+using OpStatsConfig = absl::flat_hash_set<OpStatsKind>;
+
 // NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
-OpStats ConvertXSpaceToOpStats(const XSpace& space);
+OpStats ConvertXSpaceToOpStats(const XSpace& space,
+                               const OpStatsConfig& config);
 
 // Propagate and dedup the diagnostics in XSpace and add to OpStats.
 void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
                                          OpStats* op_stats);
+
+// Populates PerfEnv.
+PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
+                    double peak_hbm_bw_giga_bytes_per_second);
+
+// Extracts PerfEnv from XPlane stats.
+PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
 
 }  // namespace profiler
 }  // namespace tensorflow

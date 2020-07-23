@@ -258,7 +258,7 @@ class PyFuncTest(PyFuncTestBase):
     correct = [b"this", b"is", b"a", b"test"]
     with self.cached_session():
       s, = script_ops.py_func(lambda: [correct], [], [dtypes.string])
-      self.assertAllEqual(s.eval(), correct)
+      self.assertAllEqual(s, correct)
 
   @test_util.run_v1_only("b/120545219")
   def testStringPaddingAreConvertedToBytes(self):
@@ -266,7 +266,7 @@ class PyFuncTest(PyFuncTestBase):
     correct = [b"this", b"is", b"a", b"test"]
     with self.cached_session():
       s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
-      self.assertAllEqual(s.eval(), correct)
+      self.assertAllEqual(s, correct)
 
   @test_util.run_v1_only("b/120545219")
   def testNulTerminatedStrings(self):
@@ -274,7 +274,7 @@ class PyFuncTest(PyFuncTestBase):
     correct = [b"this", b"is", b"a", b"test"]
     with self.cached_session():
       s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
-      self.assertAllEqual(s.eval(), correct)
+      self.assertAllEqual(s, correct)
 
   @test_util.run_v1_only("b/120545219")
   def testLarge(self):

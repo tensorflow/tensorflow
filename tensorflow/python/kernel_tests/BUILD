@@ -47,8 +47,11 @@ tf_py_test(
     size = "medium",  # NOTE(ebrevdo): This test is NOT small.
     srcs = ["barrier_ops_test.py"],
     shard_count = 20,
-    # TODO(b/129706424): Re-enable this test on Mac.
-    tags = ["no_mac"],
+    tags = [
+        "no_mac",  # TODO(b/129706424): Re-enable this test on Mac.
+        "nomsan",  # TODO(b/161902335): Re-enable.
+        "notsan",  # TODO(b/161829717): Re-enable.
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
@@ -1468,13 +1471,6 @@ cuda_py_test(
     name = "cast_op_test",
     size = "small",
     srcs = ["cast_op_test.py"],
-    tags = [
-        "no_windows",
-        "noasan",
-        "noguitar",
-        "notap",
-        "optonly",
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3525,6 +3521,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
+    tags = [
+        "no_gpu",  # TODO(b/161856380): Re-enable when fix lands.
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

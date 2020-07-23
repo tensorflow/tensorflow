@@ -924,7 +924,7 @@ class MklEluOp : public MklReluOpBase<Device, T, ALGORITHM::eltwise_elu> {
     // return exp(feature) - 1 if feature > 0; feature otherwise
     T feature = (static_cast<T*>(user_i))[0];
     if (feature < static_cast<T>(0))
-      (static_cast<T*>(out_o))[0] = std::exp(feature);
+      (static_cast<T*>(out_o))[0] = Eigen::numext::exp(feature);
     else
       (static_cast<T*>(out_o))[0] = feature;
     return;
@@ -966,7 +966,7 @@ class MklEluGradOp
     if (feature > static_cast<T>(0)) {
       (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0];
     } else {
-      T elu = std::exp(feature) - static_cast<T>(1);
+      T elu = Eigen::numext::exp(feature) - static_cast<T>(1);
       (static_cast<T*>(out_o))[0] =
           (static_cast<T*>(user_g))[0] * (elu + static_cast<T>(1));
     }
@@ -1004,8 +1004,8 @@ class MklTanhOp : public MklReluOpBase<Device, T, ALGORITHM::eltwise_tanh> {
     void* out_o = static_cast<void*>(dst_tensor->flat<T>().data());
     // tanh(x) = (e^x - e^(-x))/ (e^x + e^(-x))
     T feature = (static_cast<T*>(user_i))[0];
-    T e1 = std::exp(feature);
-    T e2 = std::exp(-feature);
+    T e1 = Eigen::numext::exp(feature);
+    T e2 = Eigen::numext::exp(-feature);
     (static_cast<T*>(out_o))[0] = (e1 - e2) / (e1 + e2);
     return;
   }

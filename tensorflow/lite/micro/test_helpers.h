@@ -177,6 +177,9 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
     int* zero_points, TfLiteAffineQuantization* affine_quant,
     int quantized_dimension, bool is_variable = false);
 
+// Returns the number of tensors in the default subgraph for a tflite::Model.
+size_t GetModelTensorCount(const Model* model);
+
 }  // namespace testing
 }  // namespace tflite
 

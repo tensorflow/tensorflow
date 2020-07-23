@@ -108,14 +108,27 @@ def AffineQuantizedOpInterface : OpInterface<
   ];
 }
 
+def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
+  let description = [{
+    Interface for ops potentially have same operands and results scales.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns whether same operands and results scales are required.}],
+      "bool", "RequiredSameOperandsAndResultsScale",
+      (ins "bool":$sign, "int":$bit_width), [{}], [{return true;}]
+    >,
+  ];
+
+  let verify = [{
+    return quant::VerifySameScales($_op);
+  }];
+}
+
 // Specify this trait if the op has a fixed output value range.
 class FixedResultScale<QuantizedType qt> : NativeOpTrait<!strconcat(
   "quant::FixedResult", qt.name, "Scale<", qt.asTraitArgsStr, ">::Impl")>;
-
-// Specify this trait if the op requires same inputs and outputs quantization
-// scales.
-def SameOperandsAndResultsScale : NativeOpTrait<
-  "quant::SameOperandsAndResultsScale">;
 
 // Specify this trait if the bias-th input of the op is a bias input, which
 // needs a scale based on the scales of op1 and op2.

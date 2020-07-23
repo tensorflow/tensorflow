@@ -828,6 +828,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                             buf.get()->length, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
+  m.def("TFE_AbortCollectiveOps", [](const py::handle& ctx, int code,
+                                     const char* message) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TF_SetStatus(status.get(), static_cast<TF_Code>(code), message);
+    TFE_AbortCollectiveOps(tensorflow::InputTFE_Context(ctx), status.get());
+  });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);
   m.def("TF_GetDeviceDetails", &tensorflow::TF_GetDeviceDetails);
   m.def("TF_DeleteDeviceList", &TF_DeleteDeviceList,
@@ -1165,7 +1172,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
     PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
     PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
-    return py::handle(EagerTensorFromHandle(thandle));
+
+    PyObject* pyhandle = EagerTensorFromHandle(thandle);
+    return tensorflow::PyoOrThrow(pyhandle);
   });
 
   m.def("TFE_Py_RegisterCustomDevice", [](const py::handle& context,

@@ -43,7 +43,7 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import device as tfdev
+from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -53,10 +53,10 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradients_module
@@ -725,7 +725,7 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
-    if tfdev.is_device_spec(device):
+    if isinstance(device, device_spec.DeviceSpecV2):
       device = device.to_string()
     self.device = device
 
@@ -744,7 +744,10 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return tfdev.DeviceSpec.from_string(op.device)
+  if tf2.enabled():
+    return device_spec.DeviceSpecV2.from_string(op.device)
+  else:
+    return device_spec.DeviceSpecV1.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):
@@ -853,6 +856,9 @@ def is_sparse(tensor):
   True
 
   """
+  spec = getattr(tensor, '_type_spec', None)
+  if spec is not None:
+    return isinstance(spec, sparse_tensor.SparseTensorSpec)
   return isinstance(tensor, sparse_tensor.SparseTensor)
 
 
@@ -1128,13 +1134,14 @@ def is_keras_tensor(x):
   True
 
   """
-  if keras_tensor.keras_tensors_enabled():
-    return isinstance(x, keras_tensor.KerasTensor)
   if not isinstance(x,
                     (ops.Tensor, variables_module.Variable,
-                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor,
+                     keras_tensor.KerasTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
+  if keras_tensor.keras_tensors_enabled():
+    return isinstance(x, keras_tensor.KerasTensor)
   return hasattr(x, '_keras_history')
 
 
@@ -3452,7 +3459,7 @@ _VALUE_SET_CODE_STRING = """
   >>> print(K.get_value(v))
   3.0
 
-  Variable semantics in TensorFlow 2 are eager execution friendly. The above 
+  Variable semantics in TensorFlow 2 are eager execution friendly. The above
   code is roughly equivalent to:
 
   >>> v = tf.Variable(1.)
@@ -4098,9 +4105,9 @@ def rnn(step_function,
   # That's what the tile call does, it just repeats the mask along its
   # second dimension n times.
   def _expand_mask(mask_t, input_t, fixed_dim=1):
-    if nest.is_sequence(mask_t):
+    if nest.is_nested(mask_t):
       raise ValueError('mask_t is expected to be tensor, but got %s' % mask_t)
-    if nest.is_sequence(input_t):
+    if nest.is_nested(input_t):
       raise ValueError('input_t is expected to be tensor, but got %s' % input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
@@ -4126,7 +4133,7 @@ def rnn(step_function,
         input_t.reverse()
       return input_t
 
-    if nest.is_sequence(inputs):
+    if nest.is_nested(inputs):
       processed_input = nest.map_structure(_process_single_input_t, inputs)
     else:
       processed_input = (_process_single_input_t(inputs),)
@@ -4541,7 +4548,10 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-
+  # While x can be a tensor or variable, we also see cases where
+  # numpy arrays, lists, tuples are passed as well.
+  # lists, tuples do not have 'dtype' attribute.
+  dtype = getattr(x, 'dtype', floatx())
   if alpha != 0.:
     if max_value is None and threshold == 0:
       return nn.leaky_relu(x, alpha=alpha)
@@ -4555,7 +4565,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
   if threshold != 0:
     # computes x for x > threshold else 0
-    x = x * math_ops.cast(math_ops.greater(x, threshold), floatx())
+    x = x * math_ops.cast(math_ops.greater(x, threshold), dtype=dtype)
   elif max_value == 6:
     # if no threshold, then can use nn.relu6 native TF op for performance
     x = nn.relu6(x)
@@ -4667,15 +4677,15 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     [[1. 0. 0.]
      [0. 1. 0.]
      [0. 0. 1.]], shape=(3, 3), dtype=float32)
-  >>> b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+  >>> b = tf.constant([.9, .05, .05, .05, .89, .06, .05, .01, .94], shape=[3,3])
   >>> print(b)
   tf.Tensor(
     [[0.9  0.05 0.05]
-     [0.5  0.89 0.6 ]
+     [0.05 0.89 0.06]
      [0.05 0.01 0.94]], shape=(3, 3), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, b)
   >>> print(np.around(loss, 5))
-  [0.10536 0.80467 0.06188]
+  [0.10536 0.11653 0.06188]
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
   >>> print(np.around(loss, 5))
   [0. 0. 0.]
@@ -4690,7 +4700,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
         labels=target, logits=output, axis=axis)
 
   if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax'):
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4735,7 +4745,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   if (not from_logits and
       not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax'):
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4814,7 +4824,7 @@ def binary_crossentropy(target, output, from_logits=False):
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Sigmoid'):
+      output.op.type == 'Sigmoid') and not hasattr(output, '_keras_history'):
     # When sigmoid activation function is used for output operation, we
     # use logits from the sigmoid function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4862,7 +4872,7 @@ def hard_sigmoid(x):
   """
   point_two = _constant_to_tensor(0.2, x.dtype.base_dtype)
   point_five = _constant_to_tensor(0.5, x.dtype.base_dtype)
-  x = math_ops.mul(x, point_two)
+  x = math_ops.multiply(x, point_two)
   x = math_ops.add(x, point_five)
   x = clip_ops.clip_by_value(x, 0., 1.)
   return x
@@ -6054,7 +6064,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
               the log probability of each decoded sequence.
   """
   input_shape = shape(y_pred)
-  samples, steps = input_shape[0], input_shape[1]
+  num_samples, num_steps = input_shape[0], input_shape[1]
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
   input_length = math_ops.cast(input_length, dtypes_module.int32)
 
@@ -6067,11 +6077,12 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
         sequence_length=input_length,
         beam_width=beam_width,
         top_paths=top_paths)
-  decoded_dense = [
-      sparse_ops.sparse_to_dense(
-          st.indices, (samples, steps), st.values, default_value=-1)
-      for st in decoded
-  ]
+  decoded_dense = []
+  for st in decoded:
+    st = sparse_tensor.SparseTensor(
+        st.indices, st.values, (num_samples, num_steps))
+    decoded_dense.append(
+        sparse_ops.sparse_tensor_to_dense(sp_input=st, default_value=-1))
   return (decoded_dense, log_prob)
 
 

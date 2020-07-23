@@ -610,7 +610,7 @@ class TensorArrayTest(test.TestCase):
       w2_grad = w1_grad.write(2, c(5.0))
 
       # Assert that aggregation works correctly
-      self.assertAllEqual(c(12.00), w2_grad.read(2).eval())
+      self.assertAllEqual(c(12.00), w2_grad.read(2))
 
       # Assert that if multiple_writes_aggregate is not enabled,
       # multiple writes raise an exception.

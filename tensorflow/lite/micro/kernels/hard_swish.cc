@@ -34,12 +34,8 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 void* HardSwishInit(TfLiteContext* context, const char* buffer, size_t length) {
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(HardSwishParams),
-                                        &data) == kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(HardSwishParams));
 }
 
 TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -118,16 +114,15 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace hard_swish
 
-TfLiteRegistration* Register_HARD_SWISH() {
-  static TfLiteRegistration r = {/*init=*/hard_swish::HardSwishInit,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/hard_swish::HardSwishPrepare,
-                                 /*invoke=*/hard_swish::HardSwishEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_HARD_SWISH() {
+  return {/*init=*/hard_swish::HardSwishInit,
+          /*free=*/nullptr,
+          /*prepare=*/hard_swish::HardSwishPrepare,
+          /*invoke=*/hard_swish::HardSwishEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

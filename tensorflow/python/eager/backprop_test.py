@@ -288,8 +288,8 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       tf_opt = training.GradientDescentOptimizer(0.1)
       tf_embedding.initializer.run()
 
-      self.assertAllClose(tf_grad.indices.eval(), grad.indices)
-      self.assertAllClose(tf_grad.values.eval(), grad.values)
+      self.assertAllClose(tf_grad.indices, grad.indices)
+      self.assertAllClose(tf_grad.values, grad.values)
 
       tf_opt.apply_gradients([(tf_grad, tf_embedding)]).run()
       expected = self.evaluate(tf_embedding)
@@ -1499,7 +1499,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       tf_max = max_pooling3d(
           tf_aa, pool_size=pool_size, strides=strides, padding='SAME')
       tf_da = gradients.gradients(tf_max, [tf_aa])
-      self.assertAllEqual(da[0], tf_da[0].eval())
+      self.assertAllEqual(da[0], tf_da[0])
 
   @test_util.run_in_graph_and_eager_modes
   def testWatchBadThing(self):

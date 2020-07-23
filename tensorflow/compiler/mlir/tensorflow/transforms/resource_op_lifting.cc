@@ -375,7 +375,7 @@ LogicalResult FindResourceArgUseInfo(
         info.data_type = assign.value().getType();
         continue;
       }
-      if (isa<TF::StackPushV2Op>(user) || isa<TF::StackPopV2Op>(user)) {
+      if (isa<TF::StackPushV2Op, TF::StackPopV2Op>(user)) {
         // Stacks will be handled by a separate pass.
         do_not_touch = true;
         break;
@@ -558,15 +558,13 @@ void AddLoadsStoresOutsideControlFlowOp(
     auto operand = caller->getOperand(index);
     builder.setInsertionPoint(caller);
     new_operands[index] = builder.create<TF::ReadVariableOp>(
-        caller->getLoc(), ArrayRef<Type>{new_type}, ArrayRef<Value>{operand},
-        ArrayRef<NamedAttribute>{});
+        caller->getLoc(), ArrayRef<Type>{new_type}, ArrayRef<Value>{operand});
     caller->setOperand(index, new_operands[index]);
     if (updated_index < 0) continue;
     builder.setInsertionPointAfter(caller);
     builder.create<TF::AssignVariableOp>(
         caller->getLoc(), ArrayRef<Type>{},
-        ArrayRef<Value>{operand, caller->getResult(updated_index)},
-        ArrayRef<NamedAttribute>{});
+        ArrayRef<Value>{operand, caller->getResult(updated_index)});
   }
 }
 
@@ -687,10 +685,12 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
       auto retval = func.front().getTerminator()->getOperand(result_index);
       assert(result.getType() == retval.getType());
       auto aliasing_arg = retval.dyn_cast<BlockArgument>();
+      if (!aliasing_arg)
+        return op.emitOpError("unsupported output: ")
+               << "resource does not alias input";
       if (common_aliasing_arg_num == kUnassigned)
         common_aliasing_arg_num = aliasing_arg.getArgNumber();
-      if (!aliasing_arg ||
-          aliasing_arg.getArgNumber() != common_aliasing_arg_num)
+      if (aliasing_arg.getArgNumber() != common_aliasing_arg_num)
         return op.emitOpError("unsupported output: ")
                << "resource does not alias a single input";
     }
@@ -760,8 +760,11 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   for (auto branch : branches) {
     auto new_retvals =
         llvm::to_vector<4>(branch.front().getTerminator()->getOperands());
+    new_retvals.resize(new_retvals.size() + resource_arg_to_new_output.size());
     for (const auto& entry : resource_arg_to_new_output) {
-      new_retvals.push_back(branch.getArgument(entry.getFirst()));
+      int64_t resource_arg_index = entry.getFirst();
+      int64_t output_index = entry.getSecond();
+      new_retvals[output_index] = branch.getArgument(resource_arg_index);
     }
     auto old_return = branch.front().getTerminator();
     OpBuilder builder(old_return);
@@ -880,23 +883,34 @@ LogicalResult HandlePartitionedCallOpCallee(
     result->arg_data_type_and_updated_output_index[entry.getFirst()] = {
         entry.getSecond(), -1};
   }
-  llvm::SmallVector<Value, 4> new_retvals;
-  for (auto val : callee.front().getTerminator()->getOperands()) {
-    // Remove resource type outputs.
-    if (getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>()) continue;
-    new_retvals.push_back(val);
+  llvm::SmallVector<int64_t, 4> retval_indices_to_preserve;
+  for (auto& val : callee.front().getTerminator()->getOpOperands()) {
+    // Store indices of results that are not resources.
+    if (!getElementTypeOrSelf(val.get().getType()).isa<TF::ResourceType>())
+      retval_indices_to_preserve.push_back(val.getOperandNumber());
   }
+  int64_t num_retvals = retval_indices_to_preserve.size();
+  llvm::SmallVector<Value, 4> new_retvals;
   // Lift resources.
   LiftArgRetResourcesForFunction(
       callee, remaining_resource_data_types, [&](int64_t index, Value value) {
         result->arg_data_type_and_updated_output_index[index].second =
-            new_retvals.size();
+            num_retvals++;
         new_retvals.push_back(value);
       });
+
   auto old_return = callee.front().getTerminator();
+  llvm::SmallVector<Value, 4> old_and_new_retvals;
+  old_and_new_retvals.reserve(retval_indices_to_preserve.size() +
+                              new_retvals.size());
+  for (int64_t retval_index : retval_indices_to_preserve)
+    old_and_new_retvals.push_back(old_return->getOperand(retval_index));
+
+  old_and_new_retvals.append(new_retvals.begin(), new_retvals.end());
   // Replace old return with the new ones with update values.
   OpBuilder builder(old_return);
-  auto new_return = builder.create<ReturnOp>(old_return->getLoc(), new_retvals);
+  auto new_return =
+      builder.create<ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
   callee.setType(FunctionType::get(
       callee.getType().getInputs(),

@@ -249,12 +249,7 @@ TfLiteStatus MaxEvalInt8(TfLiteContext* context, const TfLiteNode* node,
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus MaxPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -361,28 +356,26 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace pooling
 
-TfLiteRegistration* Register_AVERAGE_POOL_2D() {
-  static TfLiteRegistration r = {/*init=*/pooling::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/pooling::AveragePrepare,
-                                 /*invoke=*/pooling::AverageEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_AVERAGE_POOL_2D() {
+  return {/*init=*/pooling::Init,
+          /*free=*/nullptr,
+          /*prepare=*/pooling::AveragePrepare,
+          /*invoke=*/pooling::AverageEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-TfLiteRegistration* Register_MAX_POOL_2D() {
-  static TfLiteRegistration r = {/*init=*/pooling::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/pooling::MaxPrepare,
-                                 /*invoke=*/pooling::MaxEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_MAX_POOL_2D() {
+  return {/*init=*/pooling::Init,
+          /*free=*/nullptr,
+          /*prepare=*/pooling::MaxPrepare,
+          /*invoke=*/pooling::MaxEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

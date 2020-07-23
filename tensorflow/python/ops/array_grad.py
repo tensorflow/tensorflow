@@ -847,7 +847,7 @@ def _PadGrad(op, grad):
                                array_ops.stack([array_ops.rank(x), 1]))
   # Make it a 1-D tensor.
   begin = array_ops.reshape(pad_before, [-1])
-  sizes = array_ops.shape(x)
+  sizes = array_ops.shape(x, out_type=begin.dtype)
   x_grad = array_ops.slice(grad, begin, sizes)
   if len(op.inputs) == 3:
     return x_grad, None, None

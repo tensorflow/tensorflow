@@ -840,7 +840,7 @@ class HingeLossTest(test.TestCase):
       logits = constant_op.constant([1.2, -1.4, -1.0, 2.1])
       labels = constant_op.constant([1.0, 0.0, 0.0, 1.0])
       loss = losses.hinge_loss(labels, logits)
-      self.assertAllClose(loss.eval(), 0.0, atol=1e-3)
+      self.assertAllClose(loss, 0.0, atol=1e-3)
 
   @test_util.run_deprecated_v1
   def testSomeInsideMargin(self):
@@ -850,7 +850,7 @@ class HingeLossTest(test.TestCase):
       loss = losses.hinge_loss(labels, logits)
       # Examples 1 and 4 are on the correct side of the hyperplane but within
       # the margin so they incur some (small) loss.
-      self.assertAllClose(loss.eval(), 0.175, atol=1e-3)
+      self.assertAllClose(loss, 0.175, atol=1e-3)
 
   @test_util.run_deprecated_v1
   def testSomeMisclassified(self):
@@ -860,7 +860,7 @@ class HingeLossTest(test.TestCase):
       loss = losses.hinge_loss(labels, logits)
       # Examples 2 and 4 are on the wrong side of the hyperplane so they incur
       # some (fairly large) loss.
-      self.assertAllClose(loss.eval(), 0.875, atol=1e-3)
+      self.assertAllClose(loss, 0.875, atol=1e-3)
 
 
 class HuberLossTest(test.TestCase):
@@ -878,8 +878,8 @@ class HuberLossTest(test.TestCase):
       predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
       labels = constant_op.constant([1.0, -1.0, 0.0, 0.5])
       loss = losses.huber_loss(labels, predictions)
-      self.assertAllClose(loss.eval(),
-                          0.5 * (0.25 + 0.16 + 1.0 + 0.25) / 4., atol=1e-5)
+      self.assertAllClose(
+          loss, 0.5 * (0.25 + 0.16 + 1.0 + 0.25) / 4., atol=1e-5)
 
   @test_util.run_deprecated_v1
   def testAllLinear(self):
@@ -887,8 +887,7 @@ class HuberLossTest(test.TestCase):
       predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
       labels = constant_op.constant([0.0, 1.0, 0.0, 1.5])
       loss = losses.huber_loss(labels, predictions)
-      self.assertAllClose(loss.eval(),
-                          (1.5 + 2.4 + 1.0 + 1.5) / 4. - 0.5, atol=1e-5)
+      self.assertAllClose(loss, (1.5 + 2.4 + 1.0 + 1.5) / 4. - 0.5, atol=1e-5)
 
   @test_util.run_deprecated_v1
   def testMixedQuadraticLinear(self):
@@ -901,7 +900,7 @@ class HuberLossTest(test.TestCase):
       quadratic = 0.5 * (0.25 + 0.16 + 1.0 + 0.25) / 4.
       linear = (1.5 + 2.4 + 1.0 + 1.5) / 4. - 0.5
       expected_loss = (quadratic + linear) / 2.
-      self.assertAllClose(loss.eval(), expected_loss, atol=1e-5)
+      self.assertAllClose(loss, expected_loss, atol=1e-5)
 
   def testAllQuadraticDelta(self):
     with self.cached_session():

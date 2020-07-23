@@ -21,8 +21,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-inline uint64 StrongKeyedHash(const uint64 (&key)[2], const string& s) {
-  return highwayhash::StringHasher<highwayhash::SipHashState>()(key, s);
+inline uint64 StrongKeyedHash(const tensorflow::uint64 (&key)[2],
+                              const string& s) {
+  return highwayhash::StringHasher<highwayhash::SipHashState>()(
+      {key[0], key[1]}, s);
 }
 
 }  // namespace tensorflow

@@ -147,7 +147,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
                    len(graph_def.node))
       converter = trt_convert.TrtGraphConverter(
           input_graph_def=graph_def,
-          nodes_blacklist=[OUTPUT_NODE_NAME],
+          nodes_denylist=[OUTPUT_NODE_NAME],
           max_batch_size=max_batch_size,
           precision_mode='INT8',
           # There is a 2GB GPU memory limit for each test, so we set

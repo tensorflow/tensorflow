@@ -203,7 +203,7 @@ class NonSquareLinearOperatorCompositionTest(
     ]
     operator = linalg.LinearOperatorComposition(operators)
     with self.cached_session():
-      self.assertAllEqual((2, 3, 5), operator.shape_tensor().eval())
+      self.assertAllEqual((2, 3, 5), operator.shape_tensor())
 
   @test_util.run_deprecated_v1
   def test_shape_tensors_when_only_dynamically_available(self):

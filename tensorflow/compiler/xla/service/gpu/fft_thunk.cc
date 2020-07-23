@@ -98,12 +98,12 @@ string FftTypeToString(se::fft::Type type) {
 
 }  // namespace
 
-FftThunk::FftThunk(FftType fft_type, absl::Span<const int64> fft_length,
+FftThunk::FftThunk(ThunkInfo thunk_info, FftType fft_type,
+                   absl::Span<const int64> fft_length,
                    const BufferAllocation::Slice& input_buffer,
                    const BufferAllocation::Slice& output_buffer,
-                   const Shape& input_shape, const Shape& output_shape,
-                   const HloInstruction* hlo)
-    : Thunk(Kind::kFft, hlo),
+                   const Shape& input_shape, const Shape& output_shape)
+    : Thunk(Kind::kFft, thunk_info),
       fft_type_(
           FftTypeToSeType(fft_type, input_shape.element_type() == F64 ||
                                         input_shape.element_type() == C128)),
@@ -127,7 +127,7 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
                                         buffer_allocations.memory_allocator());
 
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   if (fft_plan_ == nullptr) {
     const int64 fft_rank = fft_length_.size();
     CHECK_LE(fft_rank, 3);
