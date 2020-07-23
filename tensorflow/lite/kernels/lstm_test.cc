@@ -324,9 +324,7 @@ class BaseLstmOpTest : public ::testing::TestWithParam<bool> {
   std::vector<std::vector<float>> lstm_golden_output_;
 
   // Compares output up to tolerance to the result of the lstm given the input.
-  void VerifyGoldens(const std::vector<std::vector<float>>& input,
-                     const std::vector<std::vector<float>>& output,
-                     LSTMOpModel* lstm, float tolerance = 1e-5) {
+  void VerifyGoldens(LSTMOpModel* lstm, float tolerance = 1e-5) {
     // Weights are set twice:
     // - The delegate, if used, needs to know the scales and zero-points of
     //   quantized tensors, which are computed dynamically when weights are set,
@@ -337,15 +335,15 @@ class BaseLstmOpTest : public ::testing::TestWithParam<bool> {
     lstm->ApplyDelegate();
     SetAllWeightsAndBiases(lstm);
 
-    const int num_batches = input.size();
+    const int num_batches = lstm_input_.size();
     EXPECT_GT(num_batches, 0);
     const int num_inputs = lstm->num_inputs();
     EXPECT_GT(num_inputs, 0);
-    const int input_sequence_size = input[0].size() / num_inputs;
+    const int input_sequence_size = lstm_input_[0].size() / num_inputs;
     EXPECT_GT(input_sequence_size, 0);
     for (int i = 0; i < input_sequence_size; ++i) {
       for (int b = 0; b < num_batches; ++b) {
-        const float* batch_start = input[b].data() + i * num_inputs;
+        const float* batch_start = lstm_input_[b].data() + i * num_inputs;
         const float* batch_end = batch_start + num_inputs;
 
         lstm->SetInput(b * lstm->num_inputs(), batch_start, batch_end);
@@ -356,7 +354,8 @@ class BaseLstmOpTest : public ::testing::TestWithParam<bool> {
       const int num_outputs = lstm->num_outputs();
       std::vector<float> expected;
       for (int b = 0; b < num_batches; ++b) {
-        const float* golden_start_batch = output[b].data() + i * num_outputs;
+        const float* golden_start_batch =
+            lstm_golden_output_[b].data() + i * num_outputs;
         const float* golden_end_batch = golden_start_batch + num_outputs;
         expected.insert(expected.end(), golden_start_batch, golden_end_batch);
       }
@@ -462,7 +461,7 @@ TEST_F(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, Float) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/false);
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
+  VerifyGoldens(&lstm);
 }
 
 TEST_F(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, With24Inputs) {
@@ -481,7 +480,7 @@ TEST_F(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, With24Inputs) {
                    /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/false);
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
+  VerifyGoldens(&lstm);
 }
 
 TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, HybridUint8) {
@@ -503,8 +502,7 @@ TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, HybridUint8) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm,
-                /*tolerance=*/0.0157651);
+  VerifyGoldens(&lstm, /*tolerance=*/0.0157651);
 }
 
 TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, HybridInt8) {
@@ -525,8 +523,7 @@ TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, HybridInt8) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm,
-                /*tolerance=*/0.0157651);
+  VerifyGoldens(&lstm, /*tolerance=*/0.0157651);
 }
 
 class Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest
@@ -592,7 +589,7 @@ TEST_F(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, Float) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/false);
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
+  VerifyGoldens(&lstm);
 }
 
 TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, HybridUint8) {
@@ -614,7 +611,7 @@ TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, HybridUint8) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.03573);
+  VerifyGoldens(&lstm, /*tolerance=*/0.03573);
 }
 
 TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, HybridInt8) {
@@ -635,7 +632,7 @@ TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, HybridInt8) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.03573);
+  VerifyGoldens(&lstm, /*tolerance=*/0.03573);
 }
 
 class NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest
@@ -1252,7 +1249,7 @@ TEST_F(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, Float) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/false);
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
+  VerifyGoldens(&lstm);
 }
 
 TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, HybridUint8) {
@@ -1273,7 +1270,7 @@ TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, HybridUint8) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.00467);
+  VerifyGoldens(&lstm, /*tolerance=*/0.00467);
 }
 
 TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, HybridInt8) {
@@ -1293,7 +1290,7 @@ TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, HybridInt8) {
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
                    /*asymmetric_quantize_inputs=*/GetParam());
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.0015);
+  VerifyGoldens(&lstm, /*tolerance=*/0.0015);
 }
 
 class NoCifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
@@ -1359,6 +1356,19 @@ class NoCifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
          0.1, 0.5, 0.2, 0.4, 0.2,   // seq 1
          0.6, 0.9, 0.2, 0.5, 0.7},  // seq 2
     };
+
+    lstm_golden_output_ = {{
+                               // Batch0: 3 (input_sequence_size) * 3 (n_output)
+                               0.0244077, 0.128027, -0.00170918,  // seq 0
+                               0.0137642, 0.140751, 0.0395835,    // seq 1
+                               -0.00459231, 0.155278, 0.0837377,  // seq 2
+                           },
+                           {
+                               // Batch1: 3 (input_sequence_size) * 3 (n_output)
+                               -0.00692428, 0.0848741, 0.063445,  // seq 0
+                               -0.00403912, 0.139963, 0.072681,   // seq 1
+                               0.00752706, 0.161903, 0.0561371,   // seq 2
+                           }};
   }
 };
 
@@ -1368,7 +1378,7 @@ TEST_F(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, Float) {
   const int n_cell = 4;
   const int n_output = 3;
 
-  LSTMOpModel layer_norm_lstm(
+  LSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -1376,21 +1386,7 @@ TEST_F(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, Float) {
       /*weight_type=*/TensorType_FLOAT32, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/false);
 
-  // Verify the final output.
-  lstm_golden_output_ = {{
-                             // Batch0: 3 (input_sequence_size) * 3 (n_output)
-                             0.0244077, 0.128027, -0.00170918,  // seq 0
-                             0.0137642, 0.140751, 0.0395835,    // seq 1
-                             -0.00459231, 0.155278, 0.0837377,  // seq 2
-                         },
-                         {
-                             // Batch1: 3 (input_sequence_size) * 3 (n_output)
-                             -0.00692428, 0.0848741, 0.063445,  // seq 0
-                             -0.00403912, 0.139963, 0.072681,   // seq 1
-                             0.00752706, 0.161903, 0.0561371,   // seq 2
-                         }};
-
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm);
+  VerifyGoldens(&lstm);
 }
 
 TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
@@ -1403,7 +1399,7 @@ TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
   const int n_cell = 4;
   const int n_output = 3;
 
-  LSTMOpModel layer_norm_lstm(
+  LSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -1411,21 +1407,7 @@ TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
       /*weight_type=*/TensorType_UINT8, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
 
-  lstm_golden_output_ = {{
-                             // Batch0: 3 (input_sequence_size) * 3 (n_output)
-                             0.0244576, 0.127847, -0.00181765,  // seq 0
-                             0.0137518, 0.140892, 0.0402234,    // seq 1
-                             -0.0048839, 0.155096, 0.0840309,   // seq 2
-                         },
-                         {
-                             // Batch1: 3 (input_sequence_size) * 3 (n_output)
-                             -0.00728636, 0.0843957, 0.0634786,  // seq 0
-                             -0.00448382, 0.139278, 0.0737372,   // seq 1
-                             0.00734616, 0.161793, 0.0560238,    // seq 2
-                         }};
-
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm,
-                /*tolerance=*/0.0010907);
+  VerifyGoldens(&lstm, /*tolerance=*/0.0010907);
 }
 
 TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
@@ -1437,7 +1419,7 @@ TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
   const int n_cell = 4;
   const int n_output = 3;
 
-  LSTMOpModel layer_norm_lstm(
+  LSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -1445,22 +1427,7 @@ TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
       /*weight_type=*/TensorType_INT8, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
 
-  // Goldens are calculated from weight_type=TensorType_FLOAT32.
-  lstm_golden_output_ = {{
-                             // Batch0: 3 (input_sequence_size) * 3 (n_output)
-                             0.0244077, 0.128027, -0.00170918,  // seq 0
-                             0.0137642, 0.140751, 0.0395835,    // seq 1
-                             -0.00459233, 0.155278, 0.0837378,  // seq 2
-                         },
-                         {
-                             // Batch1: 3 (input_sequence_size) * 3 (n_output)
-                             -0.00692428, 0.0848741, 0.063445,  // seq 0
-                             -0.00403911, 0.139963, 0.072681,   // seq 1
-                             0.00752708, 0.161903, 0.0561371,   // seq 2
-                         }};
-
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm,
-                /*tolerance=*/1.06e-3);
+  VerifyGoldens(&lstm, /*tolerance=*/1.06e-3);
 }
 
 class Cifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
@@ -1506,6 +1473,19 @@ class Cifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
          0.1, 0.5, 0.2, 0.4, 0.2,   // seq 1
          0.6, 0.9, 0.2, 0.5, 0.7},  // seq 2
     };
+    lstm_golden_output_ = {
+        {
+            // Batch0: 3 (input_sequence_size) * 3 (n_output)
+            0.02129706, 0.140816242, 0.0112733059,     // seq 0
+            0.0132302344, 0.152308047, 0.0346313119,   // seq 1
+            -0.0123688057, 0.165790111, 0.0893077999,  // seq 2
+        },
+        {
+            // Batch1: 3 (input_sequence_size) * 3 (n_output)
+            -0.0226350538, 0.0916948169, 0.0769175813,  // seq 0
+            -0.0269966982, 0.149707705, 0.094149217,    // seq 1
+            -0.0103429332, 0.173016444, 0.0720508844,   // seq 2
+        }};
   }
 };
 
@@ -1515,7 +1495,7 @@ TEST_F(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, Float) {
   const int n_cell = 4;
   const int n_output = 3;
 
-  LSTMOpModel layer_norm_lstm(
+  LSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -1523,22 +1503,7 @@ TEST_F(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, Float) {
       /*weight_type=*/TensorType_FLOAT32, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/false);
 
-  // Verify the final output.
-  lstm_golden_output_ = {
-      {
-          // Batch0: 3 (input_sequence_size) * 3 (n_output)
-          0.02129706, 0.140816242, 0.0112733059,     // seq 0
-          0.0132302344, 0.152308047, 0.0346313119,   // seq 1
-          -0.0123688057, 0.165790111, 0.0893077999,  // seq 2
-      },
-      {
-          // Batch1: 3 (input_sequence_size) * 3 (n_output)
-          -0.0226350538, 0.0916948169, 0.0769175813,  // seq 0
-          -0.0269966982, 0.149707705, 0.094149217,    // seq 1
-          -0.0103429332, 0.173016444, 0.0720508844,   // seq 2
-      }};
-
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm);
+  VerifyGoldens(&lstm);
 }
 
 TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
@@ -1550,7 +1515,7 @@ TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
   const int n_cell = 4;
   const int n_output = 3;
 
-  LSTMOpModel layer_norm_lstm(
+  LSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -1558,23 +1523,7 @@ TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
       /*weight_type=*/TensorType_UINT8, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
 
-  // Verify the final output.
-  lstm_golden_output_ = {
-      {
-          // Batch0: 3 (input_sequence_size) * 3 (n_output)
-          0.0212250091, 0.140474007, 0.0115012666,   // seq 0
-          0.0130806509, 0.152660668, 0.0347516984,   // seq 1
-          -0.0124010444, 0.166042402, 0.0898982584,  // seq 2
-      },
-      {
-          // Batch1: 3 (input_sequence_size) * 3 (n_output)
-          -0.0228835996, 0.0917588323, 0.0778886303,  // seq 0
-          -0.0275101066, 0.148769245, 0.0938384682,   // seq 1
-          -0.0103605557, 0.172605693, 0.0728750974,   // seq 2
-      }};
-
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm,
-                /*tolerance=*/0.0009021);
+  VerifyGoldens(&lstm, /*tolerance=*/0.000971057);
 }
 
 TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
@@ -1583,7 +1532,7 @@ TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
   const int n_cell = 4;
   const int n_output = 3;
 
-  LSTMOpModel layer_norm_lstm(
+  LSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -1591,22 +1540,7 @@ TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
       /*weight_type=*/TensorType_INT8, /*model_has_legacy_20_inputs=*/false,
       /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
 
-  // Goldens are results using FLOAT32 inference.
-  lstm_golden_output_ = {{
-                             // Batch0: 3 (input_sequence_size) * 3 (n_output)
-                             0.0212971, 0.140816, 0.0112733,  // seq 0
-                             0.0132302, 0.152308, 0.0346313,  // seq 1
-                             -0.0123688, 0.16579, 0.0893078,  // seq 2
-                         },
-                         {
-                             // Batch1: 3 (input_sequence_size) * 3 (n_output)
-                             -0.0226351, 0.0916948, 0.0769176,  // seq 0
-                             -0.0269967, 0.149708, 0.0941492,   // seq 1
-                             -0.0103429, 0.173016, 0.0720509,   // seq 2
-                         }};
-
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm,
-                /*tolerance=*/1e-3);
+  VerifyGoldens(&lstm, /*tolerance=*/1e-3);
 }
 
 class LSTMIntegerOpModel : public SingleOpModel {
