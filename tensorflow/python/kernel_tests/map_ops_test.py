@@ -197,6 +197,22 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(g2, array_ops.zeros_like(v))
       self.assertAllClose(g3, 7)
 
+  def testLookupAddGrad(self):
+    with backprop.GradientTape(persistent=True) as tape:
+      k = constant_op.constant(1.0)
+      v = constant_op.constant(2.0)
+      k2 = constant_op.constant(12.0)
+      v2 = constant_op.constant(22.0)
+      tape.watch(v)
+      tape.watch(v2)
+      m = map_ops.empty_tensor_map()
+      m = map_ops.tensor_map_insert(m, k, v)
+      m = map_ops.tensor_map_insert(m, k2, v2)
+      l1 = map_ops.tensor_map_lookup(m, k, v.dtype)
+      l2 = map_ops.tensor_map_lookup(m, k2, v2.dtype)
+      g = tape.gradient(l1 + l2, [l1, l2])
+      self.assertAllClose(g, [1, 1])
+
   def testEraseGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
@@ -217,6 +233,27 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       g2 = tape.gradient(e * 6, v2)
       self.assertAllClose(g2, 6)
+
+  def testStringKey(self):
+    with backprop.GradientTape(persistent=True) as tape:
+      m = map_ops.empty_tensor_map()
+      k = constant_op.constant("key")
+      v = constant_op.constant(2.0)
+      m = map_ops.tensor_map_insert(m, k, v)
+      s = map_ops.tensor_map_size(m)
+      self.assertAllEqual(s, 1)
+      l = map_ops.tensor_map_lookup(m, k, v.dtype)
+      self.assertAllEqual(l, v)
+
+      m, e = map_ops.tensor_map_erase(m, k, v.dtype)
+      s = map_ops.tensor_map_size(m)
+      self.assertAllEqual(s, 0)
+      self.assertAllClose(e, v)
+
+  def testVectorValue(self):
+    with backprop.GradientTape(persistent=True) as tape:
+      
+
 
 if __name__ == '__main__':
   test.main()

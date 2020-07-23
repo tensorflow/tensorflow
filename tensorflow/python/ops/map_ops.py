@@ -70,5 +70,5 @@ def InsertGrad(op, dmap):
 def EraseGrad(op, dmap, dval):
   _, k = op.inputs
   key_grad = None
-  map_grad = tensor_map_insert(dmap, k, dval) #dmap
+  map_grad = tensor_map_insert(dmap, k, dval)
   return map_grad, key_grad

@@ -186,6 +186,41 @@ class TensorMapHasKey : public OpKernel {
 
 
 template <typename Device>
+Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
+                           const TensorMap& b, TensorMap* out) {
+  /*if (a.element_dtype != b.element_dtype) {
+    return errors::InvalidArgument(
+        "Trying to add two maps of tensors of different dtypes. One is ",
+        DataTypeString(a.element_dtype), " and the other is ",
+        DataTypeString(b.element_dtype));
+  }*/
+  if (!a.element_shape.IsCompatibleWith(b.element_shape)) {
+    return errors::InvalidArgument(
+        "Trying to add two maps of tensors with incompatible element shapes. "
+        "One is ",
+        a.element_shape.DebugString(), " and the other is ",
+        b.element_shape.DebugString());
+  }
+  
+  out->element_dtype = a.element_dtype;
+  TF_RETURN_IF_ERROR(a.element_shape.MergeWith(b.element_shape, &out->element_shape));
+  out->tensors() = a.tensors();
+  for (const std::pair<TensorKey,Tensor>& p : b.tensors()) {
+    absl::flat_hash_map<TensorKey,Tensor>::iterator it = out->tensors().find(p.first);
+    if (it != out->tensors().end()) {
+      Tensor out_tensor;
+      TF_RETURN_IF_ERROR(BinaryAddTensors<Device>(c, p.second, it->second, &out_tensor));
+      it->second = out_tensor;
+    }
+    else {
+      out->tensors().emplace(p.first, p.second);
+    }
+  }
+  return Status::OK();
+}
+
+
+template <typename Device>
 Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) {
   y->element_dtype = x.element_dtype;
   y->element_shape = x.element_shape;

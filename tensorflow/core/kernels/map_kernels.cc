@@ -45,6 +45,10 @@ REGISTER_KERNEL_BUILDER(Name("TensorMapHasKey").Device(DEVICE_CPU),
 
 #define REGISTER_TENSOR_LIST_OPS_CPU(T)
 
+REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
+                                          TensorMap,
+                                          TensorMapBinaryAdd<CPUDevice>);
+
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorMap,
                                          TensorMapZerosLike<CPUDevice>);
