@@ -220,9 +220,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
-    self._enable_packed_variable_in_eager_mode = (
-        not context.context().enable_mlir_bridge)
+    self._enable_packed_variable_in_eager_mode = True
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Run the computation defined by `fn` on each TPU replica.
@@ -332,9 +330,7 @@ class TPUStrategy(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
-    self._enable_packed_variable_in_eager_mode = (
-        not context.context().enable_mlir_bridge)
+    self._enable_packed_variable_in_eager_mode = True
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -394,9 +390,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
-    self._enable_packed_variable_in_eager_mode = (
-        not context.context().enable_mlir_bridge)
+    self._enable_packed_variable_in_eager_mode = True
 
   @property
   def steps_per_run(self):
@@ -543,7 +537,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._logical_device_stack = [0]
 
     if context.executing_eagerly():
-      # In async remote eager, we want to sync the exectors before exiting the
+      # In async remote eager, we want to sync the executors before exiting the
       # program.
       def async_wait():
         if context.context()._context_handle is not None:  # pylint: disable=protected-access
@@ -1148,7 +1142,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
           if tensor_util.is_tensor(input_tensor):
-            rank = input_tensor.get_shape().rank
+            rank = input_tensor.shape.rank
           else:
             rank = np.ndim(input_tensor)
           maximum_shape = tensor_shape.TensorShape([None] * rank)

@@ -16,8 +16,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_CONFIGURATION_OPS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
 namespace tensorflow {
+
+Status CreateTpuCompilationCache(
+    ResourceMgr* rmgr, tpu::TpuCompilationCacheInterface** compilation_cache);
 
 // The ConfigureDistributedTpu op is used to start an TPUDriver from
 // TensorFlow. It should be run on a TPU_SYSTEM device and returns the

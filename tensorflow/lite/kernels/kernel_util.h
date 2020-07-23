@@ -24,26 +24,31 @@ limitations under the License.
 
 namespace tflite {
 
+// A fair number of functions in this header have historically been inline.
+// It is ok to change functions to not be inline if the latency with
+// benchmark_model for MobileNet + MobileBERT is unaffected. If such a change is
+// made, move the newly non-inlined function declarations to the top of this
+// header file.
+const TfLiteTensor* GetInput(const TfLiteContext* context,
+                             const TfLiteNode* node, int index);
+
+// Note: You must check if result is not null:
+// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
+// TF_LITE_ENSURE(context, my_tensor != nullptr);
+TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
+                               int index);
+
+TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
+                        int index);
+
+const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
+                                           const TfLiteNode* node, int index);
+
 inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
-inline const TfLiteTensor* GetInput(const TfLiteContext* context,
-                                    const TfLiteNode* node, int index) {
-  return &context->tensors[node->inputs->data[index]];
-}
-// Note: You must check if result is not null:
-// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
-// TF_LITE_ENSURE(context, my_tensor != nullptr);
-inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
-                                      const TfLiteNode* node, int index) {
-  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
-  return (tensor->is_variable) ? tensor : nullptr;
-}
-inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
-                               int index) {
-  return &context->tensors[node->outputs->data[index]];
-}
+
 #ifndef TF_LITE_STATIC_MEMORY
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
                                   const TfLiteNode* node, int index) {
@@ -70,17 +75,6 @@ inline int64_t NumElements(const TfLiteIntArray* dims) {
 
 inline int64_t NumElements(const TfLiteTensor* t) {
   return NumElements(t->dims);
-}
-
-inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
-                                                  const TfLiteNode* node,
-                                                  int index) {
-  const bool use_tensor = index < node->inputs->size &&
-                          node->inputs->data[index] != kTfLiteOptionalTensor;
-  if (use_tensor) {
-    return &context->tensors[node->inputs->data[index]];
-  }
-  return nullptr;
 }
 
 // Determines whether tensor is constant.

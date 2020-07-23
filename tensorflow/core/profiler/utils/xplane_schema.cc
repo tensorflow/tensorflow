@@ -94,6 +94,17 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
+      {"Iterator", kIterator},
+      {"PrefetchProduce", kPrefetchProduce},
+      {"PrefetchConsume", kPrefetchConsume},
+      {"ParallelInterleaveProduce", kParallelInterleaveProduce},
+      {"ParallelInterleaveConsume", kParallelInterleaveConsume},
+      {"ParallelMapProduce", kParallelMapProduce},
+      {"ParallelMapConsume", kParallelMapConsume},
+      {"MapAndBatchProduce", kMapAndBatchProduce},
+      {"MapAndBatchConsume", kMapAndBatchConsume},
+      // JAX related.
+      {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
@@ -134,6 +145,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"shape", kTensorShapes},
       {"kpi_name", kKpiName},
       {"kpi_value", kKpiValue},
+      {"element_id", kElementId},
+      {"parent_id", kParentId},
       // XPlane semantics related.
       {"_pt", kProducerType},
       {"_ct", kConsumerType},

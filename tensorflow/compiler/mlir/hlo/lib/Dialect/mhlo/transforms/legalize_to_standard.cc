@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering XLA dialect to Standard dialect.
+// This file implements logic for lowering MHLO dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -187,8 +187,8 @@ std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandard>();
 }
 
-void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
-                              mlir::MLIRContext *ctx) {
+void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
+                               mlir::MLIRContext *ctx) {
   mlir::populateWithGenerated(ctx, patterns);
   patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
@@ -196,12 +196,12 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
 /// Perform the lowering to standard dialect.
 void LegalizeToStandard::runOnFunction() {
   OwningRewritePatternList patterns;
-  mlir::mhlo::PopulateXlaToStdPatterns(&patterns, &getContext());
+  mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
   applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(
-    "xla-legalize-to-std", "Legalize from XLA dialect to standard dialect");
+    "mhlo-legalize-to-std", "Legalize from MHLO dialect to standard dialect");
 
 }  // end namespace mhlo
 }  // end namespace mlir

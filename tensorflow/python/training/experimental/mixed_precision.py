@@ -124,10 +124,10 @@ def enable_mixed_precision_graph_rewrite(opt, loss_scale='dynamic'):
   E.g. `ArgMax` and `Floor`.
   * `AllowList`: Ops that are considered numerically safe for execution in
   float16, and thus are always converted. E.g. `Conv2D`.
-  * `BlackList`: Ops that are numerically unsafe to execute in float16 and
+  * `DenyList`: Ops that are numerically unsafe to execute in float16 and
   can negatively affect downstream nodes. E.g. `Softmax`.
   * `GrayList`: Ops that are considered numerically safe for execution in
-  float16 unless downstream from a BlackList Op. E.g. `Add` and `AvgPool`.
+  float16 unless downstream from a DenyList Op. E.g. `Add` and `AvgPool`.
 
   When this function is used, gradients should be computed and applied with the
   returned optimizer, either by calling `opt.minimize()` or
@@ -269,10 +269,10 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
   E.g. `ArgMax` and `Floor`.
   * `AllowList`: Ops that are considered numerically safe for execution in
   float16, and thus are always converted. E.g. `Conv2D`.
-  * `BlackList`: Ops that are numerically unsafe to execute in float16 and
+  * `DenyList`: Ops that are numerically unsafe to execute in float16 and
   can negatively affect downstream nodes. E.g. `Softmax`.
   * `GrayList`: Ops that are considered numerically safe for execution in
-  float16 unless downstream from a BlackList Op. E.g. `Add` and `AvgPool`.
+  float16 unless downstream from a DenyList Op. E.g. `Add` and `AvgPool`.
 
   When this function is used, gradients should only be computed and applied
   with the returned optimizer, either by calling `opt.minimize()` or

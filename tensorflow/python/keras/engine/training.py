@@ -52,6 +52,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as lso
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -77,7 +78,6 @@ from tensorflow.python.training.tracking import layer_utils as trackable_layer_u
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -258,8 +258,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
-    generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
-                                           'name', 'autocast'})
+    # `inputs` / `outputs` will only appear in kwargs if either are misspelled.
+    generic_utils.validate_kwargs(kwargs, {
+        'trainable', 'dtype', 'dynamic', 'name', 'autocast', 'inputs', 'outputs'
+    })
     super(Model, self).__init__(**kwargs)
     # By default, Model is a subclass model, which is not in graph network.
     self._is_graph_network = False
@@ -327,7 +329,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if all(
         isinstance(v, (base_layer.Layer,
                        data_structures.TrackableDataStructure)) or
-        trackable_layer_utils.has_weights(v) for v in nest.flatten(value)):
+        base_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._base_model_initialized
       except AttributeError:
@@ -707,7 +709,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # (2) Explicitly setting run_eagerly causes a Model to be run eagerly.
     # (3) Not explicitly setting run_eagerly defaults to TF's global setting.
     return (self.dynamic or self._run_eagerly or
-            (def_function.RUN_FUNCTIONS_EAGERLY and self._run_eagerly is None))
+            (def_function.functions_run_eagerly() and
+             self._run_eagerly is None))
 
   @run_eagerly.setter
   def run_eagerly(self, value):
@@ -1074,7 +1077,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             steps=data_handler.inferred_steps)
 
       self.stop_training = False
-      train_function = self.make_train_function()
+      self.train_function = self.make_train_function()
       self._train_counter.assign(0)
       callbacks.on_train_begin()
       training_logs = None
@@ -1090,13 +1093,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
             with trace.Trace(
-                'TraceContext',
-                graph_type='train',
+                'train',
                 epoch_num=epoch,
                 step_num=step,
-                batch_size=batch_size):
+                batch_size=batch_size,
+                _r=1):
               callbacks.on_train_batch_begin(step)
-              tmp_logs = train_function(iterator)
+              tmp_logs = self.train_function(iterator)
               if data_handler.should_sync:
                 context.async_wait()
               logs = tmp_logs  # No error, now safe to assign to logs.
@@ -1371,16 +1374,16 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             steps=data_handler.inferred_steps)
 
       logs = {}
-      test_function = self.make_test_function()
+      self.test_function = self.make_test_function()
       self._test_counter.assign(0)
       callbacks.on_test_begin()
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         self.reset_metrics()
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            with trace.Trace('TraceContext', graph_type='test', step_num=step):
+            with trace.Trace('test', step_num=step, _r=1):
               callbacks.on_test_batch_begin(step)
-              tmp_logs = test_function(iterator)
+              tmp_logs = self.test_function(iterator)
               if data_handler.should_sync:
                 context.async_wait()
               logs = tmp_logs  # No error, now safe to assign to logs.
@@ -1593,7 +1596,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             epochs=1,
             steps=data_handler.inferred_steps)
 
-      predict_function = self.make_predict_function()
+      self.predict_function = self.make_predict_function()
       self._predict_counter.assign(0)
       callbacks.on_predict_begin()
       batch_outputs = None
@@ -1601,7 +1604,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
             callbacks.on_predict_batch_begin(step)
-            tmp_batch_outputs = predict_function(iterator)
+            tmp_batch_outputs = self.predict_function(iterator)
             if data_handler.should_sync:
               context.async_wait()
             batch_outputs = tmp_batch_outputs  # No error, now safe to assign.
@@ -1698,8 +1701,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight,
                                                     class_weight)
-      train_function = self.make_train_function()
-      logs = train_function(iterator)
+      self.train_function = self.make_train_function()
+      logs = self.train_function(iterator)
 
     if reset_metrics:
       self.reset_metrics()
@@ -1757,8 +1760,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight)
-      test_function = self.make_test_function()
-      logs = test_function(iterator)
+      self.test_function = self.make_test_function()
+      logs = self.test_function(iterator)
 
     if reset_metrics:
       self.reset_metrics()
@@ -1791,8 +1794,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     _disallow_inside_tf_function('predict_on_batch')
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x)
-      predict_function = self.make_predict_function()
-      outputs = predict_function(iterator)
+      self.predict_function = self.make_predict_function()
+      outputs = self.predict_function(iterator)
     return tf_utils.to_numpy_or_python_type(outputs)
 
   @deprecation.deprecated(
@@ -2260,7 +2263,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """
     model_config = self._updated_config()
     return json.dumps(
-        model_config, default=serialization.get_json_type, **kwargs)
+        model_config, default=json_utils.get_json_type, **kwargs)
 
   def to_yaml(self, **kwargs):
     """Returns a yaml string containing the network configuration.

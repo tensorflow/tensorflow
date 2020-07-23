@@ -49,7 +49,7 @@ absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
                                        &desc, data, &error_code);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
-        absl::StrCat("Failed to create Texture2D (clCreateImage)",
+        absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                      CLErrorCodeToString(error_code)));
   }
 

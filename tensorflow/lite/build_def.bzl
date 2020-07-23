@@ -755,7 +755,7 @@ def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility
     if models:
         gen_selected_ops(
             name = "%s_registration" % name,
-            model = models[0],
+            model = models,
         )
         real_srcs.append(":%s_registration" % name)
         real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
@@ -766,6 +766,10 @@ def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility
     native.cc_library(
         name = name,
         srcs = real_srcs,
+        hdrs = [
+            # TODO(b/161323860) replace this by generated header.
+            "//tensorflow/lite/java/src/main/native:op_resolver.h",
+        ],
         copts = tflite_copts(),
         linkopts = select({
             "//tensorflow:windows": [],

@@ -305,25 +305,9 @@ class StridedSliceAssignOp : public OpKernel {
     Tensor tmp;
     if (isTensor) {
       const Tensor& input = context->input(0);
-      TensorShape shape = input.shape();
 
-      std::unique_ptr<Tensor> forwarded_input = context->forward_input(
-          0, 0, input.dtype(), shape, DEVICE_MEMORY, AllocatorAttributes());
-
-      if (forwarded_input == nullptr) {
-        Tensor* out;
-        // We were not able to forward the input, so we deep copy the tensor and
-        // set the output.
-        OP_REQUIRES_OK(context,
-                       context->allocate_output(0, input.shape(), &out));
-
-        OP_REQUIRES_OK(context,
-                       tensorflow::functor::DoCopy(
-                           context->eigen_device<Device>(), input, out));
-        old_lhs = out;
-      } else {
-        old_lhs = forwarded_input.get();
-      }
+      OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                  {0}, 0, input.shape(), &old_lhs));
     } else {
       if (context->input_dtype(0) == DT_RESOURCE) {
         core::RefCountPtr<Var> v;

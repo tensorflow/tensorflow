@@ -38,7 +38,7 @@ def HLOClient_Dialect : Dialect {
   let name = "chlo";
   let cppNamespace = "chlo";
   let summary = [{
-    XLA Client HLO Ops
+    Client HLO Ops
   }];
 
   let description = [{
@@ -60,7 +60,7 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 }
 
 //===----------------------------------------------------------------------===//
-// XLA binary elementwise op definitions.
+// CHLO binary elementwise op definitions.
 // From the client perspective, each of these support both explicit rank
 // broadcasting (via the broadcast_dimensions attribute) and implicit degenerate
 // shape broadcasting.

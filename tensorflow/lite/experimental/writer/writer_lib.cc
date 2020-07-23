@@ -320,6 +320,14 @@ TfLiteStatus SubgraphWriter::CheckInputOutput(
         subgraph_->node_and_registration(op_index);
     const TfLiteNode& node = node_and_registration->first;
     for (int tensor_index : TfLiteIntArrayView(node.inputs)) {
+      if (tensor_index < 0) {
+        // Skip if optional input not present.
+        if (tensor_index == kTfLiteOptionalTensor) {
+          continue;
+        } else {
+          return kTfLiteError;
+        }
+      }
       if (TfLiteTensor* tensor = subgraph_->tensor(tensor_index)) {
         // Skip constant tensors.
         if (tensor->allocation_type == kTfLiteMmapRo) {

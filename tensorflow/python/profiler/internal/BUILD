@@ -119,6 +119,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler/convert:op_stats_to_tf_stats",
+        "//tensorflow/core/profiler/convert:xplane_to_op_stats",
         "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "//tensorflow/core/profiler/convert:xplane_to_trace_events",
         "//tensorflow/core/profiler/lib:profiler_session_headers",
@@ -127,6 +129,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/python:pybind11_status",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )

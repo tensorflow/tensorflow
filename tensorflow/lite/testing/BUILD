@@ -4,6 +4,7 @@ load(
     "gen_zipped_test_file",
     "generated_test_models_all",
     "merged_test_models",
+    "tflite_custom_cc_library",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
@@ -513,6 +514,32 @@ cc_library(
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+# A selective built tflite for testing.
+tflite_custom_cc_library(
+    name = "test_tflite_lib",
+    models = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/lstm.bin",
+    ],
+)
+
+cc_test(
+    name = "selective_build_test",
+    srcs = ["selective_build_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/lstm.bin",
+    ],
+    tags = ["no_mac"],  # b/161990368
+    deps = [
+        ":test_tflite_lib",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "@com_google_googletest//:gtest",
     ],
 )
 

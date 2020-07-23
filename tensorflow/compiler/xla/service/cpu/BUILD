@@ -8,6 +8,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
 
 package(
     default_visibility = [":friends"],
@@ -137,6 +138,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:tree_reduction_rewriter",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
+        "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_to_select",
         "//tensorflow/compiler/xla/service:slow_operation_alarm",
         "//tensorflow/compiler/xla/service:scatter_expander",
@@ -203,7 +205,9 @@ cc_library(
         ],
         "//conditions:default": [
         ],
-    }),
+    }) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -612,7 +616,8 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
@@ -700,6 +705,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:types",

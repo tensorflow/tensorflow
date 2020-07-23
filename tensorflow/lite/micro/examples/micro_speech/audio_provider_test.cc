@@ -26,12 +26,11 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestAudioProvider) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   int audio_samples_size = 0;
   int16_t* audio_samples = nullptr;
   TfLiteStatus get_status =
-      GetAudioSamples(error_reporter, 0, kFeatureSliceDurationMs,
+      GetAudioSamples(&micro_error_reporter, 0, kFeatureSliceDurationMs,
                       &audio_samples_size, &audio_samples);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, get_status);
   TF_LITE_MICRO_EXPECT_LE(audio_samples_size, kMaxAudioSampleSize);
@@ -47,7 +46,7 @@ TF_LITE_MICRO_TEST(TestAudioProvider) {
 TF_LITE_MICRO_TEST(TestTimer) {
   // Make sure that the technically-undefined overflow behavior we rely on below
   // works on this platform. It's still not guaranteed, but at least this is a
-  // sanity check.  Turn off when running with ASan, as it will complain about
+  // smoke check.  Turn off when running with ASan, as it will complain about
   // the following undefined behavior.
 #ifndef ADDRESS_SANITIZER
   int32_t overflow_value = std::numeric_limits<int32_t>::max();

@@ -1,6 +1,6 @@
 // GenericAtomicRMWOp should contain only ops with no side effects.
 // Unfortunately, the legalization pattern for SelectAndScatterOp has to adapt
-// to XLA LHLO dialect using allocs/deallocs inside of GenericAtomicRMWOp body.
+// to LMHLO dialect using allocs/deallocs inside of GenericAtomicRMWOp body.
 // Lowering to STD dialect and store forwarding pass would be required to get
 // rid of them. This is exactly what is done in the real MLIR GPU pipeline, but
 // here we disable verification with `verify-each=0` to check the output IR.

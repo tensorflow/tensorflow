@@ -12,7 +12,6 @@ package(
 
 cc_library(
     name = "bfloat16",
-    srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
     deps = [
         "//tensorflow/core/platform:byte_order",
@@ -24,7 +23,6 @@ cc_library(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "bfloat16.cc",
         "bfloat16.h",
     ],
 )

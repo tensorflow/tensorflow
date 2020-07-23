@@ -116,8 +116,7 @@ func @convert(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @constant
 func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: %[[SCALAR_ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: %[[ONE:.*]] = "mhlo.broadcast_in_dim"(%[[SCALAR_ONE]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>) -> tensor<2xf32>
+  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
   // CHECK: %[[RESULT:.*]] = mhlo.divide %[[ONE]], %arg0 : tensor<2xf32>
   // CHECK: return %[[RESULT]]
 
@@ -199,8 +198,7 @@ func @dynamic_update_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<2x2xi32>, %arg2
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<3x2xi32>, %[[ARG1:.*]]: tensor<3xf32>, %[[ARG2:.*]]: tensor<f32>)
 func @sparse_to_dense(%arg0: tensor<3x2xi32>, %arg1: tensor<3xf32>, %arg2: tensor<f32>) -> tensor<3x3xf32> {
 
-// CHECK:      %[[CST:.*]] = mhlo.constant dense<3> : tensor<2xi32>
-// CHECK:      %[[DEFAULT:.*]] = "mhlo.broadcast_in_dim"(%[[ARG2]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>) -> tensor<3x3xf32>
+// CHECK:      %[[DEFAULT:.*]] = "mhlo.broadcast_in_dim"(%[[ARG2]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<3x3xf32>
 
 // CHECK:      %[[RESULT:.*]] = "mhlo.scatter"(%[[DEFAULT]], %[[ARG0]], %[[ARG1]]) ( {
 // CHECK:      ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):  // no predecessors
@@ -211,7 +209,7 @@ func @sparse_to_dense(%arg0: tensor<3x2xi32>, %arg1: tensor<3xf32>, %arg2: tenso
 // CHECK-SAME:   index_vector_dim = 1 : i64
 // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
 // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-// CHECK-SAME:   update_window_dims = dense<[]> : tensor<0xi64>
+// CHECK-SAME:   update_window_dims = dense<> : tensor<0xi64>
 // CHECK-SAME: unique_indices = false
 // CHECK-SAME: (tensor<3x3xf32>, tensor<3x2xi32>, tensor<3xf32>) -> tensor<3x3xf32>
 

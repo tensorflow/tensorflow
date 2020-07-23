@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering XLA general dot to a regular dot.
+// This file implements logic for lowering MHLO general dot to a regular dot.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -188,5 +188,5 @@ void mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(
 }
 
 static PassRegistration<LegalizeGeneralDot> legalize_pass(
-    "test-xla-lower-general-dot",
+    "mhlo-test-lower-general-dot",
     "Tests lowering general dot to a non-batched dot when possible");

@@ -260,7 +260,8 @@ Status EagerOperation::AddInput(AbstractTensorHandle* input) {
   return MaybeInferSingleInputAttrs(h);
 }
 
-Status EagerOperation::AddInputList(absl::Span<AbstractTensorHandle*> inputs) {
+Status EagerOperation::AddInputList(
+    absl::Span<AbstractTensorHandle* const> inputs) {
   for (auto& input : inputs) {
     TensorHandle* h = TensorHandleFromInterface(input);
     AddTensorHandle(h);
@@ -305,6 +306,7 @@ Status EagerOperation::Reset(
   }
   attrs_.Reset(op);
   use_xla_ = false;
+  stack_trace_.reset();
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();

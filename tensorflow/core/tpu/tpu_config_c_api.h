@@ -35,8 +35,8 @@ extern "C" {
 
 TFTPU_CAPI_EXPORT void ConfigureDistributedTpuOp_DoWork(
     const size_t num_cores_per_host_size, const int32_t* num_cores_per_host,
-    size_t* host_config_output_size, char** host_config_output,
-    TF_Status* status);
+    void* tpu_compilation_cache_interface, size_t* host_config_output_size,
+    char** host_config_output, TF_Status* status);
 
 TFTPU_CAPI_EXPORT void WaitForDistributedTpuOp_DoWork(
     const size_t num_hosts, const size_t num_cores_per_host,
@@ -49,8 +49,8 @@ TFTPU_CAPI_EXPORT void ShutdownDistributedTpuOp_DoWork(TF_Status* status);
 
 TFTPU_CAPI_EXPORT void InitializeHostForDistributedTpuOp_DoWork(
     const size_t tpu_host_config_size, const char* tpu_host_config,
-    const bool enable_whole_mesh_compilations, size_t* core_id_output_size,
-    int32_t** core_id_output, TF_Status* status);
+    const bool enable_whole_mesh_compilations, void* local_compilation_cache,
+    size_t* core_id_output_size, int32_t** core_id_output, TF_Status* status);
 
 TFTPU_CAPI_EXPORT void SetGlobalTPUArrayOp_DoWork(
     const size_t tpu_topology_size, const char* tpu_topology,

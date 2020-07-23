@@ -33,6 +33,7 @@ limitations under the License.
 
 using tensorflow::dyn_cast;
 using tensorflow::string;
+using tensorflow::gtl::ArraySlice;
 
 namespace tensorflow {
 namespace tracing {
@@ -48,7 +49,10 @@ class GraphTensor : public TracingTensorHandle {
  public:
   explicit GraphTensor(TF_Output output)
       : TracingTensorHandle(kGraph), output_(output) {}
-  void Release() override { delete this; }
+
+  tensorflow::DataType DataType() const override {
+    return static_cast<tensorflow::DataType>(TF_OperationOutputType(output_));
+  }
   TF_Output output_;
 
   // For LLVM style RTTI.
@@ -102,9 +106,18 @@ class GraphOperation : public TracingOperation {
     TF_AddInput(op_.get(), t->output_);
     return Status::OK();
   }
-  Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) override {
-    return tensorflow::errors::Unimplemented(
-        "AddInputList has not been implemented yet.");
+  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override {
+    std::vector<TF_Output> tf_outputs(inputs.size());
+    for (int i = 0; i < inputs.size(); i++) {
+      GraphTensor* t = dyn_cast<GraphTensor>(inputs[i]);
+      if (!t) {
+        return tensorflow::errors::InvalidArgument(
+            "Unable to cast input to GraphTensor");
+      }
+      tf_outputs[i] = t->output_;
+    }
+    TF_AddInputList(op_.get(), tf_outputs.data(), tf_outputs.size());
+    return Status::OK();
   }
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override {
@@ -125,20 +138,23 @@ class GraphOperation : public TracingOperation {
 
   Status SetAttrString(const char* attr_name, const char* data,
                        size_t length) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrString has not been implemented yet.");
+    tensorflow::StringPiece s(data, length);
+    op_->node_builder.Attr(attr_name, s);
+    return Status::OK();
   }
   Status SetAttrInt(const char* attr_name, int64_t value) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrInt has not been implemented yet.");
+    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                  "64-bit int types should match in size");
+    op_->node_builder.Attr(attr_name, static_cast<tensorflow::int64>(value));
+    return Status::OK();
   }
   Status SetAttrFloat(const char* attr_name, float value) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrFloat has not been implemented yet.");
+    op_->node_builder.Attr(attr_name, value);
+    return Status::OK();
   }
   Status SetAttrBool(const char* attr_name, bool value) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrBool has not been implemented yet.");
+    op_->node_builder.Attr(attr_name, value);
+    return Status::OK();
   }
   Status SetAttrType(const char* const attr_name, DataType value) override {
     if (!op_) {
@@ -151,8 +167,15 @@ class GraphOperation : public TracingOperation {
   }
   Status SetAttrShape(const char* attr_name, const int64_t* dims,
                       const int num_dims) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrShape has not been implemented yet.");
+    PartialTensorShape shape;
+    if (num_dims >= 0) {
+      static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                    "64-bit int types should match in size");
+      shape = PartialTensorShape(ArraySlice<tensorflow::int64>(
+          reinterpret_cast<const tensorflow::int64*>(dims), num_dims));
+    }
+    op_->node_builder.Attr(attr_name, shape);
+    return Status::OK();
   }
   Status SetAttrFunction(const char* attr_name,
                          const AbstractOperation* value) override {
@@ -161,8 +184,10 @@ class GraphOperation : public TracingOperation {
   }
   Status SetAttrFunctionName(const char* attr_name, const char* value,
                              size_t length) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrFunctionName has not been implemented yet.");
+    tensorflow::NameAttrList func_name;
+    func_name.set_name(string(value, value + length));
+    op_->node_builder.Attr(attr_name, func_name);
+    return Status::OK();
   }
   Status SetAttrTensor(const char* attr_name,
                        AbstractTensorInterface* tensor) override {
@@ -171,33 +196,71 @@ class GraphOperation : public TracingOperation {
   }
   Status SetAttrStringList(const char* attr_name, const void* const* values,
                            const size_t* lengths, int num_values) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrStringList has not been implemented yet.");
+    if (strcmp(attr_name, tensorflow::kColocationAttrName) == 0) {
+      op_->colocation_constraints.clear();
+      for (int i = 0; i < num_values; ++i) {
+        op_->colocation_constraints.emplace(static_cast<const char*>(values[i]),
+                                            lengths[i]);
+      }
+    } else {
+      std::vector<tensorflow::StringPiece> v;
+      v.reserve(num_values);
+      for (int i = 0; i < num_values; ++i) {
+        v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);
+      }
+      op_->node_builder.Attr(attr_name, v);
+    }
+    return Status::OK();
   }
   Status SetAttrFloatList(const char* attr_name, const float* values,
                           int num_values) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrFloatList has not been implemented yet.");
+    op_->node_builder.Attr(attr_name,
+                           ArraySlice<const float>(values, num_values));
+    return Status::OK();
   }
   Status SetAttrIntList(const char* attr_name, const int64_t* values,
                         int num_values) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrIntList has not been implemented yet.");
+    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                  "64-bit int types should match in size");
+    op_->node_builder.Attr(
+        attr_name,
+        ArraySlice<const tensorflow::int64>(
+            reinterpret_cast<const tensorflow::int64*>(values), num_values));
+    return Status::OK();
   }
   Status SetAttrTypeList(const char* attr_name, const DataType* values,
                          int num_values) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrTypeList has not been implemented yet.");
+    op_->node_builder.Attr(attr_name,
+                           ArraySlice<const DataType>(values, num_values));
+    return Status::OK();
   }
   Status SetAttrBoolList(const char* attr_name, const unsigned char* values,
                          int num_values) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrBoolList has not been implemented yet.");
+    std::unique_ptr<bool[]> b(new bool[num_values]);
+    for (int i = 0; i < num_values; ++i) {
+      b[i] = values[i];
+    }
+    op_->node_builder.Attr(attr_name,
+                           ArraySlice<const bool>(b.get(), num_values));
+
+    return Status::OK();
   }
   Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
                           const int* num_dims, int num_values) override {
-    return tensorflow::errors::Unimplemented(
-        "SetAttrShapeList has not been implemented yet.");
+    std::vector<PartialTensorShape> shapes;
+    shapes.reserve(num_values);
+    for (int i = 0; i < num_values; ++i) {
+      if (num_dims[i] < 0) {
+        shapes.emplace_back();
+      } else {
+        static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                      "64-bit int types should match in size");
+        shapes.emplace_back(ArraySlice<tensorflow::int64>(
+            reinterpret_cast<const tensorflow::int64*>(dims[i]), num_dims[i]));
+      }
+    }
+    op_->node_builder.Attr(attr_name, shapes);
+    return Status::OK();
   }
   Status SetAttrFunctionList(
       const char* attr_name,

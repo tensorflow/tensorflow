@@ -249,12 +249,7 @@ TfLiteStatus MaxEvalInt8(TfLiteContext* context, const TfLiteNode* node,
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus MaxPrepare(TfLiteContext* context, TfLiteNode* node) {

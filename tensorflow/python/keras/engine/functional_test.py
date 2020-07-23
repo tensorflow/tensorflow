@@ -34,6 +34,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
@@ -931,6 +932,72 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(mode='eager'),
+      combinations.combine(use_keras_tensors=False)))
+  def test_only_some_in_first_arg_derived_from_keras_layer(self):
+    class MyAddAll(layers.Layer):
+
+      def call(self, inputs):
+        x = inputs[0]
+        for inp in inputs[1:]:
+          if inp is not None:
+            x = x + inp
+        return x
+
+    input1 = input_layer_lib.Input(10)
+    input2 = input_layer_lib.Input(10)
+    layer = MyAddAll()
+
+    with self.assertRaisesRegexp(ValueError, 'construct a functional'):
+      layer([0.0, input1, None, input2, None])
+
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(mode='eager'),
+      combinations.combine(use_keras_tensors=True)))
+  def test_only_some_in_first_arg_derived_from_keras_layer_keras_tensors(self):
+    # This functionality is unsupported in v1 graphs
+
+    class MyAddAll(layers.Layer):
+
+      def call(self, inputs):
+        x = inputs[0]
+        for inp in inputs[1:]:
+          if inp is not None:
+            x = x + inp
+        return x
+
+    input1 = input_layer_lib.Input(10)
+    input2 = input_layer_lib.Input(10)
+    layer = MyAddAll()
+    outputs = layer([0.0, input1, None, input2, None])
+    model = training_lib.Model([input1, input2], outputs)
+    self.assertIn(layer, model.layers)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check serialization.
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'MyAddAll': MyAddAll})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
   @combinations.generate(combinations.keras_mode_combinations())
   def test_call_kwarg_derived_from_keras_layer(self):
 
@@ -1140,7 +1207,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     input2 = input_layer_lib.Input(10)
     input3 = input_layer_lib.Input(10)
 
-    outputs = AddAll()(
+    layer = AddAll()
+    outputs = layer(
         [input1, 4 * array_ops.ones((1, 10))],
         x3={
             'a': input2,
@@ -1148,6 +1216,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
             'c': 5 * array_ops.ones((1, 10))
         })
     model = training_lib.Model([input1, input2, input3], outputs)
+    self.assertIn(layer, model.layers)
     model.compile(
         'sgd',
         'mse',
@@ -1904,6 +1973,37 @@ class AddLossTest(keras_parameterized.TestCase):
 
     self.assertAllClose(model.get_weights(), model2.get_weights())
 
+  def test_add_loss_crossentropy_backtracking(self):
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((1,))
+    outputs = layers.Dense(1, activation='sigmoid')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.binary_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.random((2, 1))
+    model.fit([x, y])
+
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((2,))
+    outputs = layers.Dense(2, activation='softmax')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.categorical_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.random((2, 2))
+    model.fit([x, y])
+
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((1,), dtype='int32')
+    outputs = layers.Dense(2, activation='softmax')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.sparse_categorical_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.randint(0, 2, size=(2, 1))
+    model.fit([x, y])
+
 
 @combinations.generate(combinations.keras_mode_combinations())
 class WeightAccessTest(keras_parameterized.TestCase):
@@ -2220,6 +2320,26 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
       # in v1 training would have defaulted to using the `None` inside the layer
       # if training is not passed at runtime
       self.assertAllEqual(network(x), _call(x, None))
+
+
+class InputsOutputsErrorTest(keras_parameterized.TestCase):
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_input_error(self):
+    inputs = input_layer_lib.Input((10,))
+    outputs = layers.Dense(10)(inputs)
+    with self.assertRaisesRegex(
+        TypeError, "('Keyword argument not understood:', 'input')"):
+      models.Model(input=inputs, outputs=outputs)
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_output_error(self):
+    inputs = input_layer_lib.Input((10,))
+    outputs = layers.Dense(10)(inputs)
+    with self.assertRaisesRegex(
+        TypeError, "('Keyword argument not understood:', 'output')"):
+      models.Model(inputs=inputs, output=outputs)
+
 
 if __name__ == '__main__':
   test.main()

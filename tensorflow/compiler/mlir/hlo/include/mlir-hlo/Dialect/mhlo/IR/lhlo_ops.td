@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the operation definition file for LXLA.
+// This is the operation definition file for LMHLO, the "late" MHLO variant of
+// the dialect, which operates on buffers instead of tensors.
 //
-// This file largely overlaps with hlo_ops.td at a logic level. It's tempting to
+// This file largely overlaps with mhlo_ops.td at a logic level. It's tempting to
 // merge these two files together, but we need to consider the following
 // obstacles:
 // * We need to have a common representation for arguments. That is to say,
@@ -43,7 +44,7 @@ def LHLO_Dialect : Dialect {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA type definitions.
+// LMHLO type definitions.
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
@@ -66,7 +67,7 @@ def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
 //===----------------------------------------------------------------------===//
-// XLA nullary op definitions.
+// LMHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
 class LHLO_Op<string mnemonic, list<OpTrait> traits> :
@@ -86,7 +87,7 @@ def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA unary elementwise op definitions.
+// LMHLO unary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
@@ -157,7 +158,7 @@ def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer>, BASE_HL
 def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh", LHLO_FpOrComplexBuffer>, BASE_HLO_TanhOp;
 
 //===----------------------------------------------------------------------===//
-// XLA binary elementwise op definitions.
+// LMHLO binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
@@ -212,7 +213,7 @@ def LHLO_SubOp : LHLO_BinaryElementwiseOp<"subtract">, BASE_HLO_SubOp;
 def LHLO_XorOp : LHLO_BinaryElementwiseOp<"xor", LHLO_PredOrIntBuffer>, BASE_HLO_XorOp;
 
 //===----------------------------------------------------------------------===//
-// XLA control flow op definitions.
+// LMHLO control flow op definitions.
 //===----------------------------------------------------------------------===//
 
 // TODO(b/139813999): specify required function signature in a type-safe way.
@@ -284,7 +285,7 @@ def LHLO_WhileOp: LHLO_Op<"while", [SameVariadicOperandSize]>,
 }
 
 //===----------------------------------------------------------------------===//
-// XLA tuple op definitions.
+// LMHLO tuple op definitions.
 //===----------------------------------------------------------------------===//
 
 def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
@@ -298,7 +299,7 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA Slice definitions.
+// LMHLO Slice definitions.
 //===----------------------------------------------------------------------===//
 
 def LHLO_SliceOp: LHLO_Op<
@@ -483,7 +484,7 @@ def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
 
 
 //===----------------------------------------------------------------------===//
-// XLA Other op definitions.
+// LMHLO Other op definitions.
 //===----------------------------------------------------------------------===//
 
 def LHLO_BatchNormGradOp : LHLO_Op<"batch_norm_grad", []>,

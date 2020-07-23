@@ -479,7 +479,7 @@ class FusionPlanner {
   EquivalenceClasses<int32_t> leader_for_node_;
 };
 
-struct XlaHloFusion : public mlir::PassWrapper<XlaHloFusion, FunctionPass> {
+struct MhloFusion : public mlir::PassWrapper<MhloFusion, FunctionPass> {
   void runOnFunction() override {
     FuncOp func = getFunction();
     if (!IsTargetFunc(func)) {
@@ -568,12 +568,12 @@ struct XlaHloFusion : public mlir::PassWrapper<XlaHloFusion, FunctionPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusion() {
-  return std::make_unique<XlaHloFusion>();
+std::unique_ptr<OperationPass<FuncOp>> createMhloFusion() {
+  return std::make_unique<MhloFusion>();
 }
 
-static PassRegistration<XlaHloFusion> mhlo_fusion_pass(
-    "xla-hlo-fusion", "fuse mhlo ops to kLoop/kInput fusion patterns.");
+static PassRegistration<MhloFusion> mhlo_fusion_pass(
+    "mhlo-fusion", "fuse mhlo ops to kLoop/kInput fusion patterns.");
 
 }  // namespace mhlo
 }  // namespace mlir

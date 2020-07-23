@@ -170,7 +170,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -242,7 +241,6 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
-        ":cudnn_batchnorm_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
         ":gpu_conv_runner",
@@ -267,6 +265,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:while_loop_analysis",
@@ -282,7 +281,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:sort_util",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
@@ -688,7 +686,7 @@ cc_library(
         ":gpu_autotuning_proto_cc",
         ":gpu_conv_runner",
         ":gpu_executable",
-        ":hlo_algorithm_blacklist",
+        ":hlo_algorithm_denylist",
         ":ir_emission_utils",
         ":stream_executor_util",
         "@com_google_absl//absl/algorithm:container",
@@ -1169,6 +1167,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_4d_expander",
         "//tensorflow/compiler/xla/service:dot_decomposer",
@@ -1661,9 +1660,9 @@ tf_proto_library_cc(
 )
 
 cc_library(
-    name = "hlo_algorithm_blacklist",
-    srcs = ["hlo_algorithm_blacklist.cc"],
-    hdrs = ["hlo_algorithm_blacklist.h"],
+    name = "hlo_algorithm_denylist",
+    srcs = ["hlo_algorithm_denylist.cc"],
+    hdrs = ["hlo_algorithm_denylist.h"],
     deps = [
         ":gpu_autotuning_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1674,12 +1673,12 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "hlo_algorithm_blacklist_test",
-    srcs = ["hlo_algorithm_blacklist_test.cc"],
-    data = ["data/hlo_algorithm_blacklist.pbtxt"],
+    name = "hlo_algorithm_denylist_test",
+    srcs = ["hlo_algorithm_denylist_test.cc"],
+    data = ["data/hlo_algorithm_denylist.pbtxt"],
     tags = ["no_pip"],
     deps = [
-        ":hlo_algorithm_blacklist",
+        ":hlo_algorithm_denylist",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

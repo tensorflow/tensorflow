@@ -30,6 +30,7 @@ from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
@@ -57,7 +58,7 @@ def get_tpu_strategy():
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
   tpu_strategy_util.initialize_tpu_system(resolver)
-  return tpu_lib.TPUStrategy(resolver)
+  return tpu_lib.TPUStrategyV2(resolver)
 
 
 class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
@@ -255,6 +256,31 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
         strategy.experimental_local_results(train_step()),
         constant_op.constant(58., shape=(strategy.num_replicas_in_sync)))
 
+  def testOutsideCompilationHostControlFlow(self):
+    """Tests that control flow on host for outside_compilation works."""
+    strategy = get_tpu_strategy()
+
+    def outside_fn(x):
+      n = 0
+      while n < 4:
+        x = x + 6.0
+        n = n + 1
+      return x
+
+    @def_function.function
+    def train_step():
+
+      def tpu_fn(x):
+        x2 = x + 5.0
+        x2 = tpu.outside_compilation(outside_fn, x2)
+        return x2 + 4.0
+
+      return strategy.run(tpu_fn, args=(25.0,))
+
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step()),
+        constant_op.constant(58., shape=(strategy.num_replicas_in_sync)))
+
   def testSummary(self):
     strategy = get_tpu_strategy()
 
@@ -344,6 +370,77 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(
           strategy.experimental_local_results(step()),
           constant_op.constant(31., shape=(strategy.num_replicas_in_sync)))
+
+  def testOutsideCompilationAtHeadAndTail(self):
+    """Tests that outside_compilation at head/tail of TPU computation works."""
+    strategy = get_tpu_strategy()
+
+    def host_computation(x):
+      return x * 2.0
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        w = tpu.outside_compilation(host_computation, x)
+        y = w + 1.0
+        z = tpu.outside_compilation(host_computation, y)
+        return z + 5.0
+
+      return strategy.run(computation, args=(2.0,))
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step()),
+        constant_op.constant(15., shape=(strategy.num_replicas_in_sync)))
+
+  def testGradientAcrossOutsideCompilation(self):
+    """Tests compiled gradients can contain host computations."""
+    strategy = get_tpu_strategy()
+
+    def host_computation(a):
+      b = a * a
+      c = b * b
+      return c
+
+    @def_function.function
+    def train_step():
+      def computation(x, y):
+        a = x + 7.0
+        b = tpu.outside_compilation(host_computation, a)
+        c = b * y
+        d = gradients_impl.gradients(
+            [c], [x], colocate_gradients_with_ops=True)[0]
+        return d
+
+      return strategy.run(computation, args=(2.0, 3.0))
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step()),
+        constant_op.constant(8748., shape=(strategy.num_replicas_in_sync)))
+
+  def testiGradientOfGradientAcrossOutsideCompilation(self):
+    """Tests compiled gradients of gradients can contain host computations."""
+    strategy = get_tpu_strategy()
+
+    def host_computation(a):
+      b = a * a
+      c = b * b
+      return c
+
+    @def_function.function
+    def train_step():
+      def computation(x, y):
+        a = x + 7.0
+        b = tpu.outside_compilation(host_computation, a)
+        c = b * y
+        d = gradients_impl.gradients(
+            [c], [x], colocate_gradients_with_ops=True)[0]
+        e = gradients_impl.gradients(
+            [d], [x], colocate_gradients_with_ops=True)[0]
+        return e
+
+      return strategy.run(computation, args=(2.0, 3.0))
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step()),
+        constant_op.constant(2916., shape=(strategy.num_replicas_in_sync)))
 
 
 if __name__ == "__main__":

@@ -54,5 +54,5 @@ struct TestMaterializeBroadcastsPass
 }  // namespace mlir
 
 static mlir::PassRegistration<mlir::mhlo::TestMaterializeBroadcastsPass> pass(
-    "test-xla-materialize-broadcasts",
+    "mhlo-test-materialize-broadcasts",
     "Test pass for materializing 'broadcast_dimensions' attributes");

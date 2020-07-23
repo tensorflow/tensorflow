@@ -148,12 +148,7 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
 
 void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -172,10 +167,9 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   // the scale and beta before calculating exp. It is mandatory to apply beta
   // and scale here, since each softmax op may have different beta and scale
   // values. Beta and scale will remain constant for a given softmax op.
-  void* allocated_ptr;
-  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-      context, kInt8Range * sizeof(int16_t), &allocated_ptr));
-  op_data->exp_lut = static_cast<uint16_t*>(allocated_ptr);
+  op_data->exp_lut = static_cast<uint16_t*>(context->AllocatePersistentBuffer(
+      context, kInt8Range * sizeof(uint16_t)));
+  TF_LITE_ENSURE(context, op_data->exp_lut != nullptr);
 
   TF_LITE_ENSURE_STATUS(
       CalculateSoftmaxOpData(context, input, output, params, op_data));

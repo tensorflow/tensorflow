@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -22,6 +24,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 
 namespace mlir {
@@ -74,10 +77,6 @@ struct ConvertTrivialNonBroadcastBinaryOp : public OpRewritePattern<ChloOpTy> {
 //   - Legal combinations of degenerate (1-dim) implicit broadcasting.
 // The restriction on broadcast_dims derives from the definition of the
 // `shape.broadcast` op, which only supports prefix-padding.
-//
-// It may be possible to expand this pattern to operate on unranked tensors in
-// the future by emitting more code to dynamically differentiate based on rank.
-// Whether that is of any practical benefit remains to be seen.
 template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
 struct ConvertRankedDynamicBroadcastBinaryOp
     : public OpRewritePattern<ChloOpTy> {
@@ -96,7 +95,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     // Check for "numpy"-style rank broadcast.
     auto broadcast_dimensions = op.broadcast_dimensions();
     if (broadcast_dimensions &&
-        !xla::IsLegalNumpyRankedBroadcast(lhs, rhs, *broadcast_dimensions)) {
+        !hlo::IsLegalNumpyRankedBroadcast(lhs, rhs, *broadcast_dimensions)) {
       // Note: It is unclear whether the general specification of explicit
       // broadcast_dimensions on binary ops is a feature we want to carry
       // forward. While it can technically be implemented for ranked-dynamic,
@@ -126,7 +125,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 
     int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
     Value result_extents =
-        xla::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
+        hlo::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
                                                                rewriter);
 
     // Note that we unconditionally emit DynamicBroadcastInDim ops and let
@@ -160,6 +159,68 @@ struct ConvertRankedDynamicBroadcastBinaryOp
   }
 };
 
+// Converts a broadcasting binary operation with a scalar operand and an
+// unranked operand to a ranked broadcasting operation by dynamically reshaping
+// the unranked operand to a 1D tensor. This will always be safe because
+// broadcasting from a scalar to another shape always works.
+template <typename ChloOpTy, typename HloOpTy>
+struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
+    : public OpRewritePattern<ChloOpTy> {
+  using OpRewritePattern<ChloOpTy>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ChloOpTy op,
+                                PatternRewriter &rewriter) const override {
+    auto loc = op.getLoc();
+    Value lhs = op.lhs();
+    Value rhs = op.rhs();
+
+    auto lhs_ranked_type = lhs.getType().dyn_cast<RankedTensorType>();
+    auto lhs_unranked_type = lhs.getType().dyn_cast<UnrankedTensorType>();
+
+    auto rhs_ranked_type = rhs.getType().dyn_cast<RankedTensorType>();
+    auto rhs_unranked_type = rhs.getType().dyn_cast<UnrankedTensorType>();
+
+    bool lhs_is_scalar = lhs_ranked_type &&
+                         lhs_ranked_type.getShape().empty() &&
+                         rhs_unranked_type;
+    bool rhs_is_scalar = rhs_ranked_type &&
+                         rhs_ranked_type.getShape().empty() &&
+                         lhs_unranked_type;
+
+    // Only support the case where exactly one operand is scalar and the other
+    // is unranked. Other patterns in this file will create more efficient
+    // lowerings for cases where both ranks are known or will handle the more
+    // generic case of both inputs being unranked.
+    if (!(lhs_is_scalar ^ rhs_is_scalar)) return failure();
+
+    auto result_type = op.getResult().getType().template dyn_cast<TensorType>();
+
+    // Reshape the non-scalar value into a dynamically sized, rank-1 tensor
+    Value shape =
+        rewriter.create<shape::ShapeOfOp>(loc, lhs_is_scalar ? rhs : lhs);
+    Value num_elements = rewriter.create<shape::NumElementsOp>(loc, shape);
+    Value size = rewriter.create<shape::SizeToIndexOp>(loc, num_elements);
+    Value size_tensor = rewriter.create<TensorFromElementsOp>(loc, size);
+    Value reshaped = rewriter.create<mhlo::DynamicReshapeOp>(
+        loc, RankedTensorType::get({-1}, result_type.getElementType()),
+        lhs_is_scalar ? rhs : lhs, size_tensor);
+
+    // Create a new ranked Chlo op that will be further lowered by other
+    // patterns into Mhlo.
+    SmallVector<Value, 2> operands{lhs_is_scalar ? lhs : reshaped,
+                                   rhs_is_scalar ? rhs : reshaped};
+    Value computed = rewriter.create<ChloOpTy>(
+        loc, SmallVector<Type, 1>{reshaped.getType()}, operands, op.getAttrs());
+
+    // Reshape the result back into an unranked tensor.
+    Value shape_tensor = rewriter.create<shape::ToExtentTensorOp>(
+        loc, RankedTensorType::get({-1}, rewriter.getIndexType()), shape);
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_type,
+                                                        computed, shape_tensor);
+
+    return success();
+  }
+};
+
 template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
 void PopulateForBinaryOp(MLIRContext *context,
                          OwningRewritePatternList *patterns) {
@@ -169,6 +230,9 @@ void PopulateForBinaryOp(MLIRContext *context,
   patterns->insert<
       ConvertRankedDynamicBroadcastBinaryOp<ChloOpTy, HloOpTy, Adaptor>>(
       context, 5);
+  patterns->insert<
+      ConvertUnrankedScalarDynamicBroadcastBinaryOp<ChloOpTy, HloOpTy>>(
+      context);
 }
 
 template <typename FromOpTy, typename ToOpTy>

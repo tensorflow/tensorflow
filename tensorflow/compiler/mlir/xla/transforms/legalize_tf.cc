@@ -286,7 +286,7 @@ static ConstOp GetMaxValueForType(Type ty, Location loc,
 // element type and the value.
 static ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
                                     OpBuilder *builder) {
-  return builder->create<ConstOp>(loc, xla::GetScalarOfType(ty, raw_value));
+  return builder->create<ConstOp>(loc, hlo::GetScalarOfType(ty, raw_value));
 }
 
 // Creates an mhlo::SliceOp where the major dimensions have full size, and
@@ -896,7 +896,7 @@ static DenseElementsAttr GetEpsilonValue(Type ty) {
     auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isBF16()) {
-    uint16_t raw_epsilon = tensorflow::bfloat16::epsilon().value;
+    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::bfloat16>::epsilon().value;
     auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isF32()) {
@@ -997,7 +997,7 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
     Builder *builder) {
   DenseIntElementsAttr constant_start_indices;
   if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
-    return xla::ConvertElementsAttr(slice_sizes, builder->getIntegerType(64))
+    return hlo::ConvertElementsAttr(slice_sizes, builder->getIntegerType(64))
         .cast<DenseIntElementsAttr>();
   }
 
@@ -1531,23 +1531,23 @@ using ConvertFusedBatchNormGradV3Op =
 // Converts TensorFlow FusedBatchNormV3Op to either HLO BatchNormTrainingOp or
 // HLO BatchNormInferenceOp, depending on the value of the 'is_training'
 // parameter.
-class ConvertFusedBatchNormV3Op
-    : public OpRewritePattern<TF::FusedBatchNormV3Op> {
+template <typename FusedBatchNormOpT>
+class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<FusedBatchNormOpT>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::FusedBatchNormV3Op op,
+  LogicalResult matchAndRewrite(FusedBatchNormOpT op,
                                 PatternRewriter &rewriter) const override {
     auto feature_dim =
         getFeatureDimensionAttr(rewriter, op.data_formatAttr(), op.x());
 
-    auto input_type_tensor = op.x().getType().cast<TensorType>();
+    auto input_type_tensor = op.x().getType().template cast<TensorType>();
     auto input_element_type = input_type_tensor.getElementType();
 
-    auto scale_type_tensor = op.scale().getType().cast<TensorType>();
+    auto scale_type_tensor = op.scale().getType().template cast<TensorType>();
     auto scale_element_type = scale_type_tensor.getElementType();
 
-    auto mean_type_tensor = op.mean().getType().cast<TensorType>();
+    auto mean_type_tensor = op.mean().getType().template cast<TensorType>();
     auto mean_element_type = mean_type_tensor.getElementType();
     // In the training case, dimensions of input tensors must be static.
     if (op.is_training() && (!input_type_tensor.hasStaticShape() ||
@@ -1561,7 +1561,7 @@ class ConvertFusedBatchNormV3Op
     Value bn_train_input = rewriter.create<mhlo::ConvertOp>(op.getLoc(), op.x(),
                                                             scale_element_type);
     TensorType bn_train_input_type_tensor =
-        bn_train_input.getType().cast<TensorType>();
+        bn_train_input.getType().template cast<TensorType>();
 
     if (op.is_training()) {
       // Training case.
@@ -1643,17 +1643,25 @@ class ConvertFusedBatchNormV3Op
             /*broadcast_dimensions=*/DenseIntElementsAttr());
       }
 
-      // TF FusedBatchNormV3 op expects 5 outputs. Outputs 3 and 4 are
-      // currently marked as "reserved spaces 1 and 2". They are used to
-      // pass the per-batch mean and variance to the gradiant. Here we
-      // maintain the same behavior by setting them to the mean and variance
-      // calculated by BatchNormTraining. Output 5 is unused; it doesn't
-      // matter what we pass there.
-      rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
-                              /*batch_variance=*/corrected_variance,
-                              /*reserve_space_1=*/reserve_space_1,
-                              /*reserve_space_2=*/batch_variance,
-                              /*reserve_space_3=*/op.x()});
+      if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
+        // FusedBatchNormV2 expects 4 outputs.
+        // Outputs 3 and 4 are currently marked as "reserved spaces 1 and 2".
+        // They are used to pass the per-batch mean and variance to the
+        // gradiant. Here we maintain the same behavior by setting them to the
+        // mean and variance calculated by BatchNormTraining.
+        rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
+                                /*batch_variance=*/corrected_variance,
+                                /*reserve_space_1=*/reserve_space_1,
+                                /*reserve_space_2=*/batch_variance});
+      } else {  // TF::FusedBatchNormV3Op
+        // FusedBatchNormV3 expects a 5th output, but the output is unused; it
+        // doesn't matter what we pass there.
+        rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
+                                /*batch_variance=*/corrected_variance,
+                                /*reserve_space_1=*/reserve_space_1,
+                                /*reserve_space_2=*/batch_variance,
+                                /*reserve_space_3=*/op.x()});
+      }
     } else {  // Inference case.
       auto bn_train_op = rewriter.create<BatchNormInferenceOp>(
           op.getLoc(),
@@ -1670,30 +1678,44 @@ class ConvertFusedBatchNormV3Op
       // not used for inference. It doesn't matter what values we provide for
       // the last 5 results as long as they are of the same type. Forward
       // input mean and variance to output mean, variance, reserved_space_1 and
-      // reserver_space_2. Create a constant tensor to forward to last
-      // reserve_space_3 output.
-      auto reserve_space_3_type = op.getResult(5).getType().cast<TensorType>();
-      int num_elements = reserve_space_3_type.hasStaticShape()
-                             ? reserve_space_3_type.getNumElements()
-                             : 0;
-      auto const_attr_type = RankedTensorType::get(
-          {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
-
-      Value dummy_const = rewriter.create<ConstOp>(
-          op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
-      if (const_attr_type != reserve_space_3_type)
-        dummy_const = rewriter.create<TensorCastOp>(
-            op.getLoc(), reserve_space_3_type, dummy_const);
-      rewriter.replaceOp(op, {/*y=*/y_out,
-                              /*batch_mean=*/op.mean(),
-                              /*batch_variance=*/op.variance(),
-                              /*reserve_space_1=*/op.mean(),
-                              /*reserve_space_2=*/op.variance(),
-                              /*reserve_space_3=*/dummy_const});
+      // reserved_space_2.
+      if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
+        rewriter.replaceOp(op, {/*y=*/y_out,
+                                /*batch_mean=*/op.mean(),
+                                /*batch_variance=*/op.variance(),
+                                /*reserve_space_1=*/op.mean(),
+                                /*reserve_space_2=*/op.variance()});
+      } else {
+        // For FusedBatchNormV3Op, also create a constant tensor to forward to
+        // last reserve_space_3 output.
+        auto reserve_space_3_type =
+            op.getResult(5).getType().template cast<TensorType>();
+        int num_elements = reserve_space_3_type.hasStaticShape()
+                               ? reserve_space_3_type.getNumElements()
+                               : 0;
+        auto const_attr_type = RankedTensorType::get(
+            {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
+        Value dummy_const = rewriter.create<ConstOp>(
+            op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
+        if (const_attr_type != reserve_space_3_type)
+          dummy_const = rewriter.create<TensorCastOp>(
+              op.getLoc(), reserve_space_3_type, dummy_const);
+        rewriter.replaceOp(op, {/*y=*/y_out,
+                                /*batch_mean=*/op.mean(),
+                                /*batch_variance=*/op.variance(),
+                                /*reserve_space_1=*/op.mean(),
+                                /*reserve_space_2=*/op.variance(),
+                                /*reserve_space_3=*/dummy_const});
+      }
     }
     return success();
   }
 };
+
+using ConvertFusedBatchNormV2Op =
+    ConvertFusedBatchNormBase<TF::FusedBatchNormV2Op>;
+using ConvertFusedBatchNormV3Op =
+    ConvertFusedBatchNormBase<TF::FusedBatchNormV3Op>;
 
 using PaddingArray =
     std::vector<std::pair<tensorflow::int64, tensorflow::int64>>;
@@ -1748,22 +1770,89 @@ static DenseIntElementsAttr GetReduceWindowPaddingAsAttr(
       flatten_paddings);
 }
 
+// Helper function for dividing each entry of `pooled` by the count of its
+// corresponding window, i.e., the number of non-padding entries of the window
+// which an `AvgPool` operation performed on an `input_shape`-tensor would map
+// to this entry, depending on `ksize` and `strides`. This function is used for
+// `AvgPool` and `AvgPoolGrad` legalizations.
+// `zero` is passed as a parameter because it can be reused from caller level.
+// `pooled` must have `RankedTensorType`.
+template <typename OpTy, int num_dims>
+Operation *AvgPoolDivideByCount(
+    Value pooled, const SmallVector<int64_t, num_dims> &input_shape,
+    const SmallVector<int64_t, num_dims> &ksize,
+    const SmallVector<int64_t, num_dims> &strides, OpTy op, Value zero,
+    PatternRewriter &rewriter) {
+  Location loc = op.getLoc();
+  RankedTensorType pooled_type =
+      pooled.getType().template cast<RankedTensorType>();
+  Type element_type = pooled_type.getElementType();
+  Operation *result = nullptr;
+  RankedTensorType orig_input_type =
+      RankedTensorType::get(input_shape, element_type);
+
+  if (op.padding() == "VALID") {
+    // All window counts are equal here because we don't have padding
+    // (each entry of `pooled` corresponds to a window that consists of
+    //  original input entries only).
+    int64_t window_count = std::accumulate(ksize.begin(), ksize.end(), 1,
+                                           std::multiplies<int64_t>());
+    // Divide `pooled` by window counts.
+    Value divisor =
+        GetScalarConstOfType(element_type, loc, window_count, &rewriter);
+    auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+    result = rewriter.create<chlo::BroadcastDivOp>(
+        loc, pooled_type, pooled, divisor, scalar_broadcast_dims);
+  } else {
+    assert(op.padding() == "SAME");
+    // For SAME padding, only original entries that contributed to a window
+    // are counted for the average of this window, not padded entries.
+
+    // Build all-ones tensor of same shape as the original input.
+    ElementsAttr splat = hlo::getSplat(&rewriter, orig_input_type, 1);
+    auto all_ones_tensor = rewriter.create<ConstOp>(loc, splat);
+
+    // Get padding for the input.
+    DenseIntElementsAttr input_padding_attr =
+        GetReduceWindowPaddingAsAttr<num_dims>(
+            input_shape, op.ksize(), op.strides(), op.padding(), &rewriter);
+
+    // Count the 1's in each window, using the same padding as for the input,
+    // which gives us the window counts by which `pooled` needs to be divided.
+    auto divisor = rewriter.create<ReduceWindowOp>(
+        loc, pooled_type,
+        /*operand=*/all_ones_tensor,
+        /*init_value=*/zero,
+        /*window_dimensions=*/GetI64ElementsAttr(op.ksize()),
+        /*window_strides=*/GetI64ElementsAttr(op.strides()),
+        /*base_dilations=*/DenseIntElementsAttr(),
+        /*window_dilations=*/DenseIntElementsAttr(),
+        /*padding=*/input_padding_attr);
+    BuildReduceBody<AddOp>(element_type, &divisor.body(), &rewriter);
+
+    // Divide `pooled` by window counts.
+    result = rewriter.create<mhlo::DivOp>(loc, pooled_type, pooled, divisor);
+  }
+  return result;
+}
+
+Value GetAvgPoolInput(TF::AvgPoolOp op) { return op.value(); }
+Value GetAvgPoolInput(TF::AvgPool3DOp op) { return op.input(); }
+
 // Converts AvgPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with add as the reduction function. The reduction result is
 // then divided by the number of elements in the window.
-class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
+template <typename OpTy, int num_dims>
+class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::AvgPoolOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    auto input_type = op.value().getType().dyn_cast<RankedTensorType>();
+    Value input_value = GetAvgPoolInput(op);
+    auto input_type =
+        input_value.getType().template dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
-
-    // TODO(b/147217034): support other data formats.
-    if (!IsDefaultDataFormat(op.data_format())) return failure();
-    // TODO(b/147217034): support "SAME" padding.
-    if (op.padding() != "VALID") return failure();
 
     // We will do accumulation first; use a larger bitwidth if suitable.
     Type input_element_type = input_type.getElementType();
@@ -1771,13 +1860,11 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
     Type result_type;
 
     // The result type for reduction and division with the proper element type.
-    if (auto ranked_type = op.getType().dyn_cast<RankedTensorType>())
+    if (auto ranked_type = op.getType().template dyn_cast<RankedTensorType>())
       result_type =
           RankedTensorType::get(ranked_type.getShape(), sum_element_type);
     else
       result_type = UnrankedTensorType::get(sum_element_type);
-
-    Value input_value = op.value();
 
     // Convert if we need enlarge the element type's bitwidth.
     if (input_element_type != sum_element_type)
@@ -1787,9 +1874,9 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
     // Create the tf.ReduceWindow op.
     Value init =
         GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
-    DenseIntElementsAttr paddings_attr =
-        GetReduceWindowPaddingAsAttr<4>(input_type.getShape(), op.ksize(),
-                                        op.strides(), op.padding(), &rewriter);
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPaddingAsAttr<num_dims>(
+        input_type.getShape(), op.ksize(), op.strides(), op.padding(),
+        &rewriter);
     auto reduce = rewriter.create<ReduceWindowOp>(
         op.getLoc(), result_type, input_value, init,
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
@@ -1799,19 +1886,17 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
 
     // Count the number of elements in the window. The following calculation
     // is only valid for no paddings.
-    SmallVector<int64_t, 4> ksize;
+    SmallVector<int64_t, num_dims> input_shape(
+        llvm::to_vector<num_dims>(input_type.getShape()));
+    SmallVector<int64_t, num_dims> ksize, strides;
     GetI64ArrayAttrValues(op.ksize(), &ksize);
-    int64_t count = std::accumulate(ksize.begin(), ksize.end(), 1,
-                                    std::multiplies<int64_t>());
+    GetI64ArrayAttrValues(op.strides(), &strides);
 
-    // Divide by the number of elements in the window.
-    Value divisor =
-        GetScalarConstOfType(sum_element_type, op.getLoc(), count, &rewriter);
-    auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-    Value result = rewriter.create<chlo::BroadcastDivOp>(
-        op.getLoc(), result_type, reduce, divisor, scalar_broadcast_dims);
+    Operation *result_op = AvgPoolDivideByCount<OpTy, num_dims>(
+        reduce.getResult(), input_shape, ksize, strides, op, init, rewriter);
 
     // Convert back if we enlarged the element type's bitwidth.
+    Value result = result_op->getOpResult(0);
     if (input_element_type != sum_element_type)
       result =
           rewriter.create<ConvertOp>(op.getLoc(), result, input_element_type);
@@ -1820,6 +1905,9 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
     return success();
   }
 };
+
+using ConvertAvgPool2DOp = ConvertAvgPoolOp<TF::AvgPoolOp, /*num_dims=*/4>;
+using ConvertAvgPool3DOp = ConvertAvgPoolOp<TF::AvgPool3DOp, /*num_dims=*/5>;
 
 // `AvgPoolGradOp` is converted to the following operations:
 // 1. Divide each entry of the output gradient (the gradient for the previous
@@ -1894,59 +1982,13 @@ class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
     auto orig_input_shape_values = orig_input_shape_attr.getValues<int32_t>();
     DimVector orig_input_shape(orig_input_shape_values.begin(),
                                orig_input_shape_values.end());
-    RankedTensorType orig_input_type =
-        RankedTensorType::get(orig_input_shape, element_type);
     DimVector ksize, strides;
     GetI64ArrayAttrValues(op.ksize(), &ksize);
     GetI64ArrayAttrValues(op.strides(), &strides);
     Value zero = GetScalarConstOfType(element_type, loc, 0, &rewriter);
 
-    Operation *out_grad_divided = nullptr;
-    if (op.padding() == "VALID") {
-      // All window counts are equal here because we don't have padding
-      // (each entry of `out_grad` corresponds to a window that consists of
-      //  original input entries only).
-      int64_t window_count = std::accumulate(ksize.begin(), ksize.end(), 1,
-                                             std::multiplies<int64_t>());
-      // Divide `out_grad` by window counts.
-      Value divisor =
-          GetScalarConstOfType(element_type, loc, window_count, &rewriter);
-      auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-      out_grad_divided = rewriter.create<chlo::BroadcastDivOp>(
-          loc, out_grad_type, out_grad, divisor, scalar_broadcast_dims);
-    } else {
-      assert(op.padding() == "SAME");
-      // For SAME padding, only original entries that contributed to a window
-      // are counted for the average of this window, not padded entries.
-
-      // Build all-ones tensor of same shape as the original input.
-      ElementsAttr splat = xla::getSplat(&rewriter, orig_input_type, 1);
-      auto all_ones_tensor = rewriter.create<ConstOp>(loc, splat);
-
-      // Get the same padding as for the original input.
-      DenseIntElementsAttr orig_padding_attr =
-          GetReduceWindowPaddingAsAttr<num_dims>(orig_input_shape, op.ksize(),
-                                                 op.strides(), op.padding(),
-                                                 &rewriter);
-
-      // Count the 1's in each window, using the same padding as for the
-      // original input, which gives us the window counts by which `out_grad`
-      // needs to be divided.
-      auto window_counts = rewriter.create<ReduceWindowOp>(
-          loc, out_grad_type,
-          /*operand=*/all_ones_tensor,
-          /*init_value=*/zero,
-          /*window_dimensions=*/GetI64ElementsAttr(op.ksize()),
-          /*window_strides=*/GetI64ElementsAttr(op.strides()),
-          /*base_dilations=*/DenseIntElementsAttr(),
-          /*window_dilations=*/DenseIntElementsAttr(),
-          /*padding=*/orig_padding_attr);
-      BuildReduceBody<AddOp>(element_type, &window_counts.body(), &rewriter);
-
-      // Divide `out_grad` by window counts.
-      out_grad_divided = rewriter.create<mhlo::DivOp>(loc, out_grad_type,
-                                                      out_grad, window_counts);
-    }
+    auto out_grad_divided = AvgPoolDivideByCount<OpTy, num_dims>(
+        out_grad, orig_input_shape, ksize, strides, op, zero, rewriter);
 
     // Get same padding as for original input.
     PaddingArray orig_padding = GetReduceWindowPaddingAsArray<num_dims>(
@@ -2195,7 +2237,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
     Value operand = op.getOperand();
     auto operand_ty = operand.getType().cast<TensorType>();
     auto scalar_ty = RankedTensorType::get({}, operand_ty.getElementType());
-    ElementsAttr attr = mlir::xla::getSplat(&rewriter, scalar_ty, 0.5);
+    ElementsAttr attr = mlir::hlo::getSplat(&rewriter, scalar_ty, 0.5);
     auto scalar_half = rewriter.create<ConstOp>(loc, attr);
     auto half = BroadcastToShapeOf(loc, scalar_half, operand, rewriter);
 
@@ -3021,10 +3063,10 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
                                         rewriter.getI64IntegerAttr(0));
     auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, op.delta(),
-        xla::getBroadcastDimensionsAttr(&rewriter, iota, op.delta()));
+        hlo::getBroadcastDimensionsAttr(&rewriter, iota, op.delta()));
     rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, op.start(),
-        xla::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
+        hlo::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
     return success();
   }
 };
@@ -3101,10 +3143,10 @@ class ConvertDynamicRangeOp : public OpRewritePattern<TF::RangeOp> {
         op.getLoc(), result_type, reshape, rewriter.getI64IntegerAttr(0));
     auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, delta_out_cast,
-        xla::getBroadcastDimensionsAttr(&rewriter, iota, delta_cast));
+        hlo::getBroadcastDimensionsAttr(&rewriter, iota, delta_cast));
     rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, start_out_cast,
-        xla::getBroadcastDimensionsAttr(&rewriter, scaled, start_out_cast));
+        hlo::getBroadcastDimensionsAttr(&rewriter, scaled, start_out_cast));
     return success();
   }
 };
@@ -3152,7 +3194,7 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
     // Calculate the scaling that needs to be applied to the iota.
     auto step_numerator = rewriter.create<chlo::BroadcastSubOp>(
         op.getLoc(), op.start().getType(), op.stop(), op.start(),
-        xla::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
+        hlo::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
     Value step_denominator = rewriter.create<ConvertOp>(
         op.getLoc(), op.num(), result_type.getElementType());
     if (num > 1) {
@@ -3160,11 +3202,11 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
                                        op.getLoc(), 1, &rewriter);
       step_denominator = rewriter.create<chlo::BroadcastSubOp>(
           op.getLoc(), step_denominator.getType(), step_denominator, one,
-          xla::getBroadcastDimensionsAttr(&rewriter, step_denominator, one));
+          hlo::getBroadcastDimensionsAttr(&rewriter, step_denominator, one));
     }
     auto step = rewriter.create<chlo::BroadcastDivOp>(
         op.getLoc(), step_numerator.getType(), step_numerator, step_denominator,
-        xla::getBroadcastDimensionsAttr(&rewriter, step_numerator,
+        hlo::getBroadcastDimensionsAttr(&rewriter, step_numerator,
                                         step_denominator));
 
     // Scale the iota and add the offset.
@@ -3172,10 +3214,10 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
                                         rewriter.getI64IntegerAttr(0));
     auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, step,
-        xla::getBroadcastDimensionsAttr(&rewriter, iota, step));
+        hlo::getBroadcastDimensionsAttr(&rewriter, iota, step));
     rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, op.start(),
-        xla::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
+        hlo::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
     return success();
   }
 };
@@ -5358,6 +5400,50 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
+// Converts `TF::SparseMatMulOp` to `TF::MatMulOp`, ignoring the sparseness
+// hints, since we currently don't have an implementation that can use this
+// information. Adds appropriate casts where necessary to align element types
+// of operands and result for `TF::MatMulOp`.
+class ConvertSparseMatMulOp : public OpRewritePattern<TF::SparseMatMulOp> {
+ public:
+  using OpRewritePattern<TF::SparseMatMulOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SparseMatMulOp op,
+                                PatternRewriter &rewriter) const override {
+    // Result type must be f32 for applying the pattern (currently this is
+    // required by the op anyway but this might change).
+    if (!op.product().getType().cast<TensorType>().getElementType().isF32()) {
+      return failure();
+    }
+    MLIRContext *context = rewriter.getContext();
+    llvm::SmallVector<Value, 2> operands{op.a(), op.b()};
+    for (Value &operand : operands) {
+      TensorType tensor_type = operand.getType().cast<TensorType>();
+      Type element_type = tensor_type.getElementType();
+      if (element_type.isF32()) continue;
+      // Element type can either be f32 or bf16 for `SparseMatMulOp` so it
+      // must be bf16 here.
+      assert(element_type.isBF16());
+      Type tensor_type_f32;
+      if (tensor_type.hasRank()) {
+        tensor_type_f32 = RankedTensorType::get(tensor_type.getShape(),
+                                                FloatType::getF32(context));
+      } else {
+        tensor_type_f32 = UnrankedTensorType::get(FloatType::getF32(context));
+      }
+      // Add cast to f32 to conform with element type of result.
+      operand =
+          rewriter.create<TF::CastOp>(op.getLoc(), tensor_type_f32, operand);
+    }
+    Value result = rewriter.create<TF::MatMulOp>(
+        op.getLoc(), op.product().getType(), operands[0], operands[1],
+        op.transpose_a(), op.transpose_b());
+
+    rewriter.replaceOp(op, {result});
+    return success();
+  }
+};
+
 // Emits debug information which includes the number of ops of each type which
 // failed to legalize.
 void EmitLegalizationErrors(Operation *op,
@@ -5437,19 +5523,21 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
       ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
       ConvertCumsumOp, ConvertDiagPartOp, ConvertEinsumOp,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertAvgPool2DGradOp,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
+      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
+      ConvertAvgPool2DOp, ConvertAvgPool3DOp, ConvertAvgPool2DGradOp,
       ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
       ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
       ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
       ConvertDynamicRangeOp, ConvertRangeOp, ConvertSelectV2Op,
       ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
-      ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
-      ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
-      ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
-      ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
+      ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSparseMatMulOp,
+      ConvertSplitOp, ConvertSplitVOp, ConvertStridedSliceOp,
+      ConvertStridedSliceGradOp, ConvertSumOp, ConvertTensorScatterUpdateOp,
+      ConvertTileOp, ConvertTopKV2Op, ConvertUnpackOp,
+      ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
       ConvertRandomShuffleOp, ConvertXlaShardingOp,
       ConvertXlaDynamicUpdateSliceOp>(op->getContext());

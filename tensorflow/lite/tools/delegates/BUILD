@@ -81,7 +81,9 @@ cc_library(
     copts = common_copts,
     deps = [
         ":delegate_provider_hdr",
-        "//tensorflow/lite/tools/evaluation:utils",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_util",
     ],
     alwayslink = 1,
 )

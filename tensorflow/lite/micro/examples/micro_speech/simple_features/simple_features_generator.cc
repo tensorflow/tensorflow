@@ -67,7 +67,7 @@ void CalculateDiscreteFourierTransform(float* time_series, int time_series_size,
 // of the current sample window are weighted more heavily than those at the end.
 void CalculatePeriodicHann(int window_length, float* window_function) {
   for (int i = 0; i < window_length; ++i) {
-    window_function[i] = 0.5 - 0.5 * std::cos((2 * kPi * i) / window_length);
+    window_function[i] = 0.5f - 0.5f * std::cos((2 * kPi * i) / window_length);
   }
 }
 
