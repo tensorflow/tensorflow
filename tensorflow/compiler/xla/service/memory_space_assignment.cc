@@ -3001,18 +3001,23 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
         }
       }
 
-      if (last_use_instruction &&
-          last_use_instruction->opcode() == HloOpcode::kConditional) {
+      std::function<Status(const HloInstruction*, int64, int64,
+                           absl::string_view)>
+          split_conditional_buffer;
+      split_conditional_buffer = [&](const HloInstruction* use_instruction,
+                                     int64 start_time, int64 end_time,
+                                     absl::string_view indent_string) {
         // Special case when verifying conditional: we internally split the use
         // of alternate memory in conditionals, so fish them out from the
         // conditionals.
-        VLOG(3) << " Splitting conditional buffer: " << buffer.ToString()
-                << " value: " << value->ToShortString() << ": ("
-                << time_bound.start << ", " << time_bound.end
-                << ") off: " << chunk.offset << ", size: " << chunk.size;
-        int64 earliest_computation_start_time = time_bound.end;
+        VLOG(3) << indent_string
+                << "Splitting conditional buffer: " << buffer.ToString()
+                << " value: " << value->ToShortString() << ": (" << start_time
+                << ", " << end_time << ") off: " << chunk.offset
+                << ", size: " << chunk.size;
+        int64 earliest_computation_start_time = end_time;
         for (const HloComputation* called_computation :
-             last_use_instruction->called_computations()) {
+             use_instruction->called_computations()) {
           earliest_computation_start_time =
               std::min(earliest_computation_start_time,
                        hlo_live_range->computation_span_times()
@@ -3020,6 +3025,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                            .start);
           int64 parameter_time = -1;
           int64 last_use_time = -1;
+          const HloInstruction* last_use_instruction = nullptr;
           for (const HloPosition& position : value->positions()) {
             if (position.instruction->opcode() == HloOpcode::kParameter &&
                 position.instruction->parent() == called_computation) {
@@ -3029,26 +3035,44 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
             }
           }
           for (const HloUse& use : value->uses()) {
-            if (use.instruction->parent() == called_computation) {
-              last_use_time = std::max(
-                  last_use_time,
-                  hlo_live_range->instruction_schedule().at(use.instruction));
+            int64 use_time =
+                hlo_live_range->instruction_schedule().at(use.instruction);
+            if (use.instruction->parent() == called_computation &&
+                use_time > last_use_time) {
+              last_use_time = use_time;
+              last_use_instruction = use.instruction;
             }
           }
           if (last_use_time != -1) {
             CHECK_NE(parameter_time, -1);
-            VLOG(3) << "  computation: " << called_computation->name() << ": ("
+            VLOG(3) << indent_string
+                    << " computation: " << called_computation->name() << ": ("
                     << parameter_time << ", " << last_use_time << ")";
-            TF_RETURN_IF_ERROR(add_allocation_and_verify(
-                parameter_time, last_use_time, chunk, value));
+            CHECK(last_use_instruction);
+            if (last_use_instruction->opcode() == HloOpcode::kConditional) {
+              // The last use is another (nested) conditional. Call this
+              // function recursively.
+              TF_RETURN_IF_ERROR(split_conditional_buffer(
+                  last_use_instruction, parameter_time, last_use_time,
+                  absl::StrCat(indent_string, "  ")));
+            } else {
+              TF_RETURN_IF_ERROR(add_allocation_and_verify(
+                  parameter_time, last_use_time, chunk, value));
+            }
           }
         }
-        VLOG(3) << "  from beginning until first computation: ("
-                << time_bound.start << ", "
-                << (earliest_computation_start_time - 1) << ")";
+        VLOG(3) << indent_string << " from beginning until first computation: ("
+                << start_time << ", " << (earliest_computation_start_time - 1)
+                << ")";
         TF_RETURN_IF_ERROR(add_allocation_and_verify(
-            time_bound.start, earliest_computation_start_time - 1, chunk,
-            value));
+            start_time, earliest_computation_start_time - 1, chunk, value));
+        return Status::OK();
+      };
+
+      if (last_use_instruction &&
+          last_use_instruction->opcode() == HloOpcode::kConditional) {
+        TF_RETURN_IF_ERROR(split_conditional_buffer(
+            last_use_instruction, time_bound.start, time_bound.end, " "));
       } else {
         VLOG(3) << " buffer: " << buffer.ToString()
                 << " value: " << value->ToShortString() << ": ("
