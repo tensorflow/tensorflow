@@ -130,14 +130,18 @@ class TpuExecutable : public Executable {
 };
 
 XLA_HloModuleConfig HloModuleConfigToC(const xla::HloModuleConfig& config) {
-  XLA_HloModuleConfig hlo_config{
-      .seed = config.seed(),
-      .launch_id = config.launch_id(),
-      .replica_count = config.replica_count(),
-      .num_partitions = config.num_partitions(),
-      .use_spmd_partitioning = config.use_spmd_partitioning(),
-      .has_static_device_assignment = config.has_static_device_assignment(),
-      .has_entry_computation_layout = config.has_entry_computation_layout()};
+  XLA_HloModuleConfig hlo_config;
+
+  hlo_config.seed = config.seed();
+  hlo_config.launch_id = config.launch_id();
+  hlo_config.replica_count = config.replica_count();
+  hlo_config.num_partitions = config.num_partitions();
+  hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
+  hlo_config.has_static_device_assignment =
+      config.has_static_device_assignment();
+  hlo_config.has_entry_computation_layout =
+      config.has_entry_computation_layout();
+
   if (config.has_static_device_assignment()) {
     DeviceAssignmentProto dev_proto;
     config.static_device_assignment().Serialize(&dev_proto).IgnoreError();

@@ -1,5 +1,3 @@
-#include "third_party/tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-
 namespace {
 
 tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
