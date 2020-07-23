@@ -33,7 +33,7 @@ void Register_HistogramSummaryOp() {
 
   TF_OpDefinitionBuilder* op_builder = 
       TF_NewOpDefinitionBuilder("HistogramSummary");
-  TF_OpDefinitionBuilderAddInput(op_builder, "tags: string");
+  TF_OpDefinitionBuilderAddInput(op_builder, "tag: string");
   TF_OpDefinitionBuilderAddInput(op_builder, "values: T");
   TF_OpDefinitionBuilderAddOutput(op_builder, "summary: string");
   TF_OpDefinitionBuilderAddAttr(op_builder, "T: realnumbertype");

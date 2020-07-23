@@ -94,13 +94,6 @@ REGISTER_OP("ScalarSummary")
     .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::ScalarShape);
 
-// REGISTER_OP("HistogramSummary")
-//     .Input("tag: string")
-//     .Input("values: T")
-//     .Output("summary: string")
-//     .Attr("T: realnumbertype = DT_FLOAT")
-//     .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("ImageSummary")
     .Input("tag: string")
     .Input("tensor: T")

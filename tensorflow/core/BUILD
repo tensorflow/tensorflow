@@ -892,6 +892,7 @@ cc_library(
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/c/kernels:histogram_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_chromiumos(
         [],
@@ -998,6 +999,7 @@ cc_library(
     name = "all_kernels_impl",
     visibility = [":__subpackages__"],
     deps = [
+        "//tensorflow/c/kernels:histogram_summary_op",
         "//tensorflow/c/kernels:bitcast_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
