@@ -10,19 +10,21 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-void parse_custom_options(const char *buffer, size_t length,
-                          ::xcore::ExecutionPlan *plan);
+void parse_custom_options(TfLiteContext *context, const char *buffer,
+                          size_t length, ::xcore::ExecutionPlan *plan);
 
-void parse_custom_options(const char *buffer, size_t length,
+void parse_custom_options(TfLiteContext *context, const char *buffer,
+                          size_t length,
                           ::xcore::pooling::PoolingParams &pooling_params,
                           ::xcore::ExecutionPlan *plan = nullptr);
 
-void parse_custom_options(const char *buffer, size_t length,
+void parse_custom_options(TfLiteContext *context, const char *buffer,
+                          size_t length,
                           ::xcore::conv::Conv2DParams &conv2d_params,
                           ::xcore::ExecutionPlan *plan = nullptr);
 
-void parse_custom_options(const char *buffer, size_t length,
-                          int32_t *stride_h = nullptr,
+void parse_custom_options(TfLiteContext *context, const char *buffer,
+                          size_t length, int32_t *stride_h = nullptr,
                           int32_t *stride_w = nullptr,
                           int32_t *pool_h = nullptr, int32_t *pool_w = nullptr,
                           int32_t *K_w = nullptr,

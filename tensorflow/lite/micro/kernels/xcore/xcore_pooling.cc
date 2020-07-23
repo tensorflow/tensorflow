@@ -31,7 +31,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   ::xcore::ExecutionPlan execution_plan;
 
   if (buffer)
-    parse_custom_options(buffer, length, pooling_params, &execution_plan);
+    parse_custom_options(context, buffer, length, pooling_params,
+                         &execution_plan);
 
   void* data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::pooling::MaxPool),
@@ -89,7 +90,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   ::xcore::ExecutionPlan execution_plan;
 
   if (buffer)
-    parse_custom_options(buffer, length, pooling_params, &execution_plan);
+    parse_custom_options(context, buffer, length, pooling_params,
+                         &execution_plan);
 
   void* data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::pooling::AvgPool),
@@ -145,7 +147,7 @@ namespace avgpool_global {
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   ::xcore::ExecutionPlan execution_plan;
 
-  if (buffer) parse_custom_options(buffer, length, &execution_plan);
+  if (buffer) parse_custom_options(context, buffer, length, &execution_plan);
 
   void* data = nullptr;
   context->AllocatePersistentBuffer(

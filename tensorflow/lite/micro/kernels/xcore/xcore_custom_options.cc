@@ -10,10 +10,10 @@ namespace xcore {
 //*****************************
 // ExecutionPlan only
 //*****************************
-void parse_custom_options(const char *buffer, size_t length,
-                          ::xcore::ExecutionPlan *plan) {
-  parse_custom_options(buffer, length, nullptr, nullptr, nullptr, nullptr,
-                       nullptr, nullptr,
+void parse_custom_options(TfLiteContext *context, const char *buffer,
+                          size_t length, ::xcore::ExecutionPlan *plan) {
+  parse_custom_options(context, buffer, length, nullptr, nullptr, nullptr,
+                       nullptr, nullptr, nullptr,
                        plan  // ExecutionPlan
   );
 }
@@ -21,10 +21,11 @@ void parse_custom_options(const char *buffer, size_t length,
 //*****************************
 // PoolingParams
 //*****************************
-void parse_custom_options(const char *buffer, size_t length,
+void parse_custom_options(TfLiteContext *context, const char *buffer,
+                          size_t length,
                           ::xcore::pooling::PoolingParams &pooling_params,
                           ::xcore::ExecutionPlan *plan) {
-  parse_custom_options(buffer, length, &pooling_params.stride_h,
+  parse_custom_options(context, buffer, length, &pooling_params.stride_h,
                        &pooling_params.stride_w, &pooling_params.pool_h,
                        &pooling_params.pool_w,
                        nullptr,  // K_w
@@ -36,10 +37,11 @@ void parse_custom_options(const char *buffer, size_t length,
 //*****************************
 // Conv2DParams
 //*****************************
-void parse_custom_options(const char *buffer, size_t length,
+void parse_custom_options(TfLiteContext *context, const char *buffer,
+                          size_t length,
                           ::xcore::conv::Conv2DParams &conv2d_params,
                           ::xcore::ExecutionPlan *plan) {
-  parse_custom_options(buffer, length, &conv2d_params.stride_h,
+  parse_custom_options(context, buffer, length, &conv2d_params.stride_h,
                        &conv2d_params.stride_w,
                        nullptr,  // pool_h
                        nullptr,  // pool_w
@@ -49,9 +51,10 @@ void parse_custom_options(const char *buffer, size_t length,
 //*****************************
 // All Params
 //*****************************
-void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
-                          int32_t *stride_w, int32_t *pool_h, int32_t *pool_w,
-                          int32_t *K_w, ::xcore::conv::Conv2DPadding *pad,
+void parse_custom_options(TfLiteContext *context, const char *buffer,
+                          size_t length, int32_t *stride_h, int32_t *stride_w,
+                          int32_t *pool_h, int32_t *pool_w, int32_t *K_w,
+                          ::xcore::conv::Conv2DPadding *pad,
                           ::xcore::ExecutionPlan *plan) {
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
   // std::cout << flexbuffers::GetRoot(buffer_t, length).ToString() <<
@@ -98,7 +101,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
             plan->SetNumThreads(plan_values[j].AsInt32());
           } else if (plan_key.compare("cg") == 0) {
             const auto &changrps = plan_values[j].AsVector();
-            plan->changrps.Init(changrps.size());
+            plan->changrps.Init(context, changrps.size());
             for (int k = 0; k < changrps.size(); k++) {
               auto changrp =
                   changrps[k].AsVector();  // values represent [start, end]
@@ -108,7 +111,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
             }
           } else if (plan_key.compare("rc") == 0) {
             const auto &regions = plan_values[j].AsVector();
-            plan->regions.Init(regions.size());
+            plan->regions.Init(context, regions.size());
             for (int k = 0; k < regions.size(); k++) {
               auto region =
                   regions[k]

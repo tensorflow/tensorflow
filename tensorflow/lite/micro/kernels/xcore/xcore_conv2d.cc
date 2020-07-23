@@ -24,7 +24,8 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::ExecutionPlan execution_plan;
 
   if (buffer)
-    parse_custom_options(buffer, length, conv2d_params, &execution_plan);
+    parse_custom_options(context, buffer, length, conv2d_params,
+                         &execution_plan);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(
@@ -96,7 +97,8 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::ExecutionPlan execution_plan;
 
   if (buffer)
-    parse_custom_options(buffer, length, conv2d_params, &execution_plan);
+    parse_custom_options(context, buffer, length, conv2d_params,
+                         &execution_plan);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_Deep),
@@ -162,7 +164,8 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::ExecutionPlan execution_plan;
 
   if (buffer)
-    parse_custom_options(buffer, length, conv2d_params, &execution_plan);
+    parse_custom_options(context, buffer, length, conv2d_params,
+                         &execution_plan);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_1x1),
@@ -230,7 +233,8 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::ExecutionPlan execution_plan;
 
   if (buffer)
-    parse_custom_options(buffer, length, conv2d_params, &execution_plan);
+    parse_custom_options(context, buffer, length, conv2d_params,
+                         &execution_plan);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(
