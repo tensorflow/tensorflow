@@ -42,5 +42,12 @@ const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
   return RuntimeShape(dims_size, dims_data);
 }
 
+bool HaveSameShapes(const TfLiteEvalTensor* input1,
+                    const TfLiteEvalTensor* input2) {
+  TFLITE_DCHECK(input1 != nullptr);
+  TFLITE_DCHECK(input2 != nullptr);
+  return TfLiteIntArrayEqual(input1->dims, input2->dims);
+}
+
 }  // namespace micro
 }  // namespace tflite

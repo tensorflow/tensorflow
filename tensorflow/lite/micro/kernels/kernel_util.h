@@ -46,6 +46,10 @@ const T* GetTensorData(const TfLiteEvalTensor* tensor) {
 // Returns the shape of a TfLiteEvalTensor struct.
 const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor);
 
+// Return true if the given tensors have the same shape.
+bool HaveSameShapes(const TfLiteEvalTensor* input1,
+                    const TfLiteEvalTensor* input2);
+
 }  // namespace micro
 }  // namespace tflite
 
