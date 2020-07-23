@@ -32,7 +32,7 @@ export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Get the default test targets for bazel.
-source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Export optional variables for running pip.sh
 export TF_BUILD_FLAGS="--config=release_cpu_linux"
