@@ -42,8 +42,8 @@ constexpr int64 kAutotune = -1;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
 
-// A key used to identify input time gradient.
-constexpr char kInputTimeKey[] = "input_time";
+// A key used to identify the input time of the model.
+constexpr char kModelInputTimeKey[] = "model_input_time";
 
 enum class AutotuneAlgorithm {
   HILL_CLIMB = 0,
@@ -609,8 +609,8 @@ class Model {
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
   // Uses the given algorithm to perform the autotuning optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget)
-      TF_LOCKS_EXCLUDED(mu_);
+  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget,
+                double model_input_time) TF_LOCKS_EXCLUDED(mu_);
 
   // Removes the given node.
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
@@ -638,7 +638,8 @@ class Model {
   // This process is repeated until all parameters reach their maximum values or
   // the projected output time is less than or equal to the processing time
   // needed to produce an element divided by CPU budget.
-  void OptimizeHillClimb(int64 cpu_budget, int64 ram_budget);
+  void OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
+                         double model_input_time);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then improves current parameters by
@@ -647,12 +648,13 @@ class Model {
   // repeated until either the output time improvement is smaller than threshold
   // value or the output time is less than the processing time needed to produce
   // an element divided by CPU budget.
-  void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget);
+  void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
+                               double model_input_time);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
   // node.
-  double OutputTime(std::shared_ptr<Node> node,
+  double OutputTime(std::shared_ptr<Node> node, double model_input_time,
                     absl::flat_hash_map<string, double>* gradients);
 
   // Collects the processing time for the given node.
