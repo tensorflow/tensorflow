@@ -581,73 +581,6 @@ func @MatrixSetDiagV3Conversion(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) ->
   // CHECK: return %[[RES]]
 }
 
-func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
-  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
-  return %0: tensor<3x3xf32>
-
-// CHECK-LABEL: broadcast_to_f32_low_dim
-// CHECK:  [[CST:%.*]] = constant dense<1.000000e+00> : tensor<3x3xf32>
-// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
-// CHECK:  return [[MUL]] : tensor<3x3xf32>
-}
-
-func @broadcast_to_i32_low_dim(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3x3xi32> {
-  %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
-  return %0: tensor<3x3xi32>
-
-// CHECK-LABEL: broadcast_to_i32_low_dim
-// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<3x3xi32>
-// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xi32>, tensor<3x3xi32>) -> tensor<3x3xi32>
-// CHECK:  return [[MUL]] : tensor<3x3xi32>
-}
-
-func @broadcast_to_low_dim_with_unknown_shape(%arg0: tensor<3xf32>, %arg1: tensor<*xi32>) -> tensor<3x3xf32> {
-  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<*xi32>) -> tensor<3x3xf32>
-  return %0: tensor<3x3xf32>
-
-// CHECK-LABEL: broadcast_to_low_dim_with_unknown_shape
-// CHECK:  [[CST:%.*]] = constant dense<1.000000e+00> : tensor<3x3xf32>
-// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
-// CHECK:  return [[MUL]] : tensor<3x3xf32>
-}
-
-func @broadcast_to_i32_low_dim_with_unknown_output(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<*xi32> {
-  %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<*xi32>
-  return %0: tensor<*xi32>
-
-// CHECK-LABEL: broadcast_to_i32_low_dim_with_unknown_output
-// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<i32>
-// CHECK:  [[FILL:%.*]] = "tf.Fill"(%arg1, [[CST]]) : (tensor<2xi32>, tensor<i32>) -> tensor<*xi32>
-// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[FILL]]) : (tensor<3xi32>, tensor<*xi32>) -> tensor<*xi32>
-// CHECK:  return [[MUL]] : tensor<*xi32>
-}
-
-func @broadcast_to_high_dim_with_unknown_shape(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32> {
-  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32>
-  return %0: tensor<7x8x1x2x3x4x5x6xf32>
-
-// CHECK-LABEL: broadcast_to_high_dim_with_unknown_shape
-// CHECK:  [[BCT:%.*]] = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32>
-// CHECK:  return [[BCT]] : tensor<7x8x1x2x3x4x5x6xf32>
-}
-
-func @broadcast_to_high_dim_with_unknown_output(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<8xi32>) -> tensor<*xf32> {
-  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<8xi32>) -> tensor<*xf32>
-  return %0: tensor<*xf32>
-
-// CHECK-LABEL: broadcast_to_high_dim_with_unknown_output
-// CHECK:  [[BCT:%.*]] = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<8xi32>) -> tensor<*xf32>
-// CHECK:  return [[BCT]] : tensor<*xf32>
-}
-
-func @broadcast_to_with_unknown_shape_and_output(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<*xi32>) -> tensor<*xf32> {
-  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<*xf32>
-  return %0: tensor<*xf32>
-
-// CHECK-LABEL: broadcast_to_with_unknown_shape_and_output
-// CHECK:  "tf.BroadcastTo"(%arg0, %arg1)
-}
-
 // CHECK-LABEL: xla_conv
 func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<3x3x16x16xf32>} : () -> tensor<3x3x16x16xf32> loc("Const_1")
@@ -663,4 +596,3 @@ func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
 }
 
 }
-
