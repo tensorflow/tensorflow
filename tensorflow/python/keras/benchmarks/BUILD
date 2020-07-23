@@ -81,7 +81,7 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "bidirectional_lstm_benchmark_test",
     size = "medium",
     srcs = ["keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py"],
@@ -104,7 +104,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "antirectifier_benchmark_test",
     srcs = ["keras_examples_benchmarks/antirectifier_benchmark_test.py"],
     python_version = "PY3",
@@ -161,7 +161,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "cifar10_cnn_benchmark_test",
     srcs = ["keras_examples_benchmarks/cifar10_cnn_benchmark_test.py"],
     python_version = "PY3",
