@@ -11,15 +11,6 @@ config_setting(
 )
 
 config_setting(
-    name = "build_with_mkl_ml_only",
-    define_values = {
-        "build_with_mkl": "true",
-        "build_with_mkl_ml_only": "true",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "build_with_mkl_lnx_x64",
     define_values = {
         "build_with_mkl": "true",

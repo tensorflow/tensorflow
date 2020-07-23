@@ -42,7 +42,6 @@ def if_mkl_ml(if_true, if_false = []):
     """
     return select({
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_opensource": if_false,
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_threadpool": if_false,
         "//conditions:default": if_true,
     })
 
@@ -92,9 +91,6 @@ def mkl_deps():
     return select({
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_only": ["@mkl_dnn"],
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_v1_only": ["@mkl_dnn_v1//:mkl_dnn"],
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_threadpool": ["@mkl_dnn_v1//:mkl_dnn"],
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_opensource": ["@mkl_dnn_v1//:mkl_dnn"],
-        "@org_tensorflow//third_party/mkl:build_with_mkl_ml_only": ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
         "@org_tensorflow//third_party/mkl:build_with_mkl": [
             "@org_tensorflow//third_party/mkl:intel_binary_blob",
             "@mkl_dnn",

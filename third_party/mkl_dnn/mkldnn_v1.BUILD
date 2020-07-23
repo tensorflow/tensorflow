@@ -6,6 +6,12 @@ load(
     "if_mkl_v1",
     "if_mkldnn_threadpool",
 )
+
+load(
+    "@org_tensorflow//third_party/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+
 load(
     "@org_tensorflow//third_party:common.bzl",
     "template_rule",
@@ -109,9 +115,9 @@ cc_library(
         "src/cpu/xbyak",
     ],
     visibility = ["//visibility:public"],
-    deps = if_mkl_open_source_only(
-        [],
+    deps = if_mkl_ml(
         ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
+        [],
     ),
 )
 
