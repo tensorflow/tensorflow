@@ -155,10 +155,10 @@ gentbl(
     name = "InstCombineTableGen",
     tbl_outs = [(
         "-gen-searchable-tables",
-        "lib/Transforms/InstCombine/InstCombineTables.inc",
+        "lib/Target/AMDGPU/InstCombineTables.inc",
     )],
     tblgen = ":llvm-tblgen",
-    td_file = "lib/Transforms/InstCombine/InstCombineTables.td",
+    td_file = "lib/Target/AMDGPU/InstCombineTables.td",
     td_srcs = glob([
         "include/llvm/CodeGen/*.td",
         "include/llvm/IR/Intrinsics*.td",
