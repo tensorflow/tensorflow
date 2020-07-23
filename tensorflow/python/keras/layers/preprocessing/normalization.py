@@ -156,7 +156,8 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # broadcasts the data correctly.
     mean = array_ops.reshape(self.mean, self._broadcast_shape)
     variance = array_ops.reshape(self.variance, self._broadcast_shape)
-    return (inputs - mean) / math_ops.sqrt(variance)
+    return ((inputs - mean) /
+            math_ops.maximum(math_ops.sqrt(variance), K.epsilon()))
 
   def compute_output_shape(self, input_shape):
     return input_shape
