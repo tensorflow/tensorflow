@@ -399,6 +399,7 @@ tflite_micro_cc_test(
         "unpack_test.cc",
     ],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
@@ -625,6 +626,7 @@ tflite_micro_cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
     deps = [
+        ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
