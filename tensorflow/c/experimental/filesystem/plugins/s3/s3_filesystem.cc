@@ -24,6 +24,7 @@ limitations under the License.
 #include <aws/s3/model/CompletedPart.h>
 #include <aws/s3/model/CopyObjectRequest.h>
 #include <aws/s3/model/CreateMultipartUploadRequest.h>
+#include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadBucketRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
@@ -959,6 +960,99 @@ void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
   else
     MultiPartCopy(copy_src, bucket_dst, object_dst, num_parts, file_size,
                   s3_file, status);
+}
+
+void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  Aws::S3::Model::DeleteObjectRequest delete_object_request;
+  delete_object_request.WithBucket(bucket).WithKey(object);
+  auto delete_object_outcome =
+      s3_file->s3_client->DeleteObject(delete_object_request);
+  if (!delete_object_outcome.IsSuccess())
+    TF_SetStatusFromAWSError(delete_object_outcome.GetError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+void CreateDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, true, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  if (object.empty()) {
+    Aws::S3::Model::HeadBucketRequest head_bucket_request;
+    head_bucket_request.WithBucket(bucket);
+    auto head_bucket_outcome =
+        s3_file->s3_client->HeadBucket(head_bucket_request);
+    if (!head_bucket_outcome.IsSuccess())
+      TF_SetStatusFromAWSError(head_bucket_outcome.GetError(), status);
+    else
+      TF_SetStatus(status, TF_OK, "");
+    return;
+  }
+
+  Aws::String dir_path = path;
+  if (dir_path.back() != '/') dir_path.push_back('/');
+
+  PathExists(filesystem, dir_path.c_str(), status);
+  if (TF_GetCode(status) == TF_OK) {
+    std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile * file)> file(
+        new TF_WritableFile, [](TF_WritableFile* file) {
+          if (file != nullptr) {
+            if (file->plugin_file != nullptr) tf_writable_file::Cleanup(file);
+            delete file;
+          }
+        });
+    file->plugin_file = nullptr;
+    NewWritableFile(filesystem, dir_path.c_str(), file.get(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+    tf_writable_file::Close(file.get(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  if (object.back() != '/') object.push_back('/');
+  Aws::S3::Model::ListObjectsRequest list_objects_request;
+  list_objects_request.WithBucket(bucket).WithPrefix(object).WithMaxKeys(2);
+  list_objects_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+  auto list_objects_outcome =
+      s3_file->s3_client->ListObjects(list_objects_request);
+  if (list_objects_outcome.IsSuccess()) {
+    auto contents = list_objects_outcome.GetResult().GetContents();
+    if (contents.size() > 1 ||
+        (contents.size() == 1 && contents[0].GetKey() != object)) {
+      TF_SetStatus(status, TF_UNKNOWN,
+                   "Cannot delete a non-empty directory. "
+                   "This operation will be retried in case this "
+                   "is due to S3's eventual consistency.");
+    }
+    if (contents.size() == 1 && contents[0].GetKey() == object) {
+      Aws::String dir_path = path;
+      if (dir_path.back() != '/') dir_path.push_back('/');
+      DeleteFile(filesystem, dir_path.c_str(), status);
+    }
+  } else {
+    TF_SetStatusFromAWSError(list_objects_outcome.GetError(), status);
+  }
 }
 
 // TODO(vnvo2409): Implement later
