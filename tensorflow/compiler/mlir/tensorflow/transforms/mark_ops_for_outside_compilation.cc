@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
-namespace TF {
+namespace TFDevice {
 
 namespace {
 
@@ -54,5 +54,5 @@ static PassRegistration<MarkOpsForOutsideCompilation> pass(
     "tf-mark-ops-for-outside-compilation",
     "Marks unsupported ops a device cluster for outside compilation.");
 
-}  // namespace TF
+}  // namespace TFDevice
 }  // namespace mlir
