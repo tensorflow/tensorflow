@@ -50,7 +50,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::pooling::MaxPool*>(node->user_data);
 
-  op->Prepare(input->dims->data[1],   // X_h
+  op->Prepare(context,
+              input->dims->data[1],   // X_h
               input->dims->data[2],   // X_w
               input->dims->data[3],   // C_in
               output->dims->data[1],  // Y_h
@@ -67,7 +68,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::pooling::MaxPool*>(node->user_data);
 
-  op->Eval(output->data.int8, input->data.int8);
+  op->Eval(context, output->data.int8, input->data.int8);
 
   return kTfLiteOk;
 }
@@ -107,7 +108,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::pooling::AvgPool*>(node->user_data);
 
-  op->Prepare(input->dims->data[1],   // X_h
+  op->Prepare(context,
+              input->dims->data[1],   // X_h
               input->dims->data[2],   // X_w
               input->dims->data[3],   // C_in
               output->dims->data[1],  // Y_h
@@ -124,7 +126,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::pooling::AvgPool*>(node->user_data);
 
-  op->Eval(output->data.int8, input->data.int8);
+  op->Eval(context, output->data.int8, input->data.int8);
 
   return kTfLiteOk;
 }
@@ -164,7 +166,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* op =
       reinterpret_cast<::xcore::pooling::AvgPool_Global*>(node->user_data);
 
-  op->Prepare(input->dims->data[1],                      // X_h
+  op->Prepare(context,
+              input->dims->data[1],                      // X_h
               input->dims->data[2],                      // X_w
               input->dims->data[3],                      // C_in
               unpack<4, int32_t>(&bss->data.uint8[0]),   // bias
@@ -182,7 +185,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* op =
       reinterpret_cast<::xcore::pooling::AvgPool_Global*>(node->user_data);
 
-  op->Eval(output->data.int8,     // Y
+  op->Eval(context,
+           output->data.int8,     // Y
            input->data.int8,      // X
            input->dims->data[1],  // X_h
            input->dims->data[2],  // X_w

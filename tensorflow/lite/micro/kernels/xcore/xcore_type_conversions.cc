@@ -34,7 +34,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* op = reinterpret_cast<::xcore::type_conversions::Requantize_16_to_8*>(
       node->user_data);
 
-  op->Init(length);
+  op->Prepare(context, length);
 
   return kTfLiteOk;
 }
@@ -47,7 +47,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* op = reinterpret_cast<::xcore::type_conversions::Requantize_16_to_8*>(
       node->user_data);
 
-  op->Eval(output->data.int8, input->data.i16);
+  op->Eval(context, output->data.int8, input->data.i16);
 
   return kTfLiteOk;
 }

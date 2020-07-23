@@ -28,13 +28,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* weights = GetInput(context, node, 1);
+  const TfLiteTensor* bso = GetInput(context, node, 2);
 
   int32_t C_in = weights->dims->data[1];
   int32_t C_out = weights->dims->data[0];
 
   auto* op = reinterpret_cast<::xcore::fully_connected::FullyConnected_16*>(
       node->user_data);
-  op->Prepare(C_in, C_out);
+  op->Prepare(context, weights->data.int8, bso->data.i16, C_in, C_out);
 
   return kTfLiteOk;
 }
@@ -47,7 +48,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::fully_connected::FullyConnected_16*>(
       node->user_data);
-  op->Eval(output->data.i16, input->data.int8, weights->data.int8,
+  op->Eval(context, output->data.i16, input->data.int8, weights->data.int8,
            bso->data.i16);
 
   return kTfLiteOk;
