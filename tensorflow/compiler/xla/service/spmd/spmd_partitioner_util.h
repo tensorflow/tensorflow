@@ -262,6 +262,20 @@ absl::optional<int64> GetKValueInTopKWhenPartitionSortDim(HloInstruction* hlo);
 HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
                             int64 slice_dim, int64 k);
 
+// Check if a dimension is sharded.
+int64 ShardCountAtDim(const HloSharding& sharding, int64 dim);
+
+// Returns the list of source-target pairs of dimensions to swap during
+// resharding via all-to-all. Reshard can be done by swapping each pair at a
+// time.
+absl::optional<std::vector<std::pair<int64, int64>>>
+GetReshardAllToAllSourceTargetDims(const HloSharding& source,
+                                   const HloSharding& target);
+
+// Returns whether the resharding can be done via collective-permute.
+bool CanReshardWithCollectivePermute(const HloSharding& source,
+                                     const HloSharding& target);
+
 }  // namespace spmd
 }  // namespace xla
 

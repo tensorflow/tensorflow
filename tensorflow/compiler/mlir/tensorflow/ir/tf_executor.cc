@@ -301,8 +301,8 @@ bool IslandOp::WrapsSingleOp() {
 namespace {
 
 LogicalResult Verify(IslandOp island) {
-  if (island.GetBody().empty())
-    return island.emitOpError() << "expects a non-empty body";
+  if (!island.GetBody().args_empty())
+    return island.emitOpError() << "expects body without any arguments";
 
   Operation &yield = island.GetBody().back();
   if (!isa<YieldOp>(yield))

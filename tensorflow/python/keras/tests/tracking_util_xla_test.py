@@ -23,13 +23,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.module import module
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
-class NonLayerTrackable(tracking.AutoTrackable):
+class NonLayerTrackable(module.Module):
 
   def __init__(self):
     super(NonLayerTrackable, self).__init__()

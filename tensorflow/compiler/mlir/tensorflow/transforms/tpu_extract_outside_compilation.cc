@@ -206,8 +206,7 @@ TF::_HostComputeMlirOp CreateHostCompute(
     device_output_types.push_back(output.getType());
   SetHostComputeInsertion(builder, cluster_ops, inputs);
   auto host_compute = builder->create<TF::_HostComputeMlirOp>(
-      tpu_cluster.getLoc(), device_output_types, inputs.getArrayRef(),
-      llvm::ArrayRef<NamedAttribute>{});
+      tpu_cluster.getLoc(), device_output_types, inputs.getArrayRef());
   host_compute.setAttr(kAncestorsAttr, builder->getArrayAttr({}));
   host_compute.setAttr(kShapesAttr, builder->getArrayAttr({}));
   host_compute.setAttr(kKeyAttr, builder->getStringAttr(communication_key));

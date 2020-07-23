@@ -325,6 +325,7 @@ java_test(
         "src/testdata/int32.bin",
         "src/testdata/int64.bin",
         "src/testdata/quantized.bin",
+        "src/testdata/string.bin",
     ],
     javacopts = JAVACOPTS,
     tags = [

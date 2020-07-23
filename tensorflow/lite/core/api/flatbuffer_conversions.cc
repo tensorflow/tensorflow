@@ -820,6 +820,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
+    case BuiltinOperator_BROADCAST_TO:
       return kTfLiteOk;
   }
   return kTfLiteError;
@@ -863,6 +864,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_COMPLEX64:
       *type = kTfLiteComplex64;
       return kTfLiteOk;
+    case TensorType_COMPLEX128:
+      *type = kTfLiteComplex128;
+      return kTfLiteOk;
     default:
       *type = kTfLiteNoType;
       TF_LITE_REPORT_ERROR(error_reporter,
@@ -893,7 +897,6 @@ TfLiteStatus ParseAdd(const Operator* op, ErrorReporter* error_reporter,
   if (schema_params != nullptr) {
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
-    params->pot_scale_int16 = schema_params->pot_scale_int16();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
@@ -1629,7 +1632,6 @@ TfLiteStatus ParseSub(const Operator* op, ErrorReporter* error_reporter,
   if (schema_params != nullptr) {
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
-    params->pot_scale_int16 = schema_params->pot_scale_int16();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

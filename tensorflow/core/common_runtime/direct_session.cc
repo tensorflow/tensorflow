@@ -1526,8 +1526,6 @@ Status DirectSession::GetOrCreateExecutors(
     auto it = executors_.find(sorted_key);
     if (it != executors_.end()) {
       *executors_and_keys = it->second.get();
-      // Insert this under the original key.
-      executors_.emplace(key, it->second);
       return Status::OK();
     }
   }

@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.parallel_for.pfor import PFor
 from tensorflow.python.ops.parallel_for.pfor import PForConfig
 from tensorflow.python.platform import tf_logging as logging
@@ -51,8 +52,8 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     loop_fn: A function that takes an int32 scalar tf.Tensor object representing
       the iteration number, and returns a possibly nested structure of tensor
       objects. The shape of these outputs should not depend on the input.
-    loop_fn_dtypes: dtypes for the outputs of loop_fn.
-    iters: Number of iterations for which to run loop_fn.
+    loop_fn_dtypes: dtypes for the outputs of `loop_fn`.
+    iters: Number of iterations for which to run `loop_fn`.
     parallel_iterations: The number of iterations that can be dispatched in
       parallel. This knob can be used to control the total memory usage.
 
@@ -137,7 +138,7 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
 
   `pfor` has functionality similar to `for_loop`, i.e. running `loop_fn` `iters`
   times, with input from 0 to `iters - 1`, and stacking corresponding output of
-  each iteration. However the implementation does not use a tf.while_loop.
+  each iteration. However the implementation does not use a `tf.while_loop`.
   Instead it adds new operations to the graph that collectively compute the same
   value as what running `loop_fn` in a loop would compute.
 
@@ -152,7 +153,7 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
       reads, etc).
     - Conversion works only on a limited set of kernels for which a converter
       has been registered.
-    - loop_fn has limited support for control flow operations. tf.cond in
+    - `loop_fn` has limited support for control flow operations. `tf.cond` in
       particular is not supported.
     - `loop_fn` should return nested structure of Tensors or Operations. However
       if an Operation is returned, it should have zero outputs.
@@ -166,9 +167,9 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
       or Operation objects. Note that if setting `parallel_iterations` argument
       to something other than None, `loop_fn` may be called more than once
       during graph construction. So it may need to avoid mutating global state.
-    iters: Number of iterations for which to run loop_fn.
+    iters: Number of iterations for which to run `loop_fn`.
     fallback_to_while_loop: If true, on failing to vectorize an operation, pfor
-      fallbacks to using a tf.while_loop to dispatch the iterations.
+      fallbacks to using a `tf.while_loop` to dispatch the iterations.
     parallel_iterations: A knob to control how many iterations are vectorized
       and dispatched in parallel. The default value of None corresponds to
       vectorizing all the iterations.  If `parallel_iterations` is smaller than
@@ -246,6 +247,7 @@ def _pfor_impl(loop_fn,
       loop_fn_outputs = loop_fn(loop_var)
 
   # Convert outputs to Tensor if needed.
+  rewrap_as_ndarray = False
   tmp_loop_fn_outputs = []
   for loop_fn_output in nest.flatten(loop_fn_outputs):
     if (loop_fn_output is not None and not isinstance(
@@ -256,7 +258,12 @@ def _pfor_impl(loop_fn,
                      " Alternatively, output the indices and values of the"
                      " IndexedSlices separately, and handle the vectorized"
                      " outputs directly." % loop_fn_output)
-      loop_fn_output = ops.convert_to_tensor(loop_fn_output)
+        loop_fn_output = ops.convert_to_tensor(loop_fn_output)
+      elif isinstance(loop_fn_output, np_arrays.ndarray):
+        loop_fn_output = loop_fn_output.data
+        rewrap_as_ndarray = True
+      else:
+        loop_fn_output = ops.convert_to_tensor(loop_fn_output)
     tmp_loop_fn_outputs.append(loop_fn_output)
   loop_fn_outputs = nest.pack_sequence_as(loop_fn_outputs, tmp_loop_fn_outputs)
 
@@ -277,7 +284,10 @@ def _pfor_impl(loop_fn,
                        pfor_config=pfor_config)
       outputs = []
       for loop_fn_output in nest.flatten(loop_fn_outputs):
-        outputs.append(converter.convert(loop_fn_output))
+        output = converter.convert(loop_fn_output)
+        if rewrap_as_ndarray:
+          output = np_arrays.tensor_to_ndarray(output)
+        outputs.append(output)
       return nest.pack_sequence_as(loop_fn_outputs, outputs)
   else:
     if pfor_config is not None and pfor_config._has_reductions():  # pylint: disable=protected-access
@@ -294,7 +304,10 @@ def _pfor_impl(loop_fn,
       remaining_outputs = []
       flattened_loop_fn_outputs = nest.flatten(loop_fn_outputs)
       for loop_fn_output in flattened_loop_fn_outputs:
-        remaining_outputs.append(converter.convert(loop_fn_output))
+        output = converter.convert(loop_fn_output)
+        if rewrap_as_ndarray:
+          output = np_arrays.tensor_to_ndarray(output)
+        remaining_outputs.append(output)
 
     with ops.name_scope("pfor_tiled"):
       loop_fn_dtypes = [ops.convert_to_tensor(x).dtype
@@ -329,6 +342,10 @@ def _pfor_impl(loop_fn,
                      for x, y in zip(remaining_outputs, tiled_outputs)])
       else:
         outputs = tiled_outputs
+      flattened_outputs = nest.flatten(outputs)
+      if rewrap_as_ndarray:
+        flattened_outputs = [
+            np_arrays.tensor_to_ndarray(x) for x in flattened_outputs]
       return nest.pack_sequence_as(loop_fn_outputs, nest.flatten(outputs))
 
 
@@ -337,10 +354,11 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
   """Parallel map on the list of tensors unpacked from `elems` on dimension 0.
 
 
-  This method works similar to tf.map_fn but is optimized to run much faster,
+  This method works similar to `tf.map_fn` but is optimized to run much faster,
   possibly with a much larger memory footprint. The speedups are obtained by
-  vectorization (see https://arxiv.org/pdf/1903.04243.pdf). The idea behind
-  vectorization is to semantically launch all the invocations of `fn` in
+  vectorization (see [Auto-Vectorizing TensorFlow Graphs: Jacobians, 
+  Auto-Batching and Beyond](https://arxiv.org/pdf/1903.04243.pdf)). The idea 
+  behind vectorization is to semantically launch all the invocations of `fn` in
   parallel and fuse corresponding operations across all these invocations. This
   fusion is done statically at graph generation time and the generated code is
   often similar in performance to a manually fused version.

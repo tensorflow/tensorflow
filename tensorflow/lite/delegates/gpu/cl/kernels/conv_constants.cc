@@ -201,9 +201,7 @@ ConvConstants::ConvConstants(ConvConstants&& kernel)
       padding_(kernel.padding_),
       dilation_(kernel.dilation_),
       src_channels_(kernel.src_channels_),
-      dst_channels_(kernel.dst_channels_),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+      dst_channels_(kernel.dst_channels_) {}
 
 ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
   if (this != &kernel) {
@@ -213,8 +211,6 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
     std::swap(dilation_, kernel.dilation_);
     std::swap(src_channels_, kernel.src_channels_);
     std::swap(dst_channels_, kernel.dst_channels_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;
@@ -255,25 +251,13 @@ absl::Status ConvConstants::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
   RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
   RETURN_IF_ERROR(args_.SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
-  RETURN_IF_ERROR(args_.SetInt("dilation_y", dilation_.y));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetInt("dilation_y", dilation_.y);
 }
 
 int3 ConvConstants::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   return int3(grid_x, grid_y, 1);
-}
-
-absl::Status ConvConstants::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 bool IsConvConstantsSupported(const CLDevice& device,

@@ -57,6 +57,12 @@ explicit goal and some variance between languages is to be expected.
 Across all libraries, the TensorFlow Lite API enables you to load models, feed
 inputs, and retrieve inference outputs.
 
+## Supported operations
+
+TensorFlow Lite supports a subset of TensorFlow operations with some
+limitations. For full list of operations and limitations see
+[TF Lite Ops page](https://www.tensorflow.org/mlir/tfl_ops).
+
 ### Android
 
 On Android, TensorFlow Lite inference can be performed using either Java or C++

@@ -447,31 +447,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_ADD:
-      if (op_sig.input_types.at(0) == TensorType_INT16 &&
-          op_sig.output_types.at(0) == TensorType_INT16) {
-        if (!op_sig.options.addsub.pot_scale_int16) {
-          return 3;
-        }
-      }
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
-        return 2;
-      }
-      return 1;
-
     case BuiltinOperator_SUB:
-      if (op_sig.input_types.at(0) == TensorType_INT16 &&
-          op_sig.output_types.at(0) == TensorType_INT16) {
-        if (!op_sig.options.addsub.pot_scale_int16) {
-          return 5;
-        }
-      }
       if (!op_sig.input_types.empty() &&
           op_sig.input_types.at(0) == TensorType_INT64) {
         return 4;
       }
-      if (op_sig.options.addsub.need_broadcast &&
-          op_sig.options.addsub.num_dims > 4) {
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
@@ -532,6 +514,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
+    case BuiltinOperator_MEAN:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
       // In case of int16 inputs, the version is 3.
@@ -556,10 +539,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         }
       }
       return 1;
-
+    case BuiltinOperator_ADD:
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
-    case BuiltinOperator_MEAN:
     case BuiltinOperator_SUM:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
@@ -684,26 +666,6 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
     } break;
 
-    case BuiltinOperator_ADD: {
-      auto add_option = op->builtin_options_as_AddOptions();
-      op_sig.options.addsub.pot_scale_int16 = true;
-      if (add_option) {
-        op_sig.options.addsub.pot_scale_int16 = add_option->pot_scale_int16();
-      }
-    } break;
-
-    case BuiltinOperator_SUB: {
-      auto sub_option = op->builtin_options_as_SubOptions();
-      op_sig.options.addsub.need_broadcast =
-          !HaveSameShapes(subgraph, op, 0, 1);
-      op_sig.options.addsub.num_dims =
-          std::max(GetNumDims(subgraph, op, 0), GetNumDims(subgraph, op, 1));
-      op_sig.options.addsub.pot_scale_int16 = true;
-      if (sub_option) {
-        op_sig.options.addsub.pot_scale_int16 = sub_option->pot_scale_int16();
-      }
-    } break;
-
     case BuiltinOperator_LSTM: {
       auto lstm_option = op->builtin_options_as_LSTMOptions();
       if (lstm_option) {
@@ -749,7 +711,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     case BuiltinOperator_TRANSPOSE: {
       op_sig.options.single_input_op.num_dims = GetNumDims(subgraph, op, 0);
     } break;
-
+    case BuiltinOperator_SUB:
     case BuiltinOperator_DIV:
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM: {

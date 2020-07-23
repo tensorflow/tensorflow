@@ -22,7 +22,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -135,27 +135,27 @@ class Ftrl(optimizer_v2.OptimizerV2):
     linear = self.get_slot(var, 'linear')
 
     if self._l2_shrinkage_regularization_strength <= 0.0:
-      return training_ops.resource_apply_ftrl(
-          var.handle,
-          accum.handle,
-          linear.handle,
-          grad,
-          coefficients['lr_t'],
-          coefficients['l1_regularization_strength'],
-          coefficients['l2_regularization_strength'],
-          coefficients['learning_rate_power'],
+      return gen_training_ops.ResourceApplyFtrl(
+          var=var.handle,
+          accum=accum.handle,
+          linear=linear.handle,
+          grad=grad,
+          lr=coefficients['lr_t'],
+          l1=coefficients['l1_regularization_strength'],
+          l2=coefficients['l2_regularization_strength'],
+          lr_power=coefficients['learning_rate_power'],
           use_locking=self._use_locking)
     else:
-      return training_ops.resource_apply_ftrl_v2(
-          var.handle,
-          accum.handle,
-          linear.handle,
-          grad,
-          coefficients['lr_t'],
-          coefficients['l1_regularization_strength'],
-          coefficients['l2_regularization_strength'],
-          coefficients['l2_shrinkage_regularization_strength'],
-          coefficients['learning_rate_power'],
+      return gen_training_ops.ResourceApplyFtrlV2(
+          var=var.handle,
+          accum=accum.handle,
+          linear=linear.handle,
+          grad=grad,
+          lr=coefficients['lr_t'],
+          l1=coefficients['l1_regularization_strength'],
+          l2=coefficients['l2_regularization_strength'],
+          l2_shrinkage=coefficients['l2_shrinkage_regularization_strength'],
+          lr_power=coefficients['learning_rate_power'],
           use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
@@ -167,29 +167,29 @@ class Ftrl(optimizer_v2.OptimizerV2):
     linear = self.get_slot(var, 'linear')
 
     if self._l2_shrinkage_regularization_strength <= 0.0:
-      return training_ops.resource_sparse_apply_ftrl(
-          var.handle,
-          accum.handle,
-          linear.handle,
-          grad,
-          indices,
-          coefficients['lr_t'],
-          coefficients['l1_regularization_strength'],
-          coefficients['l2_regularization_strength'],
-          coefficients['learning_rate_power'],
+      return gen_training_ops.ResourceSparseApplyFtrl(
+          var=var.handle,
+          accum=accum.handle,
+          linear=linear.handle,
+          grad=grad,
+          indices=indices,
+          lr=coefficients['lr_t'],
+          l1=coefficients['l1_regularization_strength'],
+          l2=coefficients['l2_regularization_strength'],
+          lr_power=coefficients['learning_rate_power'],
           use_locking=self._use_locking)
     else:
-      return training_ops.resource_sparse_apply_ftrl_v2(
-          var.handle,
-          accum.handle,
-          linear.handle,
-          grad,
-          indices,
-          coefficients['lr_t'],
-          coefficients['l1_regularization_strength'],
-          coefficients['l2_regularization_strength'],
-          coefficients['l2_shrinkage_regularization_strength'],
-          coefficients['learning_rate_power'],
+      return gen_training_ops.ResourceSparseApplyFtrlV2(
+          var=var.handle,
+          accum=accum.handle,
+          linear=linear.handle,
+          grad=grad,
+          indices=indices,
+          lr=coefficients['lr_t'],
+          l1=coefficients['l1_regularization_strength'],
+          l2=coefficients['l2_regularization_strength'],
+          l2_shrinkage=coefficients['l2_shrinkage_regularization_strength'],
+          lr_power=coefficients['learning_rate_power'],
           use_locking=self._use_locking)
 
   def get_config(self):

@@ -226,8 +226,9 @@ DepthwiseConvolution::DepthwiseConvolution(
       stride_(attr.strides.w, attr.strides.h, 0, 0),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       dilation_(attr.dilations.w, attr.dilations.h, 0, 0),
-      channel_multiplier_(attr.weights.shape.o),
-      work_group_size_(8, 8, 1) {}
+      channel_multiplier_(attr.weights.shape.o) {
+  work_group_size_ = int3(8, 8, 1);
+}
 
 DepthwiseConvolution::DepthwiseConvolution(
     const OperationDef& definition,
@@ -240,8 +241,9 @@ DepthwiseConvolution::DepthwiseConvolution(
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
                -attr.padding.prepended.d, 0),
       dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d, 0),
-      channel_multiplier_(attr.weights.shape.o),
-      work_group_size_(8, 8, 1) {}
+      channel_multiplier_(attr.weights.shape.o) {
+  work_group_size_ = int3(8, 8, 1);
+}
 
 DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
     : GPUOperation(std::move(operation)),
@@ -250,9 +252,7 @@ DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
       stride_(operation.stride_),
       padding_(operation.padding_),
       dilation_(operation.dilation_),
-      channel_multiplier_(operation.channel_multiplier_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      channel_multiplier_(operation.channel_multiplier_) {}
 
 DepthwiseConvolution& DepthwiseConvolution::operator=(
     DepthwiseConvolution&& operation) {
@@ -263,8 +263,6 @@ DepthwiseConvolution& DepthwiseConvolution::operator=(
     std::swap(padding_, operation.padding_);
     std::swap(dilation_, operation.dilation_);
     std::swap(channel_multiplier_, operation.channel_multiplier_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -308,8 +306,7 @@ absl::Status DepthwiseConvolution::BindArguments() {
   if (!IsSpecializedCase(channel_multiplier_)) {
     RETURN_IF_ERROR(args_.SetInt("ch_multiplier", channel_multiplier_));
   }
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 DepthwiseConvolution::GetGridSize() const {
@@ -317,16 +314,6 @@ int3 DepthwiseConvolution::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices() * dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status DepthwiseConvolution::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status DepthwiseConvolution::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 absl::Status CreateDepthwiseConvolution(

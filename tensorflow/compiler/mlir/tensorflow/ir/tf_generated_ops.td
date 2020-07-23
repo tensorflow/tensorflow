@@ -87,7 +87,7 @@ tf.math.acosh(x) ==> [nan nan 0. 0.62236255 5.9914584 9.903487 inf]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, SameOperandsAndResultElementType]>,
+def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, SameOperandsAndResultElementType, TF_LayoutAgnostic]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -136,7 +136,7 @@ Inputs must be of same size and shape.
   let hasFolder = 1;
 }
 
-def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, SameOperandsAndResultElementType]>,
+def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, SameOperandsAndResultElementType, TF_LayoutAgnostic]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -716,6 +716,30 @@ window in `value`.
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_AvgPool3DOp : TF_Op<"AvgPool3D", [NoSideEffect]> {
+  let summary = "Performs 3D average pooling on the input.";
+
+  let description = [{
+Each entry in `output` is the mean of the corresponding size `ksize` window in
+`value`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$input,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
   );
 
   let results = (outs
@@ -3540,51 +3564,6 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   }];
 }
 
-def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_LayoutSensitiveInterface]> {
-  let summary = "Batch normalization.";
-
-  let description = [{
-Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
-The size of 1D Tensors matches the dimension C of the 4D Tensors.
-  }];
-
-  let arguments = (ins
-    TensorOf<[BF16, F16, F32]>:$x,
-    F32Tensor:$scale,
-    F32Tensor:$offset,
-    F32Tensor:$mean,
-    F32Tensor:$variance,
-
-    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
-    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
-    DefaultValuedAttr<BoolAttr, "true">:$is_training
-  );
-
-  let results = (outs
-    TensorOf<[BF16, F16, F32]>:$y,
-    F32Tensor:$batch_mean,
-    F32Tensor:$batch_variance,
-    F32Tensor:$reserve_space_1,
-    F32Tensor:$reserve_space_2,
-    F32Tensor:$reserve_space_3
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
-
-  let extraClassDeclaration = [{
-    // TF_FoldOperandsTransposeInterface:
-    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
-    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
-    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
-
-    // TF_LayoutSensitiveInterface:
-    StringRef GetOptimalLayout(const RuntimeDevices& devices);
-    LogicalResult UpdateDataFormat(StringRef data_format);
-  }];
-}
-
 def TF_GatherOp : TF_Op<"Gather", [NoSideEffect]> {
   let summary = "Gather slices from `params` according to `indices`.";
 
@@ -4250,6 +4229,29 @@ Where to extract the key and value from a line is specified by `key_index` and
   );
 
   let results = (outs);
+}
+
+def TF_InplaceUpdateOp : TF_Op<"InplaceUpdate", [NoSideEffect]> {
+  let summary = "Updates specified rows 'i' with values 'v'.";
+
+  let description = [{
+Computes `x[i, :] = v; return x`.
+
+Originally this function is mutative however for compilation we make this
+operation create / operate on a copy of `x`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$x,
+    I32Tensor:$i,
+    TF_Tensor:$v
+  );
+
+  let results = (outs
+    TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_InvOp : TF_Op<"Inv", [NoSideEffect, SameOperandsAndResultType]> {
@@ -7272,6 +7274,7 @@ reshape(t, []) ==> 7
   }];
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def TF_ResizeBilinearOp : TF_Op<"ResizeBilinear", [NoSideEffect]> {

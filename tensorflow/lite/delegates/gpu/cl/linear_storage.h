@@ -75,9 +75,6 @@ class LinearStorage : public GPUObject {
   LinearStorage& operator=(const LinearStorage&) = delete;
 
   void SetName(const std::string& name) { name_ = name; }
-  cl_mem GetMemoryPtr() const { return memory_; }
-  std::string ReadLinearFLT4(const std::string& z_coord) const;
-  std::string GetDeclaration() const;
 
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;

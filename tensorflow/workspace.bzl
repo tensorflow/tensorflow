@@ -164,11 +164,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "bd4278ebbe3f6b104f46548717b00bdba95acaab3cbac3de4015c65d868259f8",
-        strip_prefix = "XNNPACK-d27202dfeaa8d3a96670ba47f3dce2f19305a092",
+        sha256 = "c6eae589a4af7785da467162acd339bae359842e14c93bddc8fbe84ffd361c70",
+        strip_prefix = "XNNPACK-aff24e26a760552ee98a036f2a6e95b123e1bc6d",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/d27202dfeaa8d3a96670ba47f3dce2f19305a092.zip",
-            "https://github.com/google/XNNPACK/archive/d27202dfeaa8d3a96670ba47f3dce2f19305a092.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/aff24e26a760552ee98a036f2a6e95b123e1bc6d.zip",
+            "https://github.com/google/XNNPACK/archive/aff24e26a760552ee98a036f2a6e95b123e1bc6d.zip",
         ],
     )
 
@@ -535,6 +535,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
             "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
             "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
+            "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
         },
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.9.0.tar.gz",
@@ -710,8 +711,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "c2a61ef3885019c5e0444d8789de63e1ce4d5003"
-    LLVM_SHA256 = "7e44c7970640da0a8b81e267252d9e0245390a832d1c23f20b32522f1473d12a"
+    LLVM_COMMIT = "99ad956fdaee5398fdcf46fa49cb433cf52dc461"
+    LLVM_SHA256 = "e48f529063cc31e5f5844f7395fbecb0a3e9cba0bcbeafa40f5001273bad3c51"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

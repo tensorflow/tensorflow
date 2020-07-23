@@ -11,10 +11,9 @@
 * C-API functions `TF_StringDecode`, `TF_StringEncode`, and
   `TF_StringEncodedSize` are no longer relevant and have been removed; see
   core/platform/ctstring.h for string access/modification in C.
-* In batching library, rename parameter
-  SharedBatchScheduler::QueueOptions::max_batch_size to a more accurate name
-  (input_batch_size_limit) for a recent feature to enable split of large batch
-  sizes.
+* Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
+* `tensorflow.python`, `tensorflow.core` and `tensorflow.compiler` modules are
+    now hidden. These modules are not part of TensorFlow public API.
 
 ## Known Caveats
 
@@ -24,6 +23,7 @@
 
 * <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 * <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See tensorflow/python/ops/numpy_ops/README.md for details of what are supported and what are the differences with NumPy.
 
 ## Bug Fixes and Other Changes
 
@@ -32,21 +32,36 @@
 * <NOTES SHOULD BE GROUPED PER AREA>
 * TF Core:
   * <ADD RELEASE NOTES HERE>
-  * `tf.Tensor` is now a subclass of `typing.Generic`, allowing type annotations
-    to be parameterized by dtype: `tf.Tensor[tf.Int32]`. This requires Python 3,
-    and will become fully compatible with static type checkers in the future.
-
+  * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
+    type annotation for variables representing a Tensor or a value that can be
+    converted to Tensor by `tf.convert_to_tensor`.
+  * Calling ops with a python constants or numpy values is now consistent with
+    tf.convert_to_tensor behavior. This avoids operations like tf.reshape
+    truncating inputs such as from int64 to int32.
+  * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensror` arguments.
 * `tf.data`:
+    * Added new `tf.data.experimental.service.register_dataset` and
+     `tf.data.experimental.service.from_dataset_id` APIs to enable one process
+      to register a dataset with the tf.data service, and another process to
+      consume data from the dataset.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
-  the complement of `select_cols`; at most one of these should be specified.
+      the complement of `select_cols`; at most one of these should be specified.
+    * We have implemented an optimization which reorders data-discarding
+      transformations such as `take` and `shard` to happen earlier in the
+      dataset when it is safe to do so. The optimization can be disabled via
+      the `experimental_optimization.reorder_data_discarding_ops` dataset
+      option.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
     * <ADD RELEASE NOTES HERE>
-*   `tf.function`/AutoGraph:
-    * <ADD RELEASE NOTES HERE>
+* `tf.function` / AutoGraph:
+  * Added `experimental_follow_type_hints` argument for `tf.function`. When
+    True, the function may use type annotations to optimize the tracing
+    performance.
 *   `tf.lite`:
-    * <ADD RELEASE NOTES HERE>
+    * Better support for ops with high-dimensional broadcasting inputs by adding
+  `BroadcastTo` ops when necessary.
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
 *   Math and Linear Algebra:
@@ -58,9 +73,9 @@
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>
 *   Other:
-    * We have replaced uses of "whitelist" with "allowlist" where possible.
-  Please see https://developers.google.com/style/word-list#blacklist for more
-  context.
+    * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
+  and "denylist" where possible. Please see 
+  https://developers.google.com/style/word-list#blacklist for more context.
     * <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors

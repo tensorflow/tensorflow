@@ -43,7 +43,7 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import device as tfdev
+from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -53,10 +53,10 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradients_module
@@ -725,7 +725,7 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
-    if tfdev.is_device_spec(device):
+    if isinstance(device, device_spec.DeviceSpecV2):
       device = device.to_string()
     self.device = device
 
@@ -744,7 +744,10 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return tfdev.DeviceSpec.from_string(op.device)
+  if tf2.enabled():
+    return device_spec.DeviceSpecV2.from_string(op.device)
+  else:
+    return device_spec.DeviceSpecV1.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):
@@ -4102,9 +4105,9 @@ def rnn(step_function,
   # That's what the tile call does, it just repeats the mask along its
   # second dimension n times.
   def _expand_mask(mask_t, input_t, fixed_dim=1):
-    if nest.is_sequence(mask_t):
+    if nest.is_nested(mask_t):
       raise ValueError('mask_t is expected to be tensor, but got %s' % mask_t)
-    if nest.is_sequence(input_t):
+    if nest.is_nested(input_t):
       raise ValueError('input_t is expected to be tensor, but got %s' % input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
@@ -4130,7 +4133,7 @@ def rnn(step_function,
         input_t.reverse()
       return input_t
 
-    if nest.is_sequence(inputs):
+    if nest.is_nested(inputs):
       processed_input = nest.map_structure(_process_single_input_t, inputs)
     else:
       processed_input = (_process_single_input_t(inputs),)
@@ -4869,7 +4872,7 @@ def hard_sigmoid(x):
   """
   point_two = _constant_to_tensor(0.2, x.dtype.base_dtype)
   point_five = _constant_to_tensor(0.5, x.dtype.base_dtype)
-  x = math_ops.mul(x, point_two)
+  x = math_ops.multiply(x, point_two)
   x = math_ops.add(x, point_five)
   x = clip_ops.clip_by_value(x, 0., 1.)
   return x

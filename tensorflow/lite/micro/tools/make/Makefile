@@ -74,11 +74,14 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
+CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
+               -Wshadow -Wunused-variable -Wmissing-field-initializers \
+               -Wunused-function
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
 # TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
 # this flag is for an optimized micro runtime.
-CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY
-CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
+CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
@@ -287,6 +290,10 @@ CXX := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
 CC := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
 AR := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
+# The default Makefile target(all) must appear before any target,
+# which is compiled if there's no command-line arguments.
+all: $(MICROLITE_LIB_PATH)
+
 # Load the examples.
 include $(MICRO_LITE_EXAMPLE_TESTS)
 
@@ -318,9 +325,6 @@ $(OBJDIR)%.o: %.c $(THIRD_PARTY_TARGETS)
 $(OBJDIR)%.o: %.S $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
-
-# The target that's compiled if there's no command-line arguments.
-all: $(MICROLITE_LIB_PATH)
 
 microlite: $(MICROLITE_LIB_PATH)
 

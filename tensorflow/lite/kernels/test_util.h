@@ -515,8 +515,7 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
-  // Enables NNAPI delegate application during interpreter creation.
-  static void SetForceUseNnapi(bool use_nnapi);
+  // Indicate whether the test has the NNAPI delegate applied.
   static bool GetForceUseNnapi();
   int CountOpsExecutedByCpuKernel();
 
@@ -769,6 +768,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;
+  int num_applied_delegates_ = 0;
 };
 
 // Populate string tensors.
@@ -916,13 +916,28 @@ class KernelTestDelegateProviders {
   bool InitFromCmdlineArgs(int* argc, const char** argv);
 
   // This provides a way to overwrite parameter values programmatically before
-  // creating TfLite delegates.
+  // creating TfLite delegates. Note, changes to the returned ToolParams will
+  // have a global impact on creating TfLite delegates.
+  // If a local-only change is preferred, recommend using the following workflow
+  // create TfLite delegates via delegate providers:
+  // tools::ToolParams local_params;
+  // local_params.Merge(KernelTestDelegateProviders::Get()->ConstParams());
+  // Overwrite params in local_params by calling local_params.Set<...>(...);
+  // Get TfLite delegates via
+  // KernelTestDelegateProviders::Get()->CreateAllDelegates(local_params);
   tools::ToolParams* MutableParams() { return &params_; }
   const tools::ToolParams& ConstParams() const { return params_; }
 
-  // Create a list of TfLite delegates based on what have been initialized (i.e.
-  // 'params_').
-  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates() const;
+  // Create a list of TfLite delegates based on the provided parameters
+  // `params`.
+  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates(
+      const tools::ToolParams& params) const;
+
+  // Similar to the above, but creating a list of TfLite delegates based on what
+  // have been initialized (i.e. 'params_').
+  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates() const {
+    return CreateAllDelegates(params_);
+  }
 
  private:
   // Contain delegate-related parameters that are initialized from command-line

@@ -92,6 +92,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
@@ -230,11 +231,46 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "whitelisted_flex_ops_lib",
+    name = "allowlisted_flex_ops_lib",
     srcs = [
         "allowlisted_flex_ops.cc",
     ],
     hdrs = [
         "allowlisted_flex_ops.h",
+        "allowlisted_flex_ops_internal.h",
     ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
+tf_cc_test(
+    name = "allowlisted_flex_ops_test",
+    size = "small",
+    srcs = [
+        "allowlisted_flex_ops_test.cc",
+    ],
+    deps = [
+        ":delegate",
+        ":allowlisted_flex_ops_lib",
+        "@com_google_googletest//:gtest",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
 )

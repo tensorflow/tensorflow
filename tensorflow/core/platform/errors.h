@@ -62,9 +62,11 @@ inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
 // to be several layers of additional context.
 template <typename... Args>
 void AppendToMessage(::tensorflow::Status* status, Args... args) {
+  std::vector<StackFrame> stack_trace = status->stack_trace();
   *status = ::tensorflow::Status(
       status->code(),
-      ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...));
+      ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...),
+      std::move(stack_trace));
 }
 
 // For propagating errors when calling a function.

@@ -303,12 +303,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -333,12 +328,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // quantized types, only a single scale and zero point is needed.
   const int num_channels = filter->dims->data[kConvQuantizedDimension];
   // Dynimically allocate per-channel quantization parameters.
-  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-      context, num_channels * sizeof(int32_t),
-      reinterpret_cast<void**>(&op_data->per_channel_output_multiplier)));
-  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-      context, num_channels * sizeof(int32_t),
-      reinterpret_cast<void**>(&op_data->per_channel_output_shift)));
+  op_data->per_channel_output_multiplier =
+      reinterpret_cast<int32_t>(context->AllocatePersistentBuffer(
+          context, num_channels * sizeof(int32_t)));
+  op_data->per_channel_output_shift =
+      reinterpret_cast<int32_t>(context->AllocatePersistentBuffer(
+          context, num_channels * sizeof(int32_t)));
 
   // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {

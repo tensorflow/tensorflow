@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 
 namespace mlir {
@@ -744,9 +745,7 @@ void LegalizeHloToTf::runOnFunction() {
 
   // Add legalization patterns to the list.
   OwningRewritePatternList patterns;
-  populateWithGenerated(&context, &patterns);
-  patterns.insert<ConvertConvOp, ConvertSliceOp, ConvertReduceOpToTfMax,
-                  ConvertReduceOpToTfMin, ConvertReduceOpToTfSum>(&context);
+  PopulateLegalizeHloToTfPatterns(&patterns, &context);
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
@@ -761,6 +760,13 @@ static PassRegistration<LegalizeHloToTf> pass(
     "tf-legalize-hlo", "Legalize from HLO to the TF dialect");
 
 }  // end namespace
+
+void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
+                                     MLIRContext *context) {
+  populateWithGenerated(context, patterns);
+  patterns->insert<ConvertConvOp, ConvertSliceOp, ConvertReduceOpToTfMax,
+                   ConvertReduceOpToTfMin, ConvertReduceOpToTfSum>(context);
+}
 
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {
   return std::make_unique<LegalizeHloToTf>();

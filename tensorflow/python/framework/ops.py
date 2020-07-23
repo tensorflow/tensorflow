@@ -24,7 +24,6 @@ import sys
 import threading
 import types
 
-from typing import Generic, TypeVar
 import numpy as np
 import six
 from six.moves import map  # pylint: disable=redefined-builtin
@@ -255,19 +254,9 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
-DataType = TypeVar("DataType", bound=dtypes.DType)
-
-# TODO(rahulkamat): Remove this and make Tensor a generic class
-# once compatibility with Python 2 is dropped.
-if sys.version_info[0] >= 3:
-  TensorTypeBase = Generic[DataType]
-else:
-  TensorTypeBase = object
-
-
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
-class Tensor(internal.NativeObject, core_tf_types.Tensor, TensorTypeBase):
+class Tensor(internal.NativeObject, core_tf_types.Tensor):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
@@ -3612,12 +3601,17 @@ class Graph(object):
 
     if self._colocation_stack:
       all_colocation_groups = []
+      is_device_set = False
       for colocation_op in self._colocation_stack.peek_objs():
-        all_colocation_groups.extend(colocation_op.colocation_groups())
-        if colocation_op.device:
+        try:
+          all_colocation_groups.extend(colocation_op.colocation_groups())
+        except AttributeError:
+          pass
+        if colocation_op.device and not is_device_set:
           # pylint: disable=protected-access
           op._set_device(colocation_op.device)
           # pylint: enable=protected-access
+          is_device_set = True
 
       all_colocation_groups = sorted(set(all_colocation_groups))
       # pylint: disable=protected-access
@@ -4367,7 +4361,7 @@ class Graph(object):
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
-    op = _op_to_colocate_with(op, self)
+    op, device_only_candidate = _op_to_colocate_with(op, self)
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -4387,8 +4381,12 @@ class Graph(object):
       # offset refers to the stack frame used for storing code location.
       # We use 4, the sum of 1 to use our caller's stack frame and 3
       # to jump over layers of context managers above us.
+      if device_only_candidate is not None:
+        self._colocation_stack.push_obj(device_only_candidate, offset=4)
       self._colocation_stack.push_obj(op, offset=4)
-
+    elif not ignore_existing:
+      raise ValueError("Trying to reset colocation (op is None) but "
+                       "ignore_existing is not True")
     try:
       yield
     finally:
@@ -4396,6 +4394,8 @@ class Graph(object):
       self._device_function_stack = device_fn_tmp
       if op is not None:
         self._colocation_stack.pop_obj()
+        if device_only_candidate is not None:
+          self._colocation_stack.pop_obj()
 
       # Reset the colocation stack if requested.
       if ignore_existing:
@@ -6823,26 +6823,30 @@ def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
 def _op_to_colocate_with(v, graph):
   """Operation object corresponding to v to use for colocation constraints."""
   if v is None:
-    return None
+    return None, None
   if isinstance(v, Operation):
-    return v
+    return v, None
+
   # We always want to colocate with the reference op.
   # When 'v' is a ResourceVariable, the reference op is the handle creating op.
   #
   # What this should be is:
   # if isinstance(v, ResourceVariable):
-  #   return v.handle.op
+  #   return v.handle.op, v
   # However, that would require a circular import dependency.
   # As of October 2018, there were attempts underway to remove
   # colocation constraints altogether. Assuming that will
   # happen soon, perhaps this hack to work around the circular
   # import dependency is acceptable.
   if hasattr(v, "handle") and isinstance(v.handle, Tensor):
+    device_only_candidate = lambda: None
+    device_only_candidate.device = v.device
+    device_only_candidate.name = v.name
     if graph.building_function:
-      return graph.capture(v.handle).op
+      return graph.capture(v.handle).op, device_only_candidate
     else:
-      return v.handle.op
-  return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
+      return v.handle.op, device_only_candidate
+  return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op, None
 
 
 def _is_keras_symbolic_tensor(x):

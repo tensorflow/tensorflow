@@ -3231,6 +3231,18 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       b = variables.Variable([3.0], name="b")
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
 
+  @test_util.run_deprecated_v1
+  def testColocateResourceVariablesInFunction(self):
+    with ops.device("/device:CPU:0"):
+      a = resource_variable_ops.ResourceVariable(1.0)
+
+    @def_function.function
+    def f():
+      with ops.colocate_with(a):
+        b = array_ops.ones([], name="output")
+        self.assertEqual("/device:CPU:0", b.op.device)
+    f()
+
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def testColocateWithVariableInFunction(self):
     v = variables.Variable(1.)

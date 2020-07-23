@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/experimental/gradients/math_grad.h"
+#include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
@@ -42,54 +44,9 @@ class CppGradients
   }
 };
 
-// Creates an Identity op.
-Status Identity(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
-  AbstractOperationPtr identity_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      identity_op->Reset("Identity", /*raw_device_name=*/nullptr));
-  if (isa<tracing::TracingOperation>(identity_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(identity_op.get())
-                           ->SetOpName(name));
-  }
-  TF_RETURN_IF_ERROR(identity_op->AddInput(inputs[0]));
-  int num_retvals = 1;
-  TF_RETURN_IF_ERROR(identity_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
-
-// =================== Register gradients for Add ============================
-class AddGradientFunction : public GradientFunction {
- public:
-  explicit AddGradientFunction(AbstractContext* ctx) : ctx_(ctx) {}
-  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
-                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
-    grad_outputs->resize(2);
-    std::vector<AbstractTensorHandle*> identity_outputs(1);
-    TF_RETURN_IF_ERROR(Identity(ctx_, {grad_inputs[0]},
-                                absl::MakeSpan(identity_outputs), "Id0"));
-    (*grad_outputs)[0] = identity_outputs[0];
-    TF_RETURN_IF_ERROR(Identity(ctx_, {grad_inputs[0]},
-                                absl::MakeSpan(identity_outputs), "Id1"));
-    (*grad_outputs)[1] = identity_outputs[0];
-    return Status::OK();
-  }
-  ~AddGradientFunction() override {}
-
- private:
-  AbstractContext* ctx_;
-};
-
-GradientFunction* AddRegisterer(const ForwardOperation& op) {
-  return new AddGradientFunction(op.ctx);
-}
-
 Status RegisterGradients(GradientRegistry* registry) {
   return registry->Register("Add", AddRegisterer);
 }
-
-// =================== End gradient registrations ============================
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
@@ -136,7 +93,7 @@ Status AddGradModel(AbstractContext* ctx,
       source_tensors_that_are_targets,
       /*output_gradients=*/{}, &out_grads));
   for (auto add_output : add_outputs) {
-    add_output->Release();
+    add_output->Unref();
   }
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
@@ -187,14 +144,14 @@ Status RunModel(Model model, AbstractContext* ctx,
       TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
                                absl::MakeSpan(output_list.outputs), registry));
       for (auto func_input : func_inputs) {
-        func_input->Release();
+        func_input->Unref();
       }
       AbstractFunction* func = nullptr;
       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
                              ->Finalize(&output_list, &func));
       scoped_func.reset(func);
-      output_list.outputs[0]->Release();
-      output_list.outputs[1]->Release();
+      output_list.outputs[0]->Unref();
+      output_list.outputs[1]->Unref();
       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
     }
 
@@ -295,7 +252,7 @@ TEST_P(CppGradients, TestAddGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);
-  outputs[0]->Release();
+  outputs[0]->Unref();
   TF_DeleteTensor(result_tensor);
   result_tensor = nullptr;
 
@@ -303,7 +260,7 @@ TEST_P(CppGradients, TestAddGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);
-  outputs[1]->Release();
+  outputs[1]->Unref();
   TF_DeleteTensor(result_tensor);
 }
 
@@ -313,7 +270,7 @@ TEST_P(CppGradients, TestAddGrad) {
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
     ::testing::Combine(::testing::Values("graphdef"),
-                       /*tfrt*/ ::testing::Values(false),
+                       /*tfrt*/ ::testing::Values(true, false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
 #else
 INSTANTIATE_TEST_SUITE_P(

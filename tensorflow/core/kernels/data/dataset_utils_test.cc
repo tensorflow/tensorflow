@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -60,6 +61,14 @@ class DatasetHashUtilsTest : public ::testing::Test {
 
 string full_name(string key) {
   return strings::StrCat(kFullNameRandomHex, kPipe, "Iterator:", key);
+}
+
+TEST(DatasetUtilsTest, MatchesAnyVersion) {
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2"));
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3"));
+  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "BatchV2Dataset"));
+  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "PaddedBatchDataset"));
 }
 
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
@@ -147,6 +156,33 @@ TEST(DatasetUtilsTest, VariantTensorDataWriteAfterFlushing) {
   input_tensor.flat<float>()(0) = 2.0f;
   EXPECT_EQ(error::FAILED_PRECONDITION,
             writer.WriteTensor(full_name("Tensor"), input_tensor).code());
+}
+
+TEST(DatasetUtilsTest, CheckpointElementsRoundTrip) {
+  std::vector<std::vector<Tensor>> elements;
+  elements.push_back(CreateTensors<int32>(TensorShape({3}), {{1, 2, 3}}));
+  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{4, 5}}));
+  VariantTensorDataWriter writer;
+  tstring test_prefix = full_name("test_prefix");
+  TF_ASSERT_OK(WriteElementsToCheckpoint(&writer, test_prefix, elements));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  std::vector<std::vector<Tensor>> read_elements;
+  TF_ASSERT_OK(
+      ReadElementsFromCheckpoint(&reader, test_prefix, &read_elements));
+  ASSERT_EQ(elements.size(), read_elements.size());
+  for (int i = 0; i < elements.size(); ++i) {
+    std::vector<Tensor>& original = elements[i];
+    std::vector<Tensor>& read = read_elements[i];
+
+    ASSERT_EQ(original.size(), read.size());
+    for (int j = 0; j < original.size(); ++j) {
+      EXPECT_EQ(original[j].NumElements(), read[j].NumElements());
+      EXPECT_EQ(original[j].flat<int32>()(0), read[j].flat<int32>()(0));
+    }
+  }
 }
 
 TEST(DatasetUtilsTest, AddToFunctionLibrary) {

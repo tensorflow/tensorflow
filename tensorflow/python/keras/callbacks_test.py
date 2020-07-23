@@ -1705,6 +1705,48 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertEqual(my_cb.test_batches, 0)
     self.assertEqual(my_cb.predict_batches, 0)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_default_callbacks_do_not_call_batch_hooks(self):
+    model = keras.Sequential([keras.layers.Dense(1)])
+    log_dir = self.get_temp_dir()
+    cb_list = keras.callbacks.CallbackList([
+        keras.callbacks.TensorBoard(log_dir, profile_batch=0),
+        keras.callbacks.ModelCheckpoint(log_dir),
+    ],
+                                           add_progbar=True,
+                                           model=model,
+                                           verbose=2,
+                                           epochs=3)
+    self.assertLen(cb_list.callbacks, 3)
+    self.assertFalse(cb_list._should_call_train_batch_hooks)
+    self.assertFalse(cb_list._should_call_test_batch_hooks)
+    self.assertFalse(cb_list._should_call_predict_batch_hooks)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_change_tf_functions_during_fit(self):
+
+    class ChangeFunctions(keras.callbacks.Callback):
+
+      def on_epoch_end(self, epochs, logs=None):
+
+        def new_fn(iterator):
+          raise ValueError('New function substituted successfully.')
+
+        self.model.train_function = new_fn
+        self.model.test_function = new_fn
+        self.model.predict_function = new_fn
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.fit(x, y, batch_size=2, epochs=2, callbacks=[ChangeFunctions()])
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.evaluate(x, y, batch_size=2)
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.predict(x, batch_size=2)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was
@@ -2204,7 +2246,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     model.compile('sgd', 'mse', run_eagerly=False)
     self.fitModelAndAssertKerasModelWritten(model)
 
-  def test_TensoriBoard_writeModel(self):
+  def test_TensorBoard_writeModel(self):
     inputs = keras.layers.Input([10, 10, 1])
     x = keras.layers.Conv2D(8, (3, 3), activation='relu')(inputs)
     x = keras.layers.Flatten()(x)

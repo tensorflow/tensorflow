@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
@@ -332,7 +333,6 @@ void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
 Status CreateTRTNode(const ConversionParams& params,
                      const std::vector<EngineInfo>& infos, int pos,
                      int max_batch_size, Graph* graph,
-                     nvinfer1::IGpuAllocator* alloc,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
   std::vector<tensorflow::TensorShapeProto> input_shape_protos;
@@ -428,16 +428,30 @@ Status CreateTRTNode(const ConversionParams& params,
   // Build the engine and get its serialized representation.
   string segment_string;
   if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+    std::pair<int, Allocator*> device_allocator =
+        GetDeviceAndAllocator(params, info);
+    int cuda_device_id = 0;
+    std::unique_ptr<TRTBaseAllocator> trt_allocator;
+    if (device_allocator.first >= 0) {
+      cuda_device_id = device_allocator.first;
+      trt_allocator.reset(new TRTDeviceAllocator(device_allocator.second));
+    } else {
+      // The value in trt_allocator is a nullptr and cudamalloc will be used.
+      LOG_WARNING_WITH_PREFIX << "Can't identify the cuda device. Running on "
+                                 "device 0 and use cudamalloc as an allocator";
+    }
+    cudaSetDevice(cuda_device_id);
+
     auto trt_logger = GetLoggerRegistry()->LookUp(params.trt_logger_name);
-    // Create static engine for fp32/fp16 mode.
+    // Create static engines with precision_mode fp32/fp16.
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
-    // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def,
         calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
         max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
-        alloc, /*calibrator=*/nullptr, &engine, info.use_calibration,
-        params.use_implicit_batch, /*convert_successfully=*/nullptr,
+        trt_allocator.get(), /*calibrator=*/nullptr, &engine,
+        info.use_calibration, params.use_implicit_batch,
+        /*convert_successfully=*/nullptr,
         /*profile=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
@@ -793,13 +807,27 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     }
   }
 
-  // Create a TRT node for each segment using its EngineInfo.
-  int old_cuda_device = 0;
-  auto err = cudaGetDevice(&old_cuda_device);
-  if (err != cudaSuccess) {
-    LOG(ERROR) << "Couldn't get current device: " << cudaGetErrorString(err);
+  // Save the cuda device if we may need to switch to another cuda device to
+  // build static engines.
+  absl::optional<int> old_cuda_device = absl::nullopt;
+  if (!params.is_dyn_op) {
+    int cuda_device_id;
+    cudaError_t cuda_error = cudaGetDevice(&cuda_device_id);
+    if (cuda_error != cudaSuccess) {
+      LOG_WARNING_WITH_PREFIX << "Couldn't get current device: "
+                              << cudaGetErrorString(cuda_error);
+    } else {
+      VLOG(1) << "Current cuda device is " << cuda_device_id;
+      old_cuda_device = cuda_device_id;
+    }
   }
-  VLOG(1) << "Current cuda device is " << old_cuda_device;
+
+  auto restore_cuda_device = gtl::MakeCleanup([old_cuda_device] {
+    if (old_cuda_device.has_value()) {
+      cudaSetDevice(old_cuda_device.value());
+    }
+  });
+
   std::vector<Node*> engine_nodes;
   engine_nodes.resize(engine_segments.size());
   for (int i = 0; i < engine_segments.size(); ++i) {
@@ -813,24 +841,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
         2.0;
     VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
             << engine.engine_name;
-    // The allocator is used to build the engine. The build and the built engine
-    // will be destroyed after we get the serialized engine string, so it's fine
-    // to use unique_ptr here.
-    std::unique_ptr<TRTBaseAllocator> alloc;
-    auto device_alloc = GetDeviceAndAllocator(params, engine);
-    int cuda_device_id = 0;
-    if (device_alloc.first >= 0) {
-      cuda_device_id = device_alloc.first;
-      alloc.reset(new TRTDeviceAllocator(device_alloc.second));
-    } else {
-      // Setting allocator as nullptr should get revert to the cudamalloc
-      LOG_WARNING_WITH_PREFIX
-          << "Can't identify the cuda device. Running on device 0 ";
-    }
-    cudaSetDevice(cuda_device_id);
-    auto status =
-        CreateTRTNode(params, engine_segments, i, params.max_batch_size, &graph,
-                      alloc.get(), &engine_nodes);
+    auto status = CreateTRTNode(params, engine_segments, i,
+                                params.max_batch_size, &graph, &engine_nodes);
 
     string msg = StrCat("segment ", i, " consisting of ",
                         converted_segments.at(i).size(), " nodes by ",
@@ -859,7 +871,6 @@ Status ConvertAfterShapes(const ConversionParams& params) {
       }
     }
   }
-  cudaSetDevice(old_cuda_device);
   graph.ToGraphDef(params.output_graph_def);
   VLOG(1) << "Returning from conversion";
   return Status::OK();

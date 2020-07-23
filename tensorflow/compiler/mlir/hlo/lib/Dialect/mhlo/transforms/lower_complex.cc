@@ -51,7 +51,7 @@ class LowerComplex : public PassWrapper<LowerComplex, FunctionPass> {
 }  // end anonymous namespace
 
 namespace mlir {
-namespace hlo {
+namespace mhlo {
 namespace {
 
 #include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_lower_complex.inc"
@@ -62,14 +62,14 @@ void PopulateComplexLoweringPatterns(MLIRContext* context,
                                      OwningRewritePatternList* patterns) {
   populateWithGenerated(context, patterns);
 }
-}  // end namespace hlo
+}  // end namespace mhlo
 }  // end namespace mlir
 
 // Lowers the complex operations that can be represented using other operations.
 void LowerComplex::runOnFunction() {
   // Add lowering patterns to the list.
   OwningRewritePatternList patterns;
-  mlir::hlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
+  mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
   applyPatternsAndFoldGreedily(getFunction(), patterns);
 }

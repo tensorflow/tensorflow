@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
@@ -179,7 +180,7 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<LogisticExpander>(
         /*expansion_type=*/LogisticExpansionType::kExp);
-
+    pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicPadder>();
 
     {
@@ -537,10 +538,10 @@ static Status CompileModuleToLlvmIrImpl(
       // computation.
       // * For each visit of these HloInstructions, either none or one Thunk
       // will be returned.
-      // * If there is a thunk returned, thunk->hlo_instruction() equals the
+      // * If there is a thunk returned, thunk->hlo_instruction_ equals the
       // input HloInstruction*.
       // * A returned thunk may contain other sub-thunks. A sub-thunk may or may
-      // not have an associated hlo_instruction().
+      // not have an associated hlo_instruction_.
       TF_RET_CHECK(thunks->size() <= 1) << instruction->ToString();
       if (!thunks->empty()) {
         auto thunk = std::move(thunks->front());

@@ -3591,8 +3591,7 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
   pm.addPass(
       mlir::tf_saved_model::CreateLiftVariablesPass(bundle_.GetSession()));
   if (mlir::failed(pm.run(*module_)))
-    return diag_handler.Combine(
-        errors::Internal("failed to lifting variables."));
+    return diag_handler.Combine(errors::Internal("Failed to lift variables."));
 
   return Status::OK();
 }

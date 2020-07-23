@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 // The cmd line flag to turn on/off Tf.Text API fusion.
@@ -56,8 +58,10 @@ namespace TFL {
 namespace {
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
-constexpr char kTfTextAPIPRefix[] = "tftext:";
+constexpr char kTFTextAPIPrefix[] = "tftext:";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
+
+using mlir::TF::FuncAttr;
 
 // Abstracts the conversion of the embedded lookup composite function.
 class ConvertEmbeddedLookupFunc {
@@ -161,7 +165,9 @@ class PrepareCompositeFunctionsPass
   explicit PrepareCompositeFunctionsPass() {}
 
  private:
+  // TODO(b/160915525): Consolidate FuncAttr and StringAttr into one.
   void ConvertTFImplements(FuncOp func, StringAttr attr);
+  void ConvertTFImplementsWithAttributes(FuncOp func, FuncAttr attr);
   void ConvertTFAPIImplements(FuncOp func, StringAttr attr, ModuleOp module);
   void runOnOperation() override;
 };
@@ -204,6 +210,18 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
   }
 }
 
+void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
+    FuncOp func, FuncAttr attr) {
+  auto api_name = attr.GetName().getLeafReference();
+  bool enable_fuse_tftext =
+      fuse_tftext_flag || IsTFTextRegistered(tensorflow::OpRegistry::Global());
+  if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
+    if (failed(ConvertTFTextAPI(func, api_name, attr))) {
+      return signalPassFailure();
+    }
+  }
+}
+
 LogicalResult CheckOutputConsumer(
     Operation* call_op, int expected_num_outputs,
     llvm::DenseSet<int> expected_consumer_indices) {
@@ -220,21 +238,26 @@ LogicalResult CheckOutputConsumer(
 }
 
 LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
-  bool check_failed = false;
   for (auto func : module.getOps<FuncOp>()) {
-    func.walk([&](Operation* op) {
-      auto call_op = dyn_cast_or_null<CallOpInterface>(op);
-      if (call_op && op->getAttrOfType<SymbolRefAttr>("f").getRootReference() ==
-                         lstm_func.getName()) {
-        // Keras LSTM have 5 outputs.
-        // We should make sure only the first or the second output are consumed.
-        if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
-          check_failed = true;
+    auto result = func.walk([&](Operation* op) {
+      if (auto call_op = dyn_cast<CallOpInterface>(op)) {
+        CallInterfaceCallable callable = call_op.getCallableForCallee();
+        if (auto sym = callable.dyn_cast<SymbolRefAttr>()) {
+          if (sym.getRootReference() == lstm_func.getName()) {
+            // Keras LSTM have 5 outputs.
+            // We should make sure only the first or the second output are
+            // consumed.
+            if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
+              return WalkResult::interrupt();
+          }
+        }
       }
+      return WalkResult::advance();
     });
+
+    if (result.wasInterrupted()) return failure();
   }
 
-  if (check_failed) return failure();
   return success();
 }
 
@@ -256,26 +279,27 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
       return signalPassFailure();
-  } else if (fuse_tftext_flag ||
-             IsTfTextRegistered(tensorflow::OpRegistry::Global())) {
-    if (attr.getValue().startswith(kTfTextAPIPRefix)) {
-      if (failed(ConvertTFTextAPI(func, attr.getValue()))) {
-        return signalPassFailure();
-      }
-    }
   }
 }
 
 void PrepareCompositeFunctionsPass::runOnOperation() {
   auto module = getOperation();
   for (auto func : module.getOps<FuncOp>()) {
-    // We have two kinds of implements:
-    // 1) tf._implements.
-    // 2) tf.api_implements.
+    // We have three kinds of implements:
+    // 1) tf._implements, with string attributes.
+    // 2) tf._implements, with proto attributes.
+    // 3) tf.api_implements.
     // We need to handle them separately.
-    auto tf_implements_attr = func.getAttrOfType<StringAttr>(kTFImplements);
+    auto tf_implements_attr_str = func.getAttrOfType<StringAttr>(kTFImplements);
+    if (tf_implements_attr_str) {
+      ConvertTFImplements(func, tf_implements_attr_str);
+      continue;
+    }
+
+    auto tf_implements_attr = func.getAttrOfType<FuncAttr>(kTFImplements);
     if (tf_implements_attr) {
-      ConvertTFImplements(func, tf_implements_attr);
+      ConvertTFImplementsWithAttributes(func, tf_implements_attr);
+      continue;
     }
 
     auto tf_api_implements_attr =

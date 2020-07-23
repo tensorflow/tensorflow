@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -362,7 +363,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
     // Check if caller has disabled compilation. Set using
     // internal::ScopedTpuCompileDisabler.
-    if (!IsTpuCompilationEnabled()) {
+    if (!UtilApiFn()->TpuCompile_IsTpuCompilationEnabledFn()) {
       const string error_msg = strings::StrCat(
           "[TpuCompilationDisabled]: Compilation cache miss, but compilation "
           "disabled, session_name(",

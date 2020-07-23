@@ -83,8 +83,8 @@ class DynamicPadderTest : public HloTestBase {
     return module;
   }
 
-  StatusOr<bool> RunPadder() {
-    DynamicPadder padder(/*slice_dynamic_output=*/true,
+  StatusOr<bool> RunPadder(bool slice_dynamic_output = false) {
+    DynamicPadder padder(/*slice_dynamic_output=*/slice_dynamic_output,
                          CustomCallDynamicDimensionInference,
                          OpHasDynamismSupport);
     return padder.Run(module_.get());
@@ -162,7 +162,7 @@ ENTRY main {
 
   module_ = GetHloModule(hlo_text);
 
-  TF_ASSERT_OK(RunPadder().status());
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   // After rewrite, we should have :
   //
   //   param
@@ -218,7 +218,7 @@ ENTRY main {
 
   module_ = GetHloModule(hlo_text);
 
-  TF_ASSERT_OK(RunPadder().status());
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   // After rewrite, we should have :
   //
   //   param
@@ -654,26 +654,16 @@ XLA_TEST_F(ExecutionTest, DynamicConcat) {
   const string hlo_text = R"(
 HloModule DynamicConcat
 
-update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
-  lhs = s32[] parameter(0)
-  rhs = s32[] parameter(1)
-  ROOT add = s32[] add(lhs, rhs)
-}
-
 ENTRY main {
   param_0 = s32[3] parameter(0)
   param_1 = s32[3] parameter(1)
   param_2 = s32[3] parameter(2)
   size = s32[] constant(2)
-  param_padded_0 = s32[3] set-dimension-size(param_0, size), dimensions={0}
-  param_padded_2 = s32[3] set-dimension-size(param_2, size), dimensions={0}
-  %concatenate = s32[9]
-    concatenate(s32[3] param_padded_0, s32[3] param_1, s32[3] param_padded_2),
+  param_padded_0 = s32[<=3] set-dimension-size(param_0, size), dimensions={0}
+  param_padded_2 = s32[<=3] set-dimension-size(param_2, size), dimensions={0}
+  ROOT %concatenate = s32[9]
+    concatenate(s32[<=3] param_padded_0, s32[<=3] param_1, s32[<=3] param_padded_2),
     dimensions={0}
-  init = s32[] constant(0)
-  ROOT reduce = s32[] reduce(concatenate, init),
-      dimensions={0},
-      to_apply=update_s32
 }
 )";
 
@@ -686,10 +676,10 @@ ENTRY main {
       LiteralUtil::CreateR1<int32>({6, 7, -1});  // Dynamic operand.
   auto module = GetHloModule(hlo_text);
 
-  Literal result =
-      PadAndExecute(std::move(module), {&operand_0, &operand_1, &operand_2});
-
-  Literal expected = LiteralUtil::CreateR0<int32>(28);
+  Literal result = PadAndExecute(std::move(module),
+                                 {&operand_0, &operand_1, &operand_2}, false);
+  result.SetDynamicSize(0, 7);
+  Literal expected = LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6, 7});
 
   EXPECT_EQ(result, expected);
 }

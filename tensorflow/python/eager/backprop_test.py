@@ -288,8 +288,8 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       tf_opt = training.GradientDescentOptimizer(0.1)
       tf_embedding.initializer.run()
 
-      self.assertAllClose(tf_grad.indices.eval(), grad.indices)
-      self.assertAllClose(tf_grad.values.eval(), grad.values)
+      self.assertAllClose(tf_grad.indices, grad.indices)
+      self.assertAllClose(tf_grad.values, grad.values)
 
       tf_opt.apply_gradients([(tf_grad, tf_embedding)]).run()
       expected = self.evaluate(tf_embedding)

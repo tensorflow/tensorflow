@@ -109,9 +109,8 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  void* raw;
-  context->AllocatePersistentBuffer(context, sizeof(int), &raw);
-  return raw;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(int));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -246,7 +245,7 @@ TfLiteStatus EvalQuantizedPerChannel(
   RuntimeShape output_shape = GetTensorShape(output);
   RuntimeShape bias_shape = GetTensorShape(bias);
 
-  // Sanity check.
+  // Consistency check.
   TFLITE_DCHECK_LE(conv_params.activation.min, conv_params.activation.max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);

@@ -440,6 +440,10 @@ Status HloEvaluator::HandleSetDimensionSize(
   Literal result(set_dimension_size->shape());
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
          operand_literal.size_bytes());
+  const Literal& size_literal =
+      GetEvaluatedLiteralFor(set_dimension_size->operand(1));
+  result.SetDynamicSize(set_dimension_size->dimension(),
+                        size_literal.Get<int32>({}));
   evaluated_[set_dimension_size] = std::move(result);
   return Status::OK();
 }
