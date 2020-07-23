@@ -131,6 +131,7 @@ class LSTMOpModel : public SingleOpModel {
     SetBuiltinOp(
         BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
         CreateLSTMOptions(builder_, ActivationFunctionType_TANH,
+                          /*cell_clip=*/0.0f, /*proj_clip=*/0.0f,
                           LSTMKernelType_FULL, asymmetric_quantize_inputs)
             .Union());
 
