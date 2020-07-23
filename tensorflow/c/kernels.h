@@ -185,7 +185,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
     TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* val,
     TF_Status* status);
 
-// Returns the name of the user-defined NodeDef for this OpKernel. 
+// Returns the unique operation name for this OpKernel. 
 TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName( 
     TF_OpKernelConstruction* ctx); 
 
