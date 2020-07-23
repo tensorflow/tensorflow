@@ -49,7 +49,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.3.0-rc2'
+_VERSION = '2.3.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
