@@ -92,8 +92,40 @@ Status AddGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry);
 
-// Computes 2-layer Neural Network with Softmax Loss
+// Computes
+// y = inputs[0] * inputs[1]
+// return grad(y, {inputs[0], inputs[1]})
+Status MatMulGradModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
+
+// Computes 2-layer Neural Network with Softmax Loss.
 Status MNISTForwardModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
+
+// Computes MatMul with first matrix tranposed.
+Status MatMulTransposeModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
+
+// Test Model to verify ReluGrad functionality
+Status ReluGradModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
+
+// Test Model to verify SoftmaxGrad functionality
+Status SoftmaxLossGradModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
+
+// Test Model to verify Multi-grad functionality for MNIST
+Status MNISTGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry);

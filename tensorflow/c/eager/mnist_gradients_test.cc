@@ -200,40 +200,6 @@ TEST_P(CppGradients, TestAddGrad) {
   TF_DeleteTensor(result_tensor);
 }
 
-// Computes
-// y = inputs[0] * inputs[1]
-// return grad(y, {inputs[0], inputs[1]})
-Status MatMulGradModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch x.
-  tape->Watch(ToId(inputs[1]));  // Watch y.
-  std::vector<AbstractTensorHandle*> mm_outputs(1);
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, inputs, absl::MakeSpan(mm_outputs), 
-      "matmul0", /*transpose_a=*/false, /*transpose_b=*/false, registry));  // Compute x*y.
-  
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(mm_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
-  for (auto mm_output : mm_outputs) {
-    mm_output->Release();
-  }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
-  delete tape;
-  return Status::OK();
-}
-
 
 TEST_P(CppGradients, TestMatMulGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -710,38 +676,6 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   
 }
 
-// Test Model to verify ReluGrad functionality
-Status ReluGradModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
- 
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch X
-  std::vector<AbstractTensorHandle*> relu_outputs(1);
-  TF_RETURN_IF_ERROR(Relu(ctx, tape, inputs, absl::MakeSpan(relu_outputs), 
-      "relu0", registry));  // Relu(X)
-  
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(relu_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
-  
-  for (auto relu_output : relu_outputs) {
-    relu_output->Release();
-  }
-
-  outputs[0] = out_grads[0];
-  delete tape;
-  return Status::OK();
-}
-
 TEST_P(CppGradients, TestReluGrad) {
 
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -794,40 +728,6 @@ TEST_P(CppGradients, TestReluGrad) {
   TF_DeleteTensor(dX_tensor);
 }
 
-// Test Model to verify SoftmaxGrad functionality
-Status SoftmaxLossGradModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
- 
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch scores.
-  tape->Watch(ToId(inputs[1]));  // Watch labels.
-  std::vector<AbstractTensorHandle*> sm_outputs(2);
-  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, inputs,
-                    absl::MakeSpan(sm_outputs), "softmax0", registry));  // Compute x*y.
-  
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(sm_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
-  
-  for (auto sm_output : sm_outputs) {
-    sm_output->Release();
-  }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
-  delete tape;
-  return Status::OK();
-
-}
-
 
 TEST_P(CppGradients, TestSoftmaxLossGrad) {
 
@@ -864,6 +764,7 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
    * tape.watch(labels)
    * loss = SoftmaxLoss(X, labels)
    * outputs = tape.gradient(loss, [X, labels])
+   * 
    *
    */ 
 
@@ -894,62 +795,6 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   TF_DeleteTensor(dX_tensor);
 }
 
-Status MNISTGradModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  
-  AbstractTensorHandle* X = inputs[0];
-  AbstractTensorHandle* W1 = inputs[1];
-  AbstractTensorHandle* W2 = inputs[2];
-  AbstractTensorHandle* y_labels = inputs[3];                    
-
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/true);
-  tape->Watch(ToId(X));  // Watch X.
-  tape->Watch(ToId(W1));  // Watch W1.
-  tape->Watch(ToId(W2));  // Watch W1.
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {X, W1}, absl::MakeSpan(temp_outputs), 
-      "matmul0", /*transpose_a=*/false, /*transpose_b=*/false, registry));  // Compute X*W1
-  
-  AbstractTensorHandle* mm = temp_outputs[0];
-
-  TF_RETURN_IF_ERROR(Relu(ctx, tape, {mm}, absl::MakeSpan(temp_outputs),  // Relu(X*W1)
-      "relu0", registry)); 
-
-  AbstractTensorHandle* hidden = temp_outputs[0];
-  
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {hidden, W2}, absl::MakeSpan(temp_outputs), 
-      "matmul1", /*transpose_a=*/false, /*transpose_b=*/false, registry));  // W2*Relu(X*W1)
-  
-  AbstractTensorHandle* scores = temp_outputs[0];
-  
-  temp_outputs.resize(2);
-  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs), 
-      "softmaxloss", registry));  // W2*Relu(X*W1)
-
-  AbstractTensorHandle* loss = temp_outputs[0];
-
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-  
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(loss)},
-      /*source_tensor_ids=*/{ToId(W1), ToId(W2)},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
-  
-  for (auto temp_output : temp_outputs) {
-    temp_output->Release();
-  }
-
-  outputs[0] = out_grads[0];  // dW1
-  outputs[1] = out_grads[1];  // dW2
-  delete tape;
-  return Status::OK();
-}
 
 TEST_P(CppGradients, TestMNISTGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -993,10 +838,12 @@ TEST_P(CppGradients, TestMNISTGrad) {
 
   /* Pseudo-code:
    *
-   * tape.watch(A)
-   * tape.watch(B)
-   * mm = AB
-   * hidden = Relu(AB)
+   * tape.watch(W1)
+   * tape.watch(W2)
+   * mm = X*W1
+   * hidden = Relu(mm)
+   * scores = W2*hidden
+   * loss = SoftmaxLoss(scores, y)
    * outputs = tape.gradient(hidden, [A, B])
    *
    */
