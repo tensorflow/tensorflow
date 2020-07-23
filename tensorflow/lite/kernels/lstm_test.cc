@@ -300,9 +300,10 @@ class LSTMOpModel : public SingleOpModel {
 
 // Parameters:
 // std::get<0>(GetParam()) => weight_type
-// std::get<1>(GetParam()) => asymmetric_quantize_inputs
+// std::get<1>(GetParam()) => model_has_legacy_20_inputs
+// std::get<2>(GetParam()) => asymmetric_quantize_inputs
 class BaseLstmOpTest
-    : public ::testing::TestWithParam<std::tuple<TensorType, bool>> {
+    : public ::testing::TestWithParam<std::tuple<TensorType, bool, bool>> {
  protected:
   // Weights of the LSTM model. Some are optional.
   std::vector<float> input_to_input_weights_;
@@ -450,8 +451,7 @@ class NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest
   }
 };
 
-TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest,
-       TestWith20Inputs) {
+TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, Test) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
@@ -459,8 +459,10 @@ TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest,
   const int n_output = 4;
 
   TensorType weight_type;
+  bool model_has_legacy_20_inputs;
   bool asymmetric_quantize_inputs;
-  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
+  std::tie(weight_type, model_has_legacy_20_inputs,
+           asymmetric_quantize_inputs) = GetParam();
 
   // TODO(b/158205028): Fix this test if using NN-API.
   if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
@@ -471,38 +473,7 @@ TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest,
                    /*use_cifg=*/false, /*use_peephole=*/false,
                    /*use_projection_weights=*/false,
                    /*use_projection_bias=*/false, weight_type,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   asymmetric_quantize_inputs);
-
-  static const auto* tolerance_per_type =
-      new std::map<TensorType, float>{{TensorType_FLOAT32, 0.00001f},
-                                      {TensorType_UINT8, 0.0157651f},
-                                      {TensorType_INT8, 0.0157651f}};
-  VerifyGoldens(&lstm, tolerance_per_type->at(weight_type));
-}
-
-TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest,
-       TestWith24Inputs) {
-  const int n_batch = 1;
-  const int n_input = 2;
-  // n_cell and n_output have the same size when there is no projection.
-  const int n_cell = 4;
-  const int n_output = 4;
-
-  TensorType weight_type;
-  bool asymmetric_quantize_inputs;
-  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
-
-  // TODO(b/158205028): Fix this test if using NN-API.
-  if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
-    return;
-  }
-
-  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
-                   /*use_cifg=*/false, /*use_peephole=*/false,
-                   /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false, weight_type,
-                   /*model_has_legacy_20_inputs=*/false,
+                   model_has_legacy_20_inputs,
                    /*is_layer_norm=*/false, asymmetric_quantize_inputs);
 
   static const auto* tolerance_per_type =
@@ -568,8 +539,10 @@ TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, Test) {
   const int n_output = 4;
 
   TensorType weight_type;
+  bool model_has_legacy_20_inputs;
   bool asymmetric_quantize_inputs;
-  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
+  std::tie(weight_type, model_has_legacy_20_inputs,
+           asymmetric_quantize_inputs) = GetParam();
 
   // TODO(b/158205028): Fix this test if using NN-API.
   if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
@@ -580,7 +553,7 @@ TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, Test) {
                    /*use_cifg=*/true, /*use_peephole=*/true,
                    /*use_projection_weights=*/false,
                    /*use_projection_bias=*/false, weight_type,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
+                   model_has_legacy_20_inputs, /*is_layer_norm=*/false,
                    asymmetric_quantize_inputs);
 
   static const auto* tolerance_per_type =
@@ -1197,8 +1170,10 @@ TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, Test) {
   const int n_output = 16;
 
   TensorType weight_type;
+  bool model_has_legacy_20_inputs;
   bool asymmetric_quantize_inputs;
-  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
+  std::tie(weight_type, model_has_legacy_20_inputs,
+           asymmetric_quantize_inputs) = GetParam();
 
   // TODO(b/158205028): Fix this test if using NN-API.
   if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
@@ -1209,7 +1184,7 @@ TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, Test) {
                    /*use_cifg=*/false, /*use_peephole=*/true,
                    /*use_projection_weights=*/true,
                    /*use_projection_bias=*/false, weight_type,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
+                   model_has_legacy_20_inputs, /*is_layer_norm=*/false,
                    asymmetric_quantize_inputs);
 
   static const auto* tolerance_per_type = new std::map<TensorType, float>{
@@ -1306,8 +1281,9 @@ TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, Test) {
   const int n_output = 3;
 
   TensorType weight_type;
+  // Layer normalization needs 24 inputs.
   bool asymmetric_quantize_inputs;
-  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
+  std::tie(weight_type, std::ignore, asymmetric_quantize_inputs) = GetParam();
 
   // TODO(b/158205028): Fix this test if using NN-API.
   if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
@@ -1394,8 +1370,9 @@ TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, Test) {
   const int n_output = 3;
 
   TensorType weight_type;
+  // Layer normalization needs 24 inputs.
   bool asymmetric_quantize_inputs;
-  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
+  std::tie(weight_type, std::ignore, asymmetric_quantize_inputs) = GetParam();
 
   // TODO(b/158205028): Fix this test if using NN-API.
   if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
@@ -2228,7 +2205,7 @@ TEST(LstmOpTest, InvalidTypes) {
       ::testing::Combine(                                         \
           ::testing::Values(TensorType_FLOAT32, TensorType_UINT8, \
                             TensorType_UINT8),                    \
-          ::testing::Bool()))
+          ::testing::Bool(), ::testing::Bool()))
 
 QUANTIZE_PARAMETER_TEST(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest);
 QUANTIZE_PARAMETER_TEST(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest);
