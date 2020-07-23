@@ -25,8 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -40,7 +39,7 @@ _VARIANCE_NAME = 'variance'
 
 # TODO(momernick): Find a good example of normalization?
 @keras_export('keras.layers.experimental.preprocessing.Normalization', v1=[])
-class Normalization(CombinerPreprocessingLayer):
+class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Feature-wise normalization of the data.
 
   This layer will coerce its inputs into a distribution centered around
@@ -91,6 +90,7 @@ class Normalization(CombinerPreprocessingLayer):
 
     super(Normalization, self).__init__(
         combiner=_NormalizingCombiner(axis), dtype=dtype, **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Normalization')
 
     if 0 in axis:
       raise ValueError('The argument \'axis\' may not be 0.')
@@ -176,7 +176,7 @@ class Normalization(CombinerPreprocessingLayer):
     super(Normalization, self).set_weights(weights)
 
 
-class _NormalizingCombiner(Combiner):
+class _NormalizingCombiner(base_preprocessing_layer.Combiner):
   """Combiner for the Normalization preprocessing layer.
 
   This class encapsulates the computations for finding the mean and variance
