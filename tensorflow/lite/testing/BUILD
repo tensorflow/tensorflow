@@ -533,6 +533,7 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/lstm.bin",
     ],
+    tags = ["no_mac"],  # b/161990368
     deps = [
         ":test_tflite_lib",
         "//tensorflow/core:tflite_portable_logging",
