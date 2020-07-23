@@ -47,7 +47,6 @@ struct Params {
   }
 }; 
 
-
 // dummy functions used for kernel registration 
 void* ScalarSummaryOp_Create(TF_OpKernelConstruction* ctx) {
   return nullptr; 
@@ -66,7 +65,7 @@ tensorflow::string SingleTag(TF_Tensor* tags);
 template<typename T>
 void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   Params params(ctx);
-  if (TF_GetCode(params.status) != TF_OK){ 
+  if (TF_GetCode(params.status) != TF_OK) { 
     TF_OpKernelContext_Failure(ctx, params.status);
     return; 
   }
@@ -167,6 +166,5 @@ TF_ATTRIBUTE_UNUSED bool  IsScalarSummaryOpKernelRegistered = []() {
     RegisterScalarSummaryOpKernel<double>();                                  
   }                                                                           
   return true;                                                                
-}();          
-
-} // namespace
+}();        
+} // namespace  

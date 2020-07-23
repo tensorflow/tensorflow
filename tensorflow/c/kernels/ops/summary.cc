@@ -22,10 +22,6 @@ static void scalar_summary_shape_inference_fn(TF_ShapeInferenceContext* ctx,
   TF_SetStatus(status, TF_OK, ""); 
   TF_ShapeHandle* result = TF_ShapeInferenceContextScalar(ctx);
   TF_ShapeInferenceContextSetOutput(ctx, 0, result, status);
-  if (TF_GetCode(status) != TF_OK) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT, 
-        "Error in setting output shape inference");
-  }
   TF_DeleteShapeHandle(result);
 }
 
