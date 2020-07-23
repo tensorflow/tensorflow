@@ -215,8 +215,7 @@ def check_validation_split_arg(validation_split, subset, shuffle, seed):
   """Raise errors in case of invalid argument values.
 
   Args:
-    shuffle: Whether to shuffle the data. Default: True.
-        If set to False, sorts the data in alphanumeric order.
+    shuffle: Whether to shuffle the data. Either True or False.
     seed: Optional random seed for shuffling and transformations.
     validation_split: Optional float between 0 and 1,
         fraction of data to reserve for validation.
