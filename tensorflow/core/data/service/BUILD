@@ -171,6 +171,7 @@ cc_library(
     hdrs = ["test_cluster.h"],
     deps = [
         ":server_lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
     ],
@@ -213,6 +214,7 @@ cc_library(
     deps = [
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         tf_grpc_cc_dependency(),
     ],
@@ -254,6 +256,7 @@ cc_library(
         ":grpc_util",
         ":grpc_worker_impl",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         tf_grpc_cc_dependency(),
     ],
