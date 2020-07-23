@@ -42,3 +42,29 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "host_compute_ops",
+    srcs = [
+        "host_compute_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "topk_ops",
+    srcs = [
+        "topk_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
