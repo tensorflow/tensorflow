@@ -688,7 +688,7 @@ void* MicroAllocator::AllocatePersistentBuffer(size_t bytes) {
 TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
                                                          size_t bytes,
                                                          int* buffer_idx) {
-  // A sanity check to make sure scratch_buffer_handles_ is contiguous i.e.
+  // A consistency check to make sure scratch_buffer_handles_ is contiguous i.e.
   // scratch_buffer_handles_ is pointing to the last allocation from memory
   // allocator.
   if (scratch_buffer_handles_ != nullptr &&
