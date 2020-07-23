@@ -28,7 +28,7 @@ tensorflow/lite/micro/kernels/xtensa_hifi/
 
 A scratch memory allocation is needed for the HiFi optimized kernels. This
 allocation is currently done on stack and it's size can be controlled by
-defining 'XTENSA_NNLIB_MAX_SCRATCH_SIZE' approproately in the file
+defining 'XTENSA_NNLIB_MAX_SCRATCH_SIZE' appropriately in the file
 'tensorflow/lite/micro/tools/make/ext_libs/xtensa_hifi_nn_library.inc
 
 The files containing the HiFi optimized NN kernels are present in this folder:

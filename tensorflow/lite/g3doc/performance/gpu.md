@@ -93,7 +93,7 @@ target 'YourProjectName'
 
 </section>
 
-From TensorFlow Lite 2.1.0, GPU delegate is inlcuded in the `TensorFlowLiteC`
+From TensorFlow Lite 2.1.0, GPU delegate is included in the `TensorFlowLiteC`
 pod. You can choose between `TensorFlowLiteC` and `TensorFlowLiteSwift`
 depending on the language.
 

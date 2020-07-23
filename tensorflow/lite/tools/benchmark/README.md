@@ -82,9 +82,9 @@ Note when `use_legacy_nnapi` is selected, this parameter won't work.
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
 *   `nnapi_execution_preference`: `str` (default="")
 *   `nnapi_execution_priority`: `str` (default="") \
-    Note this requires Anroid 11+.
+    Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
-    Note this requires Anroid 10+.
+    Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=false)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 

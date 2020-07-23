@@ -225,7 +225,7 @@ Coinciding with this change, new releases of [TensorFlow's Docker images](https:
         `Strategy.extended.update` and `Strategy.extended.update_non_slot`.
     *   Experimental support for shape invariants has been enabled in
         `tf.function`. See the API docs for
-        `tf.autograph.experimental.set_loop_options` for additonal info.
+        `tf.autograph.experimental.set_loop_options` for additional info.
     *   AutoGraph error messages now exclude frames corresponding to APIs
         internal to AutoGraph.
     *   Improve shape inference for `tf.function` input arguments to unlock more
@@ -308,7 +308,7 @@ Coinciding with this change, new releases of [TensorFlow's Docker images](https:
         also deterministic back-prop of bias-addition in Keras layers) to
         include when XLA JIT compilation is enabled.
     *   Fix problem, when running on a CUDA GPU and when either environment
-        variable `TF_DETERMINSTIC_OPS` or environment variable
+        variable `TF_DETERMINISTIC_OPS` or environment variable
         `TF_CUDNN_DETERMINISTIC` is set to "true" or "1", in which some layer
         configurations led to an exception with the message "No algorithm
         worked!"
@@ -372,7 +372,7 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
 * `tf.debugging`
   * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to help debugging the root causes of issues involving infinities and `NaN`s.
 * `tf.distribute`
-  * Custom training loop support on TPUs and TPU pods is avaiable through `strategy.experimental_distribute_dataset`, `strategy.experimental_distribute_datasets_from_function`, `strategy.experimental_run_v2`, `strategy.reduce`.
+  * Custom training loop support on TPUs and TPU pods is available through `strategy.experimental_distribute_dataset`, `strategy.experimental_distribute_datasets_from_function`, `strategy.experimental_run_v2`, `strategy.reduce`.
   * Support for a global distribution strategy through `tf.distribute.experimental_set_strategy(),` in addition to `strategy.scope()`.
 * `TensorRT`
   * [TensorRT 6.0](https://developer.nvidia.com/tensorrt#tensorrt-whats-new) is now supported and enabled by default. This adds support for more TensorFlow ops including Conv3D, Conv3DBackpropInputV2, AvgPool3D, MaxPool3D, ResizeBilinear, and ResizeNearestNeighbor. In addition, the TensorFlow-TensorRT python conversion API is exported as `tf.experimental.tensorrt.Converter`.
