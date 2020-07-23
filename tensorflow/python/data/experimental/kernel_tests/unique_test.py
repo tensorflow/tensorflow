@@ -81,30 +81,57 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.graph_only_combinations())
   def testTypeMismatch(self):
 
-    # raises InternalError when dtypes don't match.
-    with self.assertRaises(errors.InternalError):
-      self._testSimpleHelper(dtypes.string, [
-          (["hello", 1, 2, 1], ["hello"]),
-          (["hello", "world", 1], ["hello", "world"]),
-          (["hello", "hello", "world", 1, 2], ["hello", "world"]),
-          (["hello", "world", 1, 1, 2], ["hello", "world"]),
-          ([1, 2, "hello"], ["hello"]),
-          ([1, 1, 2, 3, 3, "hello"], ["hello"]),
-      ])
+    # Placeholder values are needed to fill in the expected array with dummy value so that,
+    # when the dataset generates the element and observes that there is a type mismatch,
+    # it raises the proper error and not an OutOfRangeError which occurs when it is unable
+    # to fetch an element to compare from the expected array in the first place.
+    string_placeholder = ""
+    int32_placeholder = 0
+    int64_placeholder = 0
 
-      self._testSimpleHelper(dtypes.int32, [
-          ([1, "hello", "world"], [1]),
-          ([1, 2, 1, "hello", "hello", "world"], [1, 2]),
-          (["hello", 1, 2], [1, 2]),
-          (["hello", 1, 1, 2, 3, 3], [1, 2, 3]),
-      ])
+    # raises InternalError when element type doesn't match with dtypes.string.
+    string_cases = [
+        (["hello", 1, 2, 1], ["hello"]),
+        (["hello", "world", 1], ["hello", "world"]),
+        (["hello", "hello", "world", 1, 2], ["hello", "world"]),
+        (["hello", "world", 1, 1, 2], ["hello", "world"]),
+        # In the following cases, when the first element (i.e 1) of the dataset is generated,
+        # it validates the type and immediately raises the error. This is unlike the above cases,
+        # wherein the dtype of the starting elements are as expected to start with,
+        # and the dataset has to loop until it reaches the incorrect dtype element.
+        # Until then we need to make sure that data with correct type has to match
+        # for testing purposes. Similar logic applies to dtype.int32 and dtype.64 as well.
+        ([1, 2, "hello"], [string_placeholder]),
+        ([1, 1, 2, 3, 3, "hello"], [string_placeholder]),
+    ]
 
-      self._testSimpleHelper(dtypes.int64, [
-          ([2, 3, "hello", "world"], [2, 3]),
-          ([2, 3, 3, "hello", "hello", "world"], [2, 3]),
-          (["hello", 2, 2], [2]),
-          (["hello", "hello", 1, 1, 2, 3], [1, 2, 3]),
-      ])
+    # handle each case independently so that an error raised by a single case doesn't interfere
+    # with the other ones. As per self._testSimpleHelper functionality.
+    for case in string_cases:
+      with self.assertRaises(errors.InternalError):
+        self._testSimpleHelper(dtypes.string, [case])
+
+    # raises InvalidArgumentError when element type doesn't match with dtypes.int32.
+    int32_cases = [
+        ([1, "hello", "world"], [1]),
+        ([1, 2, 1, "hello", "hello", "world"], [1, 2]),
+        (["hello", 1, 2], [int32_placeholder]),
+        (["hello", 1, 1, 2, 3, 3], [int32_placeholder]),
+    ]
+    for case in int32_cases:
+      with self.assertRaises(errors.InvalidArgumentError):
+        self._testSimpleHelper(dtypes.int32, [case])
+
+    # raises InvalidArgumentError when element type doesn't match with dtypes.int64.
+    int64_cases = [
+        ([2, 3, "hello", "world"], [2, 3]),
+        ([2, 3, 3, "hello", "hello", "world"], [2, 3]),
+        (["hello", 2, 2], [int64_placeholder]),
+        (["hello", "hello", 1, 1, 2, 3], [int64_placeholder]),
+    ]
+    for case in int64_cases:
+      with self.assertRaises(errors.InvalidArgumentError):
+        self._testSimpleHelper(dtypes.int64, [case])
 
 
 if __name__ == "__main__":
