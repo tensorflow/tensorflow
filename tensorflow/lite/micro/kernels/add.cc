@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
@@ -53,6 +54,10 @@ struct OpData {
   int32 input1_offset;
   int32 input2_offset;
   int32 output_offset;
+
+  // Used only for float evals:
+  float output_activation_min_f32;
+  float output_activation_max_f32;
 };
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
@@ -90,24 +95,28 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
+  } else if (output->type == kTfLiteFloat32) {
+    CalculateActivationRange(params->activation,
+                             &data->output_activation_min_f32,
+                             &data->output_activation_max_f32);
   }
 
   return kTfLiteOk;
 }
 
 void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
-             const OpData* data, const TfLiteTensor* input1,
-             const TfLiteTensor* input2, TfLiteTensor* output) {
-  float output_activation_min, output_activation_max;
-  CalculateActivationRange(params->activation, &output_activation_min,
-                           &output_activation_max);
+             const OpData* data, const TfLiteEvalTensor* input1,
+             const TfLiteEvalTensor* input2, TfLiteEvalTensor* output) {
   tflite::ArithmeticParams op_params;
-  SetActivationParams(output_activation_min, output_activation_max, &op_params);
-#define TF_LITE_ADD(opname)                                                   \
-  reference_ops::opname(op_params, GetTensorShape(input1),                    \
-                        GetTensorData<float>(input1), GetTensorShape(input2), \
-                        GetTensorData<float>(input2), GetTensorShape(output), \
-                        GetTensorData<float>(output))
+  SetActivationParams(data->output_activation_min_f32,
+                      data->output_activation_max_f32, &op_params);
+#define TF_LITE_ADD(opname)                                               \
+  reference_ops::opname(op_params, tflite::micro::GetTensorShape(input1), \
+                        tflite::micro::GetTensorData<float>(input1),      \
+                        tflite::micro::GetTensorShape(input2),            \
+                        tflite::micro::GetTensorData<float>(input2),      \
+                        tflite::micro::GetTensorShape(output),            \
+                        tflite::micro::GetTensorData<float>(output))
   if (data->requires_broadcast) {
     TF_LITE_ADD(BroadcastAdd4DSlow);
   } else {
@@ -118,9 +127,9 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
 
 TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
                               TfLiteAddParams* params, const OpData* data,
-                              const TfLiteTensor* input1,
-                              const TfLiteTensor* input2,
-                              TfLiteTensor* output) {
+                              const TfLiteEvalTensor* input1,
+                              const TfLiteEvalTensor* input2,
+                              TfLiteEvalTensor* output) {
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     tflite::ArithmeticParams op_params;
     op_params.left_shift = data->left_shift;
@@ -136,12 +145,15 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
     SetActivationParams(data->output_activation_min,
                         data->output_activation_max, &op_params);
     bool need_broadcast = reference_ops::ProcessBroadcastShapes(
-        GetTensorShape(input1), GetTensorShape(input2), &op_params);
-#define TF_LITE_ADD(type, opname, dtype)                             \
-  type::opname(op_params, GetTensorShape(input1),                    \
-               GetTensorData<dtype>(input1), GetTensorShape(input2), \
-               GetTensorData<dtype>(input2), GetTensorShape(output), \
-               GetTensorData<dtype>(output));
+        tflite::micro::GetTensorShape(input1),
+        tflite::micro::GetTensorShape(input2), &op_params);
+#define TF_LITE_ADD(type, opname, dtype)                         \
+  type::opname(op_params, tflite::micro::GetTensorShape(input1), \
+               tflite::micro::GetTensorData<dtype>(input1),      \
+               tflite::micro::GetTensorShape(input2),            \
+               tflite::micro::GetTensorData<dtype>(input2),      \
+               tflite::micro::GetTensorShape(output),            \
+               tflite::micro::GetTensorData<dtype>(output));
     if (output->type == kTfLiteInt8) {
       if (need_broadcast) {
         TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
@@ -189,9 +201,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData* data = static_cast<const OpData*>(node->user_data);
 
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input1 =
+      tflite::micro::GetEvalInput(context, node, kInputTensor1);
+  const TfLiteEvalTensor* input2 =
+      tflite::micro::GetEvalInput(context, node, kInputTensor2);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
     EvalAdd(context, node, params, data, input1, input2, output);
