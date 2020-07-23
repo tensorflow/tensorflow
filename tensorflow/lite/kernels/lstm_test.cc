@@ -294,7 +294,11 @@ class LSTMOpModel : public SingleOpModel {
   const TensorType weight_type_;
 };
 
-class BaseLstmOpTest : public ::testing::TestWithParam<bool> {
+// Parameters:
+// std::get<0>(GetParam()) => weight_type
+// std::get<1>(GetParam()) => asymmetric_quantize_inputs
+class BaseLstmOpTest
+    : public ::testing::TestWithParam<std::tuple<TensorType, bool>> {
  protected:
   // Weights of the LSTM model. Some are optional.
   std::vector<float> input_to_input_weights_;
@@ -324,7 +328,7 @@ class BaseLstmOpTest : public ::testing::TestWithParam<bool> {
   std::vector<std::vector<float>> lstm_golden_output_;
 
   // Compares output up to tolerance to the result of the lstm given the input.
-  void VerifyGoldens(LSTMOpModel* lstm, float tolerance = 1e-5) {
+  void VerifyGoldens(LSTMOpModel* lstm, float tolerance) {
     // Weights are set twice:
     // - The delegate, if used, needs to know the scales and zero-points of
     //   quantized tensors, which are computed dynamically when weights are set,
@@ -446,84 +450,66 @@ class NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest
   }
 };
 
-TEST_F(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, Float) {
+TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest,
+       TestWith20Inputs) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
   const int n_cell = 4;
   const int n_output = 4;
 
+  TensorType weight_type;
+  bool asymmetric_quantize_inputs;
+  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
+
+  // TODO(b/158205028): Fix this test if using NN-API.
+  if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
+    return;
+  }
+
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/false, /*use_peephole=*/false,
                    /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_FLOAT32,
+                   /*use_projection_bias=*/false, weight_type,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/false);
+                   asymmetric_quantize_inputs);
 
-  VerifyGoldens(&lstm);
+  static const auto* tolerance_per_type =
+      new std::map<TensorType, float>{{TensorType_FLOAT32, 0.00001f},
+                                      {TensorType_UINT8, 0.0157651f},
+                                      {TensorType_INT8, 0.0157651f}};
+  VerifyGoldens(&lstm, tolerance_per_type->at(weight_type));
 }
 
-TEST_F(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, With24Inputs) {
+TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest,
+       TestWith24Inputs) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
   const int n_cell = 4;
   const int n_output = 4;
 
+  TensorType weight_type;
+  bool asymmetric_quantize_inputs;
+  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
+
+  // TODO(b/158205028): Fix this test if using NN-API.
+  if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
+    return;
+  }
+
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/false, /*use_peephole=*/false,
                    /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_FLOAT32,
+                   /*use_projection_bias=*/false, weight_type,
                    /*model_has_legacy_20_inputs=*/false,
-                   /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/false);
+                   /*is_layer_norm=*/false, asymmetric_quantize_inputs);
 
-  VerifyGoldens(&lstm);
-}
-
-TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, HybridUint8) {
-  // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
-  const int n_batch = 1;
-  const int n_input = 2;
-  // n_cell and n_output have the same size when there is no projection.
-  const int n_cell = 4;
-  const int n_output = 4;
-
-  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
-                   /*use_cifg=*/false, /*use_peephole=*/false,
-                   /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_UINT8,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/GetParam());
-
-  VerifyGoldens(&lstm, /*tolerance=*/0.0157651);
-}
-
-TEST_P(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest, HybridInt8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
-    return;
-  }
-  const int n_batch = 1;
-  const int n_input = 2;
-  // n_cell and n_output have the same size when there is no projection.
-  const int n_cell = 4;
-  const int n_output = 4;
-
-  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
-                   /*use_cifg=*/false, /*use_peephole=*/false,
-                   /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_INT8,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/GetParam());
-
-  VerifyGoldens(&lstm, /*tolerance=*/0.0157651);
+  static const auto* tolerance_per_type =
+      new std::map<TensorType, float>{{TensorType_FLOAT32, 0.00001f},
+                                      {TensorType_UINT8, 0.0157651f},
+                                      {TensorType_INT8, 0.0157651f}};
+  VerifyGoldens(&lstm, tolerance_per_type->at(weight_type));
 }
 
 class Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest
@@ -574,65 +560,34 @@ class Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest
   }
 };
 
-TEST_F(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, Float) {
+TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, Test) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
   const int n_cell = 4;
   const int n_output = 4;
 
-  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
-                   /*use_cifg=*/true, /*use_peephole=*/true,
-                   /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_FLOAT32,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/false);
+  TensorType weight_type;
+  bool asymmetric_quantize_inputs;
+  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
 
-  VerifyGoldens(&lstm);
-}
-
-TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, HybridUint8) {
-  // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
-  if (SingleOpModel::GetForceUseNnapi()) {
+  // TODO(b/158205028): Fix this test if using NN-API.
+  if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
     return;
   }
-  const int n_batch = 1;
-  const int n_input = 2;
-  // n_cell and n_output have the same size when there is no projection.
-  const int n_cell = 4;
-  const int n_output = 4;
 
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/true, /*use_peephole=*/true,
                    /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_UINT8,
+                   /*use_projection_bias=*/false, weight_type,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/GetParam());
+                   asymmetric_quantize_inputs);
 
-  VerifyGoldens(&lstm, /*tolerance=*/0.03573);
-}
-
-TEST_P(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest, HybridInt8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
-    return;
-  }
-  const int n_batch = 1;
-  const int n_input = 2;
-  // n_cell and n_output have the same size when there is no projection.
-  const int n_cell = 4;
-  const int n_output = 4;
-
-  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
-                   /*use_cifg=*/true, /*use_peephole=*/true,
-                   /*use_projection_weights=*/false,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_INT8,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/GetParam());
-
-  VerifyGoldens(&lstm, /*tolerance=*/0.03573);
+  static const auto* tolerance_per_type =
+      new std::map<TensorType, float>{{TensorType_FLOAT32, 0.00001f},
+                                      {TensorType_UINT8, 0.03573f},
+                                      {TensorType_INT8, 0.03573f}};
+  VerifyGoldens(&lstm, tolerance_per_type->at(weight_type));
 }
 
 class NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest
@@ -1235,62 +1190,34 @@ class NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest
   }
 };
 
-TEST_F(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, Float) {
+TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, Test) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 20;
   const int n_output = 16;
 
-  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
-                   /*use_cifg=*/false, /*use_peephole=*/true,
-                   /*use_projection_weights=*/true,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_FLOAT32,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/false);
+  TensorType weight_type;
+  bool asymmetric_quantize_inputs;
+  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
 
-  VerifyGoldens(&lstm);
-}
-
-TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, HybridUint8) {
-  // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
-  if (SingleOpModel::GetForceUseNnapi()) {
+  // TODO(b/158205028): Fix this test if using NN-API.
+  if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
     return;
   }
-  const int n_batch = 2;
-  const int n_input = 5;
-  const int n_cell = 20;
-  const int n_output = 16;
 
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/false, /*use_peephole=*/true,
                    /*use_projection_weights=*/true,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_UINT8,
+                   /*use_projection_bias=*/false, weight_type,
                    /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/GetParam());
+                   asymmetric_quantize_inputs);
 
-  VerifyGoldens(&lstm, /*tolerance=*/0.00467);
-}
-
-TEST_P(NoCifg_Peephole_Projection_NoLayerNorm_LstmOpTest, HybridInt8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
-    return;
-  }
-  const int n_batch = 2;
-  const int n_input = 5;
-  const int n_cell = 20;
-  const int n_output = 16;
-
-  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
-                   /*use_cifg=*/false, /*use_peephole=*/true,
-                   /*use_projection_weights=*/true,
-                   /*use_projection_bias=*/false,
-                   /*weight_type=*/TensorType_INT8,
-                   /*model_has_legacy_20_inputs=*/true, /*is_layer_norm=*/false,
-                   /*asymmetric_quantize_inputs=*/GetParam());
-
-  VerifyGoldens(&lstm, /*tolerance=*/0.0015);
+  static const auto* tolerance_per_type = new std::map<TensorType, float>{
+      {TensorType_FLOAT32, 0.00001f},
+      {TensorType_UINT8, 0.00467f},
+      {TensorType_INT8, 0.0015f},
+  };
+  VerifyGoldens(&lstm, tolerance_per_type->at(weight_type));
 }
 
 class NoCifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
@@ -1372,62 +1299,33 @@ class NoCifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
   }
 };
 
-TEST_F(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, Float) {
+TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, Test) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
 
-  LSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/false, /*use_peephole=*/true,
-      /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false,
-      /*weight_type=*/TensorType_FLOAT32, /*model_has_legacy_20_inputs=*/false,
-      /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/false);
+  TensorType weight_type;
+  bool asymmetric_quantize_inputs;
+  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
 
-  VerifyGoldens(&lstm);
-}
-
-TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
-  // TODO(b/158205028): Fix this test if GetForceUseNnapi() && !GetParam().
-  if (SingleOpModel::GetForceUseNnapi()) {
+  // TODO(b/158205028): Fix this test if using NN-API.
+  if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
     return;
   }
-  const int n_batch = 2;
-  const int n_input = 5;
-  const int n_cell = 4;
-  const int n_output = 3;
 
-  LSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/false, /*use_peephole=*/true,
-      /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false,
-      /*weight_type=*/TensorType_UINT8, /*model_has_legacy_20_inputs=*/false,
-      /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
+  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                   /*use_cifg=*/false, /*use_peephole=*/true,
+                   /*use_projection_weights=*/true,
+                   /*use_projection_bias=*/false, weight_type,
+                   /*model_has_legacy_20_inputs=*/false,
+                   /*is_layer_norm=*/true, asymmetric_quantize_inputs);
 
-  VerifyGoldens(&lstm, /*tolerance=*/0.0010907);
-}
-
-TEST_P(NoCifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
-  if (SingleOpModel::GetForceUseNnapi() && GetParam()) {
-    return;
-  }
-  const int n_batch = 2;
-  const int n_input = 5;
-  const int n_cell = 4;
-  const int n_output = 3;
-
-  LSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/false, /*use_peephole=*/true,
-      /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false,
-      /*weight_type=*/TensorType_INT8, /*model_has_legacy_20_inputs=*/false,
-      /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
-
-  VerifyGoldens(&lstm, /*tolerance=*/1.06e-3);
+  static const auto* tolerance_per_type =
+      new std::map<TensorType, float>{{TensorType_FLOAT32, 0.00001f},
+                                      {TensorType_UINT8, 0.0010907f},
+                                      {TensorType_INT8, 0.00106f}};
+  VerifyGoldens(&lstm, tolerance_per_type->at(weight_type));
 }
 
 class Cifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
@@ -1489,58 +1387,33 @@ class Cifg_Peephole_Projection_LayerNorm_LstmOpTest : public BaseLstmOpTest {
   }
 };
 
-TEST_F(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, Float) {
+TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, Test) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
 
-  LSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/true, /*use_peephole=*/true,
-      /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false,
-      /*weight_type=*/TensorType_FLOAT32, /*model_has_legacy_20_inputs=*/false,
-      /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/false);
+  TensorType weight_type;
+  bool asymmetric_quantize_inputs;
+  std::tie(weight_type, asymmetric_quantize_inputs) = GetParam();
 
-  VerifyGoldens(&lstm);
-}
-
-TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridUint8) {
-  if (SingleOpModel::GetForceUseNnapi()) {
+  // TODO(b/158205028): Fix this test if using NN-API.
+  if (SingleOpModel::GetForceUseNnapi() && weight_type == TensorType_UINT8) {
     return;
   }
-  const int n_batch = 2;
-  const int n_input = 5;
-  const int n_cell = 4;
-  const int n_output = 3;
 
-  LSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/true, /*use_peephole=*/true,
-      /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false,
-      /*weight_type=*/TensorType_UINT8, /*model_has_legacy_20_inputs=*/false,
-      /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
+  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                   /*use_cifg=*/true, /*use_peephole=*/true,
+                   /*use_projection_weights=*/true,
+                   /*use_projection_bias=*/false, weight_type,
+                   /*model_has_legacy_20_inputs=*/false,
+                   /*is_layer_norm=*/true, asymmetric_quantize_inputs);
 
-  VerifyGoldens(&lstm, /*tolerance=*/0.000971057);
-}
-
-TEST_P(Cifg_Peephole_Projection_LayerNorm_LstmOpTest, HybridInt8) {
-  const int n_batch = 2;
-  const int n_input = 5;
-  const int n_cell = 4;
-  const int n_output = 3;
-
-  LSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/true, /*use_peephole=*/true,
-      /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false,
-      /*weight_type=*/TensorType_INT8, /*model_has_legacy_20_inputs=*/false,
-      /*is_layer_norm=*/true, /*asymmetric_quantize_inputs=*/GetParam());
-
-  VerifyGoldens(&lstm, /*tolerance=*/1e-3);
+  static const auto* tolerance_per_type =
+      new std::map<TensorType, float>{{TensorType_FLOAT32, 0.00001f},
+                                      {TensorType_UINT8, 0.000971057f},
+                                      {TensorType_INT8, 0.001f}};
+  VerifyGoldens(&lstm, tolerance_per_type->at(weight_type));
 }
 
 class LSTMIntegerOpModel : public SingleOpModel {
@@ -2349,8 +2222,15 @@ TEST(LstmOpTest, InvalidTypes) {
 #endif
 
 // Test parameter controls asymmetric_quantize_inputs in LSTMOpModel.
-#define QUANTIZE_PARAMETER_TEST(test) \
-  INSTANTIATE_TEST_SUITE_P(test, test, ::testing::Bool())
+#define QUANTIZE_PARAMETER_TEST(test)                                \
+  INSTANTIATE_TEST_SUITE_P(                                          \
+      test, test,                                                    \
+      ::testing::ValuesIn(std::vector<std::tuple<TensorType, bool>>{ \
+          {TensorType_FLOAT32, false},                               \
+          {TensorType_UINT8, false},                                 \
+          {TensorType_UINT8, true},                                  \
+          {TensorType_INT8, false},                                  \
+          {TensorType_INT8, true}}))
 
 QUANTIZE_PARAMETER_TEST(NoCifg_NoPeephole_NoProjection_NoLayerNorm_LstmOpTest);
 QUANTIZE_PARAMETER_TEST(Cifg_Peephole_NoProjection_NoLayerNorm_LstmOpTest);
