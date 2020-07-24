@@ -1,6 +1,8 @@
 #ifndef XCORE_OPS_H_
 #define XCORE_OPS_H_
 
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+
 namespace tflite {
 namespace ops {
 namespace micro {
