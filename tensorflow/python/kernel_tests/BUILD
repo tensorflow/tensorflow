@@ -142,7 +142,8 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+# TODO(kattian): add GPU capability and change to cuda_py_test
+tf_py_test(
     name = "map_ops_test",
     size = "small",
     srcs = ["map_ops_test.py"],

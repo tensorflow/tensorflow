@@ -19,7 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorMap").Device(DEVICE_CPU),
                         EmptyTensorMap);
 
