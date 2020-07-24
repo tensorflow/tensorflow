@@ -48,6 +48,25 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "merge_summary_op",
+    prefix = "merge_summary_op",
+    deps = [
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["merge_summary"],
+    deps = [
+        "//tensorflow/c:ops",
+        "//tensorflow/core:lib",
+    ],
+)
+
 # Changes to the Android srcs here should be replicated in
 # tensorflow/contrib/makefile/tf_op_files.txt.
 #
