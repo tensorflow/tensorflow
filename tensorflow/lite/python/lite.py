@@ -569,10 +569,12 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         raise ValueError("The inference_input_type and inference_output_type "
                          "must be in {}.".format(all_types_names))
     elif quant_mode.is_post_training_integer_quantize_16x8():
-      if self.inference_input_type != constants.INT16 or \
-          self.inference_output_type != constants.INT16:
+      all_types = default_types + [constants.INT16]
+      if self.inference_input_type not in all_types or \
+          self.inference_output_type not in all_types:
+        all_types_names = ["tf." + t.name for t in all_types]
         raise ValueError("The inference_input_type and inference_output_type "
-                         "must be constants.INT16.")
+                         "must be in {}.".format(all_types_names))
     elif self.inference_input_type not in default_types or \
         self.inference_output_type not in default_types:
       raise ValueError("The inference_input_type and inference_output_type "
