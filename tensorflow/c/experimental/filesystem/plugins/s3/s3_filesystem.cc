@@ -1111,6 +1111,10 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
+static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
+  return strdup(uri);
+}
+
 }  // namespace tf_s3_filesystem
 
 static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
@@ -1158,6 +1162,7 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   ops->filesystem_ops->get_file_size = tf_s3_filesystem::GetFileSize;
   ops->filesystem_ops->stat = tf_s3_filesystem::Stat;
   ops->filesystem_ops->get_children = tf_s3_filesystem::GetChildren;
+  ops->filesystem_ops->translate_name = tf_s3_filesystem::TranslateName;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {
