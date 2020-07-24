@@ -909,6 +909,16 @@ TEST_F(OpLevelCostEstimatorTest, ModExecutionTime) {
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
+TEST_F(OpLevelCostEstimatorTest, SquaredDifferenceExecutionTime) {
+  auto cost = PredictCosts(DescribeBinaryOp("SquaredDifference", 1000, 2));
+  EXPECT_EQ(cost.memory_time, Costs::Duration(3600));
+  EXPECT_EQ(cost.compute_time, Costs::Duration(800));
+  EXPECT_EQ(cost.execution_time, Costs::Duration(4400));
+  EXPECT_EQ(cost.num_ops_total, 1);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+}
+
 TEST_F(OpLevelCostEstimatorTest, ReluExecutionTime) {
   auto cost = PredictCosts(DescribeUnaryOp("Relu", 1000));
   EXPECT_EQ(Costs::Duration(800), cost.memory_time);

@@ -553,7 +553,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                            EIGEN_COST(scalar_product_op<float>));
   elementwise_ops_.emplace("RealDiv", EIGEN_COST(scalar_quotient_op<float>));
   elementwise_ops_.emplace("ReluGrad", EIGEN_COST(scalar_max_op<float>));
-  elementwise_ops_.emplace("SquareDifference", 1);
+  elementwise_ops_.emplace("SquaredDifference",
+                           EIGEN_COST(scalar_square_op<float>) +
+                               EIGEN_COST(scalar_difference_op<float>));
   elementwise_ops_.emplace("Sub", EIGEN_COST(scalar_difference_op<float>));
   elementwise_ops_.emplace("TruncateDiv",
                            EIGEN_COST(scalar_quotient_op<float>));
