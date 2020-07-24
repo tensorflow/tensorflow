@@ -838,6 +838,7 @@ TEST_P(CppGradients, TestMNISTGrad) {
 
   /* Pseudo-code:
    *
+   *
    * tape.watch(W1)
    * tape.watch(W2)
    * mm = X*W1
