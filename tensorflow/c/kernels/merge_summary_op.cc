@@ -57,15 +57,15 @@ static void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   std::unordered_set<tensorflow::string> tags; 
   Status_Wrapper status_wrapper;; 
   for (int input_num = 0; input_num < TF_NumInputs(ctx); ++input_num) { 
-    Tensor_Wrapper input_wrapped; 
-    TF_GetInput(ctx, input_num, &input_wrapped.t, status_wrapper.s); 
+    Tensor_Wrapper input_wrapper; 
+    TF_GetInput(ctx, input_num, &input_wrapper.t, status_wrapper.s); 
     if (TF_GetCode(status_wrapper.s) != TF_OK) {  
       TF_OpKernelContext_Failure(ctx, status_wrapper.s); 
       return;
     }
 
-    auto tags_array = static_cast<tensorflow::tstring*>(TF_TensorData(input_wrapped.t)); 
-    for (int i = 0; i < TF_TensorElementCount(input_wrapped.t); ++i) { 
+    auto tags_array = static_cast<tensorflow::tstring*>(TF_TensorData(input_wrapper.t)); 
+    for (int i = 0; i < TF_TensorElementCount(input_wrapper.t); ++i) { 
       const tensorflow::tstring& s_in = tags_array[i]; 
       tensorflow::Summary summary_in; 
       if (!tensorflow::ParseProtoUnlimited(&summary_in, s_in)) { 
@@ -95,7 +95,7 @@ static void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       sizeof(tensorflow::tstring), status_wrapper.s);
   summary_tensor_wrapped.t = summary_tensor; 
   if (TF_GetCode(status_wrapper.s) != TF_OK){ 
-    // error msg 
+    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
     return; 
   }
   tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
