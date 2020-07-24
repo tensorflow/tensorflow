@@ -339,6 +339,7 @@ cc_library(
     hdrs = ["xplane_to_step_events.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
