@@ -456,7 +456,7 @@ REGISTER_OP("AllocateTempOp1").Output("output1: float");
 
 TEST_F(DeviceKernelOpTest, TestAllocateTempSizeOne) {
   auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
-    // Allocate output
+    // Allocate scalar TF_Tensor
     TF_Status* s = TF_NewStatus();
     int64_t dim = 1;
     TF_AllocatorAttributes alloc_attrs; 
@@ -469,7 +469,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSizeOne) {
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     validate_tensor(output, &dim, 1, TF_FLOAT); 
 
-    // Set output to 3
+    // Set TF_Tensor value to 3
     float values[1] = {3.0f};
     set_tensor_data<float>(output, values, tensor_size_bytes, ctx); 
     TF_SetOutput(ctx, 0, output, s); 
@@ -490,7 +490,7 @@ REGISTER_OP("AllocateTempOp0").Output("output1: float");
 TEST_F(DeviceKernelOpTest, TestAllocateTempEmpty) {
   auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
     TF_Status* s = TF_NewStatus();
-    // Allocate empty output
+    // Allocate empty TF_Tensor
     int64_t dim = 0;
     TF_AllocatorAttributes alloc_attrs; 
     alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE; 
@@ -519,7 +519,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
   auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
     TF_Status* s = TF_NewStatus();
     size_t tensor_size_bytes = 6 * TF_DataTypeSize(TF_FLOAT);
-    // Allocate 2x3 output
+    // Allocate 2x3 TF_Tensor
     int64_t dim[2] = {2, 3};
     TF_AllocatorAttributes alloc_attrs; 
     alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE; 
@@ -530,7 +530,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     validate_tensor(output, dim, 2, TF_FLOAT);
 
-    // Set output to [1 2 3 4 5 6]
+    // Set TF_Tensor values to [1 2 3 4 5 6]
     void* data = TF_TensorData(output);
     float values[6] = {1, 2, 3, 4, 5, 6};
     set_tensor_data<float>(output, values, tensor_size_bytes, ctx); 
@@ -558,7 +558,7 @@ void validate_tensor(TF_Tensor* tensor, int64_t* dims, int64_t num_dims,
 
 template <typename T> 
 void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes, 
-                     TF_OpKernelContext* ctx){ 
+                     TF_OpKernelContext* ctx) { 
     T* data = reinterpret_cast<T*>(TF_TensorData(tensor));
 #if GOOGLE_CUDA
     OpKernelContext* cc_ctx = reinterpret_cast<OpKernelContext*>(ctx);
