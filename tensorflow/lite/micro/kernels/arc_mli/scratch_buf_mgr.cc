@@ -25,6 +25,7 @@ namespace tflite {
 namespace ops {
 namespace micro {
 
+#ifdef __Xxy
 static void get_arc_two_buffer_sizes(int request_size_1, int request_size_2,
                                      int* grant_size_1, int* grant_size_2) {
   int maxrequest = 0;
@@ -66,7 +67,7 @@ static void get_arc_two_buffer_sizes(int request_size_1, int request_size_2,
 
 static TfLiteStatus get_arc_scratch_buffer_for_io_tensors(
     TfLiteContext* context, mli_tensor* in, mli_tensor* out) {
-#ifdef __Xxy
+
   int request_size_in = 0;
   int request_size_out = 0;
   int grant_size_in = 0;
@@ -103,9 +104,10 @@ static TfLiteStatus get_arc_scratch_buffer_for_io_tensors(
     out->capacity = grant_size_out;
     if (out->data == NULL) return kTfLiteError;
   }
-#endif
+
   return kTfLiteOk;
 }
+#endif
 
 TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
                                                      mli_tensor* in,
@@ -237,15 +239,17 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
     const int stride_height, const int padding_top, const int padding_bot,
     int* in_slice_height, int* out_slice_height) {
   const int height_dimension = 1;
-  const int in_height = in->shape[height_dimension];
-  const int out_height = out->shape[height_dimension];
-  const int line_size_in = mli_hlp_count_elem_num(in, height_dimension + 1) *
+  const uint32_t in_height = in->shape[height_dimension];
+  const uint32_t out_height = out->shape[height_dimension];
+  const uint32_t line_size_in =
+      mli_hlp_count_elem_num(in, height_dimension + 1) *
                            mli_hlp_tensor_element_size(in);
-  const int line_size_out = mli_hlp_count_elem_num(out, height_dimension + 1) *
+  const uint32_t line_size_out =
+      mli_hlp_count_elem_num(out, height_dimension + 1) *
                             mli_hlp_tensor_element_size(out);
-  int max_lines_in = 0;
-  int max_lines_out = 0;
-  int max_out_lines_for_input = 0;
+  uint32_t max_lines_in = 0;
+  uint32_t max_lines_out = 0;
+  uint32_t max_out_lines_for_input = 0;
   bool fit = (in->capacity >= in_height * line_size_in) &&
              (out->capacity >= out_height * line_size_out);
   if (fit) {
@@ -293,13 +297,13 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
 TfLiteStatus arc_scratch_buffer_calc_slice_size_weights(
     const mli_tensor* weights, const mli_tensor* bias,
     const int weight_out_ch_dimension, int* slice_channels) {
-  const int channels = weights->shape[weight_out_ch_dimension];
-  const int ch_size_w = (mli_hlp_count_elem_num(weights, 0) / channels) *
+  const uint32_t channels = weights->shape[weight_out_ch_dimension];
+  const uint32_t ch_size_w = (mli_hlp_count_elem_num(weights, 0) / channels) *
                         mli_hlp_tensor_element_size(weights);
-  const int ch_size_b = (mli_hlp_count_elem_num(bias, 0) / channels) *
+  const uint32_t ch_size_b = (mli_hlp_count_elem_num(bias, 0) / channels) *
                         mli_hlp_tensor_element_size(bias);
-  int max_ch_weigths = 0;
-  int max_ch_bias = 0;
+  uint32_t max_ch_weigths = 0;
+  uint32_t max_ch_bias = 0;
 
   bool fit = (weights->capacity >= channels * ch_size_w) &&
              (bias->capacity >= channels * ch_size_b);

@@ -67,13 +67,13 @@ static int8_t *scratch_mem[] = {scratch_mem_x, scratch_mem_y, scratch_mem_z};
 static uint32_t scratch_sizes[] = {SCRATCH_MEM_X_SIZE, SCRATCH_MEM_Y_SIZE,
                                    SCRATCH_MEM_Z_SIZE};
 
-void *get_arc_scratch_buffer(int size) {
+void *get_arc_scratch_buffer(uint32_t size) {
   // Function to asign fast memory from one of 3 scratch buffers.
   // Best Fit strategy - memory is allocated from that memory bank that leaves
   // the least unused memory.
   void *buf = NULL;
   int best_mem_idx = -1;
-  int best_mem_delta = INT_MAX;
+  uint32_t best_mem_delta = INT_MAX;
   const int num_mem = sizeof(scratch_mem) / sizeof(scratch_mem[0]);
   // find a local memory that fits the data size.
   for (int mem_idx = 0; mem_idx < num_mem; ++mem_idx) {
@@ -92,8 +92,8 @@ void *get_arc_scratch_buffer(int size) {
   return buf;
 }
 
-void get_arc_scratch_buffer_max_size(int *size) {
-  int maxavailable = 0;
+void get_arc_scratch_buffer_max_size(uint32_t* size) {
+  uint32_t maxavailable = 0;
   const int num_mem = sizeof(scratch_mem) / sizeof(scratch_mem[0]);
   // find the largest available buffer.
   for (int i = 0; i < num_mem; i++) {
@@ -104,9 +104,9 @@ void get_arc_scratch_buffer_max_size(int *size) {
   *size = maxavailable;
 }
 
-void get_arc_scratch_buffer_two_max_sizes(int *size1, int *size2) {
-  int maxavailable = 0;
-  int secondavail = 0;
+void get_arc_scratch_buffer_two_max_sizes(uint32_t* size1, uint32_t* size2) {
+  uint32_t maxavailable = 0;
+  uint32_t secondavail = 0;
   const int num_mem = sizeof(scratch_mem) / sizeof(scratch_mem[0]);
   // find the two largest available buffers.
   for (int i = 0; i < num_mem; i++) {

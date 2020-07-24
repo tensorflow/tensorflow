@@ -57,7 +57,7 @@ static void ConvertToMliQuantParams(const TfLiteTensor* tfT, mli_tensor* mliT) {
   mliT->el_params.asym.scale.i32 = (int32_t)iscale;
 }
 
-static void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
+static inline void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
                                               mli_tensor* mliT) {
   // mli tensor scale and zero_point arrays should be allocated at this point
   TFLITE_DCHECK_NE(mliT->el_params.asym.scale.pi16, 0);
