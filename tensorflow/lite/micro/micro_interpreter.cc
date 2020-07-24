@@ -68,11 +68,13 @@ void* ContextHelper::GetScratchBuffer(TfLiteContext* ctx, int buffer_idx) {
 
 void ContextHelper::ReportOpError(struct TfLiteContext* context,
                                   const char* format, ...) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   ContextHelper* helper = static_cast<ContextHelper*>(context->impl_);
   va_list args;
   va_start(args, format);
   TF_LITE_REPORT_ERROR(helper->error_reporter_, format, args);
   va_end(args);
+#endif
 }
 
 TfLiteTensor* ContextHelper::GetTensor(const struct TfLiteContext* context,
