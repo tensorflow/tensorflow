@@ -58,7 +58,7 @@ extern "C" {
 // Allocator Attributes used for tensor allocation. 
 typedef struct TF_AllocatorAttributes { 
   size_t struct_size; 
-  // Set boolean to 0 for CPU allocation, else 1. 
+  // Set boolean to 1 for CPU allocation, else 0. 
   unsigned char on_host; 
 } TF_AllocatorAttributes; 
 
