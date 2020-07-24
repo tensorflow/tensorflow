@@ -109,6 +109,7 @@ cc_library(
         ":rocfft",
         ":hiprand",
         ":miopen",
+        ":hipsparse",
         ":roctracer",
     ],
 )
@@ -139,11 +140,9 @@ cc_library(
     ],
 )
 
-cc_import(
+cc_library(
     name = "hipsparse",
-    hdrs = glob(["rocm/include/hipsparse/**",]),
-    shared_library = "rocm/lib/%{hipsparse_lib}",
-    visibility = ["//visibility:public"],
+    data = ["rocm/lib/%{hipsparse_lib}"],
 )
 
 cc_library(
