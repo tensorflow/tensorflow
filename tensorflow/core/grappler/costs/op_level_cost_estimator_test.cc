@@ -110,18 +110,6 @@ void DescribeArbitraryRankOutput(const std::vector<int>& dims, DataType dtype,
   }
 }
 
-// Returns an OpInfo for a BatchMatMul
-OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
-                              const std::vector<int>& dims_b) {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("BatchMatMul");
-
-  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
-  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
-  return op_context;
-}
-
 // Returns an OpInfo for a SparseTensorDenseMatMul
 OpContext DescribeSparseTensorDenseMatMul(const int nnz_a,
                                           const std::vector<int>& dims_b,
@@ -515,6 +503,8 @@ OpContext DescribeFusedBatchNorm(const bool is_training, const bool is_grad,
 
 class OpLevelCostEstimatorTest : public ::testing::Test {
  protected:
+  using BatchMatMulDimensions = OpLevelCostEstimator::BatchMatMulDimensions;
+
   Costs PredictCosts(const OpContext& op_context) const {
     return estimator_.PredictCosts(op_context);
   }
@@ -529,24 +519,11 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     return estimator_.CountBatchMatMulOperations(op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulDimProduct(const OpInfo& op_info,
+  int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                   BatchMatMulDimensions* batch_mat_mul,
                                    bool* found_unknown_shapes) const {
-    OpLevelCostEstimator::BatchMatMulDimensions batch_mat_mul;
-
-    batch_mat_mul.matmul_dims.n = 0;
-    batch_mat_mul.matmul_dims.m = 0;
-    batch_mat_mul.matmul_dims.k = 0;
-
-    estimator_.CountBatchMatMulOperations(op_info, &batch_mat_mul,
-                                          found_unknown_shapes);
-    int dimension_product = 1;
-    for (auto dim : batch_mat_mul.batch_dims) dimension_product *= dim;
-
-    dimension_product *= batch_mat_mul.matmul_dims.n;
-    dimension_product *= batch_mat_mul.matmul_dims.m;
-    dimension_product *= batch_mat_mul.matmul_dims.k;
-
-    return dimension_product;
+    return estimator_.CountBatchMatMulOperations(op_info, batch_mat_mul,
+                                                 found_unknown_shapes);
   }
 
   void SetComputeMemoryOverlap(bool value) {
@@ -598,6 +575,49 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
   }
 
   OpLevelCostEstimator estimator_;
+};
+
+class OpLevelBatchMatMulCostEstimatorTest
+    : public OpLevelCostEstimatorTest,
+      public ::testing::WithParamInterface<const char*> {
+ protected:
+  // Returns an OpInfo for a BatchMatMul
+  OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
+                                const std::vector<int>& dims_b) {
+    OpContext op_context;
+    SetCpuDevice(&op_context.op_info);
+    op_context.op_info.set_op(GetParam());
+
+    DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
+    DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
+    return op_context;
+  }
+
+  int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                   bool* found_unknown_shapes) const {
+    return OpLevelCostEstimatorTest::CountBatchMatMulOperations(
+        op_info, found_unknown_shapes);
+  }
+
+  int64 CountBatchMatMulDimProduct(const OpInfo& op_info,
+                                   bool* found_unknown_shapes) const {
+    BatchMatMulDimensions batch_mat_mul;
+
+    batch_mat_mul.matmul_dims.n = 0;
+    batch_mat_mul.matmul_dims.m = 0;
+    batch_mat_mul.matmul_dims.k = 0;
+
+    OpLevelCostEstimatorTest::CountBatchMatMulOperations(
+        op_info, &batch_mat_mul, found_unknown_shapes);
+    int dimension_product = 1;
+    for (auto dim : batch_mat_mul.batch_dims) dimension_product *= dim;
+
+    dimension_product *= batch_mat_mul.matmul_dims.n;
+    dimension_product *= batch_mat_mul.matmul_dims.m;
+    dimension_product *= batch_mat_mul.matmul_dims.k;
+
+    return dimension_product;
+  }
 };
 
 TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
@@ -991,7 +1011,7 @@ TEST_F(OpLevelCostEstimatorTest, UnknownOrPartialShape) {
   }
 }
 
-TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
+TEST_P(OpLevelBatchMatMulCostEstimatorTest, TestBatchMatMul) {
   {
     auto cost = PredictCosts(DescribeBatchMatMul({}, {}));
     EXPECT_EQ(1, cost.num_ops_total);
@@ -1069,6 +1089,8 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
                                     &batch_matmul_inaccurate);
   EXPECT_EQ(prod, 12);
 }
+INSTANTIATE_TEST_SUITE_P(TestBatchMatMul, OpLevelBatchMatMulCostEstimatorTest,
+                         ::testing::Values("BatchMatMul", "BatchMatMulV2"));
 
 TEST_F(OpLevelCostEstimatorTest, SparseTensorDenseMatMul) {
   // Unknown shape cases

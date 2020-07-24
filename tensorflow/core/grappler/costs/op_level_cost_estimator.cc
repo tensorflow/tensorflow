@@ -56,6 +56,7 @@ constexpr char kSqueeze[] = "Squeeze";
 constexpr char kRecv[] = "_Recv";
 constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
+constexpr char kBatchMatMulV2[] = "BatchMatMulV2";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
 constexpr char kShapeN[] = "ShapeN";
@@ -371,6 +372,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       kSparseTensorDenseMatMul,
       wrap(&OpLevelCostEstimator::PredictSparseTensorDenseMatMul));
   device_cost_impl_.emplace(kBatchMatMul,
+                            wrap(&OpLevelCostEstimator::PredictBatchMatMul));
+  device_cost_impl_.emplace(kBatchMatMulV2,
                             wrap(&OpLevelCostEstimator::PredictBatchMatMul));
   device_cost_impl_.emplace(kQuantizedMatMul,
                             wrap(&OpLevelCostEstimator::PredictMatMul));
@@ -1116,7 +1119,7 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
 int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     const OpInfo& op_info, BatchMatMulDimensions* batch_mat_mul,
     bool* found_unknown_shapes) {
-  if (op_info.op() != kBatchMatMul) {
+  if (op_info.op() != kBatchMatMul && op_info.op() != kBatchMatMulV2) {
     LOG(ERROR) << "Invalid Operation: " << op_info.op();
     // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
