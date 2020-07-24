@@ -79,7 +79,8 @@ DispatchGrpcDataServer::DispatchGrpcDataServer(
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
 void DispatchGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  service_ = absl::make_unique<GrpcDispatcherImpl>(builder, config_).release();
+  auto service = absl::make_unique<GrpcDispatcherImpl>(builder, config_);
+  service_ = service.release();
 }
 
 Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
@@ -95,17 +96,22 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
 }
 
 WorkerGrpcDataServer::WorkerGrpcDataServer(
-    const experimental::WorkerConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol()), config_(config) {}
+    int port, const std::string& protocol,
+    const std::string& dispatcher_address, const std::string& worker_address)
+    : GrpcDataServerBase(port, protocol),
+      dispatcher_address_(dispatcher_address),
+      worker_address_(worker_address) {}
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
 void WorkerGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  service_ = absl::make_unique<GrpcWorkerImpl>(builder, config_).release();
+  auto service = absl::make_unique<GrpcWorkerImpl>(builder, dispatcher_address_,
+                                                   protocol_);
+  service_ = service.release();
 }
 
 Status WorkerGrpcDataServer::StartServiceInternal() {
-  std::string worker_address = config_.worker_address();
+  std::string worker_address = worker_address_;
   if (worker_address.empty()) {
     worker_address = absl::StrCat("localhost:", kPortPlaceholder);
   }
@@ -122,9 +128,19 @@ Status NewDispatchServer(const experimental::DispatcherConfig& config,
   return Status::OK();
 }
 
-Status NewWorkerServer(const experimental::WorkerConfig& config,
+Status NewWorkerServer(int port, const std::string& protocol,
+                       const std::string& dispatcher_address,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server) {
-  *out_server = absl::make_unique<WorkerGrpcDataServer>(config);
+  return NewWorkerServer(port, protocol, dispatcher_address,
+                         /*worker_address=*/"", out_server);
+}
+
+Status NewWorkerServer(int port, const std::string& protocol,
+                       const std::string& dispatcher_address,
+                       const std::string& worker_address,
+                       std::unique_ptr<WorkerGrpcDataServer>* out_server) {
+  *out_server = absl::make_unique<WorkerGrpcDataServer>(
+      port, protocol, dispatcher_address, worker_address);
   return Status::OK();
 }
 

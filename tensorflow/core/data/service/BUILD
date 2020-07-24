@@ -227,7 +227,6 @@ cc_library(
     deps = [
         ":worker_cc_grpc_proto",
         ":worker_impl",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         tf_grpc_cc_dependency(),
     ],

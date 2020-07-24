@@ -46,8 +46,8 @@ auto* tf_data_service_created =
 }  // namespace
 
 DataServiceWorkerImpl::DataServiceWorkerImpl(
-    const experimental::WorkerConfig& config)
-    : config_(config) {
+    const std::string& dispatcher_address, const std::string& protocol)
+    : dispatcher_address_(dispatcher_address), protocol_(protocol) {
   tf_data_service_created->GetCell()->Set(true);
 }
 
@@ -68,7 +68,7 @@ void DataServiceWorkerImpl::Start(const std::string& worker_address) {
   Status s = Register();
   while (!s.ok()) {
     LOG(WARNING) << "Failed to register with dispatcher at "
-                 << config_.dispatcher_address() << ": " << s;
+                 << dispatcher_address_ << ": " << s;
     Env::Default()->SleepForMicroseconds(kHeartbeatIntervalMicros);
     s = Register();
   }
@@ -173,17 +173,17 @@ Status DataServiceWorkerImpl::EnsureDispatcherStubInitialized()
   if (!dispatcher_stub_) {
     ::grpc::ChannelArguments args;
     std::shared_ptr<::grpc::ChannelCredentials> credentials;
-    TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
-        config_.protocol(), &credentials));
-    auto channel = ::grpc::CreateCustomChannel(config_.dispatcher_address(),
-                                               credentials, args);
+    TF_RETURN_IF_ERROR(
+        CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
+    auto channel =
+        ::grpc::CreateCustomChannel(dispatcher_address_, credentials, args);
     dispatcher_stub_ = DispatcherService::NewStub(channel);
   }
   return Status::OK();
 }
 
 Status DataServiceWorkerImpl::Register() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  VLOG(3) << "Registering with dispatcher at " << config_.dispatcher_address();
+  VLOG(3) << "Registering with dispatcher at " << dispatcher_address_;
   TF_RETURN_IF_ERROR(EnsureDispatcherStubInitialized());
   RegisterWorkerRequest req;
   req.set_worker_address(worker_address_);

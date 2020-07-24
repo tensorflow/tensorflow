@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -30,14 +29,12 @@ namespace data {
 // A TensorFlow DataService serves dataset elements over RPC.
 class DataServiceWorkerImpl {
  public:
-  explicit DataServiceWorkerImpl(const experimental::WorkerConfig& config);
+  explicit DataServiceWorkerImpl(const std::string& dispatcher_address,
+                                 const std::string& protocol);
   ~DataServiceWorkerImpl();
 
   // Starts the worker. The worker needs to know its own address so that it can
-  // register with the dispatcher. This is set in `Start` instead of in the
-  // constructor because the worker may be binding to port `0`, in which case
-  // the address isn't known until the worker has started and decided which port
-  // to bind to.
+  // register with the dispatcher.
   void Start(const std::string& worker_address);
 
   // See worker.proto for API documentation.
@@ -70,7 +67,9 @@ class DataServiceWorkerImpl {
     std::unique_ptr<standalone::Iterator> iterator;
   } Task;
 
-  const experimental::WorkerConfig config_;
+  const std::string dispatcher_address_;
+  // Protocol for communicating with the dispatcher.
+  const std::string protocol_;
   // The worker's own address.
   std::string worker_address_;
 

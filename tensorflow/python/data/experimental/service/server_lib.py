@@ -205,13 +205,8 @@ class WorkerServer(object):
       protocol = "grpc"
 
     self._protocol = protocol
-    config = service_config_pb2.WorkerConfig(
-        port=port,
-        protocol=protocol,
-        dispatcher_address=dispatcher_address,
-        worker_address=worker_address)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
-        config.SerializeToString())
+        port, protocol, dispatcher_address, worker_address)
     if start:
       self._server.start()
 
