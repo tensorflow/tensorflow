@@ -176,17 +176,19 @@ class Variable(trackable.TrackableResource):
       raise TypeError("value_dtype should be ", value_dtype_list)
     scope_name = self.name.split("/")[-1]
     with ops.name_scope(scope_name, "DynamicEmbedding_Variable"):
-      for idx in range(len(self.devices)):
-        with ops.device(self.devices[idx]):
-          mht = None
-          mht = lookup_ops.MutableHashTable(key_dtype=self.key_dtype,
-                                            value_dtype=self.value_dtype,
-                                            default_value=static_default_value,
-                                            name=self._make_name(idx),
-                                            checkpoint=self.checkpoint)
+      with ops.colocate_with(None, ignore_existing=True):
+        for idx in range(len(self.devices)):
+          with ops.device(self.devices[idx]):
+            mht = None
+            mht = lookup_ops.MutableHashTable(
+                key_dtype=self.key_dtype,
+                value_dtype=self.value_dtype,
+                default_value=static_default_value,
+                name=self._make_name(idx),
+                checkpoint=self.checkpoint)
 
-          self._tables.append(mht)
-          self.size_ops.append(self._tables[idx].size())
+            self._tables.append(mht)
+            self.size_ops.append(self._tables[idx].size())
     super(Variable, self).__init__()
 
   @property
@@ -444,7 +446,8 @@ def embedding_lookup(
     partition_strategy=None,  # pylint: disable=unused-argument
     name=None,
     validate_indices=None,  # pylint: disable=unused-argument
-    max_norm=None):
+    max_norm=None,
+    return_trainable=False):
   """Provides a dynamic version of embedding_lookup
     similar with tf.nn.embedding_lookup.
 
@@ -460,10 +463,14 @@ def embedding_lookup(
     validate_indices: No used, just for compatible with nn.embedding_lookup .
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value.
+    return_trainable: optional, If True, also return TrainableWrapper
   Returns:
     A tensor with shape [shape of ids] + [dim],
       dim is equal to the value dim of params.
-    containing the values from the params tensor(s) for keys in ids.
+      containing the values from the params tensor(s) for keys in ids.
+    trainable_wrap:
+      A TrainableWrapper object used to fill the Optimizers `var_list`
+        Only provided if `return_trainable` is True.
   """
   if isinstance(params, (list, tuple)) and len(params) > 1:
     raise ValueError("Only one params is allowed.")
@@ -482,23 +489,33 @@ def embedding_lookup(
   with ops.name_scope(full_name):
     initial_value = None
     trainable_wrap = None
-
+    if ids.get_shape() == tensor_shape.unknown_shape():
+      ids = array_ops.reshape(ids, shape=[-1])
+      initial_shape = (1, params.dim)
+      trainable_shape = tensor_shape.unknown_shape()
+    else:
+      initial_shape = [ d if d else 1 for d in ids.get_shape().as_list()] \
+                      + [params.dim]
+      trainable_shape = ids.get_shape().concatenate([params.dim])
     initial_value = constant_op.constant(0.0,
-                                         shape=(1,),
+                                         shape=initial_shape,
                                          dtype=params.value_dtype)
-    trainable_wrap = resource_variable_ops.TrainableWrapper(
-        params,
-        ids,
-        max_norm=max_norm,
-        initial_value=initial_value,
-        dtype=params.value_dtype,
-        trainable=params.trainable,
-        collections=[
-            ops.GraphKeys.LOCAL_VARIABLES,
-            ops.GraphKeys.TRAINABLE_VARIABLES
-        ])
 
-  return trainable_wrap
+    with ops.colocate_with(None, ignore_existing=True):
+      trainable_ = resource_variable_ops.TrainableWrapper(
+          params,
+          ids,
+          max_norm=max_norm,
+          initial_value=initial_value,
+          dtype=params.value_dtype,
+          trainable=params.trainable,
+          collections=[
+              ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.TRAINABLE_VARIABLES
+          ])
+      embeddings = array_ops.identity(trainable_)
+      embeddings.set_shape(trainable_shape)
+
+  return (embeddings, trainable_) if return_trainable else embeddings
 
 
 @tf_export("dynamic_embedding.embedding_lookup_sparse")
@@ -605,12 +622,13 @@ def embedding_lookup_sparse(
     ids = sp_ids.values
     ids, idx = array_ops.unique(ids)
 
-    trainable_ = embedding_lookup(params,
-                                  ids,
-                                  name=name + '/embedding_lookup',
-                                  partition_strategy=partition_strategy,
-                                  max_norm=max_norm)
-    embeddings = trainable_
+    embeddings, trainable_ = embedding_lookup(
+        params,
+        ids,
+        name=name + '/embedding_lookup',
+        partition_strategy=partition_strategy,
+        max_norm=max_norm,
+        return_trainable=True)
     if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
       embeddings = math_ops.cast(embeddings, dtypes.float32)
     if not ignore_weights:
@@ -836,9 +854,10 @@ def create_slots(primary, init, slot_name, op_name):
 
     scope_store._vars[full_name] = slot_variable_
 
-  slot = None
-  slot = embedding_lookup(params=scope_store._vars[full_name],
-                          ids=params_ids_,
-                          name=slot_name)
+  slot_trainable = None
+  _, slot_trainable = embedding_lookup(params=scope_store._vars[full_name],
+                                       ids=params_ids_,
+                                       name=slot_name,
+                                       return_trainable=True)
 
-  return slot
+  return slot_trainable

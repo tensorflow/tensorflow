@@ -61,6 +61,8 @@ from tensorflow.python.util import compat
 from tensorflow.python.ops import dynamic_embedding_ops as deo
 
 
+# pylint: disable=missing-class-docstring
+# pylint: disable=missing-function-docstring
 def _type_converter(tf_type):
   mapper = {
       dtypes.int32: np.int32,
@@ -160,6 +162,29 @@ def ids_and_weights_3d(embed_dim=4):
   return sparse_ids, sparse_weights
 
 
+def _random_weights(key_dtype=dtypes.int64,
+                    value_dtype=dtypes.float32,
+                    vocab_size=4,
+                    embed_dim=4,
+                    num_shards=1):
+  assert vocab_size > 0
+  assert embed_dim > 0
+  assert num_shards > 0
+  assert num_shards <= vocab_size
+
+  initializer = init_ops.truncated_normal_initializer(mean=0.0,
+                                                      stddev=1.0 /
+                                                      math.sqrt(vocab_size),
+                                                      dtype=dtypes.float32)
+  embedding_weights = deo.get_variable(key_dtype=key_dtype,
+                                       value_dtype=value_dtype,
+                                       devices=["/cpu:0"] * num_shards,
+                                       name="embedding_weights",
+                                       initializer=initializer,
+                                       dim=embed_dim)
+  return embedding_weights
+
+
 def _test_dir(temp_dir, test_name):
   """Create an empty dir to use for tests.
 
@@ -179,22 +204,23 @@ def _test_dir(temp_dir, test_name):
   return test_dir
 
 
-# pylint: disable=missing-class-docstring
-# pylint: disable=missing-function-docstring
-@test_util.deprecated_graph_mode_only
-class DynamicEmbeddingOpTest(test.TestCase):
+def _create_dynamic_shape_tensor(max_len=100,
+                                 min_len=2,
+                                 min_val=0x0000f00000000001,
+                                 max_val=0x0000f00000000020,
+                                 dtype=np.int64):
 
-  @staticmethod
-  def _create_dynamic_shape_tensor():
-    max_len = 100
-    min_len = 2
-    min_val = 0x0000f00000000001
-    max_val = 0x0000f00000000020
-    dtype = np.int64
+  def _func():
     length = np.random.randint(min_len, max_len)
     tensor = np.random.randint(min_val, max_val, max_len, dtype=dtype)
     tensor = np.array(tensor[0:length], dtype=dtype)
     return tensor
+
+  return _func
+
+
+@test_util.deprecated_graph_mode_only
+class DynamicEmbeddingOpTest(test.TestCase):
 
   def test_variable(self):
     with self.session():
@@ -387,7 +413,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    ids = script_ops.py_func(self._create_dynamic_shape_tensor,
+    ids = script_ops.py_func(_create_dynamic_shape_tensor(),
                              inp=[],
                              Tout=dtype,
                              stateful=True)
@@ -396,7 +422,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
                               initializer=init_ops.random_normal_initializer(
                                   0.0, 0.01),
                               dim=dim)
-    var0 = deo.embedding_lookup(params, ids)
+    _, var0 = deo.embedding_lookup(params, ids, return_trainable=True)
     loss = var0 * var0
 
     params_keys, params_vals = params.export()
@@ -637,7 +663,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
       result = self.evaluate(output)
       self.assertAllEqual([[0.], [1.], [3.]], result)
 
-  def test_dynamic_embedding_variableFindHighRank(self):
+  def test_dynamic_embedding_variable_find_high_rank(self):
     with self.cached_session():
       default_val = -1
       keys = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -896,12 +922,15 @@ class EmbeddingLookupTest(test.TestCase):
                                   initializer=2.0)
 
     ids = constant_op.constant([0, 1, 2, 3, 4], dtype=dtypes.int32)
-    embedding = deo.embedding_lookup(embeddings, ids, max_norm=1.0)
+    embedding, trainable = deo.embedding_lookup(embeddings,
+                                                ids,
+                                                max_norm=1.0,
+                                                return_trainable=True)
     with self.session():
       self.assertAllClose(embedding.eval(), [
           [1.0],
       ] * 5)
-      self.evaluate(embedding.update_op())
+      self.evaluate(trainable.update_op())
       self.assertAllEqual(embeddings.size().eval(), 5)
       self.assertAllEqual(embeddings.size(0).eval(), 3)
       self.assertAllEqual(embeddings.size(1).eval(), 2)
@@ -1013,19 +1042,95 @@ class EmbeddingLookupTest(test.TestCase):
             self.assertAllEqual(simple.eval(), embedding.eval())
             self.assertAllEqual(ids_shape + [dim], embedding.eval().shape)
 
+  def test_static_shape_checking(self):
+    np.random.seed(8)
+    with self.cached_session():
+      for dim in [1, 10]:
+        for ids_shape in [[3, 2], [4, 3], [4, 3, 10]]:
+          with variable_scope.variable_scope("test_static_shape_checking" +
+                                             str(dim),
+                                             reuse=variable_scope.AUTO_REUSE):
+            params = deo.get_variable("test_static_shape_checking-" + str(dim),
+                                      dtypes.int32,
+                                      dtypes.float32,
+                                      devices=[
+                                          "/cpu:0",
+                                      ],
+                                      initializer=2.0,
+                                      dim=dim)
+            params_nn = variable_scope.get_variable("n",
+                                                    shape=[100, dim],
+                                                    use_resource=False)
+            ids = np.random.randint(2**31,
+                                    size=np.prod(ids_shape),
+                                    dtype=np.int).reshape(ids_shape)
+            ids = constant_op.constant(ids, dtype=dtypes.int32)
+
+            embedding_test = deo.embedding_lookup(params, ids)
+            embedding_base = embedding_ops.embedding_lookup(params_nn, ids)
+            self.assertAllEqual(embedding_test.shape, embedding_base.shape)
+
+  def test_dynamic_shape_checking(self):
+    np.random.seed(8)
+    with self.cached_session():
+      for dim in [1, 10]:
+        for ids_shape in [None, [-1, 1], [1, -1, 1], [-1, 1, 1]]:
+          with variable_scope.variable_scope("test_static_shape_checking" +
+                                             str(dim),
+                                             reuse=variable_scope.AUTO_REUSE):
+            params = deo.get_variable("test_static_shape_checking-" + str(dim),
+                                      dtypes.int64,
+                                      dtypes.float32,
+                                      devices=[
+                                          "/cpu:0",
+                                      ],
+                                      initializer=2.0,
+                                      dim=dim)
+            params_nn = variable_scope.get_variable("n",
+                                                    shape=[100, dim],
+                                                    use_resource=False)
+            ids = script_ops.py_func(_create_dynamic_shape_tensor(min_val=0,
+                                                                  max_val=100),
+                                     inp=[],
+                                     Tout=dtypes.int64,
+                                     stateful=True)
+            if ids_shape is not None:
+              ids = array_ops.reshape(ids, ids_shape)
+
+            embedding_test = deo.embedding_lookup(params, ids)
+            embedding_base = embedding_ops.embedding_lookup(params_nn, ids)
+
+            # check static shape
+            if ids_shape is None:
+              # ids with unknown shape
+              self.assertTrue(embedding_test.shape == embedding_base.shape)
+            else:
+              # ids with no fully-defined shape.
+              self.assertAllEqual(embedding_test.shape.as_list(),
+                                  embedding_base.shape.as_list())
+
+            self.evaluate(variables.global_variables_initializer())
+
+            # check static shape
+            for _ in range(10):
+              embedding_test_val, embedding_base_val = self.evaluate(
+                  [embedding_test, embedding_base])
+              self.assertAllEqual(embedding_test_val.shape,
+                                  embedding_base_val.shape)
+
   def test_scope_reuse_embedding_lookup(self):
     ids = constant_op.constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
                                dtype=dtypes.int64)
     with variable_scope.variable_scope('test', reuse=variable_scope.AUTO_REUSE):
       p1 = deo.get_variable(name="p1")
       with variable_scope.variable_scope('q'):
-        t1 = deo.embedding_lookup(p1, ids, name="emb")
+        _, t1 = deo.embedding_lookup(p1, ids, name="emb", return_trainable=True)
 
     with variable_scope.variable_scope('test', reuse=variable_scope.AUTO_REUSE):
       p1_reuse = deo.get_variable(name="p1")
       p2 = deo.get_variable(name="p2")
       with variable_scope.variable_scope('q'):
-        t2 = deo.embedding_lookup(p2, ids, name="emb")
+        _, t2 = deo.embedding_lookup(p2, ids, name="emb", return_trainable=True)
 
     self.assertAllEqual(p1.name, "test/p1")
     self.assertAllEqual(p2.name, "test/p2")
@@ -1124,16 +1229,18 @@ class EmbeddingLookupTest(test.TestCase):
 
   def test_treated_as_worker_op_by_device_setter(self):
     num_ps_tasks = 2
-    ids = constant_op.constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-                               dtype=dtypes.int64)
+    with ops.device('/job:worker/task:0'):
+      ids = constant_op.constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                                 dtype=dtypes.int64)
     setter = device_setter.replica_device_setter(ps_tasks=num_ps_tasks,
                                                  ps_device='/job:ps',
                                                  worker_device='/job:worker')
     with ops.device(setter):
-      p1 = deo.get_variable(name="p1")
+      p1 = deo.get_variable(name="p1",
+                            devices=['/job:ps/task:0', '/job:ps/task:1'])
       t1 = deo.embedding_lookup(p1, ids, name="emb")
-    self.assertTrue("/job:ps" in p1._tables[0].resource_handle.device)
-    self.assertEqual(t1.device, '/job:worker')
+    self.assertTrue("/job:ps/task:0" in p1._tables[0].resource_handle.device)
+    self.assertTrue("/job:ps/task:1" in p1._tables[1].resource_handle.device)
 
 
 @test_util.deprecated_graph_mode_only
@@ -1238,38 +1345,30 @@ class EmbeddingLookupSparseTest(test.TestCase):
         atol = rtol
         self.assertAllClose(np_embedding_sum, tf_embedding_sum, rtol, atol)
 
+  def test_embedding_lookup_sparse_shape_checking(self):
+    with self.cached_session():
+      embed_dim = 4
+      embedding_weights_nn = variable_scope.get_variable("n",
+                                                         shape=[100, embed_dim],
+                                                         use_resource=False)
+      embedding_weights_de = _random_weights(embed_dim=4)
+      sparse_ids, _ = ids_and_weights_3d(embed_dim=embed_dim)
+
+      embedding_lookup_base = embedding_ops.embedding_lookup_sparse(
+          embedding_weights_nn, sparse_ids, None)
+      embedding_lookup_test = deo.embedding_lookup_sparse(
+          embedding_weights_de, sparse_ids, None)
+      self.assertTrue(embedding_lookup_base.get_shape().as_list() ==
+                      embedding_lookup_test.get_shape().as_list())
+
 
 @test_util.deprecated_graph_mode_only
 class SafeEmbeddingLookupSparseTest(test.TestCase):
 
-  def _random_weights(self,
-                      key_dtype=dtypes.int64,
-                      value_dtype=dtypes.float32,
-                      vocab_size=4,
-                      embed_dim=4,
-                      num_shards=1):
-    assert vocab_size > 0
-    assert embed_dim > 0
-    assert num_shards > 0
-    assert num_shards <= vocab_size
-
-    initializer = init_ops.truncated_normal_initializer(mean=0.0,
-                                                        stddev=1.0 /
-                                                        math.sqrt(vocab_size),
-                                                        dtype=dtypes.float32)
-    embedding_weights = deo.get_variable(key_dtype=key_dtype,
-                                         value_dtype=value_dtype,
-                                         devices=["/cpu:0"] * num_shards,
-                                         name="embedding_weights",
-                                         initializer=initializer,
-                                         dim=embed_dim)
-    return embedding_weights
-
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_return_zero_vector(self):
     with self.cached_session():
       dim = 4
-      embedding_weights = self._random_weights(embed_dim=dim)
+      embedding_weights = _random_weights(embed_dim=dim)
       sparse_ids, sparse_weights = ids_and_weights_2d(embed_dim=dim)
       valid_ids = np.array([
           0,
@@ -1294,11 +1393,10 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
           embedding_weights_values[2], [0] * dim
       ])
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_return_special_vector(self):
     with self.cached_session():
       dim = 4
-      embedding_weights = self._random_weights(embed_dim=dim)
+      embedding_weights = _random_weights(embed_dim=dim)
       sparse_ids, sparse_weights = ids_and_weights_2d(embed_dim=dim)
       valid_ids = np.array([0, 1, 2, 3, -1])
 
@@ -1318,11 +1416,10 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
           embedding_weights_values[2], embedding_weights_values[3]
       ])
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_no_weights(self):
     with self.cached_session():
       dim = 4
-      embedding_weights = self._random_weights(embed_dim=dim)
+      embedding_weights = _random_weights(embed_dim=dim)
       sparse_ids, sparse_weights = ids_and_weights_2d(embed_dim=dim)
       valid_ids = np.array([0, 1, 2, -1])
 
@@ -1341,11 +1438,10 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
            [0] * 4, embedding_weights_values[2],
            (embedding_weights_values[0] + embedding_weights_values[1]) / 2.0])
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_partitioned(self):
     with self.cached_session():
       dim = 4
-      embedding_weights = self._random_weights(embed_dim=dim, num_shards=3)
+      embedding_weights = _random_weights(embed_dim=dim, num_shards=3)
       sparse_ids, sparse_weights = ids_and_weights_2d(embed_dim=dim)
       valid_ids = np.array([0, 1, 2, -1])
 
@@ -1364,30 +1460,26 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
            [0] * 4, embedding_weights_values[2],
            (embedding_weights_values[0] + embedding_weights_values[1]) / 2.0])
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_inconsistent_ids_type(self):
     with self.cached_session():
-      embedding_weights = self._random_weights(num_shards=3,
-                                               key_dtype=dtypes.int32)
+      embedding_weights = _random_weights(num_shards=3, key_dtype=dtypes.int32)
       sparse_ids, sparse_weights = ids_and_weights_2d()
 
       self.assertRaises(TypeError, deo.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids, sparse_weights)
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_inconsistent_weights_type(self):
     with self.cached_session():
-      embedding_weights = self._random_weights(num_shards=3,
-                                               value_dtype=dtypes.float64)
+      embedding_weights = _random_weights(num_shards=3,
+                                          value_dtype=dtypes.float64)
       sparse_ids, sparse_weights = ids_and_weights_2d()
 
       self.assertRaises(TypeError, deo.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids, sparse_weights)
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_return_zero_vector(self):
     with self.cached_session():
-      embedding_weights = self._random_weights()
+      embedding_weights = _random_weights()
       sparse_ids, sparse_weights = ids_and_weights_3d()
       valid_ids = np.array([0, 1, 2, -1])
       # init
@@ -1404,10 +1496,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
           embedding_weights_values[3], [0] * 4
       ], [embedding_weights_values[2], [0] * 4, [0] * 4]])
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_return_special_vector(self):
     with self.cached_session():
-      embedding_weights = self._random_weights()
+      embedding_weights = _random_weights()
       sparse_ids, sparse_weights = ids_and_weights_3d()
       valid_ids = np.array([0, 1, 2, 3, -1])
 
@@ -1429,10 +1520,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
                embedding_weights_values[3]
            ]])
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_no_weights(self):
     with self.cached_session():
-      embedding_weights = self._random_weights()
+      embedding_weights = _random_weights()
       sparse_ids, _ = ids_and_weights_3d()
       valid_ids = np.array([0, 1, 2, -1])
       # init
@@ -1454,10 +1544,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
                2.0, [0] * 4
            ]])
 
-  @test_util.run_deprecated_v1
   def test_safe_embedding_lookup_sparse_3d_partitioned(self):
     with self.cached_session():
-      embedding_weights = self._random_weights(num_shards=3)
+      embedding_weights = _random_weights(num_shards=3)
       sparse_ids, _ = ids_and_weights_3d()
       valid_ids = np.array([0, 1, 2, -1])
 
@@ -1479,27 +1568,41 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
                (embedding_weights_values[0] + embedding_weights_values[1]) /
                2.0, [0] * 4
            ]])
+
+  def test_safe_embedding_lookup_sparse_shape_checking(self):
+    with self.cached_session():
+      embed_dim = 4
+      embedding_weights_nn = variable_scope.get_variable("n",
+                                                         shape=[100, embed_dim],
+                                                         use_resource=False)
+      embedding_weights_de = _random_weights(embed_dim=4)
+      sparse_ids, _ = ids_and_weights_3d(embed_dim=embed_dim)
+
+      embedding_lookup_base = embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights_nn, sparse_ids, None)
+      embedding_lookup_test = deo.safe_embedding_lookup_sparse(
+          embedding_weights_de, sparse_ids, None)
+      self.assertAllEqual(embedding_lookup_base.shape,
+                          embedding_lookup_test.shape)
+      self.assertAllEqual(embedding_lookup_base.get_shape(),
+                          embedding_lookup_test.get_shape())
 
 
 class CommonTrainableTestBase(object):
 
-  @test_util.run_deprecated_v1
   def common_minimize_trainable(self, base_opt, test_opt, name):
     raise NotImplementedError
 
-  @test_util.run_deprecated_v1
   def test_adadelta_minimize_trainable(self):
     base_opt = adadelta.AdadeltaOptimizer(1.0)
     test_opt = adadelta.AdadeltaOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='adadelta')
 
-  @test_util.run_deprecated_v1
-  def test_adagrad_minimize_mrainable(self):
+  def test_adagrad_minimize_trainable(self):
     base_opt = adagrad.AdagradOptimizer(1.0)
     test_opt = adagrad.AdagradOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='adagrad')
 
-  @test_util.run_deprecated_v1
   def test_adagradda_minimize_trainable(self):
     base_gs = training_util.create_global_step()
 
@@ -1507,43 +1610,36 @@ class CommonTrainableTestBase(object):
     test_opt = adagrad_da.AdagradDAOptimizer(1.0, base_gs)
     self.common_minimize_trainable(base_opt, test_opt, name='adagrad_da')
 
-  @test_util.run_deprecated_v1
   def test_ftrl_minimize_trainable(self):
     base_opt = ftrl.FtrlOptimizer(1.0)
     test_opt = ftrl.FtrlOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='ftrl')
 
-  @test_util.run_deprecated_v1
   def test_proximal_adagrad_minimize_trainable(self):
     base_opt = proximal_adagrad.ProximalAdagradOptimizer(1.0)
     test_opt = proximal_adagrad.ProximalAdagradOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='proximal_adagrad')
 
-  @test_util.run_deprecated_v1
   def test_proximalsgd_minimize_trainable(self):
     base_opt = pgd.ProximalGradientDescentOptimizer(1.0)
     test_opt = pgd.ProximalGradientDescentOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='proximal_sgd')
 
-  @test_util.run_deprecated_v1
   def test_momentum_minimize_trainable(self):
     base_opt = momentum.MomentumOptimizer(1.0, momentum=0.9)
     test_opt = momentum.MomentumOptimizer(1.0, momentum=0.9)
     self.common_minimize_trainable(base_opt, test_opt, name='momentum')
 
-  @test_util.run_deprecated_v1
   def test_sgd_minimize_trainable(self):
     base_opt = gradient_descent.GradientDescentOptimizer(1.0)
     test_opt = gradient_descent.GradientDescentOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='sgd')
 
-  @test_util.run_deprecated_v1
   def test_adam_minimize_trainable(self):
     base_opt = adam.AdamOptimizer(1.0)
     test_opt = adam.AdamOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='adam')
 
-  @test_util.run_deprecated_v1
   def test_rmsprop_minimize_trainable(self):
     for centered_ in [False, True]:
       base_opt = rmsprop.RMSPropOptimizer(1.0, centered=centered_)
@@ -1599,11 +1695,13 @@ class EmbeddingLookupTrainableTest(test.TestCase, CommonTrainableTestBase):
         init_op = embeddings.upsert(init_ids, init_vals)
         self.evaluate(init_op)
 
-        test_var = deo.embedding_lookup([embeddings], ids)
+        test_var, trainable = deo.embedding_lookup([embeddings],
+                                                   ids,
+                                                   return_trainable=True)
         pred1 = math_ops.matmul(test_var, x)
         loss1 = pred1 * pred1
 
-        test_opt_op = test_opt.minimize(loss1, var_list=[test_var])
+        test_opt_op = test_opt.minimize(loss1, var_list=[trainable])
 
         self.evaluate(variables.global_variables_initializer())
 
