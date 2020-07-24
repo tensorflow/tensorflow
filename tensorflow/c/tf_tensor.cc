@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/casts.h"
-#include <iostream>
-#include <string>
 
 using tensorflow::Status;
 using tensorflow::Tensor;
@@ -182,11 +180,6 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
   Set_TF_Status_from_Status(status, cc_status);
 }
 
-std::string TF_ShapeDebugString(const TF_Tensor* t){ 
-  return tensorflow::down_cast<tensorflow::TensorInterface*>(t->tensor)
-      ->ShapeDebugString(); 
-}
-
 namespace tensorflow {
 
 void TensorInterface::Release() { delete this; }
@@ -232,10 +225,6 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
   return tensor_.BitcastFrom(from.tensor_, type, s);
 }
 
-std::string TensorInterface::ShapeDebugString() const {
-  return tensor_.shape().DebugString();
-}
-
 }  // namespace tensorflow
 
 // --------------------------------------------------------------------------
@@ -267,7 +256,6 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
 namespace tensorflow {
 
 // Non-static for testing.
-
 TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
   *status = tensorflow::Status::OK();
   if (!src.IsInitialized()) {
@@ -328,10 +316,8 @@ Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
   return Status::OK();
 }
 
-
 bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }
 
 }  // namespace tensorflow
 
 bool TF_TensorIsAligned(const TF_Tensor* t) { return t->tensor->IsAligned(); }
-
