@@ -20,7 +20,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
@@ -29,7 +29,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export("keras.layers.experimental.preprocessing.Discretization")
-class Discretization(Layer):
+class Discretization(base_preprocessing_layer.PreprocessingLayer):
   """Buckets data into discrete ranges.
 
   This layer will place each element of its input data into one of several
@@ -61,6 +61,7 @@ class Discretization(Layer):
 
   def __init__(self, bins, **kwargs):
     super(Discretization, self).__init__(**kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("Discretization")
     self.bins = bins
 
   def get_config(self):

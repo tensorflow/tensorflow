@@ -686,7 +686,7 @@ cc_library(
         ":gpu_autotuning_proto_cc",
         ":gpu_conv_runner",
         ":gpu_executable",
-        ":hlo_algorithm_blacklist",
+        ":hlo_algorithm_denylist",
         ":ir_emission_utils",
         ":stream_executor_util",
         "@com_google_absl//absl/algorithm:container",
@@ -1660,9 +1660,9 @@ tf_proto_library_cc(
 )
 
 cc_library(
-    name = "hlo_algorithm_blacklist",
-    srcs = ["hlo_algorithm_blacklist.cc"],
-    hdrs = ["hlo_algorithm_blacklist.h"],
+    name = "hlo_algorithm_denylist",
+    srcs = ["hlo_algorithm_denylist.cc"],
+    hdrs = ["hlo_algorithm_denylist.h"],
     deps = [
         ":gpu_autotuning_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1673,12 +1673,12 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "hlo_algorithm_blacklist_test",
-    srcs = ["hlo_algorithm_blacklist_test.cc"],
+    name = "hlo_algorithm_denylist_test",
+    srcs = ["hlo_algorithm_denylist_test.cc"],
     data = ["data/hlo_algorithm_denylist.pbtxt"],
     tags = ["no_pip"],
     deps = [
-        ":hlo_algorithm_blacklist",
+        ":hlo_algorithm_denylist",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

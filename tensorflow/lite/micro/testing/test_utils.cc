@@ -248,8 +248,8 @@ TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
   result.type = kTfLiteInt32;
   result.data.i32 = const_cast<int32_t*>(data);
   result.dims = dims;
-  // Quantized int32 tensors always have a zero point of 0, since the range of
-  // int32 values is large, and because zero point costs extra cycles during
+  // Quantized int32_t tensors always have a zero point of 0, since the range of
+  // int32_t values is large, and because zero point costs extra cycles during
   // processing.
   result.params = {scale, 0};
   result.allocation_type = kTfLiteMemNone;

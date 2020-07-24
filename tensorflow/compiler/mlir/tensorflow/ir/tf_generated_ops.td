@@ -6334,6 +6334,8 @@ This is the opposite of `unpack`.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_PadOp : TF_Op<"Pad", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
@@ -9731,6 +9733,22 @@ For internal use only.
 
   let results = (outs
     I64Tensor:$layout
+  );
+}
+
+def TF_TPUOrdinalSelectorOp : TF_Op<"TPUOrdinalSelector", []> {
+  let summary = "A TPU core selector Op.";
+
+  let description = [{
+This Op produces a set of TPU cores (for warm-up) or a single TPU core
+(for regular inference) to execute the TPU program on. The output is
+consumed by TPUPartitionedCall.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    I32Tensor:$device_ordinals
   );
 }
 

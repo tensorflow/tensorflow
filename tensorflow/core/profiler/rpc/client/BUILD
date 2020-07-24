@@ -16,6 +16,7 @@ cc_library(
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "@com_google_absl//absl/strings",
     ],
 )

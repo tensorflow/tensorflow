@@ -65,7 +65,7 @@ REQUIRED_PACKAGES = [
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
     'tensorboard >= 2.3.0, < 3',
-    'tensorflow_estimator >= 2.2.0, < 2.3.0',
+    'tensorflow_estimator >= 2.3.0, < 2.4.0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
     'wheel >= 0.26',
@@ -89,7 +89,7 @@ if '--project_name' in sys.argv:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.3.0a0, < 2.4.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.4.0a0, < 3.0.0a0'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 

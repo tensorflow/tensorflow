@@ -159,6 +159,8 @@ cc_library(
         "//tensorflow:oss": [
             ":tpu_node_device",
             ":tpu_system_device",
+            "//tensorflow/core/tpu/ops:host_compute_ops",
+            "//tensorflow/core/tpu/ops:topk_ops",
             "//tensorflow/core/tpu/ops:tpu_compile_op",
             "//tensorflow/core/tpu/ops:tpu_execute_op",
             "//tensorflow/core/tpu/ops:tpu_partitioned_ops",

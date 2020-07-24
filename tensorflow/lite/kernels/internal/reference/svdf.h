@@ -268,7 +268,7 @@ inline void EvalHybridSVDF(
   std::fill_n(scratch_ptr, batch_size * num_filters, 0.0f);
 
   if (!tensor_utils::IsZeroVector(input_ptr, batch_size * input_size)) {
-    // Quantize input from float to int8.
+    // Quantize input from float to int8_t.
     tensor_utils::BatchQuantizeFloats(input_ptr, batch_size, input_size,
                                       quantized_input_ptr, scaling_factors_ptr,
                                       zero_points_ptr,

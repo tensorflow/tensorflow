@@ -3135,6 +3135,7 @@ py_library(
         "ops/inplace_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = visibility,
     deps = [
         ":array_ops_gen",
         ":common_shapes",
@@ -4119,6 +4120,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":bitwise_ops_gen",
         ":common_shapes",
         ":constant_op",
         ":control_flow_ops_gen",

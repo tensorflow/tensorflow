@@ -727,6 +727,7 @@ cc_library(
         "transforms/generated_optimize.inc",
         "transforms/gpu_fusion.cc",
         "transforms/graph_pruning.cc",
+        "transforms/init_text_file_to_import.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
         "transforms/mark_ops_for_outside_compilation.cc",
@@ -826,6 +827,7 @@ cc_library(
 cc_library(
     name = "tensorflow_test_passes",
     srcs = [
+        "transforms/init_text_file_to_import_test_pass.cc",
         "transforms/lift_variables_test_pass.cc",
         "transforms/lower_tf_pass.cc",
     ],
@@ -841,8 +843,10 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_options",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,

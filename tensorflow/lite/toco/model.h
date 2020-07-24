@@ -43,7 +43,6 @@ enum class OperatorType : uint8 {
   kAveragePool,
   kBatchMatMul,
   kBatchNormalization,
-  kBroadcastTo,
   kCeil,
   kConv,
   kConcatenation,

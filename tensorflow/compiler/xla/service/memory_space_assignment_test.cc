@@ -1805,6 +1805,59 @@ TEST_P(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
+  // Tests a spurious verification failure when a while has the same value
+  // passed in twice (copy0) and that value is evicted within the while loop.
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=3
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = f32[3]{0} get-tuple-element(p0), index=2
+    gte3 = pred[] get-tuple-element(p0), index=3
+    add = f32[3]{0} add(gte0, gte0)
+    negate0 = f32[3]{0} negate(add)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    negate15 = f32[3]{0} negate(negate14)
+    negate16 = f32[3]{0} negate(negate15)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, gte0, negate16, gte3)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy0 = f32[3]{0} copy(p0)
+    copy1 = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) tuple(copy0, copy0, copy1, p1)
+    while = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
+    ROOT gte = f32[3]{0} get-tuple-element(while), index=2
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
 TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
   // Having control_predecessors on an HLO was preventing us from DCEing an op
   // that doesn't have any users (tuple.1). The scheduler assumes the graph is
@@ -2151,6 +2204,58 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditional) {
     EXPECT_EQ(neg3_operand->shape().layout().memory_space(),
               kAlternateMemorySpace);
   }
+}
+
+TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
+  // Tests a spurious verification failure when there are nested conditionals
+  // and the innermost conditional computation reuses the buffer. Here, both the
+  // parameter of true_computation2 and neg2 will get the same buffer. Make sure
+  // that verification doesn't claim a failure in this case.
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation2 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    neg1 = f32[3]{0} negate(gte)
+    neg2 = f32[3]{0} negate(neg1)
+    ROOT neg3 = f32[3]{0} negate(neg2)
+  }
+
+  false_computation2 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg4 = f32[3]{0} negate(gte)
+  }
+
+  true_computation1 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    slice = f32[1]{0} slice(gte), slice={[0:1]}
+    bitcast = f32[] bitcast(slice)
+    constant = f32[] constant(0.0)
+    compare = pred[] compare(bitcast, constant), direction=GT
+    tuple = (f32[3]{0}) tuple(gte)
+    ROOT conditional = f32[3]{0} conditional(compare, tuple, tuple), true_computation=true_computation2, false_computation=false_computation2
+  }
+
+  false_computation1 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg5 = f32[3]{0} negate(gte)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation1, false_computation=false_computation1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
 }
 
 TEST_P(MemorySpaceAssignmentTest,

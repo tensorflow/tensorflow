@@ -524,8 +524,9 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   }
 }
 
-string DatasetOpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
-  return strings::StrCat(name_view(), ":", type_string_view());
+string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
+                                    bool verbose) const {
+  return profiler::TraceMeOp(name_view(), type_string_view());
 }
 
 // static

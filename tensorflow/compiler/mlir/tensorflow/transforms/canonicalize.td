@@ -209,6 +209,11 @@ def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
 def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
                            (TF_ReshapeOp $arg, $shape)>;
 
+def IsSame : Constraint<CPred<"$0 == $1">>;
+def ReshapeToSelfShape : Pat<(TF_ReshapeOp $arg0, (TF_ShapeOp $arg1)),
+                         (replaceWithValue $arg0),
+                         [(IsSame $arg0, $arg1)]>;
+
 //===----------------------------------------------------------------------===//
 // Select op patterns.
 //===----------------------------------------------------------------------===//

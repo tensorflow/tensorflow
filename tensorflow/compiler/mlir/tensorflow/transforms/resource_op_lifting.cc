@@ -627,8 +627,6 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
                                  });
   // Recreate the while op.
   OpBuilder builder(while_op);
-  auto new_output_shapes = FilterRange<Attribute, ArrayRef<Attribute>>(
-      while_op.output_shapes().getValue(), resource_arg_uses);
   // Now use the filtered original operands, which will be replaced by
   // AddLoadsStoresOutsideControlFlowOp().
   auto new_while = builder.create<TF::WhileOp>(
@@ -636,8 +634,7 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
       FilterRange<Value, OperandRange>(while_op.getOperands(),
                                        resource_arg_uses),
       while_op.getAttrs());
-  // Prepare for AddLoadsStoresOutsideControlFlowOp() and update
-  // new_output_shapes.
+  // Prepare for AddLoadsStoresOutsideControlFlowOp().
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
   for (const auto& entry : remaining_resource_data_types) {
@@ -647,14 +644,9 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
                                : entry.getFirst();
     arg_data_type_and_updated_output_index[entry.getFirst()] = {
         entry.getSecond(), update_index};
-    if (!new_output_shapes.empty()) {
-      new_output_shapes[entry.getFirst()] =
-          tensorflow::ConvertTypeToTensorShapeAttr(entry.getSecond());
-    }
   }
   AddLoadsStoresOutsideControlFlowOp(new_while,
                                      arg_data_type_and_updated_output_index);
-  new_while.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   // Replace uses.
   for (int64_t i = 0; i < old_to_new_indices.size(); ++i) {
     if (old_to_new_indices[i] >= 0) {

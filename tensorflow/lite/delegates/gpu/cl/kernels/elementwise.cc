@@ -37,6 +37,10 @@ std::string GetOneInputCode(const OperationType& op_type,
     case OperationType::COS:
       result = "$0 = cos($0);\n";
       break;
+    case OperationType::COPY:
+      // No op as inout_value will be copied to dest automatically.
+      result = "\n";
+      break;
     case OperationType::ELU:
       result = "$0.x = $0.x < (FLT)(0.0f) ? exp($0.x) - (FLT)(1.0f) : $0.x;\n";
       result += "$0.y = $0.y < (FLT)(0.0f) ? exp($0.y) - (FLT)(1.0f) : $0.y;\n";
