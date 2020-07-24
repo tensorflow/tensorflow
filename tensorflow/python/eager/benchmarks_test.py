@@ -478,12 +478,12 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def _benchmark_defun_matmul_with_signature(self, m, num_iters, execution_mode=None):
     
-    def defun_matmul(m):
+    def func_matmul(m):
       return math_ops.matmul(m, m)
     f = function.defun(
-        defun_matmul, input_signature=[tensor_spec.TensorSpec([2, 2], dtypes.float32)])
+        func_matmul, input_signature=[tensor_spec.TensorSpec([2, 2], dtypes.float32)])
     
-    func = lambda: defun_matmul(m)
+    func = lambda: f(m)
     self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_defun_args_matmul(self, m, num_iters, execution_mode=None):
@@ -587,7 +587,6 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._benchmark_defun_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-  @test_util.disable_tfrt("With signature")
   def benchmark_defun_matmul_2_by_2_CPU_with_signature(self):
     with context.device(CPU):
       m = self._m_2_by_2.cpu()
@@ -674,7 +673,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._benchmark_defun_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-  @test_util.disable_tfrt("With signature")
+  @test_util.disable_tfrt("copy to GPU not supported")
   def benchmark_defun_matmul_2_by_2_GPU_with_signature(self):
     if not context.num_gpus():
       return
