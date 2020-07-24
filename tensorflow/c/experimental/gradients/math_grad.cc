@@ -36,14 +36,20 @@ class AddGradientFunction : public GradientFunction {
     vector<AbstractTensorHandle*> identity_outputs(1);
     // TODO(b/145674566): Handle name unification in tracing code.
     // TODO(b/161805092): Support broadcasting.
+
+    std::string name = "Identity_A_" + std::to_string(counter);
     TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {grad_inputs[0]},
                                      absl::MakeSpan(identity_outputs),
-                                     "Identity0"));
+                                     name.c_str()));
     (*grad_outputs)[0] = identity_outputs[0];
+
+    name = "Identity_B_" + std::to_string(counter);
     TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {grad_inputs[0]},
                                      absl::MakeSpan(identity_outputs),
-                                     "Identity1"));
+                                     name.c_str()));
     (*grad_outputs)[1] = identity_outputs[0];
+
+    counter += 1;
     return Status::OK();
   }
   ~AddGradientFunction() override {}
@@ -111,7 +117,7 @@ class MatMulGradientFunction : public GradientFunction {
 
     (*grad_outputs)[1] = matmul_outputs[0];
 
-    counter += 2; // update counter for names 
+    counter += 1; // update counter for names 
     return Status::OK();
   }
   ~MatMulGradientFunction() override {}
