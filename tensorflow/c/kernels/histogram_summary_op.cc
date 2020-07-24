@@ -19,25 +19,24 @@ limitations under the License.
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 
-// Struct that stores the status and TF_Tensor inputs to the opkernel. 
-// Used to delete tensor and status in its destructor upon kernel return. 
-typedef struct Params { 
-  TF_Tensor* tags; 
-  TF_Tensor* values; 
-  TF_Status* status; 
-  Params(TF_OpKernelContext* ctx) {
-    status = TF_NewStatus();
-    TF_GetInput(ctx, 0, &tags, status);
-    if (TF_GetCode(status) == TF_OK){ 
-      TF_GetInput(ctx, 1, &values, status);
-    }
-  }; 
-  ~Params(){ 
-    TF_DeleteStatus(status); 
-    TF_DeleteTensor(tags); 
-    TF_DeleteTensor(values); 
+// Wrappers to clean up resources once the resource is out of scope. 
+struct Tensor_Wrapper { 
+  TF_Tensor* t; 
+  Tensor_Wrapper() : t(nullptr) {}
+  ~Tensor_Wrapper() { 
+    TF_DeleteTensor(t);
   }
-}; 
+};
+
+struct Status_Wrapper { 
+  TF_Status* s; 
+  Status_Wrapper() { 
+    s = TF_NewStatus(); 
+  }
+  ~Status_Wrapper() { 
+    TF_DeleteStatus(s);
+  }
+};
 
 // dummy functions used for kernel registration 
 static void* HistogramSummaryOp_Create(TF_OpKernelConstruction* ctx) {
@@ -50,33 +49,39 @@ static void HistogramSummaryOp_Delete(void* kernel) {
 
 template<typename T>
 static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
-  Params params(ctx);
-  if (TF_GetCode(params.status) != TF_OK){ 
-    TF_OpKernelContext_Failure(ctx, params.status);
+  Tensor_Wrapper tags_wrapper; 
+  Tensor_Wrapper values_wrapper; 
+  Status_Wrapper status_wrapper;
+  TF_GetInput(ctx, 0, &tags_wrapper.t, status_wrapper.s);
+  if (TF_GetCode(status_wrapper.s) != TF_OK) { 
+    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
     return; 
   }
-  if (TF_NumDims(params.tags) != 0) { 
-    std::ostringstream err; 
-    err << "tags must be scalar"; 
-    TF_SetStatus(params.status, TF_INVALID_ARGUMENT, err.str().c_str());
-    TF_OpKernelContext_Failure(ctx, params.status);
+  TF_GetInput(ctx, 1, &values_wrapper.t, status_wrapper.s);
+  if (TF_GetCode(status_wrapper.s) != TF_OK) { 
+    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
+    return; 
+  }
+  if (TF_NumDims(tags_wrapper.t) != 0) { 
+    TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, "tags must be scalar");
+    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
     return; 
   }
   // Cast values to array to access elements by index 
-  auto values_array = static_cast<T*>(TF_TensorData(params.values)); 
+  auto values_array = static_cast<T*>(TF_TensorData(values_wrapper.t)); 
   tensorflow::histogram::Histogram histo; 
-  for (int i = 0; i < TF_TensorElementCount(params.values); ++i) { 
+  for (int i = 0; i < TF_TensorElementCount(values_wrapper.t); ++i) { 
     const double double_val = static_cast<double>(values_array[i]); 
     if (Eigen::numext::isnan(double_val)) { 
       std::ostringstream err; 
       err << "Nan in summary histogram for: "; 
-      TF_SetStatus(params.status, TF_INVALID_ARGUMENT, err.str().c_str());
+      TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
       break;
     }
     else if (Eigen::numext::isinf(double_val)) { 
       std::ostringstream err; 
       err << "Infinity in Histogram for: "; 
-      TF_SetStatus(params.status, TF_INVALID_ARGUMENT, err.str().c_str());
+      TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
       break; 
     }
     histo.Add(double_val);
@@ -84,27 +89,26 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   tensorflow::Summary s; 
   tensorflow::Summary::Value* v = s.add_value(); 
   const tensorflow::tstring& tag = *(static_cast<tensorflow::tstring*>(
-  		TF_TensorData(params.tags))); 
+  		TF_TensorData(tags_wrapper.t))); 
   v->set_tag(tag.data(), tag.size()); 
   histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */); 
 
-  // Use a new status for AllocateOutput if params.status set to 
+  // Use a new status for AllocateOutput if status_wrapper.s set to 
   // TF_INVALID_ARGUMENT 
-  TF_Status* allocation_status = TF_NewStatus(); 
-  TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0,
+  Status_Wrapper allocation_status_wrapper;
+  Tensor_Wrapper summary_tensor_wrapper; 
+  TF_Tensor* summary_tensor= TF_AllocateOutput(ctx, 0,
       TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
-      sizeof(tensorflow::tstring), allocation_status);
-  if (TF_GetCode(allocation_status) != TF_OK){ 
-    TF_DeleteTensor(summary_tensor); 
-    TF_OpKernelContext_Failure(ctx, allocation_status);
-    TF_DeleteStatus(allocation_status); 
+      sizeof(tensorflow::tstring), allocation_status_wrapper.s);
+  summary_tensor_wrapper.t = summary_tensor;
+
+  if (TF_GetCode(allocation_status_wrapper.s) != TF_OK){ 
+    TF_OpKernelContext_Failure(ctx, allocation_status_wrapper.s);
     return; 
   }
   tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
       TF_TensorData(summary_tensor)); 
   SerializeToTString(s, output_tstring);
-  TF_DeleteTensor(summary_tensor);
-  TF_DeleteStatus(allocation_status); 
 }
 
 template <typename T>
