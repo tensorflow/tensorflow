@@ -122,7 +122,7 @@ void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
   reference_ops::ConcatenationWithScaling(
       data->params, inputs_shape_ptr, inputs_data,
       tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<uint8>(output));
+      tflite::micro::GetTensorData<uint8_t>(output));
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {

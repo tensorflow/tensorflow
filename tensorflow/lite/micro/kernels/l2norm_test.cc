@@ -23,7 +23,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-// used to set the quantization parameters for the int8 and uint8 tests
+// used to set the quantization parameters for the int8_t and uint8_t tests
 constexpr float kInputMin = -2.0;
 constexpr float kInputMax = 2.0;
 constexpr float kOutputMin = -1.0;
@@ -50,7 +50,7 @@ TfLiteTensor CreateL2NormTensor(const float* data, TfLiteIntArray* dims,
   return CreateFloatTensor(data, dims);
 }
 
-TfLiteTensor CreateL2NormTensor(const uint8* data, TfLiteIntArray* dims,
+TfLiteTensor CreateL2NormTensor(const uint8_t* data, TfLiteIntArray* dims,
                                 bool is_input) {
   TfLiteTensor tensor;
 
@@ -64,7 +64,7 @@ TfLiteTensor CreateL2NormTensor(const uint8* data, TfLiteIntArray* dims,
   return tensor;
 }
 
-TfLiteTensor CreateL2NormTensor(const int8* data, TfLiteIntArray* dims,
+TfLiteTensor CreateL2NormTensor(const int8_t* data, TfLiteIntArray* dims,
                                 bool is_input) {
   TfLiteTensor tensor;
 

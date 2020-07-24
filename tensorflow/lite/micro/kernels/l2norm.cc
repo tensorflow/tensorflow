@@ -97,12 +97,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_L2NORM(reference_ops);
 #undef TF_LITE_L2NORM
   } else if (output->type == kTfLiteUInt8) {
-#define TF_LITE_L2NORM(type)                                                 \
-  tflite::L2NormalizationParams op_params;                                   \
-  op_params.input_zero_point = input->params.zero_point;                     \
-  type::L2Normalization(op_params, GetTensorShape(input),                    \
-                        GetTensorData<uint8>(input), GetTensorShape(output), \
-                        GetTensorData<uint8>(output))
+#define TF_LITE_L2NORM(type)                                                   \
+  tflite::L2NormalizationParams op_params;                                     \
+  op_params.input_zero_point = input->params.zero_point;                       \
+  type::L2Normalization(op_params, GetTensorShape(input),                      \
+                        GetTensorData<uint8_t>(input), GetTensorShape(output), \
+                        GetTensorData<uint8_t>(output))
 
     TF_LITE_L2NORM(reference_ops);
 #undef TF_LITE_L2NORM
@@ -115,8 +115,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     const int outer_size =
         MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
     reference_integer_ops::L2Normalization(input->params.zero_point, outer_size,
-                                           depth, GetTensorData<int8>(input),
-                                           GetTensorData<int8>(output));
+                                           depth, GetTensorData<int8_t>(input),
+                                           GetTensorData<int8_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Output type is %s, requires float.",
                        TfLiteTypeGetName(output->type));

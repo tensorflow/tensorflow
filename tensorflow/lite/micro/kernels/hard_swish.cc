@@ -104,7 +104,8 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
     } break;
     default: {
       TF_LITE_KERNEL_LOG(
-          context, "Only float32/int8/uint8 are supported currently, got %s",
+          context,
+          "Only float32/int8_t/uint8_t are supported currently, got %s",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }

@@ -787,7 +787,7 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
   TfLiteIntArray* bias_dims = tflite::testing::IntArrayFromInts(bias_shape);
   TfLiteIntArray* output_dims = tflite::testing::IntArrayFromInts(output_shape);
 
-  // Create per-layer quantized int8 input tensor.
+  // Create per-layer quantized int8_t input tensor.
   TfLiteTensor input_tensor = tflite::testing::CreateQuantizedTensor(
       input_values, input_quantized, input_dims, input_scale, 0);
   int input_zero_points[2] = {1, 0};
@@ -797,7 +797,7 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
       tflite::testing::IntArrayFromInts(input_zero_points), 0};
   input_tensor.quantization = {kTfLiteAffineQuantization, &input_quant};
 
-  // Create per-layer quantized int8 filter tensor.
+  // Create per-layer quantized int8_t filter tensor.
   TfLiteTensor filter_tensor = tflite::testing::CreateQuantizedTensor(
       filter_values, filter_quantized, filter_dims, filter_scale, 0);
   int filter_zero_points[2] = {1, 0};
@@ -807,7 +807,7 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
       tflite::testing::IntArrayFromInts(filter_zero_points), 0};
   filter_tensor.quantization = {kTfLiteAffineQuantization, &filter_quant};
 
-  // Create per-layer quantized int32 bias tensor.
+  // Create per-layer quantized int32_t bias tensor.
   tflite::SymmetricQuantize(bias_values, bias_quantized, bias_elements,
                             input_scale * output_scale);
   TfLiteTensor bias_tensor =
@@ -820,7 +820,7 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
       tflite::testing::IntArrayFromInts(bias_zero_points), 0};
   bias_tensor.quantization = {kTfLiteAffineQuantization, &bias_quant};
 
-  // Create per-layer quantized int8 output tensor.
+  // Create per-layer quantized int8_t output tensor.
   TfLiteTensor output_tensor = tflite::testing::CreateQuantizedTensor(
       output_data, output_dims, output_scale, 0);
   int output_zero_points[2] = {1, 0};
@@ -922,7 +922,7 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
   TfLiteIntArray* bias_dims = tflite::testing::IntArrayFromInts(bias_shape);
   TfLiteIntArray* output_dims = tflite::testing::IntArrayFromInts(output_shape);
 
-  // Create per-tensor quantized int8 input tensor.
+  // Create per-tensor quantized int8_t input tensor.
   int8_t input_quantized[input_elements];
   TfLiteTensor input_tensor = tflite::testing::CreateQuantizedTensor(
       input_values, input_quantized, input_dims, input_scale, input_zero_point);
@@ -935,7 +935,7 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
       tflite::testing::IntArrayFromInts(input_zero_points), 0};
   input_tensor.quantization = {kTfLiteAffineQuantization, &input_quant};
 
-  // Create per-tensor quantized int8 filter tensor.
+  // Create per-tensor quantized int8_t filter tensor.
   int8_t filter_quantized[filter_elements];
   TfLiteTensor filter_tensor = tflite::testing::CreateQuantizedTensor(
       filter_values, filter_quantized, filter_dims, filter_scale, 0);
@@ -948,7 +948,7 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
       tflite::testing::IntArrayFromInts(filter_zero_points), 0};
   filter_tensor.quantization = {kTfLiteAffineQuantization, &filter_quant};
 
-  // Create per-tensor quantized int32 bias tensor.
+  // Create per-tensor quantized int32_t bias tensor.
   int32_t bias_quantized[bias_elements];
   // See https://www.tensorflow.org/lite/performance/quantization_spec for a
   // detailed explanation of why bias scale is input_scale * filter_scale.
@@ -965,7 +965,7 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
       tflite::testing::IntArrayFromInts(bias_zero_points), 0};
   bias_tensor.quantization = {kTfLiteAffineQuantization, &bias_quant};
 
-  // Create per-tensor quantized int8 output tensor.
+  // Create per-tensor quantized int8_t output tensor.
   int8_t output_quantized[output_elements];
   TfLiteTensor output_tensor = tflite::testing::CreateQuantizedTensor(
       output_quantized, output_dims, output_scale, output_zero_point);

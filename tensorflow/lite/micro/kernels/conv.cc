@@ -237,13 +237,13 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   reference_integer_ops::ConvPerChannel(
       op_params, data.per_channel_output_multiplier,
       data.per_channel_output_shift, tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<int8>(input),
+      tflite::micro::GetTensorData<int8_t>(input),
       tflite::micro::GetTensorShape(filter),
-      tflite::micro::GetTensorData<int8>(filter),
+      tflite::micro::GetTensorData<int8_t>(filter),
       tflite::micro::GetTensorShape(bias),
-      tflite::micro::GetTensorData<int32>(bias),
+      tflite::micro::GetTensorData<int32_t>(bias),
       tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<int8>(output));
+      tflite::micro::GetTensorData<int8_t>(output));
 }
 
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
