@@ -2475,6 +2475,33 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     }
   }
 
+  {
+    HloInstruction *a, *b, *c1, *c2;
+    // Mul(Mul(x, constant1), Mul(y, constant2)) => Mul(Mul(x, y),
+    // constant1*constant2)
+    if (Match(multiply,
+              m::Multiply(
+                  m::MultiplyAnyOrder(m::NonConstant(&a), m::Constant(&c1)),
+                  m::MultiplyAnyOrder(m::NonConstant(&b), m::Constant(&c2))))) {
+      TF_ASSIGN_OR_RETURN(auto* product_of_constants,
+                          MakeBinaryHlo(HloOpcode::kMultiply, c1, c2));
+      if (ShapeUtil::IsScalar(product_of_constants->shape()) &&
+          !ShapeUtil::IsScalar(multiply->shape())) {
+        product_of_constants =
+            computation_->AddInstruction(HloInstruction::CreateBroadcast(
+                multiply->shape(), product_of_constants, {}));
+      }
+
+      return ReplaceWithNewInstruction(
+          multiply,
+          HloInstruction::CreateBinary(
+              multiply->shape(), HloOpcode::kMultiply,
+              computation_->AddInstruction(HloInstruction::CreateBinary(
+                  multiply->shape(), HloOpcode::kMultiply, a, b)),
+              product_of_constants));
+    }
+  }
+
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
   if (Match(multiply,
