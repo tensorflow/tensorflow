@@ -4,6 +4,7 @@ load(
     "gen_zipped_test_file",
     "generated_test_models_all",
     "merged_test_models",
+    "tflite_custom_android_library",
     "tflite_custom_cc_library",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
@@ -565,6 +566,12 @@ pybind_extension(
 )
 
 tflite_portable_test_suite()
+
+tflite_custom_android_library(
+    name = "customtized_tflite_for_add_ops",
+    models = ["//tensorflow/lite:testdata/add.bin"],
+    visibility = ["//visibility:public"],
+)
 
 edgetpu_ops = [
     "add",
