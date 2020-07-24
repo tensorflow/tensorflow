@@ -568,5 +568,4 @@ void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
     memcpy(data, values, tensor_size_bytes);
 #endif
 }
-
 }  // namespace tensorflow
