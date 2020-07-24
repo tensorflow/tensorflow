@@ -83,7 +83,6 @@ py_library(
 
 cuda_py_test(
     name = "bidirectional_lstm_benchmark_test",
-    size = "medium",
     srcs = ["keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,

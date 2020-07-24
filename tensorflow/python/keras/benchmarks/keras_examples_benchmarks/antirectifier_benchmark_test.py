@@ -53,7 +53,7 @@ class AntirectifierBenchmark(tf.test.Benchmark):
   #   optimizer: Optimizer for model.
   #   Check more details in `measure_performance()` method of
   #   benchmark_util.
-  def benchmark_anti_bs_128(self):
+  def benchmark_antirectifier_bs_128(self):
     """Measure performance with batch_size=128 and run_iters=2."""
     batch_size = 128
     run_iters = 2
@@ -70,7 +70,7 @@ class AntirectifierBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_anti_bs_256(self):
+  def benchmark_antirectifier_bs_256(self):
     """Measure performance with batch_size=256 and run_iters=3."""
     batch_size = 256
     run_iters = 3
@@ -87,7 +87,7 @@ class AntirectifierBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_anti_bs_512(self):
+  def benchmark_antirectifier_bs_512(self):
     """Measure performance with batch_size=512 and run_iters=4."""
     batch_size = 512
     run_iters = 4
@@ -104,7 +104,7 @@ class AntirectifierBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_anti_bs_512_gpu_1(self):
+  def benchmark_antirectifier_bs_512_gpu_1(self):
     """Measure performance with batch_size=512, run_iters=4, gpu=1 and
     distribution_strategy=`mirrored`."""
     batch_size = 512
@@ -124,7 +124,7 @@ class AntirectifierBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_anti_bs_512_gpu_2(self):
+  def benchmark_antirectifier_bs_512_gpu_2(self):
     """Measure performance with batch_size=512, run_iters=4, gpu=2 and
     distribution_strategy=`mirrored`."""
     batch_size = 512
