@@ -593,6 +593,12 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       m = self._m_2_by_2.cpu()
       self._benchmark_defun_matmul_with_signature(m, num_iters=self._num_iters_2_by_2)
 
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+  def benchmark_defun_args_matmul_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_args_matmul(m, num_iters=self._num_iters_2_by_2)
+
   @test_util.disable_tfrt("async not supported")
   def benchmark_defun_matmul_2_by_2_CPU_async(self):
     with context.device(CPU):
