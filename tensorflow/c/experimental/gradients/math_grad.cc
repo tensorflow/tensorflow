@@ -47,6 +47,10 @@ class AddGradientFunction : public GradientFunction {
     return Status::OK();
   }
   ~AddGradientFunction() override {}
+
+  private:
+    long counter;
+
 };
 
 class ExpGradientFunction : public GradientFunction {
@@ -107,7 +111,7 @@ class MatMulGradientFunction : public GradientFunction {
 
     (*grad_outputs)[1] = matmul_outputs[0];
 
-    counter += 2; //update counter for names 
+    counter += 2; // update counter for names 
     return Status::OK();
   }
   ~MatMulGradientFunction() override {}
@@ -116,6 +120,8 @@ class MatMulGradientFunction : public GradientFunction {
   AbstractContext* ctx_;
   std::vector<AbstractTensorHandle*> forward_inputs;
   long counter;
+  std::vector<AbstractTensorHandle*> forward_inputs;
+  
 
 };
 
@@ -137,7 +143,8 @@ class ReluGradientFunction : public GradientFunction {
                               absl::MakeSpan(relugrad_outputs), "relu_grad"));
 
     (*grad_outputs)[0] = relugrad_outputs[0];
-
+    
+    counter += 1;
     return Status::OK();
   }
   ~ReluGradientFunction() override {}
@@ -174,7 +181,8 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
     // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd output.
     (*grad_outputs)[0] = sm_outputs[1];  // return backprop for scores
     (*grad_outputs)[1] = sm_outputs[0]; // nullptr;  <--- nullptr causes Mangled Stack Trace
-
+    
+    counter += 1;
     return Status::OK();
   }
   ~SparseSoftmaxCrossEntropyLossGradientFunction() override {}

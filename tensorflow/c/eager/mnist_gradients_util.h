@@ -148,8 +148,3 @@ Status RunModel(Model model, AbstractContext* ctx,
                 const GradientRegistry& registry);
 
 Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx);
-
-// }  // namespace
-// }  // namespace internal
-// }  // namespace gradients
-// }  // namespace tensorflow
