@@ -543,7 +543,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       self.optimizer = self._get_optimizer(optimizer)
       self.compiled_loss = compile_utils.LossesContainer(
           loss, loss_weights, output_names=self.output_names)
-      self.compiled_metrics = compile_utils.MetricsContainer(
+      self.compiled_metrics = compile_utils.MetricsContainer(loss, 
           metrics, weighted_metrics, output_names=self.output_names)
 
       experimental_steps_per_execution = kwargs.pop(

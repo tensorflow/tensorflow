@@ -276,13 +276,14 @@ class LossesContainer(Container):
 class MetricsContainer(Container):
   """A container class for metrics passed to `Model.compile`."""
 
-  def __init__(self, metrics=None, weighted_metrics=None, output_names=None):
+  def __init__(self, loss=None, metrics=None, weighted_metrics=None, output_names=None):
     super(MetricsContainer, self).__init__(output_names=output_names)
 
     # Keep user-supplied values untouched for recompiling and serialization.
     self._user_metrics = metrics
     self._user_weighted_metrics = weighted_metrics
 
+    self._loss = loss
     self._metrics = metrics
     self._weighted_metrics = weighted_metrics
     self._built = False
@@ -440,8 +441,12 @@ class MetricsContainer(Container):
       y_p_rank = len(y_p.shape.as_list())
       y_t_last_dim = y_t.shape.as_list()[-1]
       y_p_last_dim = y_p.shape.as_list()[-1]
-
-      is_binary = y_p_last_dim == 1
+      is_binary_crossentropy = (
+        isinstance(self._loss, losses_mod.BinaryCrossentropy) or
+        (isinstance(self._loss, losses_mod.LossFunctionWrapper) and
+        self._loss.fn == losses_mod.binary_crossentropy) or 
+        self._loss == "bce")
+      is_binary = y_p_last_dim == 1 or is_binary_crossentropy
       is_sparse_categorical = (
           y_t_rank < y_p_rank or y_t_last_dim == 1 and y_p_last_dim > 1)
 
