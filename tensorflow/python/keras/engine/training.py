@@ -2733,7 +2733,7 @@ def _minimize(strategy, tape, optimizer, loss, trainable_variables):
 
   # Whether to aggregate gradients outside of optimizer. This requires support
   # of the optimizer and doesn't work with ParameterServerStrategy and
-  # CentralStroageStrategy.
+  # CentralStorageStrategy.
   aggregate_grads_outside_optimizer = (
       optimizer._HAS_AGGREGATE_GRAD and  # pylint: disable=protected-access
       not isinstance(strategy.extended,
