@@ -885,10 +885,14 @@ class OpKernelContext {
 
   // Tries to forward one of the inputs given in input_indices to
   // output[output_index]. If none of the given inputs can be forwarded, calls
-  // allocate_output() to allocate a new output buffer.
+  // allocate_output() to allocate a new output buffer. The index of the
+  // forwarded input will be assign to output argument forwarded_input (if it's
+  // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
+  // -1.
   Status forward_input_or_allocate_output(
       gtl::ArraySlice<int> candidate_input_indices, int output_index,
-      const TensorShape& output_shape, Tensor** output) TF_MUST_USE_RESULT;
+      const TensorShape& output_shape, Tensor** output,
+      int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
   Status forward_input_or_allocate_output(
       gtl::ArraySlice<StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
@@ -1636,12 +1640,18 @@ inline TensorValue OpKernelContext::release_output(int index) {
 
 inline Status OpKernelContext::forward_input_or_allocate_output(
     gtl::ArraySlice<int> candidate_input_indices, int output_index,
-    const TensorShape& output_shape, Tensor** output) {
+    const TensorShape& output_shape, Tensor** output, int* forwarded_input) {
   for (int input_index : candidate_input_indices) {
     if (forward_input_to_output_with_shape(input_index, output_index,
                                            output_shape, output)) {
+      if (forwarded_input != nullptr) {
+        *forwarded_input = input_index;
+      }
       return Status::OK();
     }
+  }
+  if (forwarded_input != nullptr) {
+    *forwarded_input = -1;
   }
   return allocate_output(output_index, output_shape, output);
 }
