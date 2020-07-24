@@ -82,8 +82,10 @@ struct SPMDCollectiveOpsCreator {
   std::function<HloInstruction*(SpmdBuilder*)> create_partition_id;
 
   // Function used to create a cross-partition all-reduce HLO.
-  std::function<HloInstruction*(SpmdBuilder*, HloInstruction* operand,
-                                HloComputation* reduction, int64 channel_id)>
+  std::function<HloInstruction*(
+      SpmdBuilder*, HloInstruction* operand, HloComputation* reduction,
+      const std::vector<std::vector<int64>>& partition_subgroups,
+      int64 channel_id)>
       create_cross_partition_all_reduce;
 
   // Function used to create a cross-partition collective-permute HLO.
@@ -96,8 +98,8 @@ struct SPMDCollectiveOpsCreator {
   // Function used to create a cross-partition all-to-all HLO.
   std::function<HloInstruction*(
       SpmdBuilder*, absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups, int64 channel_id,
-      absl::optional<int64> split_dimension)>
+      const std::vector<std::vector<int64>>& partition_subgroups,
+      int64 channel_id, absl::optional<int64> split_dimension)>
       create_cross_partition_all_to_all;
 
   // Function used to create a cross-partition all-gather HLO. This is optional:
@@ -169,10 +171,13 @@ class SpmdPartitioner : public HloModulePass {
   // The default uses a single all-gather even if there are multiple sharded
   // dimensions, and adds potential reshapes and transposes to achieve that.
   // If it returns false, the partitioner will fall back to all-reduce.
-  virtual HloInstruction* AllGatherShards(SpmdBuilder* b,
-                                          HloInstruction* operand,
-                                          const HloSharding& sharding,
-                                          int64 channel_id);
+  // `selected_dims` specifies the dimensions along which the all-gather happens
+  // in the tiled sharding, which allows potentially creating a subgroup
+  // all-gather.
+  virtual HloInstruction* AllGatherShards(
+      SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
+      int64 channel_id, absl::Span<const int64> selected_dims,
+      const SPMDCollectiveOpsCreator& collectives_creator);
 
  protected:
   virtual std::unique_ptr<SpmdPartitioningVisitor> CreateVisitor(
@@ -215,7 +220,11 @@ class PartitionedHlo {
           std::tuple<HloSharding, Window, WindowedInputShardReturnValue>>
           window_reshard_cache;
     };
+    // Use std::unordered_map for pointer stability.
     std::unordered_map<HloInstruction*, PerHloCache> per_hlo_cache;
+    // Caches for nested partitioning of grouped sharding. Each string key
+    // represents a unique way of grouping devices.
+    std::unordered_map<std::string, ReshardCache> groupd_caches;
   };
   struct PartitioningState {
     SpmdBuilder* b;
@@ -270,14 +279,17 @@ class PartitionedHlo {
 
   const PartitioningState& state() const { return state_; }
 
+  // Helper function to replicate the data on all devices. Could only modify
+  // the reshard cache.
+  PartitionedHlo Replicate();
+
+  // Helper function to replicate the data for partitions along the given dims.
+  HloInstruction* ReplicatePartial(absl::Span<const int64> dims);
+
  private:
   // Same as Reshard except that it does not explicitly modify the reshard
   // cache, although it would indirectly modify by calling Replicate().
   PartitionedHlo ReshardNoCache(const HloSharding& target);
-
-  // Helper function to replicate the data on all devices. Could only modify
-  // the reshard cache.
-  PartitionedHlo Replicate();
 
   // Helper function to broadcast data from a single device to all devices.
   PartitionedHlo Broadcast() const;
@@ -417,6 +429,16 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   StatusOr<bool> DoPartition(HloComputation* computation,
                              const HloSharding& root_sharding);
 
+  // Information about a loop created for windowed dot-general. Used when
+  // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
+  // finishes traversing the graph.
+  struct WindowedDotGeneralLoop {
+    HloInstruction* while_loop;
+    int64 windowed_operand;
+    bool windowed_in_contracting_dims;
+    bool windowed_in_batch_dims;
+  };
+
  private:
   Status Preprocess(HloInstruction* hlo) override;
   Status Postprocess(HloInstruction* hlo) override;
@@ -445,15 +467,6 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // partitioned instruction.
   ConstHloInstructionMap<PartitionedHlo> partitioned_instructions_;
 
-  // Information about a loop created for windowed dot-general. Used when
-  // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
-  // finishes traversing the graph.
-  struct WindowedDotGeneralLoop {
-    HloInstruction* while_loop;
-    int64 windowed_operand;
-    bool windowed_in_contracting_dims;
-    bool windowed_in_batch_dims;
-  };
   std::vector<WindowedDotGeneralLoop> windowed_dot_general_loops_;
 
   HloInstruction* visiting_hlo_;
