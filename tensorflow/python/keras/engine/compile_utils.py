@@ -446,10 +446,10 @@ class MetricsContainer(Container):
       y_t_last_dim = y_t.shape.as_list()[-1]
       y_p_last_dim = y_p.shape.as_list()[-1]
       is_binary_crossentropy = (
-        isinstance(self._loss, losses_mod.BinaryCrossentropy) or
-        (isinstance(self._loss, losses_mod.LossFunctionWrapper) and
-        self._loss.fn == losses_mod.binary_crossentropy) or 
-        self._loss == "bce")
+          isinstance(self._loss, losses_mod.BinaryCrossentropy) or
+          (isinstance(self._loss, losses_mod.LossFunctionWrapper) and
+          self._loss.fn == losses_mod.binary_crossentropy) or 
+          self._loss == "bce")
       is_binary = y_p_last_dim == 1 or is_binary_crossentropy
       is_sparse_categorical = (
           y_t_rank < y_p_rank or y_t_last_dim == 1 and y_p_last_dim > 1)
