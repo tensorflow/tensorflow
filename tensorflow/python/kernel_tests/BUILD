@@ -3521,9 +3521,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
-    tags = [
-        "no_gpu",  # TODO(b/161856380): Re-enable when fix lands.
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
