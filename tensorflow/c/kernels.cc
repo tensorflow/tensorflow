@@ -26,9 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/types.h"
 
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
 // and with a focus on maintaining both source and binary compatibility.
@@ -100,9 +97,9 @@ void TF_KernelBuilder_HostMemory(TF_KernelBuilder* kernel_builder,
   kernel_builder->cc_builder->HostMemory(arg_name);
 }
 
-void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder, 
-                               int32_t priority_number){ 
-  kernel_builder->cc_builder->Priority(priority_number); 
+void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder,
+                               int32_t priority_number) {
+  kernel_builder->cc_builder->Priority(priority_number);
 }
 
 namespace tensorflow {
@@ -277,7 +274,7 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
 }
 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
-													 int64_t* dims, int num_dims, 
+                           int64_t* dims, int num_dims, 
                            TF_AllocatorAttributes attributes,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
