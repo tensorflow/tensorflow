@@ -543,9 +543,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       self.optimizer = self._get_optimizer(optimizer)
       self.compiled_loss = compile_utils.LossesContainer(
           loss, loss_weights, output_names=self.output_names)
-      mc = compile_utils.MetricsContainer(loss,
-                                          metrics,
+      mc = compile_utils.MetricsContainer(metrics,
                                           weighted_metrics,
+                                          loss=loss,
                                           output_names=self.output_names)
       self.compiled_metrics = mc
 
