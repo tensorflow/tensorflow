@@ -16,11 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 
 #include <algorithm>
-#include <memory>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -147,10 +143,10 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
   return partition_shape;
 }
 
-std::vector<HloInstruction*> MakePartitionOffsets(
-    const Shape& shape, const HloSharding& sharding,
-    HloInstruction* partition_id, SpmdBuilder* b,
-    absl::Span<const int64> dims) {
+std::vector<HloInstruction*> MakePartitionOffsets(const Shape& shape,
+                                                  const HloSharding& sharding,
+                                                  HloInstruction* partition_id,
+                                                  SpmdBuilder* b) {
   CHECK(!shape.IsTuple());
 
   Array2D<int32> offset_array(
@@ -162,8 +158,7 @@ std::vector<HloInstruction*> MakePartitionOffsets(
       LiteralUtil::CreateR2FromArray2D(offset_array)));
   std::vector<HloInstruction*> offsets;
   for (int64 i = 0; i < shape.rank(); ++i) {
-    if (sharding.tile_assignment().dim(i) == 1 ||
-        (!dims.empty() && !absl::c_linear_search(dims, i))) {
+    if (sharding.tile_assignment().dim(i) == 1) {
       offsets.push_back(b->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
     } else {
@@ -981,253 +976,6 @@ bool CanReshardWithCollectivePermute(const HloSharding& source,
          source.tile_assignment().dimensions() ==
              target.tile_assignment().dimensions() &&
          source.tile_assignment() != target.tile_assignment();
-}
-
-GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
-                                    absl::Span<const int64> group_dims) {
-  CHECK(!sharding.IsTileMaximal());
-  std::vector<int64> grouped_tiling_dims =
-      sharding.tile_assignment().dimensions();
-  std::vector<int64> group_dim_sizes(group_dims.size());
-  for (int64 i = 0; i < group_dims.size(); ++i) {
-    group_dim_sizes[i] = grouped_tiling_dims[group_dims[i]];
-    grouped_tiling_dims[group_dims[i]] = 1;
-  }
-  std::vector<std::vector<int64>> device_groups(Product(group_dim_sizes));
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64> indices, int64 device) {
-        int64 group_id = 0;
-        for (int64 dim : group_dims) {
-          group_id *= sharding.tile_assignment().dim(dim);
-          group_id += indices[dim];
-        }
-        device_groups[group_id].push_back(device);
-      });
-  Array<int64> grouped_tiling(grouped_tiling_dims);
-  grouped_tiling.FillIota(0);
-  return GroupedSharding(
-      std::move(device_groups),
-      std::vector<int64>(group_dims.begin(), group_dims.end()),
-      std::move(group_dim_sizes), sharding.tile_assignment().num_dimensions(),
-      HloSharding::Tile(grouped_tiling));
-}
-
-HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
-  CHECK(!grouped_sharding.sharding.IsTileMaximal());
-  std::vector<int64> tiling_dims =
-      grouped_sharding.sharding.tile_assignment().dimensions();
-  for (int64 i = 0; i < grouped_sharding.group_dims.size(); ++i) {
-    tiling_dims[grouped_sharding.group_dims[i]] =
-        grouped_sharding.group_dim_sizes[i];
-  }
-  Array<int64> tiling(tiling_dims);
-  grouped_sharding.sharding.tile_assignment().Each(
-      [&](absl::Span<const int64> indices, int64 device) {
-        std::vector<int64> ungrouped_inds(indices.begin(), indices.end());
-        for (int64 g = 0; g < grouped_sharding.device_groups.size(); ++g) {
-          int64 remaining_group_index = g;
-          for (int64 i = grouped_sharding.group_dims.size() - 1; i >= 0; --i) {
-            ungrouped_inds[grouped_sharding.group_dims[i]] =
-                remaining_group_index % grouped_sharding.group_dim_sizes[i];
-            remaining_group_index /= grouped_sharding.group_dim_sizes[i];
-          }
-          tiling(ungrouped_inds) = grouped_sharding.device_groups[g][device];
-        }
-      });
-  return HloSharding::Tile(tiling);
-}
-
-GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
-                                const GroupedSharding& reference,
-                                bool ignore_group_order) {
-  // Returns src -> dst index mapping.
-  auto get_permutation = [](absl::Span<const int64> src,
-                            absl::Span<const int64> dst) {
-    CHECK_EQ(src.size(), dst.size());
-    absl::flat_hash_map<int64, int64> dst_reverse_map;
-    for (int64 i = 0; i < dst.size(); ++i) {
-      dst_reverse_map[dst[i]] = i;
-    }
-    std::vector<int64> permutation(src.size());
-    for (int64 i = 0; i < src.size(); ++i) {
-      auto it = dst_reverse_map.find(src[i]);
-      CHECK(it != dst_reverse_map.end());
-      permutation[i] = it->second;
-    }
-    return permutation;
-  };
-  CHECK_EQ(grouped_sharding.device_groups.size(),
-           reference.device_groups.size());
-  absl::flat_hash_map<int64, int64> device_to_ref_group;
-  for (int64 g = 0; g < reference.device_groups.size(); ++g) {
-    for (int64 device : reference.device_groups[g]) {
-      device_to_ref_group[device] = g;
-    }
-  }
-  auto unique_ref_dev_group = [&](absl::Span<const int64> devices) -> int64 {
-    int64 ref_g = -1;
-    for (int64 device : devices) {
-      if (ref_g == -1) {
-        ref_g = device_to_ref_group[device];
-      } else if (ref_g != device_to_ref_group[device]) {
-        return -1;
-      }
-    }
-    return ref_g;
-  };
-  bool matching_groups = true;
-  std::vector<int64> original_src_to_ref_permutation;
-  for (int64 g = 0; g < grouped_sharding.device_groups.size(); ++g) {
-    int64 ref_g = unique_ref_dev_group(grouped_sharding.device_groups[g]);
-    if (ref_g < 0 || (!ignore_group_order && g != ref_g)) {
-      matching_groups = false;
-      break;
-    }
-    if (g == 0) {
-      original_src_to_ref_permutation = get_permutation(
-          grouped_sharding.device_groups[g], reference.device_groups[ref_g]);
-    }
-  }
-  if (matching_groups) {
-    auto tiles = grouped_sharding.sharding.tile_assignment();
-    tiles.Each([&](absl::Span<const int64> indices, int64* device) {
-      *device = original_src_to_ref_permutation[*device];
-    });
-    grouped_sharding.sharding = HloSharding::Tile(tiles);
-  }
-  grouped_sharding.device_groups = std::move(reference.device_groups);
-  return grouped_sharding;
-}
-
-Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
-                           const Shape& original_base_shape) {
-  auto result = original_base_shape;
-  for (int64 i = 0; i < grouped_sharding.group_dims.size(); ++i) {
-    int64 dim = grouped_sharding.group_dims[i];
-    int64 groups = grouped_sharding.group_dim_sizes[i];
-    result.set_dimensions(dim, result.dimensions(dim) / groups);
-  }
-  return result;
-}
-
-namespace {
-
-HloInstruction* GetInGroupPartitionId(
-    HloInstruction* partition_id,
-    const std::vector<std::vector<int64>>& device_groups, SpmdBuilder* b) {
-  int64 total_devices = device_groups.size() * device_groups[0].size();
-  std::vector<uint32> in_group_ids(total_devices);
-  for (uint32 i = 0; i < device_groups.size(); ++i) {
-    for (uint32 j = 0; j < device_groups[i].size(); ++j) {
-      in_group_ids[device_groups[i][j]] = j;
-    }
-  }
-  auto id_table = b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<uint32>(in_group_ids)));
-  return b->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeScalarShape(U32),
-      b->AddInstruction(HloInstruction::CreateDynamicSlice(
-          ShapeUtil::MakeShape(U32, {1}), id_table, {partition_id}, {1}))));
-}
-
-SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
-    const SPMDCollectiveOpsCreator& creator,
-    const std::vector<std::vector<int64>>& device_groups) {
-  SPMDCollectiveOpsCreator result;
-  result.create_partition_id = [creator, device_groups](SpmdBuilder* b) {
-    return GetInGroupPartitionId(creator.create_partition_id(b), device_groups,
-                                 b);
-  };
-  auto expand_partition_groups =
-      [device_groups](
-          const std::vector<std::vector<int64>>& partition_subgroups) {
-        if (partition_subgroups.empty()) {
-          return device_groups;
-        }
-        std::vector<std::vector<int64>> result(partition_subgroups.size() *
-                                               device_groups.size());
-        for (int64 g = 0; g < device_groups.size(); ++g) {
-          for (int64 i = 0; i < partition_subgroups.size(); ++i) {
-            result[g * partition_subgroups.size() + i].resize(
-                partition_subgroups[i].size());
-            for (int64 j = 0; j < partition_subgroups[i].size(); ++j) {
-              result[g * partition_subgroups.size() + i][j] =
-                  device_groups[g][partition_subgroups[i][j]];
-            }
-          }
-        }
-        return result;
-      };
-  result.create_cross_partition_all_reduce =
-      [creator, expand_partition_groups](
-          SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
-          const std::vector<std::vector<int64>>& partition_subgroups,
-          int64 channel_id) {
-        return creator.create_cross_partition_all_reduce(
-            b, operand, reduction, expand_partition_groups(partition_subgroups),
-            channel_id);
-      };
-  result.create_cross_partition_collective_permute =
-      [creator, device_groups](
-          SpmdBuilder* b, HloInstruction* operand,
-          std::vector<std::pair<int64, int64>>& src_dst_pairs,
-          int64 next_channel_id) {
-        std::vector<std::pair<int64, int64>> expanded_pairs(
-            src_dst_pairs.size() * device_groups.size());
-        for (int64 g = 0; g < device_groups.size(); ++g) {
-          for (int64 i = 0; i < src_dst_pairs.size(); ++i) {
-            expanded_pairs[g * src_dst_pairs.size() + i] =
-                std::pair<int64, int64>{
-                    device_groups[g][src_dst_pairs[i].first],
-                    device_groups[g][src_dst_pairs[i].second]};
-          }
-        }
-        return creator.create_cross_partition_collective_permute(
-            b, operand, expanded_pairs, next_channel_id);
-      };
-  result.create_cross_partition_all_to_all =
-      [creator, expand_partition_groups](
-          SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
-          const std::vector<std::vector<int64>>& partition_subgroups,
-          int64 channel_id, absl::optional<int64> split_dimension) {
-        return creator.create_cross_partition_all_to_all(
-            b, operands, expand_partition_groups(partition_subgroups),
-            channel_id, split_dimension);
-      };
-  if (creator.create_cross_partition_all_gather) {
-    result.create_cross_partition_all_gather =
-        [creator, expand_partition_groups](
-            SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
-            const std::vector<std::vector<int64>>& partition_subgroups,
-            int64 channel_id, int64 all_gather_dimension) {
-          return creator.create_cross_partition_all_gather(
-              b, operand, ag_shape,
-              expand_partition_groups(partition_subgroups), channel_id,
-              all_gather_dimension);
-        };
-  }
-  return result;
-}
-
-}  // namespace
-
-PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
-    const PartitionedHlo::PartitioningState& state,
-    const std::vector<std::vector<int64>>& device_groups, SpmdBuilder* b) {
-  auto result = state;
-  result.collective_ops_creator = GetPerGroupCollectiveOpsCreator(
-      state.collective_ops_creator, device_groups);
-  result.partition_id =
-      GetInGroupPartitionId(state.partition_id, device_groups, b);
-  // Create a string key for the groups.
-  std::vector<std::string> per_group_strings(device_groups.size());
-  for (int64 i = 0; i < per_group_strings.size(); ++i) {
-    per_group_strings[i] = absl::StrJoin(device_groups[i], ",");
-  }
-  result.reshard_cache =
-      &state.reshard_cache
-           ->groupd_caches[absl::StrJoin(per_group_strings, ";")];
-  return result;
 }
 
 }  // namespace spmd

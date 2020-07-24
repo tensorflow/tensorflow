@@ -226,7 +226,7 @@ Status SpmdPartitioningVisitor::HandleConvolutionTiledLhsAndRhs(
         hlo->batch_group_count(), new_window,
         hlo->convolution_dimension_numbers(), hlo->precision_config()));
     auto ar = collective_ops_creator_.create_cross_partition_all_reduce(
-        &b_, conv, MakeBinaryAdd(hlo->shape().element_type(), module_), {},
+        &b_, conv, MakeBinaryAdd(hlo->shape().element_type(), module_),
         NewChannel());
     ar->set_sharding(HloSharding::Replicate());
     return PartitionedHlo(ar, hlo->shape(), MakePartitioningState())
@@ -605,7 +605,7 @@ Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
             hlo->batch_group_count(), new_window, dnums,
             hlo->precision_config()));
         auto ar = collective_ops_creator_.create_cross_partition_all_reduce(
-            &b_, conv, MakeBinaryAdd(hlo->shape().element_type(), module_), {},
+            &b_, conv, MakeBinaryAdd(hlo->shape().element_type(), module_),
             NewChannel());
         ar->set_sharding(HloSharding::Replicate());
         return PartitionedHlo(ar, hlo->shape(), MakePartitioningState())
