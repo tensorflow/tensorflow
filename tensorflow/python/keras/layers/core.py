@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import copy
 import functools
 import operator
@@ -1428,18 +1427,16 @@ class KerasOpDispatcher(dispatch.GlobalOpDispatcher):
 
 KerasOpDispatcher().register()
 
-SliceTuple = collections.namedtuple('SliceTuple', ['start', 'stop', 'step'])
 
-
-def _slice_to_named_tuple(x):
+def _slice_to_dict(x):
   if isinstance(x, slice):
-    return SliceTuple(x.start, x.stop, x.step)
+    return {'start': x.start, 'stop': x.stop, 'step': x.step}
   return x
 
 
-def _named_tuple_to_slice(x):
-  if type(x).__name__ == 'SliceTuple':
-    return slice(x[0], x[1], x[2])
+def _dict_to_slice(x):
+  if isinstance(x, dict):
+    return slice(x['start'], x['stop'], x['step'])
   return x
 
 
@@ -1466,32 +1463,32 @@ class SlicingOpLambda(TFOpLambda):
     original_call = self.call
     # Decorate the function to produce this layer's call method
     def _call_wrapper(*args, **kwargs):
-      # Turn any slice nametuples in the args back into `slice` objects.
+      # Turn any slice dicts in the args back into `slice` objects.
       # This conversion cannot use nest.flatten/map_structure,
-      # because namedtuples are flattened by nest while slices aren't.
+      # because dicts are flattened by nest while slices aren't.
       # So, map_structure would only see the individual elements in the
-      # namedtuple.
+      # dict.
       # This can't use map_structure_up_to either because the 'shallowness' of
       # the shallow tree would have to vary depending on if only one dim or
       # multiple are being sliced.
       new_args = []
       for arg in args:
-        arg = _named_tuple_to_slice(arg)
+        arg = _dict_to_slice(arg)
         if isinstance(arg, (list, tuple)):
           new_arg = []
           for sub_arg in arg:
-            new_arg.append(_named_tuple_to_slice(sub_arg))
+            new_arg.append(_dict_to_slice(sub_arg))
           arg = new_arg
         new_args.append(arg)
 
       # Handle the kwargs too.
       new_kwargs = {}
       for key, value in kwargs.items():
-        value = _named_tuple_to_slice(value)
+        value = _dict_to_slice(value)
         if isinstance(value, (list, tuple)):
           new_value = []
           for v in value:
-            new_value.append(_named_tuple_to_slice(v))
+            new_value.append(_dict_to_slice(v))
           value = new_value
         new_kwargs[key] = value
 
@@ -1507,8 +1504,8 @@ class TFSlicingOpDispatcher(dispatch.OpDispatcher):
 
   def handle(self, args, kwargs):
     """Handle the specified operation with the specified arguments."""
-    args = nest.map_structure(_slice_to_named_tuple, args)
-    kwargs = nest.map_structure(_slice_to_named_tuple, kwargs)
+    args = nest.map_structure(_slice_to_dict, args)
+    kwargs = nest.map_structure(_slice_to_dict, kwargs)
     if any(
         isinstance(x, keras_tensor.KerasTensor)
         for x in nest.flatten([args, kwargs])):
