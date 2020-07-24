@@ -84,10 +84,11 @@ struct TransferFromDeviceState {
   std::function<void(Status)> done;
 
   void TransferFinished(SE_Status* status) {
-    if (!TpuStatus_Ok(status) && TpuStatus_Ok(status_helper.c_status)) {
+    if (!tpu::ExecutorApiFn()->TpuStatus_OkFn(status) &&
+        tpu::ExecutorApiFn()->TpuStatus_OkFn(status_helper.c_status)) {
       status_helper.c_status = status;
     } else {
-      TpuStatus_Free(status);
+      tpu::ExecutorApiFn()->TpuStatus_FreeFn(status);
     }
 
     if (--remaining_transfers == 0) {

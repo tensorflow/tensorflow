@@ -167,8 +167,8 @@ XLA_HloModuleConfig HloModuleConfigToC(const xla::HloModuleConfig& config) {
 
 class TpuCompiler : public Compiler {
  public:
-  TpuCompiler() { compiler_ = TpuCompiler_New(); }
-  ~TpuCompiler() override {}
+  TpuCompiler() { compiler_ = ExecutorApiFn()->TpuCompiler_NewFn(); }
+  ~TpuCompiler() override { ExecutorApiFn()->TpuCompiler_FreeFn(compiler_); }
 
   stream_executor::Platform::Id PlatformId() const override {
     return tensorflow::TpuPlatform::kId;
