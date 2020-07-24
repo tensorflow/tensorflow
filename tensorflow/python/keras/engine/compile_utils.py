@@ -276,7 +276,11 @@ class LossesContainer(Container):
 class MetricsContainer(Container):
   """A container class for metrics passed to `Model.compile`."""
 
-  def __init__(self, loss=None, metrics=None, weighted_metrics=None, output_names=None):
+  def __init__(self, 
+               loss=None, 
+               metrics=None, 
+               weighted_metrics=None, 
+               output_names=None):
     super(MetricsContainer, self).__init__(output_names=output_names)
 
     # Keep user-supplied values untouched for recompiling and serialization.
