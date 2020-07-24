@@ -448,7 +448,7 @@ class MetricsContainer(Container):
       is_binary_crossentropy = (
           isinstance(self._loss, losses_mod.BinaryCrossentropy) or
           (isinstance(self._loss, losses_mod.LossFunctionWrapper) and
-          self._loss.fn == losses_mod.binary_crossentropy) or 
+          (self._loss.fn == losses_mod.binary_crossentropy) or
           self._loss == "bce")
       is_binary = y_p_last_dim == 1 or is_binary_crossentropy
       is_sparse_categorical = (
