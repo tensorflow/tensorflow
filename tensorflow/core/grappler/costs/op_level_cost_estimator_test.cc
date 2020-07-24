@@ -929,6 +929,23 @@ TEST_F(OpLevelCostEstimatorTest, CastExecutionTime) {
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
+TEST_F(OpLevelCostEstimatorTest, BroadcastAddExecutionTime) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Add");
+
+  DescribeTensor1D(100, op_context.op_info.add_inputs());
+  DescribeTensor4D(1, 10, 1, 1, op_context.op_info.add_inputs());
+
+  auto cost = PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(44), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(100), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(144), cost.execution_time);
+  EXPECT_EQ(1, cost.num_ops_total);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
 TEST_F(OpLevelCostEstimatorTest, UnknownOrPartialShape) {
   {
     auto cost = PredictCosts(DescribeMatMul(2, 4, 7, 7));
@@ -1100,9 +1117,7 @@ void ExpectTensorShape(const std::vector<int64>& expected,
   TensorShape tensor_shape_expected(expected);
   TensorShape tensor_shape(tensor_shape_proto);
 
-  LOG(INFO) << "Expected: " << tensor_shape_expected.DebugString();
-  LOG(INFO) << "TensorShape: " << tensor_shape.DebugString();
-  EXPECT_TRUE(tensor_shape_expected == tensor_shape);
+  EXPECT_EQ(tensor_shape_expected, tensor_shape);
 }
 
 TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
