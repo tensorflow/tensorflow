@@ -471,7 +471,7 @@ __device__ T GpuShuffleXorSync(unsigned mask, T value, int lane_mask,
 #endif
 #elif TENSORFLOW_USE_ROCM
   // ROCM TODO: check if HIP should be changed to cope with more types
-  return __shfl_xor(static_cast<int>(value), lane_mask, width);
+  return __shfl_xor(value, lane_mask, width);
 #endif
 }
 
