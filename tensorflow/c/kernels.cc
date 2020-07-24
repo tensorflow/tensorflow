@@ -281,22 +281,25 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
   TF_SetStatus(status, TF_OK, ""); 
   tensorflow::TensorShape shape;
   for (int i = 0; i < num_dims; ++i) {
-    shape.AddDim(dims[i]); 
+    shape.AddDim(dims[i]);
   }
   tensorflow::AllocatorAttributes allocator_attr; 
   if (attributes.on_host) { 
     allocator_attr.set_on_host(true); 
   }
   tensorflow::Status s;
-  tensorflow::Tensor tensor_temp;  
-  TF_Tensor* tf_tensor_temp; 
-  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, 
+  tensorflow::Tensor tensor;
+  TF_Tensor* tf_tensor;
+  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape,
   		&tensor_temp, allocator_attr);
-  if (s.ok()) { 
-    tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
+  if (!s.ok()) {
+    ::tensorflow::Set_TF_Status_fromStatus(status, s);
+    return nullptr;
   }
-  if (s.ok()) { 
-    ::tensorflow::Set_TF_Status_from_Status(status, s); 
-    return tf_tensor_temp; 
-  }  
+  tf_tensor = TF_TensorFromTensor(tensor, &s);
+  if (!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return nullptr;
+  }
+  return tf_tensor;
 }
