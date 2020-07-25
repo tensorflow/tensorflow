@@ -41,6 +41,9 @@ def ignore_errors(log_warning=False):
   dataset =
       dataset.apply(tf.data.experimental.ignore_errors())  # ==> {1., 0.5, 0.2}
   ```
+  Args:
+     log_warning: (Optional.) A 'tf.bool' scalar indicating whether ignored
+      errors should be logged to stderr. Defaults to 'False'.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
