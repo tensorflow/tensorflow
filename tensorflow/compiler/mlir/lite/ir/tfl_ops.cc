@@ -1444,11 +1444,49 @@ void FakeQuantOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // TODO(b/133486129): Implement shape inference for unpack
 
 static LogicalResult Verify(UnpackOp op) {
-  // TODO(antiagainst): Implement other checks as in
-  // tensorflow/lite/kernels/unpack.cc
+  if (op.getOperation()->getNumOperands() != 1)
+    return op.emitOpError("input count shoule be equal to 1");
 
   if (op.getOperation()->getNumResults() != op.num())
     return op.emitOpError("output count should match 'num' attribute");
+
+  auto input_type = op.input().getType().dyn_cast<ShapedType>();
+  if (!input_type.hasRank()) {
+    // If input has unknown rank, skip the checks.
+    return success();
+  }
+
+  if (input_type.getNumElements() <= 0)
+    return op.emitOpError("number of elements in input shoule be larger than 0");
+
+  const int64_t rank = input_type.getRank();
+  if (rank <= 0)
+    return op.emitOpError("input should be of rank larger than 0");
+
+  int64_t axis_value = op.axis().getSExtValue();
+  if (axis_value < 0)
+    axis_value += rank;
+  if (axis_value < 0 || axis_value >= rank)
+    return op.emitOpError()
+            << "op attribute 'axis' should be in range [-rank, rank), "
+            << "got rank = " << rank
+            << ", and axis = " << op.axis().getSExtValue();
+
+  llvm::SmallVector<int64_t, 4> output_shape;
+  output_shape.reserve(rank - 1);
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i != axis_value) {
+      output_shape.push_back(input_type.getShape()[i]);
+    }
+  }
+
+  auto expected_output_type = RankedTensorType::get(output_shape, input_type.getElementType());
+  for (Type output_type : op.getResultTypes()) {
+    if (failed(mlir::verifyCompatibleShape(expected_output_type, output_type)))
+      return op.emitOpError()
+              << "output should be " << expected_output_type
+              << ", got " << output_type;
+  }
 
   return success();
 }
