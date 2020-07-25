@@ -477,15 +477,22 @@ class TFLogEntry {
   }
 
  public:
-  explicit TFLogEntry(int severity, absl::string_view log_line)
-      : severity_(AsAbslLogSeverity(severity)), log_line_(log_line) {}
+  TFLogEntry(int severity, absl::string_view message)
+      : severity_(AsAbslLogSeverity(severity)), message_(message) {}
 
-  absl::LogSeverity log_severity() const { return severity_; }
-  std::string ToString() const { return std::string(log_line_); }
+  TFLogEntry(int severity, absl::string_view fname, int line, absl::string_view message)
+      : severity_(AsAbslLogSeverity(severity)), fname_(fname), line_(line), message_(message) {}
+
+  absl::LogSeverity Severity() const { return severity_; }
+  const std::string& FName() const { return fname_; }
+  int Line() const { return line_; }
+  const std::string& Message() const { return message_; }
 
  private:
   const absl::LogSeverity severity_;
-  const absl::string_view log_line_;
+  const std::string fname_;
+  int line_ = 0;
+  const std::string message_;
 };
 
 class TFLogSink {
@@ -511,6 +518,15 @@ class TFLogSink {
   // implementations should be careful not to call `LOG` or `CHECK or take any
   // locks that might be held by the `LOG` caller, to avoid deadlock.
   virtual void WaitTillSent() {}
+};
+
+// This is the default log sink. This log sink is used if there are no other
+// log sinks registered. To disable the default log sink, set the "no_default_logger"
+// Bazel config setting to true or define a NO_DEFAULT_LOGGER preprocessor symbol.
+// This log sink will always log to stderr.
+class TFDefaultLogSink : public TFLogSink {
+ public:
+  void Send(const TFLogEntry& entry) override;
 };
 
 // Add or remove a `LogSink` as a consumer of logging data.  Thread-safe.

@@ -70,10 +70,10 @@ class StatusLogSink : public TFLogSink {
   }
 
   void Send(const TFLogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
-    if (entry.log_severity() < absl::LogSeverity::kWarning) return;
+    if (entry.Severity() < absl::LogSeverity::kWarning) return;
 
     mutex_lock lock(mu_);
-    messages_.emplace_back(entry.ToString());
+    messages_.emplace_back(entry.Message());
     if (messages_.size() > static_cast<size_t>(num_messages_)) {
       messages_.pop_front();
     }
