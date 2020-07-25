@@ -123,7 +123,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int filter_width = SizeOfDimension(filter, 2);
   int filter_height = SizeOfDimension(filter, 1);
 
-  // Per channel quantization is only needed for int8 inference. For other
+  // Per channel quantization is only needed for int8_t inference. For other
   // quantized types, only a single scale and zero point is needed.
   const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
   // Dynimically allocate per-channel quantization parameters.
@@ -221,13 +221,13 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   reference_integer_ops::DepthwiseConvPerChannel(
       op_params, data.per_channel_output_multiplier,
       data.per_channel_output_shift, tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<int8>(input),
+      tflite::micro::GetTensorData<int8_t>(input),
       tflite::micro::GetTensorShape(filter),
-      tflite::micro::GetTensorData<int8>(filter),
+      tflite::micro::GetTensorData<int8_t>(filter),
       tflite::micro::GetTensorShape(bias),
-      tflite::micro::GetTensorData<int32>(bias),
+      tflite::micro::GetTensorData<int32_t>(bias),
       tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<int8>(output));
+      tflite::micro::GetTensorData<int8_t>(output));
 }
 
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,

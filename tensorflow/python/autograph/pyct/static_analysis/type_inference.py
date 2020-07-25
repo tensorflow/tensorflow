@@ -173,6 +173,7 @@ class StmtInferrer(gast.NodeVisitor):
     self.closure_types = closure_types
     self.types_in = types_in
     self.new_symbols = {}
+    self.rvalue = None
 
   def visit(self, node):
     types = super().visit(node)

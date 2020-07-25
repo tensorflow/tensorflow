@@ -53,7 +53,7 @@ inline void ReluQuantized(const ReluOpData& data,
                           T* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const int32 val = static_cast<int32_t>(input_data[i]);
+    const int32_t val = static_cast<int32_t>(input_data[i]);
     int32_t clamped =
         data.params.output_offset +
         MultiplyByQuantizedMultiplier(val - data.params.input_offset,
@@ -79,17 +79,17 @@ inline void CalculateReluOpData(const TfLiteTensor* input, TfLiteTensor* output,
   QuantizeMultiplier(real_multiplier, &data->params.output_multiplier,
                      &data->params.output_shift);
 
-  data->params.quantized_activation_min =
-      std::max(static_cast<int32_t>(std::numeric_limits<T>::min()),
-               output->params.zero_point +
-                   static_cast<int32>(roundf(act_min / output->params.scale)));
+  data->params.quantized_activation_min = std::max(
+      static_cast<int32_t>(std::numeric_limits<T>::min()),
+      output->params.zero_point +
+          static_cast<int32_t>(roundf(act_min / output->params.scale)));
   data->params.quantized_activation_max =
       act_max == std::numeric_limits<float>::infinity()
           ? static_cast<int32_t>(std::numeric_limits<T>::max())
-          : std::min(
-                static_cast<int32_t>(std::numeric_limits<T>::max()),
-                output->params.zero_point +
-                    static_cast<int32>(roundf(act_max / output->params.scale)));
+          : std::min(static_cast<int32_t>(std::numeric_limits<T>::max()),
+                     output->params.zero_point +
+                         static_cast<int32_t>(
+                             roundf(act_max / output->params.scale)));
   data->params.input_offset = input->params.zero_point;
   data->params.output_offset = output->params.zero_point;
 }

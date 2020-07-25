@@ -75,7 +75,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     for (const Tensor& t : tensors_) {
       Node* node;
       if (ctx->serialize_data_tensors()) {
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
       } else {
         TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
         DCHECK_NE(ctx->input_list(), nullptr);

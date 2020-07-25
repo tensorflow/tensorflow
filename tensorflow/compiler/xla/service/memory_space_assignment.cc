@@ -3073,7 +3073,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
           last_use_instruction->opcode() == HloOpcode::kConditional) {
         TF_RETURN_IF_ERROR(split_conditional_buffer(
             last_use_instruction, time_bound.start, time_bound.end, " "));
-      } else {
+      } else if (!value->uses().empty()) {
         VLOG(3) << " buffer: " << buffer.ToString()
                 << " value: " << value->ToShortString() << ": ("
                 << time_bound.start << ", " << time_bound.end

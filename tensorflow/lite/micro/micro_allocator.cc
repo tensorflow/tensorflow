@@ -97,7 +97,9 @@ TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
         int version = metadata_buffer[0];
         int subgraph_idx = metadata_buffer[1];
         const int nbr_offline_offsets = metadata_buffer[2];
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
         int* offline_planner_offsets = (int*)&metadata_buffer[3];
+#endif
 
         TF_LITE_REPORT_ERROR(error_reporter, "==== Model metadata info: =====");
         TF_LITE_REPORT_ERROR(error_reporter,

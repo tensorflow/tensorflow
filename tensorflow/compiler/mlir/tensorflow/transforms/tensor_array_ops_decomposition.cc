@@ -595,8 +595,6 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
                                   operands, while_op.getAttrs());
-  // Clear the output shapes as it is not needed for XLA lowering.
-  new_while.setAttr("output_shapes", builder.getArrayAttr({}));
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -663,8 +661,6 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
   auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
                                          then_branch.getType().getResults(),
                                          operands, if_op.getAttrs());
-  // Clear the output shapes as it is not needed for XLA lowering.
-  new_if.setAttr("output_shapes", builder.getArrayAttr({}));
   auto ret_forwards_input = [](FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = retval.dyn_cast<BlockArgument>();

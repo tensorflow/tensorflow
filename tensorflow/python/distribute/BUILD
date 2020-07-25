@@ -657,6 +657,21 @@ tpu_py_test(
     ],
 )
 
+tpu_py_test(
+    name = "tpu_strategy_compilation_test",
+    srcs = ["tpu_strategy_compilation_test.py"],
+    disable_experimental = True,
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 # Used only by estimator.
 py_library(
     name = "estimator_training",

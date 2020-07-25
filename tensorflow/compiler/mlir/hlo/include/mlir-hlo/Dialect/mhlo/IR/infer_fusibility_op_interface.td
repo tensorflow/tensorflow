@@ -140,7 +140,7 @@ def InferFusibilityOpInterface : OpInterface<"InferFusibilityOpInterface"> {
       Here the effective workload shape roughly represents the maximum
       parallelism can be used during the codegen stage. It's used to check
       the shape-compatibility of the operation. During fusion, we only
-      try to fuse shape-compatible ops for performace.
+      try to fuse shape-compatible ops for performance.
       For example, the effective workload shape of an elementwise op is its
       output shape, while the effective workload shape of a reduction op may
       be its operand shape.

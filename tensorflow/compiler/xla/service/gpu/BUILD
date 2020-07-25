@@ -27,6 +27,7 @@ load(
     "if_cuda_is_configured",
 )
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//third_party/mlir:tblgen.bzl", "gentbl")
 
 package(
     default_visibility = [":friends"],
@@ -1874,4 +1875,50 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+gentbl(
+    name = "xla_thunks_ops_inc_gen",
+    tbl_outs = [
+        ("-gen-op-decls", "ir/xla_thunks_ops.h.inc"),
+        ("-gen-op-defs", "ir/xla_thunks_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "ir/xla_thunks_structs.h.inc"),
+        ("-gen-struct-attr-defs", "ir/xla_thunks_structs.cc.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/xla_thunks_ops.td",
+    td_srcs = [
+        "@llvm-project//mlir:LLVMOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "xla_thunks_ops",
+    srcs = [
+        "ir/xla_thunks_ops.cc",
+        "ir/xla_thunks_ops.cc.inc",
+        "ir/xla_thunks_ops.h.inc",
+    ],
+    hdrs = [
+        "ir/xla_thunks_ops.h",
+    ],
+    deps = [
+        ":xla_thunks_ops_inc_gen",
+        "//tensorflow/compiler/mlir/hlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
+# Library with XLA thunks dialect static initialization.
+cc_library(
+    name = "xla_thunks_dialect_registration",
+    srcs = [
+        "ir/dialect_registration.cc",
+    ],
+    deps = [
+        ":xla_thunks_ops",
+        "@llvm-project//mlir:IR",
+    ],
+    alwayslink = 1,
 )

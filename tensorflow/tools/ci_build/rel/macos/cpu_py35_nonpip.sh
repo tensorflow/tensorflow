@@ -38,7 +38,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 tag_filters="-no_oss,-oss_serial,-nomac,-no_mac,-no_oss_py35,-v1only,-gpu,-tpu,-benchmark-test"
 
 # Get the default test targets for bazel.
-source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Run tests
 set +e

@@ -142,7 +142,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int filter_width = SizeOfDimension(filter, 2);
   int filter_height = SizeOfDimension(filter, 1);
 
-  // Per channel quantization is only needed for int8 inference. For other
+  // Per channel quantization is only needed for int8_t inference. For other
   // quantized types, only a single scale and zero point is needed.
   const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
   // Dynimically allocate per-channel quantization parameters.
@@ -335,10 +335,10 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   reference_integer_ops::DepthwiseConvPerChannel(
       op_params, data->per_channel_output_multiplier,
       data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+      GetTensorData<int8_t>(input), GetTensorShape(filter),
+      GetTensorData<int8_t>(filter), GetTensorShape(bias),
+      GetTensorData<int32_t>(bias), GetTensorShape(output),
+      GetTensorData<int8_t>(output));
 }
 
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
@@ -370,9 +370,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     const int pad_width = data->padding.width;
     const int pad_height = data->padding.height;
     const int depth_multiplier = params->depth_multiplier;
-    const int32 output_activation_min = data->output_activation_min;
-    const int32 output_activation_max = data->output_activation_max;
-    const int32 output_multiplier = data->output_multiplier;
+    const int32_t output_activation_min = data->output_activation_min;
+    const int32_t output_activation_max = data->output_activation_max;
+    const int32_t output_multiplier = data->output_multiplier;
     // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
     const int output_shift = -data->output_shift;
     TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
