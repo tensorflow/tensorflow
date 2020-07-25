@@ -35,12 +35,15 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+constexpr int64 kInvalidStepId = -1;
 
 // Index of the time-sorted memory_profile_snapshots list, and the
 // MemoryActivityMetadata proto it contains.
@@ -63,7 +66,7 @@ struct ActivityMetadata {
   int64 allocation_bytes = 0;
   uint64 address = 0;
   absl::string_view tf_op_name;
-  int64 step_id = -1;
+  int64 step_id = kInvalidStepId;
   absl::string_view region_type;
   int64 data_type = 0;
   absl::string_view tensor_shape;
@@ -129,7 +132,6 @@ void UpdateProfileSummary(const AggregationStats& stats, int64 time_offset_ps,
 MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
   XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
   MemoryProfile memory_profile;
-  auto* step_count = memory_profile.mutable_step_count();
   // Iterate over all XEvents in the XPlane, and add the XStats to a new
   // MemoryProfileSnapshot if the EventType is kMemoryAllocation or
   // kMemoryDeallocation.
@@ -181,9 +183,8 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
           case StatType::kTfOp:
             metadata.tf_op_name = stat.StrOrRefValue();
             break;
-          case StatType::kStepId:
+          case StatType::kGroupId:
             metadata.step_id = stat.IntValue();
-            if (metadata.step_id != 0) (*step_count)[metadata.step_id]++;
             break;
           case StatType::kRegionType:
             metadata.region_type = stat.StrOrRefValue();
@@ -214,40 +215,21 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
   return memory_profile;
 }
 
-// Sequentialize step ids for the memory profile.
-void UpdateStepId(const tensorflow::protobuf::Map<
-                      tensorflow::protobuf_int64 /*orig_step_id*/,
-                      tensorflow::protobuf_int64 /*count*/>& step_count,
-                  PerAllocatorMemoryProfile* memory_profile) {
-  // Map from original random step id to sequential step id.
-  absl::flat_hash_map<int64 /*orig_step_id*/, int64 /*step_id*/> step_map;
-  constexpr int kUnknownStep = -2;
-  constexpr double kStepFilterRatio = 0.1;  // Magic number for filtering.
-  tensorflow::protobuf_int64 max_step_count = 0;
-  for (const auto& step_and_count : step_count) {
-    max_step_count = std::max(max_step_count, step_and_count.second);
-  }
-  // Filter out noisy and incomplete original step ids.
-  for (const auto& step_and_count : step_count) {
-    if (static_cast<double>(step_and_count.second) / max_step_count >
-        kStepFilterRatio) {
-      step_map[step_and_count.first] = kUnknownStep;
-    }
-  }
-
-  // Update the step ids in memory_profile for this allocator.
-  int64 step_id = -1;
+// Fix invalid step ids of snapshots at the beginning/end of the profile or at
+// the step boundaries. The snapshots with invalid step ids at the beginning get
+// 0 for their step ids. Those at the step boundaries or at the end get the
+// previous snapshot's step id + 1.
+void UpdateStepId(PerAllocatorMemoryProfile* memory_profile) {
+  int64 last_valid_step_id = -1;
+  // Snapshots are already sorted in time.
   for (auto& snapshot : *memory_profile->mutable_memory_profile_snapshots()) {
     DCHECK(snapshot.has_activity_metadata());
-    // Convert the random step id to sequential step id.
-    int64 orig_step_id = snapshot.activity_metadata().step_id();
-    if (step_map.contains(orig_step_id) &&
-        step_map[orig_step_id] == kUnknownStep) {
-      step_map[orig_step_id] = ++step_id;
+    if (snapshot.mutable_activity_metadata()->step_id() == kInvalidStepId) {
+      snapshot.mutable_activity_metadata()->set_step_id(last_valid_step_id + 1);
+    } else {
+      last_valid_step_id = snapshot.mutable_activity_metadata()->step_id();
     }
-    snapshot.mutable_activity_metadata()->set_step_id(step_id);
   }
-  VLOG(2) << "Max sequential step id in profile: " << step_id;
 }
 
 // Update the MemoryActivityMetadata for each deallocation event by copying from
@@ -453,6 +435,12 @@ void SampleSnapshots(
                b.aggregation_stats().free_memory_bytes();
       });
   snapshots->erase(snapshots->begin() + max_num_snapshots, snapshots->end());
+  // Sort the memory_profile_snapshots by time_offset_ps (ascending) after
+  // sampling.
+  absl::c_sort(*snapshots, [](const MemoryProfileSnapshot& a,
+                              const MemoryProfileSnapshot& b) {
+    return a.time_offset_ps() < b.time_offset_ps();
+  });
 }
 
 // Post-process the memory profile to correctly update proto fields, and break
@@ -481,17 +469,34 @@ void ProcessMemoryProfileProto(int64 max_num_snapshots,
       return a.time_offset_ps() < b.time_offset_ps();
     });
 
-    UpdateStepId(memory_profile->step_count(), allocator_memory_profile);
+    UpdateStepId(allocator_memory_profile);
     UpdateDeallocation(allocator_memory_profile);
 
-    int64 peak_bytes_profile = allocator_memory_profile->profile_summary()
-                                   .peak_stats()
-                                   .peak_bytes_in_use();
     int64 peak_step_id =
-        GetPeakMemoryStep(peak_bytes_profile, allocator_memory_profile);
+        GetPeakMemoryStep(allocator_memory_profile->profile_summary()
+                              .peak_stats()
+                              .peak_bytes_in_use(),
+                          allocator_memory_profile);
     ProcessActiveAllocations(peak_step_id, allocator_memory_profile);
     SampleSnapshots(max_num_snapshots, snapshots);
   }
+}
+
+template <typename Proto>
+Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
+  protobuf::util::JsonPrintOptions json_options;
+  json_options.always_print_primitive_fields = true;
+  auto status = protobuf::util::MessageToJsonString(proto_output, json_output,
+                                                    json_options);
+  if (!status.ok()) {
+    // Convert error_msg google::protobuf::StringPiece (or absl::string_view) to
+    // tensorflow::StringPiece.
+    auto error_msg = status.message();
+    return errors::Internal(
+        "Could not convert proto to JSON string: ",
+        absl::string_view(error_msg.data(), error_msg.length()));
+  }
+  return Status::OK();
 }
 
 }  // namespace
@@ -501,6 +506,16 @@ MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
   MemoryProfile memory_profile = GenerateMemoryProfile(&host_plane);
   ProcessMemoryProfileProto(max_num_snapshots, &memory_profile);
   return memory_profile;
+}
+
+Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
+                                        std::string* json_output) {
+  if (const XPlane* host_plane =
+          FindPlaneWithName(xspace, kHostThreadsPlaneName)) {
+    MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
+    TF_RETURN_IF_ERROR(ConvertProtoToJson(memory_profile, json_output));
+  }
+  return Status::OK();
 }
 
 }  // namespace profiler

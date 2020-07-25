@@ -28,8 +28,8 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "master_proto",
-    srcs = ["master.proto"],
+    name = "dispatcher_proto",
+    srcs = ["dispatcher.proto"],
     has_services = 1,
     cc_api_version = 2,
     protodeps = tf_additional_all_protos() + [
@@ -49,17 +49,17 @@ tf_proto_library(
 )
 
 cc_library(
-    name = "master_impl",
-    srcs = ["master_impl.cc"],
+    name = "dispatcher_impl",
+    srcs = ["dispatcher_impl.cc"],
     hdrs = [
-        "master_impl.h",
+        "dispatcher_impl.h",
     ],
     deps = [
         ":common_proto_cc",
         ":credentials_factory",
         ":data_service",
+        ":dispatcher_proto_cc",
         ":grpc_util",
-        ":master_proto_cc",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
         "//tensorflow/c:c_api_internal",
@@ -86,9 +86,9 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":credentials_factory",
+        ":dispatcher_cc_grpc_proto",
+        ":dispatcher_proto_cc",
         ":grpc_util",
-        ":master_cc_grpc_proto",
-        ":master_proto_cc",
         ":worker_proto_cc",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
@@ -171,6 +171,7 @@ cc_library(
     hdrs = ["test_cluster.h"],
     deps = [
         ":server_lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
     ],
@@ -207,12 +208,13 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "grpc_master_impl",
-    srcs = ["grpc_master_impl.cc"],
-    hdrs = ["grpc_master_impl.h"],
+    name = "grpc_dispatcher_impl",
+    srcs = ["grpc_dispatcher_impl.cc"],
+    hdrs = ["grpc_dispatcher_impl.h"],
     deps = [
-        ":master_cc_grpc_proto",
-        ":master_impl",
+        ":dispatcher_cc_grpc_proto",
+        ":dispatcher_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         tf_grpc_cc_dependency(),
     ],
@@ -250,10 +252,11 @@ cc_library(
     ],
     deps = [
         ":credentials_factory",
-        ":grpc_master_impl",
+        ":grpc_dispatcher_impl",
         ":grpc_util",
         ":grpc_worker_impl",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         tf_grpc_cc_dependency(),
     ],
@@ -268,9 +271,9 @@ cc_library(
     ],
     deps = [
         ":credentials_factory",
+        ":dispatcher_cc_grpc_proto",
+        ":dispatcher_proto_cc",
         ":grpc_util",
-        ":master_cc_grpc_proto",
-        ":master_proto_cc",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
@@ -287,12 +290,12 @@ tf_cc_test(
     tags = ["no_windows"],
     deps = [
         ":data_service",
-        ":grpc_master_impl",
+        ":dispatcher_cc_grpc_proto",
+        ":dispatcher_proto_cc",
+        ":grpc_dispatcher_impl",
         ":grpc_util",
         ":grpc_worker_impl",
         ":local_credentials_factory",
-        ":master_cc_grpc_proto",
-        ":master_proto_cc",
         ":server_lib",
         ":test_cluster",
         ":test_util",
@@ -309,11 +312,11 @@ tf_cc_test(
 )
 
 cc_grpc_library(
-    name = "master_cc_grpc_proto",
-    srcs = [":master_proto"],
+    name = "dispatcher_cc_grpc_proto",
+    srcs = [":dispatcher_proto"],
     generate_mocks = True,
     grpc_only = True,
-    deps = [":master_proto_cc"],
+    deps = [":dispatcher_proto_cc"],
 )
 
 cc_grpc_library(

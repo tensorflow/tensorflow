@@ -22,6 +22,8 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -147,12 +149,12 @@ class ReshapeTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testErrors(self):
     y = constant_op.constant(0.0, shape=[23, 29, 31])
-    with self.assertRaisesRegexp(ValueError, "must be evenly divisible by 17"):
+    with self.assertRaisesRegex(ValueError, "must be evenly divisible by 17"):
       array_ops.reshape(y, [17, -1])
 
     z = constant_op.constant(0.0, shape=[32, 128])
-    with self.assertRaisesRegexp(ValueError,
-                                 "Cannot reshape a tensor with 4096 elements"):
+    with self.assertRaisesRegex(ValueError,
+                                "Cannot reshape a tensor with 4096 elements"):
       array_ops.reshape(z, [4095])
 
   @test_util.run_deprecated_v1
@@ -190,6 +192,25 @@ class ReshapeTest(test.TestCase):
             array_ops.placeholder(
                 dtypes.float32, shape=[None, 37, None])))
     self.assertEqual([None, 37, None], y.get_shape().as_list())
+
+  def testTensorShape(self):
+    x = array_ops.zeros([1, 100])
+    y = array_ops.reshape(
+        x, [tensor_shape.Dimension(100),
+            tensor_shape.Dimension(1)])
+    self.assertEqual([100, 1], y.get_shape().as_list())
+    y = array_ops.reshape(x, tensor_shape.TensorShape([100, 1]))
+    self.assertEqual([100, 1], y.get_shape().as_list())
+
+  def testInt64Shape(self):
+    with ops.device("/device:CPU:0"):
+      x = array_ops.zeros([50000, 50000], dtype=dtypes.bool)
+      # Provide dimension larger than int32
+      y = array_ops.reshape(x, [50000**2])
+      self.assertEqual([50000**2], y.get_shape().as_list())
+      # Even if first dimension is within int32, ensure we correctly go to int64
+      y = array_ops.reshape(x, [1, 50000**2])
+      self.assertEqual([1, 50000**2], y.get_shape().as_list())
 
 
 if __name__ == "__main__":

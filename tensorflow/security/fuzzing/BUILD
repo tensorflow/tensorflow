@@ -19,16 +19,54 @@ tf_fuzz_target(
     ],
 )
 
-# A trivial fuzzer with no pre-specified corpus.
-# TODO(mihaimaruseac): Move fuzz_session and the op fuzzers to a subdirectory
 tf_fuzz_target(
-    name = "identity_fuzz",
-    srcs = ["identity_fuzz.cc"],
+    name = "status_group_fuzz",
+    srcs = ["status_group_fuzz.cc"],
     deps = [
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels/fuzzing:fuzz_session",
-        # Needed only to transitiviely link dependencies
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+tf_fuzz_target(
+    name = "consume_non_whitespace_fuzz",
+    srcs = ["consume_non_whitespace_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "consume_leading_digits_fuzz",
+    srcs = ["consume_leading_digits_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "arg_def_case_fuzz",
+    srcs = ["arg_def_case_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "string_replace_fuzz",
+    srcs = ["string_replace_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "stringprintf_fuzz",
+    srcs = ["stringprintf_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:stringprintf",
     ],
 )

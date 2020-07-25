@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_INTERFACE_H_
 
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace tensorflow {

@@ -27,7 +27,7 @@ namespace toco {
 // Imports the input file into a Model object.
 std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
                               const ModelFlags& model_flags,
-                              const string& input_file_contents);
+                              const std::string& input_file_contents);
 
 // Transforms a Model. The resulting Model is ready to be passed
 // to Export with the exact same toco_flags.
@@ -42,11 +42,12 @@ inline void Transform(const TocoFlags& toco_flags, Model* model) {
 // Transform, to a file of the format given by
 // toco_flags.output_format().
 tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
-                          bool allow_custom_ops, string* output_file_contents);
+                          bool allow_custom_ops,
+                          std::string* output_file_contents);
 
 // This if for backward-compatibility with internal tools.
 inline void Export(const TocoFlags& toco_flags, const Model& model,
-                   string* output_file_contents) {
+                   std::string* output_file_contents) {
   auto status = Export(toco_flags, model, true, output_file_contents);
   if (!status.ok()) {
     LOG(QFATAL) << status.error_message();

@@ -1,0 +1,22 @@
+op {
+  graph_op_name: "RebatchDatasetV2"
+  visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A variant tensor representing the input dataset.
+END
+  }
+  in_arg {
+  name: "batch_sizes"
+  description: <<END
+A vector of integers representing the size of batches to produce. These values
+are cycled through in order.
+END
+  }
+  summary: "Creates a dataset that changes the batch size."
+  description: <<END
+Creates a dataset that rebatches elements from `input_dataset` into new batch
+sizes.
+END
+}

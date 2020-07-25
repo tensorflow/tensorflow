@@ -446,7 +446,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
     sp_input = self._SparseTensor_2x5x6()
     new_shape = np.array([3, 7, 5], dtype=np.int64)
 
-    with self.assertRaisesRegexp(ValueError, "should have dimension sizes"):
+    with self.assertRaisesRegex(ValueError, "should have dimension sizes"):
       sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
   @test_util.run_deprecated_v1
@@ -583,6 +583,23 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.indices, [[0, 0], [1, 0], [1, 3], [1, 4]])
       self.assertAllEqual(output.values, [0, 10, 13, 14])
       self.assertAllEqual(output.dense_shape, [2, 6])
+      self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
+
+  def testNoEmptyRowsAndUnordered(self):
+    with test_util.force_cpu():
+      sp_input = sparse_tensor.SparseTensor(
+          indices=np.array([[1, 2], [1, 3], [0, 1], [0, 3]]),
+          values=np.array([1, 3, 2, 4]),
+          dense_shape=np.array([2, 5]))
+      sp_output, empty_row_indicator = (
+          sparse_ops.sparse_fill_empty_rows(sp_input, -1))
+
+      output, empty_row_indicator_out = self.evaluate(
+          [sp_output, empty_row_indicator])
+
+      self.assertAllEqual(output.indices, [[0, 1], [0, 3], [1, 2], [1, 3]])
+      self.assertAllEqual(output.values, [2, 4, 1, 3])
+      self.assertAllEqual(output.dense_shape, [2, 5])
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
 
 
@@ -792,7 +809,7 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
       b = sparse_tensor.SparseTensor([[0, 0, 1, 0], [0, 0, 3, 0]], [10, 20],
                                      [1, 1, 4, 2])
       c = a * b
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           "broadcasts dense to sparse only; got incompatible shapes"):
         self.evaluate(c)

@@ -15,17 +15,31 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_C_API_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_C_API_H_
 
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
 typedef struct XLA_TpuNodeContext XLA_TpuNodeContext;
+
+extern "C" {
 
 XLA_TpuNodeContext* TpuNodeContext_Create(int device_ordinal,
                                           SE_Status* status);
 void TpuNodeContext_Free(XLA_TpuNodeContext* node_context);
 
+void TpuNodeContext_StopChipHeartbeats(SE_Status* status);
+
+void TpuNodeContext_CloseTpuHost(SE_Status* status);
+
 void TpuNodeContext_Initialize(int device_ordinal, SE_Status* status);
 
-void TpuNodeContext_StopChipHeartbeats(SE_Status* status);
-void TpuNodeContext_CloseTpuHost(SE_Status* status);
+}  // extern "C"
+
+struct TfTpu_NodeContextApiFn {
+  TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_StopChipHeartbeats);
+  TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_CloseTpuHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Initialize);
+};
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_C_API_H_

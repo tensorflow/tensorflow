@@ -120,7 +120,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
     } break;
     default:
       TF_LITE_KERNEL_LOG(
-          context, "Only float32 and uint8 are supported currently, got %d.",
+          context, "Only float32 and uint8_t are supported currently, got %d.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
@@ -128,16 +128,15 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace activations
 
-TfLiteRegistration* Register_PRELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/activations::PreluPrepare,
-                                 /*invoke=*/activations::PreluEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_PRELU() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/activations::PreluPrepare,
+          /*invoke=*/activations::PreluEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

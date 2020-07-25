@@ -20,119 +20,9 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/tf_attrtype.h"
-#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/tpu/kernels/tpu_ops_common_c_api.h"
-
-typedef struct SE_Platform SE_Platform;
-typedef struct SE_StreamExecutor SE_StreamExecutor;
-typedef struct SE_Stream SE_Stream;
-typedef struct SE_Event SE_Event;
-typedef struct SE_Timer SE_Timer;
-
-typedef struct SE_PlatformId {
-  void* id;  // aka stream_executor::Platform::Id
-} SE_PlatformId;
-typedef struct SE_StreamExecutorConfig SE_StreamExecutorConfig;
-typedef struct SE_DeviceOptions SE_DeviceOptions;
-typedef SE_Status* (*SE_StatusCallbackFn)(void*);
-
-typedef struct SE_DeviceMemoryBase {
-  void* opaque;
-  uint64_t size;
-  uint64_t payload;
-} SE_DeviceMemoryBase;
-
-typedef struct SE_AllocatorStats {
-  int64_t num_allocs;
-  int64_t bytes_in_use;
-  int64_t peak_bytes_in_use;
-  int64_t largest_alloc_size;
-
-  bool has_bytes_limit;
-  int64_t bytes_limit;
-
-  int64_t bytes_reserved;
-  int64_t peak_bytes_reserved;
-
-  bool has_bytes_reservable_limit;
-  int64_t bytes_reservable_limit;
-
-  int64_t largest_free_block_bytes;
-} SE_AllocatorStats;
-
-typedef struct SE_DeviceDescription {
-  char* device_vendor;
-  char* platform_version;
-  char* driver_version;
-  char* runtime_version;
-  char* pci_bus_id;
-  char* name;
-
-  int64_t thread_dim_limit_x;
-  int64_t thread_dim_limit_y;
-  int64_t thread_dim_limit_z;
-  int64_t block_dim_limit_x;
-  int64_t block_dim_limit_y;
-  int64_t block_dim_limit_z;
-
-  int64_t threads_per_core_limit;
-  int64_t threads_per_block_limit;
-  int64_t threads_per_warp;
-
-  int64_t registers_per_core_limit;
-  int64_t registers_per_block_limit;
-
-  int64_t device_address_bits;
-  int64_t device_memory_size;
-  int64_t memory_bandwidth;
-
-  int64_t shared_memory_per_core;
-  int64_t shared_memory_per_block;
-
-  float clock_rate_ghz;
-
-  int cuda_compute_capability_major;
-  int cuda_compute_capability_minor;
-
-  int rocm_amdgpu_isa_version;
-
-  int numa_node;
-  int core_count;
-  bool ecc_enabled;
-} SE_DeviceDescription;
-
-typedef struct XLA_TransferManager XLA_TransferManager;
-
-typedef struct XLA_ComputationPlacer XLA_ComputationPlacer;
-
-// Represents an XLA shape tree.
-// Shapes are flattened in default traversal order.
-typedef struct XLA_Shape {
-  char* bytes;
-  size_t size;
-} XLA_Shape;
-
-// Represents a leaf node for a XLA shaped buffer.
-typedef struct XLA_ShapedBuffer {
-  XLA_Shape on_host_shape;
-  XLA_Shape on_device_shape;
-  int device_ordinal;
-
-  SE_DeviceMemoryBase* bases;
-  size_t count;
-} XLA_ShapedBuffer;
-
-// Represents a leaf XLA literal.
-typedef struct XLA_Literal {
-  char** buffers;
-  size_t* sizes;
-  size_t count;
-  XLA_Shape shape;
-} XLA_Literal;
-
-typedef void (*XLA_CallbackFn)(void*);
-typedef void (*XLA_StatusCallbackFn)(void*, SE_Status*);
+#include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
 extern "C" {
 
@@ -149,6 +39,7 @@ SE_PlatformId TpuPlatform_Id(SE_Platform* platform);
 int64_t TpuPlatform_VisibleDeviceCount(SE_Platform* platform);
 int64_t TpuPlatform_TpuMemoryLimit(SE_Platform* platform);
 bool TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(SE_Platform* platform);
+void* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
 
 void TpuExecutor_Init(SE_StreamExecutor* executor, int device_ordinal,
                       SE_DeviceOptions* device_options, SE_Status* status);
@@ -248,6 +139,8 @@ int64_t TpuTimer_Microseconds(SE_Timer*);
 
 SE_Status* TpuStatus_New();
 SE_Status* TpuStatus_Create(int32_t code, const char* msg);
+void TpuStatus_Set(SE_Status* status, int32_t code, const char* msg,
+                   int32_t len);
 void TpuStatus_Free(SE_Status* status);
 const char* TpuStatus_Message(SE_Status* status);
 int TpuStatus_Code(SE_Status* status);
@@ -282,7 +175,6 @@ void TpuTransferManager_TransferLiteralFromDevice(
     XLA_TransferManager* manager, SE_Stream* stream,
     XLA_ShapedBuffer* device_buffer, XLA_Literal* literal,
     XLA_StatusCallbackFn callback, void* ctx);
-
 int64_t TpuTransferManager_GetByteSizeRequirement(XLA_TransferManager* manager,
                                                   XLA_Shape* shape);
 void TpuTransferManager_WriteSingleTupleIndexTable(
@@ -292,6 +184,182 @@ void TpuTransferManager_WriteSingleTupleIndexTable(
 
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
+
+int TpuTopology_LogicalDevicesPerHost(void* tpu_topology,
+                                      TpuCoreTypeEnum tpu_core_type);
+int TpuTopology_LogicalDevicesPerChip(void* tpu_topology,
+                                      TpuCoreTypeEnum tpu_core_type);
+int TpuTopology_ChipBounds_X(void* tpu_topology);
+int TpuTopology_ChipBounds_Y(void* tpu_topology);
+int TpuTopology_ChipBounds_Z(void* tpu_topology);
+bool TpuTopology_HasChip(void* tpu_topology, int x, int y, int z);
+void* TpuTopology_Core(void* tpu_topology, int x, int y, int z,
+                       TpuCoreTypeEnum tpu_core_type, int index);
+int TpuCoreLocation_ChipCoordinates_X(void* tpu_core_location);
+int TpuCoreLocation_ChipCoordinates_Y(void* tpu_core_location);
+int TpuCoreLocation_ChipCoordinates_Z(void* tpu_core_location);
+int TpuCoreLocation_Index(void* tpu_core_location);
+int TpuCoreLocation_Id(void* tpu_core_location);
+
+// C API for XLA::Compiler interface
+
+TFTPU_CAPI_EXPORT Tpu_Compiler* TpuCompiler_New();
+TFTPU_CAPI_EXPORT void TpuCompiler_Free(Tpu_Compiler* compiler);
+
+TFTPU_CAPI_EXPORT void TpuCompiler_RunHloPasses(
+    Tpu_Compiler* compiler, XLA_HloModule* se_hlo_module,
+    SE_StreamExecutor* stream_executor, SE_DeviceMemoryAllocator* allocator,
+    XLA_HloModule* result, SE_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuCompiler_RunBackend(
+    Tpu_Compiler* compiler, XLA_HloModule* se_hlo_module,
+    SE_StreamExecutor* stream_executor, SE_DeviceMemoryAllocator* allocator,
+    SE_Executable** result, SE_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuCompiler_Compile(
+    Tpu_Compiler* compiler, XLA_HloModuleGroup* se_hlo_module_group,
+    SE_StreamExecutorList* stream_exec_lists, int num_lists,
+    SE_DeviceMemoryAllocator* allocator, SE_Executable** executables,
+    SE_Status* status);
+
+TFTPU_CAPI_EXPORT int64_t TpuCompiler_ShapeSize(Tpu_Compiler* compiler,
+                                                XLA_Shape* c_shape);
+
+TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
+    SE_Executable* executable, SE_ExecutableRunOptions* run_options,
+    SE_ExecutionInput** se_arguments, int se_arguments_size,
+    SE_HloExecutionProfile* hlo_execution_profile, SE_ExecutionOutput* output,
+    SE_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuExecutable_Free(SE_Executable*);
+
+// Converts an XLA `Shape` into its equivalent TPU `Shape` representation.
+TFTPU_CAPI_EXPORT void XlaShapeToTpuShapeRepresentation(
+    XLA_Shape* serialized_xla_shape, int data_type, bool use_fast_memory,
+    XLA_Shape* serialized_tpu_shape, SE_Status* status);
+
+TFTPU_CAPI_EXPORT void XlaShapeToTpuPaddedShape(XLA_Shape* serialized_xla_shape,
+                                                XLA_Shape* serialized_tpu_shape,
+                                                SE_Status* status);
+
+struct TfTpu_ExecutorApiFn {
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_Initialize);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_Initialized);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetExecutor);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_Id);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_VisibleDeviceCount);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_TpuMemoryLimit);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetTopologyPtr);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Init);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PlatformDeviceCount);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Allocate);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Deallocate);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetAllocatorStats);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeviceMemoryUsage);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateStream);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateStream);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_CreateStreamDependency);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetStatus);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateEvent);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateEvent);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PollForEventStatus);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_RecordEvent);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForEvent);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateTimer);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateTimer);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_StartTimer);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_StopTimer);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronousMemcpyToHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronousMemcpyFromHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_MemcpyToHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_MemcpyFromHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_EnqueueInfeed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DequeueOutfeed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForInfeedReady);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForOutfeedReady);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_BlockHostUntilDone);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_BlockUntilDoneOrFailed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SyncAndForgetFailedStreams);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronizeAllActivity);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_Stream);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_Status);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_IsSameSharedMemoryLocation);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_TpuEnqueueOnDeviceSendRecvLocal);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuEvent_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEvent_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Nanoseconds);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Microseconds);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Set);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Message);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Code);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Ok);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuStreamExecutorConfig_Default);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStreamExecutorConfig_SetOrdinal);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStreamExecutorConfig_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuDeviceDescription_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuDeviceDescription_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_CreateDeviceDescription);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_NewDeviceOptions);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_FreeDeviceOptions);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_HostCallback);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_PlatformId);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_HostShapeToDeviceShape);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralToDeviceAsync);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromDevice);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetByteSizeRequirement);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_WriteSingleTupleIndexTable);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_X);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Y);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HasChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Core);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_X);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_Y);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_Z);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Index);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunHloPasses);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunBackend);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuShapeRepresentation);
+  TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuPaddedShape);
+};
 }
 
 // extern "C"

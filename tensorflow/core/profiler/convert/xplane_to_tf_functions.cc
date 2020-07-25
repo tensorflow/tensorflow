@@ -206,7 +206,7 @@ class TfFunctionExecutions {
 
   std::string DebugString() const {
     std::string result = "\nActivations:\n";
-    for (auto i = 0; i < activations_.size(); i++) {
+    for (int i = 0, iter_limit = activations_.size(); i < iter_limit; i++) {
       absl::StrAppend(&result, "[", i, "] ", activations_[i].DebugString(),
                       "\n");
     }

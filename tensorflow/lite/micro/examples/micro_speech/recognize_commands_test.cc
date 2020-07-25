@@ -22,9 +22,8 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(PreviousResultsQueueBasic) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  PreviousResultsQueue queue(error_reporter);
+  PreviousResultsQueue queue(&micro_error_reporter);
   TF_LITE_MICRO_EXPECT_EQ(0, queue.size());
 
   int8_t scores_a[4] = {0, 0, 0, 1};
@@ -54,9 +53,8 @@ TF_LITE_MICRO_TEST(PreviousResultsQueueBasic) {
 
 TF_LITE_MICRO_TEST(PreviousResultsQueuePushPop) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  PreviousResultsQueue queue(error_reporter);
+  PreviousResultsQueue queue(&micro_error_reporter);
   TF_LITE_MICRO_EXPECT_EQ(0, queue.size());
 
   for (int i = 0; i < 123; ++i) {
@@ -74,9 +72,8 @@ TF_LITE_MICRO_TEST(PreviousResultsQueuePushPop) {
 
 TF_LITE_MICRO_TEST(RecognizeCommandsTestBasic) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  RecognizeCommands recognize_commands(error_reporter);
+  RecognizeCommands recognize_commands(&micro_error_reporter);
 
   std::initializer_list<int8_t> result_data = {127, -128, -128, -128};
   auto result_dims = {2, 1, 4};
@@ -94,9 +91,8 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestBasic) {
 
 TF_LITE_MICRO_TEST(RecognizeCommandsTestFindCommands) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  RecognizeCommands recognize_commands(error_reporter, 1000, 51);
+  RecognizeCommands recognize_commands(&micro_error_reporter, 1000, 51);
 
   std::initializer_list<int8_t> yes_data = {-128, -128, 127, -128};
   auto yes_dims = {2, 1, 4};
@@ -157,9 +153,8 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestFindCommands) {
 
 TF_LITE_MICRO_TEST(RecognizeCommandsTestBadInputLength) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  RecognizeCommands recognize_commands(error_reporter, 1000, 51);
+  RecognizeCommands recognize_commands(&micro_error_reporter, 1000, 51);
 
   std::initializer_list<int8_t> bad_data = {-128, -128, 127};
   auto bad_dims = {2, 1, 3};
@@ -177,9 +172,8 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestBadInputLength) {
 
 TF_LITE_MICRO_TEST(RecognizeCommandsTestBadInputTimes) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  RecognizeCommands recognize_commands(error_reporter, 1000, 51);
+  RecognizeCommands recognize_commands(&micro_error_reporter, 1000, 51);
 
   std::initializer_list<int8_t> result_data = {-128, -128, 127, -128};
   auto result_dims = {2, 1, 4};
@@ -200,9 +194,8 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestBadInputTimes) {
 
 TF_LITE_MICRO_TEST(RecognizeCommandsTestTooFewInputs) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  RecognizeCommands recognize_commands(error_reporter, 1000, 51);
+  RecognizeCommands recognize_commands(&micro_error_reporter, 1000, 51);
 
   std::initializer_list<int8_t> result_data = {-128, -128, 127, -128};
   auto result_dims = {2, 1, 4};

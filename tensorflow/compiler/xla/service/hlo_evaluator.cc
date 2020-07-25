@@ -274,6 +274,13 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   engine_.seed(seed_);
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
+
+  if (VLOG_IS_ON(100)) {
+    for (const HloInstruction* instr : computation.instructions()) {
+      VLOG(100) << instr->name() << " = " << GetEvaluatedLiteralFor(instr);
+    }
+  }
+
   return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
 }
 
@@ -433,6 +440,10 @@ Status HloEvaluator::HandleSetDimensionSize(
   Literal result(set_dimension_size->shape());
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
          operand_literal.size_bytes());
+  const Literal& size_literal =
+      GetEvaluatedLiteralFor(set_dimension_size->operand(1));
+  result.SetDynamicSize(set_dimension_size->dimension(),
+                        size_literal.Get<int32>({}));
   evaluated_[set_dimension_size] = std::move(result);
   return Status::OK();
 }

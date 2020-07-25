@@ -151,7 +151,6 @@ TfLiteStatus AddFullyConnectedHelper(const TfLiteIntArray* inputs,
 // Data (8-bit), Weights (const, 8-bit) => MatMul => MatMul out (int32)
 // MatMul out (int32), Bias (int32) => QuantizedBiasAdd => BiasAdd out (int32)
 // BiasAdd out (int32) => Requantize_32to8 => Output (8-bit)
-// TODO(b/129276536): Add activation support.
 TfLiteStatus MatMulWithConstWeightsOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {

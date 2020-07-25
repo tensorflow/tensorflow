@@ -245,6 +245,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       std::vector<llvm_ir::ElementGenerator> initial_value_generators,
       const llvm_ir::IrArray::Index& index);
 
+  virtual bool fast_min_max() = 0;
+
   llvm::IRBuilder<>* const b_;
 
   llvm::Module* module_;

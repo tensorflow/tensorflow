@@ -520,6 +520,45 @@ TEST_F(UtilsTest, SafeTensorIdToString) {
   EXPECT_EQ(SafeTensorIdToString({"foo", 2}), "foo:2");
 }
 
+TEST_F(UtilsTest, EraseRegularNodeAttributes) {
+  NodeDef node;
+  AttrValue dummy;
+  node.set_name("foo");
+  node.set_op("MatMul");
+  (*node.mutable_attr())["baz"] = dummy;
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 0);
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 0);
+
+  (*node.mutable_attr())["baz"] = dummy;
+  (*node.mutable_attr())["_bar"] = dummy;
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 1);
+  EXPECT_EQ(node.attr().begin()->first, "_bar");
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 0);
+}
+
+TEST_F(UtilsTest, EraseNodeOutputAttributes) {
+  NodeDef node;
+  AttrValue dummy;
+  node.set_name("foo");
+  node.set_op("MatMul");
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
+  (*node.mutable_attr())["_xla_inferred_shapes"] = dummy;
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 0);
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
+
+  (*node.mutable_attr())["baz"] = dummy;
+  (*node.mutable_attr())["_output_shapes"] = dummy;
+  (*node.mutable_attr())["_xla_inferred_shapes"] = dummy;
+  (*node.mutable_attr())["_output_gnu"] = dummy;
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 3);
+  EXPECT_EQ(node.attr_size(), 1);
+  EXPECT_EQ(node.attr().begin()->first, "baz");
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
+}
+
 template <typename T>
 void TestSetTensorValue(DataType type, int val, bool success,
                         absl::string_view error_msg) {

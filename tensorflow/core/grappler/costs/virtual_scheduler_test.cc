@@ -2988,7 +2988,7 @@ TEST_F(VirtualSchedulerTest, AddMergeSwitch) {
   // Run the scheduler. The current VirtualScheduler, w/o annotation, triggers
   // both outputs of Switch; then Merge (as long as one input is ready, it's z
   // is ready, if we just use num_inputs_ready counter, the final Add becomes
-  // ready. possible to skipt scheduling z. (Need to use CompositeNodeManager
+  // ready. possible to skip scheduling z. (Need to use CompositeNodeManager
   // to test this case).
   auto ops_executed = RunScheduler("");
 

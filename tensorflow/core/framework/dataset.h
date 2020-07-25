@@ -246,6 +246,9 @@ class GraphDefBuilderWrapper {
     SetAttrValue(value, attr);
   }
 
+ protected:
+  GraphDefBuilder* builder() { return b_; }
+
  private:
   void AddPlaceholderInternal(const Tensor& val, Node** output);
   void AddTensorInternal(const Tensor& val, Node** output);
@@ -830,6 +833,12 @@ class DatasetBase : public core::RefCounted {
         : GraphDefBuilderWrapper(b) {}
     Status AddInputDataset(SerializationContext* ctx,
                            const DatasetBase* dataset, Node** output);
+    Status AddDatasetOrTensor(SerializationContext* ctx, const Tensor& val,
+                              Node** output);
+
+   private:
+    Status AddDatasetOrTensorHelper(SerializationContext* ctx,
+                                    const Tensor& val, Node** output);
   };
 
   // Serializes the dataset into a `GraphDef`, which has two uses:
@@ -973,25 +982,19 @@ class DatasetBaseIterator : public IteratorBase {
 
   // When modeling is enabled, this method records the fact that a thread of
   // this iterator has started work.
-  void RecordStart(IteratorContext* ctx, bool stop_output = false) {
+  void RecordStart(IteratorContext* ctx) {
     if (collect_resource_usage(ctx)) {
       int64 now_nanos = EnvTime::NowNanos();
-      if (stop_output && node_->output()) {
-        node_->output()->record_stop(now_nanos);
-      }
       node_->record_start(now_nanos);
     }
   }
 
   // When modeling is enabled, this method records the fact that a thread of
   // this iterator has stopped work.
-  void RecordStop(IteratorContext* ctx, bool start_output = false) {
+  void RecordStop(IteratorContext* ctx) {
     if (collect_resource_usage(ctx)) {
       int64 now_nanos = EnvTime::NowNanos();
       node_->record_stop(now_nanos);
-      if (start_output && node_->output()) {
-        node_->output()->record_start(now_nanos);
-      }
     }
   }
 
@@ -1069,7 +1072,7 @@ class DatasetOpKernel : public OpKernel {
   // the `DatasetOpKernel` class.
   static bool IsDatasetOp(const OpDef* op_def);
 
-  string TraceString(OpKernelContext* ctx, bool verbose) override;
+  string TraceString(const OpKernelContext& ctx, bool verbose) const override;
 
  protected:
   // Subclasses should implement this method. It will be called during Compute

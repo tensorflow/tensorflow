@@ -26,11 +26,12 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 
 @REM TODO(amitpatankar): Make an image with these packages and remove this.
 
+%PIP_EXE% install flatbuffers --upgrade --no-deps
 %PIP_EXE% install setuptools --upgrade
 %PIP_EXE% install future>=0.17.1 --no-deps
 %PIP_EXE% install --ignore-installed --force-reinstall --upgrade tf-estimator-nightly --no-deps
 %PIP_EXE% install tb-nightly --no-deps
-%PIP_EXE% install numpy --upgrade --no-deps
+%PIP_EXE% install numpy==1.16.0 --upgrade --no-deps
 %PIP_EXE% install opt_einsum --upgrade
 %PIP_EXE% install pandas --upgrade --no-deps
 %PIP_EXE% install protobuf --upgrade --no-deps

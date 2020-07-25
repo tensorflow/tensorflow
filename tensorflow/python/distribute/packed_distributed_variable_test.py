@@ -46,7 +46,7 @@ class PackedDistributedVariableTest(test.TestCase):
       v1 = resource_variable_ops.ResourceVariable(2.0, name='var1')
 
     packed_var = packed_distributed_variable.PackedDistributedVariable([v0, v1])
-    self.assertTrue(packed_var.handle.is_packed)
+    self.assertFalse(packed_var.handle.is_packed)
     self.assertTrue(packed_var.is_initialized)
 
     with ops.device('/cpu:0'):
@@ -61,6 +61,7 @@ class PackedDistributedVariableTest(test.TestCase):
 
     @def_function.function
     def update_var():
+      self.assertTrue(packed_var.handle.is_packed)
       with ops.device('/cpu:0'):
         packed_var.assign_add(3.0).assign_sub(1.0)
         read0 = packed_var.value()
@@ -85,7 +86,7 @@ class PackedDistributedVariableTest(test.TestCase):
 
     packed_var0 = packed_distributed_variable.PackedVarAndDevice(
         packed_var, device0)
-    self.assertTrue(packed_var0.handle.is_packed)
+    self.assertFalse(packed_var0.handle.is_packed)
     self.assertAllEqual(math_ops.mul(packed_var0, 2.0), 2.0)
 
     packed_var1 = packed_distributed_variable.PackedVarAndDevice(
@@ -94,6 +95,7 @@ class PackedDistributedVariableTest(test.TestCase):
 
     @def_function.function
     def func():
+      self.assertTrue(packed_var.handle.is_packed)
       var0 = packed_distributed_variable.PackedVarAndDevice(packed_var, device0)
       var0.assign_add(3.0)
       var1 = packed_distributed_variable.PackedVarAndDevice(packed_var, device1)

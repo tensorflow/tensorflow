@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 
+#include "absl/strings/match.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 
 namespace tensorflow {
@@ -54,6 +56,7 @@ constexpr char kSqueeze[] = "Squeeze";
 constexpr char kRecv[] = "_Recv";
 constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
+constexpr char kBatchMatMulV2[] = "BatchMatMulV2";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
 constexpr char kShapeN[] = "ShapeN";
@@ -101,16 +104,16 @@ static const Costs::Duration kMinComputeTime(1);
 
 namespace {
 
-string GetDataFormat(const OpInfo& op_info) {
-  string data_format = "NHWC";  // Default format.
+std::string GetDataFormat(const OpInfo& op_info) {
+  std::string data_format = "NHWC";  // Default format.
   if (op_info.attr().find("data_format") != op_info.attr().end()) {
     data_format = op_info.attr().at("data_format").s();
   }
   return data_format;
 }
 
-string GetFilterFormat(const OpInfo& op_info) {
-  string filter_format = "HWIO";  // Default format.
+std::string GetFilterFormat(const OpInfo& op_info) {
+  std::string filter_format = "HWIO";  // Default format.
   if (op_info.attr().find("filter_format") != op_info.attr().end()) {
     filter_format = op_info.attr().at("filter_format").s();
   }
@@ -171,25 +174,33 @@ int64 GetOutputSize(const int64 input, const int64 filter, const int64 stride,
   }
 }
 
-// Return the output element count of a binary element-wise op considering
+// Return the output element count of a multi-input element-wise op considering
 // broadcasting.
-int64 CwiseOutputElementCount(const TensorShapeProto& input_shape_1,
-                              const TensorShapeProto& input_shape_2) {
-  bool found_unknown_shapes;
-  int rank = std::max(1, input_shape_1.dim_size());
-  TensorShapeProto output_shape =
-      MaybeGetMinimumShape(input_shape_1, rank, &found_unknown_shapes);
+int64 CwiseOutputElementCount(const OpInfo& op_info) {
+  int max_rank = 1;
+  for (const OpInfo::TensorProperties& input_properties : op_info.inputs()) {
+    max_rank = std::max(max_rank, input_properties.shape().dim_size());
+  }
 
-  if (input_shape_1.dim_size() == input_shape_2.dim_size()) {
-    auto shape_1 =
-        MaybeGetMinimumShape(input_shape_1, rank, &found_unknown_shapes);
-    auto shape_2 =
-        MaybeGetMinimumShape(input_shape_2, rank, &found_unknown_shapes);
-    if (shape_1.dim_size() == shape_2.dim_size()) {
-      for (int i = 0; i < shape_1.dim_size(); i++) {
-        output_shape.mutable_dim(i)->set_size(
-            std::max(shape_1.dim(i).size(), shape_2.dim(i).size()));
-      }
+  TensorShapeProto output_shape;
+  output_shape.mutable_dim()->Reserve(max_rank);
+  for (int i = 0; i < max_rank; ++i) {
+    output_shape.add_dim();
+  }
+
+  // Expand the shape of the output to follow the numpy-style broadcast rule
+  // which matches each input starting with the trailing dimensions and working
+  // its way forward. To do this, iterate through each input shape's dimensions
+  // in reverse order, and potentially increase the corresponding output
+  // dimension.
+  for (const OpInfo::TensorProperties& input_properties : op_info.inputs()) {
+    const TensorShapeProto& input_shape = input_properties.shape();
+    for (int i = input_shape.dim_size() - 1; i >= 0; --i) {
+      int output_shape_dim_index =
+          i + output_shape.dim_size() - input_shape.dim_size();
+      output_shape.mutable_dim(output_shape_dim_index)
+          ->set_size(std::max(output_shape.dim(output_shape_dim_index).size(),
+                              input_shape.dim(i).size()));
     }
   }
 
@@ -202,7 +213,7 @@ int64 CwiseOutputElementCount(const TensorShapeProto& input_shape_1,
 
 // Helper function for determining whether there are repeated indices in the
 // input Einsum equation.
-bool CheckRepeatedDimensions(const string& dim_str) {
+bool CheckRepeatedDimensions(const absl::string_view dim_str) {
   int str_size = dim_str.size();
   for (int idx = 0; idx < str_size - 1; idx++) {
     if (dim_str.find(dim_str[idx], idx + 1) != std::string::npos) {
@@ -210,6 +221,75 @@ bool CheckRepeatedDimensions(const string& dim_str) {
     }
   }
   return false;
+}
+
+// Auxiliary function for determining whether OpLevelCostEstimator is compatible
+// with a given Einsum.
+bool IsEinsumCorrectlyFormed(const OpContext& einsum_context) {
+  const auto& op_info = einsum_context.op_info;
+
+  auto it = op_info.attr().find("equation");
+  if (it == op_info.attr().end()) return false;
+  const absl::string_view equation = it->second.s();
+  std::vector<std::string> equation_split = absl::StrSplit(equation, "->");
+
+  if (equation_split.empty()) {
+    LOG(WARNING) << "Einsum with malformed equation";
+    return false;
+  }
+  std::vector<absl::string_view> input_split =
+      absl::StrSplit(equation_split[0], ',');
+
+  // The current model covers Einsum operations with two operands and a RHS
+  if (op_info.inputs_size() != 2 || equation_split.size() != 2) {
+    VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
+    return false;
+  }
+  const auto& a_input = op_info.inputs(0);
+  const auto& b_input = op_info.inputs(1);
+  absl::string_view rhs_str = equation_split[1];
+  absl::string_view a_input_str = input_split[0];
+  absl::string_view b_input_str = input_split[1];
+
+  // Ellipsis are not currently supported
+  if (absl::StrContains(a_input_str, "...") ||
+      absl::StrContains(b_input_str, "...")) {
+    VLOG(1) << "Missing accurate estimator for op: " << op_info.op()
+            << ", ellipsis not supported";
+    return false;
+  }
+
+  constexpr int kMatrixRank = 2;
+
+  bool a_input_shape_unknown = false;
+  bool b_input_shape_unknown = false;
+
+  TensorShapeProto a_input_shape = MaybeGetMinimumShape(
+      a_input.shape(), std::max(kMatrixRank, a_input.shape().dim_size()),
+      &a_input_shape_unknown);
+  TensorShapeProto b_input_shape = MaybeGetMinimumShape(
+      b_input.shape(), std::max(kMatrixRank, b_input.shape().dim_size()),
+      &b_input_shape_unknown);
+
+  if (a_input_str.size() != static_cast<size_t>(a_input_shape.dim_size()) ||
+      b_input_str.size() != static_cast<size_t>(b_input_shape.dim_size())) {
+    VLOG(1) << "Missing accurate estimator for op: " << op_info.op()
+            << ", equation subscripts don't match tensor rank.";
+    return false;
+  }
+
+  // Subscripts where axis appears more than once for a single input are not yet
+  // supported
+  if (CheckRepeatedDimensions(a_input_str) ||
+      CheckRepeatedDimensions(b_input_str) ||
+      CheckRepeatedDimensions(rhs_str)) {
+    VLOG(1) << "Missing accurate estimator for op: " << op_info.op()
+            << ", Subscripts where axis appears more than once for a single "
+               "input are not yet supported";
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace
@@ -292,6 +372,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       kSparseTensorDenseMatMul,
       wrap(&OpLevelCostEstimator::PredictSparseTensorDenseMatMul));
   device_cost_impl_.emplace(kBatchMatMul,
+                            wrap(&OpLevelCostEstimator::PredictBatchMatMul));
+  device_cost_impl_.emplace(kBatchMatMulV2,
                             wrap(&OpLevelCostEstimator::PredictBatchMatMul));
   device_cost_impl_.emplace(kQuantizedMatMul,
                             wrap(&OpLevelCostEstimator::PredictMatMul));
@@ -431,21 +513,21 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Neg", EIGEN_COST(scalar_opposite_op<float>));
   elementwise_ops_.emplace("QuantizeAndDequantizeV2",
                            quantize_and_dequantize_v2_cost);
+  elementwise_ops_.emplace("QuantizedSigmoid",
+                           EIGEN_COST(scalar_logistic_op<float>));
   elementwise_ops_.emplace("QuantizeV2", quantize_v2_cost);
   elementwise_ops_.emplace("Reciprocal", EIGEN_COST(scalar_inverse_op<float>));
+  elementwise_ops_.emplace("Relu", EIGEN_COST(scalar_max_op<float>));
   elementwise_ops_.emplace("Rint", 1);
   elementwise_ops_.emplace("Round", EIGEN_COST(scalar_round_op<float>));
   elementwise_ops_.emplace("Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>));
-  elementwise_ops_.emplace("Sqrt", EIGEN_COST(scalar_sqrt_op<float>));
-  elementwise_ops_.emplace("Square", EIGEN_COST(scalar_square_op<float>));
-  elementwise_ops_.emplace("Tanh", EIGEN_COST(scalar_tanh_op<float>));
-  elementwise_ops_.emplace("Relu", EIGEN_COST(scalar_max_op<float>));
   elementwise_ops_.emplace("Sigmoid", EIGEN_COST(scalar_logistic_op<float>));
-  elementwise_ops_.emplace("QuantizedSigmoid",
-                           EIGEN_COST(scalar_logistic_op<float>));
   elementwise_ops_.emplace("Sign", EIGEN_COST(scalar_sign_op<float>));
   elementwise_ops_.emplace("Sin", EIGEN_COST(scalar_sin_op<float>));
+  elementwise_ops_.emplace("Sqrt", EIGEN_COST(scalar_sqrt_op<float>));
+  elementwise_ops_.emplace("Square", EIGEN_COST(scalar_square_op<float>));
   elementwise_ops_.emplace("Tan", EIGEN_COST(scalar_tan_op<float>));
+  elementwise_ops_.emplace("Tanh", EIGEN_COST(scalar_tanh_op<float>));
   // Binary ops alphabetically sorted
   elementwise_ops_.emplace("Add", EIGEN_COST(scalar_sum_op<float>));
   elementwise_ops_.emplace("AddV2", EIGEN_COST(scalar_sum_op<float>));
@@ -474,7 +556,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                            EIGEN_COST(scalar_product_op<float>));
   elementwise_ops_.emplace("RealDiv", EIGEN_COST(scalar_quotient_op<float>));
   elementwise_ops_.emplace("ReluGrad", EIGEN_COST(scalar_max_op<float>));
-  elementwise_ops_.emplace("SquareDifference", 1);
+  elementwise_ops_.emplace("SquaredDifference",
+                           EIGEN_COST(scalar_square_op<float>) +
+                               EIGEN_COST(scalar_difference_op<float>));
   elementwise_ops_.emplace("Sub", EIGEN_COST(scalar_difference_op<float>));
   elementwise_ops_.emplace("TruncateDiv",
                            EIGEN_COST(scalar_quotient_op<float>));
@@ -528,7 +612,7 @@ DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
       }
     }
   } else if (device.type() == "GPU") {
-    const string architecture = device.environment().at("architecture");
+    const std::string architecture = device.environment().at("architecture");
     int cores_per_multiprocessor;
     if (architecture < "3") {
       // Fermi
@@ -564,9 +648,9 @@ DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
 Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   const auto& op_info = op_context.op_info;
   bool found_unknown_shapes = false;
-  // For unary or binary element-wise operations, op count is the element count
-  // of any input. We use the count for the largest input here to be more robust
-  // in case that the shape is unknown or partially known for other input.
+  // For element-wise operations, op count is the element count of any input. We
+  // use the count for the largest input here to be more robust in case that the
+  // shape is unknown or partially known for other input.
   int64 op_count = CalculateLargestInputCount(op_info, &found_unknown_shapes);
   // If output shape is available, try use the element count calculated from
   // that.
@@ -575,12 +659,9 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
         op_count,
         CalculateTensorElementCount(op_info.outputs(0), &found_unknown_shapes));
   }
-  // For binary ops, calculate the output shape possibly resulting from
-  // broadcasting.
+  // Calculate the output shape possibly resulting from broadcasting.
   if (op_info.inputs_size() >= 2) {
-    op_count =
-        std::max(op_count, CwiseOutputElementCount(op_info.inputs(0).shape(),
-                                                   op_info.inputs(1).shape()));
+    op_count = std::max(op_count, CwiseOutputElementCount(op_info));
   }
 
   int op_cost = 1;
@@ -695,7 +776,7 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
   VLOG(2) << "Original filter shape: " << original_filter_shape.DebugString();
 
   int x_index, y_index, major_channel_index, minor_channel_index = -1;
-  const string& data_format = GetDataFormat(op_info);
+  const std::string& data_format = GetDataFormat(op_info);
   if (data_format == "NCHW") {
     major_channel_index = 1;
     y_index = 2;
@@ -712,7 +793,7 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
     x_index = 2;
     major_channel_index = 3;
   }
-  const string& filter_format = GetFilterFormat(op_info);
+  const std::string& filter_format = GetFilterFormat(op_info);
   int filter_x_index, filter_y_index, in_major_channel_index, out_channel_index,
       in_minor_channel_index = -1;
   if (filter_format == "HWIO") {
@@ -906,6 +987,130 @@ int64 OpLevelCostEstimator::CountMatMulOperations(const OpInfo& op_info,
   return ops;
 }
 
+bool OpLevelCostEstimator::GenerateBatchMatmulContextFromEinsum(
+    const OpContext& einsum_context, OpContext* batch_matmul_context,
+    bool* found_unknown_shapes) const {
+  // This auxiliary function transforms an einsum OpContext into its equivalent
+  // Batch Matmul OpContext. The function returns a boolean, which determines
+  // whether it was successful in generating the output OpContext or not.
+
+  // Einsum computes a generalized contraction between tensors of arbitrary
+  // dimension as defined by the equation written in the Einstein summation
+  // convention. The number of tensors in the computation and the number of
+  // contractions can be arbitrarily long. The current model only contemplates
+  // Einsum equations, which can be translated into a single BatchMatMul
+  // operation. Einsum operations with more than two operands are not currently
+  // supported. Subscripts where an axis appears more than once for a single
+  // input and ellipsis are currently also excluded. See:
+  // https://www.tensorflow.org/api_docs/python/tf/einsum
+  // We distinguish four kinds of dimensions, depending on their placement in
+  // the equation:
+  // + B: Batch dimensions: Dimensions which appear in both operands and RHS.
+  // + K: Contracting dimensions: These appear in both inputs but not RHS.
+  // + M: Operand A dimensions: These appear in the first operand and the RHS.
+  // + N: Operand B dimensions: These appear in the second operand and the RHS.
+  // Then, the operation to estimate is BatchMatMul([B,M,K],[B,K,N])
+
+  if (batch_matmul_context == nullptr) {
+    VLOG(1) << "Output context should not be a nullptr.";
+    return false;
+  }
+  if (!IsEinsumCorrectlyFormed(einsum_context)) return false;
+  const auto& op_info = einsum_context.op_info;
+  std::vector<std::string> equation_split =
+      absl::StrSplit(op_info.attr().find("equation")->second.s(), "->");
+  std::vector<absl::string_view> input_split =
+      absl::StrSplit(equation_split[0], ',');
+  const auto& a_input = op_info.inputs(0);
+  const auto& b_input = op_info.inputs(1);
+  absl::string_view rhs_str = equation_split[1];
+  absl::string_view a_input_str = input_split[0];
+  absl::string_view b_input_str = input_split[1];
+
+  constexpr int kMatrixRank = 2;
+
+  bool a_input_shape_unknown = false;
+  bool b_input_shape_unknown = false;
+
+  TensorShapeProto a_input_shape = MaybeGetMinimumShape(
+      a_input.shape(), std::max(kMatrixRank, a_input.shape().dim_size()),
+      &a_input_shape_unknown);
+  TensorShapeProto b_input_shape = MaybeGetMinimumShape(
+      b_input.shape(), std::max(kMatrixRank, b_input.shape().dim_size()),
+      &b_input_shape_unknown);
+
+  *found_unknown_shapes = a_input_shape_unknown || b_input_shape_unknown ||
+                          (a_input.shape().dim_size() < kMatrixRank) ||
+                          (b_input.shape().dim_size() < kMatrixRank);
+
+  OpInfo batch_matmul_op_info = op_info;
+  batch_matmul_op_info.mutable_inputs()->Clear();
+  batch_matmul_op_info.set_op("BatchMatMul");
+
+  AttrValue transpose_attribute;
+  transpose_attribute.set_b(false);
+  (*batch_matmul_op_info.mutable_attr())["transpose_a"] = transpose_attribute;
+  (*batch_matmul_op_info.mutable_attr())["transpose_b"] = transpose_attribute;
+
+  OpInfo::TensorProperties* a_matrix = batch_matmul_op_info.add_inputs();
+  TensorShapeProto* a_matrix_shape = a_matrix->mutable_shape();
+  a_matrix->set_dtype(a_input.dtype());
+
+  OpInfo::TensorProperties* b_matrix = batch_matmul_op_info.add_inputs();
+  b_matrix->set_dtype(b_input.dtype());
+  TensorShapeProto* b_matrix_shape = b_matrix->mutable_shape();
+
+  TensorShapeProto_Dim m_dim;
+  TensorShapeProto_Dim n_dim;
+  TensorShapeProto_Dim k_dim;
+
+  m_dim.set_size(1);
+  n_dim.set_size(1);
+  k_dim.set_size(1);
+
+  for (int i_idx = 0, a_input_str_size = a_input_str.size();
+       i_idx < a_input_str_size; ++i_idx) {
+    if (b_input_str.find(a_input_str[i_idx]) == std::string::npos) {
+      if (rhs_str.find(a_input_str[i_idx]) == std::string::npos) {
+        VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
+        return false;
+      }
+
+      m_dim.set_size(m_dim.size() * a_input_shape.dim(i_idx).size());
+      continue;
+    } else if (rhs_str.find(a_input_str[i_idx]) == std::string::npos) {
+      // The dimension does not appear in the RHS, therefore it is a contracting
+      // dimension.
+      k_dim.set_size(k_dim.size() * a_input_shape.dim(i_idx).size());
+      continue;
+    }
+    // It appears in both input operands, therefore we place it as an outer
+    // dimension for the Batch Matmul.
+    *(a_matrix_shape->add_dim()) = a_input_shape.dim(i_idx);
+    *(b_matrix_shape->add_dim()) = a_input_shape.dim(i_idx);
+  }
+  for (int i_idx = 0, b_input_str_size = b_input_str.size();
+       i_idx < b_input_str_size; ++i_idx) {
+    if (a_input_str.find(b_input_str[i_idx]) == std::string::npos) {
+      if (rhs_str.find(b_input_str[i_idx]) == std::string::npos) {
+        VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
+        return false;
+      }
+      n_dim.set_size(n_dim.size() * b_input_shape.dim(i_idx).size());
+    }
+  }
+
+  // The two inner-most dimensions of the Batch Matmul are added.
+  *(a_matrix_shape->add_dim()) = m_dim;
+  *(a_matrix_shape->add_dim()) = k_dim;
+  *(b_matrix_shape->add_dim()) = k_dim;
+  *(b_matrix_shape->add_dim()) = n_dim;
+
+  *batch_matmul_context = einsum_context;
+  batch_matmul_context->op_info = batch_matmul_op_info;
+  return true;
+}
+
 int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     const OpInfo& op_info, bool* found_unknown_shapes) {
   return CountBatchMatMulOperations(op_info, nullptr, found_unknown_shapes);
@@ -914,7 +1119,7 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
 int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     const OpInfo& op_info, BatchMatMulDimensions* batch_mat_mul,
     bool* found_unknown_shapes) {
-  if (op_info.op() != kBatchMatMul) {
+  if (op_info.op() != kBatchMatMul && op_info.op() != kBatchMatMulV2) {
     LOG(ERROR) << "Invalid Operation: " << op_info.op();
     // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
@@ -1327,7 +1532,7 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   // contrib/fused_conv/kernels/fused_conv2d_bias_activation_op.cc
 
   // TODO(yaozhang): Support NHWC_VECT_W.
-  string data_format = GetDataFormat(op_context.op_info);
+  std::string data_format = GetDataFormat(op_context.op_info);
   if (data_format != "NCHW" && data_format != "NHWC" &&
       data_format != "NCHW_VECT_C") {
     LOG(WARNING) << "unsupported data format: " << data_format;
@@ -1335,7 +1540,7 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
     cost.inaccurate = true;
     return cost;
   }
-  string filter_format = GetFilterFormat(op_context.op_info);
+  std::string filter_format = GetFilterFormat(op_context.op_info);
   if (filter_format != "HWIO" && filter_format != "OIHW" &&
       filter_format != "OIHW_VECT_I") {
     LOG(WARNING) << "unsupported filter format: " << filter_format;
@@ -1346,7 +1551,6 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
 
   auto& conv_input = op_context.op_info.inputs(0);
   auto& filter = op_context.op_info.inputs(1);
-  auto& bias = op_context.op_info.inputs(2);
   auto& side_input = op_context.op_info.inputs(3);
   auto& conv_input_scale = op_context.op_info.inputs(4);
   auto& side_input_scale = op_context.op_info.inputs(5);
@@ -1356,10 +1560,6 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   auto dims = ConvolutionDimensionsFromInputs(
       conv_input.shape(), filter.shape(), op_context.op_info,
       &found_unknown_shapes);
-
-  // Construct the shape of our output tensor from our convolution dimensions
-  // and format, as it may not be available yet.
-  // TODO(varomodt): should we centralize the Conv2D input/output shapes?
   OpInfo::TensorProperties output;
   if (data_format == "NCHW" || data_format == "NCHW_VECT_C") {
     output = DescribeTensor(DT_FLOAT, {dims.batch, dims.oz, dims.oy, dims.ox});
@@ -1371,15 +1571,18 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   std::vector<OpContext> component_ops = {
       FusedChildContext(op_context, "Conv2D", output, {conv_input, filter}),
       FusedChildContext(op_context, "Mul", output, {output, conv_input_scale}),
-      FusedChildContext(op_context, "BiasAdd", output, {output, bias}),
+      FusedChildContext(
+          op_context, "BiasAdd", output,
+          {output, output}),  // Note we're no longer using bias at all
       FusedChildContext(op_context, "Relu", output, {output})};
 
   // Add our side_input iff it's non-empty.
   if (side_input.shape().dim_size() > 0) {
     component_ops.push_back(FusedChildContext(op_context, "Mul", side_input,
                                               {side_input, side_input_scale}));
-    component_ops.push_back(
-        FusedChildContext(op_context, "Add", output, {side_input, output}));
+    component_ops.push_back(FusedChildContext(
+        op_context, "Add", output,
+        {output, output}));  // Note that we're not using side_input here
   }
 
   // Construct an op_context which definitely has our output shape.
@@ -1405,152 +1608,17 @@ Costs OpLevelCostEstimator::PredictMatMul(const OpContext& op_context) const {
 }
 
 Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
-  // Einsum computes a generalized contraction between tensors of arbitrary
-  // dimension as defined by the equation written in the Einstein summation
-  // convention. The number of tensors in the computation and the number of
-  // contractions can be arbitrarily long. The current model only contemplates
-  // Einsum equations, which can be translated into a single BatchMatMul
-  // operation. Einsum operations with more than two operands are not currently
-  // supported. Subscripts where an axis appears more than once for a single
-  // input and ellipsis are currently also excluded. See:
-  // https://www.tensorflow.org/api_docs/python/tf/einsum
-  // We distinguish four kinds of dimensions, depending on their placement in
-  // the equation:
-  // + B: Batch dimensions: Dimensions which appear in both operands and RHS.
-  // + K: Contracting dimensions: These appear in both inputs but not RHS.
-  // + M: Operand A dimensions: These appear in the first operand and the RHS.
-  // + N: Operand B dimensions: These appear in the second operand and the RHS.
-  // Then, the operation to estimate is BatchMatMul([B,M,K],[B,K,N])
   const auto& op_info = op_context.op_info;
 
   auto it = op_info.attr().find("equation");
   if (it == op_info.attr().end()) return Costs::ZeroCosts(/*inaccurate=*/true);
-  const string& equation = it->second.s();
-  std::vector<string> equation_split = absl::StrSplit(equation, "->");
-
-  if (equation_split.empty()) {
-    LOG(WARNING) << "Einsum with malformed equation";
-    return PredictCostOfAnUnknownOp(op_context);
-  }
-  std::vector<string> input_split = absl::StrSplit(equation_split[0], ',');
-
-  // The current model covers Einsum operations with two operands and a RHS
-  if (op_info.inputs_size() != 2 || equation_split.size() != 2) {
-    VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
-    return PredictCostOfAnUnknownOp(op_context);
-  }
-  string rhs_str = equation_split[1];
-  string a_input_str = input_split[0];
-  string b_input_str = input_split[1];
-
-  // Ellipsis are not currently supported
-  if (a_input_str.find("...") != std::string::npos ||
-      b_input_str.find("...") != std::string::npos) {
-    VLOG(1) << "Missing accurate estimator for op: " << op_info.op()
-            << ", ellipsis not supported";
-    return PredictCostOfAnUnknownOp(op_context);
-  }
-
-  const auto& a_input = op_info.inputs(0);
-  const auto& b_input = op_info.inputs(1);
-  const int matrix_rank = 2;
-
+  OpContext batch_matmul_op_context;
   bool found_unknown_shapes = false;
-  bool a_input_shape_unknown = false;
-  bool b_input_shape_unknown = false;
-
-  TensorShapeProto a_input_shape = MaybeGetMinimumShape(
-      a_input.shape(), std::max(matrix_rank, a_input.shape().dim_size()),
-      &a_input_shape_unknown);
-  TensorShapeProto b_input_shape = MaybeGetMinimumShape(
-      b_input.shape(), std::max(matrix_rank, b_input.shape().dim_size()),
-      &b_input_shape_unknown);
-
-  found_unknown_shapes = a_input_shape_unknown || b_input_shape_unknown ||
-                         (a_input.shape().dim_size() < matrix_rank) ||
-                         (b_input.shape().dim_size() < matrix_rank);
-
-  if (a_input_str.size() != a_input_shape.dim_size() ||
-      b_input_str.size() != b_input_shape.dim_size()) {
-    VLOG(1) << "Missing accurate estimator for op: " << op_info.op()
-            << ", equation subscripts don't match tensor rank.";
+  bool success = GenerateBatchMatmulContextFromEinsum(
+      op_context, &batch_matmul_op_context, &found_unknown_shapes);
+  if (!success) {
     return PredictCostOfAnUnknownOp(op_context);
   }
-
-  // Subscripts where axis appears more than once for a single input are not yet
-  // supported
-  if (CheckRepeatedDimensions(a_input_str) ||
-      CheckRepeatedDimensions(b_input_str) ||
-      CheckRepeatedDimensions(rhs_str)) {
-    VLOG(1) << "Missing accurate estimator for op: " << op_info.op()
-            << ", Subscripts where axis appears more than once for a single "
-               "input are not yet supported";
-    return PredictCostOfAnUnknownOp(op_context);
-  }
-
-  OpInfo batch_matmul_op_info = op_info;
-  batch_matmul_op_info.mutable_inputs()->Clear();
-  batch_matmul_op_info.set_op("BatchMatMul");
-
-  AttrValue transpose_attribute;
-  transpose_attribute.set_b(false);
-  (*batch_matmul_op_info.mutable_attr())["transpose_a"] = transpose_attribute;
-  (*batch_matmul_op_info.mutable_attr())["transpose_b"] = transpose_attribute;
-
-  OpInfo::TensorProperties* a_matrix = batch_matmul_op_info.add_inputs();
-  TensorShapeProto* a_matrix_shape = a_matrix->mutable_shape();
-  a_matrix->set_dtype(a_input.dtype());
-
-  OpInfo::TensorProperties* b_matrix = batch_matmul_op_info.add_inputs();
-  b_matrix->set_dtype(b_input.dtype());
-  TensorShapeProto* b_matrix_shape = b_matrix->mutable_shape();
-
-  TensorShapeProto_Dim m_dim;
-  TensorShapeProto_Dim n_dim;
-  TensorShapeProto_Dim k_dim;
-
-  m_dim.set_size(1);
-  n_dim.set_size(1);
-  k_dim.set_size(1);
-
-  for (int i_idx = 0; i_idx < a_input_str.size(); ++i_idx) {
-    if (b_input_str.find(a_input_str[i_idx]) == std::string::npos) {
-      if (rhs_str.find(a_input_str[i_idx]) == std::string::npos) {
-        VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
-        return PredictCostOfAnUnknownOp(op_context);
-      }
-
-      m_dim.set_size(m_dim.size() * a_input_shape.dim(i_idx).size());
-      continue;
-    } else if (rhs_str.find(a_input_str[i_idx]) == std::string::npos) {
-      // The dimension does not appear in the RHS, therefore it is a contracting
-      // dimension.
-      k_dim.set_size(k_dim.size() * a_input_shape.dim(i_idx).size());
-      continue;
-    }
-    // It appears in both input operands, therefore we place it as an outer
-    // dimension for the Batch Matmul.
-    *(a_matrix_shape->add_dim()) = a_input_shape.dim(i_idx);
-    *(b_matrix_shape->add_dim()) = a_input_shape.dim(i_idx);
-  }
-  for (int i_idx = 0; i_idx < b_input_str.size(); ++i_idx) {
-    if (a_input_str.find(b_input_str[i_idx]) == std::string::npos) {
-      if (rhs_str.find(b_input_str[i_idx]) == std::string::npos) {
-        VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
-        return PredictCostOfAnUnknownOp(op_context);
-      }
-      n_dim.set_size(n_dim.size() * b_input_shape.dim(i_idx).size());
-    }
-  }
-
-  // The two inner-most dimensions of the Batch Matmul are added.
-  *(a_matrix_shape->add_dim()) = m_dim;
-  *(a_matrix_shape->add_dim()) = k_dim;
-  *(b_matrix_shape->add_dim()) = k_dim;
-  *(b_matrix_shape->add_dim()) = n_dim;
-
-  OpContext batch_matmul_op_context = op_context;
-  batch_matmul_op_context.op_info = batch_matmul_op_info;
   Costs costs = PredictCosts(batch_matmul_op_context);
   costs.inaccurate = costs.inaccurate || found_unknown_shapes;
   costs.num_ops_with_unknown_shapes = found_unknown_shapes;
@@ -1770,7 +1838,7 @@ Costs OpLevelCostEstimator::PredictFusedOp(
 
 /* static */
 OpContext OpLevelCostEstimator::FusedChildContext(
-    const OpContext& parent, const string& op_name,
+    const OpContext& parent, const std::string& op_name,
     const OpInfo::TensorProperties& output,
     const std::vector<OpInfo::TensorProperties>& inputs) {
   // Setup the base parameters of our new context.
@@ -1819,7 +1887,7 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   VLOG(2) << "Image shape: " << image_shape.DebugString();
 
   int x_index, y_index, channel_index;
-  const string& data_format = GetDataFormat(op_info);
+  const std::string& data_format = GetDataFormat(op_info);
   if (data_format == "NCHW") {
     channel_index = 1;
     y_index = 2;

@@ -57,7 +57,8 @@ class Stack : public ResourceBase {
   Status Push(const TensorAndAllocation& value) {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CheckNotClosed());
-    if (max_size_ >= 0 && stack_.size() >= max_size_) {
+    int stack_size = stack_.size();
+    if (max_size_ >= 0 && stack_size >= max_size_) {
       return errors::InvalidArgument("Stack[", stack_name_, "] overflowed ",
                                      "its max_size (", max_size_, ")");
     }

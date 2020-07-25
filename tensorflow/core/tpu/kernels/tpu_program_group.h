@@ -22,8 +22,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
@@ -83,13 +86,25 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
  public:
   using Status = ::stream_executor::port::Status;
 
+  // Compiles Mlir or TF function computation by lowering into HLO IR and
+  // returns TPU programs ready for execution.
+  static Status CompileAndBuild(
+      const TpuCompilationRequestProto& compilation_request,
+      const XLA_TpuMeshState* mesh_state,
+      TpuProgramGroupInterface* tpu_program_group_interface);
+
+  // Compiles HLO IR and returns TPU programs ready for execution.
   static Status Build(
       const TPUCompileMetadataProto& metadata,
       const tensorflow::XlaCompiler::CompilationResult& compilation_result,
       const std::vector<ShardingAndIndex>& arg_core_mapping,
       const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-      TpuProgramGroup* tpu_program);
+      TpuProgramGroupInterface* tpu_program_group_interface);
+
+  TpuProgramGroup() = default;
+  TpuProgramGroup(TpuProgramGroup&& other);
+  TpuProgramGroup& operator=(TpuProgramGroup&&) = delete;
 
   size_t program_count() const override { return tpu_programs_.size(); }
 
@@ -98,6 +113,9 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   bool LogProgramMemorySummary() override;
 
   void UnloadAndDestroyPrograms() override;
+
+  Status LogCompilationStats(const TpuCompilationCacheKey& key,
+                             absl::Duration duration) override;
 
   const std::vector<bool>& may_modify_variables() const override {
     return may_modify_variables_;
@@ -117,8 +135,11 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   const std::vector<XLA_TpuProgram*>& tpu_programs() const {
     return tpu_programs_;
   }
-  void set_tpu_programs(std::vector<XLA_TpuProgram*> tpu_programs) {
-    tpu_programs_ = tpu_programs;
+  void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs) {
+    tpu_programs_.resize(tpu_programs.size());
+    for (size_t i = 0; i < tpu_programs.size(); ++i) {
+      tpu_programs_[i] = tpu_programs[i];
+    }
   }
 
   const TPUExecutableInfoProto& executable_info() const {
@@ -136,23 +157,28 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
     host_transfer_info_ = host_transfer_info;
   }
 
-  const xla::HloProto& hlo_metadata() const { return hlo_metadata_; }
-  void set_hlo_metadata(const xla::HloProto& hlo_metadata) {
-    hlo_metadata_ = hlo_metadata;
-  }
-
-  xla::HloProto hlo_metadata(int core_index) const;
-  std::vector<std::shared_ptr<const xla::HloProto>> hlo_metadatas()
-      const override;
+  void set_hlo_metadata(const xla::HloProto& hlo_metadata);
+  absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
 
  private:
+  void RefreshHloMetadatasPtrs();
+
   std::vector<bool> may_modify_variables_;
   tf2xla::HostComputeMetadata host_compute_metadata_;
 
   std::vector<XLA_TpuProgram*> tpu_programs_;  // Not owned.
   TPUExecutableInfoProto executable_info_;
   TPUHostTransferInfoProto host_transfer_info_;
-  xla::HloProto hlo_metadata_;
+
+  // To be consistent with the TpuProgramGroupInterface::hlo_metadatas()
+  // signature, we store HloProto values in hlo_metadatas_ when
+  // set_hlo_metadata(...) is called, and return their pointers from
+  // hlo_metadatas_ptrs_ when hlo_metadatas() is called. hlo_metadata_ptrs_ is
+  // refreshed whenever hlo_metadatas_ is set or the object is moved.
+  std::vector<xla::HloProto> hlo_metadatas_;  // Owned.
+  std::vector<const xla::HloProto*> hlo_metadatas_ptrs_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(TpuProgramGroup);
 };
 
 }  // namespace tpu

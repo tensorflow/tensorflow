@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_
 
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
@@ -27,37 +28,32 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
   using Status = stream_executor::port::Status;
 
   explicit TpuStream(SE_Stream* stream) : stream_(stream) {}
-  ~TpuStream() override { TpuStream_Free(stream_); }
+  ~TpuStream() override {
+    tensorflow::tpu::ExecutorApiFn()->TpuStream_FreeFn(stream_);
+  }
 
   bool IsSameSharedMemoryLocation(
       tensorflow::tpu::TpuStreamInterface* other) override {
-    return TpuStream_IsSameSharedMemoryLocation(
-        stream_, static_cast<TpuStream*>(other)->stream_);
+    return tensorflow::tpu::ExecutorApiFn()
+        ->TpuStream_IsSameSharedMemoryLocationFn(
+            stream_, static_cast<TpuStream*>(other)->stream_);
   }
 
   Status EnqueueOnTpuDeviceSendRecvLocal(
       stream_executor::DeviceMemoryBase send_buffer,
       stream_executor::DeviceMemoryBase recv_buffer) override {
     StatusHelper status;
-    TpuStream_TpuEnqueueOnDeviceSendRecvLocal(
-        stream_,
-        TpuConversions::DeviceMemoryBaseToSE_DeviceMemoryBase(send_buffer),
-        TpuConversions::DeviceMemoryBaseToSE_DeviceMemoryBase(recv_buffer),
-        status.c_status);
+    tensorflow::tpu::ExecutorApiFn()
+        ->TpuStream_TpuEnqueueOnDeviceSendRecvLocalFn(
+            stream_, ApiConverter::ToC(send_buffer),
+            ApiConverter::ToC(recv_buffer), status.c_status);
     return status.status();
   }
 
- private:
-  SE_Stream* stream_;
-};
-
-class TpuEvent : public ::stream_executor::internal::EventInterface {
- public:
-  explicit TpuEvent(SE_Event* event) : event_(event) {}
-  ~TpuEvent() override { TpuEvent_Free(event_); }
+  SE_Stream* se_stream() const { return stream_; }
 
  private:
-  SE_Event* event_;
+  mutable SE_Stream* stream_;
 };
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_

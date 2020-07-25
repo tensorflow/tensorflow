@@ -80,6 +80,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
     applyDelegates(options);
+    if (options.useXNNPACK != null) {
+      useXNNPACK(
+          interpreterHandle, errorHandle, options.useXNNPACK.booleanValue(), options.numThreads);
+    }
     allocateTensors(interpreterHandle, errorHandle);
     this.isMemoryAllocated = true;
   }
@@ -437,6 +441,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void allowFp16PrecisionForFp32(long interpreterHandle, boolean allow);
 
   private static native void allowBufferHandleOutput(long interpreterHandle, boolean allow);
+
+  private static native void useXNNPACK(
+      long interpreterHandle, long errorHandle, boolean state, int numThreads);
 
   private static native long createErrorReporter(int size);
 

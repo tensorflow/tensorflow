@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package tensorflow.data.experimental;
+
+// Configuration for a tf.data service DispatchServer.
+message DispatcherConfig {
+  // The port for the dispatcher to bind to. A value of 0 indicates that the
+  // dispatcher may bind to any available port.
+  int64 port = 1;
+  // The protocol for the dispatcher to use when connecting to workers.
+  string protocol = 2;
+}

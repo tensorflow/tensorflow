@@ -28,10 +28,9 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
 
 _CONSTANT_VALUE = '_CONSTANT_VALUE'
 
@@ -172,16 +171,14 @@ class Node(object):
 
     kwargs = nest.map_structure(_serialize_keras_tensor, kwargs)
     try:
-      json.dumps(kwargs, default=serialization.get_json_type)
+      json.dumps(kwargs, default=json_utils.get_json_type)
     except TypeError:
       kwarg_types = nest.map_structure(type, kwargs)
-      logging.warning('Layer ' + self.layer.name +
+      raise TypeError('Layer ' + self.layer.name +
                       ' was passed non-JSON-serializable arguments. ' +
                       'Arguments had types: ' +
-                      str(kwarg_types) + '. They will not be included '
-                      'in the serialized model (and thus will be missing '
-                      'at deserialization time).')
-      kwargs = {}
+                      str(kwarg_types) + '. They cannot be serialized out '
+                      'when saving the model.')
 
     # `kwargs` is added to each Tensor in the first arg. This should be
     # changed in a future version of the serialization format.
@@ -201,7 +198,8 @@ class Node(object):
       return tf_utils.ListWrapper(data)
 
     data = nest.map_structure(serialize_first_arg_tensor, inputs)
-    if not nest.is_sequence(data):
+    if (not nest.is_nested(data) and
+        not self.layer._preserve_input_structure_in_config):
       data = [data]
     data = tf_utils.convert_inner_node_data(data)
     return data

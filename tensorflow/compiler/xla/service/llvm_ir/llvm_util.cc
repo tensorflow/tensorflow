@@ -91,10 +91,8 @@ llvm::CallInst* EmitCallToIntrinsic(
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b) {
-  // TODO(tpopp): Pass this information down from the HLO's ModuleConfig.
-  if (b->getFastMathFlags().noNaNs() ||
-      GetDebugOptionsFromFlags().xla_cpu_enable_fast_min_max()) {
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max) {
+  if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
@@ -106,10 +104,8 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b) {
-  // TODO(tpopp): Pass this information down from the HLO's ModuleConfig.
-  if (b->getFastMathFlags().noNaNs() ||
-      GetDebugOptionsFromFlags().xla_cpu_enable_fast_min_max()) {
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max) {
+  if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value);
   } else {

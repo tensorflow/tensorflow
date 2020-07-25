@@ -50,6 +50,11 @@ void BuildOpsSubmodule(py::module* m) {
       .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
+  ops.def("AllGather", &AllGather, py::arg("operand"),
+          py::arg("all_gather_dimension"), py::arg("shard_count"),
+          py::arg("replica_groups") = py::list(),
+          py::arg("channel_id") = absl::nullopt,
+          py::arg("shape_with_layout") = absl::nullopt);
   ops.def(
       "AllReduce",
       static_cast<XlaOp (*)(
@@ -109,24 +114,26 @@ void BuildOpsSubmodule(py::module* m) {
       "CustomCall",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape,
-         const py::bytes& opaque) -> XlaOp {
-        return CustomCall(builder, call_target_name, operands, shape, opaque);
+         const py::bytes& opaque, bool has_side_effect) -> XlaOp {
+        return CustomCall(builder, call_target_name, operands, shape, opaque,
+                          has_side_effect);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
-      py::arg("shape"), py::arg("opaque") = py::bytes(""));
+      py::arg("shape"), py::arg("opaque") = py::bytes(""),
+      py::arg("has_side_effect") = false);
   ops.def(
       "CustomCallWithLayout",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
          absl::Span<const Shape> operand_shapes_with_layout,
-         const py::bytes& opaque) -> XlaOp {
-        return CustomCallWithLayout(builder, call_target_name, operands,
-                                    shape_with_layout,
-                                    operand_shapes_with_layout, opaque);
+         const py::bytes& opaque, bool has_side_effect) -> XlaOp {
+        return CustomCallWithLayout(
+            builder, call_target_name, operands, shape_with_layout,
+            operand_shapes_with_layout, opaque, has_side_effect);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
-      py::arg("opaque") = py::bytes(""));
+      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),

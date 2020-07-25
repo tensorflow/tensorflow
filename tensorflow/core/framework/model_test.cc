@@ -56,7 +56,7 @@ TEST_P(AsyncInterleaveManyTest, Model) {
     async_interleave_many->remove_input(source2);
   });
   absl::flat_hash_map<string, double> input_times;
-  input_times[kInputTimeKey] = input_time;
+  input_times[kModelInputTimeKey] = input_time;
   EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 0);
   EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(), 0);
   async_interleave_many->record_buffer_event(110, 10);
@@ -125,7 +125,7 @@ TEST_P(AsyncKnownRatioTest, Model) {
       model::MakeSourceNode({2, "source2", async_known_many});
   async_known_many->add_input(source2);
   absl::flat_hash_map<string, double> input_times;
-  input_times[kInputTimeKey] = input_time;
+  input_times[kModelInputTimeKey] = input_time;
   EXPECT_EQ(async_known_many->TotalBufferedBytes(), 0);
   EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(), 0);
   async_known_many->record_buffer_event(110, 10);
@@ -202,6 +202,7 @@ TEST(InterleaveManyTest, Model) {
       model::MakeSourceNode({3, "source2", interleave_many});
   interleave_many->add_input(source2);
   absl::flat_hash_map<string, double> input_times;
+  input_times[kModelInputTimeKey] = 0.0;
   interleave_many->add_processing_time(100);
   EXPECT_EQ(interleave_many->processing_time(), 100);
   EXPECT_EQ(interleave_many->TotalProcessingTime(/*processing_times=*/nullptr),
@@ -241,6 +242,7 @@ TEST_P(KnownRatioTest, Model) {
       model::MakeSourceNode({2, "source2", known_many});
   known_many->add_input(source2);
   absl::flat_hash_map<string, double> input_times;
+  input_times[kModelInputTimeKey] = 0.0;
   source1->add_processing_time(100);
   EXPECT_EQ(known_many->TotalProcessingTime(/*processing_times=*/nullptr), 0);
   EXPECT_EQ(known_many->OutputTime(&input_times, nullptr), 0);
@@ -289,6 +291,7 @@ INSTANTIATE_TEST_SUITE_P(Test, KnownRatioTest, ::testing::Values(0, 1, 2, 4));
 TEST(SourceTest, Model) {
   std::shared_ptr<Node> source = model::MakeSourceNode({0, "source", nullptr});
   absl::flat_hash_map<string, double> input_times;
+  input_times[kModelInputTimeKey] = 0.0;
   source->add_processing_time(100);
   EXPECT_EQ(source->processing_time(), 100);
   EXPECT_EQ(source->TotalProcessingTime(/*processing_times=*/nullptr), 0);
@@ -313,6 +316,7 @@ TEST(UnknownRatioTest, Model) {
       model::MakeSourceNode({2, "source2", unknown_many});
   unknown_many->add_input(source2);
   absl::flat_hash_map<string, double> input_times;
+  input_times[kModelInputTimeKey] = 0.0;
   unknown_many->add_processing_time(100);
   EXPECT_EQ(unknown_many->processing_time(), 100);
   EXPECT_EQ(unknown_many->TotalProcessingTime(/*processing_times=*/nullptr), 0);
@@ -348,6 +352,7 @@ TEST(UnknownTest, Model) {
       model::MakeSourceNode({2, "source2", unknown});
   unknown->add_input(source2);
   absl::flat_hash_map<string, double> input_times;
+  input_times[kModelInputTimeKey] = 0.0;
   source1->add_processing_time(100);
   EXPECT_EQ(unknown->TotalProcessingTime(/*processing_times=*/nullptr), 0);
   EXPECT_EQ(unknown->OutputTime(&input_times, nullptr), 0);
@@ -528,7 +533,7 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
     async_interleave_many->remove_input(source2);
   });
   absl::flat_hash_map<string, double> input_times;
-  input_times[kInputTimeKey] = input_time;
+  input_times[kModelInputTimeKey] = input_time;
   absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
   async_interleave_many->CollectTunableParameters(&parameters);
   async_interleave_many->record_element();
@@ -583,7 +588,7 @@ TEST_P(AsyncKnownRatioGradientTest, Model) {
   std::shared_ptr<Node> source2 =
       model::MakeSourceNode({2, "source2", async_known_many});
   absl::flat_hash_map<string, double> input_times;
-  input_times[kInputTimeKey] = input_time;
+  input_times[kModelInputTimeKey] = input_time;
   async_known_many->add_input(source2);
   source1->record_element();
   source1->add_processing_time(100);
@@ -638,7 +643,7 @@ TEST(InterleaveManyGradientTest, Model) {
   async_known_many->record_element();
   async_known_many->add_processing_time(300);
   absl::flat_hash_map<string, double> input_times;
-  input_times[kInputTimeKey] = input_time;
+  input_times[kModelInputTimeKey] = input_time;
   absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
   absl::flat_hash_map<string, double> gradients;
   interleave_many->CollectTunableParameters(&parameters);
@@ -669,7 +674,7 @@ TEST(KnownRatioGradientTest, Model) {
   async_known_many->record_element();
   async_known_many->add_processing_time(300);
   absl::flat_hash_map<string, double> input_times;
-  input_times[kInputTimeKey] = input_time;
+  input_times[kModelInputTimeKey] = input_time;
   absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
   absl::flat_hash_map<string, double> gradients;
   known_many->CollectTunableParameters(&parameters);
@@ -700,7 +705,7 @@ TEST(UnknownRatioGradientTest, Model) {
   async_known_many->record_element();
   async_known_many->add_processing_time(300);
   absl::flat_hash_map<string, double> input_times;
-  input_times[kInputTimeKey] = input_time;
+  input_times[kModelInputTimeKey] = input_time;
   absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
   absl::flat_hash_map<string, double> gradients;
   unknown_many->CollectTunableParameters(&parameters);
@@ -731,7 +736,7 @@ TEST(UnknownGradientTest, Model) {
   async_known_many->record_element();
   async_known_many->add_processing_time(300);
   absl::flat_hash_map<string, double> input_times;
-  input_times[kInputTimeKey] = input_time;
+  input_times[kModelInputTimeKey] = input_time;
   absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
   absl::flat_hash_map<string, double> gradients;
   unknown->CollectTunableParameters(&parameters);
@@ -747,27 +752,41 @@ TEST(UnknownGradientTest, Model) {
 TEST(SnapshotTest, Model) {
   std::shared_ptr<Node> root =
       model::MakeUnknownNode({0, std::to_string(0), nullptr});
-  std::shared_ptr<Node> cur_node = root;
+  std::shared_ptr<Node> current = root;
 
-  int64 num_nodes = 100;
+  int64 num_nodes = 20;
   for (int64 i = 1; i < num_nodes; i++) {
-    cur_node->add_input(
-        model::MakeUnknownNode({i, std::to_string(i), cur_node}));
-    cur_node = cur_node->inputs().front();
+    std::shared_ptr<Node> input =
+        model::MakeUnknownNode({i, std::to_string(i), current});
+    input->set_autotune(std::rand() % 2 == 1);
+    current->add_input(input);
+    current = input;
   }
 
-  std::shared_ptr<Node> root_copy = root->Snapshot(nullptr);
-  cur_node = root;
-  std::shared_ptr<Node> cur_node_copy = root_copy;
+  std::shared_ptr<Node> cloned_root = root->Snapshot();
+  current = root;
+  std::shared_ptr<Node> cloned_current = cloned_root;
 
   for (int64 i = 0; i < num_nodes; i++) {
-    EXPECT_EQ(cur_node->id(), cur_node_copy->id());
-    EXPECT_EQ(cur_node->name(), cur_node_copy->name());
-    EXPECT_NE(cur_node.get(), cur_node_copy.get());
+    EXPECT_EQ(current->id(), cloned_current->id());
+    EXPECT_EQ(current->name(), cloned_current->name());
+    EXPECT_EQ(current->autotune(), cloned_current->autotune());
+    EXPECT_NE(current.get(), cloned_current.get());
+
+    if (i > 0) {
+      EXPECT_EQ(current->output()->long_name(),
+                cloned_current->output()->long_name());
+      EXPECT_EQ(current->output()->autotune(),
+                cloned_current->output()->autotune());
+      EXPECT_NE(current->output(), cloned_current->output());
+    } else {
+      EXPECT_EQ(current->output(), nullptr);
+      EXPECT_EQ(cloned_current->output(), nullptr);
+    }
 
     if (i < num_nodes - 1) {
-      cur_node = cur_node->inputs().front();
-      cur_node_copy = cur_node_copy->inputs().front();
+      current = current->inputs().front();
+      cloned_current = cloned_current->inputs().front();
     }
   }
 }
@@ -776,51 +795,51 @@ class ComputeWaitTimeTest
     : public ::testing::TestWithParam<std::tuple<double, double, double>> {};
 
 TEST_P(ComputeWaitTimeTest, Model) {
-  const double output_time = std::get<0>(GetParam());
-  const double input_time = std::get<1>(GetParam());
+  const double producer_time = std::get<0>(GetParam());
+  const double consumer_time = std::get<1>(GetParam());
   const double buffer_size = std::get<2>(GetParam());
 
-  double output_time_derivative = 0.0L;
-  double input_time_derivative = 0.0L;
+  double producer_time_derivative = 0.0L;
+  double consumer_time_derivative = 0.0L;
   double buffer_size_derivative = 0.0L;
 
   double wait_time = model::Node::ComputeWaitTime(
-      output_time, input_time, buffer_size, &output_time_derivative,
-      &input_time_derivative, &buffer_size_derivative);
+      producer_time, consumer_time, buffer_size, &producer_time_derivative,
+      &consumer_time_derivative, &buffer_size_derivative);
 
-  double new_wait_time =
-      model::Node::ComputeWaitTime(output_time + kParameterStep, input_time,
-                                   buffer_size, nullptr, nullptr, nullptr);
-  EXPECT_NEAR(output_time_derivative,
+  double new_wait_time = model::Node::ComputeWaitTime(
+      producer_time + kParameterStep, consumer_time, buffer_size, nullptr,
+      nullptr, nullptr);
+  EXPECT_NEAR(producer_time_derivative,
               (new_wait_time - wait_time) / kParameterStep,
               kComparisonPrecision);
 
-  if (output_time >= kParameterStep) {
-    new_wait_time =
-        model::Node::ComputeWaitTime(output_time - kParameterStep, input_time,
-                                     buffer_size, nullptr, nullptr, nullptr);
-    EXPECT_NEAR(output_time_derivative,
+  if (producer_time >= kParameterStep) {
+    new_wait_time = model::Node::ComputeWaitTime(producer_time - kParameterStep,
+                                                 consumer_time, buffer_size,
+                                                 nullptr, nullptr, nullptr);
+    EXPECT_NEAR(producer_time_derivative,
                 (wait_time - new_wait_time) / kParameterStep,
                 kComparisonPrecision);
   }
 
-  new_wait_time =
-      model::Node::ComputeWaitTime(output_time, input_time + kParameterStep,
-                                   buffer_size, nullptr, nullptr, nullptr);
-  EXPECT_NEAR(input_time_derivative,
+  new_wait_time = model::Node::ComputeWaitTime(
+      producer_time, consumer_time + kParameterStep, buffer_size, nullptr,
+      nullptr, nullptr);
+  EXPECT_NEAR(consumer_time_derivative,
               (new_wait_time - wait_time) / kParameterStep,
               kComparisonPrecision);
 
-  if (input_time >= kParameterStep) {
-    new_wait_time =
-        model::Node::ComputeWaitTime(output_time, input_time - kParameterStep,
-                                     buffer_size, nullptr, nullptr, nullptr);
-    EXPECT_NEAR(input_time_derivative,
+  if (consumer_time >= kParameterStep) {
+    new_wait_time = model::Node::ComputeWaitTime(
+        producer_time, consumer_time - kParameterStep, buffer_size, nullptr,
+        nullptr, nullptr);
+    EXPECT_NEAR(consumer_time_derivative,
                 (wait_time - new_wait_time) / kParameterStep,
                 kComparisonPrecision);
   }
 
-  new_wait_time = model::Node::ComputeWaitTime(output_time, input_time,
+  new_wait_time = model::Node::ComputeWaitTime(producer_time, consumer_time,
                                                buffer_size + kParameterStep,
                                                nullptr, nullptr, nullptr);
   EXPECT_NEAR(buffer_size_derivative,
@@ -828,7 +847,7 @@ TEST_P(ComputeWaitTimeTest, Model) {
               kComparisonPrecision);
 
   if (buffer_size >= kParameterStep) {
-    new_wait_time = model::Node::ComputeWaitTime(output_time, input_time,
+    new_wait_time = model::Node::ComputeWaitTime(producer_time, consumer_time,
                                                  buffer_size - kParameterStep,
                                                  nullptr, nullptr, nullptr);
     EXPECT_NEAR(buffer_size_derivative,
@@ -842,6 +861,23 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(0, 20, 40, 80, 100),
                        ::testing::Values(0, 20, 40, 80, 100),
                        ::testing::Values(0, 1, 2, 4, 10, 20, 40)));
+
+class SelfProcessingTimeTest : public ::testing::TestWithParam<int64> {};
+
+TEST_P(SelfProcessingTimeTest, Model) {
+  const int64 add_times = GetParam();
+  std::shared_ptr<Node> source = model::MakeSourceNode({0, "source", nullptr});
+  for (int i = 0; i < add_times; i++) {
+    source->add_processing_time(i);
+    source->record_element();
+  }
+  double self_processing_time =
+      (add_times == 0 ? 0.0 : (static_cast<double>(add_times) - 1.0) / 2.0);
+  EXPECT_EQ(source->SelfProcessingTime(), self_processing_time);
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, SelfProcessingTimeTest,
+                         ::testing::Values(0, 1, 2, 5, 10, 20, 40));
 
 }  // namespace
 }  // namespace model

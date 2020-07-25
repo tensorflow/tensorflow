@@ -71,7 +71,6 @@ GpuExecutable::GpuExecutable(
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
                                              assignment_);
-  ComputeThunkAnnotations();
 }
 
 GpuExecutable::~GpuExecutable() {
@@ -90,12 +89,6 @@ GpuExecutable::~GpuExecutable() {
     for (const auto& pair : module_globals_) {
       CHECK(pair.first->SynchronizeAllActivity());
     }
-  }
-}
-
-void GpuExecutable::ComputeThunkAnnotations() {
-  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    thunk->ComputeAnnotations();
   }
 }
 
@@ -173,14 +166,12 @@ Status GpuExecutable::ExecuteThunks(
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   std::vector<std::function<void()>> deferred_host_callbacks;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    CHECK(thunk->hlo_instruction());
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    int32 stream_no =
-        thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
+    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk);
     se::Stream* stream =
         (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
 
@@ -188,9 +179,8 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    VLOG(2) << "Executing the thunk for "
-            << thunk->hlo_instruction()->ToString() << " on stream "
-            << stream_no;
+    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
+            << " on stream " << stream_no;
     const GpuExecutableRunOptions* gpu_options =
         run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
@@ -329,7 +319,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
   if (allocation.is_thread_local()) {
     return se::DeviceMemoryBase{};
   } else if (allocation.is_entry_computation_parameter()) {
-    auto param_no = allocation.parameter_number();
+    int64 param_no = allocation.parameter_number();
     se::DeviceMemoryBase registered_buffer =
         arguments[param_no]
             .Buffer(allocation.param_shape_index())
@@ -457,6 +447,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   se::StreamExecutor* executor = run_options->stream()->parent();
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
+  const Shape& root_shape = root->shape();
   auto device_ordinal = executor->device_ordinal();
   ExecutionOutput result(/*on_host_shape=*/root->shape(),
                          /*on_device_shape=*/root->shape(), memory_allocator,
@@ -477,7 +468,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     CHECK_EQ(1, sources.values().size());
     HloInstruction* src_hlo = sources.values()[0]->instruction();
 
-    VLOG(4) << "Looking at: " << sources.values()[0];
+    VLOG(4) << "Looking at: " << src_hlo->ToString()
+            << "@ index: " << index.ToString();
 
     const HloInputOutputAliasConfig& input_output_alias =
         module().input_output_alias_config();
@@ -497,17 +489,37 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
         se::DeviceMemoryBase argument_buffer = owning->Release();
         *maybe_owning_memory = argument_buffer;
         result_buffer = argument_buffer;
-        if (alias->kind == HloInputOutputAliasConfig::kUserAlias) {
-          // This is a user alias, so a must alias. The caller is giving us the
-          // input buffer, but in case of error from the execute call, we should
-          // not be releasing it as it contains valid data (for example, it is a
-          // parameter which the user wants us to alias, in a gradient update
-          // computation). So we store the index into the result in the aliased
-          // vector, which will be fed to the ExecutionOutput, which will use
-          // the indices to drop the addresses from its own ScopedShapedBuffer
-          // result, if the ExecutionOutput is not committed.
-          result.AddAliasedIndex(index);
-        }
+        // The caller is giving us the
+        // input buffer, but in case of error from the execute call, we should
+        // not be releasing it as it contains valid data (for example, it is a
+        // parameter which the user wants us to alias, in a gradient update
+        // computation). So we store the index into the result in the aliased
+        // vector, which will be fed to the ExecutionOutput, which will use
+        // the indices to drop the addresses from its own ScopedShapedBuffer
+        // result, if the ExecutionOutput is not committed.
+        result.AddAliasedIndex(index);
+      } else if (src_hlo->opcode() != HloOpcode::kParameter) {
+        // The guard is above is not to insert copy-protection when aliasing
+        // pass-through params, as we do not need to write into the output
+        // buffer.
+        VLOG(3) << "Using copy-protection: aliasing is specified, but the "
+                   "buffer is not donated; allocating a fresh buffer";
+        int64 allocation_size =
+            ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(root_shape, index));
+        TF_ASSIGN_OR_RETURN(
+            se::OwningDeviceMemory allocated_buffer,
+            memory_allocator->Allocate(device_ordinal, allocation_size));
+        result_buffer = allocated_buffer.Release();
+        TF_ASSIGN_OR_RETURN(
+            const BufferAllocation::Slice slice,
+            assignment_->GetUniqueSlice(src_hlo, sources.values()[0]->index()));
+        CHECK_EQ(slice.offset(), 0) << "Parameter should get its own slice";
+        se::DeviceMemoryBase& aliased_buffer =
+            buffer_allocations.GetMutableDeviceAddress(slice.index());
+        CHECK_EQ(aliased_buffer.size(), result_buffer.size());
+        run_options->stream()->ThenMemcpyD2D(&result_buffer, aliased_buffer,
+                                             aliased_buffer.size());
+        aliased_buffer = result_buffer;
       }
     }
 

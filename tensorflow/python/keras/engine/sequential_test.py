@@ -118,7 +118,7 @@ class TestSequential(keras_parameterized.TestCase):
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       len(model.weights)
     self.assertFalse(model.built)
@@ -144,7 +144,7 @@ class TestSequential(keras_parameterized.TestCase):
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       len(model.weights)
     self.assertFalse(model.built)
@@ -231,33 +231,28 @@ class TestSequential(keras_parameterized.TestCase):
     inner_model.trainable = True
     self.assertEqual(len(model.trainable_weights), 4)
 
+  @keras_parameterized.run_all_keras_modes
   def test_sequential_update_disabling(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
 
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.BatchNormalization(input_shape=(4,)))
-      assert model.updates
+    model = keras.models.Sequential()
+    model.add(keras.layers.BatchNormalization(input_shape=(4,)))
 
-      model.trainable = False
-      assert not model.updates
+    model.trainable = False
+    model.compile('sgd', 'mse')
 
-      model.compile('sgd', 'mse')
-      assert not model.updates
+    x1 = model.predict(val_a)
+    model.train_on_batch(val_a, val_out)
+    x2 = model.predict(val_a)
+    self.assertAllClose(x1, x2, atol=1e-7)
 
-      x1 = model.predict(val_a)
-      model.train_on_batch(val_a, val_out)
-      x2 = model.predict(val_a)
-      self.assertAllClose(x1, x2, atol=1e-7)
+    model.trainable = True
+    model.compile('sgd', 'mse')
 
-      model.trainable = True
-      model.compile('sgd', 'mse')
-      assert model.updates
-
-      model.train_on_batch(val_a, val_out)
-      x2 = model.predict(val_a)
-      assert np.abs(np.sum(x1 - x2)) > 1e-5
+    model.train_on_batch(val_a, val_out)
+    x2 = model.predict(val_a)
+    assert np.abs(np.sum(x1 - x2)) > 1e-5
 
   @keras_parameterized.run_all_keras_modes
   def test_sequential_deferred_build_serialization(self):
@@ -361,8 +356,8 @@ class TestSequential(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(1))
     if context.executing_eagerly():
-      with self.assertRaisesRegexp(ValueError,
-                                   'expected min_ndim=2, found ndim=0'):
+      with self.assertRaisesRegex(ValueError,
+                                  'expected min_ndim=2, found ndim=0'):
         model(1.0)
 
   @keras_parameterized.run_all_keras_modes
@@ -383,19 +378,19 @@ class TestSequential(keras_parameterized.TestCase):
       def call(self, inputs):
         return inputs, inputs
 
-    with self.assertRaisesRegexp(
-        ValueError, 'should have a single output tensor'):
+    with self.assertRaisesRegex(ValueError,
+                                'should have a single output tensor'):
       keras.Sequential([MultiOutputLayer(input_shape=(3,))])
 
-    with self.assertRaisesRegexp(
-        ValueError, 'should have a single output tensor'):
+    with self.assertRaisesRegex(ValueError,
+                                'should have a single output tensor'):
       keras.Sequential([
           keras.layers.Dense(1, input_shape=(3,)),
           MultiOutputLayer()])
 
     # Should also raise error in a deferred build mode
-    with self.assertRaisesRegexp(
-        ValueError, 'should have a single output tensor'):
+    with self.assertRaisesRegex(ValueError,
+                                'should have a single output tensor'):
       keras.Sequential([MultiOutputLayer()])(np.zeros((10, 10)))
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -447,7 +442,7 @@ class TestSequential(keras_parameterized.TestCase):
   def test_name_unicity(self):
     model = keras.Sequential()
     model.add(keras.layers.Dense(3, name='specific_name'))
-    with self.assertRaisesRegexp(ValueError, 'should have unique names'):
+    with self.assertRaisesRegex(ValueError, 'should have unique names'):
       model.add(keras.layers.Dense(3, name='specific_name'))
 
 

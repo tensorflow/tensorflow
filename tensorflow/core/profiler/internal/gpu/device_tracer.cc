@@ -241,7 +241,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   std::string ReportDroppedEvents() {
     absl::MutexLock lock(&mutex_);
     string result;
-    for (const auto dropped : dropped_events_) {
+    for (const auto& dropped : dropped_events_) {
       absl::StrAppend(&result, " ", dropped.second, " events dropped because ",
                       dropped.first, ";");
     }
@@ -612,8 +612,11 @@ Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
 
+// CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION < 10000
   if (!trace_concurrent_kernels) options_.cupti_finalize = true;
+#elif CUDA_VERSION >= 11000
+  options_.cupti_finalize = true;
 #endif
 
   CuptiTracerCollectorOptions collector_options;

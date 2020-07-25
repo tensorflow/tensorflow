@@ -34,6 +34,7 @@ from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.saving.saved_model.serialized_attributes import CommonEndpoints
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import nested_structure_coder
@@ -43,7 +44,6 @@ from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -129,6 +129,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
     if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config))
+      saving_utils.try_build_compiled_arguments(model)
     else:
       logging.warning('No training configuration found in save file, so the '
                       'model was *not* compiled. Compile it manually.')

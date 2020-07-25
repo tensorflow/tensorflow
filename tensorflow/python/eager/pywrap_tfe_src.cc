@@ -41,10 +41,13 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/abstract_stack_trace.h"
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/util/stack_trace.h"
 #include "tensorflow/python/util/util.h"
 
 using tensorflow::string;
@@ -854,9 +857,13 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TF_Status* out_status) {
   tensorflow::profiler::TraceMe activity(
       "TFE_Py_ExecuteCancelable", tensorflow::profiler::TraceMeLevel::kInfo);
+
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
+
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
+
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace());
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -868,17 +875,22 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
     SetOpAttrs(ctx, op, attrs, 0, out_status);
   }
   Py_BEGIN_ALLOW_THREADS;
+
+  int num_outputs = outputs->size();
+
   if (out_status->status.ok()) {
-    int num_outputs = outputs->size();
     TFE_Execute(op, outputs->data(), &num_outputs, out_status);
-    outputs->resize(num_outputs);
   }
-  if (!out_status->status.ok()) {
+
+  if (out_status->status.ok()) {
+    outputs->resize(num_outputs);
+  } else {
     TF_SetStatus(out_status, TF_GetCode(out_status),
                  tensorflow::strings::StrCat(TF_Message(out_status),
                                              " [Op:", op_name, "]")
                      .c_str());
   }
+
   Py_END_ALLOW_THREADS;
 }
 
@@ -965,14 +977,54 @@ void RaiseFallbackException(const char* message) {
           .data());
 }
 
+// Format and return `status`' error message with the attached stack trace if
+// available. `status` must have an error.
+std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
+  tensorflow::DCheckPyGilState();
+  DCHECK(!status.ok());
+
+  if (status.stack_trace().empty()) return status.error_message();
+
+  const std::vector<tensorflow::StackFrame>& stack_trace = status.stack_trace();
+
+  PyObject* linecache = PyImport_ImportModule("linecache");
+  PyObject* getline =
+      PyObject_GetAttr(linecache, PyUnicode_FromString("getline"));
+  DCHECK(getline);
+
+  std::ostringstream result;
+  result << "Exception originated from\n\n";
+
+  for (const tensorflow::StackFrame& stack_frame : stack_trace) {
+    PyObject* line_str_obj = PyObject_CallFunction(
+        getline, const_cast<char*>("si"), stack_frame.file_name.c_str(),
+        stack_frame.line_number);
+    tensorflow::StringPiece line_str = TFE_GetPythonString(line_str_obj);
+    tensorflow::str_util::RemoveWhitespaceContext(&line_str);
+    result << "  File \"" << stack_frame.file_name << "\", line "
+           << stack_frame.line_number << ", in " << stack_frame.function_name
+           << '\n';
+
+    if (!line_str.empty()) result << "    " << line_str << '\n';
+    Py_XDECREF(line_str_obj);
+  }
+
+  Py_DecRef(getline);
+  Py_DecRef(linecache);
+
+  result << '\n' << status.error_message();
+  return result.str();
+}
+
 int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   if (status->status.ok()) return 0;
   const char* msg = TF_Message(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
-      tensorflow::Safe_PyObjectPtr val(
-          Py_BuildValue("si", msg, TF_GetCode(status)));
+      tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
+          "si", FormatErrorStatusStackTrace(status->status).c_str(),
+          TF_GetCode(status)));
       if (PyErr_Occurred()) {
         // NOTE: This hides the actual error (i.e. the reason `status` was not
         // TF_OK), but there is nothing we can do at this point since we can't
@@ -998,7 +1050,8 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
-      tensorflow::Safe_PyObjectPtr val(Py_BuildValue("si", msg, status.code()));
+      tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
+          "si", FormatErrorStatusStackTrace(status).c_str(), status.code()));
       PyErr_SetObject(exception_class, val.get());
       return -1;
     } else {
@@ -2008,7 +2061,7 @@ bool ListContainsNone(PyObject* list) {
 
 static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
-    tensorflow::AbstractTensorHandleInterface* handle =
+    tensorflow::ImmediateExecutionTensorHandle* handle =
         tensorflow::unwrap(EagerTensor_Handle(tensor));
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
@@ -3522,6 +3575,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   }
 
   TFE_Op* op = GetOp(ctx, op_name, op_exec_info.device_name, status);
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace());
+
   auto cleaner = tensorflow::gtl::MakeCleanup([status, ctx, op] {
     ReturnStatus(status);
     ReturnOp(ctx, op);
@@ -3741,11 +3796,14 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (!status->status.ok()) {
     // Augment the status with the op_name for easier debugging similar to
     // TFE_Py_Execute.
-    TF_SetStatus(status, TF_GetCode(status),
-                 tensorflow::strings::StrCat(
-                     TF_Message(status),
-                     " [Op:", TFE_GetPythonString(op_exec_info.op_name), "]")
-                     .c_str());
+    std::vector<tensorflow::StackFrame> stack_trace =
+        status->status.stack_trace();
+    status->status = tensorflow::Status(
+        status->status.code(),
+        tensorflow::strings::StrCat(
+            TF_Message(status),
+            " [Op:", TFE_GetPythonString(op_exec_info.op_name), "]"),
+        std::move(stack_trace));
 
     MaybeRaiseExceptionFromTFStatus(status, nullptr);
     return nullptr;
@@ -3869,7 +3927,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                                        bool include_tensor_ranks_only,
                                        EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
-    tensorflow::AbstractTensorHandleInterface* handle =
+    tensorflow::ImmediateExecutionTensorHandle* handle =
         tensorflow::unwrap(EagerTensor_Handle(arg));
 
     absl::StrAppend(&result->str, kDType,

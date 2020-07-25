@@ -42,7 +42,7 @@ class PackedDistributedVariable(resource_variable_ops.BaseResourceVariable):
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
     """
-    if not context.executing_eagerly():
+    if not ops.executing_eagerly_outside_functions():
       raise ValueError(
           "PackedDistributedVariable should be created in eager mode.")
     if not distributed_variables:
@@ -84,6 +84,9 @@ class PackedDistributedVariable(resource_variable_ops.BaseResourceVariable):
   def devices(self):
     return self._devices
 
+  def on_device(self, device):
+    return PackedVarAndDevice(self, device)
+
   def get_var_on_device(self, device):
     for i, d in enumerate(self._devices):
       if d == device:
@@ -100,6 +103,13 @@ class PackedDistributedVariable(resource_variable_ops.BaseResourceVariable):
 
   @property
   def handle(self):
+    if context.executing_eagerly():
+      return self.get_var_on_current_device().handle
+    else:
+      return self._handle
+
+  @property
+  def packed_handle(self):
     return self._handle
 
   def _read_variable_op(self):
@@ -269,7 +279,8 @@ class PackedVarAndDevice(object):
 
   @property
   def handle(self):
-    return self._var.handle
+    with ops.device(self._device):
+      return self._var.handle
 
   @property
   def op(self):

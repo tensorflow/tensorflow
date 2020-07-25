@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -150,10 +151,13 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
     return errors::Unimplemented("Only support a single exported name.");
   }
 
+  tensorflow::GraphImportConfig specs;
+  specs.upgrade_legacy = true;
+
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,
-                                       exported_names, &context));
+                                       exported_names, specs, &context));
 
   if (!model_flags.input_arrays().empty() ||
       !model_flags.output_arrays().empty()) {
@@ -165,8 +169,10 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
 
+  // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, result);
+      toco_flags, std::move(module), pass_config, result,
+      /*session=*/llvm::None);
   return status;
 }
 

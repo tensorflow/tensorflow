@@ -1,3 +1,92 @@
+# Release 2.4.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+## Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* The byte layout for string tensors across the C-API has been updated to match
+  TF Core/C++; i.e., a contiguous array of `tensorflow::tstring`/`TF_TString`s.
+* C-API functions `TF_StringDecode`, `TF_StringEncode`, and
+  `TF_StringEncodedSize` are no longer relevant and have been removed; see
+  core/platform/ctstring.h for string access/modification in C.
+* Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
+* `tensorflow.python`, `tensorflow.core` and `tensorflow.compiler` modules are
+    now hidden. These modules are not part of TensorFlow public API.
+
+## Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES). E.G. ADDING A NEW DEPENDENCY, BUMPING A DEPENDENCY NUMBER, LACK OF SUPPORT ON SOME PLATFORM, ETC>
+
+## Major Features and Improvements
+
+* <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+* <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See tensorflow/python/ops/numpy_ops/README.md for details of what are supported and what are the differences with NumPy.
+
+## Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+* TF Core:
+  * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
+    type annotation for variables representing a Tensor or a value that can be
+    converted to Tensor by `tf.convert_to_tensor`.
+  * Calling ops with a python constants or numpy values is now consistent with
+    tf.convert_to_tensor behavior. This avoids operations like tf.reshape
+    truncating inputs such as from int64 to int32.
+  * Added `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensror` arguments.
+  * The Python bitwise operators for `Tensor` (`__and__`, `__or__`, `__xor__`
+    and `__invert__` now support non-`bool` arguments and apply the
+    corresponding bitwise ops. `bool` arguments continue to be supported and
+    dispatch to logical ops. This brings them more in line with Python and NumPy
+    benavior.
+* `tf.data`:
+    * Added new `tf.data.experimental.service.register_dataset` and
+     `tf.data.experimental.service.from_dataset_id` APIs to enable one process
+      to register a dataset with the tf.data service, and another process to
+      consume data from the dataset.
+    * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
+      the complement of `select_cols`; at most one of these should be specified.
+    * We have implemented an optimization which reorders data-discarding
+      transformations such as `take` and `shard` to happen earlier in the
+      dataset when it is safe to do so. The optimization can be disabled via
+      the `experimental_optimization.reorder_data_discarding_ops` dataset
+      option.
+*   `tf.distribute`:
+    * <ADD RELEASE NOTES HERE>
+*   `tf.keras`:
+    * <ADD RELEASE NOTES HERE>
+* `tf.function` / AutoGraph:
+  * Added `experimental_follow_type_hints` argument for `tf.function`. When
+    True, the function may use type annotations to optimize the tracing
+    performance.
+*   `tf.lite`:
+    * <ADD RELEASE NOTES HERE>
+*   `tf.random`:
+    * <ADD RELEASE NOTES HERE>
+*   Math and Linear Algebra:
+    * <ADD RELEASE NOTES HERE>
+*   TPU Enhancements:
+    * <ADD RELEASE NOTES HERE>
+*   XLA Support:
+    * <ADD RELEASE NOTES HERE>
+*   Tracing and Debugging:
+    * <ADD RELEASE NOTES HERE>
+*   Other:
+    * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
+  and "denylist" where possible. Please see 
+  https://developers.google.com/style/word-list#blacklist for more context.
+    * <ADD RELEASE NOTES HERE>
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.3.0
 
 ## Breaking Changes
@@ -10,6 +99,9 @@
     `tf.compat.v1.image.extract_glimpse` does not change. The behavior of
     exsiting C++ kernel `ExtractGlimpse` does not change as well, so saved
     models will not be impacted.
+
+## Bug Fixes and Other Changes
+* Mutable tables now restore checkpointed values when loaded from SavedModel.
 
 # Release 2.1.1
 
@@ -136,7 +228,7 @@ Coinciding with this change, new releases of [TensorFlow's Docker images](https:
         `Strategy.extended.update` and `Strategy.extended.update_non_slot`.
     *   Experimental support for shape invariants has been enabled in
         `tf.function`. See the API docs for
-        `tf.autograph.experimental.set_loop_options` for additonal info.
+        `tf.autograph.experimental.set_loop_options` for additional info.
     *   AutoGraph error messages now exclude frames corresponding to APIs
         internal to AutoGraph.
     *   Improve shape inference for `tf.function` input arguments to unlock more
@@ -219,7 +311,7 @@ Coinciding with this change, new releases of [TensorFlow's Docker images](https:
         also deterministic back-prop of bias-addition in Keras layers) to
         include when XLA JIT compilation is enabled.
     *   Fix problem, when running on a CUDA GPU and when either environment
-        variable `TF_DETERMINSTIC_OPS` or environment variable
+        variable `TF_DETERMINISTIC_OPS` or environment variable
         `TF_CUDNN_DETERMINISTIC` is set to "true" or "1", in which some layer
         configurations led to an exception with the message "No algorithm
         worked!"
@@ -262,32 +354,86 @@ This release contains contributions from many people at Google, as well as:
 TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support [officially ends an January 1, 2020](https://www.python.org/dev/peps/pep-0373/#update). [As announced earlier](https://groups.google.com/a/tensorflow.org/d/msg/announce/gVwS5RC8mds/dCt1ka2XAAAJ), TensorFlow will also stop supporting Python 2 starting January 1, 2020, and no more releases are expected in 2019.
 
 ## Major Features and Improvements
-* The `tensorflow` pip package now includes GPU support by default (same as `tensorflow-gpu`) for both Linux and Windows. This runs on machines with and without NVIDIA GPUs. `tensorflow-gpu` is still available, and CPU-only packages can be downloaded at `tensorflow-cpu` for users who are concerned about package size.
-* **Windows users:** Officially-released `tensorflow` Pip packages are now built with Visual Studio 2019 version 16.4 in order to take advantage of the new `/d2ReducedOptimizeHugeFunctions` compiler flag. To use these new packages, you must install "Microsoft Visual C++ Redistributable for Visual Studio 2015, 2017 and 2019", available from Microsoft's website [here](https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads).
-  * This does not change the minimum required version for building TensorFlow from source on Windows, but builds enabling `EIGEN_STRONG_INLINE` can take over 48 hours to compile without this flag. Refer to `configure.py` for more information about `EIGEN_STRONG_INLINE` and `/d2ReducedOptimizeHugeFunctions`.
-  * If either of the required DLLs, `msvcp140.dll` (old) or `msvcp140_1.dll` (new), are missing on your machine, `import tensorflow` will print a warning message.
-* The `tensorflow` pip package is built with CUDA 10.1 and cuDNN 7.6.
-* `tf.keras`
-  * Experimental support for mixed precision is available on GPUs and Cloud TPUs. See [usage guide](https://www.tensorflow.org/guide/keras/mixed_precision).
-  * Introduced the `TextVectorization` layer, which takes as input raw strings and takes care of text standardization, tokenization, n-gram generation, and vocabulary indexing. See this [end-to-end text classification example](https://colab.research.google.com/drive/1RvCnR7h0_l4Ekn5vINWToI9TNJdpUZB3).
-  * Keras `.compile` `.fit` `.evaluate` and `.predict` are allowed to be outside of the DistributionStrategy scope, as long as the model was constructed inside of a scope.
-  * Experimental support for Keras `.compile`, `.fit`, `.evaluate`, and `.predict` is available for Cloud TPUs, Cloud TPU, for all types of Keras models (sequential, functional and subclassing models).
-  * Automatic outside compilation is now enabled for Cloud TPUs. This allows `tf.summary` to be used more conveniently with Cloud TPUs.
-  * Dynamic batch sizes with DistributionStrategy and Keras are supported on Cloud TPUs.
-  * Support for `.fit`, `.evaluate`, `.predict` on TPU using numpy data, in addition to `tf.data.Dataset`.
-  * Keras reference implementations for many popular models are available in the TensorFlow [Model Garden](https://github.com/tensorflow/models/tree/master/official).
-* `tf.data`
-  * Changes rebatching for `tf.data datasets` + DistributionStrategy for better performance. Note that the dataset also behaves slightly differently, in that the rebatched dataset cardinality will always be a multiple of the number of replicas.
-  * `tf.data.Dataset` now supports automatic data distribution and sharding in distributed environments, including on TPU pods.
-  * Distribution policies for `tf.data.Dataset` can now be tuned with 1. `tf.data.experimental.AutoShardPolicy(OFF, AUTO, FILE, DATA)` 2. `tf.data.experimental.ExternalStatePolicy(WARN, IGNORE, FAIL)`
-* `tf.debugging`
-  * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to help debugging the root causes of issues involving infinities and `NaN`s.
-* `tf.distribute`
-  * Custom training loop support on TPUs and TPU pods is avaiable through `strategy.experimental_distribute_dataset`, `strategy.experimental_distribute_datasets_from_function`, `strategy.experimental_run_v2`, `strategy.reduce`.
-  * Support for a global distribution strategy through `tf.distribute.experimental_set_strategy(),` in addition to `strategy.scope()`.
-* `TensorRT`
-  * [TensorRT 6.0](https://developer.nvidia.com/tensorrt#tensorrt-whats-new) is now supported and enabled by default. This adds support for more TensorFlow ops including Conv3D, Conv3DBackpropInputV2, AvgPool3D, MaxPool3D, ResizeBilinear, and ResizeNearestNeighbor. In addition, the TensorFlow-TensorRT python conversion API is exported as `tf.experimental.tensorrt.Converter`.
-* Environment variable `TF_DETERMINISTIC_OPS` has been added. When set to "true" or "1", this environment variable makes `tf.nn.bias_add` operate deterministically (i.e. reproducibly), but currently only when XLA JIT compilation is *not* enabled. Setting `TF_DETERMINISTIC_OPS` to "true" or "1" also makes cuDNN convolution and max-pooling operate deterministically. This makes Keras Conv\*D and MaxPool\*D layers operate deterministically in both the forward and backward directions when running on a CUDA-enabled GPU.
+
+*   The `tensorflow` pip package now includes GPU support by default (same as
+    `tensorflow-gpu`) for both Linux and Windows. This runs on machines with and
+    without NVIDIA GPUs. `tensorflow-gpu` is still available, and CPU-only
+    packages can be downloaded at `tensorflow-cpu` for users who are concerned
+    about package size.
+*   **Windows users:** Officially-released `tensorflow` Pip packages are now
+    built with Visual Studio 2019 version 16.4 in order to take advantage of the
+    new `/d2ReducedOptimizeHugeFunctions` compiler flag. To use these new
+    packages, you must install "Microsoft Visual C++ Redistributable for Visual
+    Studio 2015, 2017 and 2019", available from Microsoft's website
+    [here](https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads).
+    *   This does not change the minimum required version for building
+        TensorFlow from source on Windows, but builds enabling
+        `EIGEN_STRONG_INLINE` can take over 48 hours to compile without this
+        flag. Refer to `configure.py` for more information about
+        `EIGEN_STRONG_INLINE` and `/d2ReducedOptimizeHugeFunctions`.
+    *   If either of the required DLLs, `msvcp140.dll` (old) or `msvcp140_1.dll`
+        (new), are missing on your machine, `import tensorflow` will print a
+        warning message.
+*   The `tensorflow` pip package is built with CUDA 10.1 and cuDNN 7.6.
+*   `tf.keras`
+    *   Experimental support for mixed precision is available on GPUs and Cloud
+        TPUs. See
+        [usage guide](https://www.tensorflow.org/guide/keras/mixed_precision).
+    *   Introduced the `TextVectorization` layer, which takes as input raw
+        strings and takes care of text standardization, tokenization, n-gram
+        generation, and vocabulary indexing. See this
+        [end-to-end text classification example](https://colab.research.google.com/drive/1RvCnR7h0_l4Ekn5vINWToI9TNJdpUZB3).
+    *   Keras `.compile` `.fit` `.evaluate` and `.predict` are allowed to be
+        outside of the DistributionStrategy scope, as long as the model was
+        constructed inside of a scope.
+    *   Experimental support for Keras `.compile`, `.fit`, `.evaluate`, and
+        `.predict` is available for Cloud TPUs, Cloud TPU, for all types of
+        Keras models (sequential, functional and subclassing models).
+    *   Automatic outside compilation is now enabled for Cloud TPUs. This allows
+        `tf.summary` to be used more conveniently with Cloud TPUs.
+    *   Dynamic batch sizes with DistributionStrategy and Keras are supported on
+        Cloud TPUs.
+    *   Support for `.fit`, `.evaluate`, `.predict` on TPU using numpy data, in
+        addition to `tf.data.Dataset`.
+    *   Keras reference implementations for many popular models are available in
+        the TensorFlow
+        [Model Garden](https://github.com/tensorflow/models/tree/master/official).
+*   `tf.data`
+    *   Changes rebatching for `tf.data datasets` + DistributionStrategy for
+        better performance. Note that the dataset also behaves slightly
+        differently, in that the rebatched dataset cardinality will always be a
+        multiple of the number of replicas.
+    *   `tf.data.Dataset` now supports automatic data distribution and sharding
+        in distributed environments, including on TPU pods.
+    *   Distribution policies for `tf.data.Dataset` can now be tuned with 1.
+        `tf.data.experimental.AutoShardPolicy(OFF, AUTO, FILE, DATA)` 2.
+        `tf.data.experimental.ExternalStatePolicy(WARN, IGNORE, FAIL)`
+*   `tf.debugging`
+    *   Add `tf.debugging.enable_check_numerics()` and
+        `tf.debugging.disable_check_numerics()` to help debugging the root
+        causes of issues involving infinities and `NaN`s.
+*   `tf.distribute`
+    *   Custom training loop support on TPUs and TPU pods is available through
+        `strategy.experimental_distribute_dataset`,
+        `strategy.experimental_distribute_datasets_from_function`,
+        `strategy.experimental_run_v2`, `strategy.reduce`.
+    *   Support for a global distribution strategy through
+        `tf.distribute.experimental_set_strategy(),` in addition to
+        `strategy.scope()`.
+*   `TensorRT`
+    *   [TensorRT 6.0](https://developer.nvidia.com/tensorrt#tensorrt-whats-new)
+        is now supported and enabled by default. This adds support for more
+        TensorFlow ops including Conv3D, Conv3DBackpropInputV2, AvgPool3D,
+        MaxPool3D, ResizeBilinear, and ResizeNearestNeighbor. In addition, the
+        TensorFlow-TensorRT python conversion API is exported as
+        `tf.experimental.tensorrt.Converter`.
+*   Environment variable `TF_DETERMINISTIC_OPS` has been added. When set to
+    "true" or "1", this environment variable makes `tf.nn.bias_add` operate
+    deterministically (i.e. reproducibly), but currently only when XLA JIT
+    compilation is *not* enabled. Setting `TF_DETERMINISTIC_OPS` to "true" or
+    "1" also makes cuDNN convolution and max-pooling operate deterministically.
+    This makes Keras Conv\*D and MaxPool\*D layers operate deterministically in
+    both the forward and backward directions when running on a CUDA-enabled GPU.
 
 ## Breaking Changes
 * Deletes `Operation.traceback_with_start_lines` for which we know of no usages.

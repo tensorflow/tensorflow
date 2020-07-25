@@ -159,6 +159,12 @@ class RNNSavedModelSaver(LayerSavedModelSaver):
     objects, functions = (
         super(RNNSavedModelSaver, self)._get_serialized_attributes_internal(
             serialization_cache))
-
-    objects['states'] = data_structures.wrap_or_unwrap(self.obj.states)
+    states = data_structures.wrap_or_unwrap(self.obj.states)
+    # Force the tuple into TupleWrapper which is a trackable object. The
+    # save/load code requires all the objects to be trackable.
+    # Tuple is not converted to TupleWrapper by data_structures.wrap_or_unwrap()
+    # if it doesn't contains any trackable objects.
+    if isinstance(states, tuple):
+      states = data_structures._TupleWrapper(states)  # pylint: disable=protected-access
+    objects['states'] = states
     return objects, functions

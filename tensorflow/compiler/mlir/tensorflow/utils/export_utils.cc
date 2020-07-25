@@ -64,7 +64,6 @@ std::set<std::string>* GlobalOpPrefixes() {
   static std::set<std::string>* global_op_prefixes = [] {
     std::set<std::string>* result = new std::set<std::string>;
     result->insert("tf.");
-    result->insert("_tf.");
     result->insert("tf_executor.");
     return result;
   }();
@@ -122,6 +121,20 @@ Status ConvertAttribute(const mlir::TF::ShapeAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
+Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
+  value->mutable_func()->set_name(attr.getValue().str());
+  return Status::OK();
+}
+
+Status ConvertAttribute(const mlir::TF::FuncAttr& attr, AttrValue* value) {
+  TF_RETURN_IF_ERROR(
+      ConvertAttribute(attr.GetName().cast<mlir::FlatSymbolRefAttr>(), value));
+  TF_RETURN_IF_ERROR(ConvertAttributes(attr.GetAttrs().getValue(),
+                                       /*attrs_to_ignore=*/{},
+                                       value->mutable_func()->mutable_attr()));
+  return Status::OK();
+}
+
 Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
   absl::string_view attr_value(attr.getValue().data(), attr.getValue().size());
   switch (mangling_util::GetMangledKind(attr_value)) {
@@ -158,11 +171,6 @@ Status ConvertAttribute(const mlir::TypeAttr& type, AttrValue* value) {
 
 Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
   value->clear_value();
-  return Status::OK();
-}
-
-Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
-  value->mutable_func()->set_name(std::string(attr.getValue()));
   return Status::OK();
 }
 
@@ -276,7 +284,7 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   // When being converted to MLIR, some prefixes and suffixes are added to the
   // operation types, and we have to remove them when converting the
   // operations back to a graph:
-  // - "_tf.", "tf." or "tf_executor." : every operation type has this prefix.
+  // - "tf." or "tf_executor." : every operation type has this prefix.
   // - ".sink" or ".Sink": only the NextIteration operation has this suffix. We
   // don't need to consider ".source"/".Source" because the nodes with this
   // suffix are skipped by the caller and will not be added to the graph.
@@ -313,9 +321,8 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     // Some control flow ops in TensorFlow Graph have their respective "Ref" ops
     // as well. For example there is Enter and RefEnter op. RefEnter forwards
     // the input ref buffer to output. However both Enter and RefEnter are
-    // mapped to tf_executor::EnterOp during import and then to _tf.Enter op in
-    // control dialect. Check if it is a Ref op to correctly map to the
-    // TensorFlow Graph op.
+    // mapped to tf_executor::EnterOp during import. Check if it is a Ref op to
+    // correctly map to the TensorFlow Graph op.
     if (IsRefTypeControlOp(inst)) op_name = "Ref";
     TF_ASSIGN_OR_RETURN(auto tf_name,
                         GetTensorFlowOpName(inst->getName().getStringRef()));
@@ -374,8 +381,8 @@ Status ConvertAttributes(
     AttrValue value;
     switch (attr.getKind()) {
       case mlir::StandardAttributes::SymbolRef: {
-        auto func_attr = attr.cast<mlir::FlatSymbolRefAttr>();
-        value.mutable_func()->set_name(std::string(func_attr.getValue()));
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::FlatSymbolRefAttr>(), &value));
         func_call_attrs[string(name)] = value;
         continue;
       }
@@ -417,6 +424,12 @@ Status ConvertAttributes(
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::TF::ShapeAttr>(), &value));
         break;
+      case static_cast<unsigned>(mlir::TF::AttrKind::FUNC): {
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::TF::FuncAttr>(), &value));
+        func_call_attrs[string(name)] = value;
+        continue;
+      }
       // AffineMap kind is not implemented.
       case mlir::StandardAttributes::AffineMap:
         return errors::Unimplemented("AffineMap attribute (needed for '",
@@ -516,8 +529,7 @@ Status SetSizeAttribute(absl::string_view name, size_t size,
 }
 
 bool IsLegacyCallInstruction(mlir::Operation* inst) {
-  return llvm::dyn_cast<mlir::TF::LegacyCallOp>(inst) ||
-         inst->getName().getStringRef().compare("_tf.LegacyCall") == 0;
+  return llvm::dyn_cast<mlir::TF::LegacyCallOp>(inst);
 }
 
 Status AddTensorFlowOpPrefix(std::string prefix) {

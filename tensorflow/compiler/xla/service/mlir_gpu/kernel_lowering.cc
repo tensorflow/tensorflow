@@ -51,16 +51,16 @@ limitations under the License.
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace mlir_gpu {
 namespace {
 
-using ::mlir::xla_lhlo::FusionOp;
+using ::mlir::lmhlo::FusionOp;
 
 // Replaces a FusionOp by the operations contained in its region.
 struct FusionOpRemover
@@ -174,8 +174,7 @@ struct DeadTempBufferRemoval
     for (auto result : op->getResults()) {
       if (!llvm::all_of(result.getUsers(), [&](mlir::Operation* op) {
             // Store and Dealloc is OK.
-            if (llvm::isa<mlir::StoreOp>(op) ||
-                llvm::isa<mlir::DeallocOp>(op)) {
+            if (llvm::isa<mlir::StoreOp, mlir::DeallocOp>(op)) {
               return true;
             }
             // Load without uses is also ok.
@@ -225,8 +224,8 @@ struct MoveScalarComputationsIntoGpuLaunch
     : mlir::PassWrapper<MoveScalarComputationsIntoGpuLaunch,
                         mlir::FunctionPass> {
   static bool isInliningBeneficiary(mlir::Operation* op) {
-    return llvm::isa<mlir::ConstantOp>(op) || llvm::isa<mlir::DimOp>(op) ||
-           llvm::isa<mlir::SelectOp>(op) || llvm::isa<mlir::CmpIOp>(op);
+    return llvm::isa<mlir::ConstantOp, mlir::DimOp, mlir::SelectOp,
+                     mlir::CmpIOp>(op);
   }
 
   static bool extractBeneficiaryOps(
@@ -301,7 +300,7 @@ struct RewriteKernelSignature
         signalPassFailure();
         return;
       }
-      if (func.getBlocks().size() != 1) {
+      if (!llvm::hasSingleElement(func)) {
         func.emitError() << "surrounding function has more than one block";
         signalPassFailure();
         return;
@@ -393,7 +392,7 @@ struct RewriteKernelSignature
   }
 };
 
-// Extract_element(xla_hlo_scalars_to_dimension_tensor(v_i), i) -> v_i
+// Extract_element(mhlo_scalars_to_dimension_tensor(v_i), i) -> v_i
 //
 // We need to direct fusion to the inner loops. This cannot be done with
 // a passmanager alone ATM, as nested pass managers require operations to
@@ -458,20 +457,20 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   }
 
   // Legalize from HLO to LHLO.
-  pm.addPass(::mlir::xla_hlo::createLegalizeToLhloPass());
+  pm.addPass(::mlir::mhlo::createLegalizeToLhloPass());
   // Moving `AllocOp`s and inserting missing `DeallocOp`s
   pm.addPass(::mlir::createBufferPlacementPass());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Remove unnecessary LHLO copies.
-  pm.addPass(::mlir::xla_lhlo::createLhloCopyRemovalPass());
+  pm.addPass(::mlir::lmhlo::createLhloCopyRemovalPass());
   // Transform LHLO operations to LinAlg.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
+  pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
-  pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg(/*use_parallel_loops=*/true,
-                                                    tiling_for_unrolling));
+  pm.addPass(::mlir::lmhlo::createLhloFuseLinalg(/*use_parallel_loops=*/true,
+                                                 tiling_for_unrolling));
   // Legalize reduce operations directly to GPU dialect.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeToGpuPass());
+  pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform the Linalg operations inside of the loop nest into parallel
   // loops.
   pm.addPass(::mlir::createConvertLinalgToParallelLoopsPass());
@@ -505,6 +504,16 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  // Make loops with min bounds into a conditional plus static bounds.
+  // Only do this if we unrolled in the first place.
+  if (!options.unroll_factors.empty()) {
+    pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
+  }
+  // Approximate of requested.
+  if (options.use_approximations) {
+    pm.addNestedPass<::mlir::FuncOp>(
+        ::mlir::hlo::createLegalizeTanhToApproximationPass());
+  }
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(absl::make_unique<MoveScalarComputationsIntoGpuLaunch>());
   // Take launches to launches with kernels.
@@ -547,7 +556,7 @@ class LowerToNVVMPass
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();
-    if (failed(mlir::applyFullConversion(m, target, patterns, &converter))) {
+    if (failed(mlir::applyFullConversion(m, target, patterns))) {
       signalPassFailure();
     }
   }
@@ -567,7 +576,8 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // Some basic cleanup.
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-  kernelPm.addPass(::mlir::createStripDebugInfoPass());
+  // Remove all location information to prevent a debug build.
+  pm.addPass(::mlir::createStripDebugInfoPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering to NVVM IR failed.");

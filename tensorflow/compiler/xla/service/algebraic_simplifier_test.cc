@@ -117,6 +117,29 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAddition) {
                   m::ConstantScalar(0.125))));
 }
 
+// (A*C1) * (B*C2) => (A*B)*(C1*C2)
+TEST_F(AlgebraicSimplifierTest, MultiplyChain) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      c = f32[] constant(2)
+      d = f32[] constant(4)
+      x = f32[] multiply(p0, c)
+      y = f32[] multiply(p1, d)
+      ROOT z = f32[] multiply(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MultiplyAnyOrder(
+          m::MultiplyAnyOrder(m::Parameter(0), m::Parameter(1)),
+          m::MultiplyAnyOrder(m::ConstantScalar(2), m::ConstantScalar(4)))));
+}
+
 // A*C + B*C => (A+B)*C if C is a broadcast of a floating-point power of 2.
 TEST_F(AlgebraicSimplifierTest, FactorFpAdditionWithBroadcast) {
   const char* kModuleStr = R"(
@@ -1568,6 +1591,32 @@ TEST_F(AlgebraicSimplifierTest, Pow2) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
+// Test that pow(A, 3) is simplified to A*A*A.
+TEST_F(AlgebraicSimplifierTest, Pow3) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* three = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, three));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Power(m::Parameter(0), m::Op().Is(three))));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Multiply(m::Parameter(0),
+                             m::Multiply(m::Parameter(0), m::Parameter(0)))));
+}
+
 // Test that pow(A, -1) is simplified to 1/A.
 TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   auto m = CreateNewVerifiedModule();
@@ -2012,6 +2061,80 @@ TEST_F(AlgebraicSimplifierTest, RemoveUnaryConcatenate) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), param0);
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceReverse) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY test {
+  param = f32[6,7,32] parameter(0)
+  constant = f32[] constant(0)
+  pad = f32[8,7,32] pad(param, constant), padding=1_1x0_0x0_0
+  rev = f32[8,7,32] reverse(pad), dimensions={0,2}
+  slice = f32[1,7,32] slice(rev), slice={[2:3:1], [0:7:1], [0:32:1]}
+  ROOT tuple = (f32[1,7,32]) tuple(slice)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  HloComputation* computation = module->entry_computation();
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Tuple(m::Reverse(m::Slice(m::Pad())))));
+  const HloInstruction* slice =
+      computation->root_instruction()->operand(0)->operand(0);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(slice->shape(), ShapeUtil::MakeShape(F32, {1, 7, 32})));
+  // slice start,limit of 0th and 2nd dimensions are changed
+  // while 1st dimension's slice start, limit remains the same since
+  // it is not reversed.
+  EXPECT_EQ(slice->slice_starts(0), 5);
+  EXPECT_EQ(slice->slice_limits(0), 6);
+  EXPECT_EQ(slice->slice_starts(1), 0);
+  EXPECT_EQ(slice->slice_limits(1), 7);
+  EXPECT_EQ(slice->slice_starts(2), 0);
+  EXPECT_EQ(slice->slice_limits(2), 32);
+  EXPECT_EQ(slice->slice_strides(0), 1);
+  EXPECT_EQ(slice->slice_strides(1), 1);
+  EXPECT_EQ(slice->slice_strides(2), 1);
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceReverseNonUnitEvenOddStrides) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY test {
+  param = f32[6,7,32] parameter(0)
+  constant = f32[] constant(0)
+  pad = f32[8,7,32] pad(param, constant), padding=1_1x0_0x0_0
+  rev = f32[8,7,32] reverse(pad), dimensions={0,1,2}
+  slice = f32[1,2,7] slice(rev), slice={[2:3:2], [0:7:4], [0:32:5]}
+  ROOT tuple = (f32[1,2,7]) tuple(slice)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  HloComputation* computation = module->entry_computation();
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Tuple(m::Reverse(m::Slice(m::Pad())))));
+  const HloInstruction* slice =
+      computation->root_instruction()->operand(0)->operand(0);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(slice->shape(), ShapeUtil::MakeShape(F32, {1, 2, 7})));
+  // slice start,limit of all dimensions are changed
+  EXPECT_EQ(slice->slice_starts(0), 5);
+  EXPECT_EQ(slice->slice_limits(0), 6);
+  EXPECT_EQ(slice->slice_starts(1), 2);
+  EXPECT_EQ(slice->slice_limits(1), 7);
+  EXPECT_EQ(slice->slice_starts(2), 1);
+  EXPECT_EQ(slice->slice_limits(2), 32);
+  EXPECT_EQ(slice->slice_strides(0), 2);
+  EXPECT_EQ(slice->slice_strides(1), 4);
+  EXPECT_EQ(slice->slice_strides(2), 5);
 }
 
 // Test that empty operands of concatenates are removed.
@@ -6145,10 +6268,10 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
     }
     test {
       p0 = f32[32,8,5,6] parameter(0)
-      p1 = f32[32,8,6,7] parameter(1)
+      p1 = f32[8,32,6,7] parameter(1)
       d = f32[32,8,5,7] dot(p0, p1),
         lhs_batch_dims={0,1},
-        rhs_batch_dims={0,1},
+        rhs_batch_dims={1,0},
         rhs_contracting_dims={2},
         lhs_contracting_dims={3}
      c = f32[] constant(0)

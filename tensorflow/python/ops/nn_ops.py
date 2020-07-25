@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import numbers
 import os
@@ -940,6 +939,9 @@ def convolution(
     filter: An (N+2)-D `Tensor` with the same type as `input` and shape
       `spatial_filter_shape + [in_channels, out_channels]`.
     padding: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
+      height/width dimension as the input.
     strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
       Defaults to [1]*N.  If any value of strides is > 1, then all values of
       dilation_rate must be 1.
@@ -2254,11 +2256,12 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
   strides = _get_sequence(strides, 2, channel_index, "strides")
   dilations = _get_sequence(dilations, 2, channel_index, "dilations")
 
-  # Try really hard to avoid modifying the legacy name scopes - return early.
-  shape = getattr(input, "shape", None)
-  if shape is not None:
-    ndims = getattr(shape, "ndims", -1)
-    if ndims == -1: ndims = len(shape)
+  shape = input.shape
+  # shape object may lack ndims, e.g., if input is an np.ndarray.  In that case,
+  # we fall back to len(shape).
+  ndims = getattr(shape, "ndims", -1)
+  if ndims == -1:
+    ndims = len(shape)
   if ndims in (4, 3, 2, 1, 0, None):
     # We avoid calling squeeze_batch_dims to reduce extra python function
     # call slowdown in eager mode.  This branch doesn't require reshapes.
@@ -2987,12 +2990,12 @@ def _conv3d_expanded_batch(
     dilations=None,
     name=None):
   """Helper function for `conv3d`; handles expanded batches."""
-  # Try really hard to avoid modifying the legacy name sceops - return early.
-  shape = getattr(input, "shape", None)
-  if shape is not None:
-    ndims = getattr(shape, "ndims", -1)
-    if ndims == -1:
-      ndims = len(shape)
+  shape = input.shape
+  # shape object may lack ndims, e.g., if input is an np.ndarray.  In that case,
+  # we fall back to len(shape).
+  ndims = getattr(shape, "ndims", -1)
+  if ndims == -1:
+    ndims = len(shape)
   if ndims in (5, 4, 3, 2, 1, 0, None):
     # We avoid calling squeeze_batch_dims to reduce extra python function
     # call slowdown in eager mode.  This branch doesn't require reshapes.
@@ -3270,7 +3273,7 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
                       [input, filter, output_shape]) as name:
     if tensor_util.is_tensor(output_shape):
       n = output_shape.shape[0] - 2
-    elif isinstance(output_shape, collections.Sized):
+    elif isinstance(output_shape, collections_abc.Sized):
       n = len(output_shape) - 2
     else:
       raise ValueError("output_shape must be a tensor or sized collection.")

@@ -96,12 +96,15 @@ py_test(
         "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
     ],
     python_version = "PY3",
+    # Increased thread count for reducing timeout failures.
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
         "no_pip",
         "no_windows",
         "noasan",  # b/144707533
+        "notsan",  # b/160824139
     ],
     deps = [
         ":tflite_convert",
@@ -192,11 +195,6 @@ py_test(
     srcs = ["lite_flex_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        # TODO(b/111881877): Enable in oss after resolving op registry issues.
-        "no_oss",
-        "no_windows",
-    ],
     deps = [
         ":lite",
         "//tensorflow/python:client_testlib",

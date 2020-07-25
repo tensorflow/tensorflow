@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 
-using tensorflow::internal::ExecutionContext;
+using tensorflow::tracing::TracingContext;
 
 extern "C" {
-ExecutionContext* MlirTracingFactory(const char* fn_name, TF_Status* s);
+TracingContext* MlirTracingFactory(const char* fn_name, TF_Status* s);
 }
 
 namespace {

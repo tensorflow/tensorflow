@@ -131,39 +131,14 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
   // Use auto generated function to populate derived attribute.
   //
   // Note: This only populates derived attributes for TensorFlow ops that are
-  // generated using the TableGen. Manually defined ops and TF ops with control
-  // edges (i.e TF op names with leading '_' in names) should have all the
+  // generated using the TableGen. Manually defined ops should have all the
   // attributes present as native MLIR op attributes.
-
-  // If the operation is in the TensorFlow control dialect, we create a
-  // temporary copy in the TensorFlow dialect. This is needed because we
-  // auto-generated the registration for TensorFlow dialect only.
-  // TODO(aminim): this is only done while we're using the TF control dialect
-  // as a temporary stage when exporting to GraphDef. Remove when we update the
-  // export.
-  auto erase_clone = [](mlir::Operation* op) { op->erase(); };
-  std::unique_ptr<mlir::Operation, decltype(erase_clone)> cloned_inst(
-      nullptr, erase_clone);
-  if (inst->getDialect() && inst->getDialect()->getNamespace() == "_tf") {
-    mlir::OperationState result(inst->getLoc(),
-                                inst->getName().getStringRef().drop_front());
-    for (mlir::Value operand : inst->getOperands())
-      result.operands.push_back(operand);
-
-    // Add a result type for each non-control result we find
-    for (mlir::Type result_type : inst->getResultTypes())
-      result.types.push_back(result_type);
-    cloned_inst.reset(mlir::Operation::create(result));
-    cloned_inst->setAttrs(inst->getAttrs());
-    inst = cloned_inst.get();
-  }
 
   // The elements are owned by the MLIRContext.
   absl::flat_hash_set<absl::string_view> attrs_to_ignore;
   if (inst->isRegistered()) {
     // We ignore attributes attached to the operation when there is already a
     // derived attribute defined in ODS.
-    // TODO(aminim) replace absl::flat_hash_set with a SmallDenseSet.
     llvm::SmallDenseSet<llvm::StringRef> derived_attrs;
     CollectDerivedAttrsName(inst, &derived_attrs);
     for (auto name : derived_attrs) attrs_to_ignore.insert(name.data());
@@ -198,10 +173,8 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
         inst->getName().getStringRef().str());
   }
 
-  // If the instruction is in the TF dialect, the code above already filtered
-  // results with control types. Here we only add the shapes for the leading
-  // values with ShapedType, assuming values with non-ShapedType are put at the
-  // end of the result.
+  // Here we only add the shapes for the leading values with ShapedType,
+  // assuming values with non-ShapedType are put at the end of the result.
   if (!ignore_unregistered_attrs && inst->getNumResults() > 0) {
     auto values = inst->getResults();
     auto begin = values.begin();

@@ -71,7 +71,7 @@ struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
     // Allow inlining into tf.island regions if the incoming region has a single
     // block.
     return llvm::isa<tf_executor::IslandOp>(dest->getParentOp()) &&
-           std::next(src->begin()) == src->end();
+           llvm::hasSingleElement(*src);
   }
 };
 
@@ -220,12 +220,12 @@ ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   Region &body = *result.addRegion();
   if (parser.parseRegion(body, llvm::None, llvm::None)) return failure();
 
-  if (body.getBlocks().size() > 1)
-    return parser.emitError(loc) << "expects a single block region";
-
   // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
   GraphOp::ensureTerminator(body, parser.getBuilder(), result.location);
+
+  if (!llvm::hasSingleElement(body))
+    return parser.emitError(loc) << "expects a single block region";
 
   // Get the results type from the terminator type inside the graph.
   Operation &fetch = body.back().back();
@@ -301,8 +301,8 @@ bool IslandOp::WrapsSingleOp() {
 namespace {
 
 LogicalResult Verify(IslandOp island) {
-  if (island.GetBody().empty())
-    return island.emitOpError() << "expects a non-empty body";
+  if (!island.GetBody().args_empty())
+    return island.emitOpError() << "expects body without any arguments";
 
   Operation &yield = island.GetBody().back();
   if (!isa<YieldOp>(yield))

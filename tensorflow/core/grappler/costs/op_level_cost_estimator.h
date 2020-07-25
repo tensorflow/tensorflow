@@ -138,6 +138,9 @@ class OpLevelCostEstimator {
   static int64 CountMatMulOperations(const OpInfo& op_info,
                                      MatMulDimensions* mat_mul,
                                      bool* found_unknown_shapes);
+  bool GenerateBatchMatmulContextFromEinsum(const OpContext& einsum_context,
+                                            OpContext* batch_matmul_context,
+                                            bool* found_unknown_shapes) const;
   static int64 CountBatchMatMulOperations(const OpInfo& op_info,
                                           bool* found_unknown_shapes);
   static int64 CountBatchMatMulOperations(const OpInfo& op_info,

@@ -441,7 +441,7 @@ cc_library(
 xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         "cpu",
         "gpu",
     ],

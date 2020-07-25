@@ -737,7 +737,7 @@ def enable_dump_debug_info(dump_root,
       logdir, tensor_debug_mode="FULL_HEALTH")
 
   resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  strategy = tf.distribute.TPUStrategy(resolver)
   with strategy.scope():
     # ...
   ```

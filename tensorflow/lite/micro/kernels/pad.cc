@@ -50,7 +50,7 @@ struct PadContext {
 
     resizing_category = ResizingCategory::kGenericResize;
     const int paddings_total = GetTensorShape(paddings).FlatSize();
-    const int32* paddings_data = GetTensorData<int32>(paddings);
+    const int32_t* paddings_data = GetTensorData<int32_t>(paddings);
     // Paddings will be a n,2 array, and we need to detect 4D arrays with the
     // pattern { {0,0}, {a, b}, {c, d}, {0,0} }.
     if (IsConstantTensor(paddings) && paddings_total == 8 &&
@@ -83,7 +83,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     op_context.output->dims->size * 2);
 
   // On Micro, outputs must be properly sized by the converter.
-  const int32* paddings_data = GetTensorData<int32>(op_context.paddings);
+  const int32_t* paddings_data = GetTensorData<int32_t>(op_context.paddings);
   for (int i = 0; i < op_context.output->dims->size; i++) {
     int output_dim = op_context.output->dims->data[i];
     int expected_dim = op_context.input->dims->data[i] + paddings_data[i * 2] +
@@ -107,7 +107,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Create before and after padding arrays that are accepted by the kernel.
-  const int32* paddings_data = GetTensorData<int32>(op_context.paddings);
+  const int32_t* paddings_data = GetTensorData<int32_t>(op_context.paddings);
 
   tflite::PadParams op_params;
   memset(&op_params, 0, sizeof(PadParams));
@@ -207,29 +207,27 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace pad
 
-TfLiteRegistration* Register_PAD() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/pad::Prepare,
-                                 /*invoke=*/pad::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_PAD() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/pad::Prepare,
+          /*invoke=*/pad::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 // Also register Pad as PadV2.
-TfLiteRegistration* Register_PADV2() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/pad::Prepare,
-                                 /*invoke=*/pad::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_PADV2() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/pad::Prepare,
+          /*invoke=*/pad::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

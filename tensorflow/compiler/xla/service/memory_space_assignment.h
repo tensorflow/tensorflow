@@ -84,6 +84,8 @@ class MemorySpaceAssignmentCostAnalysis {
     absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
   };
 
+  virtual ~MemorySpaceAssignmentCostAnalysis() = default;
+
   static StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>> Create(
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
@@ -128,16 +130,21 @@ class MemorySpaceAssignmentCostAnalysis {
 
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
+  // memory.
+  virtual float GetInstructionElapsed(const HloInstruction& instruction) const;
+
+  // Returns the estimated elapsed duration of the instruction in seconds.  It
+  // assumes all operands and outputs of the instruction are in the default
   // memory, except for the operand number that is in the alternate memory, if
   // provided, or output if output_in_alternate_mem is true.
-  float GetInstructionElapsed(
+  virtual float GetInstructionElapsedInAlternateMemory(
       const HloInstruction& instruction,
-      absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
-      bool output_in_alternate_mem = false) const;
+      absl::optional<int64> operand_in_alternate_mem,
+      bool output_in_alternate_mem) const;
 
   // Returns the elapsed time it would take to asynchronously copy the shape
   // from default to alternate memory space (or vice versa).
-  float GetAsyncCopyElapsed(const Shape& shape) const;
+  virtual float GetAsyncCopyElapsed(const Shape& shape) const;
 
   int64 GetScheduleEndTime() const;
 
@@ -147,7 +154,7 @@ class MemorySpaceAssignmentCostAnalysis {
 
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
- private:
+ protected:
   MemorySpaceAssignmentCostAnalysis(
       const HloCostAnalysis& cost_analysis,
       float async_copy_bandwidth_bytes_per_second,
@@ -164,6 +171,7 @@ class MemorySpaceAssignmentCostAnalysis {
         hlo_live_range_(std::move(hlo_live_range)),
         call_graph_(std::move(call_graph)) {}
 
+ private:
   const HloCostAnalysis& cost_analysis_;
   float async_copy_bandwidth_bytes_per_second_;
   float alternate_mem_bandwidth_bytes_per_second_;
@@ -189,6 +197,17 @@ class PrefetchIntervalPicker {
   // and must end by the given end time.
   virtual int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
                                          int64 latest_end_time) const = 0;
+
+  // Returns the latest time that a prefetch can start.
+  virtual int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
+                                        int64 end_time) const = 0;
+
+  // Returns the latest time that a prefetch can end that is less than or equal
+  // to proposed_prefetch_end_time.
+  virtual int64 LatestPrefetchEndTime(int64 original_prefetch_end_time,
+                                      int64 proposed_prefetch_end_time) const {
+    return proposed_prefetch_end_time;
+  }
 
   // Begins the iterator for the first start time of the prefetch.
   virtual void Begin(const HloUse& use, int64 start_time, int64 end_time) = 0;
@@ -248,6 +267,9 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
                                  int64 latest_end_time) const override;
 
+  int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
+                                int64 end_time) const override;
+
   void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
 
   int64 Next() override;
@@ -267,22 +289,27 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
 // Prefetch interval picker that uses cost analysis to overlap asynchronous
 // copies with independent computation. It uses min/max (asynchronous copy
 // duration) / (independent computation duration) ratios to guide whether the
-// prefetch is within those bounds. It starts with the maximum allowed ratio
-// (earliest prefetch) in Begin() and works its way for later and later prefetch
-// with each Next() call until hitting the minimum ratio, in order not to hurt
-// the critical path.
+// prefetch is within those bounds. It starts with the preferred ratio in
+// Begin() and works its way for alternately earlier and later prefetches until
+// hitting min and max ratios.
 class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
  public:
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
       float min_async_copy_to_overlap_ratio,
-      float max_async_copy_to_overlap_ratio);
+      float max_async_copy_to_overlap_ratio,
+      float preferred_async_copy_to_overlap_ratio);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
                                           int64 end_time) const override;
 
   int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
                                  int64 latest_end_time) const override;
+
+  int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
+                                int64 end_time) const override;
+  int64 LatestPrefetchEndTime(int64 original_prefetch_end_time,
+                              int64 proposed_prefetch_end_time) const override;
 
   void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
 
@@ -319,13 +346,17 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
   float min_async_copy_to_overlap_ratio_;
   float max_async_copy_to_overlap_ratio_;
+  float preferred_async_copy_to_overlap_ratio_;
   float max_overlap_multiplier_ = 1.0;
 
   float async_copy_elapsed_;
   float inst_elapsed_reduction_;
   int64 end_logical_time_;
-  int64 earliest_start_logical_time_;
-  int64 current_logical_prefetch_time_;
+  int64 earliest_prefetch_time_;
+  int64 latest_prefetch_time_;
+  bool using_increasing_prefetch_time_iterator_;
+  int64 increasing_prefetch_time_iterator_;
+  int64 decreasing_prefetch_time_iterator_;
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
@@ -378,6 +409,15 @@ class MemorySpaceAssignment {
     // evictions, -1 for unlimited.
     int64 max_outstanding_prefetches = -1;
     int64 max_outstanding_evictions = -1;
+
+    // Extra outstanding prefetch limit for while uses (in addition to
+    // max_outstanding_prefetches).
+    int64 while_use_extra_outstanding_prefetch_limit = 0;
+
+    // Specifies the maximum number of times we are willing to move a copy
+    // done of a prefetch earlier due to an asynchronous copy ordering
+    // violation.
+    int64 prefetch_copy_done_reorder_max_retries = 1;
 
     // Specifies the maximum number of retries that will be performed for each
     // value in case prefetching failed due to running out of asynchronous
@@ -497,6 +537,9 @@ class MemorySpaceAssignment {
   };
 
   // This class represents an allocation as a result of an asynchronous copy.
+  // Note: CopyStart instructions are inserted after `start_time` or later,
+  // while CopyDone instructions are inserted before
+  // `copy_done_schedule_before_time` or earlier.
   class CopyAllocation : public Allocation {
    public:
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
@@ -831,9 +874,9 @@ class AsynchronousCopyOrdering {
   // Removes an asynchronous copy. CHECKs that it is removed.
   void RemoveCopy(const AsynchronousCopy& copy);
 
-  // Returns true if the addition of an asynchronous copy in the the given time
-  // interval would violate the asynchronous copy ordering. E.g., consider the
-  // following scenario:
+  // If the addition of an asynchronous copy in the given time interval would
+  // violate the asynchronous copy ordering, returns the violating
+  // already-committed asynchronous copy. E.g., consider the following scenario:
   //                                  CS          CD
   //  already committed async copy:   +-----------+
   //                new async copy:     +--------+
@@ -841,7 +884,8 @@ class AsynchronousCopyOrdering {
   // The new asynchronous copy would violate the ordering guarantee because the
   // copy start is after an already committed asynchronous copy while its copy
   // done is before the committed copy.
-  bool ViolatesOrdering(int64 start_time, int64 end_time) const;
+  absl::optional<AsynchronousCopy> ViolatesOrdering(int64 start_time,
+                                                    int64 end_time) const;
 
  private:
   // Stores asynchronous copies in a tree set respecting the pipelining order.
@@ -962,6 +1006,10 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Try evicting to default memory space. Returns true if successful.
   bool Evict(const AllocationRequest& request);
 
+  // Returns the time a copy done of a prefetch should be scheduled.
+  int64 FindPrefetchEndTime(const AllocationRequest& request,
+                            int64 earliest_prefetch_time) const;
+
   // Try prefetching to alternate memory space. Returns true if successful.
   bool Prefetch(
       const AllocationRequest& request,
@@ -1019,12 +1067,17 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
   // Returns true if the addition of an asynchronous copy in the given time
-  // interval would violate the maximum number of asynchronous copies.
-  bool ViolatesMaximumOutstandingAsyncCopies(int64 start_time, int64 end_time,
-                                             bool is_prefetch) const;
+  // interval would violate the maximum number of asynchronous copies. An extra
+  // async copy limit can be provided to increase the limit of asynchronous
+  // copies for this instance.
+  bool ViolatesMaximumOutstandingAsyncCopies(
+      int64 start_time, int64 end_time, bool is_prefetch,
+      int64 extra_async_copy_limit = 0) const;
 
-  // Return true if the asynchronous copy would violate the pipelining order.
-  bool ViolatesAsyncCopyOrdering(int64 start_time, int64 end_time) const;
+  // If the asynchronous copy would violate the pipelining order, returns the
+  // violating asynchronous copy.
+  absl::optional<AsynchronousCopy> ViolatesAsyncCopyOrdering(
+      int64 start_time, int64 end_time) const;
 
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,

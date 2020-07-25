@@ -32,6 +32,7 @@ namespace {
 
 const absl::string_view kIterator = "Iterator";
 const absl::string_view kSeparator = "::";
+const absl::string_view kIteratorPrefix = "Iterator::";
 
 }  // namespace
 
@@ -40,17 +41,27 @@ const absl::string_view kDatasetOp = "Dataset";
 const absl::string_view kMemcpyHToDOp = "MemcpyHToD";
 const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
 
-TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
-  // TF Op names have the format "name:type" where:
-  // - name is a NodeDef.name and must match:
+bool IsTfOpName(absl::string_view op_name) {
   static const LazyRE2 kTfOpNameRegEx = {"[A-Za-z0-9.][A-Za-z0-9_./]*"};
-  // - if type starts with underscore it is internal to TensorFlow.
-  // - type is an OpDef.name, must be CamelCase and match:
+  return RE2::FullMatch(op_name, *kTfOpNameRegEx);
+}
+
+bool IsTfOpType(absl::string_view op_type) {
   static const LazyRE2 kTfOpTypeRegEx = {"[A-Z_][a-zA-Z0-9_]*"};
+  return RE2::FullMatch(op_type, *kTfOpTypeRegEx);
+}
 
-  // JAX op types have only lowercase letters and underscores.
+bool IsJaxOpType(absl::string_view op_type) {
   static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_]*"};
+  return RE2::FullMatch(op_type, *kJaxOpTypeRegEx);
+}
 
+bool IsIteratorEventName(absl::string_view event_name) {
+  return absl::StartsWith(event_name, kIteratorPrefix);
+}
+
+TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
+  // TF Op names have the format "name:type".
   TfOp tf_op = {Category::kUnknown, tf_op_fullname, kUnknownOp};
   std::vector<absl::string_view> parts =
       absl::StrSplit(tf_op_fullname, absl::MaxSplits(':', 1));
@@ -70,10 +81,9 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
     // input-pipeline analysis.
     tf_op.category = Category::kTfData;
     tf_op.type = kDatasetOp;
-  } else if (RE2::FullMatch(parts[1], *kTfOpTypeRegEx) &&
-             RE2::FullMatch(parts[0], *kTfOpNameRegEx)) {  // TensorFlow
+  } else if (IsTfOpType(parts[1]) && IsTfOpName(parts[0])) {
     tf_op = {Category::kTensorFlow, parts[0], parts[1]};
-  } else if (RE2::FullMatch(parts[1], *kJaxOpTypeRegEx)) {  // JAX
+  } else if (IsJaxOpType(parts[1])) {
     tf_op = {Category::kJax, parts[0], parts[1]};
   }
   return tf_op;

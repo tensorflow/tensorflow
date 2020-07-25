@@ -139,6 +139,50 @@ NodeDef MakeShuffleV2Node(StringPiece name, StringPiece input_node_name,
       });
 }
 
+NodeDef MakeTakeNode(StringPiece name, StringPiece input_node_name,
+                     StringPiece count_node_name) {
+  return test::function::NDef(
+      name, "TakeDataset",
+      {
+          string(input_node_name),
+          string(count_node_name),
+      },
+      {
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+      });
+}
+
+NodeDef MakeSkipNode(StringPiece name, StringPiece input_node_name,
+                     StringPiece count_node_name) {
+  return test::function::NDef(
+      name, "SkipDataset",
+      {
+          string(input_node_name),
+          string(count_node_name),
+      },
+      {
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+      });
+}
+
+NodeDef MakeShardNode(StringPiece name, StringPiece input_node_name,
+                      StringPiece num_shards_node_name,
+                      StringPiece index_node_name) {
+  return test::function::NDef(
+      name, "ShardDataset",
+      {
+          string(input_node_name),
+          string(num_shards_node_name),
+          string(index_node_name),
+      },
+      {
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+      });
+}
+
 }  // namespace graph_tests_utils
 }  // namespace grappler
 }  // namespace tensorflow

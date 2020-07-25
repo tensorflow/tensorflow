@@ -79,14 +79,56 @@ def FixedOutputRangeInterface : OpInterface<
   ];
 }
 
+// TODO(b/157870442): extend this trait to replace the other two
+// tratis/interfaces AccumulatorUniformScale and AffineOpCoefficient, which
+// are used to generate the op quantization specs.
+def AffineQuantizedOpInterface : OpInterface<
+  "AffineQuantizedOpInterface"> {
+  let description = [{
+    Interface for affine quantized ops (conv2d, fully_connected, etc.)
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the affine operand index.}],
+      "int", "GetAffineOperandIndex",
+      (ins), [{}], [{return 1;}]>,
+    InterfaceMethod<
+      [{Returns whether narrow range is required for the affine operand.}],
+      "bool", "RequiredNarrowRangeAffineOperand",
+      (ins), [{}], [{return true;}]>,
+    InterfaceMethod<
+      [{Returns quantization dim for the affine operand.}],
+      "int", "GetQuantizationDimIndex",
+      (ins)>,
+    InterfaceMethod<
+      [{Returns the dimension index of the output channels.}],
+      "int", "GetChannelDimIndex", (ins)
+    >,
+  ];
+}
+
+def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
+  let description = [{
+    Interface for ops potentially have same operands and results scales.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns whether same operands and results scales are required.}],
+      "bool", "RequiredSameOperandsAndResultsScale",
+      (ins "bool":$sign, "int":$bit_width), [{}], [{return true;}]
+    >,
+  ];
+
+  let verify = [{
+    return quant::VerifySameScales($_op);
+  }];
+}
+
 // Specify this trait if the op has a fixed output value range.
 class FixedResultScale<QuantizedType qt> : NativeOpTrait<!strconcat(
   "quant::FixedResult", qt.name, "Scale<", qt.asTraitArgsStr, ">::Impl")>;
-
-// Specify this trait if the op requires same inputs and outputs quantization
-// scales.
-def SameOperandsAndResultsScale : NativeOpTrait<
-  "quant::SameOperandsAndResultsScale">;
 
 // Specify this trait if the bias-th input of the op is a bias input, which
 // needs a scale based on the scales of op1 and op2.

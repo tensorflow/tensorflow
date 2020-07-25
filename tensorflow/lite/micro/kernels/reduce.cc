@@ -50,7 +50,7 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
-  // TODO(b/144955155): Support uint8(b/144955155) and int8(b/144955018)
+  // TODO(b/144955155): Support uint8_t(b/144955155) and int8_t(b/144955018)
   return kTfLiteOk;
 }
 
@@ -58,7 +58,7 @@ void ResolveAxis(const int* axis_data, int axis_count,
                  tflite::MeanParams* op_params) {
   int i = 0;
   for (; i < axis_count; ++i) {
-    op_params->axis[i] = static_cast<int16>(axis_data[i]);
+    op_params->axis[i] = static_cast<int16_t>(axis_data[i]);
   }
   for (; i < 4; ++i) {
     op_params->axis[i] = 1;
@@ -110,7 +110,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     default:
-      // TODO(b/144955155): Support uint8(b/144955155) and int8(b/144955018)
+      // TODO(b/144955155): Support uint8_t(b/144955155) and int8_t(b/144955018)
       TF_LITE_ENSURE_MSG(context, false,
                          "Currently, only float32 input type "
                          "is supported.");
@@ -119,16 +119,15 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace reduce
 
-TfLiteRegistration* Register_MEAN() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/reduce::PrepareMeanOrSum,
-                                 /*invoke=*/reduce::EvalMean,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_MEAN() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/reduce::PrepareMeanOrSum,
+          /*invoke=*/reduce::EvalMean,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 }  // namespace micro
 }  // namespace ops

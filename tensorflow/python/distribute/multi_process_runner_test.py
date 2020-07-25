@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ctypes
 import json
 import os
+import sys
 import threading
 import time
+import unittest
+
 from absl import logging
 
 from tensorflow.python.distribute import multi_process_runner
@@ -45,12 +49,26 @@ def proc_func_that_adds_simple_return_data():
   return 'dummy_data'
 
 
-def proc_func_that_return_args_and_kwargs(*args, **kwargs):
+def proc_func_that_returns_args_and_kwargs(*args, **kwargs):
   return list(args) + list(kwargs.items())
 
 
 def proc_func_with_barrier():
   return multi_process_runner.barrier()
+
+
+def proc_func_that_returns_pid():
+  return os.getpid()
+
+
+V = None
+
+
+def proc_func_that_sets_global(val):
+  global V
+  old_val = V
+  V = val
+  return old_val
 
 
 class MultiProcessRunnerTest(test.TestCase):
@@ -79,7 +97,7 @@ class MultiProcessRunnerTest(test.TestCase):
         multi_worker_test_base.create_cluster_spec(num_workers=1, num_ps=1),
         max_run_time=20)
     runner.start()
-    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
+    with self.assertRaisesRegex(ValueError, 'This is an error.'):
       runner.join()
 
   def test_multi_process_runner_queue_emptied_between_runs(self):
@@ -95,7 +113,7 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_multi_process_runner_args_passed_correctly(self):
     return_value = multi_process_runner.run(
-        proc_func_that_return_args_and_kwargs,
+        proc_func_that_returns_args_and_kwargs,
         multi_worker_test_base.create_cluster_spec(num_workers=1),
         args=('a', 'b'),
         kwargs={
@@ -123,24 +141,6 @@ class MultiProcessRunnerTest(test.TestCase):
                   std_stream_results)
     self.assertIn('This is returned data.', return_value)
 
-  def test_process_that_exits(self):
-
-    def func_to_exit_in_25_sec():
-      logging.error('foo')
-      time.sleep(100)
-      logging.error('bar')
-
-    mpr = multi_process_runner.MultiProcessRunner(
-        func_to_exit_in_25_sec,
-        multi_worker_test_base.create_cluster_spec(num_workers=1),
-        list_stdout=True,
-        max_run_time=25)
-
-    mpr.start()
-    stdout = mpr.join().stdout
-    self.assertLen([msg for msg in stdout if 'foo' in msg], 1)
-    self.assertLen([msg for msg in stdout if 'bar' in msg], 0)
-
   def test_termination(self):
 
     def proc_func():
@@ -156,7 +156,11 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr.start()
     time.sleep(5)
     mpr.terminate('worker', 0)
-    std_stream_results = mpr.join().stdout
+    with self.assertRaises(
+        multi_process_runner.UnexpectedSubprocessExitError) as cm:
+      mpr.join()
+
+    std_stream_results = cm.exception.mpr_result.stdout
 
     # Worker 0 is terminated in the middle, so it should not have iteration 9
     # printed.
@@ -283,7 +287,7 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr.start()
     time.sleep(60)
     mpr.terminate_all()
-    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
+    with self.assertRaisesRegex(ValueError, 'This is an error.'):
       mpr.join()
 
   def test_barrier(self):
@@ -300,29 +304,138 @@ class MultiProcessRunnerTest(test.TestCase):
   def test_stdout_available_when_timeout(self):
 
     def proc_func():
-      for i in range(50):
-        logging.info('(logging) %s-%d, i: %d',
-                     multi_worker_test_base.get_task_type(), self._worker_idx(),
-                     i)
-        time.sleep(1)
+      logging.info('something printed')
+      time.sleep(10000)  # Intentionally make the test timeout.
 
     with self.assertRaises(multi_process_runner.SubprocessTimeoutError) as cm:
-      multi_process_runner.run(
+      mpr = multi_process_runner.MultiProcessRunner(
           proc_func,
-          multi_worker_test_base.create_cluster_spec(num_workers=1, num_ps=1),
-          list_stdout=True,
-          timeout=5)
+          multi_worker_test_base.create_cluster_spec(num_workers=1),
+          list_stdout=True)
+      mpr.start()
+      mpr.join(timeout=60)
+    mpr.terminate_all()
 
     list_to_assert = cm.exception.mpr_result.stdout
-    # We should see 5 iterations from worker and ps, however sometime on TAP
-    # due to CPU throttling and slugginess of msan/asan build, this became
-    # flaky. Therefore we allow more margin of errors to only check the first
-    # 3 iterations.
-    for job in ['worker', 'ps']:
-      for iteration in range(0, 3):
-        self.assertTrue(
-            any('(logging) {}-0, i: {}'.format(job, iteration) in line
-                for line in list_to_assert))
+    self.assertTrue(
+        any('something printed' in line for line in list_to_assert))
+
+  def test_seg_fault_raises_error(self):
+
+    def proc_func_expected_to_seg_fault():
+      ctypes.string_at(0)  # Intentionally made seg fault.
+
+    with self.assertRaises(
+        multi_process_runner.UnexpectedSubprocessExitError) as cm:
+      multi_process_runner.run(
+          proc_func_expected_to_seg_fault,
+          multi_worker_test_base.create_cluster_spec(num_workers=1),
+          list_stdout=True)
+    self.assertIn('Subprocess worker-0 exited with exit code',
+                  str(cm.exception))
+    list_to_assert = cm.exception.mpr_result.stdout
+    self.assertTrue(any('SIGSEGV' in line for line in list_to_assert))
+
+  def test_seg_fault_in_chief_raises_error(self):
+
+    def proc_func_expected_to_seg_fault():
+      if multi_worker_test_base.get_task_type() == 'worker':
+        time.sleep(10000)
+      ctypes.string_at(0)  # Intentionally made seg fault.
+
+    with self.assertRaises(
+        multi_process_runner.UnexpectedSubprocessExitError) as cm:
+      multi_process_runner.run(
+          proc_func_expected_to_seg_fault,
+          multi_worker_test_base.create_cluster_spec(
+              has_chief=True, num_workers=1),
+          list_stdout=True)
+    self.assertIn('Subprocess chief-0 exited with exit code',
+                  str(cm.exception))
+    list_to_assert = cm.exception.mpr_result.stdout
+    self.assertTrue(any('SIGSEGV' in line for line in list_to_assert))
+
+  def test_exit_code_is_reported_by_chief_subprocess(self):
+
+    def proc_func_expected_to_exit_with_20():
+      if multi_worker_test_base.get_task_type() == 'worker':
+        time.sleep(10000)
+      sys.exit(20)
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func_expected_to_exit_with_20,
+        multi_worker_test_base.create_cluster_spec(
+            has_chief=True, num_workers=1))
+    mpr.start()
+
+    with self.assertRaisesRegex(
+        multi_process_runner.UnexpectedSubprocessExitError,
+        'Subprocess chief-0 exited with exit code 20'):
+      mpr.join()
+
+  def test_exit_code_is_reported_by_subprocess(self):
+
+    def proc_func_expected_to_exit_with_10():
+      sys.exit(10)
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func_expected_to_exit_with_10,
+        multi_worker_test_base.create_cluster_spec(num_workers=1))
+    mpr.start()
+
+    with self.assertRaisesRegex(
+        multi_process_runner.UnexpectedSubprocessExitError,
+        'Subprocess worker-0 exited with exit code 10'):
+      mpr.join()
+
+
+class MultiProcessPoolRunnerTest(test.TestCase):
+
+  def test_same_process_across_runs(self):
+    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
+    runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
+    pid = runner.run(proc_func_that_returns_pid)
+    for _ in range(3):
+      self.assertAllEqual(runner.run(proc_func_that_returns_pid), pid)
+
+  def test_exceptions_in_sub_process(self):
+    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
+    runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
+    pid = runner.run(proc_func_that_returns_pid)
+    with self.assertRaisesRegex(ValueError, 'This is an error.'):
+      runner.run(proc_func_that_errors)
+    self.assertAllEqual(runner.run(proc_func_that_returns_pid), pid)
+
+  def test_tf_config(self):
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=True, num_workers=2)
+    runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
+    result = runner.run(proc_func_that_adds_task_type_in_return_data)
+
+    job_count_dict = {'worker': 2, 'chief': 1}
+    for data in result:
+      job_count_dict[data] -= 1
+
+    self.assertEqual(job_count_dict['worker'], 0)
+    self.assertEqual(job_count_dict['chief'], 0)
+
+  @unittest.expectedFailure
+  def test_exception_in_main_process(self):
+    # When there's an exception in the main process, __del__() is not called.
+    # This test is to verify MultiProcessPoolRunner can cope with __del__() not
+    # being called.
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=True, num_workers=2)
+    runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
+    runner.run(proc_func_that_returns_pid)
+    raise ValueError('failure')
+
+  def test_initializer(self):
+    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
+    runner = multi_process_runner.MultiProcessPoolRunner(
+        cluster_spec, initializer=lambda: proc_func_that_sets_global(1))
+    result = runner.run(proc_func_that_sets_global, args=(2,))
+    self.assertAllEqual(result, [1, 1])
 
 
 if __name__ == '__main__':

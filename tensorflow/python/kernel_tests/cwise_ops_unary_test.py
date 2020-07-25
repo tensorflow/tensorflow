@@ -33,6 +33,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -228,8 +229,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
-      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+      self._compareBoth(x, special.i0e, special_math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, special_math_ops.bessel_i1e)
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
@@ -281,8 +282,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.arctan, math_ops.atan)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
-      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+      self._compareBoth(x, special.i0e, special_math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, special_math_ops.bessel_i1e)
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
@@ -335,8 +336,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, np.tan, math_ops.tan)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
-      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
-      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+      self._compareBoth(x, special.i0e, special_math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, special_math_ops.bessel_i1e)
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
@@ -375,13 +376,6 @@ class UnaryOpTest(test.TestCase):
         math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
-    try:
-      from scipy import special  # pylint: disable=g-import-not-at-top
-      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
-      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
-    except ImportError as e:
-      tf_logging.warn("Cannot test special functions: %s" % str(e))
-
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
@@ -395,16 +389,22 @@ class UnaryOpTest(test.TestCase):
                   2).reshape(1, 3, 2).astype(dtypes_lib.bfloat16.as_numpy_dtype)
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
+    self._compareBoth(x, np.negative, math_ops.negative)
+    self._compareBoth(x, np.negative, _NEG)
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
+    self._compareBoth(x, np.negative, math_ops.negative)
+    self._compareBoth(x, np.negative, _NEG)
 
   def testInt16Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
+    self._compareBoth(x, np.negative, math_ops.negative)
+    self._compareBoth(x, np.negative, _NEG)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)

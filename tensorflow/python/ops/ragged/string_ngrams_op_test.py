@@ -332,7 +332,7 @@ class StringNgramsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                  preserve_short_sequences=False,
                  error=None,
                  exception=ValueError):
-    with self.assertRaisesRegexp(exception, error):
+    with self.assertRaisesRegex(exception, error):
       ragged_string_ops.ngrams(data, ngram_width, separator, pad_values,
                                padding_width, preserve_short_sequences)
 
@@ -343,7 +343,7 @@ class StringNgramsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def f(v):
       return ragged_string_ops.ngrams(v, 2)
 
-    with self.assertRaisesRegexp(ValueError, "Rank of data must be known."):
+    with self.assertRaisesRegex(ValueError, "Rank of data must be known."):
       f([b"foo", b"bar"])
 
 

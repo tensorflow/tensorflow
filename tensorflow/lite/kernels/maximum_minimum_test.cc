@@ -190,6 +190,17 @@ TEST(MaximumOpTest, Int32WithBroadcastTest_ScalarY) {
                      data1, data2, {1, 0, -1, -2, 2, 2}, /*is_constant=*/true);
 }
 
+TEST(MaximumOpTest, Int8WithBroadcastTest_ScalarY) {
+  std::initializer_list<int8_t> data1 = {1, 0, -1, -2, 3, 11};
+  std::initializer_list<int8_t> data2 = {2};
+  TestModel<int8_t>(BuiltinOperator_MAXIMUM, {TensorType_INT8, {3, 1, 2}},
+                    {TensorType_INT8, {}}, {TensorType_INT8, {3, 1, 2}}, data1,
+                    data2, {2, 2, 2, 2, 3, 11}, /*is_constant=*/true);
+  TestModel<int8_t>(BuiltinOperator_MINIMUM, {TensorType_INT8, {3, 1, 2}},
+                    {TensorType_INT8, {}}, {TensorType_INT8, {3, 1, 2}}, data1,
+                    data2, {1, 0, -1, -2, 2, 2}, /*is_constant=*/true);
+}
+
 TEST(MaxMinOpTest, Int8Test8D) {
   std::initializer_list<int8_t> data1 = {1, 0, 2, 11, 2, 23};
   std::initializer_list<int8_t> data2 = {0, 0, 1, 12, 123, 1};

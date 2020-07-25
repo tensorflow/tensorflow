@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -44,37 +44,24 @@ void TestConcatenateTwoInputs(std::initializer_list<int> input1_dims_data,
       CreateFloatTensor(input2_data, input2_dims),
       CreateFloatTensor(output_data, output_dims)};
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_CONCATENATION);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+  int inputs_array_data[] = {2, 0, 1};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 2};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   TfLiteConcatenationParams builtin_data = {
       .axis = axis,
       .activation = kTfLiteActNone  // Only activation supported in this impl
   };
 
-  TfLiteIntArray* inputs_array = IntArrayFromInitializer({2, 0, 1});
-  TfLiteIntArray* outputs_array = IntArrayFromInitializer({1, 2});
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+  const TfLiteRegistration registration =
+      tflite::ops::micro::Register_CONCATENATION();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = nullptr;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   const int output_dims_count = ElementCount(*output_dims);
   for (int i = 0; i < output_dims_count; ++i) {
@@ -103,37 +90,24 @@ void TestConcatenateQuantizedTwoInputs(
       CreateQuantizedTensor(input2_data, input2_dims, input_min, input_max),
       CreateQuantizedTensor(output_data, output_dims, output_min, output_max)};
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_CONCATENATION);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+  int inputs_array_data[] = {2, 0, 1};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 2};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   TfLiteConcatenationParams builtin_data = {
       .axis = axis,
       .activation = kTfLiteActNone  // Only activation supported in this impl
   };
 
-  TfLiteIntArray* inputs_array = IntArrayFromInitializer({2, 0, 1});
-  TfLiteIntArray* outputs_array = IntArrayFromInitializer({1, 2});
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+  const TfLiteRegistration registration =
+      tflite::ops::micro::Register_CONCATENATION();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = nullptr;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   const int output_dims_count = ElementCount(*output_dims);
   for (int i = 0; i < output_dims_count; ++i) {

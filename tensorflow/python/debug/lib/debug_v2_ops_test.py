@@ -92,16 +92,13 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
           write_debug_trace(x), [9.0 + np.sqrt(3.0), 16.0 + 2.0])
 
     with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
-      metadata_iter = reader.metadata_iterator()
       # Check that the .metadata DebugEvents data file has been created, even
       # before FlushExecutionFiles() is called.
-      debug_event = next(metadata_iter).debug_event
-      self.assertGreater(debug_event.wall_time, 0)
-      self.assertTrue(debug_event.debug_metadata.tensorflow_version)
-      self.assertTrue(
-          debug_event.debug_metadata.file_version.startswith("debug.Event:"))
+      self.assertGreater(reader.starting_wall_time(), 0)
+      self.assertTrue(reader.tensorflow_version())
+      self.assertTrue(reader.tfdbg_file_version().startswith("debug.Event"))
 
-      graph_trace_iter = reader.graph_execution_traces_iterator()
+      graph_trace_iter = reader.graph_execution_traces_iterators()[0]
       # Before FlushExecutionFiles() is called, the .graph_execution_traces file
       # ought to be empty.
       with self.assertRaises(StopIteration):
@@ -109,7 +106,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
       # Flush the circular buffer.
       self.writer.FlushExecutionFiles()
-      graph_trace_iter = reader.graph_execution_traces_iterator()
+      graph_trace_iter = reader.graph_execution_traces_iterators()[0]
 
       # The circular buffer has a size of 4. So only the data from the
       # last two iterations should have been written to self.dump_root.
@@ -167,7 +164,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     self.writer.FlushExecutionFiles()
     with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
-      graph_trace_iter = reader.graph_execution_traces_iterator()
+      graph_trace_iter = reader.graph_execution_traces_iterators()[0]
       try:
         x_values = []
         timestamp = 0
@@ -216,7 +213,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     for debug_root in (self.dump_root, another_dump_root):
       with debug_events_reader.DebugEventsReader(debug_root) as reader:
-        graph_trace_iter = reader.graph_execution_traces_iterator()
+        graph_trace_iter = reader.graph_execution_traces_iterators()[0]
 
         debug_event = next(graph_trace_iter).debug_event
         trace = debug_event.graph_execution_trace
@@ -272,7 +269,7 @@ class DebugIdentityV2OpUninitializedWriterTest(
     writer.FlushExecutionFiles()
 
     with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
-      graph_trace_iter = reader.graph_execution_traces_iterator()
+      graph_trace_iter = reader.graph_execution_traces_iterators()[0]
       graph_execution_traces = []
       while True:
         try:
@@ -752,7 +749,7 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([-1.0, 1.0])
       t2 = constant_op.constant([0.0, 0.0])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           r"pass through test.*had -Inf and \+Inf values"):
         self.evaluate(
@@ -763,7 +760,7 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([-1.0, 1.0, 0.0])
       t2 = constant_op.constant([0.0, 0.0, 0.0])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           r"pass through test.*had -Inf, \+Inf, and NaN values"):
         self.evaluate(
@@ -774,7 +771,7 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([0.0, 1.0])
       t2 = constant_op.constant([0.0, 0.0])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           r"pass through test.*had \+Inf and NaN values"):
         self.evaluate(

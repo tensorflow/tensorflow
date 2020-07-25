@@ -28,6 +28,7 @@
 #
 # Other build options:
 #     short_logs:       Only log errors during build, skip warnings.
+#     verbose_logs:     Show all compiler warnings during build.
 #     monolithic:       Build all TF C++ code into a single shared object.
 #     dynamic_kernels:  Try to link all kernels dynamically (experimental).
 #     libc++:           Link against libc++ instead of stdlibc++
@@ -39,6 +40,7 @@
 #
 # Feature and Third party library support options:
 #     xla:          Build TF with XLA
+#     tpu:          Build TF with TPU support
 #     using_cuda:   CUDA is available to build system.
 #     cuda:         Build with full cuda support.
 #     rocm:         Build with AMD GPU support (rocm).
@@ -57,13 +59,12 @@
 #
 #
 # Remote build execution options (only configured to work with TF team projects for now.)
-#     rbe:        General RBE options shared by all flavors.
-#     rbe_linux:  General RBE options used on all linux builds.
-#     rbe_win:    General RBE options used on all windows builds.
+#     rbe:       General RBE options shared by all flavors.
+#     rbe_linux: General RBE options used on all linux builds.
+#     rbe_win:   General RBE options used on all windows builds.
 #
-#     rbe_cpu_linux:        RBE options to build with only CPU support.
-#     rbe_linux_cuda_nvcc:  RBE options to build with GPU support using nvcc.
-#     rbe_gpu_linux:        An alias for rbe_linux_cuda_nvcc
+#     rbe_cpu_linux:           RBE options to build with only CPU support.
+#     rbe_linux_cuda_nvcc_py*: RBE options to build with GPU support using nvcc.
 #
 #     rbe_linux_py2: Linux Python 2 RBE config.
 #     rbe_linux_py3: Linux Python 3 RBE config
@@ -78,7 +79,16 @@
 #     elinux:          General Embedded Linux options shared by all flavors.
 #     elinux_aarch64:  Embedded Linux options for aarch64 (ARM64) CPU support.
 #     elinux_armhf:    Embedded Linux options for armhf (ARMv7) CPU support.
-
+#
+# Release build options (for all operating systems)
+#     release_common:       Common options for all builds on all operating systems.
+#     release_windows_common:    Common options for all builds on Windows.
+#     release_gpu_common:   Common options for GPU builds on Linux and Windows.
+#     release_cpu_linux:    Toolchain and CUDA options for Linux CPU builds.
+#     release_cpu_macos:    Toolchain and CUDA options for MacOS CPU builds.
+#     release_gpu_linux:    Toolchain and CUDA options for Linux GPU builds.
+#     release_cpu_windows:    Toolchain and CUDA options for Windows CPU builds.
+#     release_gpu_windows:    Toolchain and CUDA options for Windows GPU builds.
 
 # Allow builds using libc++ as a linker library
 # This is mostly for OSSFuzz, so we also pass in the flags from environment to clean build file
@@ -179,6 +189,9 @@ build:dbg --config=opt -c dbg
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
+
+# Config to build TPU backend
+build:tpu --define=with_tpu_support=true
 
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 
@@ -319,6 +332,8 @@ build:windows --distinct_host_configuration=false
 
 # Suppress all warning messages.
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
+build:verbose_logs --output_filter=
+build --config=short_logs
 
 # Instruction set optimizations
 # TODO(gunan): Create a feature in toolchains for avx/avx2 to
@@ -396,33 +411,48 @@ build:rbe_linux_cuda_base --repo_env=REMOTE_GPU_TESTING=1
 build:rbe_linux_cuda_base --repo_env=TF_NEED_CUDA=1
 test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 
-build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_base
-build:rbe_linux_cuda_nvcc --crosstool_top="@ubuntu18.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda_nvcc --extra_toolchains="@ubuntu18.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cuda_nvcc --extra_execution_platforms="@ubuntu18.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_nvcc --host_platform="@ubuntu18.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_nvcc --platforms="@ubuntu18.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
-build:rbe_linux_cuda_nvcc --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
-build:rbe_linux_cuda_nvcc --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
-build:rbe_linux_cuda_nvcc --define=using_cuda_nvcc=true
-test:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_base
+build:rbe_linux_cuda10.1_nvcc_base --config=rbe_linux_cuda_base
+build:rbe_linux_cuda10.1_nvcc_base --define=using_cuda_nvcc=true
+build:rbe_linux_cuda10.1_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda10.1_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda10.1_nvcc_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda10.1_nvcc_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda10.1_nvcc_base --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda10.1_nvcc_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
+build:rbe_linux_cuda10.1_nvcc_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
+build:rbe_linux_cuda10.1_nvcc_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
+build:rbe_linux_cuda10.1_nvcc_py2.7 --config=rbe_linux_cuda10.1_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python2.7"
+build:rbe_linux_cuda10.1_nvcc_py3.5 --config=rbe_linux_cuda10.1_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.5"
+build:rbe_linux_cuda10.1_nvcc_py3.6 --config=rbe_linux_cuda10.1_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.6"
+build:rbe_linux_cuda10.1_nvcc_py3.7 --config=rbe_linux_cuda10.1_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.7"
+build:rbe_linux_cuda10.1_nvcc_py3.8 --config=rbe_linux_cuda10.1_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.8"
 
-build:rbe_linux_cuda_nvcc_base --config=rbe_linux_cuda_base
-build:rbe_linux_cuda_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cuda_nvcc_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_nvcc_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_nvcc_base --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
-build:rbe_linux_cuda_nvcc_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
-build:rbe_linux_cuda_nvcc_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
-build:rbe_linux_cuda_nvcc_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
-build:rbe_linux_cuda_nvcc_base --define=using_cuda_nvcc=true
-build:rbe_linux_cuda_nvcc_py27 --config=rbe_linux_cuda_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python2.7"
-build:rbe_linux_cuda_nvcc_py35 --config=rbe_linux_cuda_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.5"
-build:rbe_linux_cuda_nvcc_py36 --config=rbe_linux_cuda_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.6"
-build:rbe_linux_cuda_nvcc_py37 --config=rbe_linux_cuda_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.7"
-build:rbe_linux_cuda_nvcc_py38 --config=rbe_linux_cuda_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.8"
+build:rbe_linux_cuda11.0_nvcc_base --config=rbe_linux_cuda_base
+build:rbe_linux_cuda11.0_nvcc_base --define=using_cuda_nvcc=true
+build:rbe_linux_cuda11.0_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda11.0_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda11.0_nvcc_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
+build:rbe_linux_cuda11.0_nvcc_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
+build:rbe_linux_cuda11.0_nvcc_base --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
+build:rbe_linux_cuda11.0_nvcc_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda"
+build:rbe_linux_cuda11.0_nvcc_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_tensorrt"
+build:rbe_linux_cuda11.0_nvcc_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_nccl"
+build:rbe_linux_cuda11.0_nvcc_py2.7 --config=rbe_linux_cuda11.0_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python2.7"
+build:rbe_linux_cuda11.0_nvcc_py3.5 --config=rbe_linux_cuda11.0_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.5"
+build:rbe_linux_cuda11.0_nvcc_py3.6 --config=rbe_linux_cuda11.0_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.6"
+build:rbe_linux_cuda11.0_nvcc_py3.7 --config=rbe_linux_cuda11.0_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.7"
+build:rbe_linux_cuda11.0_nvcc_py3.8 --config=rbe_linux_cuda11.0_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.8"
+
+# Map default to CUDA 10.1.
+build:rbe_linux_cuda_nvcc_py27 --config=rbe_linux_cuda10.1_nvcc_py2.7
+build:rbe_linux_cuda_nvcc_py35 --config=rbe_linux_cuda10.1_nvcc_py3.5
+build:rbe_linux_cuda_nvcc_py36 --config=rbe_linux_cuda10.1_nvcc_py3.6
+build:rbe_linux_cuda_nvcc_py37 --config=rbe_linux_cuda10.1_nvcc_py3.7
+build:rbe_linux_cuda_nvcc_py38 --config=rbe_linux_cuda10.1_nvcc_py3.8
+
+# Deprecated configs that people might still use.
+build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_nvcc_py36
+build:rbe_gpu_linux       --config=rbe_linux_cuda_nvcc
 
 build:rbe_linux_cuda_clang_base --config=rbe_linux_cuda_base
 build:rbe_linux_cuda_clang_base --crosstool_top="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
@@ -440,8 +470,23 @@ build:rbe_linux_cuda_clang_py36 --config=rbe_linux_cuda_clang_base --repo_env=TF
 build:rbe_linux_cuda_clang_py37 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.7"
 build:rbe_linux_cuda_clang_py38 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.8"
 
-common:rbe_gpu_linux --config=rbe_linux_cuda_nvcc
+# ROCm
+build:rbe_linux_rocm_base --config=rbe_linux
+build:rbe_linux_rocm_base --repo_env=TF_NEED_ROCM=1
+build:rbe_linux_rocm_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm//crosstool:toolchain"
+build:rbe_linux_rocm_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_rocm_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --platforms="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --action_env=TF_ROCM_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm"
+build:rbe_linux_rocm_base --define=using_rocm_hipcc=true
+build:rbe_linux_rocm_py2.7 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python2.7"
+build:rbe_linux_rocm_py3.5 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.5"
+build:rbe_linux_rocm_py3.6 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.6"
+build:rbe_linux_rocm_py3.7 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.7"
+build:rbe_linux_rocm_py3.8 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.8"
 
+# Linux CPU
 build:rbe_linux_py2 --config=rbe_linux
 build:rbe_linux_py2 --repo_env=PYTHON_BIN_PATH="/usr/bin/python2"
 build:rbe_linux_py2 --python_path="/usr/bin/python2"
@@ -463,7 +508,7 @@ build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 
 # TODO(gunan): Remove once we use MSVC 2019 with latest patches.
 build:rbe_win --define=override_eigen_strong_inline=true
-build:rbe_win --jobs=500
+build:rbe_win --jobs=100
 
 build:rbe_win_py37 --config=rbe
 build:rbe_win_py37 --repo_env=TF_PYTHON_CONFIG_REPO="@windows_py37_config_python"
@@ -501,3 +546,43 @@ try-import %workspace%/.tf_configure.bazelrc
 
 # Put user-specific options in .bazelrc.user
 try-import %workspace%/.bazelrc.user
+
+# Here are bazelrc configs for release builds
+build:release_common --config=opt
+build:release_common --config=v2
+build:release_common --distinct_host_configuration=false
+build:release_common --action_env TF_CONFIGURE_IOS="0"
+
+build:release_cpu_linux --config=release_common
+build:release_cpu_linux --config=avx_linux
+# We use the same toolchain for CPU/GPU packages.
+# Did not add this to the defaults in case this changes.
+build:release_cpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
+
+build:release_cpu_macos --config=release_common
+build:release_cpu_macos --config=avx_linux
+
+build:release_gpu_common --config=release_common
+build:release_gpu_common --config=cuda
+build:release_gpu_common --config=tensorrt
+build:release_gpu_common --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-10.1"
+build:release_gpu_common --action_env=TF_CUDA_VERSION="10"
+build:release_gpu_common --action_env=TF_CUDNN_VERSION="7"
+build:release_gpu_common --action_env=TF_NEED_TENSORRT="1"
+build:release_gpu_common --action_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_37,sm_52,sm_60,sm_61,compute_70"
+build:release_gpu_common --action_env=TENSORRT_INSTALL_PATH="/usr/local/tensorrt"
+build:release_gpu_common --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
+build:release_gpu_common --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-5"
+
+
+build:release_gpu_linux --config=release_gpu_common
+build:release_gpu_linux --config=avx_linux
+build:release_gpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
+
+build:release_windows_common --config=release_common
+build:release_windows_common --define=no_tensorflow_py_deps=true
+build:release_windows_common --announce_rc
+
+build:release_cpu_windows --config=release_windows_common
+
+build:release_gpu_windows --config=release_windows_common

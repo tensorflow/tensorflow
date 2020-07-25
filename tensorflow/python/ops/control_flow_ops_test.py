@@ -151,10 +151,10 @@ class ShapeTestCase(test_util.TensorFlowTestCase):
 
   def testShape(self):
     tensor = constant_op.constant([1.0, 2.0])
-    self.assertEquals([2], tensor.get_shape())
-    self.assertEquals([2],
-                      control_flow_ops.with_dependencies(
-                          [constant_op.constant(1.0)], tensor).get_shape())
+    self.assertEqual([2], tensor.get_shape())
+    self.assertEqual([2],
+                     control_flow_ops.with_dependencies(
+                         [constant_op.constant(1.0)], tensor).get_shape())
 
 
 class WithDependenciesTestCase(test_util.TensorFlowTestCase):
@@ -169,9 +169,9 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
         constant_op.constant(7))
 
     self.evaluate(variables.global_variables_initializer())
-    self.assertEquals(0, self.evaluate(counter))
-    self.assertEquals(7, self.evaluate(const_with_dep))
-    self.assertEquals(1, self.evaluate(counter))
+    self.assertEqual(0, self.evaluate(counter))
+    self.assertEqual(7, self.evaluate(const_with_dep))
+    self.assertEqual(1, self.evaluate(counter))
 
   @test_util.run_deprecated_v1
   def testListDependencies(self):
@@ -183,9 +183,9 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
         constant_op.constant(7))
 
     self.evaluate(variables.global_variables_initializer())
-    self.assertEquals(0, self.evaluate(counter))
-    self.assertEquals(7, self.evaluate(const_with_dep))
-    self.assertEquals(1, self.evaluate(counter))
+    self.assertEqual(0, self.evaluate(counter))
+    self.assertEqual(7, self.evaluate(const_with_dep))
+    self.assertEqual(1, self.evaluate(counter))
 
 
 class SwitchTestCase(test_util.TensorFlowTestCase):
@@ -201,8 +201,8 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       one = constant_op.constant(1)
       less_op = math_ops.less(zero, one)
       _, switch_true = control_flow_ops.switch(data, less_op)
-      self.assertAllEqual([1, 2, 3], switch_true.values.eval())
-      self.assertAllEqual([0, 1, 2], switch_true.indices.eval())
+      self.assertAllEqual([1, 2, 3], switch_true.values)
+      self.assertAllEqual([0, 1, 2], switch_true.indices)
 
   @test_util.run_deprecated_v1
   def testIndexedSlicesGradient(self):
@@ -316,7 +316,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
         grad_wr_inputs = ops.convert_to_tensor(r)
         o, grad = sess.run([outputs, grad_wr_inputs],
                            feed_dict={inputs: [4, 6, 0, 7, 0, 0, 1, 2, 0]})
-        self.assertEquals(o, 20)
+        self.assertEqual(o, 20)
         self.assertAllEqual(grad, [1] * num_steps)
 
   @test_util.run_v1_only("b/120545219")
@@ -344,7 +344,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
         grad_wr_inputs = ops.convert_to_tensor(r)
         o, grad = sess.run([outputs, grad_wr_inputs],
                            feed_dict={inputs: [1, 3, 2]})
-        self.assertEquals(o, 6)
+        self.assertEqual(o, 6)
         self.assertAllEqual(grad, [1] * 3)
 
   @test_util.run_deprecated_v1
@@ -354,8 +354,8 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
     x_false, x_true = control_flow_ops.switch(x, s)
     grad_x_true = gradients_impl.gradients(x_true, x)[0]
     grad_x_false = gradients_impl.gradients(x_false, x)[0]
-    self.assertEquals(self.evaluate(grad_x_true), 1.)
-    self.assertEquals(self.evaluate(grad_x_false), 0.)
+    self.assertEqual(self.evaluate(grad_x_true), 1.)
+    self.assertEqual(self.evaluate(grad_x_false), 0.)
 
 
 class CondTest(test_util.TensorFlowTestCase):
@@ -367,7 +367,7 @@ class CondTest(test_util.TensorFlowTestCase):
         math_ops.less(
             x,
             y), lambda: math_ops.multiply(x, 17), lambda: math_ops.add(y, 23))
-    self.assertEquals(self.evaluate(z), 34)
+    self.assertEqual(self.evaluate(z), 34)
 
   def testCondFalse(self):
     x = constant_op.constant(2)
@@ -376,7 +376,7 @@ class CondTest(test_util.TensorFlowTestCase):
         math_ops.less(
             x,
             y), lambda: math_ops.multiply(x, 17), lambda: math_ops.add(y, 23))
-    self.assertEquals(self.evaluate(z), 24)
+    self.assertEqual(self.evaluate(z), 24)
 
   def testCondTrueLegacy(self):
     x = constant_op.constant(2)
@@ -385,7 +385,7 @@ class CondTest(test_util.TensorFlowTestCase):
         math_ops.less(x, y),
         fn1=lambda: math_ops.multiply(x, 17),
         fn2=lambda: math_ops.add(y, 23))
-    self.assertEquals(self.evaluate(z), 34)
+    self.assertEqual(self.evaluate(z), 34)
 
   def testCondFalseLegacy(self):
     x = constant_op.constant(2)
@@ -394,7 +394,7 @@ class CondTest(test_util.TensorFlowTestCase):
         math_ops.less(x, y),
         fn1=lambda: math_ops.multiply(x, 17),
         fn2=lambda: math_ops.add(y, 23))
-    self.assertEquals(self.evaluate(z), 24)
+    self.assertEqual(self.evaluate(z), 24)
 
   @test_util.run_v1_only("Exercises Ref variables")
   def testCondModifyBoolPred(self):
@@ -408,8 +408,8 @@ class CondTest(test_util.TensorFlowTestCase):
           true_fn=lambda: state_ops.assign(bool_var, False),
           false_fn=lambda: True)
       self.evaluate(bool_var.initializer)
-      self.assertEquals(self.evaluate(cond_on_bool_var), False)
-      self.assertEquals(self.evaluate(cond_on_bool_var), True)
+      self.assertEqual(self.evaluate(cond_on_bool_var), False)
+      self.assertEqual(self.evaluate(cond_on_bool_var), True)
 
   def testCondMissingArg1(self):
     x = constant_op.constant(1)
@@ -533,10 +533,9 @@ class ContextTest(test_util.TensorFlowTestCase):
           values_def=c._to_values_def(), import_scope="test_scope")
 
       # _values and _external_values should be have scope prepended.
-      self.assertEquals(
-          c_with_scope._values, set(["test_scope/a", "test_scope/b"]))
-      self.assertEquals(
-          c_with_scope._external_values, {"test_scope/a": b2})
+      self.assertEqual(c_with_scope._values,
+                       set(["test_scope/a", "test_scope/b"]))
+      self.assertEqual(c_with_scope._external_values, {"test_scope/a": b2})
 
       # Calling _to_proto() with export_scope should remove "test_scope".
       self.assertProtoEquals(
@@ -1191,7 +1190,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
 
     branches = {i: make_func(i) for i in range(0, 6, 2)}
-    with self.assertRaisesRegexp(ValueError, "must form contiguous"):
+    with self.assertRaisesRegex(ValueError, "must form contiguous"):
       control_flow_ops.switch_case(array_ops.constant(0), branches)
 
   def testCase_validateIndicesDup(self):
@@ -1201,7 +1200,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     branches = [(i, make_func(i)) for i in range(0, 6, 2)]
     branches.append((0, make_func(7)))
-    with self.assertRaisesRegexp(ValueError, "must form contiguous"):
+    with self.assertRaisesRegex(ValueError, "must form contiguous"):
       control_flow_ops.switch_case(array_ops.constant(0), branches)
 
   def testCase_validateBranchIndex(self):
@@ -1210,7 +1209,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
 
     branches = {i: make_func(i) for i in range(5)}
-    with self.assertRaisesRegexp(TypeError, "branch_index.*Tensor"):
+    with self.assertRaisesRegex(TypeError, "branch_index.*Tensor"):
       control_flow_ops.switch_case(1, branches)
 
   def testCase_validateNonIntKeys(self):
@@ -1219,12 +1218,17 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
 
     branches = [(array_ops.constant(i), make_func(i)) for i in range(5)]
-    with self.assertRaisesRegexp(TypeError, "must be a Python `int`"):
+    with self.assertRaisesRegex(TypeError, "must be a Python `int`"):
       control_flow_ops.switch_case(array_ops.constant(1), branches)
 
 
 class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
 
+  # The same test can run with and without XLA compilation.
+  # In non-XLA gpu case, it exercises gpu branch.
+  # In XLA gpu cases, it exercises the default case.
+  # This test is to test the non-XLA case so that we disable XLA.
+  @test_util.disable_xla("xla has different execution branch")
   def testCommonCases(self):
 
     def cpu_fn(x):
@@ -1273,6 +1277,26 @@ class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
       self.assertEqual(6., self.evaluate(r))
       self.assertEqual(6., self.evaluate(result))
       self.assertEqual([2.], self.evaluate(grad))
+
+  def testCompile(self):
+    if not test_util.is_gpu_available():
+      return
+
+    def cpu_fn(x):
+      return x + x
+
+    def gpu_fn(x):
+      return x * x
+
+    @def_function.function(experimental_compile=True)
+    def flexible_defun(a):
+      branches = {"CPU": lambda: cpu_fn(a), "GPU": lambda: gpu_fn(a)}
+      return control_flow_ops.execute_fn_for_device(branches, lambda: cpu_fn(a))
+
+    # Always execute the default branch in xla compilation case.
+    a = array_ops.constant(3.)
+    r = flexible_defun(a)
+    self.assertEqual(6., self.evaluate(r))
 
   def testFallBack(self):
 
@@ -1334,7 +1358,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 2})
 
   @test_util.run_deprecated_v1
@@ -1361,7 +1385,7 @@ class CaseTest(test_util.TensorFlowTestCase):
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
 
   @test_util.run_deprecated_v1
@@ -1371,7 +1395,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     output = control_flow_ops.case(conditions, exclusive=True)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
 
   @test_util.run_in_graph_and_eager_modes

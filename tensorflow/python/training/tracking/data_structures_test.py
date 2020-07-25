@@ -30,6 +30,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.layers import core as non_keras_core
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
@@ -39,7 +40,6 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
 
 
 class ListTests(test.TestCase):
@@ -47,7 +47,7 @@ class ListTests(test.TestCase):
   def testJSONSerialization(self):
     obj = tracking.AutoTrackable()
     obj.l = [1]
-    json.dumps(obj.l, default=serialization.get_json_type)
+    json.dumps(obj.l, default=json_utils.get_json_type)
 
   def testNotTrackable(self):
     class NotTrackable(object):
@@ -57,7 +57,7 @@ class ListTests(test.TestCase):
       data_structures.List([NotTrackable()])
 
   def testCallNotImplemented(self):
-    with self.assertRaisesRegexp(TypeError, "not callable"):
+    with self.assertRaisesRegex(TypeError, "not callable"):
       data_structures.List()(1.)
 
   def testNoPop(self):
@@ -123,7 +123,7 @@ class ListTests(test.TestCase):
 
   def testIMul_zero(self):
     l = data_structures.List([])
-    with self.assertRaisesRegexp(ValueError, "List only supports append"):
+    with self.assertRaisesRegex(ValueError, "List only supports append"):
       l *= 0
 
   def testIMul(self):
@@ -328,7 +328,7 @@ class ListWrapperTest(test.TestCase):
 
   def assertUnableToSave(self, l, msg):
     l._maybe_initialize_trackable()  # pylint: disable=protected-access
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
       return l._checkpoint_dependencies  # pylint: disable=protected-access
 
 
@@ -337,7 +337,7 @@ class MappingTests(test.TestCase):
   def testJSONSerialization(self):
     obj = tracking.AutoTrackable()
     obj.d = {"a": 2}
-    json.dumps(obj.d, default=serialization.get_json_type)
+    json.dumps(obj.d, default=json_utils.get_json_type)
 
   def testNoOverwrite(self):
     mapping = data_structures.Mapping()
@@ -368,7 +368,7 @@ class MappingTests(test.TestCase):
     self.assertEqual({}, a.d)
     self.assertFalse({} != a.d)  # pylint: disable=g-explicit-bool-comparison
     self.assertNotEqual({1: 2}, a.d)
-    with self.assertRaisesRegexp(TypeError, "unhashable"):
+    with self.assertRaisesRegex(TypeError, "unhashable"):
       set([a.d])
 
   def testListShallowCopy(self):
@@ -519,7 +519,7 @@ class TupleTests(test.TestCase, parameterized.TestCase):
   def testJSONSerialization(self):
     obj = tracking.AutoTrackable()
     obj.l = (1,)
-    json.dumps(obj.l, default=serialization.get_json_type)
+    json.dumps(obj.l, default=json_utils.get_json_type)
 
   def testNonLayerVariables(self):
     v = resource_variable_ops.ResourceVariable([1.])

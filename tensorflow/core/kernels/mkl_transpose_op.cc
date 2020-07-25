@@ -137,6 +137,7 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     memory::dims out_strides =
         ReorderStrides(CalculateTFStrides(out_dims), perm);
 
+    std::shared_ptr<stream> transpose_stream;
     in.SetUsrMem(in_dims, in_strides, &in_tensor);
     // Output dimensions are same as input dimensions. We adjust the layout
     // using strides.
@@ -144,16 +145,16 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
 
     std::vector<primitive> net;
 #ifdef ENABLE_MKLDNN_V1
-    std::shared_ptr<stream> transpose_stream;
     auto* prim = FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem());
     transpose_stream.reset(CreateStream(context, prim->GetEngine()));
+    in.SetUsrMemDataHandle(&in_tensor, transpose_stream);
+    out.SetUsrMemDataHandle(out_tensor, transpose_stream);
     net.push_back(*(prim->GetPrimitive()));
     std::vector<MemoryArgsMap> net_args;
     net_args.push_back({{MKLDNN_ARG_FROM, *in.GetUsrMem()},
                         {MKLDNN_ARG_TO, *out.GetUsrMem()}});
     execute_primitives(net, transpose_stream, net_args);
 #else
-    std::shared_ptr<stream> transpose_stream;
     transpose_stream.reset(new CPU_STREAM(cpu_engine));
     net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
     transpose_stream->submit(net).wait();

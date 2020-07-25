@@ -32,8 +32,8 @@ namespace svdf {
 namespace {
 
 struct OpData {
-  int32 effective_scale_1_a;
-  int32 effective_scale_2_a;
+  int32_t effective_scale_1_a;
+  int32_t effective_scale_2_a;
   // b versions of each scale are kept at int since the numbers are just the
   // shift value - typically between [-32, 32].
   int effective_scale_1_b;
@@ -338,12 +338,7 @@ constexpr int kOutputTensor = 0;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -382,7 +377,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 2);
 
   // Validate Tensor Output:
-  // [0] = float/int8, {2, batch_size, num_units}
+  // [0] = float/int8_t, {2, batch_size, num_units}
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE_EQ(context, NumDimensions(output), 2);
@@ -527,19 +522,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace svdf
 
-TfLiteRegistration* Register_SVDF() {
-  // TODO(b/149408647): Once we remove AddBuiltin from MicroOpResolver and
-  // completely switch to the templated AddBuiltin from MicroMutableOpResolver,
-  // this struct no longer needs to be static and can be returned by value.
-  static TfLiteRegistration r = {/*init=*/svdf::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/svdf::Prepare,
-                                 /*invoke=*/svdf::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_SVDF() {
+  return {/*init=*/svdf::Init,
+          /*free=*/nullptr,
+          /*prepare=*/svdf::Prepare,
+          /*invoke=*/svdf::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

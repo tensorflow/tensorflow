@@ -38,7 +38,8 @@ class FileIO(object):
   """FileIO class that exposes methods to read / write to / from files.
 
   The constructor takes the following arguments:
-  name: name of the file
+  name: [path-like object](https://docs.python.org/3/glossary.html#term-path-like-object)
+    giving the pathname of the file to be opened.
   mode: one of `r`, `w`, `a`, `r+`, `w+`, `a+`. Append `b` for bytes mode.
 
   Can be used as an iterator to iterate over lines in the file.
@@ -76,7 +77,7 @@ class FileIO(object):
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for reading")
       self._read_buf = _pywrap_file_io.BufferedInputStream(
-          self.__name, 1024 * 512)
+          compat.path_to_str(self.__name), 1024 * 512)
 
   def _prewrite_check(self):
     if not self._writable_file:
@@ -84,7 +85,7 @@ class FileIO(object):
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for writing")
       self._writable_file = _pywrap_file_io.WritableFile(
-          compat.as_bytes(self.__name), compat.as_bytes(self.__mode))
+          compat.path_to_bytes(self.__name), compat.as_bytes(self.__mode))
 
   def _prepare_value(self, val):
     if self._binary_mode:
@@ -201,14 +202,14 @@ class FileIO(object):
   def __iter__(self):
     return self
 
-  def next(self):
+  def __next__(self):
     retval = self.readline()
     if not retval:
       raise StopIteration()
     return retval
 
-  def __next__(self):
-    return self.next()
+  def next(self):
+    return self.__next__()
 
   def flush(self):
     """Flushes the Writable file.
@@ -264,7 +265,7 @@ def file_exists_v2(path):
     errors.OpError: Propagates any errors reported by the FileSystem API.
   """
   try:
-    _pywrap_file_io.FileExists(compat.as_bytes(path))
+    _pywrap_file_io.FileExists(compat.path_to_bytes(path))
   except errors.NotFoundError:
     return False
   return True
@@ -295,7 +296,7 @@ def delete_file_v2(path):
     errors.OpError: Propagates any errors reported by the FileSystem API.  E.g.,
     `NotFoundError` if the path does not exist.
   """
-  _pywrap_file_io.DeleteFile(compat.as_bytes(path))
+  _pywrap_file_io.DeleteFile(compat.path_to_bytes(path))
 
 
 def read_file_to_string(filename, binary_mode=False):
@@ -447,7 +448,7 @@ def create_dir_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  _pywrap_file_io.CreateDir(compat.as_bytes(path))
+  _pywrap_file_io.CreateDir(compat.path_to_bytes(path))
 
 
 @tf_export(v1=["gfile.MakeDirs"])
@@ -477,7 +478,7 @@ def recursive_create_dir_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  _pywrap_file_io.RecursivelyCreateDir(compat.as_bytes(path))
+  _pywrap_file_io.RecursivelyCreateDir(compat.path_to_bytes(path))
 
 
 @tf_export(v1=["gfile.Copy"])
@@ -510,7 +511,7 @@ def copy_v2(src, dst, overwrite=False):
     errors.OpError: If the operation fails.
   """
   _pywrap_file_io.CopyFile(
-      compat.as_bytes(src), compat.as_bytes(dst), overwrite)
+      compat.path_to_bytes(src), compat.path_to_bytes(dst), overwrite)
 
 
 @tf_export(v1=["gfile.Rename"])
@@ -543,7 +544,7 @@ def rename_v2(src, dst, overwrite=False):
     errors.OpError: If the operation fails.
   """
   _pywrap_file_io.RenameFile(
-      compat.as_bytes(src), compat.as_bytes(dst), overwrite)
+      compat.path_to_bytes(src), compat.path_to_bytes(dst), overwrite)
 
 
 def atomic_write_string_to_file(filename, contents, overwrite=True):
@@ -596,7 +597,7 @@ def delete_recursively_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  _pywrap_file_io.DeleteRecursively(compat.as_bytes(path))
+  _pywrap_file_io.DeleteRecursively(compat.path_to_bytes(path))
 
 
 @tf_export(v1=["gfile.IsDirectory"])
@@ -623,7 +624,7 @@ def is_directory_v2(path):
     True, if the path is a directory; False otherwise
   """
   try:
-    return _pywrap_file_io.IsDirectory(compat.as_bytes(path))
+    return _pywrap_file_io.IsDirectory(compat.path_to_bytes(path))
   except errors.OpError:
     return False
 
@@ -646,7 +647,7 @@ def has_atomic_move(path):
            not to use temporary locations in this case.
   """
   try:
-    return _pywrap_file_io.HasAtomicMove(compat.as_bytes(path))
+    return _pywrap_file_io.HasAtomicMove(compat.path_to_bytes(path))
   except errors.OpError:
     # defaults to True
     return True
@@ -697,7 +698,7 @@ def list_directory_v2(path):
   # vector of string should be interpreted as strings, not bytes.
   return [
       compat.as_str_any(filename)
-      for filename in _pywrap_file_io.GetChildren(compat.as_bytes(path))
+      for filename in _pywrap_file_io.GetChildren(compat.path_to_bytes(path))
   ]
 
 
@@ -745,7 +746,7 @@ def walk_v2(top, topdown=True, onerror=None):
       return "".join([os.path.join(parent, ""), item])
     return os.path.join(parent, item)
 
-  top = compat.as_str_any(top)
+  top = compat.as_str_any(compat.path_to_str(top))
   try:
     listing = list_directory(top)
   except errors.NotFoundError as err:
@@ -806,7 +807,7 @@ def stat_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  return _pywrap_file_io.Stat(path)
+  return _pywrap_file_io.Stat(compat.path_to_str(path))
 
 
 def filecmp(filename_a, filename_b):

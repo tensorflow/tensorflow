@@ -288,23 +288,6 @@ uint32_t hm01b0_test_walking1s(hm01b0_cfg_t *psCfg);
 
 //*****************************************************************************
 //
-//! @brief Check the data read from HM01B0 in the walking 1s test mode
-//!
-//! @param pui8Buffer       - Pointer to data buffer.
-//! @param ui32BufferLen    - Buffer length
-//! @param ui32PrintCnt     - Number of mismatched data to be printed out
-//!
-//! This function sets HM01B0 in the walking 1s test mode.
-//!
-//! @return Error code.
-//
-//*****************************************************************************
-void hm01b0_test_walking1s_check_data_sanity(uint8_t *pui8Buffer,
-                                             uint32_t ui32BufferLen,
-                                             uint32_t ui32PrintCnt);
-
-//*****************************************************************************
-//
 //! @brief Software reset HM01B0
 //!
 //! @param psCfg        - Pointer to HM01B0 configuration structure.

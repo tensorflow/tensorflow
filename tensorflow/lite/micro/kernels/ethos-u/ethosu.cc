@@ -89,10 +89,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace ethosu
 
-TfLiteRegistration* Register_ETHOSU() {
-  static TfLiteRegistration r = {ethosu::Init, ethosu::Free, ethosu::Prepare,
-                                 ethosu::Eval};
-  return &r;
+TfLiteRegistration Register_ETHOSU() {
+  return {ethosu::Init, ethosu::Free, ethosu::Prepare, ethosu::Eval};
 }
 
 const char* GetString_ETHOSU() { return "ethos-u"; }

@@ -57,9 +57,9 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/delegates/hexagon/builders:op_builder",
         "//tensorflow/lite/delegates/hexagon/hexagon_nn:hexagon_nn_header",
+        "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@hexagon_nn//:hexagon_nn_ops",
@@ -81,7 +81,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/delegates/utils:simple_delegate",
     ],
 )
 

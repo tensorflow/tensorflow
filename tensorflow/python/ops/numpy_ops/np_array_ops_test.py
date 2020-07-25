@@ -911,26 +911,6 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 0, 1])
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 1, 0])
 
-  def testSetItem(self):
-
-    def run_test(arr, index, value):
-      for fn in self.array_transforms:
-        value_arg = fn(value)
-        tf_array = np_array_ops.array(arr)
-        np_array = np.array(arr)
-        tf_array[index] = value_arg
-        # TODO(srbs): "setting an array element with a sequence" is thrown
-        # if we do not wrap value_arg in a numpy array. Investigate how this can
-        # be avoided.
-        np_array[index] = np.array(value_arg)
-        self.match(tf_array, np_array)
-
-    run_test([1, 2, 3], 1, 5)
-    run_test([[1, 2], [3, 4]], 0, [6, 7])
-    run_test([[1, 2], [3, 4]], 1, [6, 7])
-    run_test([[1, 2], [3, 4]], (0, 1), 6)
-    run_test([[1, 2], [3, 4]], 0, 6)  # Value needs to broadcast.
-
   def match_shape(self, actual, expected, msg=None):
     if msg:
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(

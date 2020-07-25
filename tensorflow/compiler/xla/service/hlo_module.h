@@ -72,6 +72,12 @@ class HloModule {
   HloComputation* AddEntryComputation(
       std::unique_ptr<HloComputation> computation);
 
+  // Same as the AddEntryComputation function above but the module's
+  // entry_computation_layout is updated to match the layout of the new entry
+  // computation.
+  HloComputation* AddEntryComputationWithLayouts(
+      std::unique_ptr<HloComputation> computation);
+
   // Replaces the current entry computation with another computation.
   // The new entry computation must be a computation that is already in the
   // module.
@@ -308,7 +314,8 @@ class HloModule {
       instruction->ClearUniqueIdInternal();
     }
     return AddComputationInternal(std::move(computation), is_entry,
-                                  /*uniquify_identifiers=*/true);
+                                  /*uniquify_identifiers=*/true,
+                                  /*preserve_entry_layouts=*/true);
   }
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
@@ -359,7 +366,7 @@ class HloModule {
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
-      bool uniquify_identifiers);
+      bool uniquify_identifiers, bool preserve_entry_layouts);
 
   string name_;
   HloModuleConfig config_;

@@ -208,14 +208,16 @@ HloCompareInstruction::HloCompareInstruction(const Shape& shape,
                                              HloInstruction* lhs,
                                              HloInstruction* rhs,
                                              ComparisonDirection direction)
-    : HloInstruction(HloOpcode::kCompare, shape), direction_(direction) {
+    : HloInstruction(HloOpcode::kCompare, shape),
+      compare_(direction, lhs->shape().element_type()) {
   AppendOperand(lhs);
   AppendOperand(rhs);
 }
 
 HloInstructionProto HloCompareInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_comparison_direction(ComparisonDirectionToString(direction_));
+  proto.set_comparison_direction(
+      ComparisonDirectionToString(compare_.GetDirection()));
   return proto;
 }
 

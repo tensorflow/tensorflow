@@ -149,9 +149,8 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
   def test_timedistributed_invalid_init(self):
     x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Please initialize `TimeDistributed` layer with a '
+    with self.assertRaisesRegex(
+        ValueError, 'Please initialize `TimeDistributed` layer with a '
         '`tf.keras.layers.Layer` instance.'):
       keras.layers.TimeDistributed(x)
 
@@ -234,13 +233,10 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     x = keras.layers.Input(shape=(3, 2))
     layer = keras.layers.TimeDistributed(keras.layers.BatchNormalization())
     _ = layer(x)
-    self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.trainable_weights), 2)
     layer.trainable = False
-    assert not layer.updates
     assert not layer.trainable_weights
     layer.trainable = True
-    assert len(layer.updates) == 2
     assert len(layer.trainable_weights) == 2
 
   def test_TimeDistributed_with_masked_embedding_and_unspecified_shape(self):
@@ -309,13 +305,13 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     self.assertEqual(out_2.shape.as_list(), [None, 1, 5])
 
     ph_3 = keras.backend.placeholder(shape=(None, 1, 18))
-    with self.assertRaisesRegexp(ValueError, 'is incompatible with layer'):
+    with self.assertRaisesRegex(ValueError, 'is incompatible with'):
       time_dist(ph_3)
 
   def test_TimeDistributed_with_invalid_dimensions(self):
     time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
     ph = keras.backend.placeholder(shape=(None, 10))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         '`TimeDistributed` Layer should be passed an `input_shape `'):
       time_dist(ph)
@@ -337,7 +333,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         keras.layers.RNN(keras.layers.SimpleRNNCell(10), stateful=True))
     self.assertFalse(td2._always_use_reshape)
 
-    # Custom layers are not whitelisted for the fast reshape implementation.
+    # Custom layers are not allowlisted for the fast reshape implementation.
     td3 = keras.layers.TimeDistributed(NoReshapeLayer())
     self.assertFalse(td3._always_use_reshape)
 
@@ -514,7 +510,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   def test_bidirectional_invalid_init(self):
     x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'Please initialize `Bidirectional` layer with a `Layer` instance.'):
       keras.layers.Bidirectional(x)
@@ -1056,15 +1052,15 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     forward_layer = rnn(units)
     backward_layer = rnn(units)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'should have different `go_backwards` value.'):
+    with self.assertRaisesRegex(ValueError,
+                                'should have different `go_backwards` value.'):
       keras.layers.Bidirectional(
           forward_layer, merge_mode='concat', backward_layer=backward_layer)
 
     for attr in ('stateful', 'return_sequences', 'return_state'):
       kwargs = {attr: True}
       backward_layer = rnn(units, go_backwards=True, **kwargs)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'expected to have the same value for attribute ' + attr):
         keras.layers.Bidirectional(
             forward_layer, merge_mode='concat', backward_layer=backward_layer)

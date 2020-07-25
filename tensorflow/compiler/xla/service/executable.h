@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_EXECUTABLE_H_
 
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -59,38 +60,52 @@ namespace xla {
 //   with their indices absent from unowned_indices_.
 class ExecutionInput {
  public:
-  ExecutionInput() = default;
-  explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {}
-  explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
-      : buffers_(std::move(buffers)) {}
+  explicit ExecutionInput(xla::Shape shape, xla::Shape host_shape)
+      : buffers_(std::move(shape)) {
+    SetHostShape(std::move(host_shape));
+  }
+
+  explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
+                          xla::Shape host_shape)
+      : buffers_(std::move(buffers)) {
+    SetHostShape(std::move(host_shape));
+  }
+
   ExecutionInput(ExecutionInput&&) = default;
 
-  ~ExecutionInput() {
-    for (auto& index : unowned_indices_) {
-      auto buffer = buffers_.mutable_element(index)->Release();
-      if (buffer) {
-        buffer->Release();
-      }
-    }
-  }
+  ~ExecutionInput();
 
   ExecutionInput& operator=(ExecutionInput&&) = default;
 
-  const Shape& shape() const { return buffers_.shape(); }
+  const Shape& shape() const {
+    return dynamic_shape_ != nullptr ? *dynamic_shape_ : buffers_.shape();
+  }
+
+  const Shape& host_shape() const {
+    return host_shape_ != nullptr ? *host_shape_ : shape();
+  }
+
+  Status SetDynamicShape(Shape dynamic_shape);
+
+  xla::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
+      se::DeviceMemoryAllocator* allocator, int device_ordinal) const;
 
   void SetBuffer(const ShapeIndex& index, MaybeOwningDeviceMemory buffer) {
     *buffers_.mutable_element(index) = std::move(buffer);
   }
 
   void SetUnownedBuffer(const ShapeIndex& index,
-                        MaybeOwningDeviceMemory buffer) {
-    *buffers_.mutable_element(index) = std::move(buffer);
-    unowned_indices_.push_back(index);
-  }
+                        MaybeOwningDeviceMemory buffer);
 
   void SetUnownedIndex(const ShapeIndex& index) {
-    unowned_indices_.push_back(index);
+    unowned_indices_.insert(index);
   }
+
+  void ClearUnownedIndex(const ShapeIndex& index) {
+    unowned_indices_.erase(index);
+  }
+
+  const std::set<ShapeIndex>& unowned_indices() { return unowned_indices_; }
 
   const ShapeTree<MaybeOwningDeviceMemory>& Buffers() const { return buffers_; }
 
@@ -105,10 +120,18 @@ class ExecutionInput {
   }
 
  private:
+  void SetHostShape(xla::Shape host_shape) {
+    if (shape() != host_shape) {
+      host_shape_ = absl::make_unique<Shape>(std::move(host_shape));
+    }
+  }
+
   ShapeTree<MaybeOwningDeviceMemory> buffers_;
-  // (Unordered) set of indices of buffers that should be returned to the
-  // caller if an error occurs when enqueuing the computation.
-  std::vector<ShapeIndex> unowned_indices_;
+  // Set of indices of buffers that should be returned to the caller if an error
+  // occurs when enqueuing the computation.
+  std::set<ShapeIndex> unowned_indices_;
+  std::unique_ptr<Shape> dynamic_shape_;
+  std::unique_ptr<Shape> host_shape_;
 };
 
 // ExecutionOutput encapsulates the output buffers of a execution and the
@@ -145,7 +168,6 @@ class ExecutionOutput {
     to_be_released_.push_back(std::move(mem));
   }
 
-
   // Should be called once it is known that the execute operation succeeded,
   // before returning the ExecutionOutput to the caller.
   ExecutionOutput& Commit() {
@@ -168,6 +190,12 @@ class ExecutionOutput {
 
   std::vector<se::OwningDeviceMemory> ConsumeToBeReleased() {
     return std::move(to_be_released_);
+  }
+
+  std::vector<ShapeIndex> ConsumeAliasedIndices() {
+    auto aliased = std::move(aliased_indices_);
+    aliased_indices_.clear();
+    return aliased;
   }
 
  private:

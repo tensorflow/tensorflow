@@ -71,22 +71,22 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (output->type == kTfLiteFloat32) {
     reference_ops::ResizeNearestNeighbor(
-        op_params, GetTensorShape(input), GetTensorData<int32>(input),
-        GetTensorShape(size), GetTensorData<int32>(size),
-        GetTensorShape(output), GetTensorData<int32>(output));
+        op_params, GetTensorShape(input), GetTensorData<int32_t>(input),
+        GetTensorShape(size), GetTensorData<int32_t>(size),
+        GetTensorShape(output), GetTensorData<int32_t>(output));
   } else if (output->type == kTfLiteUInt8) {
     reference_ops::ResizeNearestNeighbor(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-        GetTensorShape(size), GetTensorData<int32>(size),
+        GetTensorShape(size), GetTensorData<int32_t>(size),
         GetTensorShape(output), GetTensorData<uint8_t>(output));
   } else if (output->type == kTfLiteInt8) {
     reference_ops::ResizeNearestNeighbor(
         op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-        GetTensorShape(size), GetTensorData<int32>(size),
+        GetTensorShape(size), GetTensorData<int32_t>(size),
         GetTensorShape(output), GetTensorData<int8_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context,
-                       "Output type is %d, requires float, uint8 or int8.",
+                       "Output type is %d, requires float, uint8_t or int8_t.",
                        output->type);
     return kTfLiteError;
   }
@@ -95,16 +95,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace resize_nearest_neighbor
 
-TfLiteRegistration* Register_RESIZE_NEAREST_NEIGHBOR() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/resize_nearest_neighbor::Prepare,
-                                 /*invoke=*/resize_nearest_neighbor::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_RESIZE_NEAREST_NEIGHBOR() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/resize_nearest_neighbor::Prepare,
+          /*invoke=*/resize_nearest_neighbor::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

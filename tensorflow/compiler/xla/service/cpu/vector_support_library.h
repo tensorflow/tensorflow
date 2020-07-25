@@ -78,9 +78,11 @@ class VectorSupportLibrary {
   llvm::Value* Sub(llvm::Value* lhs, const llvm::APFloat& rhs) {
     return Sub(lhs, GetConstantFloat(lhs->getType(), rhs));
   }
-  llvm::Value* Max(llvm::Value* lhs, llvm::Value* rhs);
-  llvm::Value* Max(const llvm::APFloat& lhs, llvm::Value* rhs) {
-    return Max(GetConstantFloat(rhs->getType(), lhs), rhs);
+  llvm::Value* Max(llvm::Value* lhs, llvm::Value* rhs,
+                   bool enable_fast_min_max);
+  llvm::Value* Max(const llvm::APFloat& lhs, llvm::Value* rhs,
+                   bool enable_fast_min_max) {
+    return Max(GetConstantFloat(rhs->getType(), lhs), rhs, enable_fast_min_max);
   }
   llvm::Value* Div(llvm::Value* lhs, llvm::Value* rhs);
 

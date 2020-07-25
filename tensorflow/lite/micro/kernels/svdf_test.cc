@@ -201,7 +201,6 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
   node.builtin_data = reinterpret_cast<void*>(&params);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TfLiteStatus prepare_status = registration->prepare(&context, &node);
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, prepare_status);
@@ -275,7 +274,6 @@ void ValidateIntegerSVDFGoldens(const int batch_size, const int num_units,
   node.builtin_data = reinterpret_cast<void*>(&params);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TfLiteStatus prepare_status = registration->prepare(&context, &node);
@@ -411,34 +409,35 @@ inline void TestIntegerSVDF(
   // Input quant params:
   float input_scales[] = {1, input_scale};
   TfLiteAffineQuantization input_quant = {FloatArrayFromFloats(input_scales),
-                                          IntArrayFromInts(zero_points)};
+                                          IntArrayFromInts(zero_points), 0};
   tensors[0].quantization = {kTfLiteAffineQuantization, &input_quant};
 
   // Weights features quant params:
   float weights_features_scales[] = {1, weights_feature_scale};
   TfLiteAffineQuantization weights_feature_quant = {
       FloatArrayFromFloats(weights_features_scales),
-      IntArrayFromInts(zero_points)};
+      IntArrayFromInts(zero_points), 0};
   tensors[1].quantization = {kTfLiteAffineQuantization, &weights_feature_quant};
 
   // Weights time quant params:
   float weights_time_scales[] = {1, weights_time_scale};
   TfLiteAffineQuantization weights_time_quant = {
-      FloatArrayFromFloats(weights_time_scales), IntArrayFromInts(zero_points)};
+      FloatArrayFromFloats(weights_time_scales), IntArrayFromInts(zero_points),
+      0};
   tensors[2].quantization = {kTfLiteAffineQuantization, &weights_time_quant};
 
   // Activation state quant params:
   float activation_state_scales[] = {1, activation_scale};
   TfLiteAffineQuantization activation_state_quant = {
       FloatArrayFromFloats(activation_state_scales),
-      IntArrayFromInts(zero_points)};
+      IntArrayFromInts(zero_points), 0};
   tensors[4].quantization = {kTfLiteAffineQuantization,
                              &activation_state_quant};
 
   // Output quant params:
   float output_scales[] = {1, output_scale};
   TfLiteAffineQuantization output_quant = {FloatArrayFromFloats(output_scales),
-                                           IntArrayFromInts(zero_points)};
+                                           IntArrayFromInts(zero_points), 0};
   tensors[5].quantization = {kTfLiteAffineQuantization, &output_quant};
 
   ValidateIntegerSVDFGoldens(
@@ -629,7 +628,6 @@ TF_LITE_MICRO_TEST(SvdfIntegerInputSize2Rank1ShouldMatchGolden) {
 
   int8_t weights_feature_data[] = {-81, -92, 2,   96,  57,  32,
                                    71,  70,  100, -92, -17, -27};
-  const int weights_feature_dims_count = num_filters * input_size;
 
   int16_t weights_time_data[] = {
       -10464, 12324, 9142,  -11842, -11836, 7273,  9029,  -2175, 260,   4067,
@@ -637,7 +635,6 @@ TF_LITE_MICRO_TEST(SvdfIntegerInputSize2Rank1ShouldMatchGolden) {
       -12098, 12461, -7072, 8870,   7739,   11447, 5954,  11765, -5733, 10643,
       -3534,  8912,  4693,  -7761,  -8886,  -519,  -4898, 5067,  3205,  -1107,
   };
-  const int weights_time_dims_count = num_filters * memory_size;
 
   int32_t bias_data[] = {-409707, 641518, 1662434, -113372};
 
@@ -670,12 +667,6 @@ TF_LITE_MICRO_TEST(SvdfIntegerInputSize2Rank1ShouldMatchGolden) {
   const int activation_state_dims_count =
       batch_size * memory_size * num_filters;
   int16_t activation_state_data[activation_state_dims_count];
-
-  const int scratch_dims_count = batch_size * num_filters;
-  int32_t scratch_data[scratch_dims_count];
-
-  const int scratch_output_dims_count = batch_size * num_units;
-  int32_t scratch_output_data[scratch_output_dims_count];
 
   const int output_dims_count = batch_size * num_units;
   int8_t output_data[output_dims_count];

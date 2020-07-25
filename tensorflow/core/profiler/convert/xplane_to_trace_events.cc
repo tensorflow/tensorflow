@@ -71,10 +71,7 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
         [device_id, resource_id, trace](const XEventVisitor& xevent) {
           int64 event_type =
               xevent.Type().value_or(HostEventType::kUnknownHostEventType);
-          if (event_type == HostEventType::kMemoryAllocation ||
-              event_type == HostEventType::kMemoryDeallocation) {
-            return;
-          }
+          if (IsInternalEvent(event_type)) return;
           auto* event = trace->add_trace_events();
           auto& args = *event->mutable_args();
           event->set_device_id(device_id);
@@ -91,6 +88,9 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
           xevent.ForEachStat([&](const XStatVisitor& stat) {
             if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
             if (IsInternalStat(stat.Type())) return;
+            if (stat.Type() == StatType::kStepName) {
+              event->set_name(stat.ToString());
+            }
             args[std::string(stat.Name())] = stat.ToString();
           });
         });

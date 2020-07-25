@@ -1,10 +1,11 @@
 # TFLite Delegate Utilities for Tooling
 
 ## TFLite Delegate Registrar
+
 [A TFLite delegate registrar](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/delegate_provider.h)
 is provided here. The registrar keeps a list of TFLite delegate providers, each
 of which defines a list parameters that could be initialized from commandline
-argumenents and provides a TFLite delegate instance creation based on those
+arguments and provides a TFLite delegate instance creation based on those
 parameters. This delegate registrar has been used in TFLite evaluation tools and
 the benchmark model tool.
 
@@ -73,6 +74,10 @@ Only Android and iOS devices support GPU delegate.
     [NNAPI execution preference](https://developer.android.com/ndk/reference/group/neural-networks.html#group___neural_networks_1gga034380829226e2d980b2a7e63c992f18af727c25f1e2d8dcc693c477aef4ea5f5)
     to use when executing using NNAPI. Should be one of the following:
     fast_single_answer, sustained_speed, low_power, undefined.
+*   `nnapi_execution_priority`: `string` (default="") \
+    The relative priority for executions of the model in NNAPI. Should be one
+    of the following: default, low, medium and high. This option requires
+    Android 11+.
 *   `disable_nnapi_cpu`: `bool` (default=false) \
     Excludes the
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)

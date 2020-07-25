@@ -25,21 +25,16 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace {
-using tensorflow::int32;
-using tensorflow::int64;
-}  // namespace
-
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
-    int64 a, int64 b, int64 c, char** values, int32 values_count,
-    int32* values_primitive_type_size_in_bytes, bool is_stable,
-    char* run_options, int64* prof_counters,
+    tensorflow::int64 a, tensorflow::int64 b, tensorflow::int64 c, char** values, tensorflow::int32 values_count,
+    tensorflow::int32* values_primitive_type_size_in_bytes, bool is_stable,
+    char* run_options, tensorflow::int64* prof_counters,
     void (*less_than)(char*, char*, char**, char**, tensorflow::int64*)) {
   // 'values' and 'values_primitive_type_size_in_bytes' are managed by the JIT
   // code, so msan can't tell they are initialized.
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(values, values_count * sizeof(char*));
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(values_primitive_type_size_in_bytes,
-                                    values_count * sizeof(int32));
+                                    values_count * sizeof(tensorflow::int32));
 
   // High-level idea of the iteration/sorting logic:
   // Conceptually we have a 3-dimensional shape [a, b, c]. b corresponds to the
@@ -50,16 +45,16 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
   // 'base_offset' value which points to the first element in that row, and add
   // i * c for accessing the 'i'-th element in that row.
 
-  int64 sort_dimension_elements = b;
-  int64 num_iteration_elements = a * c;
-  int64 sort_dimension_offset = c;
+  tensorflow::int64 sort_dimension_elements = b;
+  tensorflow::int64 num_iteration_elements = a * c;
+  tensorflow::int64 sort_dimension_offset = c;
 
-  std::unique_ptr<int64[]> indices(new int64[sort_dimension_elements]);
+  std::unique_ptr<tensorflow::int64[]> indices(new tensorflow::int64[sort_dimension_elements]);
   std::unique_ptr<char*[]> comparison_values(new char*[2 * values_count]);
   std::iota(indices.get(), indices.get() + sort_dimension_elements, 0);
   std::unique_ptr<std::string[]> reordered_values(
       new std::string[sort_dimension_elements]);
-  for (int64 index = 0; index < num_iteration_elements; ++index) {
+  for (tensorflow::int64 index = 0; index < num_iteration_elements; ++index) {
     // If the sort should be stable, we have to reinitialize indices to iota to
     // guarantee that we still keep the relative order in case of ties.
     if (is_stable && index > 0) {
@@ -71,14 +66,14 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     // calculating the base offset, we need to multiply the index into the 'a'
     // dimension with 'b' * 'c'.
     // 'index' / 'c' * 'c' * 'b' = ('index' - 'index' % 'c') * 'b'.
-    int64 base_offset =
+    tensorflow::int64 base_offset =
         index % sort_dimension_offset +
         (index - index % sort_dimension_offset) * sort_dimension_elements;
-    auto compare_function = [&](int64 a, int64 b) -> bool {
-      for (int32 i = 0; i < values_count; ++i) {
-        int64 memory_index_lhs = (base_offset + a * sort_dimension_offset) *
+    auto compare_function = [&](tensorflow::int64 a, tensorflow::int64 b) -> bool {
+      for (tensorflow::int32 i = 0; i < values_count; ++i) {
+        tensorflow::int64 memory_index_lhs = (base_offset + a * sort_dimension_offset) *
                                  values_primitive_type_size_in_bytes[i];
-        int64 memory_index_rhs = (base_offset + b * sort_dimension_offset) *
+        tensorflow::int64 memory_index_rhs = (base_offset + b * sort_dimension_offset) *
                                  values_primitive_type_size_in_bytes[i];
         comparison_values[i * 2] = values[i] + memory_index_lhs;
         comparison_values[i * 2 + 1] = values[i] + memory_index_rhs;
@@ -97,9 +92,9 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     }
 
     // Reorder the values according to the order defined by 'indices'.
-    for (int32 idx = 0; idx < values_count; ++idx) {
-      for (int64 i = 0; i < sort_dimension_elements; ++i) {
-        int64 memory_index =
+    for (tensorflow::int32 idx = 0; idx < values_count; ++idx) {
+      for (tensorflow::int64 i = 0; i < sort_dimension_elements; ++i) {
+        tensorflow::int64 memory_index =
             (base_offset + indices[i] * sort_dimension_offset) *
             values_primitive_type_size_in_bytes[idx];
 
@@ -107,8 +102,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
             std::string(values[idx] + memory_index,
                         values_primitive_type_size_in_bytes[idx]);
       }
-      for (int64 i = 0; i < sort_dimension_elements; ++i) {
-        int64 memory_index = (base_offset + i * sort_dimension_offset) *
+      for (tensorflow::int64 i = 0; i < sort_dimension_elements; ++i) {
+        tensorflow::int64 memory_index = (base_offset + i * sort_dimension_offset) *
                              values_primitive_type_size_in_bytes[idx];
         memcpy(values[idx] + memory_index, reordered_values[i].c_str(),
                values_primitive_type_size_in_bytes[idx]);

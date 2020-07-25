@@ -31,6 +31,7 @@ py_library(
         "all_utils.py",
     ],
     deps = [
+        ":control_flow_util",
         ":engine_utils",
         ":generic_utils",
         ":layer_utils",
@@ -38,6 +39,13 @@ py_library(
         ":np_utils",
         ":vis_utils",
     ],
+)
+
+py_library(
+    name = "control_flow_util",
+    srcs = ["control_flow_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
 )
 
 py_library(

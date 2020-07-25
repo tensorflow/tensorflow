@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 // b/131835803 forces us to include multithreaded_conv.h before optimized_ops.h
-#ifndef TFLITE_WITH_RUY_ONLY
+#ifndef TFLITE_WITH_RUY
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
 #endif
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -765,8 +765,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       break;
     }
     case kMultithreadOptimized: {
-#ifdef TFLITE_WITH_RUY_ONLY
-      // See Register_CONV_2D: we should never be here when TFLITE_WITH_RUY_ONLY
+#ifdef TFLITE_WITH_RUY
+      // See Register_CONV_2D: we should never be here when TFLITE_WITH_RUY
       // was enabled. We #if out this code in order to get the corresponding
       // binary size benefits.
       TFLITE_DCHECK(false);
@@ -888,13 +888,16 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
       GetTemporary(context, node, data->scaling_factors_index));
 
   // Per-batch input quantization for higher accuracy.
-  for (int b = 0; b < batch_size; ++b) {
-    float unused_min, unused_max;
-    const int offset = b * input_size;
-    tensor_utils::SymmetricQuantizeFloats(
-        input_ptr + offset, input_size, quantized_input_ptr_batch + offset,
-        &unused_min, &unused_max, &scaling_factors_ptr[b]);
-    scaling_factors_ptr[b] *= filter->params.scale;
+  {
+    ruy::profiler::ScopeLabel label("ConvHybridQuantizeInputs");
+    for (int b = 0; b < batch_size; ++b) {
+      float unused_min, unused_max;
+      const int offset = b * input_size;
+      tensor_utils::SymmetricQuantizeFloats(
+          input_ptr + offset, input_size, quantized_input_ptr_batch + offset,
+          &unused_min, &unused_max, &scaling_factors_ptr[b]);
+      scaling_factors_ptr[b] *= filter->params.scale;
+    }
   }
 
   switch (kernel_type) {
@@ -902,8 +905,7 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
     case kGenericOptimized:
     case kMultithreadOptimized:
     case kCblasOptimized: {
-      // There is only one implementation for hybrid kernel. Note
-      // this does not make use of gemmlowp nor supports multithreading.
+      // There is only one implementation for hybrid kernel.
       ConvParams op_params;
       op_params.padding_type = PaddingType::kSame;
       op_params.padding_values.width = data->padding.width;
@@ -1051,8 +1053,8 @@ TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
 TfLiteRegistration* Register_CONV_2D() {
 #if defined TFLITE_USE_APPLE_ACCELERATE_FOR_CONV
   return Register_CONVOLUTION_CBLAS_OPT();
-#elif defined TFLITE_WITH_RUY_ONLY
-  // TFLITE_WITH_RUY_ONLY optimizes the generic kernel type.
+#elif defined TFLITE_WITH_RUY
+  // TFLITE_WITH_RUY optimizes the generic kernel type.
   return Register_CONVOLUTION_GENERIC_OPT();
 #else
   return Register_CONVOLUTION_MULTITHREADED_OPT();
@@ -1063,8 +1065,8 @@ TfLiteRegistration* Register_CONV_2D() {
 // models only need the UINT8 type. TFLite's op registration mechanism doesn't
 // yet allow for more nuanced registration mechanisms.
 TfLiteRegistration* Register_CONV_2D_UINT8() {
-#if defined TFLITE_WITH_RUY_ONLY
-  // TFLITE_WITH_RUY_ONLY optimizes the generic kernel type.
+#if defined TFLITE_WITH_RUY
+  // TFLITE_WITH_RUY optimizes the generic kernel type.
   return Register_CONVOLUTION_GENERIC_OPT_UINT8();
 #else
   return Register_CONV_2D();

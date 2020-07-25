@@ -56,14 +56,14 @@ struct GlobalTensorUse {
 using GlobalTensorUsesMap =
     std::map<GlobalTensorOp, std::vector<GlobalTensorUse>>;
 
-static bool IsResourceType(Type type) {
+bool IsResourceType(Type type) {
   if (auto tensor_type = type.dyn_cast<TensorType>()) {
     return tensor_type.getElementType().isa<TF::ResourceType>();
   }
   return false;
 }
 
-static bool IsResource(Value value) { return IsResourceType(value.getType()); }
+bool IsResource(Value value) { return IsResourceType(value.getType()); }
 
 class ResourceAnalyzer {
  public:
@@ -96,7 +96,7 @@ class ResourceAnalyzer {
     }
 
     func.walk([&](Operation* op) {
-      if (isa<TF::ReadVariableOp>(op) || isa<ReturnOp>(op)) {
+      if (isa<TF::ReadVariableOp, ReturnOp>(op)) {
         return;
       }
       if (auto assign_variable = dyn_cast<TF::AssignVariableOp>(op)) {
@@ -129,30 +129,24 @@ class ResourceAnalyzer {
       // this errs on the side of being conservative. We should improve
       // this by using either a property or a trait that clearly
       // identifies ops with resource mutating behavior.
-      if (PropagatePotentiallyWrittenWithinUnhandledOp(op)) {
-        return;
-      }
+      PropagatePotentiallyWrittenWithinUnhandledOp(op);
     });
     return success();
   }
 
   // If an op is not one of the handled ones, we assume all resource usages
   // within its purview are mutating in nature.
-  bool PropagatePotentiallyWrittenWithinUnhandledOp(Operation* op) {
+  void PropagatePotentiallyWrittenWithinUnhandledOp(Operation* op) {
     for (auto operand : op->getOperands()) {
       if (IsResource(operand)) {
         SetPotentiallyWritten(operand);
-        return true;
       }
     }
-    bool uses_resources = false;
     visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
       if (IsResource(operand->get())) {
         SetPotentiallyWritten(operand->get());
-        uses_resources = true;
       }
     });
-    return uses_resources;
   }
 
   // Given a funcOp associated with the callee and operands from the
@@ -212,7 +206,7 @@ bool IsImmutable(GlobalTensorOp global_tensor,
   return true;
 }
 
-static GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
+GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
   GlobalTensorUsesMap global_tensor_uses;
 
   SymbolTable symbol_table(module);
@@ -293,12 +287,12 @@ void OptimizeGlobalTensorsPass::runOnOperation() {
   EraseUnusedGlobalTensors(module, global_tensor_uses);
 }
 
-}  // namespace
-
 // For "opt" to pick up this pass.
-static PassRegistration<OptimizeGlobalTensorsPass> pass(
+PassRegistration<OptimizeGlobalTensorsPass> pass(
     "tf-saved-model-optimize-global-tensors",
     "Optimize tf_saved_model.global_tensor's.");
+
+}  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass() {
   return std::make_unique<OptimizeGlobalTensorsPass>();

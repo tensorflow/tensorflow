@@ -20,6 +20,9 @@ load(
     "cc_library",
 )
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
+
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
@@ -425,7 +428,7 @@ filegroup(
     ],
 )
 
-# Individual targets. These should be prefered over tensorflow/core:framework
+# Individual targets. These should be preferred over tensorflow/core:framework
 # whenever possible.
 
 # This is redundant with the "tensorflow/core:framework" target. It's useful for
@@ -507,7 +510,7 @@ cc_library(
     srcs = ["tensor_testutil.cc"],
     hdrs = ["tensor_testutil.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -618,7 +621,7 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core/platform:macros",
         "//third_party/eigen3",
@@ -674,7 +677,11 @@ cc_library(
     name = "type_index",
     hdrs = ["type_index.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core/platform:types"],
+    deps = [
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 cc_library(
@@ -719,6 +726,7 @@ tf_cuda_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
     deps = [
         ":allocation_description_proto_cc",
@@ -936,6 +944,7 @@ cc_library(
 cc_library(
     name = "selective_registration",
     hdrs = ["selective_registration.h"],
+    deps = tf_selective_registration_deps(),
 )
 
 cc_library(

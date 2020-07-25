@@ -69,6 +69,7 @@ constexpr char kPaddingMapAttr[] = "padding_map";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
+constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
 
 constexpr char kBadStringArrayElementMsg[] =
     "bad '{0}' attribute at index {1}, not a string";
@@ -146,6 +147,9 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // We can simply change name of TPU program's main function because there
       // should be no other reference to it.
       clone.setName("main");
+      clone.setVisibility(FuncOp::Visibility::Public);
+    } else {
+      clone.setVisibility(FuncOp::Visibility::Private);
     }
     symbol_table.insert(clone);
   }
@@ -328,6 +332,10 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
   if (xla_device_assignment.hasValue())
     *metadata->mutable_device_assignment() =
         std::move(xla_device_assignment.getValue());
+  auto use_spmd_attr = op.getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
+  if (!use_spmd_attr)
+    return op.emitOpError(CreateMissingAttributeMsg(kUseXlaSpmdAttr));
+  metadata->set_use_spmd_for_xla_partitioning(use_spmd_attr.getValue());
 
   if (failed(SetMetadataProtoArgs(op, metadata))) return failure();
 
@@ -465,9 +473,8 @@ LogicalResult BuildExecuteOp(
   if (failed(result)) return failure();
 
   // TPUExecute has same output types as cluster_func.
-  *execute_op = builder->create<TF::TPUExecuteOp>(
-      cluster_func.getLoc(), output_types, inputs,
-      llvm::ArrayRef<NamedAttribute>{});
+  *execute_op = builder->create<TF::TPUExecuteOp>(cluster_func.getLoc(),
+                                                  output_types, inputs);
   return success();
 }
 

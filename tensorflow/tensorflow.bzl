@@ -59,7 +59,7 @@ load(
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.2.0"
+VERSION = "2.4.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 # Sanitize a dependency so that it works correctly from code that includes
@@ -1765,16 +1765,52 @@ def transitive_hdrs(name, deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
     native.filegroup(name = name, srcs = [":" + name + "_gather"])
 
+# Bazel rule for collecting the transitive parameters from a set of dependencies into a library.
+# Propagates defines and includes.
+def _transitive_parameters_library_impl(ctx):
+    defines = depset(
+        transitive = [dep[CcInfo].compilation_context.defines for dep in ctx.attr.original_deps],
+    )
+    system_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.system_includes for dep in ctx.attr.original_deps],
+    )
+    includes = depset(
+        transitive = [dep[CcInfo].compilation_context.includes for dep in ctx.attr.original_deps],
+    )
+    quote_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.quote_includes for dep in ctx.attr.original_deps],
+    )
+    framework_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.framework_includes for dep in ctx.attr.original_deps],
+    )
+    return CcInfo(
+        compilation_context = cc_common.create_compilation_context(
+            defines = depset(direct = defines.to_list()),
+            system_includes = depset(direct = system_includes.to_list()),
+            includes = depset(direct = includes.to_list()),
+            quote_includes = depset(direct = quote_includes.to_list()),
+            framework_includes = depset(direct = framework_includes.to_list()),
+        ),
+    )
+
+_transitive_parameters_library = rule(
+    attrs = {
+        "original_deps": attr.label_list(
+            allow_empty = True,
+            allow_files = True,
+            providers = [CcInfo],
+        ),
+    },
+    implementation = _transitive_parameters_library_impl,
+)
+
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
 #
 # **NOTE**: The headers brought in are **NOT** fully transitive; certain
-# deep headers may be missing.  Furthermore, the `includes` argument of
-# cc_libraries in the dependencies are *not* going to be respected
-# when you use cc_header_only_library.  Some cases where this creates
-# problems include: Eigen, grpc, MLIR.  In cases such as these, you must
-# find a header-only version of the cc_library rule you care about and
-# link it *directly* in addition to your use of the cc_header_only_library
+# deep headers may be missing.  If this creates problems, you must find
+# a header-only version of the cc_library rule you care about and link it
+# *directly* in addition to your use of the cc_header_only_library
 # intermediary.
 #
 # For:
@@ -1783,11 +1819,15 @@ def transitive_hdrs(name, deps = [], **kwargs):
 #
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
+    _transitive_parameters_library(
+        name = name + "_gathered_parameters",
+        original_deps = deps,
+    )
     cc_library(
         name = name,
         hdrs = [":" + name + "_gather"],
         includes = includes,
-        deps = extra_deps,
+        deps = [":" + name + "_gathered_parameters"] + extra_deps,
         **kwargs
     )
 
@@ -1817,13 +1857,13 @@ def tf_custom_op_library_additional_deps_impl():
 # tf_collected_deps will be the union of the deps of the current target
 # and the tf_collected_deps of the dependencies of this target.
 def _collect_deps_aspect_impl(target, ctx):
-    alldeps = depset()
+    direct, transitive = [], []
     if hasattr(ctx.rule.attr, "deps"):
         for dep in ctx.rule.attr.deps:
-            alldeps = depset([dep.label], transitive = [alldeps])
+            direct.append(dep.label)
             if hasattr(dep, "tf_collected_deps"):
-                alldeps = depset(transitive = [alldeps, dep.tf_collected_deps])
-    return struct(tf_collected_deps = alldeps)
+                transitive.append(dep.tf_collected_deps)
+    return struct(tf_collected_deps = depset(direct = direct, transitive = transitive))
 
 collect_deps_aspect = aspect(
     attr_aspects = ["deps"],
@@ -1931,6 +1971,10 @@ register_extension_info(
 # Placeholder to use until bazel supports py_strict_library.
 def py_strict_library(name, **kwargs):
     native.py_library(name = name, **kwargs)
+
+# Placeholder to use until bazel supports py_strict_test.
+def py_strict_test(name, **kwargs):
+    py_test(name = name, **kwargs)
 
 def tf_custom_op_py_library(
         name,
@@ -2154,10 +2198,14 @@ def pywrap_tensorflow_macro(
 #    Note that this only works on Windows. See the definition of
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
-def py_test(deps = [], data = [], kernels = [], **kwargs):
+def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs):
     # Python version placeholder
     if kwargs.get("python_version", None) == "PY3":
         kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
+
+    if not exec_properties:
+        exec_properties = tf_exec_properties(kwargs)
+
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
@@ -2168,7 +2216,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
         }),
-        exec_properties = tf_exec_properties(kwargs),
+        exec_properties = exec_properties,
         **kwargs
     )
 
@@ -2890,12 +2938,32 @@ def tf_monitoring_python_deps():
         "//conditions:default": [],
     })
 
+# Teams sharing the same repo can provide their own ops_to_register.h file using
+# this function, and pass in -Ipath/to/repo flag when building the target.
+def tf_selective_registration_deps():
+    return []
+
 def tf_jit_compilation_passes_extra_deps():
     return []
 
 def if_mlir(if_true, if_false = []):
     return select({
         str(Label("//tensorflow:with_mlir_support")): if_true,
+        "//conditions:default": if_false,
+    })
+
+def tf_enable_mlir_bridge():
+    return select({
+        str(Label("//tensorflow:enable_mlir_bridge")): [
+            "//tensorflow/python:is_mlir_bridge_test_true",
+        ],
+        "//conditions:default": [],
+    })
+
+def if_tpu(if_true, if_false = []):
+    """Shorthand for select()ing whether to build for TPUs."""
+    return select({
+        str(Label("//tensorflow:with_tpu_support")): if_true,
         "//conditions:default": if_false,
     })
 

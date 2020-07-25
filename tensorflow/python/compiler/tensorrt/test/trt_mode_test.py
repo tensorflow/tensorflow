@@ -40,6 +40,11 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
     q = q + 5.0
     return array_ops.identity(q, name="output_0")
 
+  def ShouldRunTest(self, run_params):
+    # Squeeze op produces dynamic shaped values. Therefore, we don't run the
+    # test with static engine to avoid native segment execution.
+    return (run_params.dynamic_engine, "test dynamic engine only")
+
   def GetParams(self):
     """The input has 1 as a first dimension, which is removed by the squeeze.
 

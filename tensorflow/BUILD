@@ -467,6 +467,20 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag enables experimental MLIR bridge support.
+config_setting(
+    name = "enable_mlir_bridge",
+    values = {"define": "enable_mlir_bridge=true"},
+    visibility = ["//visibility:public"],
+)
+
+# This flag enables experimental TPU support
+config_setting(
+    name = "with_tpu_support",
+    values = {"define": "with_tpu_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 # Specifies via a config setting if this is a mobile build or not, makes
 # it easier to combine settings later.
 selects.config_setting_group(
@@ -518,16 +532,14 @@ selects.config_setting_group(
 package_group(
     name = "internal",
     packages = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/...",
         "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
-        "//third_party/swift/tensorflow_apis/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
+        "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
+        "//third_party/swift/tensorflow_apis/...",
     ],
 )
 

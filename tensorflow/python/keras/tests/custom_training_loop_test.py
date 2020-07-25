@@ -186,7 +186,7 @@ class CustomTrainingLoopTest(keras_parameterized.TestCase):
 
     def train_step(x):
       no_learning_phase_out = model(x)
-      self.assertIsNone(model.layer.training)
+      self.assertFalse(model.layer.training)
       with keras.backend.learning_phase_scope(0):
         inf_learning_phase_out = model(x)
       self.assertEqual(model.layer.training, 0)

@@ -169,7 +169,7 @@ class NcclIdStore {
   const std::shared_ptr<DistributedRuntimeClient> client_;
 
   absl::Mutex mu_;
-  absl::flat_hash_map<std::string, std::string> cache_ GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, std::string> cache_ ABSL_GUARDED_BY(mu_);
 };
 
 StatusOr<std::string> NcclIdStore::GetNcclUniqueId(const NcclCliqueKey& key) {

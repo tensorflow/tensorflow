@@ -146,7 +146,7 @@ def _unary_assert_doc(sym, sym_name):
 
     Raises:
       InvalidArgumentError: if the check can be performed immediately and
-        `x {sym}` is False. The check can be performed immediately during 
+        `x {sym}` is False. The check can be performed immediately during
         eager execution or if `x` is statically known.
     """.format(
         sym=sym, sym_name=cap_sym_name, opname=opname)
@@ -209,7 +209,7 @@ def _binary_assert_doc(sym):
 
     Raises:
       InvalidArgumentError: if the check can be performed immediately and
-        `x {sym} y` is False. The check can be performed immediately during 
+        `x {sym} y` is False. The check can be performed immediately during
         eager execution or if `x` and `y` are statically known.
     """.format(
         sym=sym, opname=opname)
@@ -1518,7 +1518,7 @@ def assert_type_v2(tensor, tf_type, message=None, name=None):
   This can always be checked statically, so this method returns nothing.
 
   Args:
-    tensor: A `Tensor`.
+    tensor: A `Tensor` or `SparseTensor`.
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -1537,7 +1537,7 @@ def assert_type(tensor, tf_type, message=None, name=None):
   """Statically asserts that the given `Tensor` is of the specified type.
 
   Args:
-    tensor: A `Tensor`.
+    tensor: A `Tensor` or `SparseTensor`.
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -1551,13 +1551,15 @@ def assert_type(tensor, tf_type, message=None, name=None):
   """
   message = message or ''
   with ops.name_scope(name, 'assert_type', [tensor]):
-    tensor = ops.convert_to_tensor(tensor, name='tensor')
+    if not isinstance(tensor, sparse_tensor.SparseTensor):
+      tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
       if context.executing_eagerly():
         raise TypeError('%s tensor must be of type %s' % (message, tf_type))
       else:
-        raise TypeError('%s  %s must be of type %s' % (message, tensor.name,
-                                                       tf_type))
+        raise TypeError(
+            '%s  %s must be of type %s' %
+            (message, tensor.name if hasattr(tensor, 'name') else '', tf_type))
 
     return control_flow_ops.no_op('statically_determined_correct_type')
 
@@ -1634,7 +1636,7 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   >>> n = 10
   >>> q = 3
   >>> d = 7
-  >>> x = tf.zeros([n,q]) 
+  >>> x = tf.zeros([n,q])
   >>> y = tf.ones([n,d])
   >>> param = tf.Variable([1.0, 2.0, 3.0])
   >>> scalar = 1.0
@@ -1644,9 +1646,9 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   ...  (param, ('Q',)),
   ...  (scalar, ()),
   ... ])
-  
+
   >>> tf.debugging.assert_shapes([
-  ...   (x, ('N', 'D')), 
+  ...   (x, ('N', 'D')),
   ...   (y, ('N', 'D'))
   ... ])
   Traceback (most recent call last):
@@ -1745,8 +1747,23 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   prefix) are both treated as having a single dimension of size one.
 
   Args:
-    shapes: dictionary with (`Tensor` to shape) items, or a list of
-      (`Tensor`, shape) tuples. A shape must be an iterable.
+    shapes: A list of (`Tensor`, `shape`) tuples, wherein `shape` is the
+      expected shape of `Tensor`. See the example code above. The `shape` must
+      be an iterable. Each element of the iterable can be either a concrete
+      integer value or a string that abstractly represents the dimension.
+      For example,
+        - `('N', 'Q')` specifies a 2D shape wherein the first and second
+          dimensions of shape may or may not be equal.
+        - `('N', 'N', 'Q')` specifies a 3D shape wherein the first and second
+          dimensions are equal.
+        - `(1, 'N')` specifies a 2D shape wherein the first dimension is
+          exactly 1 and the second dimension can be any value.
+      Note that the abstract dimension letters take effect across different
+      tuple elements of the list. For example,
+      `tf.debugging.assert_shapes([(x, ('N', 'A')), (y, ('N', 'B'))]` asserts
+      that both `x` and `y` are rank-2 tensors and their first dimensions are
+      equal (`N`).
+      `shape` can also be a `tf.TensorShape`.
     data: The tensors to print out if the condition is False.  Defaults to error
       message and first few entries of the violating tensor.
     summarize: Print this many entries of the tensor.
@@ -2202,6 +2219,25 @@ def assert_scalar(tensor, name=None, message=None):
 def ensure_shape(x, shape, name=None):
   """Updates the shape of a tensor and checks at runtime that the shape holds.
 
+  For example:
+
+  >>> @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  ... def f(tensor):
+  ...   return tf.ensure_shape(tensor, [3, 3])
+  >>>
+  >>> f(tf.zeros([3, 3])) # Passes
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+  array([[0., 0., 0.],
+         [0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)>
+  >>> f([1, 2, 3]) # fails
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError:  Shape of tensor x [3] is not compatible with expected shape [3,3].
+
+  The above example raises `tf.errors.InvalidArgumentError`,
+  because the shape (3,) is not compatible with the shape (None, 3, 3)
+
   With eager execution this is a shape assertion, that returns the input:
 
   >>> x = tf.constant([1,2,3])
@@ -2288,8 +2324,10 @@ def ensure_shape(x, shape, name=None):
     name: A name for this operation (optional). Defaults to "EnsureShape".
 
   Returns:
-    A `Tensor`. Has the same type and contents as `x`. At runtime, raises a
-    `tf.errors.InvalidArgumentError` if `shape` is incompatible with the shape
+    A `Tensor`. Has the same type and contents as `x`.
+
+  Raises:
+    tf.errors.InvalidArgumentError: If `shape` is incompatible with the shape
     of `x`.
   """
   if not isinstance(shape, tensor_shape.TensorShape):

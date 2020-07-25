@@ -112,6 +112,7 @@ absl::Status SelectConvolutionTransposed(
     case Vendor::POWERVR:
     case Vendor::NVIDIA:
     case Vendor::AMD:
+    case Vendor::INTEL:
       return SelectConvolutionTransposedPowerVR(attr, creation_context, op_def,
                                                 ptr);
     case Vendor::MALI:

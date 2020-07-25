@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.compat import compat
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -431,7 +432,8 @@ def _random_flip(image, flip_index, seed, scope_name):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+
+    def f_rank3():
       uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
       mirror_cond = math_ops.less(uniform_random, .5)
       result = control_flow_ops.cond(
@@ -440,7 +442,8 @@ def _random_flip(image, flip_index, seed, scope_name):
           lambda: image,
           name=scope)
       return fix_image_flip_shape(image, result)
-    elif shape.ndims == 4:
+
+    def f_rank4():
       batch_size = array_ops.shape(image)[0]
       uniform_random = random_ops.random_uniform([batch_size],
                                                  0,
@@ -451,6 +454,14 @@ def _random_flip(image, flip_index, seed, scope_name):
       flips = math_ops.cast(flips, image.dtype)
       flipped_input = array_ops.reverse(image, [flip_index + 1])
       return flips * flipped_input + (1 - flips) * image
+
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    if shape.ndims == 3:
+      return f_rank3()
+    elif shape.ndims == 4:
+      return f_rank4()
     else:
       raise ValueError(
           '\'image\' (shape %s) must have either 3 or 4 dimensions.' % shape)
@@ -549,10 +560,20 @@ def _flip(image, flip_index, scope_name):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+
+    def f_rank3():
       return fix_image_flip_shape(image, array_ops.reverse(image, [flip_index]))
-    elif shape.ndims == 4:
+
+    def f_rank4():
       return array_ops.reverse(image, [flip_index + 1])
+
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
+      return f_rank3()
+    elif shape.ndims == 4:
+      return f_rank4()
     else:
       raise ValueError(
           '\'image\' (shape %s)must have either 3 or 4 dimensions.' % shape)
@@ -599,7 +620,17 @@ def rot90(image, k=1, name=None):
     k = math_ops.mod(k, 4)
 
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+
+      def f_rank3():
+        return _rot90_3D(image, k, scope)
+
+      def f_rank4():
+        return _rot90_4D(image, k, scope)
+
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
       return _rot90_3D(image, k, scope)
     elif shape.ndims == 4:
       return _rot90_4D(image, k, scope)
@@ -722,7 +753,17 @@ def transpose(image, name=None):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
-    if shape.ndims == 3 or shape.ndims is None:
+    if shape.ndims is None:
+      rank = array_ops.rank(image)
+
+      def f_rank3():
+        return array_ops.transpose(image, [1, 0, 2], name=name)
+
+      def f_rank4():
+        return array_ops.transpose(image, [0, 2, 1, 3], name=name)
+
+      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+    elif shape.ndims == 3:
       return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
       return array_ops.transpose(image, [0, 2, 1, 3], name=name)
@@ -1793,7 +1834,7 @@ def random_contrast(image, lower, upper, seed=None):
   """Adjust the contrast of an image or images by a random factor.
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
-  picked in the interval `[lower, upper]`.
+  picked in the interval `[lower, upper)`.
 
   Args:
     image: An image tensor with 3 or more dimensions.
@@ -1823,7 +1864,6 @@ def random_contrast(image, lower, upper, seed=None):
   if lower < 0:
     raise ValueError('lower must be non-negative.')
 
-  # Generate an a float in [lower, upper]
   contrast_factor = random_ops.random_uniform([], lower, upper, seed=seed)
   return adjust_contrast(image, contrast_factor)
 
@@ -2181,7 +2221,7 @@ def random_hue(image, max_delta, seed=None):
   """Adjust the hue of RGB images by a random factor.
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
-  picked in the interval `[-max_delta, max_delta]`.
+  picked in the interval `[-max_delta, max_delta)`.
 
   `max_delta` must be in the interval `[0, 0.5]`.
 
@@ -2391,7 +2431,7 @@ def random_saturation(image, lower, upper, seed=None):
   """Adjust the saturation of RGB images by a random factor.
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
-  picked in the interval `[lower, upper]`.
+  picked in the interval `[lower, upper)`.
 
   Usage Example:
 
@@ -2427,7 +2467,6 @@ def random_saturation(image, lower, upper, seed=None):
   if lower < 0:
     raise ValueError('lower must be non-negative.')
 
-  # Pick a float in [lower, upper]
   saturation_factor = random_ops.random_uniform([], lower, upper, seed=seed)
   return adjust_saturation(image, saturation_factor)
 
@@ -2634,6 +2673,23 @@ def decode_image(contents,
     ValueError: On incorrect number of channels.
   """
   with ops.name_scope(name, 'decode_image'):
+    if compat.forward_compatible(2020, 8, 14):
+      channels = 0 if channels is None else channels
+      if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
+        dest_dtype = dtype
+        dtype = dtypes.uint16
+        return convert_image_dtype(gen_image_ops.decode_image(
+            contents=contents,
+            channels=channels,
+            expand_animations=expand_animations,
+            dtype=dtype), dest_dtype)
+      else:
+        return gen_image_ops.decode_image(
+            contents=contents,
+            channels=channels,
+            expand_animations=expand_animations,
+            dtype=dtype)
+
     if channels not in (None, 0, 1, 3, 4):
       raise ValueError('channels must be in (None, 0, 1, 3, 4)')
     substr = string_ops.substr(contents, 0, 3)
@@ -2647,10 +2703,12 @@ def decode_image(contents,
       assert_decode = control_flow_ops.Assert(is_bmp, [decode_msg])
       bmp_channels = 0 if channels is None else channels
       good_channels = math_ops.not_equal(bmp_channels, 1, name='check_channels')
-      channels_msg = 'Channels must be in (None, 0, 3) when decoding BMP images'
+      channels_msg = ('Channels must be in (None, 0, 3, 4) when decoding BMP '
+                      'images')
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_decode, assert_channels]):
-        return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
+        return convert_image_dtype(
+            gen_image_ops.decode_bmp(contents, channels=bmp_channels), dtype)
 
     def _gif():
       """Decodes a GIF image."""
@@ -3642,20 +3700,25 @@ def ssim(img1,
     values are in range (-1, 1], when pixel values are non-negative. Returns
     a tensor with shape: broadcast(img1.shape[:-3], img2.shape[:-3]).
   """
-  _, _, checks = _verify_compatible_image_shapes(img1, img2)
-  with ops.control_dependencies(checks):
-    img1 = array_ops.identity(img1)
+  with ops.name_scope(None, 'SSIM', [img1, img2]):
+    # Convert to tensor if needed.
+    img1 = ops.convert_to_tensor(img1, name='img1')
+    img2 = ops.convert_to_tensor(img2, name='img2')
+    # Shape checking.
+    _, _, checks = _verify_compatible_image_shapes(img1, img2)
+    with ops.control_dependencies(checks):
+      img1 = array_ops.identity(img1)
 
-  # Need to convert the images to float32.  Scale max_val accordingly so that
-  # SSIM is computed correctly.
-  max_val = math_ops.cast(max_val, img1.dtype)
-  max_val = convert_image_dtype(max_val, dtypes.float32)
-  img1 = convert_image_dtype(img1, dtypes.float32)
-  img2 = convert_image_dtype(img2, dtypes.float32)
-  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, filter_size,
-                                          filter_sigma, k1, k2)
-  # Compute average over color channels.
-  return math_ops.reduce_mean(ssim_per_channel, [-1])
+    # Need to convert the images to float32.  Scale max_val accordingly so that
+    # SSIM is computed correctly.
+    max_val = math_ops.cast(max_val, img1.dtype)
+    max_val = convert_image_dtype(max_val, dtypes.float32)
+    img1 = convert_image_dtype(img1, dtypes.float32)
+    img2 = convert_image_dtype(img2, dtypes.float32)
+    ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, filter_size,
+                                            filter_sigma, k1, k2)
+    # Compute average over color channels.
+    return math_ops.reduce_mean(ssim_per_channel, [-1])
 
 
 # Default values obtained by Wang et al.
@@ -4556,7 +4619,7 @@ def non_max_suppression_padded(boxes,
     sorted_input: a boolean indicating whether the input boxes and scores
       are sorted in descending order by the score.
     canonicalized_coordinates: if box coordinates are given as
-    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+    `[y_min, x_min, y_max, x_max]`, setting to True eliminate redundant
      computation to canonicalize box coordinates.
     tile_size: an integer representing the number of boxes in a tile, i.e.,
       the maximum number of boxes per image that can be used to suppress other
@@ -4564,8 +4627,8 @@ def non_max_suppression_padded(boxes,
       potentially more redundant work.
   Returns:
     idx: a tensor with a shape of [..., num_boxes] representing the
-      indices selected by non-max suppression. The leadign dimensions
-      are the batch dimensions of the input boxes. All numbers are are within
+      indices selected by non-max suppression. The leading dimensions
+      are the batch dimensions of the input boxes. All numbers are within
       [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
       indices (i.e., idx[i][:num_valid[i]]) are valid.
     num_valid: a tensor of rank 0 or higher with a shape of [...]
@@ -4574,28 +4637,51 @@ def non_max_suppression_padded(boxes,
    Raises:
     ValueError: When set pad_to_max_output_size to False for batched input.
   """
-  # if no new arguments are used and no later than 2020/4/20, use the old
-  # version to give us time to fix TFLite conversion
+  # if no new arguments are used and no later than 2020/6/23, use the old
+  # version to give us time to fix TFLite conversion after the TF 2.3 release.
   if (not sorted_input) and \
       (not canonicalized_coordinates) and \
-      tile_size == 512 and not compat.forward_compatible(2020, 4, 20):
+      tile_size == 512 and not compat.forward_compatible(2020, 6, 23):
     return non_max_suppression_padded_v1(
         boxes, scores, max_output_size, iou_threshold, score_threshold,
         pad_to_max_output_size, name)
   else:
-    return non_max_suppression_padded_v2(
-        boxes, scores, max_output_size, iou_threshold, score_threshold,
-        pad_to_max_output_size, name, sorted_input, canonicalized_coordinates,
-        tile_size)
+    with ops.name_scope(name, 'non_max_suppression_padded'):
+      if not pad_to_max_output_size:
+        # pad_to_max_output_size may be set to False only when the shape of
+        # boxes is [num_boxes, 4], i.e., a single image. We make best effort to
+        # detect violations at compile time. If `boxes` does not have a static
+        # rank, the check allows computation to proceed.
+        if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
+          raise ValueError(
+              "'pad_to_max_output_size' (value {}) must be True for "
+              'batched input'.format(pad_to_max_output_size))
+      if name is None:
+        name = ''
+      idx, num_valid = non_max_suppression_padded_v2(
+          boxes, scores, max_output_size, iou_threshold, score_threshold,
+          sorted_input, canonicalized_coordinates, tile_size)
+      # def_function.function seems to lose shape information, so set it here.
+      if not pad_to_max_output_size:
+        idx = idx[0, :num_valid]
+      else:
+        batch_dims = array_ops.concat([
+            array_ops.shape(boxes)[:-2],
+            array_ops.expand_dims(max_output_size, 0)
+        ], 0)
+        idx = array_ops.reshape(idx, batch_dims)
+      return idx, num_valid
 
 
+# TODO(b/158709815): Improve performance regression due to
+# def_function.function.
+@def_function.function(
+    experimental_implements='non_max_suppression_padded_v2')
 def non_max_suppression_padded_v2(boxes,
                                   scores,
                                   max_output_size,
                                   iou_threshold=0.5,
                                   score_threshold=float('-inf'),
-                                  pad_to_max_output_size=False,
-                                  name=None,
                                   sorted_input=False,
                                   canonicalized_coordinates=False,
                                   tile_size=512):
@@ -4667,7 +4753,11 @@ def non_max_suppression_padded_v2(boxes,
 
   Args:
     boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
-      Dimensions except the last two are batch dimensions.
+      Dimensions except the last two are batch dimensions. The last dimension
+      represents box coordinates, given as [y_1, x_1, y_2, x_2]. The coordinates
+      on each dimension can be given in any order
+      (see also `canonicalized_coordinates`) but must describe a box with
+      a positive area.
     scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
     max_output_size: a scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non max suppression.
@@ -4675,13 +4765,10 @@ def non_max_suppression_padded_v2(boxes,
       overlap too much with respect to IoU (intersection over union).
     score_threshold: a float representing the threshold for box scores. Boxes
       with a score that is not larger than this threshold will be suppressed.
-    pad_to_max_output_size: whether to pad the output idx to max_output_size.
-      Must be set to True when the input is a batch of images.
-    name: name of operation.
     sorted_input: a boolean indicating whether the input boxes and scores
       are sorted in descending order by the score.
     canonicalized_coordinates: if box coordinates are given as
-    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+    `[y_min, x_min, y_max, x_max]`, setting to True eliminate redundant
      computation to canonicalize box coordinates.
     tile_size: an integer representing the number of boxes in a tile, i.e.,
       the maximum number of boxes per image that can be used to suppress other
@@ -4689,8 +4776,8 @@ def non_max_suppression_padded_v2(boxes,
       potentially more redundant work.
   Returns:
     idx: a tensor with a shape of [..., num_boxes] representing the
-      indices selected by non-max suppression. The leadign dimensions
-      are the batch dimensions of the input boxes. All numbers are are within
+      indices selected by non-max suppression. The leading dimensions
+      are the batch dimensions of the input boxes. All numbers are within
       [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
       indices (i.e., idx[i][:num_valid[i]]) are valid.
     num_valid: a tensor of rank 0 or higher with a shape of [...]
@@ -4730,104 +4817,101 @@ def non_max_suppression_padded_v2(boxes,
           [batch_size, -1, 4])
     return sorted_scores, sorted_boxes, sorted_scores_indices
 
-  with ops.name_scope(name, 'non_max_suppression_padded'):
-    if not pad_to_max_output_size:
-      # pad_to_max_output_size may be set to False only when the shape of boxes`
-      # is [num_boxes, 4], i.e., a single image. We make best effort to detect
-      # violations at compile time. If `boxes` does not have a static rank,
-      # the check allows computation to proceed.
-      if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
-        raise ValueError("'pad_to_max_output_size' (value {}) must be True for "
-                         "batched input".format(pad_to_max_output_size))
+  batch_dims = array_ops.shape(boxes)[:-2]
+  num_boxes = array_ops.shape(boxes)[-2]
+  boxes = array_ops.reshape(boxes, [-1, num_boxes, 4])
+  scores = array_ops.reshape(scores, [-1, num_boxes])
+  batch_size = array_ops.shape(boxes)[0]
+  if score_threshold != float('-inf'):
+    with ops.name_scope('filter_by_score'):
+      score_mask = math_ops.cast(scores > score_threshold, scores.dtype)
+      scores *= score_mask
+      box_mask = array_ops.expand_dims(
+          math_ops.cast(score_mask, boxes.dtype), 2)
+      boxes *= box_mask
 
-    batch_dims = array_ops.shape(boxes)[:-2]
-    num_boxes = array_ops.shape(boxes)[-2]
-    boxes = array_ops.reshape(boxes, [-1, num_boxes, 4])
-    scores = array_ops.reshape(scores, [-1, num_boxes])
-    batch_size = array_ops.shape(boxes)[0]
-    if score_threshold != float('-inf'):
-      with ops.name_scope('filter_by_score'):
-        score_mask = math_ops.cast(scores > score_threshold, scores.dtype)
-        scores *= score_mask
-        box_mask = array_ops.expand_dims(
-            math_ops.cast(score_mask, boxes.dtype), 2)
-        boxes *= box_mask
+  if not canonicalized_coordinates:
+    with ops.name_scope('canonicalize_coordinates'):
+      y_1, x_1, y_2, x_2 = array_ops.split(
+          value=boxes, num_or_size_splits=4, axis=2)
+      y_1_is_min = math_ops.reduce_all(
+          math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
+      y_min, y_max = control_flow_ops.cond(
+          y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
+      x_1_is_min = math_ops.reduce_all(
+          math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
+      x_min, x_max = control_flow_ops.cond(
+          x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
+      boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
 
-    if not canonicalized_coordinates:
-      with ops.name_scope('canonicalize_coordinates'):
-        y_1, x_1, y_2, x_2 = array_ops.split(
-            value=boxes, num_or_size_splits=4, axis=2)
-        y_1_is_min = math_ops.reduce_all(
-            math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
-        y_min, y_max = control_flow_ops.cond(
-            y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
-        x_1_is_min = math_ops.reduce_all(
-            math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
-        x_min, x_max = control_flow_ops.cond(
-            x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
-        boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
+  if not sorted_input:
+    scores, boxes, sorted_indices = _sort_scores_and_boxes(scores, boxes)
+  else:
+    # Default value required for Autograph.
+    sorted_indices = array_ops.zeros_like(scores, dtype=dtypes.int32)
 
-    if not sorted_input:
-      scores, boxes, sorted_indices = _sort_scores_and_boxes(scores, boxes)
+  pad = math_ops.cast(
+      math_ops.ceil(
+          math_ops.cast(
+              math_ops.maximum(num_boxes, max_output_size), dtypes.float32) /
+          math_ops.cast(tile_size, dtypes.float32)),
+      dtypes.int32) * tile_size - num_boxes
+  boxes = array_ops.pad(
+      math_ops.cast(boxes, dtypes.float32), [[0, 0], [0, pad], [0, 0]])
+  scores = array_ops.pad(
+      math_ops.cast(scores, dtypes.float32), [[0, 0], [0, pad]])
+  num_boxes_after_padding = num_boxes + pad
+  num_iterations = num_boxes_after_padding // tile_size
+  def _loop_cond(unused_boxes, unused_threshold, output_size, idx):
+    return math_ops.logical_and(
+        math_ops.reduce_min(output_size) < max_output_size,
+        idx < num_iterations)
 
-    pad = math_ops.cast(
-        math_ops.ceil(
-            math_ops.cast(math_ops.maximum(num_boxes, max_output_size),
-                          dtypes.float32) / tile_size
-            ),
-        dtypes.int32) * tile_size - num_boxes
-    boxes = array_ops.pad(
-        math_ops.cast(boxes, dtypes.float32), [[0, 0], [0, pad], [0, 0]])
-    scores = array_ops.pad(
-        math_ops.cast(scores, dtypes.float32), [[0, 0], [0, pad]])
-    num_boxes_after_padding = num_boxes + pad
-    num_iterations = num_boxes_after_padding // tile_size
-    def _loop_cond(unused_boxes, unused_threshold, output_size, idx):
-      return math_ops.logical_and(
-          math_ops.reduce_min(output_size) < max_output_size,
-          idx < num_iterations)
+  def suppression_loop_body(boxes, iou_threshold, output_size, idx):
+    return _suppression_loop_body(
+        boxes, iou_threshold, output_size, idx, tile_size)
 
-    def suppression_loop_body(boxes, iou_threshold, output_size, idx):
-      return _suppression_loop_body(
-          boxes, iou_threshold, output_size, idx, tile_size)
+  selected_boxes, _, output_size, _ = control_flow_ops.while_loop(
+      _loop_cond,
+      suppression_loop_body,
+      [
+          boxes, iou_threshold,
+          array_ops.zeros([batch_size], dtypes.int32),
+          constant_op.constant(0)
+      ],
+      shape_invariants=[
+          tensor_shape.TensorShape([None, None, 4]),
+          tensor_shape.TensorShape([]),
+          tensor_shape.TensorShape([None]),
+          tensor_shape.TensorShape([]),
+      ],
+  )
+  num_valid = math_ops.minimum(output_size, max_output_size)
+  idx = num_boxes_after_padding - math_ops.cast(
+      nn_ops.top_k(
+          math_ops.cast(math_ops.reduce_any(
+              selected_boxes > 0, [2]), dtypes.int32) *
+          array_ops.expand_dims(
+              math_ops.range(num_boxes_after_padding, 0, -1), 0),
+          max_output_size)[0], dtypes.int32)
+  idx = math_ops.minimum(idx, num_boxes - 1)
 
-    selected_boxes, _, output_size, _ = control_flow_ops.while_loop(
-        _loop_cond, suppression_loop_body,
-        [boxes, iou_threshold, array_ops.zeros([batch_size], dtypes.int32),
-         constant_op.constant(0)]
-        )
-    num_valid = math_ops.minimum(output_size, max_output_size)
-    idx = num_boxes_after_padding - math_ops.cast(
-        nn_ops.top_k(
-            math_ops.cast(math_ops.reduce_any(
-                selected_boxes > 0, [2]), dtypes.int32) *
-            array_ops.expand_dims(
-                math_ops.range(num_boxes_after_padding, 0, -1), 0),
-            max_output_size)[0], dtypes.int32)
-    idx = math_ops.minimum(idx, num_boxes - 1)
+  if not sorted_input:
+    index_offsets = math_ops.range(batch_size) * num_boxes
+    gather_idx = array_ops.reshape(
+        idx + array_ops.expand_dims(index_offsets, 1), [-1])
+    idx = array_ops.reshape(
+        array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
+                         gather_idx),
+        [batch_size, -1])
+  invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+  idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
+  num_valid_expanded = array_ops.expand_dims(num_valid, 1)
+  idx = array_ops.where(idx_index < num_valid_expanded,
+                        idx, invalid_index)
 
-    if not sorted_input:
-      index_offsets = math_ops.range(batch_size) * num_boxes
-      gather_idx = array_ops.reshape(
-          idx + array_ops.expand_dims(index_offsets, 1), [-1])
-      idx = array_ops.reshape(
-          array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
-                           gather_idx),
-          [batch_size, -1])
-    invalid_index = array_ops.fill([batch_size, max_output_size], 0)
-    idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
-    num_valid_expanded = array_ops.expand_dims(num_valid, 1)
-    idx = array_ops.where(idx_index < num_valid_expanded,
-                          idx, invalid_index)
-
-    num_valid = array_ops.reshape(num_valid, batch_dims)
-    if not pad_to_max_output_size:
-      idx = idx[0, :num_valid]
-      return idx, num_valid
-    last_dim = constant_op.constant(-1, shape=[1])
-    batch_dims = array_ops.concat([batch_dims, last_dim], 0)
-    idx = array_ops.reshape(idx, batch_dims)
-    return idx, num_valid
+  num_valid = array_ops.reshape(num_valid, batch_dims)
+  return idx, num_valid
 
 
 def non_max_suppression_padded_v1(boxes,

@@ -324,7 +324,7 @@ class TestStatefulLambda(keras_parameterized.TestCase):
     (    )?  <tf.Variable \'.*shift_and_scale/shift:0\'.+
     (    )?The layer cannot safely ensure proper Variable reuse.+''')
 
-    with self.assertRaisesRegexp(ValueError, expected_error):
+    with self.assertRaisesRegex(ValueError, expected_error):
       layer = keras.layers.Lambda(lambda_fn, name='shift_and_scale')
       model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
       model(array_ops.ones((4, 1)))
@@ -342,7 +342,7 @@ class TestStatefulLambda(keras_parameterized.TestCase):
     (    )?  <tf.Variable \'.*bias_dense/dense/kernel:0\'.+
     (    )?The layer cannot safely ensure proper Variable reuse.+''')
 
-    with self.assertRaisesRegexp(ValueError, expected_error):
+    with self.assertRaisesRegex(ValueError, expected_error):
       layer = keras.layers.Lambda(bad_lambda_fn, name='bias_dense')
       model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
       model(array_ops.ones((4, 1)))
@@ -365,7 +365,7 @@ class TestStatefulLambda(keras_parameterized.TestCase):
       raise ValueError(msg)
     layer._warn = patched_warn
 
-    with self.assertRaisesRegexp(ValueError, expected_warning):
+    with self.assertRaisesRegex(ValueError, expected_warning):
       model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
       model(array_ops.ones((4, 1)))
 
@@ -448,13 +448,13 @@ class CoreLayersTest(keras_parameterized.TestCase):
         keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
 
   def test_permute_errors_on_invalid_starting_dims_index(self):
-    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+    with self.assertRaisesRegex(ValueError, r'Invalid permutation .*dims.*'):
       testing_utils.layer_test(
           keras.layers.Permute,
           kwargs={'dims': (0, 1, 2)}, input_shape=(3, 2, 4))
 
   def test_permute_errors_on_invalid_set_of_dims_indices(self):
-    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+    with self.assertRaisesRegex(ValueError, r'Invalid permutation .*dims.*'):
       testing_utils.layer_test(
           keras.layers.Permute,
           kwargs={'dims': (1, 4, 2)}, input_shape=(3, 2, 4))

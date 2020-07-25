@@ -3682,6 +3682,11 @@ class XLAControlFlowContext(ControlFlowContext):
   def AddValue(self, x):
     return x
 
+  def RequiresUniqueFunctionRetracing(self):
+    """Returns whether the tf.function should be retraced if the context changes.
+    """
+    return False
+
 
 def from_control_flow_context_def(context_def, import_scope=None):
   """Deserializes `context_def` into the appropriate ControlFlowContext.

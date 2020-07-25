@@ -310,7 +310,7 @@ class MixedPrecisionLossScaleOptimizerTest(test.TestCase,
 
   def testPassingNoneToLossScale(self):
     opt = gradient_descent.GradientDescentOptimizer(1.0)
-    with self.assertRaisesRegexp(ValueError, r'loss_scale cannot be None'):
+    with self.assertRaisesRegex(ValueError, r'loss_scale cannot be None'):
       loss_scale_optimizer.MixedPrecisionLossScaleOptimizer(opt, None)
 
 

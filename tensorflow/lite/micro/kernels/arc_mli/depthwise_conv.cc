@@ -71,10 +71,10 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
   const int in_ch = SizeOfDimension(input, 3);
   const int filters_num = SizeOfDimension(filter, 3);
 
-  // MLI optimized version only supports int8 dataype, dilation factor of 1 and
-  // per-axis quantization of weights (no broadcasting/per-tensor)
-  // (in_ch == filters_num) || (in_ch == 1)) is a forbidding of
-  // channel multiplier logic for multichannel input.
+  // MLI optimized version only supports int8_t dataype, dilation factor of 1
+  // and per-axis quantization of weights (no broadcasting/per-tensor) (in_ch ==
+  // filters_num) || (in_ch == 1)) is a forbidding of channel multiplier logic
+  // for multichannel input.
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&
                  (params->dilation_width_factor == 1) &&
@@ -373,10 +373,10 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   reference_integer_ops::DepthwiseConvPerChannel(
       op_params, data->per_channel_output_multiplier,
       data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+      GetTensorData<int8_t>(input), GetTensorShape(filter),
+      GetTensorData<int8_t>(filter), GetTensorShape(bias),
+      GetTensorData<int32_t>(bias), GetTensorShape(output),
+      GetTensorData<int8_t>(output));
   return kTfLiteOk;
 #else
   TF_LITE_KERNEL_LOG(context,
@@ -498,16 +498,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace depthwise_conv
 
-TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/depthwise_conv::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_DEPTHWISE_CONV_2D() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/depthwise_conv::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

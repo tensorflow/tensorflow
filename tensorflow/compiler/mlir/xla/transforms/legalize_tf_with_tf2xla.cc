@@ -23,12 +23,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -36,7 +40,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -69,16 +72,16 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 
 template <typename T, size_t N>
 using InlinedVector = tensorflow::gtl::InlinedVector<T, N>;  // non-absl ok
 
-static bool IsOpWhitelisted(Operation* op) {
-  // White-listed TensorFlow ops are known to have well behaved tf2xla kernels
+static bool IsOpAllowlisted(Operation* op) {
+  // Allowlisted TensorFlow ops are known to have well behaved tf2xla kernels
   // building valid MLIR using MlirHloBuilder.
-  // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
+  // TODO(hinsu): Drop explicit allowlist when MLIR based bridge is enabled for
   // all tf2xla kernels.
   // clang-format off
   static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
@@ -88,6 +91,9 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::AddNOp>(),
     TypeID::get<TF::AddV2Op>(),
     TypeID::get<TF::AngleOp>(),
+    TypeID::get<TF::AdjustContrastv2Op>(),
+    TypeID::get<TF::AdjustHueOp>(),
+    TypeID::get<TF::AdjustSaturationOp>(),
     TypeID::get<TF::ApproximateEqualOp>(),
     TypeID::get<TF::ArgMaxOp>(),
     TypeID::get<TF::ArgMinOp>(),
@@ -127,6 +133,7 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GreaterEqualOp>(),
     TypeID::get<TF::GreaterOp>(),
+    TypeID::get<TF::HSVToRGBOp>(),
     TypeID::get<TF::IFFT2DOp>(),
     TypeID::get<TF::IFFT3DOp>(),
     TypeID::get<TF::IFFTOp>(),
@@ -157,10 +164,14 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::PowOp>(),
     TypeID::get<TF::RFFT2DOp>(),
     TypeID::get<TF::RFFT3DOp>(),
+    TypeID::get<TF::RGBToHSVOp>(),
     TypeID::get<TF::RealDivOp>(),
     TypeID::get<TF::ReciprocalOp>(),
     TypeID::get<TF::ReciprocalGradOp>(),
     TypeID::get<TF::Relu6GradOp>(),
+    TypeID::get<TF::ResizeBilinearOp>(),
+    TypeID::get<TF::ResizeBilinearGradOp>(),
+    TypeID::get<TF::ResizeNearestNeighborOp>(),
     TypeID::get<TF::ReverseSequenceOp>(),
     TypeID::get<TF::RightShiftOp>(),
     TypeID::get<TF::RintOp>(),
@@ -202,7 +213,7 @@ static bool IsOpWhitelisted(Operation* op) {
 }
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
-    const std::string& device_type, const Location& loc) {
+    const std::string& device_type) {
   // Register compilation kernels for all registered XLA backends.
   tensorflow::XlaOpRegistry::RegisterCompilationKernels();
 
@@ -211,42 +222,47 @@ static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
   return absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
-class FuncLegalizer {
+class Tf2XlaRewriter {
  public:
-  static LogicalResult Legalize(FuncOp func, const std::string& device_type) {
-    FuncLegalizer legalizer(func, device_type);
-    if (failed(legalizer.PrepareParams())) return failure();
-    return legalizer.Legalize();
+  static LogicalResult RewriteOp(Operation* op, PatternRewriter& rewriter,
+                                 const std::string& device_type) {
+    Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type);
+    return tf2xla_rewriter.LegalizeOp();
   }
 
  private:
-  FuncLegalizer(FuncOp func, const std::string& device_type)
-      : func_(func), device_type_(device_type), hlo_builder_(func) {}
+  Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
+                 const std::string& device_type)
+      : op_(op),
+        device_type_(device_type),
+        rewriter_(rewriter),
+        hlo_builder_(op->getName().getStringRef().str(), rewriter_,
+                     op->getLoc()),
+        context_(nullptr) {}
 
-  ~FuncLegalizer() { context_->Unref(); }
+  ~Tf2XlaRewriter() {
+    if (context_) context_->Unref();
+  }
 
   // Prepares OpKernelContext params common to all the ops.
   // Emits an error on failure.
   LogicalResult PrepareParams();
-
-  // Tries to legalize supported TensorFlow ops.
-  // Emits an error on failure.
-  LogicalResult Legalize();
 
   // Tries to legalize the specified TensorFlow op, if supported.
   //
   // Emits an error and returns failure if an error is encountered during
   // conversion. Note that success return value doesn't mean successful
   // legalization.
-  LogicalResult LegalizeOp(Operation* op);
+  LogicalResult LegalizeOp();
 
   // Converts the given operand to expression of kind kConstant or kXlaOp.
   // Emits a remark and returns expression of kind kInvalid on failure.
   tensorflow::XlaExpression GetExprForOperand(Value operand, Operation* op);
 
-  FuncOp func_;
+  Operation* op_;
   std::string device_type_;
 
+  PatternRewriter& rewriter_;
   ::xla::MlirHloBuilder hlo_builder_;
   tensorflow::OpOrArgLocNameMapper name_mapper_;
 
@@ -260,15 +276,14 @@ class FuncLegalizer {
   tensorflow::OpKernelContext::Params params_;
 };
 
-LogicalResult FuncLegalizer::PrepareParams() {
+LogicalResult Tf2XlaRewriter::PrepareParams() {
   // XlaCompiler within the context is only used by the functional ops to
   // compile functions. We are not handling those at the moment so XlaCompiler
   // is not required.
   context_ = new tensorflow::XlaContext(/*compiler=*/nullptr, &hlo_builder_);
   context_->Ref();
 
-  mlir::Location loc = func_.getLoc();
-  device_mgr_ = CreateDeviceMgr(device_type_, loc);
+  device_mgr_ = CreateDeviceMgr(device_type_);
   if (!device_mgr_) return failure();
 
   // Type of params_.device is DeviceBase* so store it as Device* to access
@@ -288,18 +303,16 @@ LogicalResult FuncLegalizer::PrepareParams() {
       device_->resource_manager(),
       tensorflow::XlaContext::kXlaContextResourceName, context_);
   if (!status.ok()) {
-    emitError(loc) << "failed to create XlaContext resource: "
-                   << status.ToString();
-    return failure();
+    return emitError(op_->getLoc())
+           << "failed to create XlaContext resource: " << status.ToString();
   }
   params_.step_container = step_container_.get();
 
   tensorflow::StatusOr<int64_t> version_or =
       tensorflow::GetTfGraphProducerVersion(
-          func_.getParentOfType<mlir::ModuleOp>());
+          op_->getParentOfType<mlir::ModuleOp>());
   if (!version_or.ok()) {
-    emitError(loc) << version_or.status().ToString();
-    return failure();
+    return emitError(op_->getLoc()) << version_or.status().ToString();
   }
 
   flib_def_ = absl::make_unique<tensorflow::FunctionLibraryDefinition>(
@@ -311,61 +324,38 @@ LogicalResult FuncLegalizer::PrepareParams() {
   return success();
 }
 
-LogicalResult FuncLegalizer::Legalize() {
-  // TensorFlow functions don't use CFGs.
-  if (func_.getBlocks().size() > 1) {
-    emitError(func_.getLoc()) << "requires at most one block in a TF function";
-    return failure();
-  }
-  if (func_.getBlocks().empty()) return success();
-  Block& block = func_.getBlocks().front();
-
-  std::vector<Operation*> ops;
-  ops.reserve(block.getOperations().size());
-  for (Operation& op : block.getOperations()) {
-    ops.push_back(&op);
-  }
-
-  for (Operation* op : ops) {
-    if (failed(LegalizeOp(op))) return failure();
-  }
-  return success();
-}
-
-LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
-  if (!IsOpWhitelisted(op)) return success();
-
+LogicalResult Tf2XlaRewriter::LegalizeOp() {
   // Only static shaped operands are supported in XLA builders for now.
-  for (Type ty : op->getOperandTypes()) {
-    auto ranked_ty = ty.cast<ShapedType>();
-    if (!ranked_ty.hasStaticShape()) {
-      op->emitRemark() << "lowering requires static shaped operands";
-      return success();
+  for (Type ty : op_->getOperandTypes()) {
+    auto ranked_ty = ty.dyn_cast<ShapedType>();
+    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+      return op_->emitRemark()
+             << "lowering requires static shaped tensor operands";
     }
   }
 
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
-      op, name_mapper_.GetUniqueName(op), /*ignore_unregistered_attrs=*/true);
+      op_, name_mapper_.GetUniqueName(op_), /*ignore_unregistered_attrs=*/true);
   if (!nodedef_or.ok()) {
-    op->emitRemark() << "failed to convert op to NodeDef: "
-                     << nodedef_or.status().ToString();
-    return success();
+    return op_->emitRemark() << "failed to convert op to NodeDef: "
+                             << nodedef_or.status().ToString();
   }
+
+  if (failed(PrepareParams())) return failure();
 
   std::shared_ptr<const tensorflow::NodeProperties> props;
   tensorflow::Status status = tensorflow::NodeProperties::CreateFromNodeDef(
       *nodedef_or.ValueOrDie(),
       params_.function_library->GetFunctionLibraryDefinition(), &props);
   if (!status.ok()) {
-    op->emitRemark() << "failed to create NodeProperties: "
-                     << status.ToString();
-    return success();
+    return op_->emitRemark()
+           << "failed to create NodeProperties: " << status.ToString();
   }
   tensorflow::OpKernel* op_kernel_raw;
   status = params_.function_library->CreateKernel(props, &op_kernel_raw);
   if (!status.ok()) {
-    op->emitRemark() << "failed to create tf2xla kernel: " << status.ToString();
-    return success();
+    return op_->emitRemark()
+           << "failed to create tf2xla kernel: " << status.ToString();
   }
   // Transfer ownership of the kernel to a local smart pointer.
   auto op_kernel = absl::WrapUnique(op_kernel_raw);
@@ -374,9 +364,8 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   status = tensorflow::XlaOpRegistry::CompileTimeConstantInputs(
       *op_kernel, &required_constants);
   if (!status.ok()) {
-    op->emitRemark() << "failed to compute required constants: "
-                     << status.ToString();
-    return success();
+    return op_->emitRemark()
+           << "failed to compute required constants: " << status.ToString();
   }
   llvm::SmallDenseSet<int, 4> required_consts;
   required_consts.insert(required_constants.begin(), required_constants.end());
@@ -386,37 +375,35 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   InlinedVector<tensorflow::XlaExpression, 4> expressions;
   InlinedVector<tensorflow::Tensor, 4> tensors;
   InlinedVector<tensorflow::TensorValue, 4> inputs;
-  expressions.reserve(op->getNumOperands());
-  tensors.reserve(op->getNumOperands());
-  inputs.reserve(op->getNumOperands());
+  expressions.reserve(op_->getNumOperands());
+  tensors.reserve(op_->getNumOperands());
+  inputs.reserve(op_->getNumOperands());
 
   // Prepare the list of Tensor inputs for the kernel.
-  for (auto it : llvm::enumerate(op->getOperands())) {
+  for (auto it : llvm::enumerate(op_->getOperands())) {
     Value operand = it.value();
     size_t idx = it.index();
 
-    tensorflow::XlaExpression expr = GetExprForOperand(operand, op);
+    tensorflow::XlaExpression expr = GetExprForOperand(operand, op_);
     tensorflow::XlaExpression::Kind kind = expr.kind();
-    if (kind == tensorflow::XlaExpression::Kind::kInvalid) return success();
+    if (kind == tensorflow::XlaExpression::Kind::kInvalid) return failure();
     if (required_consts.count(idx) &&
         kind != tensorflow::XlaExpression::Kind::kConstant) {
-      op->emitRemark() << "lowering requires operand #" << idx
-                       << " to be a constant";
-      return success();
+      return op_->emitRemark()
+             << "lowering requires operand #" << idx << " to be a constant";
     }
     expressions.push_back(expr);
 
     if (!tensorflow::DataTypeCanUseMemcpy(expr.dtype())) {
-      op->emitRemark() << "skipping legalization due to unsupported type "
-                       << operand.getType();
-      return success();
+      return op_->emitRemark()
+             << "skipping legalization due to unsupported type "
+             << operand.getType();
     }
 
     auto shape_or = expr.GetShape();
     if (!shape_or.ok()) {
-      op->emitRemark() << "failed to get shape for expression. "
-                       << expr.HumanString();
-      return success();
+      return op_->emitRemark()
+             << "failed to get shape for expression. " << expr.HumanString();
     }
 
     tensors.emplace_back(
@@ -430,45 +417,45 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   params_.inputs = &inputs;
   params_.op_kernel = op_kernel.get();
   llvm::SmallVector<tensorflow::AllocatorAttributes, 4> output_attr(
-      op->getNumResults());
+      op_->getNumResults());
   params_.output_attr_array = output_attr.data();
 
-  hlo_builder_.setInsertionPoint(op);
-  hlo_builder_.SetLocation(op->getLoc());
+  hlo_builder_.setInsertionPoint(op_);
+  hlo_builder_.SetLocation(op_->getLoc());
 
   // Execute the kernel.
-  tensorflow::OpKernelContext op_context(&params_, op->getNumResults());
+  tensorflow::OpKernelContext op_context(&params_, op_->getNumResults());
   device_->Compute(params_.op_kernel, &op_context);
   if (!op_context.status().ok()) {
-    op->emitRemark() << "compilation to HLO failed: "
-                     << op_context.status().ToString();
-    return success();
+    return op_->emitRemark()
+           << "compilation to HLO failed: " << op_context.status().ToString();
   }
 
   // Replace uses of old results using the corresponding value after the
   // lowering.
-  for (int i = 0, e = op->getNumResults(); i < e; i++) {
+  llvm::SmallVector<Value, 2> values;
+  values.reserve(op_->getNumResults());
+  for (int i = 0, e = op_->getNumResults(); i < e; i++) {
     tensorflow::Tensor* output = op_context.mutable_output(i);
     const tensorflow::XlaExpression* expr =
         tensorflow::XlaOpKernelContext::CastExpressionFromTensor(*output);
     if (expr->kind() != tensorflow::XlaExpression::Kind::kXlaOp)
-      return op->emitError(
+      return op_->emitError(
           "expects XlaExpression of kind kXlaOp in compiled output");
     auto value = hlo_builder_.GetValue(expr->handle());
-    mlir::OpResult old_result = op->getResult(i);
+    mlir::OpResult old_result = op_->getResult(i);
     if (value.getType() != old_result.getType()) {
       value =
           hlo_builder_.create<mlir::TensorCastOp>(value, old_result.getType());
     }
-    old_result.replaceAllUsesWith(value);
+    values.push_back(value);
   }
-
-  op->erase();
+  rewriter_.replaceOp(op_, values);
   return success();
 }
 
-tensorflow::XlaExpression FuncLegalizer::GetExprForOperand(Value operand,
-                                                           Operation* op) {
+tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
+                                                            Operation* op) {
   ElementsAttr const_attr;
   auto defining_op = operand.getDefiningOp();
   if (defining_op && matchPattern(defining_op, m_Constant(&const_attr))) {
@@ -500,6 +487,21 @@ tensorflow::XlaExpression FuncLegalizer::GetExprForOperand(Value operand,
   return tensorflow::XlaExpression::XlaOp(xla_op, dtype);
 }
 
+class Tf2XlaRewritePattern : public RewritePattern {
+ public:
+  explicit Tf2XlaRewritePattern(const std::string& device_type)
+      : RewritePattern(1, MatchAnyOpTypeTag()), device_type_(device_type) {}
+
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
+    if (!IsOpAllowlisted(op)) return failure();
+    return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
+  }
+
+ private:
+  std::string device_type_;
+};
+
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
@@ -511,7 +513,9 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   LegalizeTF(const LegalizeTF&) {}
 
   void runOnFunction() override {
-    if (failed(FuncLegalizer::Legalize(getFunction(), device_type_)))
+    OwningRewritePatternList patterns;
+    patterns.insert<Tf2XlaRewritePattern>(device_type_);
+    if (failed(applyPatternsAndFoldGreedily(getFunction(), patterns)))
       signalPassFailure();
   }
 
@@ -530,10 +534,15 @@ static PassRegistration<LegalizeTF> pass(
 
 }  // end namespace
 
+void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
+                                          OwningRewritePatternList& patterns) {
+  patterns.insert<Tf2XlaRewritePattern>(device_type.str());
+}
+
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
     llvm::StringRef device_type) {
   return std::make_unique<LegalizeTF>(device_type);
 }
 
-}  // end namespace xla_hlo
+}  // end namespace mhlo
 }  // end namespace mlir

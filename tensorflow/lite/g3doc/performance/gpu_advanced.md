@@ -122,8 +122,8 @@ TFLite GPU for Android C/C++ uses the [Bazel](https://bazel.io) build system.
 The delegate can be built, for example, using the following command:
 
 ```sh
-bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:gl_delegate                  # for static library
-bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_gl.so  # for dynamic library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:delegate                           # for static library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so  # for dynamic library
 ```
 
 ### iOS (Swift)
@@ -233,8 +233,8 @@ the future.
 
 The GPU delegate already supports
 [float16 quantized](https://www.tensorflow.org/lite/performance/post_training_float16_quant)
-models. There is experimental support on Android to run 8-bit quantized as well.
-This includes all flavors of quantization, including:
+models. There is experimental support on Android and iOS to run 8-bit quantized
+as well. This includes all flavors of quantization, including:
 
 *   Models trained with
     [Quantization-aware training](https://www.tensorflow.org/lite/convert/quantization)
@@ -243,6 +243,24 @@ This includes all flavors of quantization, including:
 
 To optimize performance, use models that have floating-point input & output
 tensors.
+
+#### How does this work?
+
+Since the GPU backend only supports floating-point execution, we run quantized
+models by giving it a ‘floating-point view’ of the original model. At a
+high-level, this entails the following steps:
+
+*   *Constant tensors* (such as weights/biases) are dequantized once into the
+    GPU memory. This happens when the delegate is applied to the TFLite
+    Interpreter.
+
+*   *Inputs and outputs* to the GPU program, if 8-bit quantized, are dequantized
+    and quantized (respectively) for each inference. This is done on the CPU
+    using TFLite’s optimized kernels.
+
+*   The GPU program is modified to mimic quantized behavior by inserting
+    *quantization simulators* between operations. This is necessary for models
+    where ops expect activations to follow bounds learnt during quantization.
 
 This feature can be enabled using delegate options as follows:
 
@@ -314,7 +332,7 @@ avoidable memory copies.
 Assuming the image input is in GPU memory, it must first be converted to a
 `MTLBuffer` object for Metal. You can associate a TfLiteTensor to a
 user-prepared `MTLBuffer` with `TFLGpuDelegateBindMetalBufferToTensor()`. Note
-that `TFLGpuDelegateBindMetalBufferToTensor()` must be called before
+that `TFLGpuDelegateBindMetalBufferToTensor()` must be called after
 `Interpreter::ModifyGraphWithDelegate()`. Additionally, the inference output is,
 by default, copied from GPU memory to CPU memory. This behavior can be turned
 off by calling `Interpreter::SetAllowBufferHandleOutput(true)` during
@@ -328,10 +346,18 @@ initialization.
 
 // Prepare GPU delegate.
 auto* delegate = TFLGpuDelegateCreate(nullptr);
-interpreter->SetAllowBufferHandleOutput(true);  // disable default gpu->cpu copy
-if (!TFLGpuDelegateBindMetalBufferToTensor(delegate, interpreter->inputs()[0], user_provided_input_buffer)) return false;
-if (!TFLGpuDelegateBindMetalBufferToTensor(delegate, interpreter->outputs()[0], user_provided_output_buffer)) return false;
+
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
+
+interpreter->SetAllowBufferHandleOutput(true);  // disable default gpu->cpu copy
+if (!TFLGpuDelegateBindMetalBufferToTensor(
+        delegate, interpreter->inputs()[0], user_provided_input_buffer)) {
+  return false;
+}
+if (!TFLGpuDelegateBindMetalBufferToTensor(
+        delegate, interpreter->outputs()[0], user_provided_output_buffer)) {
+  return false;
+}
 
 // Run inference.
 if (interpreter->Invoke() != kTfLiteOk) return false;
@@ -340,6 +366,10 @@ if (interpreter->Invoke() != kTfLiteOk) return false;
 Note: Once the default behavior is turned off, copying the inference output from
 GPU memory to CPU memory requires an explicit call to
 `Interpreter::EnsureTensorDataIsReadable()` for each output tensor.
+
+Note: This also works for quantized models, but you still need to a **float32
+sized buffer with float32 data**, because the buffer will be bound to the
+internal dequantized buffer.
 
 ## Tips and Tricks
 

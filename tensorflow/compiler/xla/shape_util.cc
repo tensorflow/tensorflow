@@ -339,6 +339,15 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
+/* static */ void ShapeUtil::CopyDynamicDimensions(Shape* to,
+                                                   const Shape& from) {
+  CHECK_EQ(to->rank(), from.rank());
+  for (int64 i = 0; i < from.rank(); ++i) {
+    to->set_dynamic_dimension(i, from.is_dynamic_dimension(i));
+  }
+  TF_DCHECK_OK(ValidateShape(*to));
+}
+
 /* static */ bool ShapeUtil::ElementIsIntegral(const Shape& shape) {
   return primitive_util::IsIntegralType(shape.element_type());
 }
@@ -522,13 +531,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     text += ")";
     return text;
   }
-  string result = StrCat(
-      primitive_util::LowercasePrimitiveTypeName(shape.element_type()), "[");
-  for (int i = 0; i < shape.dimensions().size(); i++) {
-    StrAppend(&result, (i > 0) ? "," : "",
-              shape.is_dynamic_dimension(i) ? "<=" : "", shape.dimensions(i));
-  }
-  result += "]";
+  string result = HumanString(shape);
   if (IsScalar(shape)) {
     string layout_str = LayoutUtil::HumanString(shape.layout());
     // Don't print "{}" as layout for scalars.
@@ -1461,7 +1464,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   return shape;
 }
 
-/* static */ bool ShapeUtil::DynamicShapeIsCompatible(
+/* static */ bool ShapeUtil::DynamicArrayShapeIsCompatible(
     const xla::Shape& dynamic_shape, const xla::Shape& bounded_shape) {
   if (dynamic_shape.rank() != bounded_shape.rank()) {
     return false;
@@ -1472,6 +1475,36 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     }
   }
   return true;
+}
+
+/* static */ bool ShapeUtil::DynamicShapeIsCompatible(
+    const xla::Shape& dynamic_shape, const xla::Shape& bounded_shape) {
+  bool compatible = true;
+  xla::ShapeUtil::ForEachSubshape(dynamic_shape, [&](const Shape& sub_shape,
+                                                     const ShapeIndex& index) {
+    if (compatible) {
+      auto subshape_result = TryGetSubshape(bounded_shape, index);
+      if (subshape_result.ok()) {
+        const Shape* bounded_sub_shape = subshape_result.ConsumeValueOrDie();
+        if (sub_shape.IsTuple()) {
+          if (!bounded_sub_shape->IsTuple()) {
+            compatible = false;
+          }
+        } else {
+          if (bounded_sub_shape->IsTuple()) {
+            compatible = false;
+          } else if (!sub_shape.is_static() &&
+                     !DynamicArrayShapeIsCompatible(sub_shape,
+                                                    *bounded_sub_shape)) {
+            compatible = false;
+          }
+        }
+      } else {
+        compatible = false;
+      }
+    }
+  });
+  return compatible;
 }
 
 /* static */ Shape ShapeUtil::FilterDimensions(

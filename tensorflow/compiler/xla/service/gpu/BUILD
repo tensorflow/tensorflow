@@ -27,6 +27,7 @@ load(
     "if_cuda_is_configured",
 )
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//third_party/mlir:tblgen.bzl", "gentbl")
 
 package(
     default_visibility = [":friends"],
@@ -91,44 +92,19 @@ cc_library(
 )
 
 cc_library(
-    name = "partition_assignment",
+    name = "launch_dimensions",
     srcs = [
-        "partition_assignment.cc",
+        "launch_dimensions.cc",
     ],
     hdrs = [
-        "partition_assignment.h",
+        "launch_dimensions.h",
     ],
     deps = [
+        ":gpu_device_info",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
     ],
 )
-
-# TODO(b/29140563) This target is flaky, disabled until flakiness is
-# root-caused. Failed on 2016-06-08.
-#tf_cc_test(
-#    name = "partition_assignment_test",
-#    srcs = [
-#        "partition_assignment_test.cc",
-#    ],
-#    tags = tf_cuda_tests_tags(),
-#    deps = [
-#        ":partition_assignment",
-#        "//tensorflow/core:stream_executor_no_cuda",
-#        "//tensorflow/compiler/xla:shape_util",
-#        "//tensorflow/compiler/xla:xla_data_proto",
-#        "//tensorflow/compiler/xla/service:gpu_plugin",
-#        "//tensorflow/compiler/xla/service:hlo",
-#        "//tensorflow/compiler/xla/tests:hlo_test_base",
-#        "//tensorflow/core:test_main",
-#    ],
-#)
 
 tf_cc_test(
     name = "custom_call_test",
@@ -195,7 +171,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -246,6 +221,11 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_device_info",
+    hdrs = ["gpu_device_info.h"],
+)
+
+cc_library(
     name = "ir_emitter",
     srcs = [
         "ir_emitter.cc",
@@ -262,16 +242,15 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
-        ":cudnn_batchnorm_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_executable",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
+        ":launch_dimensions",
         ":nccl_all_reduce_thunk",
         ":parallel_loop_emitter",
-        ":partition_assignment",
         ":target_util",
         ":thunk",
         ":thunk_emitter",
@@ -287,6 +266,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:while_loop_analysis",
@@ -302,7 +282,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:sort_util",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
@@ -319,7 +298,7 @@ cc_library(
     srcs = ["parallel_loop_emitter.cc"],
     hdrs = ["parallel_loop_emitter.h"],
     deps = [
-        ":partition_assignment",
+        ":launch_dimensions",
         ":target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -572,7 +551,7 @@ cc_library(
         ":ir_emission_utils",
         ":nccl_all_reduce_thunk",  # fixdeps: keep
         ":outfeed_manager",
-        ":partition_assignment",
+        ":launch_dimensions",
         ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
@@ -636,6 +615,7 @@ cc_library(
     hdrs = ["ir_emission_utils.h"],
     deps = [
         ":backend_configs_cc",
+        ":gpu_device_info",
         ":target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -707,7 +687,7 @@ cc_library(
         ":gpu_autotuning_proto_cc",
         ":gpu_conv_runner",
         ":gpu_executable",
-        ":hlo_algorithm_blacklist",
+        ":hlo_algorithm_denylist",
         ":ir_emission_utils",
         ":stream_executor_util",
         "@com_google_absl//absl/algorithm:container",
@@ -1152,14 +1132,12 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
-        ":cudnn_pad_for_convolutions",
         ":fusion_merger",
         ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
-        ":gpu_conv_padding_legalization",
-        ":gpu_conv_rewriter",
         ":gpu_copy_insertion",
+        ":gpu_device_info",
         ":gpu_executable",
         ":gpu_hlo_schedule",
         ":gpu_layout_assignment",
@@ -1169,11 +1147,12 @@ cc_library(
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
+        ":launch_dimensions",
         ":multi_output_fusion",
-        ":partition_assignment",
         ":reduction_degenerate_dim_remover",
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
+        ":reduction_splitter",
         ":stream_assignment",
         ":stream_executor_util",
         ":target_constants",
@@ -1189,6 +1168,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_4d_expander",
         "//tensorflow/compiler/xla/service:dot_decomposer",
@@ -1206,11 +1186,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/service:logistic_expander",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
@@ -1231,11 +1211,8 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
     ],
 )
@@ -1529,7 +1506,7 @@ cc_library(
     srcs = if_cuda_is_configured(["buffer_comparator.cc"]),
     hdrs = if_cuda_is_configured(["buffer_comparator.h"]),
     deps = if_cuda_is_configured([
-        ":partition_assignment",
+        ":launch_dimensions",
         ":stream_executor_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -1684,9 +1661,9 @@ tf_proto_library_cc(
 )
 
 cc_library(
-    name = "hlo_algorithm_blacklist",
-    srcs = ["hlo_algorithm_blacklist.cc"],
-    hdrs = ["hlo_algorithm_blacklist.h"],
+    name = "hlo_algorithm_denylist",
+    srcs = ["hlo_algorithm_denylist.cc"],
+    hdrs = ["hlo_algorithm_denylist.h"],
     deps = [
         ":gpu_autotuning_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1697,12 +1674,12 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "hlo_algorithm_blacklist_test",
-    srcs = ["hlo_algorithm_blacklist_test.cc"],
-    data = ["data/hlo_algorithm_blacklist.pbtxt"],
+    name = "hlo_algorithm_denylist_test",
+    srcs = ["hlo_algorithm_denylist_test.cc"],
+    data = ["data/hlo_algorithm_denylist.pbtxt"],
     tags = ["no_pip"],
     deps = [
-        ":hlo_algorithm_blacklist",
+        ":hlo_algorithm_denylist",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -1820,6 +1797,33 @@ cc_library(
 )
 
 cc_library(
+    name = "reduction_splitter",
+    srcs = ["reduction_splitter.cc"],
+    hdrs = ["reduction_splitter.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "reduction_splitter_test",
+    srcs = ["reduction_splitter_test.cc"],
+    deps = [
+        ":reduction_splitter",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "reduction_layout_normalizer",
     srcs = ["reduction_layout_normalizer.cc"],
     hdrs = ["reduction_layout_normalizer.h"],
@@ -1871,4 +1875,50 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+gentbl(
+    name = "xla_thunks_ops_inc_gen",
+    tbl_outs = [
+        ("-gen-op-decls", "ir/xla_thunks_ops.h.inc"),
+        ("-gen-op-defs", "ir/xla_thunks_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "ir/xla_thunks_structs.h.inc"),
+        ("-gen-struct-attr-defs", "ir/xla_thunks_structs.cc.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/xla_thunks_ops.td",
+    td_srcs = [
+        "@llvm-project//mlir:LLVMOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "xla_thunks_ops",
+    srcs = [
+        "ir/xla_thunks_ops.cc",
+        "ir/xla_thunks_ops.cc.inc",
+        "ir/xla_thunks_ops.h.inc",
+    ],
+    hdrs = [
+        "ir/xla_thunks_ops.h",
+    ],
+    deps = [
+        ":xla_thunks_ops_inc_gen",
+        "//tensorflow/compiler/mlir/hlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
+# Library with XLA thunks dialect static initialization.
+cc_library(
+    name = "xla_thunks_dialect_registration",
+    srcs = [
+        "ir/dialect_registration.cc",
+    ],
+    deps = [
+        ":xla_thunks_ops",
+        "@llvm-project//mlir:IR",
+    ],
+    alwayslink = 1,
 )

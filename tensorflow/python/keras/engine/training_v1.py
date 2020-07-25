@@ -58,7 +58,6 @@ from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
@@ -303,6 +302,7 @@ class Model(training_lib.Model):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
+    self._assert_built_as_v1()
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
@@ -548,7 +548,7 @@ class Model(training_lib.Model):
       if self._run_eagerly is None:
         # Respect `tf.config.run_functions_eagerly` unless
         # `run_eagerly` was explicitly passed to `compile`.
-        return def_function.RUN_FUNCTIONS_EAGERLY
+        return def_function.functions_run_eagerly()
       else:
         return self._run_eagerly
     else:
@@ -773,6 +773,7 @@ class Model(training_lib.Model):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
+    self._assert_built_as_v1()
     _keras_api_gauge.get_cell('fit_v1').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
@@ -893,6 +894,7 @@ class Model(training_lib.Model):
     Raises:
         ValueError: in case of invalid arguments.
     """
+    self._assert_built_as_v1()
     _keras_api_gauge.get_cell('evaluate_v1').set(True)
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
@@ -972,6 +974,7 @@ class Model(training_lib.Model):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
+    self._assert_built_as_v1()
     _keras_api_gauge.get_cell('predict_v1').set(True)
     self._check_call_args('predict')
 
@@ -1492,8 +1495,8 @@ class Model(training_lib.Model):
   def _recompile_weights_loss_and_weighted_metrics(self):
     if not self._is_compiled:
       return False
-    recompile = any([e.sample_weights_mismatch()
-                     for e in self._training_endpoints])
+    recompile = any(
+        e.sample_weights_mismatch() for e in self._training_endpoints)
 
     if recompile:
       self._compile_weights_loss_and_weighted_metrics()
@@ -1589,7 +1592,7 @@ class Model(training_lib.Model):
             else:
               # Update dimensions of weights to match with mask if possible.
               mask, _, sample_weight = (
-                  tf_losses_utils.squeeze_or_expand_dimensions(
+                  losses_utils.squeeze_or_expand_dimensions(
                       mask, sample_weight=sample_weight))
               sample_weight *= mask
 
@@ -2859,7 +2862,7 @@ class DistributedCallbackModel(Model):
         orig_model_weights)
 
   def __getattr__(self, item):
-    # Whitelisted attributes of the model that can be accessed by the user
+    # Allowed attributes of the model that can be accessed by the user
     # during a callback.
     if item not in ('_setattr_tracking', '_layers'):
       logging.warning('You are accessing attribute ' + item + ' of the '

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -93,7 +94,9 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(int64 subgraph_uid) {
                               "use TpuCompilationCacheInterface::Release.");
     }
 
-    VLOG(1) << "Marking " << subgraph_to_evict->subgraph_key << " for eviction";
+    VLOG(1) << "Marking " << subgraph_to_evict->subgraph_key
+            << " for eviction. Debug string: "
+            << subgraph_to_evict->cache_entry_debug_string;
     entries_by_last_use_.erase(subgraph_to_evict->last_use);
     cache_size_ -= subgraph_to_evict->total_size;
     marked_for_eviction_size_ += subgraph_to_evict->total_size;
@@ -155,7 +158,7 @@ void TpuCompilationCacheInterface::UnloadAndDestroy(CompiledSubgraph* entry) {
 
 size_t TpuCompilationCacheInterface::RemoveEntry(const string& key) {
   auto erased = cache_.erase(key);
-  tpu::TpuCompilationCacheMetrics::SetCacheEntryCount(cache_.size());
+  TpuCompilationMetrics::SetCacheEntryCount(cache_.size());
 
   auto parsed_key_or_status = ParseCompilationCacheKey(key);
   CHECK(parsed_key_or_status.status().ok());
@@ -231,7 +234,9 @@ void TpuCompilationCacheInterface::DiscardEntryRefs(
 
 CompiledSubgraph* TpuCompilationCacheInterface::MarkOldestEntryForEviction() {
   CompiledSubgraph* entry_to_mark = entries_by_last_use_.begin()->second;
-  VLOG(1) << "Marking " << entry_to_mark->subgraph_key << " for eviction";
+  VLOG(1) << "Marking " << entry_to_mark->subgraph_key
+          << " for eviction. Debug string: "
+          << entry_to_mark->cache_entry_debug_string;
   entries_by_last_use_.erase(entry_to_mark->last_use);
   cache_size_ -= entry_to_mark->total_size;
   marked_for_eviction_size_ += entry_to_mark->total_size;
@@ -269,7 +274,7 @@ void TpuCompilationCacheInterface::InsertEntry(const string& key,
   auto cache_inserted =
       cache_.insert(std::pair<string, CompiledSubgraph*>(key, entry));
   CHECK(cache_inserted.second);
-  tpu::TpuCompilationCacheMetrics::SetCacheEntryCount(cache_.size());
+  TpuCompilationMetrics::SetCacheEntryCount(cache_.size());
 
   auto parsed_key_or_status = ParseCompilationCacheKey(key);
   CHECK(parsed_key_or_status.status().ok());
@@ -291,7 +296,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsent(
     const SessionMetadata* session_metadata,
     CompilationRefHolder* per_step_ref_holder, int64* uid,
     std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
-    std::vector<std::shared_ptr<const xla::HloProto>>* hlo_metadatas,
+    absl::Span<const xla::HloProto* const>* hlo_metadatas,
     const std::function<Status(TpuProgramGroupInterface*)>& compile_function) {
   std::vector<CompiledSubgraph*> removed_entries;
   auto status = CompileIfKeyAbsentHelper(
@@ -328,7 +333,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     CompilationRefHolder* per_step_ref_holder, int64* uid,
     std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
     std::vector<CompiledSubgraph*>* removed_entries,
-    std::vector<std::shared_ptr<const xla::HloProto>>* hlo_metadatas,
+    absl::Span<const xla::HloProto* const>* hlo_metadatas,
     const std::function<Status(TpuProgramGroupInterface*)>& compile_function) {
   CompiledSubgraph* entry = nullptr;
 
@@ -348,7 +353,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
   if (is_new_key) {
     cache_key = subgraph_key.ToString();
-    tpu::TpuCompilationCacheMetrics::IncrementCacheLookupCount(
+    TpuCompilationMetrics::IncrementCacheLookupCount(
         /*is_cache_hit=*/false, session_name);
     const string msg =
         strings::StrCat("TPU host compilation cache miss: cache_key(",
@@ -358,7 +363,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
     // Check if caller has disabled compilation. Set using
     // internal::ScopedTpuCompileDisabler.
-    if (!IsTpuCompilationEnabled()) {
+    if (!UtilApiFn()->TpuCompile_IsTpuCompilationEnabledFn()) {
       const string error_msg = strings::StrCat(
           "[TpuCompilationDisabled]: Compilation cache miss, but compilation "
           "disabled, session_name(",
@@ -388,14 +393,15 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     TRACELITERAL("TPU host compilation cache: compilation done.");
     LOG(INFO) << strings::StrCat(
         "TPU host compilation cache: compilation done for cache_key(",
-        cache_key, "), session_name(", session_name, ")");
+        cache_key, "), session_name(", session_name, "), subgraph_key(",
+        subgraph_key.debug_string, ")");
     // If session_name is present, log some additional stats related to HBM
     // here, so that they can be associated directly to the session.
     if (!session_name.empty()) {
       entry->tpu_program_group->LogProgramMemorySummary();
     }
   } else {
-    tpu::TpuCompilationCacheMetrics::IncrementCacheLookupCount(
+    TpuCompilationMetrics::IncrementCacheLookupCount(
         /*is_cache_hit=*/true, session_name);
     const string msg =
         strings::StrCat("TPU host compilation cache hit: cache_key(", cache_key,

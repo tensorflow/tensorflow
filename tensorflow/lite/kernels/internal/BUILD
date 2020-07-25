@@ -209,6 +209,14 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "tf_lite_static_memory",
+    values = {
+        "copt": "-DTF_LITE_STATIC_MEMORY",
+        "cpu": "k8",
+    },
+)
+
 cc_library(
     name = "common",
     srcs = [],
@@ -451,19 +459,16 @@ cc_library(
         "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
+        "reference/hard_swish.h",
         "reference/integer_ops/add.h",
         "reference/integer_ops/conv.h",
         "reference/integer_ops/depthwise_conv.h",
-        "reference/integer_ops/dequantize.h",
         "reference/integer_ops/fully_connected.h",
         "reference/integer_ops/l2normalization.h",
-        "reference/integer_ops/log_softmax.h",
         "reference/integer_ops/logistic.h",
-        "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/tanh.h",
-        "reference/integer_ops/transpose_conv.h",
         "reference/l2normalization.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
@@ -476,17 +481,25 @@ cc_library(
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
         "reference/reduce.h",
-        "reference/reference_ops.h",
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
-        "reference/sparse_ops/fully_connected.h",
         "reference/strided_slice.h",
         "reference/sub.h",
         "reference/svdf.h",
         "reference/tanh.h",
-    ],
+    ] + select({
+        ":tf_lite_static_memory": [],
+        "//conditions:default": [
+            "reference/integer_ops/dequantize.h",
+            "reference/integer_ops/log_softmax.h",
+            "reference/integer_ops/mean.h",
+            "reference/integer_ops/transpose_conv.h",
+            "reference/reference_ops.h",
+            "reference/sparse_ops/fully_connected.h",
+        ],
+    }),
     build_for_embedded = True,
     copts = tflite_copts(),
     select_deps = {
@@ -538,6 +551,7 @@ cc_library(
         "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
+        "reference/hard_swish.h",
         "reference/l2normalization.h",
         "reference/legacy_reference_ops.h",
         "reference/logistic.h",
@@ -680,7 +694,9 @@ cc_library(
         ":portable_tensor_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
+        "@ruy//ruy/profiler:instrumentation",
     ],
 )
 
@@ -783,7 +799,12 @@ cc_library(
         ":freebsd": [
             ":sse_tensor_utils",
         ],
-        ":windows": [":sse_tensor_utils"],
+        ":windows": [
+            ":sse_tensor_utils",
+        ],
+        ":tf_lite_static_memory": [
+            ":portable_tensor_utils",
+        ],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],

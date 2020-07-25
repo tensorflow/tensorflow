@@ -31,7 +31,6 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale as k
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import keras_export
@@ -48,6 +47,8 @@ class _UnwrapPreventer(object):
   TODO(reedwm): Find/implement a better way of preventing values from being
   unwrapped by DistributionStrategy
   """
+
+  __slots__ = ['value']
 
   def __init__(self, value):
     self.value = value
@@ -269,7 +270,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # constructor.
     _DelegatingTrackableMixin.__init__(self, self._optimizer)
 
-    for weight in loss_scale_module.get_loss_scale_weights(self._loss_scale):
+    for weight in self._loss_scale._weights.values():  # pylint: disable=protected-access
       # We cannot call `track_variable` in the LossScale class itself, because a
       # file outside of Keras cannot depend on a Keras file. Calling it here
       # instead is OK, because a variable only needs to be tracked if used with
@@ -440,7 +441,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     if not strategy_supports_loss_scaling():
       strategy = distribution_strategy_context.get_strategy()
       if isinstance(strategy,
-                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
+                     tpu_strategy.TPUStrategyV2)):
         raise ValueError(
             'Loss scaling is not supported with TPUStrategy. Loss scaling is '
             'unnecessary with TPUs, since they support bfloat16 instead of '

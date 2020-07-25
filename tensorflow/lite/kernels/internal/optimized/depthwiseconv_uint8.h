@@ -1478,7 +1478,7 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
                                     int out_x_buffer_end, int output_depth,
                                     int32* acc_buffer) {
   ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
-  // Sanity check parameters. This is important in particular to ensure
+  // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
   static_assert(kFixedDepthMultiplier || !kFixedInputDepth, "");

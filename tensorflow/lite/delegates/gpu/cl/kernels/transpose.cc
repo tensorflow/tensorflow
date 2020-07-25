@@ -36,11 +36,12 @@ std::string GetTransposeCode(
       "dst_tensor", AccessType::WRITE,
       absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
 
-  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
+  const std::string batch_id =
+      op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
-  if (op_def.IsBatchSupported()) {
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
@@ -65,7 +66,7 @@ std::string GetTransposeCode(
   remap[attr.perm.w] = 2;
   remap[attr.perm.c] = 3;
   if (attr.perm.c == 3) {  // optimized reading when no channels permutation
-    const std::string bhw[] = {"B", "Y", "X"};
+    const std::string bhw[] = {batch_id, "Y", "X"};
     if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
       c += "  args.src_tensor.SetBatchRef(" + bhw[remap[0]] + ");\n";
     }
@@ -80,7 +81,7 @@ std::string GetTransposeCode(
     c += "  for (int i = 0; i < 4; ++i) {\n";
     c += "    int dst_channel = Z * 4 + i;\n";
     c += "    if (dst_channel < args.dst_tensor.Channels()) {\n";
-    const std::string bhwc[] = {"B", "Y", "X", "dst_channel"};
+    const std::string bhwc[] = {batch_id, "Y", "X", "dst_channel"};
     if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
       c += "      args.src_tensor.SetBatchRef(" + bhwc[remap[0]] + ");\n";
     }
@@ -103,16 +104,11 @@ std::string GetTransposeCode(
 }  // namespace
 
 Transpose::Transpose(Transpose&& operation)
-    : GPUOperation(std::move(operation)),
-      attr_(operation.attr_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
 
 Transpose& Transpose::operator=(Transpose&& operation) {
   if (this != &operation) {
     attr_ = operation.attr_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -134,8 +130,7 @@ absl::Status Transpose::Compile(const CreationContext& creation_context) {
 absl::Status Transpose::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Transpose::GetGridSize() const {
@@ -143,16 +138,6 @@ int3 Transpose::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Transpose::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status Transpose::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 Transpose CreateTranspose(const OperationDef& definition,

@@ -28,9 +28,11 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/Threading.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -767,13 +769,26 @@ void LegalizeTF::runOnFunction() {
             [](Operation* op) {
               auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
               if (!tfl_op) return false;
-              return succeeded(tfl_op.VerifyTflRuntimeConstraints(
-                  tfl_op.getOperation(),
-                  /*failure_on_operand_type_mismatch=*/false));
+              return succeeded(tfl_op.VerifyTflRuntimeConstraints(op));
             }));
   } else {
     target.addLegalDialect<TensorFlowLiteDialect>();
   }
+
+  // Ignore transient errors by registering an no-op handler.
+  // Applying legalization patterns will emit unwanted, transient errors when
+  // the replaced TFLite ops do not meet the sanity checks. In order to ignore
+  // the transient errors, the following lines override a diagnostic handler
+  // with an no-op handler only while this pass runs.
+  uint64_t current_thread_id = llvm::get_threadid();
+  ScopedDiagnosticHandler scoped_diag_handler(
+      context, [&current_thread_id](Diagnostic&) -> LogicalResult {
+        // Consume only errors that are coming from the same thread in order not
+        // to ignore errors from other passes that are running. Things running
+        // in the pass manager can be multi-threaded.
+        return success(current_thread_id == llvm::get_threadid());
+      });
+
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
   // Look if there is a function that tries until it converge.

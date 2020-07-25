@@ -424,9 +424,8 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
                              alias.param_number,
                              alias.param_index.ToString().c_str());
     }
-    TF_RETURN_IF_ERROR(config.SetUpAlias(
-        alias.output_index, alias.param_number, alias.param_index,
-        HloInputOutputAliasConfig::AliasKind::kUserAlias));
+    TF_RETURN_IF_ERROR(config.SetUpAlias(alias.output_index, alias.param_number,
+                                         alias.param_index));
   }
   *module->mutable_input_output_alias() = config.ToProto();
   return Status::OK();
@@ -1562,18 +1561,15 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
 XlaOp XlaBuilder::CustomCall(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const string& opaque,
-    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+    bool has_side_effect) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
           "Invalid custom_call_target \"%s\": Call targets that start with '$' "
           "are reserved for internal use.",
           call_target_name);
     }
-    *instr.mutable_shape() = shape.ToProto();
-    instr.set_custom_call_target(call_target_name);
-    instr.set_backend_config(opaque);
     if (operand_shapes_with_layout.has_value()) {
       if (!LayoutUtil::HasLayout(shape)) {
         return InvalidArgument(
@@ -1586,7 +1582,6 @@ XlaOp XlaBuilder::CustomCall(
             "with constrained layout; given %d shapes, expected %d",
             operand_shapes_with_layout->size(), operands.size());
       }
-      instr.set_constrain_layout(true);
       int64 operand_num = 0;
       for (const Shape& operand_shape : *operand_shapes_with_layout) {
         if (!LayoutUtil::HasLayout(operand_shape)) {
@@ -1595,18 +1590,38 @@ XlaOp XlaBuilder::CustomCall(
               "constrained layout.",
               operand_num);
         }
-        *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
         ++operand_num;
       }
     }
-    return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
+    return CustomCallInternal(call_target_name, operands, shape, opaque,
+                              operand_shapes_with_layout, has_side_effect);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
+    const string& call_target_name, absl::Span<const XlaOp> operands,
+    const Shape& shape, const string& opaque,
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+    bool has_side_effect) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_custom_call_target(call_target_name);
+  instr.set_backend_config(opaque);
+  if (operand_shapes_with_layout.has_value()) {
+    instr.set_constrain_layout(true);
+    for (const Shape& operand_shape : *operand_shapes_with_layout) {
+      *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
+    }
+  }
+  instr.set_custom_call_has_side_effect(has_side_effect);
+  return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
 }
 
 XlaOp XlaBuilder::CustomCall(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const XlaComputation& computation, const Shape& shape, const string& opaque,
-    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+    bool has_side_effect) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -2727,13 +2742,34 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64 dimension) {
   });
 }
 
-XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
+XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
-    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferSetDimensionSizeShape(
-                                         *operand_shape, dimension));
+    Shape shape = *operand_shape;
+    shape.set_dynamic_dimension(dimension, false);
+    // Setting an op's dynamic dimension to its static size removes the dynamic
+    // dimension.
+    XlaOp static_size =
+        ConstantR0<int32>(this, operand_shape->dimensions(dimension));
+
+    *instr.mutable_shape() = shape.ToProto();
+    instr.add_dimensions(dimension);
+    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
+                          {operand, static_size});
+  });
+}
+
+XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(const Shape* val_shape, GetShapePtr(val));
+
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferSetDimensionSizeShape(
+                            *operand_shape, *val_shape, dimension));
     // Setting an op's dynamic dimension to the static size is a noop.
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
                         LookUpInstruction(val));
@@ -2985,7 +3021,12 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
     instr.add_operand_ids(operand.handle());
   }
 
-  *instr.mutable_metadata() = metadata_;
+  if (one_shot_metadata_.has_value()) {
+    *instr.mutable_metadata() = one_shot_metadata_.value();
+    one_shot_metadata_.reset();
+  } else {
+    *instr.mutable_metadata() = metadata_;
+  }
   if (sharding_) {
     *instr.mutable_sharding() = *sharding_;
   }
@@ -3352,27 +3393,29 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  absl::Span<const XlaOp> operands, const Shape& shape,
-                 const string& opaque) {
+                 const string& opaque, bool has_side_effect) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
-                             /*operand_shapes_with_layout=*/absl::nullopt);
+                             /*operand_shapes_with_layout=*/absl::nullopt,
+                             has_side_effect);
 }
 
 XlaOp CustomCallWithComputation(XlaBuilder* builder,
                                 const string& call_target_name,
                                 absl::Span<const XlaOp> operands,
                                 const XlaComputation& computation,
-                                const Shape& shape, const string& opaque) {
-  return builder->CustomCall(call_target_name, operands, computation, shape,
-                             opaque,
-                             /*operand_shapes_with_layout=*/absl::nullopt);
+                                const Shape& shape, const string& opaque,
+                                bool has_side_effect) {
+  return builder->CustomCall(
+      call_target_name, operands, computation, shape, opaque,
+      /*operand_shapes_with_layout=*/absl::nullopt, has_side_effect);
 }
 
 XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
                            absl::Span<const XlaOp> operands, const Shape& shape,
                            absl::Span<const Shape> operand_shapes_with_layout,
-                           const string& opaque) {
+                           const string& opaque, bool has_side_effect) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
-                             operand_shapes_with_layout);
+                             operand_shapes_with_layout, has_side_effect);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,
@@ -3606,6 +3649,9 @@ XlaOp Log(const XlaOp operand) {
 XlaOp Log1p(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kLog1p, operand);
 }
+XlaOp Logistic(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kLogistic, operand);
+}
 XlaOp Sign(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSign, operand);
 }
@@ -3825,6 +3871,10 @@ XlaOp GetDimensionSize(const XlaOp operand, int64 dimension) {
 
 XlaOp SetDimensionSize(const XlaOp operand, const XlaOp val, int64 dimension) {
   return operand.builder()->SetDimensionSize(operand, val, dimension);
+}
+
+XlaOp RemoveDynamicDimension(const XlaOp operand, int64 dimension) {
+  return operand.builder()->RemoveDynamicDimension(operand, dimension);
 }
 
 }  // namespace xla

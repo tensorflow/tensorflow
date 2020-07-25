@@ -109,13 +109,12 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  void* raw;
-  context->AllocatePersistentBuffer(context, sizeof(int), &raw);
-  return raw;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(int));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   OpData data;
   int32_t buf_size = 0;
 
@@ -240,13 +239,13 @@ TfLiteStatus EvalQuantizedPerChannel(
   quant_params.multiplier = data->per_channel_output_multiplier;
   quant_params.shift = data->per_channel_output_shift;
 
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   RuntimeShape filter_shape = GetTensorShape(filter);
   RuntimeShape input_shape = GetTensorShape(input);
   RuntimeShape output_shape = GetTensorShape(output);
   RuntimeShape bias_shape = GetTensorShape(bias);
 
-  // Sanity check.
+  // Consistency check.
   TFLITE_DCHECK_LE(conv_params.activation.min, conv_params.activation.max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
@@ -305,7 +304,7 @@ TfLiteStatus EvalQuantizedPerChannel(
   arm_status status = arm_convolve_wrapper_s8(
       &ctx, &conv_params, &quant_params, &input_dims,
       GetTensorData<int8_t>(input), &filter_dims, GetTensorData<int8_t>(filter),
-      &bias_dims, GetTensorData<int32>(bias), &output_dims,
+      &bias_dims, GetTensorData<int32_t>(bias), &output_dims,
       GetTensorData<int8_t>(output));
 
   if (status == ARM_MATH_SUCCESS) {
@@ -333,10 +332,10 @@ TfLiteStatus EvalQuantizedPerChannel(
   reference_integer_ops::ConvPerChannel(
       op_params, data->per_channel_output_multiplier,
       data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+      GetTensorData<int8_t>(input), GetTensorShape(filter),
+      GetTensorData<int8_t>(filter), GetTensorShape(bias),
+      GetTensorData<int32_t>(bias), GetTensorShape(output),
+      GetTensorData<int8_t>(output));
 
 #endif
   return kTfLiteOk;
@@ -434,16 +433,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace conv
 
-TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {/*init=*/conv::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/conv::Prepare,
-                                 /*invoke=*/conv::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_CONV_2D() {
+  return {/*init=*/conv::Init,
+          /*free=*/nullptr,
+          /*prepare=*/conv::Prepare,
+          /*invoke=*/conv::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

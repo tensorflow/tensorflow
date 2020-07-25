@@ -289,12 +289,12 @@ class QuantizationDriver {
       llvm::errs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (llvm::isa<quant::QuantizeCastOp>(op) ||
-          llvm::isa<quant::DequantizeCastOp>(op) || llvm::isa<ConstantOp>(op))
+      if (llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp>(
+              op))
         return;
       if (current_op == op) llvm::errs() << "===>>>";
       llvm::errs() << op->getName() << " : (";
-      for (auto i = 0; i < op->getNumOperands(); ++i) {
+      for (int i = 0, e = op->getNumOperands(); i < e; ++i) {
         if (auto params = GetOperandQuantState(op, i).params)
           params.print(llvm::errs());
         else
@@ -303,7 +303,7 @@ class QuantizationDriver {
         llvm::errs() << ",";
       }
       llvm::errs() << ") -> (";
-      for (auto i = 0; i < op->getNumResults(); ++i) {
+      for (int i = 0, e = op->getNumResults(); i < e; ++i) {
         if (auto params = GetResultQuantState(op, i).params)
           params.print(llvm::errs());
         else
@@ -638,43 +638,39 @@ void QuantizationDriver::PreprocessConstantOps() {
     if (!type || !type.getElementType().isa<FloatType>()) return;
 
     Value value = cst.getResult();
-    SmallVector<std::pair<Operation *, int>, 4> bias_users;
-    bool used_as_weight = false;
-    for (auto &use : value.getUses()) {
+    builder_.setInsertionPoint(cst);
+    for (auto indexed_use : llvm::enumerate(value.getUses())) {
+      auto &use = indexed_use.value();
       auto spec = GetQuantSpec(use.getOwner());
       auto biases = spec->biases_params;
       Operation *user = use.getOwner();
       int operand_num = use.getOperandNumber();
 
-      // The user doesn't use this value as a bias operand or require same
-      // scale, then this constant is considered to be a weight.
       if (biases.find(operand_num) == biases.end() &&
-          !user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
-        used_as_weight = true;
-        auto it = spec->coeff_op_quant_dim.find(operand_num);
-        if (it != spec->coeff_op_quant_dim.end()) {
-          optimized_weights_.insert({cst, it->second});
+          !llvm::dyn_cast<mlir::SameScalesOpInterface>(user) &&
+          !llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+        // Needs to scan the content to get the quantiztion parameters if there
+        // are no quantization parameters (FakeQuant ops).
+        // For this case, the weight isn't duplicated.
+        weights_.insert(cst);
+        auto affine_user =
+            llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
+        if (affine_user &&
+            affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
+            affine_user.RequiredNarrowRangeAffineOperand()) {
+          optimized_weights_.insert(
+              {cst, affine_user.GetQuantizationDimIndex()});
         }
       } else {
-        bias_users.push_back({user, operand_num});
+        // This is a bias, so the quantization parameter isn't determined by the
+        // local content. Same if the user can have quantization parameter
+        // propagated from other places.
+        // Duplicate this constant in case it is shared by different users.
+        if (indexed_use.index() > 0) {
+          cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+        }
+        user->setOperand(operand_num, cst);
       }
-    }
-
-    // If the constant is used as a weight, this constant will be duplicated
-    // for each bias user, so it isn't shared with the weight usage.
-    // Otherwise, the first bias user can use the original constant and the
-    // rest use the duplications, so we pop bias user from the set.
-    if (used_as_weight) {
-      // TODO(fengliuai): Looks like there is an assumption that weight has
-      // only one user. We should add a check here.
-      weights_.insert(cst);
-    } else {
-      bias_users.pop_back();
-      builder_.setInsertionPoint(cst);
-    }
-    for (auto bias_user : bias_users) {
-      auto copied = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
-      bias_user.first->setOperand(bias_user.second, copied.getResult());
     }
   });
 }
@@ -698,8 +694,7 @@ void QuantizationDriver::SetupAllStates() {
   fn_.walk([&](Operation *op) {
     if (op->isKnownTerminator() ||
         op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-        llvm::isa<quant::DequantizeCastOp>(op) ||
-        llvm::isa<quant::QuantizeCastOp>(op))
+        llvm::isa<quant::DequantizeCastOp, quant::QuantizeCastOp>(op))
       return;
     work_list_.push_back(op);
 
@@ -769,7 +764,7 @@ bool QuantizationDriver::PropagateParams() {
       continue;
     }
 
-    if (op->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
+    if (llvm::isa<SameScalesOpInterface>(op)) {
       auto params = GetQuantParamsForSameScaleConstraint(op);
       // The quantization parameters haven't been propagated to any operands
       // or results. Skip this node for now.
@@ -799,16 +794,18 @@ bool QuantizationDriver::PropagateParams() {
     }
 
     // TODO(fengliuai): make the bit width configurable.
-    auto spec = GetQuantSpec(op);
-    auto key = std::make_pair(8, is_signed_);
-    auto &restricted_outputs = spec->restricted_output_params[key];
-    for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {
-      // The restrict can be nullptr if the result has been quantized.
-      if (auto params = restricted_outputs[i]) {
-        changed |= SetResultParams(op, i, params);
+    if (auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op)) {
+      // TODO(fengliuai): different result can have different fixed range.
+      auto params = restricted.GetFixedOutputRange(is_signed_, /*bit_width=*/8);
+      for (auto i = 0; i < op->getNumResults(); ++i) {
+        // The range is null if the result has been quantized.
+        if (params) {
+          changed |= SetResultParams(op, i, params);
+        }
       }
     }
 
+    auto spec = GetQuantSpec(op);
     for (auto &it : spec->biases_params) {
       auto params =
           GetBiasParams(op, it.first, it.second.first, it.second.second);

@@ -76,7 +76,6 @@ void TestMulFloat(std::initializer_list<int> input1_dims_data,
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -148,7 +147,6 @@ void TestMulQuantized(std::initializer_list<int> input1_dims_data,
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -402,7 +400,7 @@ TF_LITE_MICRO_TEST(FloatRelu) {
       {0.1, 0.2, 0.3, 0.5},     // input2 data
       {4, 1, 2, 2, 1},          // output shape
       {-0.2, 0.04, 0.21, 0.4},  // expected output data
-      output_data, kTfLiteActRelu1);
+      output_data, kTfLiteActReluN1To1);
 }
 
 TF_LITE_MICRO_TEST(FloatBroadcast) {

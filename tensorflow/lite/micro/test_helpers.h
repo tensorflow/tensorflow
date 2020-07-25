@@ -23,7 +23,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -55,6 +55,7 @@ class SimpleStatefulOp {
 
  public:
   static const TfLiteRegistration* getRegistration();
+  static TfLiteRegistration* GetMutableRegistration();
   static void* Init(TfLiteContext* context, const char* buffer, size_t length);
   static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
   static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
@@ -63,6 +64,7 @@ class SimpleStatefulOp {
 class MockCustom {
  public:
   static const TfLiteRegistration* getRegistration();
+  static TfLiteRegistration* GetMutableRegistration();
   static void* Init(TfLiteContext* context, const char* buffer, size_t length);
   static void Free(TfLiteContext* context, void* buffer);
   static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
@@ -71,13 +73,8 @@ class MockCustom {
   static bool freed_;
 };
 
-class MockOpResolver : public MicroOpResolver {
- public:
-  const TfLiteRegistration* FindOp(BuiltinOperator op) const override;
-  const TfLiteRegistration* FindOp(const char* op) const override;
-  MicroOpResolver::BuiltinParseFunction GetOpDataParser(
-      tflite::BuiltinOperator) const override;
-};
+// Returns an Op Resolver that can be used in the testing code.
+AllOpsResolver GetOpResolver();
 
 // Returns a simple example flatbuffer TensorFlow Lite model. Contains 1 input,
 // 1 layer of weights, 1 output Tensor, and 1 operator.
@@ -167,7 +164,7 @@ TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
                                        float weights_scale,
                                        bool is_variable = false);
 
-// Quantizes int32 bias tensor with per-channel weights determined by input
+// Quantizes int32_t bias tensor with per-channel weights determined by input
 // scale multiplied by weight scale for each channel.
 TfLiteTensor CreatePerChannelQuantizedBiasTensor(
     const float* input, int32_t* quantized, TfLiteIntArray* dims,
@@ -179,6 +176,9 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
     const float* input, int8_t* quantized, TfLiteIntArray* dims, float* scales,
     int* zero_points, TfLiteAffineQuantization* affine_quant,
     int quantized_dimension, bool is_variable = false);
+
+// Returns the number of tensors in the default subgraph for a tflite::Model.
+size_t GetModelTensorCount(const Model* model);
 
 }  // namespace testing
 }  // namespace tflite

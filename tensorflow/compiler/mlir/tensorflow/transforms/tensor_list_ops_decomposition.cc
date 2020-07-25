@@ -190,22 +190,14 @@ LogicalResult HandleWhileOp(
   }
   // Create the new while op.
   auto new_while_operands = llvm::to_vector<8>(while_op.getOperands());
-  auto new_output_shapes =
-      llvm::to_vector<8>(while_op.output_shapes().getValue());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     auto it = buffer_to_size->find(while_op.getOperand(i));
     if (it == buffer_to_size->end()) continue;
     new_while_operands.push_back(it->getSecond().size);
-    if (!new_output_shapes.empty()) {
-      // Size is a scalar shape.
-      new_output_shapes.push_back(
-          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
-    }
   }
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
                                   new_while_operands, while_op.getAttrs());
-  new_while.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_while.getResult(std::get<0>(entry))] = {
         new_while.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -322,7 +314,7 @@ LogicalResult HandlePartitionedCallOp(
   // Rewrite the callee.
   llvm::SmallDenseMap<Value, SizeInfo> callee_map;
   FuncOp lowered_callee = callee;
-  if (callee.getVisibility() != SymbolTable::Visibility::Private) {
+  if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
     lowered_callee.setVisibility(SymbolTable::Visibility::Private);
@@ -438,7 +430,7 @@ LogicalResult HandleTensorListFromTensorOp(
   OpBuilder builder(list);
   Value buffer = builder.create<TF::IdentityOp>(
       list.getLoc(), ArrayRef<Type>{list.tensor().getType()},
-      ArrayRef<Value>{list.tensor()}, ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{list.tensor()});
   auto type = buffer.getType().cast<TensorType>();
   if (!type.hasStaticShape()) {
     return list.emitOpError("TensorListFromTensorOp input has unknown shape.");
@@ -468,8 +460,7 @@ LogicalResult HandleTensorListPushBackOp(
       cutil::SetElement(size, buffer, push.tensor(), builder, push.getLoc());
   auto new_size = builder.create<TF::AddV2Op>(
       push.getLoc(), ArrayRef<Type>{size.getType()},
-      ArrayRef<Value>{size, cutil::GetR1Const({1LL}, builder, push.getLoc())},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{size, cutil::GetR1Const({1LL}, builder, push.getLoc())});
   push.output_handle().replaceAllUsesWith(new_buffer);
   (*buffer_to_size)[new_buffer] = {new_size, /*fixed=*/false};
   push.erase();
@@ -491,12 +482,10 @@ LogicalResult HandleTensorListPopBackOp(
   auto size = it->getSecond().size;
   OpBuilder builder(pop);
   auto new_buffer = builder.create<TF::IdentityOp>(
-      pop.getLoc(), ArrayRef<Type>{buffer.getType()}, ArrayRef<Value>{buffer},
-      ArrayRef<NamedAttribute>{});
+      pop.getLoc(), ArrayRef<Type>{buffer.getType()}, ArrayRef<Value>{buffer});
   auto new_size = builder.create<TF::SubOp>(
       pop.getLoc(), ArrayRef<Type>{size.getType()},
-      ArrayRef<Value>{size, cutil::GetR1Const({1LL}, builder, pop.getLoc())},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{size, cutil::GetR1Const({1LL}, builder, pop.getLoc())});
   auto element = cutil::GetElement(new_size, new_buffer, builder, pop.getLoc());
   pop.output_handle().replaceAllUsesWith(new_buffer);
   pop.tensor().replaceAllUsesWith(element);
@@ -567,8 +556,7 @@ LogicalResult HandleTensorListLengthOp(
         ArrayRef<Type>{RankedTensorType::get(
             {}, getElementTypeOrSelf(current_size.getType()))},
         ArrayRef<Value>{current_size,
-                        cutil::GetR1Const({}, builder, length.getLoc())},
-        ArrayRef<NamedAttribute>{});
+                        cutil::GetR1Const({}, builder, length.getLoc())});
     length.length().replaceAllUsesWith(reshape);
   }
   length.erase();
@@ -640,7 +628,7 @@ LogicalResult DecomposeTensorListOpsInternal(
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
     // TODO(yuanzx): Add a pass to remove identities in device computation.
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     } else if (auto list = llvm::dyn_cast<TF::EmptyTensorListOp>(&op)) {

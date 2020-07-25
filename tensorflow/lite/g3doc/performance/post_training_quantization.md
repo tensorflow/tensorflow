@@ -34,7 +34,7 @@ weights from floating point to integer, which has 8-bits of precision:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]</b>
 tflite_quant_model = converter.convert()
 </pre>
@@ -68,7 +68,7 @@ the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
 def representative_dataset_gen():
   for _ in range(num_calibration_steps):
@@ -96,7 +96,7 @@ the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 def representative_dataset_gen():
   for _ in range(num_calibration_steps):
@@ -120,7 +120,7 @@ quantization of weights, use the following steps:
 
 <pre>
 import tensorflow as tf
-converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
 converter.target_spec.supported_types = [tf.float16]</b>
 tflite_quant_model = converter.convert()
@@ -142,6 +142,60 @@ The disadvantages of float16 quantization are as follows:
     to float32 when run on the CPU. (Note that the GPU delegate will not perform
     this dequantization, since it can operate on float16 data.)
 
+### Integer only: 16-bit activations with 8-bit weights (experimental)
+
+This is an experimental quantization scheme. It is similar to the "integer only"
+scheme, but activations are quantized based on their range to 16-bits, weights
+are quantized in 8-bit integer and bias is quantized into 64-bit integer. This
+is referred to as 16x8 quantization further.
+
+The main advantage of this quantization is that it can improve accuracy
+significantly, but only slightly increase model size.
+
+<pre>
+import tensorflow as tf
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+def representative_dataset_gen():
+  for _ in range(num_calibration_steps):
+    # Get sample input data as a numpy array in a method of your choosing.
+    yield [input]
+converter.representative_dataset = representative_dataset_gen
+<b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]</b>
+tflite_quant_model = converter.convert()
+</pre>
+
+If 16x8 quantization is not supported for some operators in the model,
+then the model still can be quantized, but unsupported operators kept in float.
+The following option should be added to the target_spec to allow this.
+<pre>
+import tensorflow as tf
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+def representative_dataset_gen():
+  for _ in range(num_calibration_steps):
+    # Get sample input data as a numpy array in a method of your choosing.
+    yield [input]
+converter.representative_dataset = representative_dataset_gen
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+<b>tf.lite.OpsSet.TFLITE_BUILTINS</b>]
+tflite_quant_model = converter.convert()
+</pre>
+
+Examples of the use cases where accuracy improvements provided by this
+quantization scheme include: * super-resolution, * audio signal processing such
+as noise cancelling and beamforming, * image de-noising, * HDR reconstruction
+from a single image.
+
+The disadvantage of this quantization is:
+
+*   Currently inference is noticeably slower than 8-bit full integer due to the
+    lack of optimized kernel implementation.
+*   Currently it is incompatible with the existing hardware accelerated TFLite
+    delegates.
+
+Note: This is an experimental feature.
+
 ### Model accuracy
 
 Since weights are quantized post training, there could be an accuracy loss,
@@ -149,8 +203,9 @@ particularly for smaller networks. Pre-trained fully quantized models are
 provided for specific networks in the
 [TensorFlow Lite model repository](../models/). It is important to check the
 accuracy of the quantized model to verify that any degradation in accuracy is
-within acceptable limits. There is a tool to evaluate
-[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/ilsvrc/README.md){:.external}.
+within acceptable limits. There are tools to evaluate
+[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks){:.external}.
+
 
 Alternatively, if the accuracy drop is too high, consider using
 [quantization aware training](https://www.tensorflow.org/model_optimization/guide/quantization/training)

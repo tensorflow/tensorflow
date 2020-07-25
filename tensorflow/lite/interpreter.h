@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Main abstraction controlling the tflite interpreter.
-// See context.h for the API for defining operations (TfLiteRegistration).
+/// \file
+/// Main abstraction controlling the tflite interpreter.
+/// See context.h for the API for defining operations (TfLiteRegistration).
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
@@ -347,10 +348,12 @@ class Interpreter {
   /// WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
-  /// Update allocations for all tensors. This will redim dependent tensors
-  /// using the input tensor dimensionality as given. This is relatively
-  /// expensive. If you know that your sizes are not changing, you need not call
-  /// this. Returns status of success or failure.
+  // Update allocations for all tensors. This will redim dependent tensors
+  // using the input tensor dimensionality as given. This is relatively
+  // expensive. This *must be* called after the interpreter has been created
+  // and before running inference (and accessing tensor buffers), and *must be*
+  // called again if (and only if) an input tensor is resized. Returns status of
+  // success or failure.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -369,7 +372,7 @@ class Interpreter {
   /// NOTE: num_threads should be >= -1.
   /// User may pass -1 to let the TFLite interpreter set the no of threads
   /// available to itself.
-  void SetNumThreads(int num_threads);
+  TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
   /// default: not allow.
@@ -594,6 +597,11 @@ class Interpreter {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
+
+  // Indicating a delegate that the TFLite interpreter will apply by default.
+  // A nullptr value means there's no delegate to be applied by default or the
+  // delegate has been applied and doesn't need to be applied again.
+  TfLiteDelegatePtr lazy_delegate_provider_;
 };
 
 }  // namespace impl

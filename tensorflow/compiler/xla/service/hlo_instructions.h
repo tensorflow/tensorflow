@@ -137,7 +137,7 @@ class HloCompareInstruction : public HloInstruction {
   explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,
                                  HloInstruction* rhs,
                                  ComparisonDirection direction);
-  ComparisonDirection direction() const { return direction_; }
+  ComparisonDirection direction() const { return compare_.GetDirection(); }
   HloInstructionProto ToProto() const override;
 
  private:
@@ -151,7 +151,7 @@ class HloCompareInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  ComparisonDirection direction_;
+  Comparison compare_;
 };
 
 class HloTriangularSolveInstruction : public HloInstruction {
@@ -1141,6 +1141,7 @@ class HloOutfeedInstruction : public HloInstruction {
   const Shape& outfeed_shape() const { return outfeed_shape_; }
   // Returns the config for the Outfeed instruction.
   const string& outfeed_config() const { return outfeed_config_; }
+  void set_outfeed_config(const string& config) { outfeed_config_ = config; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
