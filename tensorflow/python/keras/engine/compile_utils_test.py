@@ -531,6 +531,13 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     self.assertEqual(metric_container.metrics[0]._fn,
                      metrics_mod.binary_accuracy)
 
+    loss = losses_mod.BinaryCrossentropy()
+    metric_container = compile_utils.MetricsContainer('accuracy', loss=loss)
+    y_t, y_p = array_ops.ones(10, 2), array_ops.ones(10, 2)
+    metric_container.update_state(y_t, y_p)
+    self.assertEqual(metric_container.metrics[0]._fn,
+                     metrics_mod.binary_accuracy)
+
     metric_container = compile_utils.MetricsContainer('accuracy')
     y_t, y_p = array_ops.ones((10, 1)), array_ops.ones((10, 20))
     self.assertEqual(y_p.shape.as_list()[-1], 20)
