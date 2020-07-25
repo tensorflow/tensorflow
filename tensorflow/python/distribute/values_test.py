@@ -554,6 +554,35 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
         self.evaluate(
             distribution.experimental_local_results(distribution.run(assign)))
 
+  def testStrategyExtendedUpdate(self, distribution, synchronization,
+                                 aggregation):
+    if len(distribution.extended.parameter_devices) != 2:
+      self.skipTest("n/a: needs exactly two parameter devices")
+    with distribution.scope():
+      v = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+    # Note that this is actually real usage. We're doing this in optimizer to
+    # workaround the current restriction in strategy.extended.update().
+    value = values_lib.Mirrored([1., 2.])
+
+    assign_fn = lambda var, value: var.assign(value)
+    self.evaluate(distribution.extended.update(v, assign_fn, args=(value,)))
+    self.assertAllEqual(self.evaluate(v.values), [1., 2.])
+
+    assign_add_fn = lambda var, value: var.assign_add(value)
+    self.evaluate(distribution.extended.update(v, assign_add_fn, args=(value,)))
+    self.assertAllEqual(self.evaluate(v.values), [2., 4.])
+
+    assign_sub_fn = lambda var, value: var.assign_sub(value)
+    self.evaluate(distribution.extended.update(v, assign_sub_fn, args=(value,)))
+    self.assertAllEqual(self.evaluate(v.values), [1., 2.])
+
+    read_assign_fn = lambda var, value: var.assign_add(var.value() + var.
+                                                       read_value())
+    self.evaluate(
+        distribution.extended.update(v, read_assign_fn, args=(value,)))
+    self.assertAllEqual(self.evaluate(v.values), [3., 6.])
+
 
 @combinations.generate(
     combinations.combine(
