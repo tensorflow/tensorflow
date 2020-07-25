@@ -62,12 +62,12 @@ static bool tpu_cancellation_terminates_process = false;
 static bool tpu_cancellation_closes_chips = true;
 
 // Host-side runtime for transfers between TPU and host.
+// TODO(b/161940519): Implement this class.
 class HostTransferManager {
  public:
-  using HostCommmandHandler = xla::TpuExecutable::HostCommandHandler;
+  explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
 
-  explicit HostTransferManager(TpuNodeContext* node_context)
-      : node_context_(node_context) {}
+  using HostCommmandHandler = xla::TpuExecutable::HostCommandHandler;
 
   // Returns a function to be called when the TPU triggers a host command
   // interrupt while executing the current program.
@@ -76,8 +76,6 @@ class HostTransferManager {
       const std::string& rendezvous_key_base, OpKernelContext* ctx);
 
  private:
-  TpuNodeContext* node_context_;     // not owned
-
   TF_DISALLOW_COPY_AND_ASSIGN(HostTransferManager);
 };
 
@@ -417,7 +415,9 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   profiler::TraceMe traceme("TPUExecute", 2);
   TF_RET_CHECK(tpu::TpuPlatformInterface::GetRegisteredPlatform() != nullptr);
   TF_RET_CHECK(tpu_program != nullptr);
-  VLOG(1) << "TPUExecute on device " << node_context->tensor_core_location();
+  VLOG(1) << "TPUExecute on device " << node_context->device_ordinal();
+
+  xla::Backend* backend = node_context->backend();
 
   XlaDevice* device =
       tensorflow::down_cast<XlaDevice*>(ctx->device()->UnderlyingDevice());
@@ -425,19 +425,19 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
 
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
-      std::make_shared<HostTransferManager>(node_context);
+      std::make_shared<HostTransferManager>(node_context, backend);
   TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommmandHandler handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 
   VLOG(2) << "Cloud TPU: Executing computation on device "
-          << node_context->index_on_host();
+          << node_context->device_ordinal();
 
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_device_assignment(device_assignment);
   run_options.set_rng_seed(rng_seed);
-  run_options.set_allocator(node_context->memory_allocator());
+  run_options.set_allocator(backend->memory_allocator());
   run_options.set_host_to_device_stream(host_to_device_stream);
 
   const xla::ServiceExecutableRunOptions service_run_options(run_options);
@@ -460,7 +460,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   TF_ASSIGN_OR_RETURN(
       module->input_output_alias_config(),
       xla::HloInputOutputAliasConfig::CreateFromProto(
-          node_context->transfer_manager()->HostShapeToDeviceShape(
+          backend->transfer_manager()->HostShapeToDeviceShape(
               module->config().entry_computation_layout().result_shape()),
           hlo_metadata.hlo_module().input_output_alias()));
   TF_RET_CHECK(executable.input_shapes().size() == arguments.size());
@@ -471,11 +471,11 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         xla::ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
   }
 
-  TF_RETURN_IF_ERROR(UpdateDynamicInputs(
-      stream, node_context->memory_allocator(), &arguments, input_shapes));
+  TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
+                                         &arguments, input_shapes));
 
   auto tpu_executable = absl::make_unique<xla::TpuExecutable>(
-      tpu_program, std::move(module), handler);
+      tpu_program, std::move(module), /*host_command_handler=*/handler);
 
   const int32 device_ordinal = node_context->device_ordinal();
   CancellationToken token;

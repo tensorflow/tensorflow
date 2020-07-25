@@ -648,11 +648,27 @@ tpu_py_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
+        ":strategy_test_lib",
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_strategy_compilation_test",
+    srcs = ["tpu_strategy_compilation_test.py"],
+    disable_experimental = True,
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -983,6 +999,7 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":reduce_util",
         ":strategy_combinations",
+        ":tpu_strategy",
         ":values",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
@@ -1684,10 +1701,20 @@ distribute_py_test(
     ],
     deps = [
         ":combinations",
+        ":device_util",
         ":strategy_combinations",
+        ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

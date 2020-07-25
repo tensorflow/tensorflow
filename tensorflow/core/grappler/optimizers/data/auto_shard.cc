@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -50,9 +51,8 @@ constexpr char kOutputShapes[] = "output_shapes";
 constexpr char kOutputTypes[] = "output_types";
 
 // clang-format off
-constexpr std::array<const char*, 6> kReaderDatasetOps = {
+constexpr std::array<const char*, 5> kReaderDatasetOps = {
     "FixedLengthRecordDataset",
-    "FixedLengthRecordDatasetV2",
     "RecordIODataset",
     "SSTableDataset",
     "TextLineDataset",
@@ -64,26 +64,22 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 31> kPassThroughOps = {
+constexpr std::array<const char*, 25> kPassThroughOps = {
     "_Retval",
     "AssertNextDataset",
     "BatchDataset",
-    "BatchDatasetV2",
+    "CacheDataset",
     "ExperimentalMapAndBatchDataset",
     "ExperimentalRebatchDataset",
-    "PaddedBatchDataset",
-    "PaddedBatchDatasetV2",
-    "CacheDataset",
-    "CacheDatasetV2",
     "FilterDataset",
     "Identity",
     "MapAndBatchDataset",
     "MapDataset",
     "ModelDataset",
     "OptimizeDataset",
+    "PaddedBatchDataset",
     "ParallelMapDataset",
-    "ParallelMapDatasetV2",
-    "ParseExampleDatasetV2",
+    "ParseExampleDataset",
     "PrefetchDataset",
     "ReduceDataset",
     "RebatchDataset",
@@ -91,23 +87,18 @@ constexpr std::array<const char*, 31> kPassThroughOps = {
     "ShardDataset",
     "ShuffleAndRepeatDataset",
     "ShuffleDataset",
-    "ShuffleDatasetV2",
-    "ShuffleDatasetV3",
     "SkipDataset",
     "TakeDataset",
     "WindowDataset",
 };
 
 // TODO(frankchn): Process functions within kFuncDatasetOps as well.
-constexpr std::array<const char*, 8> kFuncDatasetOps = {
+constexpr std::array<const char*, 5> kFuncDatasetOps = {
     "ExperimentalParallelInterleaveDataset",
     "FlatMapDataset",
     "InterleaveDataset",
-    "LegacyParallelInterleaveDatasetV2",
+    "LegacyParallelInterleaveDataset",
     "ParallelInterleaveDataset",
-    "ParallelInterleaveDatasetV2",
-    "ParallelInterleaveDatasetV3",
-    "ParallelInterleaveDatasetV4"
 };
 
 constexpr std::array<const char*, 5> kUnshardableSourceDatasetOps = {
@@ -126,7 +117,10 @@ template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,
                          const std::array<const char*, SIZE>& arr) {
   for (const auto& dataset_op_name : arr) {
-    if (node.op() == dataset_op_name) return true;
+    if (tensorflow::data::MatchesAnyVersionRE(/*op_prefix=*/dataset_op_name,
+                                              /*op_to_match=*/node.op())) {
+      return true;
+    }
   }
   return false;
 }

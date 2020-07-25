@@ -55,8 +55,8 @@ class MultiPlatformManagerImpl {
       TF_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
-      const std::function<bool(const Platform*)>& filter)
-      TF_LOCKS_EXCLUDED(mu_);
+      const std::function<bool(const Platform*)>& filter,
+      bool initialize_platform) TF_LOCKS_EXCLUDED(mu_);
 
   using Listener = MultiPlatformManager::Listener;
   port::Status RegisterListener(std::unique_ptr<Listener> listener)
@@ -188,7 +188,8 @@ port::Status MultiPlatformManagerImpl::RegisterListener(
 
 port::StatusOr<std::vector<Platform*>>
 MultiPlatformManagerImpl::PlatformsWithFilter(
-    const std::function<bool(const Platform*)>& filter) {
+    const std::function<bool(const Platform*)>& filter,
+    bool initialize_platform) {
   absl::MutexLock lock(&mu_);
   CHECK_EQ(id_map_.size(), name_map_.size());
   std::vector<Platform*> platforms;
@@ -196,7 +197,7 @@ MultiPlatformManagerImpl::PlatformsWithFilter(
   for (const auto& entry : id_map_) {
     Platform* platform = entry.second;
     if (filter(platform)) {
-      if (!platform->Initialized()) {
+      if (initialize_platform && !platform->Initialized()) {
         SE_RETURN_IF_ERROR(platform->Initialize({}));
       }
       platforms.push_back(platform);
@@ -299,7 +300,14 @@ MultiPlatformManager::InitializePlatformWithId(
 /*static*/ port::StatusOr<std::vector<Platform*>>
 MultiPlatformManager::PlatformsWithFilter(
     const std::function<bool(const Platform*)>& filter) {
-  return Impl().PlatformsWithFilter(filter);
+  return PlatformsWithFilter(filter, /*initialize_platform=*/true);
+}
+
+/*static*/ port::StatusOr<std::vector<Platform*>>
+MultiPlatformManager::PlatformsWithFilter(
+    const std::function<bool(const Platform*)>& filter,
+    bool initialize_platform) {
+  return Impl().PlatformsWithFilter(filter, initialize_platform);
 }
 
 }  // namespace stream_executor

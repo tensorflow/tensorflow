@@ -95,6 +95,9 @@ bool IsTfOpType(absl::string_view op_type);
 // Returns true if the given string matches JAX pattern.
 bool IsJaxOpType(absl::string_view op_type);
 
+// Returns true if the given string matches tf.data iterator pattern.
+bool IsIteratorEventName(absl::string_view event_name);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

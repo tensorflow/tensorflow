@@ -844,7 +844,8 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
 
        // CudnnRNN ops are stateful but they can't generate any observable
        // side-effect.
-       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+       "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNV2", "CudnnRNNV3",
+       "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
 
        // TPUEmbedding EnqueueOps are stateful but this is only between ops with
        // the same device_ordinal on the same host.

@@ -349,6 +349,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:casts",  # buildcleaner: keep
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
@@ -405,6 +406,10 @@ cc_library(
 cc_library(
     name = "tpu_compilation_metrics",
     srcs = ["tpu_compilation_metrics.cc"],
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
     deps = [
         ":tpu_compilation_metrics_hdrs",
     ],
@@ -652,6 +657,32 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "topk_ops",
+    srcs = ["topk_ops.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/core/tpu:tpu_defs",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "host_compute_ops",
+    srcs = ["host_compute_ops.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_defs",
     ],
     alwayslink = 1,
 )

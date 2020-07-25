@@ -414,6 +414,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # might want to turn it off, like Sequential model.
     self._auto_track_sub_layers = True
 
+    # For backwards compat reasons, most built-in layers do not guarantee
+    # That they will 100% preserve the structure of input args when saving
+    # / loading configs. E.g. they may un-nest an arg that is
+    # a list with one element.
+    self._preserve_input_structure_in_config = False
+
   @trackable.no_automatic_dependency_tracking
   @generic_utils.default
   def build(self, input_shape):

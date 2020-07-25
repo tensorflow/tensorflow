@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -45,7 +46,10 @@ Status TestCluster::Initialize() {
         "Test cluster has already been initialized.");
   }
   initialized_ = true;
-  TF_RETURN_IF_ERROR(NewDispatchServer(/*port=*/0, kProtocol, &dispatcher_));
+  experimental::DispatcherConfig config;
+  config.set_port(0);
+  config.set_protocol(kProtocol);
+  TF_RETURN_IF_ERROR(NewDispatchServer(config, &dispatcher_));
   TF_RETURN_IF_ERROR(dispatcher_->Start());
   dispatcher_address_ = absl::StrCat("localhost:", dispatcher_->BoundPort());
   workers_.reserve(num_workers_);

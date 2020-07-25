@@ -349,9 +349,6 @@ struct SegmentSumOptionsT;
 struct BatchMatMulOptions;
 struct BatchMatMulOptionsT;
 
-struct BroadcastToOptions;
-struct BroadcastToOptionsT;
-
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -784,12 +781,11 @@ enum BuiltinOperator {
   BuiltinOperator_DENSIFY = 124,
   BuiltinOperator_SEGMENT_SUM = 125,
   BuiltinOperator_BATCH_MATMUL = 126,
-  BuiltinOperator_BROADCAST_TO = 127,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_BROADCAST_TO
+  BuiltinOperator_MAX = BuiltinOperator_BATCH_MATMUL
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[128] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[127] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -917,14 +913,13 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[128] {
     BuiltinOperator_SELECT_V2,
     BuiltinOperator_DENSIFY,
     BuiltinOperator_SEGMENT_SUM,
-    BuiltinOperator_BATCH_MATMUL,
-    BuiltinOperator_BROADCAST_TO
+    BuiltinOperator_BATCH_MATMUL
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[129] = {
+  static const char * const names[128] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1052,14 +1047,13 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "DENSIFY",
     "SEGMENT_SUM",
     "BATCH_MATMUL",
-    "BROADCAST_TO",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BROADCAST_TO)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BATCH_MATMUL)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1167,12 +1161,11 @@ enum BuiltinOptions {
   BuiltinOptions_DensifyOptions = 99,
   BuiltinOptions_SegmentSumOptions = 100,
   BuiltinOptions_BatchMatMulOptions = 101,
-  BuiltinOptions_BroadcastToOptions = 102,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_BroadcastToOptions
+  BuiltinOptions_MAX = BuiltinOptions_BatchMatMulOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[103] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[102] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1275,14 +1268,13 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[103] {
     BuiltinOptions_SelectV2Options,
     BuiltinOptions_DensifyOptions,
     BuiltinOptions_SegmentSumOptions,
-    BuiltinOptions_BatchMatMulOptions,
-    BuiltinOptions_BroadcastToOptions
+    BuiltinOptions_BatchMatMulOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[104] = {
+  static const char * const names[103] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1385,14 +1377,13 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "DensifyOptions",
     "SegmentSumOptions",
     "BatchMatMulOptions",
-    "BroadcastToOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_BroadcastToOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_BatchMatMulOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1803,10 +1794,6 @@ template<> struct BuiltinOptionsTraits<tflite::SegmentSumOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::BatchMatMulOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BatchMatMulOptions;
-};
-
-template<> struct BuiltinOptionsTraits<tflite::BroadcastToOptions> {
-  static const BuiltinOptions enum_value = BuiltinOptions_BroadcastToOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2648,14 +2635,6 @@ struct BuiltinOptionsUnion {
   const tflite::BatchMatMulOptionsT *AsBatchMatMulOptions() const {
     return type == BuiltinOptions_BatchMatMulOptions ?
       reinterpret_cast<const tflite::BatchMatMulOptionsT *>(value) : nullptr;
-  }
-  tflite::BroadcastToOptionsT *AsBroadcastToOptions() {
-    return type == BuiltinOptions_BroadcastToOptions ?
-      reinterpret_cast<tflite::BroadcastToOptionsT *>(value) : nullptr;
-  }
-  const tflite::BroadcastToOptionsT *AsBroadcastToOptions() const {
-    return type == BuiltinOptions_BroadcastToOptions ?
-      reinterpret_cast<const tflite::BroadcastToOptionsT *>(value) : nullptr;
   }
 };
 
@@ -9331,46 +9310,6 @@ inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(
 
 flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(flatbuffers::FlatBufferBuilder &_fbb, const BatchMatMulOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
-struct BroadcastToOptionsT : public flatbuffers::NativeTable {
-  typedef BroadcastToOptions TableType;
-  BroadcastToOptionsT() {
-  }
-};
-
-struct BroadcastToOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef BroadcastToOptionsT NativeTableType;
-  bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           verifier.EndTable();
-  }
-  BroadcastToOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(BroadcastToOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<BroadcastToOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BroadcastToOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
-};
-
-struct BroadcastToOptionsBuilder {
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  explicit BroadcastToOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  BroadcastToOptionsBuilder &operator=(const BroadcastToOptionsBuilder &);
-  flatbuffers::Offset<BroadcastToOptions> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<BroadcastToOptions>(end);
-    return o;
-  }
-};
-
-inline flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(
-    flatbuffers::FlatBufferBuilder &_fbb) {
-  BroadcastToOptionsBuilder builder_(_fbb);
-  return builder_.Finish();
-}
-
-flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(flatbuffers::FlatBufferBuilder &_fbb, const BroadcastToOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
-
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   tflite::BuiltinOperator builtin_code;
@@ -9810,9 +9749,6 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::BatchMatMulOptions *builtin_options_as_BatchMatMulOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_BatchMatMulOptions ? static_cast<const tflite::BatchMatMulOptions *>(builtin_options()) : nullptr;
   }
-  const tflite::BroadcastToOptions *builtin_options_as_BroadcastToOptions() const {
-    return builtin_options_type() == tflite::BuiltinOptions_BroadcastToOptions ? static_cast<const tflite::BroadcastToOptions *>(builtin_options()) : nullptr;
-  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -10251,10 +10187,6 @@ template<> inline const tflite::SegmentSumOptions *Operator::builtin_options_as<
 
 template<> inline const tflite::BatchMatMulOptions *Operator::builtin_options_as<tflite::BatchMatMulOptions>() const {
   return builtin_options_as_BatchMatMulOptions();
-}
-
-template<> inline const tflite::BroadcastToOptions *Operator::builtin_options_as<tflite::BroadcastToOptions>() const {
-  return builtin_options_as_BroadcastToOptions();
 }
 
 struct OperatorBuilder {
@@ -13724,29 +13656,6 @@ inline flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(flatbuff
       _adj_y);
 }
 
-inline BroadcastToOptionsT *BroadcastToOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
-  auto _o = new BroadcastToOptionsT();
-  UnPackTo(_o, _resolver);
-  return _o;
-}
-
-inline void BroadcastToOptions::UnPackTo(BroadcastToOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
-  (void)_o;
-  (void)_resolver;
-}
-
-inline flatbuffers::Offset<BroadcastToOptions> BroadcastToOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BroadcastToOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
-  return CreateBroadcastToOptions(_fbb, _o, _rehasher);
-}
-
-inline flatbuffers::Offset<BroadcastToOptions> CreateBroadcastToOptions(flatbuffers::FlatBufferBuilder &_fbb, const BroadcastToOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
-  (void)_rehasher;
-  (void)_o;
-  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BroadcastToOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  return tflite::CreateBroadcastToOptions(
-      _fbb);
-}
-
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -14556,10 +14465,6 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::BatchMatMulOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case BuiltinOptions_BroadcastToOptions: {
-      auto ptr = reinterpret_cast<const tflite::BroadcastToOptions *>(obj);
-      return verifier.VerifyTable(ptr);
-    }
     default: return true;
   }
 }
@@ -14982,10 +14887,6 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::BatchMatMulOptions *>(obj);
       return ptr->UnPack(resolver);
     }
-    case BuiltinOptions_BroadcastToOptions: {
-      auto ptr = reinterpret_cast<const tflite::BroadcastToOptions *>(obj);
-      return ptr->UnPack(resolver);
-    }
     default: return nullptr;
   }
 }
@@ -15396,10 +15297,6 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::BatchMatMulOptionsT *>(value);
       return CreateBatchMatMulOptions(_fbb, ptr, _rehasher).Union();
     }
-    case BuiltinOptions_BroadcastToOptions: {
-      auto ptr = reinterpret_cast<const tflite::BroadcastToOptionsT *>(value);
-      return CreateBroadcastToOptions(_fbb, ptr, _rehasher).Union();
-    }
     default: return 0;
   }
 }
@@ -15808,10 +15705,6 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_BatchMatMulOptions: {
       value = new tflite::BatchMatMulOptionsT(*reinterpret_cast<tflite::BatchMatMulOptionsT *>(u.value));
-      break;
-    }
-    case BuiltinOptions_BroadcastToOptions: {
-      value = new tflite::BroadcastToOptionsT(*reinterpret_cast<tflite::BroadcastToOptionsT *>(u.value));
       break;
     }
     default:
@@ -16323,11 +16216,6 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_BatchMatMulOptions: {
       auto ptr = reinterpret_cast<tflite::BatchMatMulOptionsT *>(value);
-      delete ptr;
-      break;
-    }
-    case BuiltinOptions_BroadcastToOptions: {
-      auto ptr = reinterpret_cast<tflite::BroadcastToOptionsT *>(value);
       delete ptr;
       break;
     }

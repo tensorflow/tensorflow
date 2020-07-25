@@ -16,7 +16,7 @@
 set -ex
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON="${PYTHON:-python3}"
+PYTHON="${CI_BUILD_PYTHON:-python3}"
 VERSION_SUFFIX=${VERSION_SUFFIX:-}
 export TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
 TENSORFLOW_LITE_DIR="${TENSORFLOW_DIR}/tensorflow/lite"

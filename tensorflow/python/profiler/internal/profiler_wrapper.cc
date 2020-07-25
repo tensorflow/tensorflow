@@ -16,9 +16,12 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
@@ -43,20 +46,17 @@ using ::tensorflow::profiler::KERNEL_STATS_DB;
 using ::tensorflow::profiler::OP_METRICS_DB;
 using ::tensorflow::profiler::STEP_DB;
 
-tensorflow::ProfileRequest MakeProfileRequest(
-    const tensorflow::string& logdir, const tensorflow::string& session_id,
-    const tensorflow::string& host) {
-  tensorflow::ProfileRequest request;
-  request.add_tools("trace_viewer");
-  request.add_tools("overview_page");
-  request.add_tools("input_pipeline");
-  request.add_tools("kernel_stats");
-  request.add_tools("tensorflow_stats");
-  request.add_tools("memory_profile");
-  request.set_host_name(host);
-  request.set_repository_root(logdir);
-  request.set_session_id(session_id);
-  return request;
+tensorflow::Status ValidateHostPortPair(const std::string& host_port) {
+  tensorflow::uint32 port;
+  std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
+  // Must be host:port, port must be a number, host must not contain a '/',
+  // host also must not be empty.
+  if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
+      parts[0].find("/") != std::string::npos || parts[0].empty()) {
+    return tensorflow::errors::InvalidArgument(
+        "Could not interpret \"", host_port, "\" as a host-port pair.");
+  }
+  return tensorflow::Status::OK();
 }
 
 tensorflow::ProfileOptions GetOptions(const py::dict& opts) {
@@ -108,9 +108,11 @@ class ProfilerSessionWrapper {
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
 
     tensorflow::ProfileResponse response;
-    tensorflow::ProfileRequest request = MakeProfileRequest(
-        logdir_, tensorflow::profiler::GetCurrentTimeStampAsString(),
-        tensorflow::port::Hostname());
+    tensorflow::ProfileRequest request =
+        tensorflow::profiler::PopulateProfileRequest(
+            /*duration_ms=*/0, logdir_,
+            tensorflow::profiler::GetCurrentTimeStampAsString(),
+            tensorflow::port::Hostname(), /*opts=*/{});
     status = tensorflow::profiler::ConvertXSpaceToProfileResponse(
         xspace, request, &response);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
@@ -150,8 +152,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
                     const char* worker_list, bool include_dataset_ops,
                     int duration_ms, int num_tracing_attempts,
                     py::dict options) {
-    tensorflow::Status status =
-        tensorflow::profiler::ValidateHostPortPair(service_addr);
+    tensorflow::Status status = ValidateHostPortPair(service_addr);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     tensorflow::ProfileOptions opts = GetOptions(options);
     opts.set_include_dataset_ops(include_dataset_ops);
@@ -163,8 +164,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
   m.def("monitor", [](const char* service_addr, int duration_ms,
                       int monitoring_level, bool display_timestamp) {
-    tensorflow::Status status =
-        tensorflow::profiler::ValidateHostPortPair(service_addr);
+    tensorflow::Status status = ValidateHostPortPair(service_addr);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     tensorflow::string content;
     status = tensorflow::profiler::Monitor(service_addr, duration_ms,
@@ -188,7 +188,8 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
           xspace.ParseFromString(serialized_xspace_proto);
           tensorflow::profiler::OverviewPage overview_page =
               tensorflow::profiler::ConvertOpStatsToOverviewPage(
-                  ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB}));
+                  ConvertXSpaceToOpStats(
+                      xspace, {OP_METRICS_DB, STEP_DB, KERNEL_STATS_DB}));
           return py::bytes(overview_page.SerializeAsString());
         });
 

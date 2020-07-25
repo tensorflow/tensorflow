@@ -465,7 +465,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
     (named_variable,), _, _ = trackable_utils._serialize_object_graph(
         root, saveables_cache=None)
-    with ops.name_scope("root/" + named_variable.name):
+    with ops.name_scope_v2("root/" + named_variable.name):
       pass  # Make sure we can use this as an op name if we prefix it.
     return named_variable.name
 

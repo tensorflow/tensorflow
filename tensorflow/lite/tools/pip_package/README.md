@@ -73,7 +73,7 @@ CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_P
 ### Cross build for armhf Python 3.7
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
+CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3.7 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
   tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh armhf
 ```
@@ -89,7 +89,7 @@ CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_P
 ### Cross build for aarch64 Python 3.7
 
 ```sh
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
+CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3.7 -e CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7" \
   tensorflow/tools/ci_build/ci_build.sh PI-PYTHON37 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
 ```

@@ -233,6 +233,15 @@ TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
 
 TFTPU_CAPI_EXPORT void TpuExecutable_Free(SE_Executable*);
 
+// Converts an XLA `Shape` into its equivalent TPU `Shape` representation.
+TFTPU_CAPI_EXPORT void XlaShapeToTpuShapeRepresentation(
+    XLA_Shape* serialized_xla_shape, int data_type, bool use_fast_memory,
+    XLA_Shape* serialized_tpu_shape, SE_Status* status);
+
+TFTPU_CAPI_EXPORT void XlaShapeToTpuPaddedShape(XLA_Shape* serialized_xla_shape,
+                                                XLA_Shape* serialized_tpu_shape,
+                                                SE_Status* status);
+
 struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_Free);
@@ -295,6 +304,7 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Set);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Message);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Code);
@@ -337,12 +347,18 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Index);
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
 
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Free);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunHloPasses);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunBackend);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuShapeRepresentation);
+  TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuPaddedShape);
 };
 }
 

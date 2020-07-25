@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/c_api_defn.h"
+#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace ApiConverter {
@@ -90,8 +92,9 @@ SE_DeviceMemoryAllocator ToC(
             ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
     if (!allocation.ok()) {
       auto status = allocation.status();
-      TpuStatus_Set(se_status, status.code(), status.error_message().data(),
-                    status.error_message().size());
+      tensorflow::tpu::ExecutorApiFn()->TpuStatus_SetFn(
+          se_status, status.code(), status.error_message().data(),
+          status.error_message().size());
     } else {
       auto& scoped_memory = allocation.ValueOrDie();
       memory->wrapped = ApiConverter::ToC(scoped_memory.Release());
@@ -104,8 +107,9 @@ SE_DeviceMemoryAllocator ToC(
     auto status = reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
-      TpuStatus_Set(se_status, status.code(), status.error_message().data(),
-                    status.error_message().size());
+      tensorflow::tpu::ExecutorApiFn()->TpuStatus_SetFn(
+          se_status, status.code(), status.error_message().data(),
+          status.error_message().size());
     }
   };
   return se_allocator;
@@ -119,11 +123,16 @@ SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem) {
   return se_mem;
 }
 
+void ToC(const stream_executor::DeviceMemoryBase& base,
+         SE_DeviceMemoryBase* se_base) {
+  se_base->opaque = const_cast<void*>(base.opaque());
+  se_base->payload = base.payload();
+  se_base->size = base.size();
+}
+
 SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base) {
   SE_DeviceMemoryBase se_base;
-  se_base.opaque = const_cast<void*>(base.opaque());
-  se_base.payload = base.payload();
-  se_base.size = base.size();
+  ToC(base, &se_base);
   return se_base;
 }
 

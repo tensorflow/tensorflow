@@ -24,31 +24,30 @@ namespace {
 
 class AddGradientFunction : public GradientFunction {
  public:
-  explicit AddGradientFunction(AbstractContext* ctx) : ctx_(ctx) {}
-  Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+  Status Compute(Context* ctx,
+                 absl::Span<AbstractTensorHandle* const> grad_inputs,
                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
     grad_outputs->resize(2);
     std::vector<AbstractTensorHandle*> identity_outputs(1);
     // TODO(b/145674566): Handle name unification in tracing code.
     // TODO(b/161805092): Support broadcasting.
-    TF_RETURN_IF_ERROR(ops::Identity(
-        ctx_, {grad_inputs[0]}, absl::MakeSpan(identity_outputs), "Identity0"));
+    TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {grad_inputs[0]},
+                                     absl::MakeSpan(identity_outputs),
+                                     "Identity0"));
     (*grad_outputs)[0] = identity_outputs[0];
-    TF_RETURN_IF_ERROR(ops::Identity(
-        ctx_, {grad_inputs[0]}, absl::MakeSpan(identity_outputs), "Identity1"));
+    TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {grad_inputs[0]},
+                                     absl::MakeSpan(identity_outputs),
+                                     "Identity1"));
     (*grad_outputs)[1] = identity_outputs[0];
     return Status::OK();
   }
   ~AddGradientFunction() override {}
-
- private:
-  AbstractContext* ctx_;
 };
 
 }  // namespace
 
 GradientFunction* AddRegisterer(const ForwardOperation& op) {
-  return new AddGradientFunction(op.ctx);
+  return new AddGradientFunction;
 }
 }  // namespace gradients
 }  // namespace tensorflow

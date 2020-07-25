@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -896,6 +897,12 @@ std::string DeterminismPolicy::String() const {
       LOG(ERROR) << "Unrecognized determinism value";
       return "Unrecognized";
   }
+}
+
+bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match) {
+  // Matches all versions of an op by appending an optional version suffix
+  auto expected_re = strings::StrCat(RE2::QuoteMeta(op_prefix), "(V\\d+)?");
+  return RE2::FullMatch(op_to_match, expected_re);
 }
 
 }  // namespace data

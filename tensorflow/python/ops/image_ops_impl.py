@@ -2673,7 +2673,7 @@ def decode_image(contents,
     ValueError: On incorrect number of channels.
   """
   with ops.name_scope(name, 'decode_image'):
-    if compat.forward_compatible(2020, 7, 14):
+    if compat.forward_compatible(2020, 8, 14):
       channels = 0 if channels is None else channels
       if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
         dest_dtype = dtype

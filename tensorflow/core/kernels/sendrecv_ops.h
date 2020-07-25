@@ -26,7 +26,7 @@ class SendOp : public OpKernel {
   explicit SendOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
 
-  string TraceString(OpKernelContext* ctx, bool verbose) override;
+  string TraceString(const OpKernelContext& ctx, bool verbose) const override;
 
  private:
   string key_prefix_;
@@ -41,7 +41,7 @@ class RecvOp : public AsyncOpKernel {
   explicit RecvOp(OpKernelConstruction* ctx);
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
-  string TraceString(OpKernelContext* ctx, bool verbose) override;
+  string TraceString(const OpKernelContext& ctx, bool verbose) const override;
 
  private:
   string key_prefix_;

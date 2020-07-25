@@ -4,6 +4,8 @@ load(
     "gen_zipped_test_file",
     "generated_test_models_all",
     "merged_test_models",
+    "tflite_custom_android_library",
+    "tflite_custom_cc_library",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
@@ -516,6 +518,37 @@ cc_library(
     ],
 )
 
+# A selective built tflite for testing.
+tflite_custom_cc_library(
+    name = "test_tflite_lib",
+    models = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/lstm.bin",
+    ],
+)
+
+cc_test(
+    name = "selective_build_test",
+    srcs = ["selective_build_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/lstm.bin",
+    ],
+    tags = [
+        "no_mac",  # b/161990368
+        "noasan",  # b/162027436
+        "nomsan",  # b/162027436
+        "notsan",  # b/162027436
+    ],
+    deps = [
+        ":test_tflite_lib",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 pybind_extension(
     name = "_pywrap_string_util",
     srcs = [
@@ -533,6 +566,12 @@ pybind_extension(
 )
 
 tflite_portable_test_suite()
+
+tflite_custom_android_library(
+    name = "customtized_tflite_for_add_ops",
+    models = ["//tensorflow/lite:testdata/add.bin"],
+    visibility = ["//visibility:public"],
+)
 
 edgetpu_ops = [
     "add",

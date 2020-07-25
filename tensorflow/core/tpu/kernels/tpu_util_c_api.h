@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 // Property for creating compilation cache key.
@@ -46,12 +45,6 @@ extern "C" {
 
 // Checks if whether a TPU compilation is enabled.
 TFTPU_CAPI_EXPORT bool TpuCompile_IsTpuCompilationEnabled();
-
-// Converts an XLA `Shape` into its equivalent TPU `Shape` representation.
-TFTPU_CAPI_EXPORT void TpuCompile_ToTpuShapeRepresentation(
-    TpuSerializedProto serialized_xla_shape, int data_type,
-    bool use_fast_memory, TpuSerializedProto* serialized_tensor_shape,
-    SE_Status* status);
 
 // XLA compilation cannot be cancelled. To avoid hanging the TF worker will exit
 // when cancellation is requested for an XLA compile op. Some tests require this
@@ -85,7 +78,6 @@ TFTPU_CAPI_EXPORT uint64_t TpuCompile_CreateGuaranteedConstFingerprint(
 struct TfTpu_UtilApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_IsTpuCompilationEnabled);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
-  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ToTpuShapeRepresentation);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoreCount);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);

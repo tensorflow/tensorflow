@@ -41,18 +41,18 @@ struct OpData {
   // and the special 16-bit -> 16bit quantized path
   int input1_shift;
   int input2_shift;
-  int32 output_activation_min;
-  int32 output_activation_max;
+  int32_t output_activation_min;
+  int32_t output_activation_max;
 
   // These fields are used only in the general 8-bit -> 8bit quantized path
-  int32 input1_multiplier;
-  int32 input2_multiplier;
-  int32 output_multiplier;
+  int32_t input1_multiplier;
+  int32_t input2_multiplier;
+  int32_t output_multiplier;
   int output_shift;
   int left_shift;
-  int32 input1_offset;
-  int32 input2_offset;
-  int32 output_offset;
+  int32_t input1_offset;
+  int32_t input2_offset;
+  int32_t output_offset;
 };
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
@@ -173,12 +173,7 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {

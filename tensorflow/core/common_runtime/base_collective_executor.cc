@@ -214,6 +214,7 @@ BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
   VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
+  cem_->GetParamResolver()->StartAbort(s);
   remote_access_->StartAbort(s);
 }
 
@@ -284,10 +285,11 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // starve executor threads.
   remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
     profiler::TraceMe activity(
-        [&] {
-          return strings::StrCat(ctx->op_kernel().name_view(), ":",
-                                 ctx->op_kernel().type_string_view(),
-                                 "#id=", ctx->step_id(), "#");
+        [ctx] {
+          string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
+                                          ctx->op_kernel().type_string_view());
+          return profiler::TraceMeEncode(std::move(op),
+                                         {{"id", ctx->step_id()}});
         },
         profiler::TraceMeLevel::kInfo);
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {

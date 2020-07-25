@@ -102,8 +102,6 @@ class MlirTensor : public TracingTensorHandle {
     return type;
   }
 
-  void Release() override { delete this; }
-
   Value getValue() { return value_; }
 
   // For LLVM style RTTI.

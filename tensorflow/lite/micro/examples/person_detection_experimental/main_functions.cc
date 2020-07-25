@@ -32,7 +32,7 @@ const tflite::Model* model = nullptr;
 tflite::MicroInterpreter* interpreter = nullptr;
 TfLiteTensor* input = nullptr;
 
-// In order to use optimized tensorflow lite kernels, a signed int8 quantized
+// In order to use optimized tensorflow lite kernels, a signed int8_t quantized
 // model is preferred over the legacy unsigned model format. This means that
 // throughout this project, input images must be converted from unisgned to
 // signed format. The easiest and quickest way to convert from unsigned to

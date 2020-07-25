@@ -23,24 +23,3 @@ diff -ru a/Eigen/src/Geometry/arch/Geometry_SSE.h b/Eigen/src/Geometry/arch/Geom
      return res;
    }
  };
-diff -ru a/Eigen/src/Core/arch/Default/BFloat16.h a/Eigen/src/Core/arch/Default/BFloat16.h
---- a/Eigen/src/Core/arch/Default/BFloat16.h
-+++ a/Eigen/src/Core/arch/Default/BFloat16.h
-@@ -291,7 +291,7 @@
-     return output;
-   }
-   const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
--#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-   output.value = p[0];
- #else
-   output.value = p[1];
-@@ -493,7 +493,7 @@
- EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC float bfloat16_to_float(__bfloat16_raw h) {
-     float result = 0;
-     unsigned short* q = reinterpret_cast<unsigned short*>(&result);
--#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-     q[0] = h.value;
- #else
-     q[1] = h.value;

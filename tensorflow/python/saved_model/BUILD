@@ -380,6 +380,15 @@ tf_py_test(
 )
 
 py_strict_library(
+    name = "load_context",
+    srcs = [
+        "load_context.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "load",
     srcs = [
         "load.py",
@@ -387,6 +396,7 @@ py_strict_library(
     srcs_version = "PY2AND3",
     deps = [
         ":function_deserialization",
+        ":load_context",
         ":load_options",
         ":load_v1_in_v2",
         ":loader",

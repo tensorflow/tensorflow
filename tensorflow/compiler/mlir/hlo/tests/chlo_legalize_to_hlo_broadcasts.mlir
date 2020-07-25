@@ -237,3 +237,77 @@ func @xorWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4x
   %0 = chlo.broadcast_xor %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
   return %0 : tensor<4xi1>
 }
+
+// -----
+func @addScalarUnranked(%arg0: tensor<f32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<f32>, tensor<*xf32>)
+                                         -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL:   func @addScalarUnranked(
+// CHECK-SAME:                            %[[ARG_0:.*]]: tensor<f32>,
+// CHECK-SAME:                            %[[ARG_1:.*]]: tensor<*xf32>
+// CHECK-SAME:                            ) -> tensor<*xf32> {
+//                  First handle the dynamic reshaping of the unranked operand
+//                  to a 1D tensor.
+// CHECK:           %[[SHAPE_1:.*]] = shape.shape_of %[[ARG_1]] : tensor<*xf32>
+// CHECK:           %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE_1]]
+// CHECK:           %[[SIZE:.*]] = shape.size_to_index %[[NUM_ELEMENTS]]
+// CHECK:           %[[SIZE_TENSOR:.*]] = tensor_from_elements(%[[SIZE]]) : tensor<1xindex>
+// CHECK:           %[[RESHAPED:.*]] = "mhlo.dynamic_reshape"(%[[ARG_1]], %[[SIZE_TENSOR]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+//                  The assuming region is part of the second stage of lowering
+//                  with ranked broadcasting logic.
+// CHECK:           %[[SHAPE_0:.*]] = shape.shape_of %[[ARG_0]] : tensor<f32>
+// CHECK:           %[[SHAPE_RESHAPED:.*]] = shape.shape_of %[[RESHAPED]] : tensor<?xf32>
+// CHECK:           %[[WITNESS:.*]] = shape.cstr_broadcastable %[[SHAPE_0]], %[[SHAPE_RESHAPED]]
+// CHECK:           %[[ASSUMING_RESULT:.*]] = shape.assuming %[[WITNESS]] -> (tensor<?xf32>) {
+// CHECK:             %[[SCALAR_SHAPE:.*]] = shape.const_shape []
+// CHECK:             %[[BROADCASTED_SHAPE:.*]] = shape.broadcast %[[SCALAR_SHAPE]], %[[SHAPE_RESHAPED]]
+// CHECK:             %[[SHAPE_TENSOR:.*]] = shape.to_extent_tensor %[[BROADCASTED_SHAPE]] : tensor<1xindex>
+// CHECK:             %[[BROADCASTED_LHS:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG_0]], %[[SHAPE_TENSOR]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
+// CHECK:             %[[BROADCASTED_RHS:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[RESHAPED]], %[[SHAPE_TENSOR]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+// CHECK:             %[[BROADCASTED_RESULT:.*]] = mhlo.add %[[BROADCASTED_LHS]], %[[BROADCASTED_RHS]] : tensor<?xf32>
+// CHECK:             shape.assuming_yield %[[BROADCASTED_RESULT]] : tensor<?xf32>
+// CHECK:           }
+//                  As part of the unranked logic, the result is reshaped back
+//                  to an unranked tensor.
+// CHECK:           %[[PROPER_SHAPE_TENSOR:.*]] = shape.to_extent_tensor %[[SHAPE_1]] : tensor<?xindex>
+// CHECK:           %[[RESHAPED_RESULT:.*]] = "mhlo.dynamic_reshape"(%[[VAL_19:.*]], %[[PROPER_SHAPE_TENSOR]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK:           return %[[RESHAPED_RESULT]] : tensor<*xf32>
+// CHECK:         }
+
+// -----
+func @addUnrankedScalar(%arg0: tensor<*xf32>, %arg1: tensor<f32>) -> tensor<*xf32> {
+  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<*xf32>, tensor<f32>)
+                                         -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+// CHECK-LABEL:   func @addUnrankedScalar(
+// CHECK-SAME:                            %[[ARG_0:.*]]: tensor<*xf32>,
+// CHECK-SAME:                            %[[ARG_1:.*]]: tensor<f32>) -> tensor<*xf32> {
+//                  First handle the dynamic reshaping of the unranked operand
+//                  to a 1D tensor.
+// CHECK:           %[[SHAPE_0:.*]] = shape.shape_of %[[ARG_0]] : tensor<*xf32>
+// CHECK:           %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE_0]]
+// CHECK:           %[[SIZE:.*]] = shape.size_to_index %[[NUM_ELEMENTS]]
+// CHECK:           %[[SIZE_TENSOR:.*]] = tensor_from_elements(%[[SIZE]]) : tensor<1xindex>
+// CHECK:           %[[RESHAPED:.*]] = "mhlo.dynamic_reshape"(%[[ARG_0]], %[[SIZE_TENSOR]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+//                  The assuming region is part of the second stage of lowering
+//                  with ranked broadcasting logic.
+// CHECK:           %[[SHAPE_RESHAPED:.*]] = shape.shape_of %[[RESHAPED]] : tensor<?xf32>
+// CHECK:           %[[SHAPE_1:.*]] = shape.shape_of %[[ARG_1]] : tensor<f32>
+// CHECK:           %[[WITNESS:.*]] = shape.cstr_broadcastable %[[SHAPE_RESHAPED]], %[[SHAPE_1]]
+// CHECK:           %[[ASSUMING_RESULT:.*]] = shape.assuming %[[WITNESS]] -> (tensor<?xf32>) {
+// CHECK:             %[[SHAPE_TENSOR:.*]] = shape.to_extent_tensor %[[SHAPE_RESHAPED]] : tensor<1xindex>
+// CHECK:             %[[BROADCASTED_LHS:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[RESHAPED]], %[[SHAPE_TENSOR]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+// CHECK:             %[[BROADCASTED_RHS:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG_1]], %[[SHAPE_TENSOR]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
+// CHECK:             %[[BROADCASTED_RESULT:.*]] = mhlo.add %[[BROADCASTED_LHS]], %[[BROADCASTED_RHS]] : tensor<?xf32>
+// CHECK:             shape.assuming_yield %[[BROADCASTED_RESULT]] : tensor<?xf32>
+// CHECK:           }
+//                  As part of the unranked logic, the result is reshaped back
+//                  to an unranked tensor.
+// CHECK:           %[[PROPER_SHAPE_TENSOR:.*]] = shape.to_extent_tensor %[[SHAPE_0]] : tensor<?xindex>
+// CHECK:           %[[RESHAPED_RESULT:.*]] = "mhlo.dynamic_reshape"(%[[VAL_19:.*]], %[[PROPER_SHAPE_TENSOR]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK:           return %[[RESHAPED_RESULT]] : tensor<*xf32>
+// CHECK:         }

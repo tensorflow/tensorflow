@@ -208,7 +208,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
                                   GetTimeInMs(type_ps, DEVICE_WAIT_HOST));
     details.set_output_ms(GetTimeInMs(type_ps, DEVICE_TO_HOST));
     details.set_device_compute_ms(GetTimeInMs(type_ps, DEVICE_COMPUTE_16) +
-                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32));
+                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32) +
+                                  GetTimeInMs(type_ps, DEVICE_COLLECTIVES));
     details.set_device_to_device_ms(GetTimeInMs(type_ps, DEVICE_TO_DEVICE) +
                                     GetTimeInMs(type_ps, DEVICE_WAIT_DEVICE));
     details.set_host_compute_ms(GetTimeInMs(type_ps, HOST_COMPUTE));

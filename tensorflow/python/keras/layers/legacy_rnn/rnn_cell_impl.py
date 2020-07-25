@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
@@ -334,7 +335,7 @@ class RNNCell(base_layer.Layer):
       if (last_batch_size == batch_size and last_dtype == dtype and
           last_state_size == state_size):
         return last_output
-    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+    with backend.name_scope(type(self).__name__ + "ZeroState"):
       output = _zero_state_tensors(state_size, batch_size, dtype)
     if is_eager:
       self._last_zero_state = (state_size, batch_size, dtype, output)
@@ -1269,7 +1270,7 @@ class MultiRNNCell(RNNCell):
     return self._cells[-1].output_size
 
   def zero_state(self, batch_size, dtype):
-    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+    with backend.name_scope(type(self).__name__ + "ZeroState"):
       if self._state_is_tuple:
         return tuple(cell.zero_state(batch_size, dtype) for cell in self._cells)
       else:

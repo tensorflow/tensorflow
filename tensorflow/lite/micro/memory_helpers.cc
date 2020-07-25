@@ -131,7 +131,7 @@ TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
   input = input1->dims->size > input2->dims->size ? input1 : input2;
   TF_LITE_ENSURE(context, output->type == input->type);
 
-  size_t size;
+  size_t size = 0;
   TfLiteTypeSizeOf(input->type, &size);
   const int dimensions_count = tflite::GetTensorShape(input).DimensionsCount();
   for (int i = 0; i < dimensions_count; i++) {
@@ -140,9 +140,9 @@ TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
 
   output->bytes = size;
 
-  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-      context, TfLiteIntArrayGetSizeInBytes(size),
-      reinterpret_cast<void**>(&output->dims)));
+  output->dims =
+      reinterpret_cast<TfLiteIntArray*>(context->AllocatePersistentBuffer(
+          context, TfLiteIntArrayGetSizeInBytes(size)));
 
   output->dims->size = input->dims->size;
   for (int i = 0; i < dimensions_count; i++) {
