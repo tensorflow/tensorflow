@@ -379,8 +379,7 @@ class MirroredVariableCreationTest(test.TestCase):
     with distribution.scope():
       with self.assertRaisesRegex(
           ValueError, "`NONE` variable synchronization mode is not "
-          "supported with `Mirrored` distribution strategy. Please change "
-          "the `synchronization` for variable: v"):
+          "supported with "):
         variable_scope.get_variable(
             "v", [1],
             synchronization=variable_scope.VariableSynchronization.NONE)
@@ -389,8 +388,7 @@ class MirroredVariableCreationTest(test.TestCase):
     with distribution.scope():
       with self.assertRaisesRegex(
           ValueError, "`NONE` variable synchronization mode is not "
-          "supported with `Mirrored` distribution strategy. Please change "
-          "the `synchronization` for variable: v"):
+          "supported with "):
         variable_scope.variable(
             1.0,
             name="v",
