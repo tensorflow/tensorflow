@@ -865,7 +865,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     ValueError: If the shape is rank-0 and is not statically known to be -1.
   """
   if isinstance(tensor, ops.EagerTensor):
-    return tensor_shape.as_shape(
+    return tensor_shape.TensorShape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 
   if tensor.get_shape().ndims == 0:

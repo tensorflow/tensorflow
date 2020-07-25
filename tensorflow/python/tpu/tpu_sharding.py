@@ -185,7 +185,7 @@ class ShardingPolicy(object):
                        (shape.as_list(), self._number_of_shards,
                         self._shard_dimension))
     dims[self._shard_dimension] //= self._number_of_shards
-    return tensor_shape.as_shape(dims)
+    return tensor_shape.TensorShape(dims)
 
   def _unshard_shape(self, shape):
     """Return the unsharded shape that would generate a given sharded shape.
@@ -213,7 +213,7 @@ class ShardingPolicy(object):
                        (shape.as_list(), self._shard_dimension))
     dims = shape.as_list()
     dims[self._shard_dimension] *= self._number_of_shards
-    return tensor_shape.as_shape(dims)
+    return tensor_shape.TensorShape(dims)
 
   def get_unsharded_shape(self, shapes):
     """Returns the shape of an unsharded Tensor given a list of shards.
