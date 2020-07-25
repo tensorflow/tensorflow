@@ -344,23 +344,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Validate output tensor:
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
 
-  // Calculate effective scales.
-  auto* input_params =
-      static_cast<TfLiteAffineQuantization*>(input->quantization.params);
-  auto* weights_feature_params = static_cast<TfLiteAffineQuantization*>(
-      weights_feature->quantization.params);
-  auto* state_params = static_cast<TfLiteAffineQuantization*>(
-      activation_state->quantization.params);
-  auto* weight_time_params =
-      static_cast<TfLiteAffineQuantization*>(weights_time->quantization.params);
-  auto* output_params =
-      static_cast<TfLiteAffineQuantization*>(output->quantization.params);
-  const float effective_scale_1 = input_params->scale->data[0] *
-                                  weights_feature_params->scale->data[0] /
-                                  state_params->scale->data[0];
-  const float effective_scale_2 = state_params->scale->data[0] *
-                                  weight_time_params->scale->data[0] /
-                                  output_params->scale->data[0];
+  const double effective_scale_1 =
+      static_cast<double>(input->params.scale * weights_feature->params.scale /
+                          activation_state->params.scale);
+  const double effective_scale_2 =
+      static_cast<double>(activation_state->params.scale *
+                          weights_time->params.scale / output->params.scale);
+
+  TF_LITE_ENSURE_EQ(context, static_cast<double>(bias->params.scale),
+                    static_cast<double>(activation_state->params.scale *
+                                        weights_time->params.scale));
 
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
@@ -397,7 +390,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* activation_state =
       GetVariableInput(context, node, kInputActivationStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
 
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));

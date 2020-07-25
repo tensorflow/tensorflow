@@ -245,7 +245,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
 
 def convert_to_list(values, sparse_default_value=None):
   """Convert a TensorLike, CompositeTensor, or ndarray into a Python list."""
-  if ragged_tensor.is_ragged(values):
+  if tf_utils.is_ragged(values):
     # There is a corner case when dealing with ragged tensors: if you get an
     # actual RaggedTensor (not a RaggedTensorValue) passed in non-eager mode,
     # you can't call to_list() on it without evaluating it first. However,

@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_func_graphs
@@ -216,7 +217,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
     if sparse_tensor.is_sparse(tensor):
       sparse_ops.append(tensor.op)
       continue
-    if ragged_tensor.is_ragged(tensor):
+    if tf_utils.is_ragged(tensor):
       # Ragged tensors don't have an op property
       ragged_tensors.append(tensor)
       continue
