@@ -1,6 +1,9 @@
 FROM ubuntu:16.04
 
-LABEL maintainer="Jan Prach <jendap@google.com>"
+LABEL maintainer="Terry Heo <terryheo@google.com>"
+
+ENV CI_BUILD_PYTHON=python3.7
+ENV CROSSTOOL_PYTHON_INCLUDE_PATH=/usr/include/python3.7
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
@@ -10,10 +13,7 @@ RUN add-apt-repository -y ppa:openjdk-r/ppa && \
 RUN /install/install_deb_packages.sh
 
 # The following line installs the Python 3.7 cross-compilation toolchain.
-RUN /install/install_pi_python37_toolchain.sh
-
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7"
-RUN ln -sf /usr/local/lib/python3.7/dist-packages/numpy/core/include/numpy /usr/include/python3.7/numpy
+RUN /install/install_pi_python3x_toolchain.sh "3.7"
 
 RUN /install/install_bazel.sh
 RUN /install/install_proto3.sh
