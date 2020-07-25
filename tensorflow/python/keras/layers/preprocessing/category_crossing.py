@@ -27,6 +27,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -151,7 +152,7 @@ class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
     inputs = [self._preprocess_input(inp) for inp in inputs]
     depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
     ragged_out = sparse_out = False
-    if any(ragged_tensor.is_ragged(inp) for inp in inputs):
+    if any(tf_utils.is_ragged(inp) for inp in inputs):
       ragged_out = True
     elif any(isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs):
       sparse_out = True
