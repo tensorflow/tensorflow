@@ -157,6 +157,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
     ] + select({
         "//tensorflow:oss": [
+            ":tpu_compilation_device",
             ":tpu_node_device",
             ":tpu_system_device",
             "//tensorflow/core/tpu/ops:host_compute_ops",
