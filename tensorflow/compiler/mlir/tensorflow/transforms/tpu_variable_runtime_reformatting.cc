@@ -365,7 +365,6 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
       while_op.getLoc(),
       append_types(llvm::to_vector<4>(while_op.getResultTypes())),
       new_while_operands, while_op.getAttrs());
-
   while_op.replaceAllUsesWith(
       new_while_op.getResults().take_front(while_op.getNumResults()));
   while_op.erase();
