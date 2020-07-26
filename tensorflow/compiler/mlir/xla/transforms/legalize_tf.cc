@@ -365,7 +365,7 @@ static Value UpdateSliceInMinorDims(Location loc, Value v, Value update,
                                     ArrayRef<int64_t> minor_starts,
                                     OpBuilder *builder) {
   llvm::SmallVector<Value, 4> dus_starts(minor_starts.size());
-  for (int64_t i = 0; i < minor_starts.size(); ++i) {
+  for (uint64_t i = 0; i < minor_starts.size(); ++i) {
     dus_starts[i] = GetScalarConstOfType(builder->getIntegerType(32), loc,
                                          minor_starts[i], builder);
   }
@@ -808,7 +808,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
   for (auto it : llvm::enumerate(int_attr.getIntValues())) {
-    if (it.index() % shape[1] == column) {
+    if ( static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
   }
@@ -1836,6 +1836,9 @@ Operation *AvgPoolDivideByCount(
   return result;
 }
 
+Value GetAvgPoolInput(TF::AvgPoolOp op) { return op.value(); }
+Value GetAvgPoolInput(TF::AvgPool3DOp op) { return op.input(); }
+
 // Converts AvgPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with add as the reduction function. The reduction result is
 // then divided by the number of elements in the window.
@@ -1846,8 +1849,9 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
+    Value input_value = GetAvgPoolInput(op);
     auto input_type =
-        op.value().getType().template dyn_cast<RankedTensorType>();
+        input_value.getType().template dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
 
     // We will do accumulation first; use a larger bitwidth if suitable.
@@ -1861,8 +1865,6 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
           RankedTensorType::get(ranked_type.getShape(), sum_element_type);
     else
       result_type = UnrankedTensorType::get(sum_element_type);
-
-    Value input_value = op.value();
 
     // Convert if we need enlarge the element type's bitwidth.
     if (input_element_type != sum_element_type)
@@ -2680,7 +2682,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     SmallVector<Value, 4> slices;
     slices.reserve(op.getNumResults());
 
-    for (int i = 0; i < op.getNumResults(); ++i) {
+    for (int i = 0, end = op.getNumResults(); i < end; ++i) {
       end_indices[dim_index] = begin_indices[dim_index] + split_sizes[i];
       slices.push_back(rewriter.create<mhlo::SliceOp>(
           op.getLoc(), op.value(), GetI64ElementsAttr(begin_indices, &rewriter),
@@ -2855,7 +2857,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     // verifier.
     int64_t slicing_dim_size =
         op.begin().getType().cast<RankedTensorType>().getShape()[0];
-    auto input_rank = input_shape.size();
+    const int input_rank = input_shape.size();
     for (int d = slicing_dim_size; d < input_rank; ++d) {
       // We only support slicing major dimensions, so minor dimensions after
       // slicing dimensions are all sliced with their full sizes.
@@ -2896,7 +2898,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     }
 
     // For non-slice dims, get the full slice of that dimension.
-    for (int d = slicing_dim_size; d < input_shape.size(); ++d) {
+    for (int d = slicing_dim_size, end = input_shape.size(); d < end; ++d) {
       slice_sizes.push_back(input_shape[d]);
       slice_begin_indices.push_back(zero);
     }
@@ -3592,7 +3594,8 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
         multiples.getType().getRank() != 1)
       return failure();
 
-    if (multiples.getNumElements() != input_shape.size()) return failure();
+    const int64_t input_shape_size = input_shape.size();
+    if (multiples.getNumElements() != input_shape_size) return failure();
 
     SmallVector<int64_t, 8> broadcasted_shape;
     SmallVector<int64_t, 4> broadcast_dimensions;
@@ -4379,7 +4382,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
     SmallVector<Value, 4> results;
     results.reserve(op.getNumResults());
 
-    for (int i = 0; i < op.getNumResults(); ++i) {
+    for (int i = 0, end = op.getNumResults(); i < end; ++i) {
       begin_indices[axis] = i;
       end_indices[axis] = i + 1;
 
