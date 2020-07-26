@@ -261,8 +261,8 @@ Status HloSchedule::Verify() const {
           << " appears more than once in the schedule";
       pos++;
     }
-
-    TF_RET_CHECK(instruction_position.size() ==
+    const int64 instruction_position_size = instruction_position.size();
+    TF_RET_CHECK(instruction_position_size ==
                  computation->instruction_count())
         << "Schedule for computation " << computation->name() << " has "
         << instruction_position.size() << " instructions, expected "

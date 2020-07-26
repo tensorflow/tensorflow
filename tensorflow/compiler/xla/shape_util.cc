@@ -221,7 +221,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     const std::vector<bool>& dynamic_dimensions) {
   TF_ASSIGN_OR_RETURN(Shape shape,
                       MakeValidatedShape(element_type, dimensions));
-  for (int i = 0; i < dynamic_dimensions.size(); ++i) {
+  for (int i = 0, end = dynamic_dimensions.size(); i < end; ++i) {
     shape.set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
   return shape;
@@ -247,7 +247,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     const Shape& shape) {
   std::vector<int64> dims(shape.dimensions_size());
-  for (int i = 0; i < shape.dimensions_size(); ++i) {
+  for (int i = 0, end = shape.dimensions_size(); i < end; ++i) {
     dims[i] = shape.dimensions(LayoutUtil::Major(shape.layout(), i));
   }
   Shape new_shape = MakeShapeWithDescendingLayout(shape.element_type(), dims);
@@ -533,7 +533,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
   string result = StrCat(
       primitive_util::LowercasePrimitiveTypeName(shape.element_type()), "[");
-  for (int i = 0; i < shape.dimensions().size(); i++) {
+  for (int i = 0, end = shape.dimensions().size(); i < end; i++) {
     StrAppend(&result, (i > 0) ? "," : "",
               shape.is_dynamic_dimension(i) ? "<=" : "", shape.dimensions(i));
   }

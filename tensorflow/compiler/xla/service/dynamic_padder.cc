@@ -280,7 +280,7 @@ Status RewriteDynamicReshapeSplitInput(
   //
   // Index starts from 1 since there is no need to rewrite a major output
   // dimension.
-  for (int64 i = 1; i < output_dims.size(); ++i) {
+  for (int64 i = 1, end = output_dims.size(); i < end; ++i) {
     const int64 output_dim = output_dims[i];
     HloInstruction* dynamic_size = output_dynamic_dims[output_dim];
     if (dynamic_size == nullptr) {
@@ -492,7 +492,7 @@ Status RewriteDynamicReshapeCombineInput(
   //
   // Index starts from 1 since there is no need to rewrite a major output
   // dimension.
-  for (int64 i = 1; i < input_dims.size(); ++i) {
+  for (int64 i = 1, end = input_dims.size(); i < end; ++i) {
     const int64 input_dim = input_dims[i];
     HloInstruction* dynamic_size = input_dynamic_dims[input_dim];
     if (dynamic_size == nullptr) {
@@ -807,7 +807,7 @@ StatusOr<bool> RewriteDynamicReshape(
   auto common_factors = CommonFactors(operand->shape().dimensions(),
                                       reshape->shape().dimensions());
   // Find common_factors that the input belongs to.
-  for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+  for (int64 i = 0, iter_end = common_factors.size() - 1; i < iter_end; ++i) {
     auto start = common_factors[i];
     auto end = common_factors[i + 1];
     std::vector<int64> input_dims;

@@ -198,13 +198,14 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     // 'source_multidim_index' which does not belong to 'deleted_dims_indices',
     // we retrieve the corresponding value from 'multidim_' (skipping any
     // indices that appear in 'inserted_dims_indices').
-    for (int64 i = 0, j = 0, k = 0, l = 0; i < source_multidim_index.size();
-         ++i) {
-      if (j == deleted_dims_indices.size() || deleted_dims_indices[j] > i) {
+    for (int64 i = 0, j = 0, k = 0, l = 0, end = source_multidim_index.size();
+         i < end; ++i) {
+      const int64 deleted_dims_indices_size = deleted_dims_indices.size();
+      if (j == deleted_dims_indices_size || deleted_dims_indices[j] > i) {
         // This is a dimension that was preserved. Take the matching value from
         // multidim_.
-        while (l < inserted_dims_indices.size() &&
-               inserted_dims_indices[l] == k) {
+        const int64 inserted_dims_indices_size = inserted_dims_indices.size();
+        while (l < inserted_dims_indices_size && inserted_dims_indices[l] == k) {
           // Skip 1-sized dimensions.
           ++k;
           ++l;
@@ -267,7 +268,7 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
     const Shape& operand_shape, absl::Span<const int64> starts,
     absl::Span<const int64> strides, llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> source_multi_index(multidim_.size());
-  for (int i = 0; i < multidim_.size(); ++i) {
+  for (int i = 0, end = multidim_.size(); i < end; ++i) {
     int64 stride = strides[i];
     if (stride != 1) {
       source_multi_index[i] = builder->CreateAdd(
@@ -460,7 +461,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   }
 
   std::vector<llvm::Value*> actual_index;
-  for (int64 i = 0; i < index.size(); ++i) {
+  for (int64 i = 0, end = index.size(); i < end; ++i) {
     // When dimension i is of size 1, LLVM optimization is able to replace
     // index[i] with 0. However, setting index[i] to 0 here still allows LLVM to
     // produce better code in some cases.
@@ -477,7 +478,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   CHECK_GT(index.size(), 0);
   std::vector<llvm::Value*> gep_indices(
       1, llvm::ConstantInt::get(index[0]->getType(), 0));
-  for (int64 i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+  for (int64 i = 0, end = LayoutUtil::MinorToMajor(shape_).size(); i < end; ++i) {
     int64 dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }

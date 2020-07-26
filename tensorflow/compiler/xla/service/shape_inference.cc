@@ -761,6 +761,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 /* static */ StatusOr<Shape> ShapeInference::InferInDimBroadcastShape(
     const Shape& smaller_shape, const Shape& larger_shape,
     absl::Span<const int64> broadcast_dimensions) {
+  const int64 broadcast_dimensions_size = broadcast_dimensions.size();
   if (broadcast_dimensions.empty() && !ShapeUtil::IsScalar(smaller_shape)) {
     // Reject "magic" inference for binops on different shapes, requiring
     // the user to provide an explicit broadcast dimension in this case.
@@ -768,7 +769,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return InvalidArgument("Automatic shape inference not supported: %s and %s",
                            ShapeUtil::HumanString(smaller_shape),
                            ShapeUtil::HumanString(larger_shape));
-  } else if (broadcast_dimensions.size() != smaller_shape.rank()) {
+  } else if (broadcast_dimensions_size != smaller_shape.rank()) {
     return InvalidArgument(
         "Size of broadcast_dimensions has to match lower-rank operand's "
         "rank; "
@@ -1073,7 +1074,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       if (operand_shapes.size() == 1) {
         return *operand_shapes[0];
       } else {
-        for (int64 operand = 1; operand < operand_shapes.size(); ++operand) {
+        for (int64 operand = 1, end = operand_shapes.size(); operand < end; ++operand) {
           if (!ShapeUtil::SameDimensions(*operand_shapes[0],
                                          *operand_shapes[operand])) {
             return InvalidArgument(
@@ -1134,7 +1135,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   // Check that dimensions.size == arg_shape.dimensions_size() (we currently
   // only support mapping across all dimensions: i.e. scalar map functions).
-  if (dimensions.size() != arg_shape->dimensions_size()) {
+  const int64 dimensions_size = dimensions.size();
+  if (dimensions_size != arg_shape->dimensions_size()) {
     return InvalidArgument(
         "Map applied to a subset of dimensions currently not supported: "
         "arg_dimension_size: %d, requested_map_dimensions_size: %u.",
@@ -1142,7 +1144,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   // Check that requested map dimensions numbers are monotonically increasing.
-  for (int i = 0; i < dimensions.size(); ++i) {
+  for (int i = 0, end = dimensions.size(); i < end; ++i) {
     if (dimensions[i] != i) {
       return InvalidArgument(
           "Map requires monotonically increasing dimension numbers; got: %s.",
@@ -1151,7 +1153,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   // The applied function's arity equals the number of arguments.
-  if (arg_shapes.size() != to_apply.parameters_size()) {
+  const int64 arg_shapes_size = arg_shapes.size();
+  if (arg_shapes_size != to_apply.parameters_size()) {
     return InvalidArgument(
         "Map applied function arity must match number of arguments; got: "
         "arity: %d, arguments: %u.",
@@ -2359,14 +2362,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                            starts.size(), strides.size()));
   }
 
-  if (starts.size() != arg.rank()) {
+  const int64 starts_size = starts.size();
+  if (starts_size != arg.rank()) {
     return InvalidArgument(
         "Slice index count does not match argument rank: %u vs %d.",
         starts.size(), arg.rank());
   }
 
   std::vector<int64> sizes;
-  for (int64 dimension = 0; dimension < starts.size(); ++dimension) {
+  for (int64 dimension = 0, end = starts.size(); dimension < end; ++dimension) {
     int64 start_index = starts[dimension];
     int64 limit_index = limits[dimension];
     int64 stride = strides[dimension];
@@ -2453,7 +2457,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                          ShapeUtil::HumanString(operand_shape),
                          StrJoin(slice_sizes, ", "));
 
-    if (operand_shape.rank() != number_of_indices) {
+    const int64 number_of_indices_int = number_of_indices;
+    if (operand_shape.rank() != number_of_indices_int) {
       return InvalidArgument(
           "Dynamic slice start number of dimensions %d must match rank "
           "%d of slice input (%s).",
@@ -2483,13 +2488,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
   }
 
-  if (slice_sizes.size() != operand_shape.rank()) {
+  const int64 slice_sizes_size = slice_sizes.size();
+  if (slice_sizes_size != operand_shape.rank()) {
     return InvalidArgument(
         "Dynamic slice index count does not match argument rank: %u vs %d.",
         slice_sizes.size(), operand_shape.rank());
   }
 
-  for (int64 dim = 0; dim < slice_sizes.size(); ++dim) {
+  for (int64 dim = 0, end = slice_sizes.size(); dim < end; ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 slice_dim_size = slice_sizes[dim];
     if (slice_dim_size < 0) {
@@ -2559,7 +2565,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                          ShapeUtil::HumanString(operand_shape),
                          ShapeUtil::HumanString(update_shape));
 
-    if (operand_shape.rank() != number_of_indices) {
+    const int64 number_of_indices_int = number_of_indices;
+    if (operand_shape.rank() != number_of_indices_int) {
       return InvalidArgument(
           "Dynamic update slice start number of dimensions %d must match "
           "rank %d of slice input (%s).",
@@ -2723,7 +2730,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
   TF_RET_CHECK(branch_computations.size() == branch_operands.size());
 
-  for (int j = 0; j < branch_computations.size(); ++j) {
+  for (int j = 0, end = branch_computations.size(); j < end; ++j) {
     if (branch_computations[j].parameters_size() != 1) {
       return InvalidArgument(
           "branch computation %d must take 1 argument; got %d.", j,
@@ -2796,7 +2803,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "operand rank: %lld; output rank: %lld",
         operand_rank, output_rank);
   }
-  if (operand_rank != broadcast_dimensions.size()) {
+  const int64 broadcast_dimensions_size = broadcast_dimensions.size();
+  if (operand_rank != broadcast_dimensions_size) {
     return InvalidArgument(
         "Size of broadcast_dimensions has to match operand's rank; operand "
         "rank: %lld, size of broadcast_dimensions %u.",
@@ -2856,7 +2864,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   std::vector<int64> indices(operand.rank());
   std::iota(indices.begin(), indices.end(), 0);
-  if (dimensions.size() != operand.rank() ||
+  const int64 dimensions_size = dimensions.size();
+  if (dimensions_size != operand.rank() ||
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
@@ -2883,7 +2892,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     int64 output_dim_start = -1;
     int64 output_dim_end = -1;
     // Find common_factors that the input_dim belongs to.
-    for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+    for (int64 i = 0, iter_end = common_factors.size() - 1; i < iter_end; ++i) {
       auto start = common_factors[i];
       auto end = common_factors[i + 1];
       if (input_dim >= start.first && input_dim < end.first) {
@@ -3073,7 +3082,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 /* static */ StatusOr<Shape> ShapeInference::InferCallShape(
     absl::Span<const Shape* const> arg_shapes, const ProgramShape& to_apply) {
   // The applied function's arity equals the number of arguments.
-  if (arg_shapes.size() != to_apply.parameters_size()) {
+  const int64 arg_shapes_size = arg_shapes.size();
+  if (arg_shapes_size != to_apply.parameters_size()) {
     string computation_signature = ShapeUtil::HumanString(to_apply);
     string argument_shapes =
         StrJoin(arg_shapes, ", ", [](string* out, const Shape* shape) {
@@ -3088,7 +3098,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   // All arguments must be compatible with the program shape.
-  for (int i = 0; i < arg_shapes.size(); ++i) {
+  for (int i = 0, end = arg_shapes.size(); i < end; ++i) {
     const Shape& arg_shape = *arg_shapes[i];
     const Shape& param_shape = to_apply.parameters(i);
     if (!ShapeUtil::Compatible(arg_shape, param_shape)) {
@@ -3235,7 +3245,8 @@ static Status ValidateGatherDimensionNumbers(
   absl::c_copy(
       start_indices_shape.dynamic_dimensions(),
       std::back_inserter(expanded_start_indices_shape_dynamic_dimensions));
-  if (expanded_start_indices_shape.size() ==
+  const int64 esis_size = expanded_start_indices_shape.size();
+  if (esis_size ==
       gather_dim_numbers.index_vector_dim()) {
     expanded_start_indices_shape.push_back(1);
     expanded_start_indices_shape_dynamic_dimensions.push_back(false);
@@ -3244,7 +3255,8 @@ static Status ValidateGatherDimensionNumbers(
   TF_RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
       input_shape, expanded_start_indices_shape, gather_dim_numbers));
 
-  if (slice_sizes.size() != input_shape.dimensions_size()) {
+  const int64 slice_sizes_size = slice_sizes.size();
+  if (slice_sizes_size != input_shape.dimensions_size()) {
     return InvalidArgument(
         "Gather op must have one slice size for every input dimension; got: "
         "len(slice_sizes)=%lu, input_shape.rank=%d.",
@@ -3466,7 +3478,8 @@ Status ValidateScatterDimensionNumbers(
 
   std::vector<int64> expanded_scatter_indices_shape =
       SpanToVector(scatter_indices_shape.dimensions());
-  if (expanded_scatter_indices_shape.size() ==
+  const int64 expanded_scatter_indices_shape_size = expanded_scatter_indices_shape.size();
+  if (expanded_scatter_indices_shape_size ==
       scatter_dim_numbers.index_vector_dim()) {
     expanded_scatter_indices_shape.push_back(1);
   }

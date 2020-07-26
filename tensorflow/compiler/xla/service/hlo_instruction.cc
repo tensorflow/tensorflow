@@ -460,7 +460,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      for (int i = 0; i < source_target_pairs.size(); i++) {
+      for (int i = 0, end = source_target_pairs.size(); i < end; i++) {
         source_target_pairs[i].first = proto.source_target_pairs(i).source();
         source_target_pairs[i].second = proto.source_target_pairs(i).target();
       }
@@ -1134,7 +1134,7 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
       absl::WrapUnique(new HloInstruction(HloOpcode::kConditional, shape));
   instruction->AppendOperand(branch_index);
   CHECK_EQ(branch_computations.size(), branch_computation_args.size());
-  for (int i = 0; i < branch_computations.size(); ++i) {
+  for (int i = 0, end = branch_computations.size(); i < end; ++i) {
     instruction->called_computations_.push_back(branch_computations[i]);
     instruction->AppendOperand(branch_computation_args[i]);
   }
@@ -1912,7 +1912,7 @@ void HloInstruction::RemoveOperandsAtAscendingIndices(
     ++removed_count;
     ++next_index;
   }
-  while (next_index < operands_.size()) {
+  while (next_index < static_cast<int64>(operands_.size())) {
     operands_[next_index - removed_count] = operands_[next_index];
     ++next_index;
   }
@@ -3297,7 +3297,7 @@ class HloInstruction::FusionReusesParamElements {
     const bool key_is_new = p.second;
 
     if (key_is_new) {
-      for (int64 j = 0; j < hlo.operands_.size(); ++j) {
+      for (int64 j = 0, end = hlo.operands_.size(); j < end; ++j) {
         UseKind old_val = value_it->second;
 
         // The next operation invalidates iterators.
