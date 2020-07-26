@@ -45,10 +45,8 @@ limitations under the License.
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
-#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
-#include "tensorflow/lite/tools/tool_params.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
@@ -899,52 +897,6 @@ class MultiOpModel : public SingleOpModel {
     return AddTensor<T>(t, {}, false);
   }
 };
-
-// A utility class to provide TfLite delegate creations for kernel tests. The
-// options of a particular delegate could be specified from commandline flags by
-// using the delegate provider registrar as implemented in lite/tools/delegates
-// directory.
-class KernelTestDelegateProviders {
- public:
-  // Returns a global KernelTestDelegateProviders instance.
-  static KernelTestDelegateProviders* Get();
-
-  KernelTestDelegateProviders();
-
-  // Initialize delegate-related parameters from commandline arguments and
-  // returns true if successful.
-  bool InitFromCmdlineArgs(int* argc, const char** argv);
-
-  // This provides a way to overwrite parameter values programmatically before
-  // creating TfLite delegates. Note, changes to the returned ToolParams will
-  // have a global impact on creating TfLite delegates.
-  // If a local-only change is preferred, recommend using the following workflow
-  // create TfLite delegates via delegate providers:
-  // tools::ToolParams local_params;
-  // local_params.Merge(KernelTestDelegateProviders::Get()->ConstParams());
-  // Overwrite params in local_params by calling local_params.Set<...>(...);
-  // Get TfLite delegates via
-  // KernelTestDelegateProviders::Get()->CreateAllDelegates(local_params);
-  tools::ToolParams* MutableParams() { return &params_; }
-  const tools::ToolParams& ConstParams() const { return params_; }
-
-  // Create a list of TfLite delegates based on the provided parameters
-  // `params`.
-  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates(
-      const tools::ToolParams& params) const;
-
-  // Similar to the above, but creating a list of TfLite delegates based on what
-  // have been initialized (i.e. 'params_').
-  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates() const {
-    return CreateAllDelegates(params_);
-  }
-
- private:
-  // Contain delegate-related parameters that are initialized from command-line
-  // flags.
-  tools::ToolParams params_;
-};
-
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_

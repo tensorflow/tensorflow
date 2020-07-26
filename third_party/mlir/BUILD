@@ -740,6 +740,7 @@ cc_library(
         ":MLIRShapeCanonicalizationIncGen",
         ":ShapeOpsIncGen",
         ":SideEffectInterfaces",
+        ":StandardOps",
         ":Support",
         "@llvm-project//llvm:Support",
     ],
