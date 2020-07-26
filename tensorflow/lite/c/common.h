@@ -284,9 +284,6 @@ typedef enum {
 // Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
 
-// Return the size of given type in bytes. Return 0 in in case of string.
-int TfLiteTypeGetSize(TfLiteType type);
-
 // SupportedQuantizationTypes.
 typedef enum TfLiteQuantizationType {
   // No quantization.

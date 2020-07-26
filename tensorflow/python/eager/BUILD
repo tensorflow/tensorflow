@@ -564,6 +564,8 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -817,6 +819,8 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/autograph/core",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -148,7 +148,7 @@ TfLiteStatus AverageEvalFloat(TfLiteContext* context, const TfLiteNode* node,
   }
 
   out_length = batches * output_height * output_width * depth;
-  uint32 p_unalign_val = (uint32)out_data_ptr, p_align_val;
+  uint32_t p_unalign_val = (uint32_t)out_data_ptr, p_align_val;
   p_align_val = (p_unalign_val + 7) & (~7);
 
   // pre loop for activation_min_max
@@ -215,8 +215,8 @@ TfLiteStatus AverageEvalQuantized(TfLiteContext* context,
     const int output_height = output_shape.Dims(1);
     const int output_width = output_shape.Dims(2);
 
-    const uint8* inp_data_ptr;
-    uint8* out_data_ptr;
+    const uint8_t* inp_data_ptr;
+    uint8_t* out_data_ptr;
     int inp_data_format = 0, out_data_format = 0, out_length;
     int inp_precision = PREC_ASYM8, out_precision = PREC_ASYM8;
     void* p_scratch;
@@ -262,7 +262,7 @@ TfLiteStatus AverageEvalQuantized(TfLiteContext* context,
     }
 
     out_length = batches * output_height * output_width * depth;
-    uint32 p_unalign_val = (uint32)out_data_ptr, p_align_val;
+    uint32_t p_unalign_val = (uint32_t)out_data_ptr, p_align_val;
     p_align_val = (p_unalign_val + 7) & (~7);
 
     // pre loop for activation_min_max
@@ -372,7 +372,7 @@ TfLiteStatus MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
   }
 
   out_length = batches * output_height * output_width * depth;
-  uint32 p_unalign_val = (uint32)out_data_ptr, p_align_val;
+  uint32_t p_unalign_val = (uint32_t)out_data_ptr, p_align_val;
   p_align_val = (p_unalign_val + 7) & (~7);
 
   // pre loop for activation_min_max
@@ -438,8 +438,8 @@ TfLiteStatus MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
     const int output_height = output_shape.Dims(1);
     const int output_width = output_shape.Dims(2);
 
-    const uint8* inp_data_ptr;
-    uint8* out_data_ptr;
+    const uint8_t* inp_data_ptr;
+    uint8_t* out_data_ptr;
     int inp_data_format = 0, out_data_format = 0, out_length;
     int inp_precision = PREC_ASYM8, out_precision = PREC_ASYM8;
     void* p_scratch;
@@ -482,7 +482,7 @@ TfLiteStatus MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
 
     out_length = batches * output_height * output_width * depth;
-    uint32 p_unalign_val = (uint32)out_data_ptr, p_align_val;
+    uint32_t p_unalign_val = (uint32_t)out_data_ptr, p_align_val;
     p_align_val = (p_unalign_val + 7) & (~7);
 
     // pre loop for activation_min_max

@@ -189,6 +189,7 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
     XlaCompiler::Argument& arg = args->back();
     arg.type = proto_arg.dtype();
     arg.shape = arg_shapes[i];
+    arg.node_name = proto_arg.name();
     switch (proto_arg.kind()) {
       case tpu::TPUCompileMetadataProto::Arg::PARAMETER:
         arg.kind = XlaCompiler::Argument::kParameter;
@@ -661,9 +662,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   }
 
   const TpuCompilationCacheKey key = CreateCompilationCacheKey(
-      function_.name(), metadata_.function_library_fingerprint(),
-      /*mlir_module=*/"", guaranteed_constants, dynamic_shapes, metadata_,
-      *mesh_state);
+      function_.name(), metadata_.function_library_fingerprint(), mlir_module_,
+      guaranteed_constants, dynamic_shapes, metadata_, *mesh_state);
 
   // Process-wide cache of TPU executables.
   TpuCompilationCacheInterface* cache;

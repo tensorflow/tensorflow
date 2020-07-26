@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/c_api_defn.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
@@ -91,8 +92,9 @@ SE_DeviceMemoryAllocator ToC(
             ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
     if (!allocation.ok()) {
       auto status = allocation.status();
-      TpuStatus_Set(se_status, status.code(), status.error_message().data(),
-                    status.error_message().size());
+      tensorflow::tpu::ExecutorApiFn()->TpuStatus_SetFn(
+          se_status, status.code(), status.error_message().data(),
+          status.error_message().size());
     } else {
       auto& scoped_memory = allocation.ValueOrDie();
       memory->wrapped = ApiConverter::ToC(scoped_memory.Release());
@@ -105,8 +107,9 @@ SE_DeviceMemoryAllocator ToC(
     auto status = reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
-      TpuStatus_Set(se_status, status.code(), status.error_message().data(),
-                    status.error_message().size());
+      tensorflow::tpu::ExecutorApiFn()->TpuStatus_SetFn(
+          se_status, status.code(), status.error_message().data(),
+          status.error_message().size());
     }
   };
   return se_allocator;

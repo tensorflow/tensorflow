@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -145,7 +146,7 @@ def select_replica_mirrored(replica_id, structured):
 
   def _get_mirrored(x):
     if isinstance(x, values_lib.DistributedValues):
-      if not isinstance(x, values_lib.Mirrored):
+      if not is_mirrored(x):
         raise TypeError(
             "Expected value to be mirrored across replicas: %s in %s." %
             (x, structured))
@@ -245,34 +246,25 @@ def validate_colocate(v, extended):
 
 
 # Variable creation function for sync strategies.
-def create_mirrored_variable(  # pylint: disable=missing-docstring
-    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls, **kwargs):
-  # Figure out what collections this variable should be added to.
-  # We'll add the MirroredVariable to those collections instead.
-  var_collections = kwargs.pop("collections", None)
-  if var_collections is None:
-    var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
-  kwargs["collections"] = []
-
+def _get_and_validate_synchronization(kwargs):
+  """Validate that given synchronization value is valid."""
   synchronization = kwargs.get("synchronization",
-                               vs.VariableSynchronization.ON_WRITE)
-
+                               vs.VariableSynchronization.AUTO)
   if synchronization == vs.VariableSynchronization.NONE:
     raise ValueError(
-        "`NONE` variable synchronization mode is not supported with `Mirrored` "
-        "distribution strategy. Please change the `synchronization` for "
+        "`NONE` variable synchronization mode is not supported with "
+        "tf.distribute strategy. Please change the `synchronization` for "
         "variable: " + str(kwargs["name"]))
-  elif synchronization == vs.VariableSynchronization.ON_READ:
-    is_sync_on_read = True
-  elif synchronization in (vs.VariableSynchronization.ON_WRITE,
-                           vs.VariableSynchronization.AUTO):
-    # `AUTO` synchronization defaults to `ON_WRITE`.
-    is_sync_on_read = False
-  else:
+  if synchronization not in (vs.VariableSynchronization.ON_READ,
+                             vs.VariableSynchronization.ON_WRITE,
+                             vs.VariableSynchronization.AUTO):
     raise ValueError(
         "Invalid variable synchronization mode: %s for variable: %s" %
         (synchronization, kwargs["name"]))
+  return synchronization
 
+
+def _validate_aggregation(kwargs):
   aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
 
   if aggregation not in (vs.VariableAggregation.NONE,
@@ -281,6 +273,33 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
                          vs.VariableAggregation.ONLY_FIRST_REPLICA):
     raise ValueError("Invalid variable aggregation mode: %s for variable: %s" %
                      (aggregation, kwargs["name"]))
+  return aggregation
+
+
+def _get_variable_policy_class(synchronization, aggregation, policy_mapping):
+  if synchronization == vs.VariableSynchronization.AUTO:
+    if aggregation == vs.VariableAggregation.NONE:
+      # Use AutoPolicy.
+      return policy_mapping.get(synchronization)
+    else:
+      # Revert to OnWritePolicy
+      return policy_mapping.get(vs.VariableSynchronization.ON_WRITE)
+  return policy_mapping.get(synchronization)
+
+
+def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
+                             policy_mapping, **kwargs):
+  """Create distributed variables with given synchronization and aggregation."""
+  # Figure out what collections this variable should be added to.
+  # We'll add the MirroredVariable to those collections instead.
+  var_collections = kwargs.pop("collections", None)
+  if var_collections is None:
+    var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+  kwargs["collections"] = []
+
+  synchronization = _get_and_validate_synchronization(kwargs)
+  aggregation = _validate_aggregation(kwargs)
+  use_var_policy = getattr(strategy.extended, "_use_var_policy", False)
 
   # Ignore user-specified caching device, not needed for mirrored variables.
   kwargs.pop("caching_device", None)
@@ -290,8 +309,15 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
   # here.
   with tape.stop_recording():
     value_list = real_mirrored_creator(**kwargs)
-    var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
-    result = var_cls(strategy, value_list, aggregation)
+    if use_var_policy:
+      var_policy_cls = _get_variable_policy_class(synchronization, aggregation,
+                                                  policy_mapping)
+      var_policy = var_policy_cls(aggregation=aggregation)
+      var_cls = class_mapping.get("VariableClass")
+      result = var_cls(strategy, value_list, aggregation, var_policy=var_policy)
+    else:
+      var_cls = class_mapping.get(synchronization)
+      result = var_cls(strategy, value_list, aggregation)
     # Install the created DistributedVariable as _distributed_container property
     # of the underlying variables, to make it easy to map back to the container.
     for v in result.values:
@@ -324,3 +350,55 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
     ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
 
   return result
+
+
+# Utility functions
+# Return True if the Value is Mirrored or the Variable is replicated and kept in
+# sync.
+def is_mirrored(val):
+  if isinstance(val, values_lib.DistributedVariable):
+    if val._policy:  # pylint: disable=protected-access
+      return val._policy._is_mirrored()  # pylint: disable=protected-access
+  return isinstance(val, values_lib.Mirrored)
+
+
+def is_sync_on_read(val):
+  if isinstance(val, values_lib.DistributedVariable):
+    if val._policy:  # pylint: disable=protected-access
+      return not val._policy._is_mirrored()  # pylint: disable=protected-access
+  return not isinstance(val, values_lib.Mirrored)
+
+# The following mapping indicates the policy that you must use for a given
+# variable `synchronization` and `aggregation` pair.
+# AutoPolicy is used for:
+# (synchronization=Auto, aggregation=None)
+# OnWritePolicy is used for:
+# (synchronization=Auto, aggregation=SUM,MEAN,ONLY_FIRST_REPLICA)
+# (synchronization=ON_WRITE, aggregation=NONE,SUM,MEAN,ONLY_FIRST_REPLICA)
+# OnReadPolicy is used for:
+# (synchronization=ON_READ, aggregation=NONE,SUM,MEAN,ONLY_FIRST_REPLICA)
+VARIABLE_POLICY_MAPPING = {
+    vs.VariableSynchronization.AUTO: values_lib.AutoPolicy,
+    vs.VariableSynchronization.ON_WRITE: values_lib.OnWritePolicy,
+    vs.VariableSynchronization.ON_READ: values_lib.OnReadPolicy,
+}
+
+VARIABLE_CLASS_MAPPING = {
+    "VariableClass": values_lib.DistributedVariable,
+    vs.VariableSynchronization.AUTO: values_lib.MirroredVariable,
+    vs.VariableSynchronization.ON_WRITE: values_lib.MirroredVariable,
+    vs.VariableSynchronization.ON_READ: values_lib.SyncOnReadVariable,
+}
+
+TPU_VARIABLE_POLICY_MAPPING = {
+    vs.VariableSynchronization.AUTO: tpu_values_lib.TPUAutoPolicy,
+    vs.VariableSynchronization.ON_WRITE: tpu_values_lib.TPUOnWritePolicy,
+    vs.VariableSynchronization.ON_READ: tpu_values_lib.TPUOnReadPolicy,
+}
+
+TPU_VARIABLE_CLASS_MAPPING = {
+    "VariableClass": tpu_values_lib.TPUDistributedVariable,
+    vs.VariableSynchronization.AUTO: tpu_values_lib.TPUMirroredVariable,
+    vs.VariableSynchronization.ON_WRITE: tpu_values_lib.TPUMirroredVariable,
+    vs.VariableSynchronization.ON_READ: tpu_values_lib.TPUSyncOnReadVariable,
+}

@@ -59,6 +59,9 @@ message TPUCompileMetadataProto {
     // Whether to let XLA to decide the layout during compilation, as opposed to
     // using a fixed layout determined by the shape.
     bool unrestricted_layout = 9;
+
+    // Name of the node that the arg comes from.
+    string name = 10;
   }
   repeated Arg args = 1;
 

@@ -1309,7 +1309,8 @@ std::vector<float> GetDataAsFloat(InputOutputData& data) {
 class OpConverterTest : public ::testing::Test {
  public:
   OpConverterTest()
-      : scope_(Scope::NewRootScope()), allocator_(new GpuManagedAllocator()) {
+      : tensor_buffer_allocator_(new GpuManagedAllocator()),
+        scope_(Scope::NewRootScope()) {
     QCHECK_EQ(0, cudaStreamCreate(&stream_));
     Reset();
   }
@@ -1341,7 +1342,7 @@ class OpConverterTest : public ::testing::Test {
   // Constructs a flat tensor with 'vals' in Unified Memory.
   template <typename T>
   Tensor AsTensor(gtl::ArraySlice<T> vals) {  // non-absl ok
-    Tensor ret(allocator_.get(), DataTypeToEnum<T>::value,
+    Tensor ret(tensor_buffer_allocator_.get(), DataTypeToEnum<T>::value,
                {static_cast<int64>(vals.size())});
     std::copy_n(vals.data(), vals.size(), ret.flat<T>().data());
     return ret;
@@ -1351,7 +1352,7 @@ class OpConverterTest : public ::testing::Test {
   template <typename T>
   Tensor AsTensor(gtl::ArraySlice<T> vals,  // non-absl ok
                   const TensorShape& shape) {
-    Tensor ret(allocator_.get(), DataTypeToEnum<T>::value,
+    Tensor ret(tensor_buffer_allocator_.get(), DataTypeToEnum<T>::value,
                {static_cast<int64>(vals.size())});
     CHECK(ret.CopyFrom(AsTensor(vals), shape));
     return ret;
@@ -1363,7 +1364,8 @@ class OpConverterTest : public ::testing::Test {
   template <typename T>
   Tensor AsTensor(std::vector<T> vals, const std::vector<int> input_dims,
                   DataType tf_type) {
-    Tensor ret(allocator_.get(), tf_type, {static_cast<int64>(vals.size())});
+    Tensor ret(tensor_buffer_allocator_.get(), tf_type,
+               {static_cast<int64>(vals.size())});
     if (tf_type == DT_FLOAT) {
       auto conv_vals = CastTestVector<T, float>(vals);
       std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<float>().data());
@@ -1646,13 +1648,15 @@ class OpConverterTest : public ::testing::Test {
   Logger logger_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
-  // Used to create placeholders with shape and data type information. The
-  // created placeholders will be used as inputs to the node to be verified,
-  // thus we need the shape and data type information to get a non-empty
-  // GraphProperties.
+  std::unique_ptr<Allocator> tensor_buffer_allocator_;
+  // The scope that contains the graph being converted. Because
+  // tensor_buffer_allocator_ provides the storage for tensor contents that are
+  // represented as attributes for graph nodes within scope_,
+  // tensor_buffer_allocator_ needs to be available when destructing scope_.
+  // Therefore, scope_ comes after tensor_buffer_allocator_ in the class member
+  // field list.
   Scope scope_;
   std::unordered_map<string, Output> node_inputs_;
-  std::unique_ptr<Allocator> allocator_;
 };
 
 // General test parameters to be used with ops that take a single input tensor.

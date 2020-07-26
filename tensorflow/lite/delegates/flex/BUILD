@@ -239,6 +239,17 @@ cc_library(
         "allowlisted_flex_ops.h",
         "allowlisted_flex_ops_internal.h",
     ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
 )
 
 tf_cc_test(

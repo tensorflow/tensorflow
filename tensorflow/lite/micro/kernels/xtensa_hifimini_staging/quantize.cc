@@ -34,7 +34,7 @@ void AffineQuantize(int scale_multiplier,
                     const tflite::QuantizationParams& op_params,
                     const RuntimeShape& input_shape, const int16_t* input_data,
                     const RuntimeShape& output_shape, int8_t* output_data) {
-  const int32 zero_point = op_params.zero_point;
+  const int32_t zero_point = op_params.zero_point;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   ae_q56s min_val_56 = AE_CVTQ48A32S(INT16_MIN);
   ae_q56s max_val_56 = AE_CVTQ48A32S(INT16_MAX);
@@ -155,7 +155,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
-// quantized output, in int8 or uint8 format.
+// quantized output, in int8_t or uint8_t format.
 TfLiteRegistration Register_QUANTIZE() {
   return {/*init=*/quantize::Init,
           /*free=*/nullptr,

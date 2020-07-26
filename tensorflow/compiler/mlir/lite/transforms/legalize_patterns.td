@@ -109,9 +109,6 @@ def LegalizeArgMax : Pat<(TF_ArgMaxOp $input, $dim),
 def LegalizeArgMin : Pat<(TF_ArgMinOp $input, $dim),
                          (TFL_ArgMinOp $input, $dim)>;
 
-def LegalizeBroadcastTo : Pat<(TF_BroadcastToOp $input, $dim),
-                              (TFL_BroadcastToOp $input, $dim)>;
-
 def LegalizeCeil : Pat<(TF_CeilOp $arg), (TFL_CeilOp $arg)>;
 
 def LegalizeCos : Pat<(TF_CosOp $arg), (TFL_CosOp $arg)>;

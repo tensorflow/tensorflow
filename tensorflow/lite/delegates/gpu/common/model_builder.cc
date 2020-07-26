@@ -880,6 +880,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsOneArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::ABS:
+      case OperationType::COPY:
       case OperationType::COS:
       case OperationType::EXP:
       case OperationType::LOG:
@@ -2641,6 +2642,10 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       break;
     case kTfLiteBuiltinDiv:
       return std::make_unique<ElementwiseOperationParser>(OperationType::DIV);
+    case kTfLiteBuiltinElu:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::ELU);
+    case kTfLiteBuiltinExp:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::EXP);
     case kTfLiteBuiltinFullyConnected:
       return std::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinHardSwish:
