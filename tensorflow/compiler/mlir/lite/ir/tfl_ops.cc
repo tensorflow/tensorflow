@@ -147,18 +147,10 @@ bool IsI64Type(Type element_type) {
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
-  // Allows F32, QI8, and QUI8 outputs when the operands have valid shapes,
+  // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
   if (element_type.isF32() || IsQI8Type(element_type) ||
-      IsQUI8Type(element_type)) {
-    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
-        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
-  }
-
-  // Allows I32 output when the operands have valid shapes, which are
-  // broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type)) {
+      IsQUI8Type(element_type) || IsI32Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -210,20 +202,13 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
     }
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
+        /*max_bcast_rank=*/4);
   }
 
-  // Allows F32 output when the operands have valid shapes, which are
-  // broadcastable shapes up to five dimension or have same shapes.
-  if (element_type.isF32()) {
-    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
-        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
-  }
-
-  // Allows I32 and QI16 outputs when the operands have valid shapes, which are
-  // broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsQI16Type(element_type)) {
+  // Allows I32, QI16 and F32 outputs when the operands have valid shapes, which
+  // are broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type) || IsQI16Type(element_type) ||
+      element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -773,7 +758,8 @@ static LogicalResult Verify(CustomOp op) {
       op.custom_option().cast<OpaqueElementsAttr>();
   if (!opaque_attr.getType().hasStaticShape())
     return op.emitOpError("custom_option should have a static shape.");
-  if (opaque_attr.getValue().size() !=
+  const int opaque_attr_getValue_size = opaque_attr.getValue().size();
+  if (opaque_attr_getValue_size !=
       opaque_attr.getType().cast<ShapedType>().getDimSize(0))
     return op.emitOpError(
         "custom_option should have the same length of content with shape.");
@@ -955,7 +941,7 @@ static LogicalResult Verify(ScatterNdOp op) {
     // Checks whether the last `(shape_type.getDimSize(0) - outermost_dim)`
     // dimensions of `updates` and `shape` are equal.
     for (auto shape_it : llvm::enumerate(shape_value)) {
-      auto i = shape_it.index();
+      long int i = shape_it.index();
       auto value = shape_it.value().getSExtValue();
       if (i >= outermost_dim) {
         auto corresponding_dim = i - outermost_dim + outer_dims;
@@ -1192,7 +1178,8 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
       return failure();
 
     const int total_pack_inputs = pack_op.getNumOperands();
-    if (total_pack_inputs != input_unpack_op.getNumResults()) return failure();
+    const int input_unpack_op_getNumResults = input_unpack_op.getNumResults();
+    if (total_pack_inputs != input_unpack_op_getNumResults) return failure();
     for (auto input_output :
          llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
       Value pack_input = std::get<0>(input_output);
@@ -1261,7 +1248,7 @@ static LogicalResult Verify(SliceOp op) {
   }
 
   if (begin && size && input_type.hasStaticShape()) {
-    const int input_rank = begin.getNumElements();
+    const uint64_t input_rank = begin.getNumElements();
     for (uint64_t i = 0; i < input_rank; i++) {
       int begin_i =
           begin.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();

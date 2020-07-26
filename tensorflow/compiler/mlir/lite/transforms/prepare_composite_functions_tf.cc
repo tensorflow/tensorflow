@@ -225,7 +225,8 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
 LogicalResult CheckOutputConsumer(
     Operation* call_op, int expected_num_outputs,
     llvm::DenseSet<int> expected_consumer_indices) {
-  if (call_op->getNumResults() != expected_num_outputs) return failure();
+  const int call_op_getNumResults = call_op->getNumResults();
+  if (call_op_getNumResults != expected_num_outputs) return failure();
 
   for (int i = 0; i < expected_num_outputs; ++i) {
     auto it = expected_consumer_indices.find(i);
