@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
@@ -154,7 +155,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       op_stats.mutable_device_op_metrics_db());
   SetRunEnvironment(device_planes.size(), op_stats.mutable_run_environment());
 
-  std::vector<KernelReport> reports;
+  KernelReportMap reports;
+  // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
     if (config.contains(OP_METRICS_DB)) {
       if (!op_stats.has_perf_env()) {
@@ -171,16 +173,18 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
                         &step_events);
     }
     if (config.contains(KERNEL_STATS_DB)) {
-      KernelStatsDb kernel_stats_db = ConvertDeviceTraceXPlaneToKernelStatsDb(
-          *device_trace, /*on_kernel_fn=*/{});
-      reports.insert(reports.begin(), kernel_stats_db.reports().begin(),
-                     kernel_stats_db.reports().end());
+      ConvertDeviceTraceXPlaneToKernelReports(*device_trace,
+                                              /*on_kernel_fn=*/{}, &reports);
     }
   }
+
+  // Combine into reports.
   if (config.contains(KERNEL_STATS_DB)) {
-    GroupKernelReports(&reports, op_stats.mutable_kernel_stats_db());
+    CopyKernelReportsToDb(reports, op_stats.mutable_kernel_stats_db());
+    // TODO(b/161943499) Replace sort with a TopK algorithm.
     SortKernelsByTotalDurationDesc(op_stats.mutable_kernel_stats_db());
   }
+
   bool has_device = !device_planes.empty();
   // Convert a host plane.
   if (host_plane && config.contains(OP_METRICS_DB)) {

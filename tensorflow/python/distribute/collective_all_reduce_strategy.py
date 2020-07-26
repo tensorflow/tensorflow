@@ -44,37 +44,53 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(yuefengz): support in-graph replication.
 @tf_export("distribute.experimental.MultiWorkerMirroredStrategy", v1=[])
 class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   """A distribution strategy for synchronous training on multiple workers.
 
   This strategy implements synchronous distributed training across multiple
   workers, each with potentially multiple GPUs. Similar to
-  `tf.distribute.MirroredStrategy`, it creates copies of all variables in the
-  model on each device across all workers.
+  `tf.distribute.MirroredStrategy`, it replicates all variables and computations
+  to each local device. The difference is that it uses a distributed collective
+  implementation (e.g. all-reduce), so that multiple workers can work together.
 
-  It uses CollectiveOps's implementation of multi-worker all-reduce to
-  to keep variables in sync. A collective op is a single op in the
-  TensorFlow graph which can automatically choose an all-reduce algorithm in
-  the TensorFlow runtime according to hardware, network topology and tensor
-  sizes.
+  You need to launch your program on each worker and configure
+  `cluster_resolver` correctly. For example, if you are using
+  `tf.distribute.cluster_resolver.TFConfigClusterResolver`, each worker needs to
+  have its corresponding `task_type` and `task_id` set in the `TF_CONFIG`
+  environment variable.
 
-  By default it uses all local GPUs or CPU for single-worker training.
+  Your program runs on each worker as-is. Note that collectives require each
+  worker to participate. All `tf.distribute` and non `tf.distribute` API may use
+  collectives internally, e.g. checkpointing and saving since reading a
+  `tf.Variable` with `tf.VariableSynchronization.ON_READ` all-reduces the value.
+  Therefore it's recommended to run exactly the same program on each worker.
+  Dispatching based on `task_type` or `task_id` of the worker is error-prone.
 
-  When 'TF_CONFIG' environment variable is set, it parses cluster_spec,
-  task_type and task_id from 'TF_CONFIG' and turns into a multi-worker strategy
-  which mirrored models on GPUs of all machines in a cluster. In the current
-  implementation, it uses all GPUs in a cluster and it assumes all workers have
-  the same number of GPUs.
+  `cluster_resolver.num_accelerators()` determines the number of GPUs the
+  strategy uses. If it's zero, the strategy uses the CPU. All workers need to
+  use the same number of devices, otherwise the behavior is undefined.
 
-  You can also pass a `distribute.cluster_resolver.ClusterResolver` instance
-  when instantiating the strategy. The task_type, task_id etc. will be parsed
-  from the resolver instance instead of from the `TF_CONFIG` env var.
+  This strategy is not intended for TPU. Use
+  `tf.distribute.experimental.TPUStrategy` instead.
 
-  It supports both eager mode and graph mode. However, for eager mode, it has to
-  set up the eager context in its constructor and therefore all ops in eager
-  mode have to run after the strategy object is created.
+  __Saving__
+
+  You need to save and checkpoint on all workers instead of just one. This is
+  because variables whose synchronization=ON_READ triggers aggregation during
+  saving. It's recommended to save to a different path on each worker to avoid
+  race conditions. Each worker saves the same thing. See
+  [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#model_saving_and_loading)
+  tutorial for examples.
+
+  __Known Issues__
+
+  * `tf.distribute.cluster_resolver.TFConfigClusterResolver` does not return the
+  correct number of accelerators. The strategy uses all available GPUs if
+  `cluster_resolver` is `tf.distribute.cluster_resolver.TFConfigClusterResolver`
+  or `None`.
+  * In eager mode, the strategy needs to be created before calling any other
+  Tensorflow API.
 
   """
   # TODO(anjalisridhar): Update our guides with examples showing how we can use
@@ -87,14 +103,13 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     """Creates the strategy.
 
     Args:
-      communication: optional Enum of type
-        `distribute.experimental.CollectiveCommunication`.  This provides a way
-        for the user to override the choice of collective op communication.
-        Possible values include `AUTO`, `RING`, and `NCCL`.
-      cluster_resolver: optional `distribute.cluster_resolver.ClusterResolver`
-        object. The default ClusterResolver that is used is the
-        TFConfigClusterResolver which is instantiated from the TF_CONFIG env
-        var.
+      communication: optional
+        `tf.distribute.experimental.CollectiveCommunication`. This is a hint on
+        the preferred collective communication implementation. Possible values
+        include `AUTO`, `RING`, and `NCCL`.
+      cluster_resolver: optional
+        `tf.distribute.cluster_resolver.ClusterResolver`. If `None`,
+        `tf.distribute.cluster_resolver.TFConfigClusterResolver` is used.
     """
     # TODO(b/150151677): consider move communication to CollectiveHints.
     super(CollectiveAllReduceStrategy, self).__init__(
@@ -120,23 +135,6 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     obj = cls(communication)
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
-
-  def scope(self):  # pylint: disable=useless-super-delegation
-    """Returns a context manager selecting this Strategy as current.
-
-    Inside a `with strategy.scope():` code block, this thread
-    will use a variable creator set by `strategy`, and will
-    enter its "cross-replica context".
-
-    In `MultiWorkerMirroredStrategy`, all variables created inside
-    `strategy.scope() will be mirrored on all replicas of each worker.
-    Moreover, it also sets a default device scope so that ops without
-    specified devices will end up on the correct worker.
-
-    Returns:
-      A context manager to use for creating variables with this strategy.
-    """
-    return super(CollectiveAllReduceStrategy, self).scope()
 
   @property
   def cluster_resolver(self):

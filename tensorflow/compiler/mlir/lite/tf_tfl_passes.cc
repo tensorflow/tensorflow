@@ -180,6 +180,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // control flow ops (IfOp, CaseOp).
     pass_manager->addPass(mlir::createInlinerPass());
 
+    // This pass removes the asset file dependencies in hash table use cases.
+    pass_manager->addPass(mlir::TF::CreateInitTextFileToImportPass());
+
     pass_manager->addPass(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());

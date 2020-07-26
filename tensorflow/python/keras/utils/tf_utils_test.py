@@ -27,6 +27,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 try:
@@ -181,6 +182,17 @@ class AttrsTest(test.TestCase):
             map_fn=lambda x: x + 1,
             nested=Foo(1)))
 
+
+class TestIsRagged(test.TestCase):
+
+  def test_is_ragged_return_true_for_ragged_tensor(self):
+    tensor = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    self.assertTrue(tf_utils.is_ragged(tensor))
+
+  def test_is_ragged_return_false_for_list(self):
+    tensor = [1., 2., 3.]
+    self.assertFalse(tf_utils.is_ragged(tensor))
 
 if __name__ == '__main__':
   test.main()

@@ -19,6 +19,7 @@ limitations under the License.
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -72,7 +73,7 @@ class GrpcDataServerBase {
 
 class DispatchGrpcDataServer : public GrpcDataServerBase {
  public:
-  DispatchGrpcDataServer(int requested_port, const std::string& protocol);
+  explicit DispatchGrpcDataServer(const experimental::DispatcherConfig& config);
   ~DispatchGrpcDataServer() override;
 
   // Returns the number of workers registerd with the dispatcher.
@@ -83,6 +84,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   Status StartServiceInternal() override { return Status::OK(); }
 
  private:
+  const experimental::DispatcherConfig config_;
   // Owned. We use a raw pointer because GrpcDispatcherImpl is forward-declared.
   GrpcDispatcherImpl* service_;
 };
@@ -106,7 +108,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
 };
 
 // Creates a dispatch tf.data server and stores it in `*out_server`.
-Status NewDispatchServer(int port, const std::string& protocol,
+Status NewDispatchServer(const experimental::DispatcherConfig& config,
                          std::unique_ptr<DispatchGrpcDataServer>* out_server);
 
 // Creates a worker tf.data server and stores it in `*out_server`.

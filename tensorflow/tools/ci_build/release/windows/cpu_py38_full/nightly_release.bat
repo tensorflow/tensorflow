@@ -17,4 +17,4 @@ SET PYTHON_DIRECTORY=Python38
 
 CALL tensorflow\tools\ci_build\release\common_win.bat
 
-call tensorflow\tools\ci_build\windows\cpu\pip\run.bat --tf_nightly --project_name "tf_nightly_cpu" --extra_build_flags "--config=release_cpu_windows"
+call tensorflow\tools\ci_build\windows\cpu\pip\run.bat --tf_nightly --project_name "tf_nightly_cpu"

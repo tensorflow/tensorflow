@@ -156,7 +156,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
-// quantized output, in int8 or uint8 format.
+// quantized output, in int8_t or uint8_t format.
 TfLiteRegistration Register_QUANTIZE() {
   return {/*init=*/quantize::Init,
           /*free=*/nullptr,

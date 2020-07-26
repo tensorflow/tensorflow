@@ -1767,6 +1767,7 @@ class _SummaryFile(object):
     self.images = set()
     self.histograms = set()
     self.tensors = set()
+    self.graph_defs = []
 
 
 def list_summaries(logdir):
@@ -1793,6 +1794,8 @@ def list_summaries(logdir):
         continue
       path = os.path.join(dirpath, filename)
       for event in summary_iterator.summary_iterator(path):
+        if event.graph_def:
+          result.graph_defs.append(event.graph_def)
         if not event.summary:  # (e.g., it's a `graph_def` event)
           continue
         for value in event.summary.value:
@@ -2217,7 +2220,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         x,
         y,
         batch_size=2,
-        epochs=2,
+        epochs=3,
         validation_data=(x, y),
         callbacks=[tb_cbk])
     summary_file = list_summaries(self.logdir)
@@ -2227,6 +2230,16 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='keras'),
         },
     )
+    if not model.run_eagerly:
+      # There should be one train graph
+      self.assertLen(summary_file.graph_defs, 1)
+      for graph_def in summary_file.graph_defs:
+        graph_def_str = str(graph_def)
+
+        # All the model layers should appear in the graphs
+        for layer in model.layers:
+          if 'input' not in layer.name:
+            self.assertIn(layer.name, graph_def_str)
 
   def test_TensorBoard_writeSequentialModel_noInputShape(self):
     model = keras.models.Sequential([
@@ -2234,7 +2247,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
   def test_TensorBoard_writeSequentialModel_withInputShape(self):
@@ -2243,7 +2256,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
   def test_TensorBoard_writeModel(self):
@@ -2252,7 +2265,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     x = keras.layers.Flatten()(x)
     x = keras.layers.Dense(1)(x)
     model = keras.models.Model(inputs=inputs, outputs=[x])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
   def test_TensorBoard_autoTrace(self):
