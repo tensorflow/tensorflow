@@ -310,12 +310,13 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(output), GetTensorData<float>(output));
   } else {
     RuntimeShape filter_shape = GetTensorShape(filter);
-    if (filter_shape.Dims(3) == 1024) {
-      filter_shape.SetDim(3, 512);
-    }
-    else if (filter_shape.Dims(3) == 4) {
-      filter_shape.SetDim(3, 2);
-    }
+    filter_shape.SetDim(3, 3*filter_shape.Dims(3)/4);
+    // if (filter_shape.Dims(3) == 128) {
+    //   filter_shape.SetDim(3, 56);
+    // }
+    // else if (filter_shape.Dims(3) == 4) {
+    //   filter_shape.SetDim(3, 2);
+    // }
     optimized_ops::DepthwiseConv<float, float>(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
         filter_shape, GetTensorData<float>(filter),

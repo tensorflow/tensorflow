@@ -1445,9 +1445,10 @@ inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shap
   // else if (n==2){
   //   n=1;
   // } 
-  if (n== input_shape.Dims(3)){
-    n = n/8;
-  }
+  // if (n== input_shape.Dims(3)){
+  //   n = n/4;
+  // }
+  // n = 3*n/4;
   int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
@@ -1493,8 +1494,11 @@ inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shap
                          dst_params, output_data, gemm_params,
                          cpu_backend_context);
   int filter_depth = n;
-  int output_depth = output_shape.Dims(3);
   int input_depth = input_shape.Dims(3);
+  // int output_depth = output_shape.Dims(3);
+  int output_depth = std::max(filter_depth, std::min(output_shape.Dims(3), input_depth));
+  // output_shape.setDim(3, output_depth); NEED to do for actual operation
+
   // TFLITE_LOG(INFO) << "n " << n << " k " << k << " m " << m;
 
   // for(int i=0; i<input_shape.Dims(0)*input_shape.Dims(1)*input_shape.Dims(2); i++)
@@ -1507,7 +1511,7 @@ inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shap
   //       TFLITE_LOG(INFO) << "output " << i << ", " << j << ": " << output_data[i*output_depth+j];
   //     }
 
-  if (filter_depth < output_depth && output_depth <= input_depth) {
+  if (filter_depth < output_depth) {
     // m = batch x height x width)
     
     // for(int i=0; i<n; i++)

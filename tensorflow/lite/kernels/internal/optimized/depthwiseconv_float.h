@@ -852,7 +852,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
     // for(int a =(out_x_loop_start - out_x_buffer_start) * output_depth; a<2*(out_x_loop_start - out_x_buffer_start) * output_depth; a++){
     //   TFLITE_LOG(INFO) << "post acc " << a << ": "  << acc_buffer[a];
     // }
-    filter_base_ptr += output_depth; //change to filter depth
+    filter_base_ptr += filter_depth; //change to filter depth
   }
 }
 
@@ -1050,7 +1050,6 @@ inline void DepthwiseConvImpl(
   float* output_ptr = output_data + output_ptr_offset;
   int batch_step =
       (output_height + row_start - row_end) * output_width * output_depth;
-
   for (int b = batch_start; b < batch_end; ++b) {
     //  for(int j=0; j<64; j++){
     //       output_ptr[j] = -1;
@@ -1110,8 +1109,38 @@ inline void DepthwiseConvImpl(
         // TFLITE_LOG(INFO) << num_output_pixels << " pixels num output values " << num_output_values;
         int i = 0;
         int a = 0;
+        int remainder = 0;
         const float* input_start = &input_data[b*input_batch_stride + out_y*input_height_stride];
 // TODO(benoitjacob) optimized code goes here
+// #ifdef USE_NEON
+//         // Handle 16 values at a time
+//         // for (; i <= num_output_values - 16; i += 16) {
+//         //   float32x4_t acc[4];
+//         //   for (int k = 0; k < 4; k++) {
+//         //     acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
+//         //   }
+//         //   for (int k = 0; k < 4; k++) {
+//         //     acc[k] = vmaxq_f32(
+//         //         vdupq_n_f32(output_activation_min),
+//         //         vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
+//         //   }
+//         //   for (int k = 0; k < 4; k++) {
+//         //     vst1q_f32(output_ptr + 4 * k, acc[k]);
+//         //   }
+//         //   output_ptr += 16;
+//         // }
+//         // Handle 4 values at a time
+//         for (; i <= num_output_values - 4; i += 4) {
+//           float32x4_t acc = vld1q_f32(acc_buffer + i);
+
+//           acc = vmaxq_f32(vdupq_n_f32(output_activation_min),
+//                           vminq_f32(vdupq_n_f32(output_activation_max), acc));
+
+//           vst1q_f32(output_ptr, acc);
+//           output_ptr += 4;
+//         }
+// #endif
+
 #ifdef USE_NEON
         // Handle 16 values at a time
         // for (; i <= num_output_values - 16; i += 16) {
@@ -1130,59 +1159,70 @@ inline void DepthwiseConvImpl(
         //   output_ptr += 16;
         // }
         // // Handle 4 values at a time
+
         for (; i <= num_output_values - 4; i += 4) {
-          if(i%output_depth <= filter_depth-4){
+          if(remainder <= filter_depth-4){ 
             float32x4_t acc = vld1q_f32(acc_buffer + a);
 
             acc = vmaxq_f32(vdupq_n_f32(output_activation_min),
                             vminq_f32(vdupq_n_f32(output_activation_max), acc));
             vst1q_f32(output_ptr, acc);
             a += 4;
+            remainder += 4;
           }
           else{
-            if(%output_depth < filter_depth) {
-              int k = filter_depth - i%output_depth; //between 1 to 3
-              for(int j=0; j<4; j++){
-                if (j < k) {
-                  output_ptr[j] = std::max(output_activation_min, std::min(acc_buffer[a+j], output_activation_max));
-                }
-                else{
-                  output_ptr[j] = input_start[i+j];   
-                }
-              } 
-              a += k;
-            }
-            else{
-              float32x4_t inp = vld1q_f32(input_start + i);
-              vst1q_f32(output_ptr, inp);
+            int k = filter_depth - remainder; //between 1 to 3
+            for(int j=0; j<k; j++){
+              // TFLITE_LOG(INFO) << output_activation_min << " min/max " << output_activation_max;
+              output_ptr[j] = std::max(output_activation_min, std::min(acc_buffer[a+j], output_activation_max));
+              // TFLITE_LOG(INFO) << "output " << output_ptr[j];
+            } 
+            output_ptr += k;
+            a += k;
+            i += k;
+            // float32x4_t inp = vld1q_f32(input_start + i);
+            // vst1q_f32(output_ptr, inp);
+            int num_input_copy = output_depth - filter_depth;
+            // TFLITE_LOG(INFO) << "copy i " << i << " " << filter_depth << remainder;
+            memcpy(output_ptr, input_start+i, num_input_copy*sizeof(float));
+            output_ptr += num_input_copy-4;
+            i += num_input_copy-4;
+            remainder = 0;
 
-              // memcpy(output_ptr, input_start+i, 4*sizeof(float));
-              // for(int j=0; j<4; j++){
-              //   output_ptr[j] = input_start[i+j]; 
-              // } //replace with memcpy
-            }
+            // for(int j=0; j<4; j++){
+            //   output_ptr[j] = input_start[i+j]; 
+            // } //replace with memcpy
           }
           output_ptr += 4;
           
         }
 #endif
-//         // Handle leftover values, one by one. This is very slow.
+        // Handle leftover values, one by one. This is very slow.
         
         for (; i < num_output_values; i++) {
-          float acc;
-          if(i%output_depth < filter_depth)
+          
+          if(remainder < filter_depth)
           {
+            float acc;
             acc = acc_buffer[a];
             a++;
             acc = std::max(output_activation_min, std::min(output_activation_max, acc));
+            remainder++;
+            *output_ptr++ = acc;
           }
           else {
-            acc = input_start[i];
+            
+            int num_input_copy = output_depth - filter_depth;
+            TFLITE_LOG(INFO) << input_start+i << " index " << i << " "<< num_input_copy;
+            memcpy(output_ptr, input_start+i, num_input_copy*sizeof(float));
+            output_ptr += num_input_copy;
+            i += num_input_copy-1;
+            remainder = 0;
           }
-          *output_ptr++ = acc;
+          
         }
         // for(int j=0;j<num_output_values; j++){
-        //   TFLITE_LOG( INFO) << "post out buffer " << j << ": "  << output_start_ptr[j];
+        //   TFLITE_LOG(INFO) << "post out buffer " << j << ": "  << input_start[j] << " "<< output_start_ptr[j];
         // }
         // TFLITE_LOG(INFO) << "i: " << i << " a: " << a;
       }
@@ -1192,6 +1232,7 @@ inline void DepthwiseConvImpl(
     // for(int j=0; j<64; j++){
     //       TFLITE_LOG(INFO) << "final input/outputt buffer " << j << ": "  << input_data[j] << " " << output_data[j];
     //     }
+   
   }
 }
 
