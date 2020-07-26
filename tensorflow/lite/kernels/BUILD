@@ -171,7 +171,7 @@ cc_library(
     deps = [
         ":acceleration_test_util",
         ":builtin_ops",
-        ":test_util_delegate_providers",
+        ":test_delegate_providers_lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -189,7 +189,6 @@ cc_library(
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
-        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//tensorflow/lite/tools/versioning",
@@ -198,7 +197,8 @@ cc_library(
     ],
 )
 
-# A convenient library for tflite delegate execution providers.
+# A convenient library of tflite delegate execution providers for kernel tests
+# based on SingleOpModel or its derivatives defined in test_util.h/cc.
 cc_library(
     name = "test_util_delegate_providers",
     copts = tflite_copts(),
@@ -220,13 +220,28 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "test_delegate_providers_lib",
+    srcs = ["test_delegate_providers.cc"],
+    hdrs = ["test_delegate_providers.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
+    ],
+)
+
 # TODO(b/132204084): Create tflite_cc_test rule to automate test_main inclusion.
 cc_library(
     name = "test_main",
     testonly = 1,
     srcs = ["test_main.cc"],
     deps = [
+        ":test_delegate_providers_lib",
         ":test_util",
+        ":test_util_delegate_providers",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_googletest//:gtest",
@@ -456,6 +471,17 @@ cc_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "test_delegate_providers_lib_test",
+    size = "small",
+    srcs = ["test_delegate_providers_test.cc"],
     # See details in https://github.com/bazelbuild/bazel/issues/11552 to avoid
     # lazy symbol binding failure on macOS.
     linkstatic = select({
@@ -463,9 +489,11 @@ cc_test(
         "//conditions:default": False,
     }),
     deps = [
-        ":test_util",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        ":test_delegate_providers_lib",
+        "//tensorflow/lite/tools/delegates:default_execution_provider",
+        "//tensorflow/lite/tools/delegates:nnapi_delegate_provider",
+        "//tensorflow/lite/tools/delegates:xnnpack_delegate_provider",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
