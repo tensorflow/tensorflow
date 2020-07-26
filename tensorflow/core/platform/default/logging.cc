@@ -410,9 +410,9 @@ void TFLogSinks::Send(const TFLogEntry& entry) {
   // If we have items in the queue, push them out first
   while(!queue_.empty()) {
     for(const auto& sink : sinks_) {
-      SendToSink(*sink, entry);
-      queue_.pop();
+      SendToSink(*sink, queue_.front());
     }
+    queue_.pop();
   }
 
   // ... and now we can log the current log entry
