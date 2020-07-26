@@ -64,7 +64,7 @@ Status CheckSignature(const DataTypeVector& types,
     return errors::Internal("Compilation arguments have ", args.size(),
                             " elements while function has ", types.size());
   }
-  for (int i = 0, iter_limit = types.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = types.size(); i < end; ++i) {
     // Don't perform type checks on resource variables and tensor
     // lists (DT_VARIANT) as we have to trick the type system in order to
     // plumb them through. DT_VARIANTS are wrapped in a DT_UINT8 tensor.
@@ -192,7 +192,7 @@ Status BuildComputation(
   // replicate sharding is used. The first element is the output index, second
   // element is the sharding.
   std::unordered_map<int, xla::OpSharding> retval_index_and_sharding;
-  for (int i = 0, iter_limit = retvals.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = retvals.size(); i < end; ++i) {
     XlaCompiler::OutputDescription& output = (*outputs)[i];
     const XlaExpression& retval = retvals[i];
     output.type = retval.dtype();
@@ -362,7 +362,7 @@ Status BuildComputation(
     xla::Shape shape = xla::ShapeUtil::MakeTupleShape(elem_shapes);
     // Copy specified sharding from retval_index_and_sharding.
     std::vector<xla::HloSharding> sharding_elems;
-    for (int i = 0, iter_limit = elems.size(); i < iter_limit; i++) {
+    for (int i = 0, end = elems.size(); i < end; i++) {
       const auto& iter = retval_index_and_sharding.find(i);
       TF_RET_CHECK(iter != retval_index_and_sharding.end());
       const xla::OpSharding& sub_op_sharding = iter->second;
@@ -707,7 +707,7 @@ Status XlaCompiler::CompileFunction(
   // Set shapes for _Arg nodes. They are useful for constant folding (e.g. an
   // Xla op requires a compile-time constant input, and that input is shape of
   // an _Arg node.
-  for (int i = 0, iter_limit = args.size(); i < iter_limit; i++) {
+  for (int i = 0, end = args.size(); i < end; i++) {
     // Skip resource variables and tensor lists.
     DataType dtype;
     TF_RETURN_IF_ERROR(GetNodeAttr(fbody->arg_nodes[i]->def(), "T", &dtype));
@@ -949,7 +949,7 @@ Status XlaCompiler::BuildArguments(
   // to the d'th XLA input. Note that the value -1 corresponds to constants, or
   // other args that don't correspond to an input.
   std::vector<int> arg_to_inputs(args.size(), -1);
-  for (int i = 0, iter_limit = input_to_args->size(); i < iter_limit; i++) {
+  for (int i = 0, end = input_to_args->size(); i < end; i++) {
     arg_to_inputs[input_to_args->at(i)] = i;
   }
 
@@ -995,7 +995,7 @@ Status XlaCompiler::BuildArguments(
                                       : it->second;
       }
       std::vector<bool> is_same_across_replicas;
-      for (int i = 0, iter_limit = input_to_args->size(); i < iter_limit; ++i) {
+      for (int i = 0, end = input_to_args->size(); i < end; ++i) {
         // Add an entry to is_same_across_replicas for every leaf buffer.
         is_same_across_replicas.insert(
             is_same_across_replicas.end(),
@@ -1011,7 +1011,7 @@ Status XlaCompiler::BuildArguments(
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
 
-    for (int i = 0, iter_limit = input_to_args->size(); i < iter_limit; ++i) {
+    for (int i = 0, end = input_to_args->size(); i < end; ++i) {
       const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
       for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
         int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
@@ -1030,6 +1030,11 @@ Status XlaCompiler::BuildArguments(
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, it == arg_shardings.end() ? absl::optional<xla::OpSharding>()
                                              : it->second);
+      auto& arg = args[input_to_args->at(i)];
+
+      xla::OpMetadata arg_metadata;
+      arg_metadata.set_op_name(arg.node_name);
+      builder->SetOneShotOpMetadata(arg_metadata);
       arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
   } else {
@@ -1052,7 +1057,7 @@ Status XlaCompiler::BuildArguments(
       }
     }
 
-    for (int i = 0, iter_limit = input_to_args->size(); i < iter_limit; ++i) {
+    for (int i = 0, end = input_to_args->size(); i < end; ++i) {
       const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
       for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
         int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
@@ -1373,7 +1378,7 @@ void SetTransfer(const string& key, absl::Span<const DataType> types,
                  tf2xla::HostTransferMetadata* transfer) {
   transfer->set_key(key);
   CHECK(types.size() == shapes.size());
-  for (int i = 0, iter_limit = types.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = types.size(); i < end; ++i) {
     tf2xla::TensorMetadata* metadata = transfer->add_metadata();
     metadata->set_type(types[i]);
     shapes[i].AsProto(metadata->mutable_shape());
