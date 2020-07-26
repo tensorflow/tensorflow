@@ -829,7 +829,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_QUANTIZE:
       property.inputs = {{0, {}}};
