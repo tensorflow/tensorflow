@@ -1234,5 +1234,47 @@ PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
   return result;
 }
 
+HloInstruction* PerGroupSliceFromReplicated(
+    HloInstruction* replicated, HloInstruction* partition_id,
+    const std::vector<std::vector<int64>>& device_groups,
+    absl::Span<const int64> group_dims, absl::Span<const int64> group_dim_sizes,
+    SpmdBuilder* b) {
+  std::vector<uint32> group_ids(device_groups.size() * device_groups[0].size());
+  for (int64 g = 0; g < device_groups.size(); ++g) {
+    for (int64 device : device_groups[g]) {
+      group_ids[device] = g;
+    }
+  }
+  auto group_id_table = b->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint32>(group_ids)));
+  auto group_id = b->AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeScalarShape(U32),
+      b->AddInstruction(HloInstruction::CreateDynamicSlice(
+          ShapeUtil::MakeShape(U32, {1}), group_id_table, {partition_id},
+          {1}))));
+  std::vector<int64> group_level_tile_dims(replicated->shape().rank(), 1);
+  for (int64 i = 0; i < group_dims.size(); ++i) {
+    group_level_tile_dims[group_dims[i]] = group_dim_sizes[i];
+  }
+  Array<int64> group_level_tile(group_level_tile_dims);
+  group_level_tile.Each([&](absl::Span<const int64> indices, int64* group) {
+    *group = 0;
+    for (int64 dim : group_dims) {
+      *group *= group_level_tile.dim(dim);
+      *group += indices[dim];
+    }
+  });
+  auto group_level_sharding = HloSharding::Tile(group_level_tile);
+  auto padded_hlo = PadBaseShapeBeforeUnevenTiledSharding(
+      replicated, group_level_sharding, b);
+  auto shard_shape =
+      MakePartitionedShape(replicated->shape(), group_level_sharding);
+  return b->AddInstruction(HloInstruction::CreateDynamicSlice(
+      shard_shape, padded_hlo,
+      MakePartitionOffsets(replicated->shape(), group_level_sharding, group_id,
+                           b),
+      shard_shape.dimensions()));
+}
+
 }  // namespace spmd
 }  // namespace xla
