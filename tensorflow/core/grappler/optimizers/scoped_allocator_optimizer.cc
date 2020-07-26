@@ -521,7 +521,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 
     // Add control edges from the ScopedAllocatorOp to all of the
     // input nodes and mark them for allocation from backing tensor.
-    for (int i = 0, iter_limit = inputs.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = inputs.size(); i < end; ++i) {
       auto& nd = inputs[i];
       if (IsArg(*nd.from_node_def)) {
         return errors::Internal(
@@ -548,8 +548,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       std::vector<InputDesc> inputs_to_first;
       LOG_WARNING_AND_RETURN_IF_ERROR(GetDataInputs(
           graph, sa_opti->node_map(), nd.from_node_def, &inputs_to_first));
-      for (int i = 0, iter_limit = inputs_to_first.size(); i < iter_limit;
-           ++i) {
+      for (int i = 0, end = inputs_to_first.size(); i < end; ++i) {
         if (fanout.find(inputs_to_first[i].from_node_def) != fanout.end()) {
           VLOG(2) << "Found node " << inputs_to_first[i].from_node_def->name()
                   << " in the fanout of " << sa_name;
@@ -589,7 +588,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     VLOG(2) << "BuildSAConcatNode " << sac_name;
     // control input: edge name -> source node name
     absl::flat_hash_map<string, string> sac_ctl_inputs;
-    for (int i = 0, iter_limit = ops.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = ops.size(); i < end; ++i) {
       NodeDef* old_op = ops[i];
       for (const string& old_op_input : old_op->input()) {
         int position = 0;
