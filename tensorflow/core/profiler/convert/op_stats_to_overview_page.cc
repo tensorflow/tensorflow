@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
+#include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -163,6 +165,9 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
   OpMetricsDb device_tf_op_metrics_db = CreateTfMetricsDbFromDeviceOpMetricsDb(
       op_stats.device_op_metrics_db(), /*with_idle=*/false);
+  absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
+      grouped_kernel_reports =
+          GroupKernelReportsByOpName(op_stats.kernel_stats_db());
   uint64 total_device_time_ps = device_tf_op_metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;
@@ -177,6 +182,11 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     op->set_cumulative_time_fraction(device_cumulative_fraction);
     op->set_flop_rate(
         SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
+    auto iter = grouped_kernel_reports.find(op->name());
+    if (iter != grouped_kernel_reports.end()) {
+      op->set_is_op_tensorcore_eligible(
+          iter->second.front()->is_op_tensor_core_eligible());
+    }
   }
   uint64 total_device_compute_ps =
       op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps() +
@@ -287,15 +297,16 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
   // Sorts candidates in descending order of expensive_call_percent.
   absl::c_sort(candidates, cmp);
   std::string expensive_functions = "";
-  auto num_functions_shown = std::min(
+  const int64 num_functions_shown = std::min(
       static_cast<decltype(candidates)::size_type>(3), candidates.size());
 
-  for (auto i = 0; i < num_functions_shown; i++) {
+  for (int64 i = 0; i < num_functions_shown; i++) {
     if (i > 0) absl::StrAppend(&expensive_functions, ", ");
     absl::StrAppend(&expensive_functions, "\"", candidates[i].function_name,
                     "\"");
   }
-  if (candidates.size() > num_functions_shown)
+  const int64 candidates_size  = candidates.size();
+  if (candidates_size > num_functions_shown)
     absl::StrAppend(&expensive_functions, " and more");
   return absl::StrCat("Expensive tf-functions detected (", expensive_functions,
                       ") due to either retracing or eager execution.");
