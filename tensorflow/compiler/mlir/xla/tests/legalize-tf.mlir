@@ -1505,7 +1505,7 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_MAX:.*]] = "mhlo.convert"(%[[MAX]]) : (tensor<2xf32>) -> tensor<2xf32>
 
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
   // CHECK: %[[BCAST_MAX:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[CASTED_MAX]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[SHIFTED_INP:.*]] = mhlo.subtract %[[ARG0]], %[[BCAST_MAX]]
   // CHECK: %[[EXP:.*]] = "mhlo.exponential"(%[[SHIFTED_INP]])
@@ -1520,7 +1520,7 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_SUM:.*]] = "mhlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
 
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
   // CHECK: %[[BCAST_SUM:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[CASTED_SUM]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[RESULT:.*]] = mhlo.divide %[[EXP]], %[[BCAST_SUM]]
   // CHECK: return %[[RESULT]]
@@ -1577,7 +1577,7 @@ func @simple_logsoftmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_SUM:.*]] = "mhlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: %[[LOG:.*]] = "mhlo.log"(%[[CASTED_SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
   // CHECK: %[[BCAST_SUM:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[LOG]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[RESULT:.*]] = mhlo.subtract {{.*}}, %[[BCAST_SUM]]
   // CHECK: return %[[RESULT]]
@@ -1920,7 +1920,7 @@ func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK-DAG: [[SCALAR:%.+]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
   // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0 : tensor<2xf32>
-  // CHECK-DAG: [[SHAPE_VAL:%.+]] = shape.to_extent_tensor [[SHAPE]] : tensor<1xindex>
+  // CHECK-DAG: [[SHAPE_VAL:%.+]] = shape.to_extent_tensor [[SHAPE]]
   // CHECK-DAG: [[HALF:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[SCALAR]], [[SHAPE_VAL]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<2xf32>
   // CHECK-DAG: [[R1:%.+]] =  mhlo.multiply %arg0, [[HALF]] : tensor<2xf32>
   // CHECK-DAG: [[R2:%.+]] =  "mhlo.tanh"([[R1]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1942,7 +1942,7 @@ func @sigmoid_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
 func @sigmoid_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-DAG: [[SCALAR:%.+]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
   // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0 : tensor<*xf32>
-  // CHECK-DAG: [[SHAPE_VAL:%.+]] = shape.to_extent_tensor [[SHAPE]] : tensor<?xindex>
+  // CHECK-DAG: [[SHAPE_VAL:%.+]] = shape.to_extent_tensor [[SHAPE]]
   // CHECK-DAG: [[HALF:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[SCALAR]], [[SHAPE_VAL]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<?xindex>) -> tensor<*xf32>
   // CHECK-DAG: [[R1:%.+]] =  mhlo.multiply %arg0, [[HALF]] : tensor<*xf32>
   // CHECK-DAG: [[R2:%.+]] =  "mhlo.tanh"([[R1]]) : (tensor<*xf32>) -> tensor<*xf32>
