@@ -339,12 +339,12 @@ def random_flip_up_down(image, seed=None):
   Example usage:
 
   >>> import numpy as np
-
   >>> image = np.array([[[1], [2]], [[3], [4]]])
   >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
   [[[3], [4]], [[1], [2]]]
 
   Randomly flip multiple images.
+
   >>> images = np.array(
   ... [
   ...     [[[1], [2]], [[3], [4]]],
