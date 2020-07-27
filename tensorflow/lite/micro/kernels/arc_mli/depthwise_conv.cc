@@ -224,7 +224,6 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_KERNEL_LOG(context,
                      "Type %s (%d) is not supported by ARC MLI Library.",
                      TfLiteTypeGetName(input->type), input->type);
-  return kTfLiteError;
 #endif
 }
 TfLiteStatus EvalMliQuantizedPerChannel(
@@ -435,7 +434,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 #else
   TF_LITE_KERNEL_LOG(context,
                      "Node configuration is not supported by ARC MLI Library.");
-  return kTfLiteError;
 #endif
 }
 
@@ -476,7 +474,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_KERNEL_LOG(context,
                      "Type %s (%d) is not supported by ARC MLI Library.",
                      TfLiteTypeGetName(input->type), input->type);
-  return kTfLiteError;
 #endif
 }
 

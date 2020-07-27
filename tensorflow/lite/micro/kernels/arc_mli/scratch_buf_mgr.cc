@@ -30,8 +30,8 @@ static void get_arc_two_buffer_sizes(int request_size_1, int request_size_2,
                                      int* grant_size_1, int* grant_size_2) {
   int maxrequest = 0;
   int secondrequest = 0;
-  int maxavailable = 0;
-  int secondavail = 0;
+  uint32_t maxavailable = 0;
+  uint32_t secondavail = 0;
 
   // determine the largest requested buffer.
   if (request_size_1 > request_size_2) {
@@ -120,7 +120,7 @@ TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
   if (!inside_arc_ccm(weights->data)) {
     int weights_size = mli_hlp_count_elem_num(weights, 0) *
                        mli_hlp_tensor_element_size(weights);
-    int max_weights_size = 0;
+    uint32_t max_weights_size = 0;
     weights->data = get_arc_scratch_buffer(weights_size);
     weights->capacity = weights_size;
     if (weights->data == NULL) {
@@ -144,7 +144,7 @@ TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
   }
 
   if (bias->data == NULL) {
-    int max_bias_size = 0;
+    uint32_t max_bias_size = 0;
     get_arc_scratch_buffer_max_size(&max_bias_size);
     bias->data = get_arc_scratch_buffer(max_bias_size);
     bias->capacity = max_bias_size;
@@ -185,7 +185,7 @@ TfLiteStatus get_arc_scratch_buffer_for_fully_connect_tensors(
   if (!inside_arc_ccm(weights->data)) {
     int weights_size = mli_hlp_count_elem_num(weights, 0) *
                        mli_hlp_tensor_element_size(weights);
-    int max_weights_size = 0;
+    uint32_t max_weights_size = 0;
     weights->data = get_arc_scratch_buffer(weights_size);
     weights->capacity = weights_size;
     if (weights->data == NULL) {
@@ -209,7 +209,7 @@ TfLiteStatus get_arc_scratch_buffer_for_fully_connect_tensors(
        only count the size if the inner most dimension */
     int out_size = mli_hlp_count_elem_num(out, out->rank - 1) *
                    mli_hlp_tensor_element_size(out);
-    int max_out_size = 0;
+    uint32_t max_out_size = 0;
     out->data = get_arc_scratch_buffer(out_size);
     out->capacity = out_size;
     if (out->data == NULL) {
@@ -222,7 +222,7 @@ TfLiteStatus get_arc_scratch_buffer_for_fully_connect_tensors(
   }
 
   if (bias->data == NULL) {
-    int max_bias_size = 0;
+    uint32_t max_bias_size = 0;
     get_arc_scratch_buffer_max_size(&max_bias_size);
     bias->data = get_arc_scratch_buffer(max_bias_size);
     bias->capacity = max_bias_size;

@@ -66,7 +66,7 @@ TfLiteStatus CalculateOpData(const TfLiteContext* context,
   return kTfLiteOk;
 }
 
-void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
+void AverageEvalFloat(TfLiteContext* context, const TfLiteNode* node,
                       const TfLitePoolParams* params, const OpData* data,
                       const TfLiteTensor* input, TfLiteTensor* output) {
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
@@ -90,7 +90,6 @@ void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
   TF_LITE_KERNEL_LOG(context,
                      "Type %s (%d) is not supported by ARC MLI Library.",
                      TfLiteTypeGetName(input->type), input->type);
-  return kTfLiteError;
 #endif
 }
 
@@ -209,7 +208,6 @@ void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
       context,
       "Node configuration or type %s (%d) is not supported by ARC MLI Library.",
       TfLiteTypeGetName(input->type), input->type);
-  return kTfLiteError;
 #endif
 }
 
@@ -237,7 +235,6 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_KERNEL_LOG(context,
                      "Type %s (%d) is not supported by ARC MLI Library.",
                      TfLiteTypeGetName(input->type), input->type);
-  return kTfLiteError;
 #endif
 }
 
@@ -275,7 +272,6 @@ void MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
       context,
       "Node configuration or type %s (%d) is not supported by ARC MLI Library.",
       TfLiteTypeGetName(input->type), input->type);
-  return kTfLiteError;
 #endif
 }
 }  // namespace
