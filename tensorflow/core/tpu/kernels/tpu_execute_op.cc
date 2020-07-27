@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
@@ -364,16 +363,16 @@ struct OutputBuffers {
         memory_allocator(allocator) {}
 
   ~OutputBuffers() {
-    buffers.buffers().ForEachElement([&](const xla::ShapeIndex& index,
-                                         const se::DeviceMemoryBase& buffer) {
-      if (owned_buffers.element(index) && !buffer.is_null()) {
-        Status status =
-            memory_allocator->Deallocate(buffers.device_ordinal(), buffer);
-        if (!status.ok()) {
-          LOG(ERROR) << "Error deallocating buffer " << status;
-        }
-      }
-    });
+    buffers.buffers().ForEachElement(
+        [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+          if (owned_buffers.element(index) && !buffer.is_null()) {
+            Status status =
+                memory_allocator->Deallocate(buffers.device_ordinal(), buffer);
+            if (!status.ok()) {
+              LOG(ERROR) << "Error deallocating buffer " << status;
+            }
+          }
+        });
   }
 
   // Which of the buffers do we own?

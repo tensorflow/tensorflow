@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "google/protobuf/wrappers.proto";
+import "tensorflow/core/data/service/common.proto";
+
+// Message representing journaled dispatcher metadata updates. When we apply
+// one of these changes to the dispatcher's in-memory state, we also write an
+// Update message to the journal.
+message Update {
+  oneof update_type {
+    RegisterDataset register_dataset = 1;
+    CreateJob create_job = 2;
+    FinishJob finish_job = 3;
+    CreateTask create_task = 4;
+  }
+}
+
+message RegisterDataset {
+  int64 dataset_id = 1;
+  // A file where the dataset graph has been written.
+  string filename = 2;
+}
+
+message CreateJob {
+  int64 job_id = 1;
+  int64 dataset_id = 2;
+  ProcessingModeDef processing_mode = 3;
+  // Only some jobs have names, so this may be null.
+  google.protobuf.StringValue job_name = 4;
+}
+
+message FinishJob {
+  int64 job_id = 1;
+}
+
+message CreateTask {
+  int64 task_id = 1;
+  int64 job_id = 2;
+  int64 dataset_id = 3;
+}

@@ -236,12 +236,12 @@ else_branch: A function that takes 'inputs' and returns a list of
   let extraClassDeclaration = [{
     // Get the then branch function.
     FuncOp then_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(then_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, then_branch());
     }
 
     // Get the else branch function.
     FuncOp else_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(else_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, else_branch());
     }
   }];
 }
@@ -346,8 +346,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     within the same symbol scope as the call and is mapped to a GraphDef node
     with the function name as the op name. Unlike a PartitionedCall which
     represents asynchronously executing a function across multiple devices, a
-    LegacyCall represents a function call with the only attribute
-    _diable_call_shape_inference.
+    LegacyCall ignores specification for ops in the attached function and
+    instead executes it on the device assigned to this op.
   }];
 
   let arguments = (ins
@@ -653,6 +653,18 @@ body: A function that takes a list of tensors and returns another
     // Get the body function.
     FuncOp body_func() {
       return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(body());
+    }
+  }];
+
+  let extraClassDeclaration = [{
+    // Get the condition function.
+    FuncOp cond_func() {
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, cond());
+    }
+
+    // Get the body function.
+    FuncOp body_func() {
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, body());
     }
   }];
 }

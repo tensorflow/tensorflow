@@ -239,23 +239,28 @@ LogicalResult CheckOutputConsumer(
 
 LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
   for (auto func : module.getOps<FuncOp>()) {
-    auto result = func.walk([&](Operation* op) {
-      if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-        CallInterfaceCallable callable = call_op.getCallableForCallee();
-        if (auto sym = callable.dyn_cast<SymbolRefAttr>()) {
-          if (sym.getRootReference() == lstm_func.getName()) {
-            // Keras LSTM have 5 outputs.
-            // We should make sure only the first or the second output are
-            // consumed.
-            if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
-              return WalkResult::interrupt();
-          }
-        }
+    if (func == lstm_func) continue;
+    auto result = func.walk([&](CallOpInterface op) {
+      if (dyn_cast<FuncOp>(op.resolveCallable()) == lstm_func) {
+        // Keras LSTM have 5 outputs.
+        // We should make sure only the first or the second output are
+        // consumed.
+        if (failed(CheckOutputConsumer(op.getOperation(), 5, {0, 1})))
+          return WalkResult::interrupt();
       }
       return WalkResult::advance();
     });
 
     if (result.wasInterrupted()) return failure();
+  }
+
+  // We should know the batch size in advance for the lstm fusion.
+  // A good indicator of batch size is both cell state and input state have
+  // fixed shape. (indices 1 & 2).
+  for (int i = 1; i < 3; ++i) {
+    auto input = lstm_func.getArgument(i);
+    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!input_type || !input_type.hasStaticShape()) return failure();
   }
 
   return success();

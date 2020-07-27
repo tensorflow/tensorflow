@@ -72,7 +72,6 @@ def strategy_with_var_policy():
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           strategy_combinations.tpu_strategy,
           strategy_combinations.tpu_strategy_packed_var,
-          strategy_combinations.central_storage_strategy_with_two_gpus,
       ],
       mode=["graph", "eager"],
       use_var_policy=[True, False])

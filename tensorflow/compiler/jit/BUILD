@@ -225,6 +225,8 @@ cc_library(
         "xla_device_context.h",
         "xla_device_ops.h",
     ],
+    # Public visibility is needed for external TF/XLA backends.
+    visibility = ["//visibility:public"],
     deps = XLA_DEVICE_DEPS,
 )
 

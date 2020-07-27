@@ -358,11 +358,8 @@ def _concat_flatbuffer_py_srcs_impl(ctx):
         outputs = [ctx.outputs.out],
         command = (
             "find '%s' -name '*.py' -exec cat {} + |" +
-            "sed '/import flatbuffers/d' |" +
-            "sed 's/from flatbuffers." +
-            "/from flatbuffers.python.flatbuffers./' |" +
-            "sed '1s/^/from flatbuffers.python " +
-            "import flatbuffers\\'$'\\n/' > %s"
+            "sed 's/from flatbuffers.compat import import_numpy/import numpy as np' |" +
+            "sed '/np = import_numpy()/d' > %s"
         ) % (
             ctx.attr.deps[0].files.to_list()[0].path,
             ctx.outputs.out.path,

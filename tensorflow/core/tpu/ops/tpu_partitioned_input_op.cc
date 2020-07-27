@@ -94,14 +94,6 @@ REGISTER_OP("TPUPartitionedInput")
       }
 
       return Status::OK();
-    })
-    .Doc(R"doc(
-An op that groups a list of partitioned inputs together. This op
-
-inputs: A list of partitioned inputs which must have the same shape.
-output: A handle which represents the full shape of partitioned tensors.
-partition_dim: An integer describles which dimension is partitioned. -1 means
-  those inputs are replicated.
-)doc");
+    });
 
 }  // namespace tensorflow

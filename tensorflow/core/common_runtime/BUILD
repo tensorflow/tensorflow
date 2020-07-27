@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
+    "if_tpu",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -91,7 +92,7 @@ cc_library(
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
         "//tensorflow/core/common_runtime/sycl:sycl_runtime",
-    ],
+    ] + if_tpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 
 filegroup(
