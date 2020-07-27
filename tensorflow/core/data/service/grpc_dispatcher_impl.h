@@ -19,6 +19,7 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_impl.h"
+#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -35,7 +36,7 @@ namespace data {
 class GrpcDispatcherImpl : public DispatcherService::Service {
  public:
   explicit GrpcDispatcherImpl(grpc::ServerBuilder* server_builder,
-                              const std::string& protocol);
+                              const experimental::DispatcherConfig& config);
   ~GrpcDispatcherImpl() override {}
 
 #define HANDLER(method)                               \

@@ -1105,7 +1105,7 @@ void BM_TraceString(const int iters, const int verbose) {
 
   testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    auto trace = op->TraceString(ctx.get(), verbose);
+    auto trace = op->TraceString(*ctx, verbose);
   }
   testing::StopTiming();
 }

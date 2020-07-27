@@ -219,9 +219,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     const int stride_height = params->stride_height;
     const int pad_width = data.padding.width;
     const int pad_height = data.padding.height;
-    const int32 output_activation_min = data.output_activation_min;
-    const int32 output_activation_max = data.output_activation_max;
-    const int32 output_multiplier = data.output_multiplier;
+    const int32_t output_activation_min = data.output_activation_min;
+    const int32_t output_activation_max = data.output_activation_max;
+    const int32_t output_multiplier = data.output_multiplier;
     const int output_shift = -data.output_shift;
     TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
     TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
@@ -362,10 +362,10 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   reference_integer_ops::ConvPerChannel(
       op_params, data.per_channel_output_multiplier,
       data.per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+      GetTensorData<int8_t>(input), GetTensorShape(filter),
+      GetTensorData<int8_t>(filter), GetTensorShape(bias),
+      GetTensorData<int32_t>(bias), GetTensorShape(output),
+      GetTensorData<int8_t>(output));
 }
 
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,

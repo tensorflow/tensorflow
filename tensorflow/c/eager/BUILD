@@ -262,6 +262,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:refcount",
     ],
 )
 

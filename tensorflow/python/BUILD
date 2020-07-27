@@ -58,8 +58,6 @@ visibility = [
     "//third_party/py/tensorflow_examples:__subpackages__",
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
-    # TODO(aselle): to pass open source test.
-    "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
     "//third_party/py/tensorflow_docs:__subpackages__",
 ]
 
@@ -3137,6 +3135,7 @@ py_library(
         "ops/inplace_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = visibility,
     deps = [
         ":array_ops_gen",
         ":common_shapes",
@@ -4121,6 +4120,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":bitwise_ops_gen",
         ":common_shapes",
         ":constant_op",
         ":control_flow_ops_gen",

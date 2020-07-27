@@ -52,8 +52,7 @@ class InterleaveMany : public Node {
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
     } else {
-      inherited_input_time =
-          gtl::FindWithDefault(*input_times, kInputTimeKey, 0.0L);
+      inherited_input_time = (*input_times)[kModelInputTimeKey];
     }
 
     if (num_inputs() <= 1) {
@@ -176,8 +175,7 @@ class AsyncInterleaveMany : public Node {
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
     } else {
-      inherited_input_time =
-          gtl::FindWithDefault(*input_times, kInputTimeKey, 0.0L);
+      inherited_input_time = (*input_times)[kModelInputTimeKey];
     }
 
     if (num_inputs() <= 1) {
@@ -323,8 +321,7 @@ class KnownRatio : public Node {
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
     } else {
-      inherited_input_time =
-          gtl::FindWithDefault(*input_times, kInputTimeKey, 0.0L);
+      inherited_input_time = (*input_times)[kModelInputTimeKey];
     }
 
     if (ratio_ == 0) {
@@ -423,8 +420,7 @@ class AsyncKnownRatio : public Node {
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
     } else {
-      inherited_input_time =
-          gtl::FindWithDefault(*input_times, kInputTimeKey, 0.0L);
+      inherited_input_time = (*input_times)[kModelInputTimeKey];
     }
     double parallelism = 1.0;
     auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
@@ -593,8 +589,7 @@ class UnknownRatio : public Node {
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
     } else {
-      inherited_input_time =
-          gtl::FindWithDefault(*input_times, kInputTimeKey, 0.0L);
+      inherited_input_time = (*input_times)[kModelInputTimeKey];
     }
 
     if (num_elements_ == 0 || inputs_.empty() ||
@@ -692,8 +687,7 @@ class Unknown : public Node {
     if (output_) {
       inherited_input_time = (*input_times)[output_->long_name()];
     } else {
-      inherited_input_time =
-          gtl::FindWithDefault(*input_times, kInputTimeKey, 0.0L);
+      inherited_input_time = (*input_times)[kModelInputTimeKey];
     }
     (*input_times)[long_name()] = inherited_input_time;
   }
@@ -1295,13 +1289,13 @@ void Model::FlushMetrics() {
 }
 
 void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                     int64 ram_budget) {
+                     int64 ram_budget, double model_input_time) {
   switch (algorithm) {
     case AutotuneAlgorithm::HILL_CLIMB:
-      OptimizeHillClimb(cpu_budget, ram_budget);
+      OptimizeHillClimb(cpu_budget, ram_budget, model_input_time);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
-      OptimizeGradientDescent(cpu_budget, ram_budget);
+      OptimizeGradientDescent(cpu_budget, ram_budget, model_input_time);
       break;
   }
 }
@@ -1346,7 +1340,8 @@ Model::CollectEssentialParallelism(
   return essential_parameters;
 }
 
-void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget) {
+void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
+                                    double model_input_time) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock lock(mu_);
@@ -1376,7 +1371,7 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget) {
   double new_value;
   for (int i = 0; i < kMaxIterations; ++i) {
     absl::flat_hash_map<string, double> gradients;
-    new_output_time = OutputTime(snapshot, &gradients);
+    new_output_time = OutputTime(snapshot, model_input_time, &gradients);
     int64 model_parallelism = 0;
     for (auto& pair : essential_parameters) {
       model_parallelism += std::round(pair.second->value);
@@ -1422,7 +1417,8 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget) {
   }
 }
 
-void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget) {
+void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
+                              double model_input_time) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock lock(mu_);
@@ -1442,7 +1438,8 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget) {
     pair.second->value = pair.second->min;
   }
   while (true) {
-    const double output_time = OutputTime(snapshot, /*gradients=*/nullptr);
+    const double output_time =
+        OutputTime(snapshot, model_input_time, /*gradients=*/nullptr);
     bool all_max = true;
     for (auto& pair : parameters) {
       if (pair.second->value < pair.second->max) {
@@ -1461,7 +1458,8 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget) {
         continue;
       }
       pair.second->value++;
-      double new_output_time = OutputTime(snapshot, /*gradients=*/nullptr);
+      double new_output_time =
+          OutputTime(snapshot, model_input_time, /*gradients=*/nullptr);
       double delta = output_time - new_output_time;
       if (delta > best_delta &&
           (delta > kBufferSizeMinDelta || pair.second->name != kBufferSize)) {
@@ -1490,10 +1488,11 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget) {
   }
 }
 
-double Model::OutputTime(std::shared_ptr<Node> node,
+double Model::OutputTime(std::shared_ptr<Node> node, double model_input_time,
                          absl::flat_hash_map<string, double>* gradients) {
   // To store the input time for each node.
-  absl::flat_hash_map<string, double> input_times;
+  absl::flat_hash_map<string, double> input_times = {
+      {kModelInputTimeKey, model_input_time}};
 
   // TODO(jsimsa): Now that we are accounting for buffer size in wait time
   // computation, assuming that the input is infinitely fast will result in

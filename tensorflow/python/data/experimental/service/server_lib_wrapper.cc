@@ -22,6 +22,8 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
 #include "tensorflow/core/data/service/server_lib.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
@@ -50,11 +52,16 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
 
   m.def(
       "TF_DATA_NewDispatchServer",
-      [](int port, std::string protocol)
+      [](std::string serialized_dispatcher_config)
           -> std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> {
+        tensorflow::data::experimental::DispatcherConfig config;
+        if (!config.ParseFromString(serialized_dispatcher_config)) {
+          tensorflow::MaybeRaiseFromStatus(tensorflow::errors::InvalidArgument(
+              "Failed to deserialize dispatcher config."));
+        }
         std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewDispatchServer(port, protocol, &server);
+            tensorflow::data::NewDispatchServer(config, &server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },

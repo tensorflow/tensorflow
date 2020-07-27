@@ -37,7 +37,8 @@ def make_pad_tests(options):
           "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]],
                        [[0, 1], [0, 0], [0, 0], [2, 3]]],
           "constant_paddings": [True, False],
-          "fully_quantize": [False]
+          "fully_quantize": [False],
+          "quant_16x8": [False]
       },
       # 2D:
       {
@@ -45,7 +46,8 @@ def make_pad_tests(options):
           "input_shape": [[1, 2]],
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True, False],
-          "fully_quantize": [False]
+          "fully_quantize": [False],
+          "quant_16x8": [False]
       },
       # 1D:
       {
@@ -53,7 +55,8 @@ def make_pad_tests(options):
           "input_shape": [[1]],
           "paddings": [[[1, 2]]],
           "constant_paddings": [False],
-          "fully_quantize": [False]
+          "fully_quantize": [False],
+          "quant_16x8": [False]
       },
       # 4D:
       {
@@ -63,7 +66,8 @@ def make_pad_tests(options):
                        [[0, 1], [0, 0], [0, 0], [2, 3]],
                        [[0, 0], [0, 0], [0, 0], [0, 0]]],
           "constant_paddings": [True],
-          "fully_quantize": [True]
+          "fully_quantize": [True],
+          "quant_16x8": [False, True]
       },
       # 2D:
       {
@@ -71,7 +75,8 @@ def make_pad_tests(options):
           "input_shape": [[1, 2]],
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True],
-          "fully_quantize": [True]
+          "fully_quantize": [True],
+          "quant_16x8": [False, True],
       },
       # 1D:
       {
@@ -79,7 +84,8 @@ def make_pad_tests(options):
           "input_shape": [[1]],
           "paddings": [[[1, 2]]],
           "constant_paddings": [True],
-          "fully_quantize": [True]
+          "fully_quantize": [True],
+          "quant_16x8": [False, True],
       },
   ]
 

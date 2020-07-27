@@ -1863,8 +1863,8 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   }
 };
 
-// Performs the conversion:
-// Square(Sub(x, y)) => Identity(SquaredDifference(x, y))
+// Performs the following conversion for real types:
+//   Square(Sub(x, y)) => Identity(SquaredDifference(x, y) )
 class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
  public:
   explicit FuseSquaredDiffStage(const GraphOptimizerContext& ctx,
@@ -1883,6 +1883,11 @@ class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
     // elsewhere.
     if (IsSub(*b) && !IsInPreserveSet(*b) &&
         (NumNonControlOutputs(*b, *ctx().node_map) == 1)) {
+      // For complex, SquaredDiff computes conj(x-y)*(x-y), so this rewrite is
+      // invalid.
+      const DataType type = GetDataTypeFromAttr(*b, "T");
+      if ((type == DT_COMPLEX64) || (type == DT_COMPLEX128))
+        return Status::OK();
       node->set_op("Identity");
       b->set_op("SquaredDifference");
       AddToOptimizationQueue(node);
@@ -3723,12 +3728,12 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
   if (options_.remove_stack_slice_same_axis)
     pipeline.AddStage<RemoveStackSliceSameAxis>(ctx, ctx_ext);
-  if (options_.fuse_squared_diff)
-    pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
   if (options_.simplify_embedding_lookup)
     pipeline.AddStage<SimplifyEmbeddingLookupStage>(ctx, ctx_ext);
   if (options_.remove_cast_into_segment_reduction)
     pipeline.AddStage<RemoveCastIntoSegmentReductionStage>(ctx, ctx_ext);
+  if (options_.fuse_squared_diff)
+    pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << absl::StrJoin(pipeline.StageNames(), ", ");

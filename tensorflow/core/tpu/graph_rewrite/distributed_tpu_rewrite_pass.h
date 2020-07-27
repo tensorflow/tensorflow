@@ -310,7 +310,8 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       const Node* replicate_node, FunctionLibraryRuntime* flr,
       std::vector<::xla::OpSharding>* arg_sharding,
       std::vector<bool>* arg_fast_mem,
-      std::vector<::xla::OpSharding>* retval_sharding);
+      std::vector<::xla::OpSharding>* retval_sharding,
+      std::vector<std::string>* arg_names);
 
   // Computes a fingerprint of the contents of `library`.
   static Status FingerprintFunctionLibrary(
@@ -359,6 +360,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       const string& session_handle,
       const std::vector<::xla::OpSharding>& arg_sharding,
       const std::vector<bool>& arg_fast_mem,
+      const std::vector<std::string>& arg_names,
       const std::vector<::xla::OpSharding>& retval_sharding,
       int num_cores_per_replica, const string& compile_device,
       const xla::DeviceAssignment* xla_device_assignment,

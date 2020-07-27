@@ -20,6 +20,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -142,7 +143,7 @@ bool IsEinsumTensorCoreEligible(absl::string_view equation) {
 }
 
 bool KernelReportLessThanComparator::operator()(const KernelReport& lhs,
-                                                const KernelReport& rhs) {
+                                                const KernelReport& rhs) const {
   // Disable formatting to keep vertical alignment for better readability,
   // and make it easier to reorder columns.
   // clang-format off
@@ -180,7 +181,7 @@ bool KernelReportLessThanComparator::operator()(const KernelReport& lhs,
 }
 
 bool KernelReportEqualToComparator::operator()(const KernelReport& lhs,
-                                               const KernelReport& rhs) {
+                                               const KernelReport& rhs) const {
   // Disable formatting to keep vertical alignment for better readability,
   // and make it easier to reorder columns.
   // clang-format off
@@ -213,33 +214,54 @@ void SortKernelsByTotalDurationDesc(KernelStatsDb* kernel_stats_db) {
             });
 }
 
-void GroupKernelReports(std::vector<KernelReport>* reports,
-                        KernelStatsDb* dst) {
-  // Sort reports by grouping criteria.
-  std::sort(reports->begin(), reports->end(), KernelReportLessThanComparator());
-
-  // Group reports together.
-  KernelReport* prev = nullptr;
-  for (const KernelReport& report : *reports) {
-    DCHECK_EQ(3, report.grid_dim_size());
-    DCHECK_EQ(3, report.block_dim_size());
-    if (prev != nullptr && KernelReportEqualToComparator()(*prev, report)) {
-      // Previous element is identical to the one that we are adding, so
-      // aggregate them.
-      prev->set_occurrences(prev->occurrences() + 1);
-      prev->set_max_duration_ns(
-          std::max(prev->max_duration_ns(), report.max_duration_ns()));
-      prev->set_min_duration_ns(
-          std::min(prev->min_duration_ns(), report.min_duration_ns()));
-      prev->set_total_duration_ns(prev->total_duration_ns() +
-                                  report.total_duration_ns());
-    } else {
-      // Current element does not exist yet.
-      prev = dst->add_reports();
-      *prev = report;
-      prev->set_occurrences(1);
-    }
+void CopyKernelReportsToDb(const KernelReportMap& reports, KernelStatsDb* dst) {
+  for (const auto& report_value : reports) {
+    KernelReport* report = dst->add_reports();
+    *report = report_value.first;
+    // Set value using KernelReportValue.
+    report->set_occurrences(report_value.second.occurrences);
+    report->set_min_duration_ns(report_value.second.min_duration_ns);
+    report->set_max_duration_ns(report_value.second.max_duration_ns);
+    report->set_total_duration_ns(report_value.second.total_duration_ns);
   }
+}
+
+void InsertOrUpdateKernelReport(const KernelReport& kernel,
+                                const KernelReportValue& value,
+                                KernelReportMap* dst) {
+  KernelReportValue& element = (*dst)[kernel];
+  if (element.occurrences == 0) {
+    element = value;
+  } else {
+    element.total_duration_ns += value.total_duration_ns;
+    element.min_duration_ns =
+        std::min(element.min_duration_ns, value.min_duration_ns);
+    element.max_duration_ns =
+        std::max(element.max_duration_ns, value.max_duration_ns);
+    element.occurrences += 1;
+  }
+}
+
+void MergeKernelReports(const KernelReportMap& reports, KernelReportMap* dst) {
+  for (auto& kernel_value : reports) {
+    InsertOrUpdateKernelReport(kernel_value.first, kernel_value.second, dst);
+  }
+}
+
+absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
+GroupKernelReportsByOpName(const KernelStatsDb& kernel_stats_db) {
+  absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
+      grouped_kernel_reports;
+  for (const KernelReport& kernel_report : kernel_stats_db.reports()) {
+    std::vector<const KernelReport*>& kernel_reports =
+        grouped_kernel_reports[kernel_report.op_name()];
+    kernel_reports.push_back(&kernel_report);
+    // Verifies operations with the same name have the same TensorCore
+    // eligibility.
+    DCHECK_EQ(kernel_reports.front()->is_op_tensor_core_eligible(),
+              kernel_reports.back()->is_op_tensor_core_eligible());
+  }
+  return grouped_kernel_reports;
 }
 
 }  // namespace profiler

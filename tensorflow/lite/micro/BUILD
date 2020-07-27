@@ -13,6 +13,11 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+package_group(
+    name = "micro",
+    packages = ["//tensorflow/lite/micro/..."],
+)
+
 cc_library(
     name = "micro_compatibility",
     hdrs = [

@@ -660,3 +660,29 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "topk_ops",
+    srcs = ["topk_ops.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/core/tpu:tpu_defs",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "host_compute_ops",
+    srcs = ["host_compute_ops.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_defs",
+    ],
+    alwayslink = 1,
+)
