@@ -87,6 +87,9 @@ LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
   }
 
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
+  threads_per_block = std::min(threads_per_block, 128LL);
+  block_count = gpu_device_info.core_count * (gpu_device_info.threads_per_core_limit /
+                                              threads_per_block);
   VLOG(2) << absl::StrFormat(
       "Initialized the block count to ceil(# of elements / threads per "
       "block) = ceil(%d/%d) = %d",

@@ -75,7 +75,8 @@ class LoopEmitter {
   }
 
   virtual std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock(
-      absl::string_view loop_name, llvm::Type* index_type);
+      absl::string_view loop_name, llvm::Type* index_type,
+      llvm::Value* base_index = nullptr);
 
   // Emits a complete loop nest for every element in the given shape.
   Status EmitLoop(absl::string_view loop_name = "",

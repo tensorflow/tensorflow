@@ -130,8 +130,13 @@ IrArray::Index LoopEmitter::EmitDynamicIndex(ForLoopNest* loop_nest,
 }
 
 std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
-    absl::string_view loop_name, llvm::Type* index_type) {
+    absl::string_view loop_name, llvm::Type* index_type, llvm::Value* base_index) {
   CHECK_NE(index_type, nullptr);
+  CHECK_EQ(base_index, nullptr)
+      << "XLA CPU implementation of"
+      << " LoopEmitter::EmitIndexAndSetExitBasicBlock doesn't support"
+      << " base_index, but it was requested.";
+
   if (ShapeUtil::IsScalar(shape_)) {
     // No loop needed, so set exit_bb_ to nullptr.
     exit_bb_ = nullptr;

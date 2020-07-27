@@ -31,8 +31,14 @@ ParallelLoopEmitter::ParallelLoopEmitter(
 
 std::vector<llvm_ir::IrArray::Index>
 ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
-                                                   llvm::Type* index_type) {
+                                                   llvm::Type* index_type,
+                                                   llvm::Value* base_index) {
   CHECK_NE(index_type, nullptr);
+
+  CHECK_EQ(base_index, nullptr)
+      << "XLA CPU implementation of"
+      << " ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock doesn't support"
+      << " base_index, but it was requested.";
 
   CHECK(!shape_.IsTuple());
   CHECK(!ShapeUtil::IsScalar(shape_));
