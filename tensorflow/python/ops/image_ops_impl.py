@@ -867,22 +867,26 @@ def central_crop(image, central_fraction):
 @tf_export('image.pad_to_bounding_box')
 @dispatch.add_dispatch_support
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
-                        target_width, mode="CONSTANT", name=None, constant_values=0):
+                        target_width, mode="CONSTANT", name=None,
+                        constant_values=0):
   """Pads an image according to the 'mode' which you specify. 
-  Pads with 'constant_values' to the specified `height` and `width`, default is 0.
+  Pads with 'constant_values' to the specified `height` and `width`,
+  default is 0.
 
-  Adds `offset_height` rows of 'constant_values' on top, `offset_width` columns of
-  'constant_values' on the left, and then pads the image on the bottom and right
-  with 'constant_values' until it has dimensions `target_height`, `target_width`.
+  Adds `offset_height` rows of 'constant_values' on top, `offset_width`
+  columns of 'constant_values' on the left, and then pads the image on 
+  the bottom and right with 'constant_values' until it has dimensions
+  `target_height`, `target_width`.
 
-  This op does nothing if `offset_*` is zero and the image already has size
-  `target_height` by `target_width`.
+  This op does nothing if `offset_*` is zero and the image already has
+  size `target_height` by `target_width`.
 
   Usage Example:
 >>> x = [[[1., 2., 3.], [4., 5., 6.]],
          [[7., 8., 9.], [10., 11., 12.]]]
 >>> padded_image_constant = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4,
-                                                         mode="CONSTANT", constant_values=0)
+                                                         mode="CONSTANT",
+                                                         constant_values=0)
                                                          
 >>> padded_image_constant
 tf.Tensor(
@@ -974,7 +978,8 @@ tf.Tensor(
             0, 0, offset_height, after_padding_height, offset_width,
             after_padding_width, 0, 0
         ]), [4, 2])
-    padded = array_ops.pad(image, paddings, mode=mode, name=name, constant_values=constant_values)
+    padded = array_ops.pad(image, paddings, mode=mode, name=name,
+                           constant_values=constant_values)
 
     padded_shape = [
         None if _is_tensor(i) else i
@@ -1075,7 +1080,8 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     'image.resize_with_crop_or_pad',
     v1=['image.resize_with_crop_or_pad', 'image.resize_image_with_crop_or_pad'])
 @dispatch.add_dispatch_support
-def resize_image_with_crop_or_pad(image, target_height, target_width, mode="CONSTANT", name=None, constant_values=0):
+def resize_image_with_crop_or_pad(image, target_height, target_width,
+                                  mode="CONSTANT", name=None, constant_values=0):
   """Crops and/or pads an image to a target width and height.
 
   Resizes an image to a target width and height by either centrally
@@ -1084,8 +1090,8 @@ def resize_image_with_crop_or_pad(image, target_height, target_width, mode="CONS
   If `width` or `height` is greater than the specified `target_width` or
   `target_height` respectively, this op centrally crops along that dimension.
   If `width` or `height` is smaller than the specified `target_width` or
-  `target_height` respectively, this op centrally pads with 'constant_values' along that
-  dimension.
+  `target_height` respectively, this op centrally pads with 'constant_values'
+  along that dimension.
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1174,7 +1180,8 @@ def resize_image_with_crop_or_pad(image, target_height, target_width, mode="CONS
 
     # Maybe pad if needed.
     resized = pad_to_bounding_box(cropped, offset_pad_height, offset_pad_width,
-                                  target_height, target_width, mode=mode, name=name, constant_values=constant_values)
+                                  target_height, target_width, mode=mode,
+                                  name=name, constant_values=constant_values)
 
     # In theory all the checks below are redundant.
     if resized.get_shape().ndims is None:
