@@ -145,6 +145,7 @@ cc_library(
 tf_cc_test(
     name = "journal_test",
     srcs = ["journal_test.cc"],
+    tags = ["no_windows"],  # b/162268597
     deps = [
         ":common_proto_cc",
         ":journal",
