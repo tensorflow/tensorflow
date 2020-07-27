@@ -531,8 +531,8 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     self.assertEqual(metric_container.metrics[0]._fn,
                      metrics_mod.binary_accuracy)
 
-    loss_container = compile_utils.LossesContainer('bce')
-    metric_container = compile_utils.MetricsContainer('accuracy', loss_container=loss_container)
+    l_c = compile_utils.LossesContainer('bce')
+    metric_container = compile_utils.MetricsContainer('accuracy', loss_container=l_c)
     y_t, y_p = array_ops.ones(10, 2), array_ops.ones(10, 2)
     metric_container.update_state(y_t, y_p)
     self.assertEqual(metric_container.metrics[0]._fn,
