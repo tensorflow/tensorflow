@@ -291,9 +291,9 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
   tensorflow::Tensor tensor;
   TF_Tensor* tf_tensor;
   s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape,
-  		&tensor_temp, allocator_attr);
+  		&tensor, allocator_attr);
   if (!s.ok()) {
-    ::tensorflow::Set_TF_Status_fromStatus(status, s);
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
   tf_tensor = TF_TensorFromTensor(tensor, &s);

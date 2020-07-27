@@ -547,6 +547,40 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
             output->DebugString(100));
 } 
 
+REGISTER_OP("AllocateTempOpDeviceMemory").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestAllocateTempOpDeviceMemory) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    // Allocate scalar TF_Tensor
+    TF_Status* s = TF_NewStatus();
+    int64_t dim = 1;
+    TF_AllocatorAttributes alloc_attrs; 
+    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE; 
+    alloc_attrs.on_host = 0; 
+    TF_Tensor* output = TF_AllocateTemp(
+        /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
+        /*num_dims=*/1, /*allocator_attributes*/ alloc_attrs, s);
+    size_t tensor_size_bytes = TF_DataTypeSize(TF_FLOAT);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+
+    // Set TF_Tensor value to 3
+    float values[1] = {3.0f};
+    set_tensor_data<float>(output, values, tensor_size_bytes, ctx); 
+    validate_tensor(output, &dim, 1, TF_FLOAT); 
+    TF_SetOutput(ctx, 0, output, s); 
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  SetupOp("AllocateTempOpDeviceMemory", "AllocateTempOpDeviceMemory", 
+           my_compute_func);
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ("Tensor<type: float shape: [1] values: 3>",
+            output->DebugString(100));
+}
+
 void validate_tensor(TF_Tensor* tensor, int64_t* dims, int64_t num_dims, 
                      TF_DataType dtype){
   EXPECT_EQ(TF_FLOAT, TF_TensorType(tensor));
