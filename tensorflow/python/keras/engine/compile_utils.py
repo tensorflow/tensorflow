@@ -423,7 +423,7 @@ class MetricsContainer(Container):
       losses = nest.map_structure(self._loss_container._get_loss_object,
                                   self._loss_container._losses)
       losses = nest.flatten(losses)
-      return [self._get_metric_object(m, losses[idx], y_t, y_p) 
+      return [self._get_metric_object(m, losses[idx], y_t, y_p)
               for idx, m in enumerate(metrics)]
     else:
       return [self._get_metric_object(m, None, y_t, y_p) for m in metrics]
