@@ -2902,6 +2902,8 @@ class Function(object):
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
+    self._hashable_input_signature = _make_input_signature_hashable(
+        self.flat_input_signature)
 
     self._lock = threading.Lock()
     # _descriptor_cache is a of instance of a class to an instance-specific
@@ -2939,6 +2941,11 @@ class Function(object):
   def flat_input_signature(self):
     """Returns the flattened input signature."""
     return self._function_spec.flat_input_signature
+
+  @property
+  def hashable_input_signature(self):
+    """Returns a cached hashable object for the flattened input signature."""
+    return self._hashable_input_signature
 
   def _get_concrete_function_internal_garbage_collected(self, *args, **kwargs):
     """Returns a concrete function which cleans up its graph function."""
@@ -3072,10 +3079,11 @@ class Function(object):
       inputs = (args, kwargs) if kwargs else args
       input_signature = pywrap_tfe.TFE_Py_EncodeArg(inputs,
                                                     include_tensor_ranks_only)
+      hashable_input_signature = _make_input_signature_hashable(input_signature)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only
-      input_signature = self.flat_input_signature
+      hashable_input_signature = self.hashable_input_signature
 
     ctx = context.context()
 
@@ -3144,9 +3152,9 @@ class Function(object):
           save_context.get_save_options().experimental_variable_policy)
     else:
       variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
-
+    
     return CacheKey(
-        _make_input_signature_hashable(input_signature), parent_graph,
+        hashable_input_signature, parent_graph,
         device_functions, colocation_stack, in_cross_replica_context,
         variable_policy, xla_context_id)
 
