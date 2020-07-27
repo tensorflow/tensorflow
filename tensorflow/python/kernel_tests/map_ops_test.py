@@ -238,7 +238,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(g2, 6)
 
   def testStringKeyGrad(self):
-    with backprop.GradientTape(persistent=True) as tape: 
+    with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
       k = constant_op.constant("key")
       k2 = constant_op.constant("key2")
@@ -278,20 +278,19 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(e, v)
 
   def testVectorValue(self):
-    with backprop.GradientTape(persistent=True) as tape:
-      m = map_ops.empty_tensor_map()
-      k = constant_op.constant([1.0, 2.0])
-      v = constant_op.constant([11.0, 22.0])
-      m = map_ops.tensor_map_insert(m, k, v)
-      s = map_ops.tensor_map_size(m)
-      self.assertAllEqual(s, 1)
-      l = map_ops.tensor_map_lookup(m, k, v.dtype)
-      self.assertAllEqual(l, v)
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant([1.0, 2.0])
+    v = constant_op.constant([11.0, 22.0])
+    m = map_ops.tensor_map_insert(m, k, v)
+    s = map_ops.tensor_map_size(m)
+    self.assertAllEqual(s, 1)
+    l = map_ops.tensor_map_lookup(m, k, v.dtype)
+    self.assertAllEqual(l, v)
 
-      m, e = map_ops.tensor_map_erase(m, k, v.dtype)
-      s = map_ops.tensor_map_size(m)
-      self.assertAllEqual(s, 0)
-      self.assertAllClose(e, v)
+    m, e = map_ops.tensor_map_erase(m, k, v.dtype)
+    s = map_ops.tensor_map_size(m)
+    self.assertAllEqual(s, 0)
+    self.assertAllClose(e, v)
 
   def testDiffKeyGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
