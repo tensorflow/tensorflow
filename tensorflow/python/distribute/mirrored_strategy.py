@@ -230,34 +230,6 @@ class MirroredStrategy(distribute_lib.Strategy):
     1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
   }
 
-  `experimental_distribute_dataset` can be used to distribute the dataset across
-  the replicas when writing your own training loop. If you are using `.fit` and
-  `.compile` methods available in `tf.keras`, then `tf.keras` will handle the
-  distribution for you.
-
-  For example:
-
-  ```python
-  my_strategy = tf.distribute.MirroredStrategy()
-  with my_strategy.scope():
-    @tf.function
-    def distribute_train_epoch(dataset):
-      def replica_fn(input):
-        # process input and return result
-        return result
-
-      total_result = 0
-      for x in dataset:
-        per_replica_result = my_strategy.run(replica_fn, args=(x,))
-        total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
-                                           per_replica_result, axis=None)
-      return total_result
-
-    dist_dataset = my_strategy.experimental_distribute_dataset(dataset)
-    for _ in range(EPOCHS):
-      train_result = distribute_train_epoch(dist_dataset)
-  ```
-
   Args:
     devices: a list of device strings such as `['/gpu:0', '/gpu:1']`.  If
       `None`, all available GPUs are used. If no GPUs are found, CPU is used.
@@ -267,11 +239,9 @@ class MirroredStrategy(distribute_lib.Strategy):
       the particular hardware is available.
   """
 
-  def __init__(self, devices=None, cross_device_ops=None,
-               replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+  def __init__(self, devices=None, cross_device_ops=None):
     extended = MirroredExtended(self, devices=devices, 
-                                cross_device_ops=cross_device_ops, 
-                                replication_mode=replication_mode)
+                                cross_device_ops=cross_device_ops)
     super(MirroredStrategy, self).__init__(extended)
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
         "MirroredStrategy")
@@ -294,8 +264,7 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missin
 class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
-  def __init__(self, container_strategy, devices=None, cross_device_ops=None,
-               replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+  def __init__(self, container_strategy, devices=None, cross_device_ops=None):
     super(MirroredExtended, self).__init__(container_strategy)
     if context.executing_eagerly():
       if devices and not _is_device_list_single_worker(devices):
@@ -316,7 +285,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
-    self._replication_mode = replication_mode
     self._initialize_strategy(devices)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
@@ -341,12 +309,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _initialize_single_worker(self, devices):
     """Initializes the object for single-worker training."""
     self._devices = tuple(device_util.canonicalize(d) for d in devices)
-    if self._replication_mode == distribute_lib.InputReplicationMode.PER_WORKER:
-      self._input_workers_devices = (
-          (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
-    else:
-      self._input_workers_devices = (
-        tuple((device_util.canonicalize("/device:CPU:0", d),(d,)) for d in devices))
+    self._input_workers_devices = (
+        (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
         
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
         cross_device_ops_lib.choose_the_best(devices))
@@ -530,7 +494,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         dataset_fn,
         input_workers,
         input_contexts,
-        self._container_strategy())
+        self._container_strategy(),
+        replication_mode)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []
@@ -723,10 +688,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def worker_devices(self):
     return self._devices
   
-  @property
-  def replication_mode(self):
-    return self._replication_mode
-
   @property
   def worker_devices_by_replica(self):
     return [[d] for d in self._devices]

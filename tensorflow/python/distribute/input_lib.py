@@ -108,7 +108,7 @@ def get_distributed_datasets_from_function(dataset_fn,
                                            input_workers,
                                            input_contexts,
                                            strategy,
-                                           replication_mode=InputReplicationMode.PER_WORKER):
+                                           replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
   """Returns a distributed dataset from the given input function.
 
   This is a common function that is used by all strategies to return a
@@ -126,12 +126,13 @@ def get_distributed_datasets_from_function(dataset_fn,
         `worker_device_pairs`.
     strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
+    replication_mode: Replication mode for the input function.
 
   Returns:
     A distributed dataset instance.
   """
   if tf2.enabled():
-    if strategy.extended.replication_mode == distribute_lib.InputReplicationMode.PER_WORKER:
+    if replication_mode == distribute_lib.InputReplicationMode.PER_WORKER:
       return DistributedDatasetsFromFunction(
           dataset_fn,
           input_workers,
