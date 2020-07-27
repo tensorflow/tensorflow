@@ -235,7 +235,6 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(g2, 6)
 
   def testStringKey(self):
-    
     m = map_ops.empty_tensor_map()
     k = constant_op.constant("key")
     v = constant_op.constant(2.0)
@@ -250,7 +249,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(s, 0)
     self.assertAllClose(e, v)
 
-  def testKeyTypes(self):
+  def testStringValue(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant("key")
     v = constant_op.constant("value")
@@ -265,12 +264,11 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m, e = map_ops.tensor_map_erase(m, k, v.dtype)
     #self.assertAllClose(e, v)
 
-
-  '''def testVectorValue(self):
+  def testVectorValue(self):
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
-      k = constant_op.constant("key")
-      v = constant_op.constant(2.0)
+      k = constant_op.constant([1.0, 2.0])
+      v = constant_op.constant([11.0, 22.0])
       m = map_ops.tensor_map_insert(m, k, v)
       s = map_ops.tensor_map_size(m)
       self.assertAllEqual(s, 1)
@@ -280,9 +278,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       m, e = map_ops.tensor_map_erase(m, k, v.dtype)
       s = map_ops.tensor_map_size(m)
       self.assertAllEqual(s, 0)
-      self.assertAllClose(e, v)'''
-
-
+      self.assertAllClose(e, v)
 
 if __name__ == '__main__':
   test.main()
