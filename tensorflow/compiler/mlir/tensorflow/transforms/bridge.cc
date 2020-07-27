@@ -41,6 +41,7 @@ namespace TFTPU {
 namespace {
 void AddGraphExportLoweringPasses(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
+  pm.addNestedPass<FuncOp>(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
