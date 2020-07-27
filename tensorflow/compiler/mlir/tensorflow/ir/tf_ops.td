@@ -346,8 +346,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     within the same symbol scope as the call and is mapped to a GraphDef node
     with the function name as the op name. Unlike a PartitionedCall which
     represents asynchronously executing a function across multiple devices, a
-    LegacyCall represents a function call with the only attribute
-    _diable_call_shape_inference.
+    LegacyCall ignores specification for ops in the attached function and
+    instead executes it on the device assigned to this op.
   }];
 
   let arguments = (ins
