@@ -18,11 +18,13 @@
 set -e
 set -x
 
-N_JOBS=$(grep -c ^processor /proc/cpuinfo)
-N_GPUS=$(lspci|grep 'controller'|grep 'AMD/ATI'|wc -l)
+N_BUILD_JOBS=$(grep -c ^processor /proc/cpuinfo)
+TF_GPU_COUNT=$(lspci|grep 'controller'|grep 'AMD/ATI'|wc -l)
+TF_TESTS_PER_GPU=1
+N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
 
 echo ""
-echo "Bazel will use ${N_JOBS} concurrent build job(s) and ${N_GPUS} concurrent test job(s)."
+echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} concurrent test job(s)."
 echo ""
 
 # Run configure.
@@ -31,7 +33,6 @@ export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_ROCM=1
 export ROCM_PATH=/opt/rocm-3.5.0
-export TF_GPU_COUNT=${N_GPUS}
 
 yes "" | $PYTHON_BIN_PATH configure.py
 echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
@@ -42,8 +43,10 @@ bazel test \
       --config=xla \
       -k \
       --test_tag_filters=-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
-      --jobs=${N_JOBS} \
-      --local_test_jobs=${TF_GPU_COUNT} \
+      --jobs=${N_BUILD_JOBS} \
+      --local_test_jobs=${N_TEST_JOBS} \
+      --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+      --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
       --test_timeout 600,900,2400,7200 \
       --build_tests_only \
       --test_output=errors \
@@ -66,8 +69,10 @@ bazel test \
       --config=xla \
       -k \
       --test_tag_filters=-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
-      --jobs=${N_JOBS} \
-      --local_test_jobs=${TF_GPU_COUNT} \
+      --jobs=${N_BUILD_JOBS} \
+      --local_test_jobs=${N_TEST_JOBS} \
+      --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+      --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
       --test_timeout 600,900,2400,7200 \
       --build_tests_only \
       --test_output=errors \
