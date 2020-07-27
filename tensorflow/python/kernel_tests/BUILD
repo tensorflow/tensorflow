@@ -3285,7 +3285,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "conv_ops_3d_test",
-    size = "medium",
+    size = "large",
     srcs = ["conv_ops_3d_test.py"],
     shard_count = 30,
     deps = [

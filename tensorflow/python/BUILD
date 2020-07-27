@@ -2477,7 +2477,10 @@ tf_py_test(
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
     python_version = "PY3",
-    tags = ["no_pip"],  # test_ops_2 is not available in pip.
+    tags = [
+        "no_pip", # test_ops_2 is not available in pip.
+        "no_rocm",
+    ], 
     tfrt_enabled = True,
     deps = [
         ":cond_v2",
@@ -3309,6 +3312,9 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_rocm",  # FAILS on ROCm 3.5
+    ],
     deps = [
         ":client_testlib",
         ":collective_ops",
