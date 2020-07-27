@@ -86,6 +86,8 @@
     True, the function may use type annotations to optimize the tracing
     performance.
 *   `tf.lite`:
+    * `DynamicBuffer::AddJoinedString()` will now add a separator if the first
+      string to be joined is empty.
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
