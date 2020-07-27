@@ -420,8 +420,11 @@ class MetricsContainer(Container):
     """Convert user-supplied metrics to `Metric` objects."""
     metrics = nest.flatten(metrics)
     if self._loss_container:
+      losses = self._loss_container._losses
+      losses = self._loss_container._maybe_broadcast_to_outputs(y_p, losses)
+      losses = self._loss_container._conform_to_outputs(y_p, losses)
       losses = nest.map_structure(self._loss_container._get_loss_object,
-                                  self._loss_container._losses)
+                                  losses)
       losses = nest.flatten(losses)
       if len(losses) == 1:
         return [self._get_metric_object(m, losses[0], y_t, y_p)
