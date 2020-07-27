@@ -324,7 +324,7 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
 
 // Updates operator code versions for the operators with INT8 inputs.
 void UpdateInt8OperatorVersions(ModelT* model) {
-  for (int i = 0; i < model->operator_codes.size(); ++i) {
+  for (int i = 0, end = model->operator_codes.size(); i < end; ++i) {
     const BuiltinOperator& op_code = model->operator_codes[i]->builtin_code;
     if (op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
         op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
@@ -406,7 +406,7 @@ TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
-  for (int subgraph_index = 0; subgraph_index < model->subgraphs.size();
+  for (int subgraph_index = 0, end = model->subgraphs.size(); subgraph_index < end;
        ++subgraph_index) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_index).get();
 
@@ -530,12 +530,13 @@ TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
   std::unique_ptr<ModelT> model;
   model.reset(input_model->UnPack());
 
-  for (int subgraph_index = 0; subgraph_index < model->subgraphs.size();
+  for (int subgraph_index = 0, end = model->subgraphs.size(); subgraph_index < end
+  ;
        ++subgraph_index) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_index).get();
 
     absl::flat_hash_map<int32_t, TensorT*> tensor_map;
-    for (int i = 0; i < subgraph->operators.size(); ++i) {
+    for (int i = 0, sub_end = subgraph->operators.size(); i < sub_end; ++i) {
       OperatorT* op = subgraph->operators[i].get();
       for (auto tensor_idx : op->inputs) {
         // Skip optional tensors.
