@@ -258,11 +258,11 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.tensor_map_insert(m, k, v)
     m = map_ops.tensor_map_insert(m, k2, v2)
     l = map_ops.tensor_map_lookup(m, k, v.dtype)
-    #self.assertAllClose(l, v)
+    self.assertAllEqual(l, v)
     l2 = map_ops.tensor_map_lookup(m, k2, v2.dtype)
-    #self.assertAllClose(l2, v2)
+    self.assertAllClose(l2, v2)
     m, e = map_ops.tensor_map_erase(m, k, v.dtype)
-    #self.assertAllClose(e, v)
+    self.assertAllEqual(e, v)
 
   def testVectorValue(self):
     with backprop.GradientTape(persistent=True) as tape:
