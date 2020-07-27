@@ -34,9 +34,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/gl/api2.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/minimal_logging.h"
+
+#ifndef CL_DELEGATE_NO_GL
+#include "tensorflow/lite/delegates/gpu/gl/api2.h"
+#endif
 
 namespace tflite {
 namespace gpu {
@@ -315,6 +318,7 @@ class DelegateKernel {
 
   absl::Status InitializeOpenGlApi(GraphFloat32* graph,
                                    std::unique_ptr<InferenceBuilder>* builder) {
+#ifndef CL_DELEGATE_NO_GL
     gl::InferenceEnvironmentOptions env_options;
     gl::InferenceEnvironmentProperties properties;
     RETURN_IF_ERROR(
@@ -330,13 +334,16 @@ class DelegateKernel {
     enforce_same_thread_ = true;
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenGL-based API.");
+#endif
     return absl::OkStatus();
   }
 
   // The Delegate instance that's shared across all DelegateKernel instances.
   Delegate* const delegate_;  // doesn't own the memory.
   std::unique_ptr<cl::InferenceEnvironment> cl_environment_;
+#ifndef CL_DELEGATE_NO_GL
   std::unique_ptr<gl::InferenceEnvironment> gl_environment_;
+#endif
   std::unique_ptr<InferenceRunner> runner_;
   std::vector<int64_t> input_indices_;
   std::vector<int64_t> output_indices_;

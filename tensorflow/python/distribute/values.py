@@ -1023,7 +1023,7 @@ class SyncOnReadVariable(DistributedVariable):
   # with MirroredVariable.
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context():
+      if ds_context.in_cross_replica_context() and not _in_update_replica():
         return values_util.on_read_assign_sub_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1032,7 +1032,7 @@ class SyncOnReadVariable(DistributedVariable):
 
   def assign_add(self, value, use_locking=False, name=None, read_value=True):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context():
+      if ds_context.in_cross_replica_context() and not _in_update_replica():
         return values_util.on_read_assign_add_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1041,7 +1041,7 @@ class SyncOnReadVariable(DistributedVariable):
 
   def assign(self, value, use_locking=False, name=None, read_value=True):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context():
+      if ds_context.in_cross_replica_context() and not _in_update_replica():
         return values_util.on_read_assign_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1076,7 +1076,7 @@ class SyncOnReadVariable(DistributedVariable):
 
   def value(self):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context():
+      if ds_context.in_cross_replica_context() and not _in_update_replica():
         if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
           return self._get_replica(0).value()
         return self._get_cross_replica()
@@ -1462,3 +1462,7 @@ def _is_sync_on_read(val):
     if val._policy:  # pylint: disable=protected-access
       return not val._policy._is_mirrored()  # pylint: disable=protected-access
   return not isinstance(val, Mirrored)
+
+
+def _in_update_replica():
+  return distribute_lib.get_update_replica_id() is not None

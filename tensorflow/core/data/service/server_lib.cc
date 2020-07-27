@@ -72,14 +72,14 @@ void GrpcDataServerBase::Join() { server_->Wait(); }
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
 
-DispatchGrpcDataServer::DispatchGrpcDataServer(int port,
-                                               const std::string& protocol)
-    : GrpcDataServerBase(port, protocol) {}
+DispatchGrpcDataServer::DispatchGrpcDataServer(
+    const experimental::DispatcherConfig& config)
+    : GrpcDataServerBase(config.port(), config.protocol()), config_(config) {}
 
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
 void DispatchGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  auto service = absl::make_unique<GrpcDispatcherImpl>(builder, protocol_);
+  auto service = absl::make_unique<GrpcDispatcherImpl>(builder, config_);
   service_ = service.release();
 }
 
@@ -122,9 +122,9 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   return Status::OK();
 }
 
-Status NewDispatchServer(int port, const std::string& protocol,
+Status NewDispatchServer(const experimental::DispatcherConfig& config,
                          std::unique_ptr<DispatchGrpcDataServer>* out_server) {
-  *out_server = absl::make_unique<DispatchGrpcDataServer>(port, protocol);
+  *out_server = absl::make_unique<DispatchGrpcDataServer>(config);
   return Status::OK();
 }
 

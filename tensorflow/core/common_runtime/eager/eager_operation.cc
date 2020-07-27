@@ -306,6 +306,7 @@ Status EagerOperation::Reset(
   }
   attrs_.Reset(op);
   use_xla_ = false;
+  stack_trace_.reset();
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();

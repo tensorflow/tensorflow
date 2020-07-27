@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -223,18 +224,20 @@ static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
 
 class Tf2XlaRewriter {
  public:
-  static LogicalResult RewriteOp(Operation* op, OpBuilder& builder,
+  static LogicalResult RewriteOp(Operation* op, PatternRewriter& rewriter,
                                  const std::string& device_type) {
-    Tf2XlaRewriter rewriter(op, builder, device_type);
-    return rewriter.LegalizeOp();
+    Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type);
+    return tf2xla_rewriter.LegalizeOp();
   }
 
  private:
-  Tf2XlaRewriter(Operation* op, OpBuilder builder,
+  Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
                  const std::string& device_type)
       : op_(op),
         device_type_(device_type),
-        hlo_builder_(op->getName().getStringRef().str(), builder, op->getLoc()),
+        rewriter_(rewriter),
+        hlo_builder_(op->getName().getStringRef().str(), rewriter_,
+                     op->getLoc()),
         context_(nullptr) {}
 
   ~Tf2XlaRewriter() {
@@ -259,6 +262,7 @@ class Tf2XlaRewriter {
   Operation* op_;
   std::string device_type_;
 
+  PatternRewriter& rewriter_;
   ::xla::MlirHloBuilder hlo_builder_;
   tensorflow::OpOrArgLocNameMapper name_mapper_;
 
@@ -429,6 +433,8 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
 
   // Replace uses of old results using the corresponding value after the
   // lowering.
+  llvm::SmallVector<Value, 2> values;
+  values.reserve(op_->getNumResults());
   for (int i = 0, e = op_->getNumResults(); i < e; i++) {
     tensorflow::Tensor* output = op_context.mutable_output(i);
     const tensorflow::XlaExpression* expr =
@@ -442,10 +448,9 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
       value =
           hlo_builder_.create<mlir::TensorCastOp>(value, old_result.getType());
     }
-    old_result.replaceAllUsesWith(value);
+    values.push_back(value);
   }
-
-  op_->erase();
+  rewriter_.replaceOp(op_, values);
   return success();
 }
 
@@ -528,6 +533,11 @@ static PassRegistration<LegalizeTF> pass(
     "Legalize from TensorFlow to the HLO dialect using tf2xla kernels");
 
 }  // end namespace
+
+void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
+                                          OwningRewritePatternList& patterns) {
+  patterns.insert<Tf2XlaRewritePattern>(device_type.str());
+}
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
     llvm::StringRef device_type) {

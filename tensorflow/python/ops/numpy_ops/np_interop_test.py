@@ -281,8 +281,7 @@ class InteropTest(tf.test.TestCase):
     a = np.ones((batch_size, 32, 32))
     c = tf.vectorized_map(outer_product, a)
 
-    # # TODO(nareshmodi): vectorized_map doesn't rewrap tensors in ndarray.
-    # self.assertIsInstance(c, np.ndarray)
+    self.assertIsInstance(c, np.ndarray)
     self.assertEqual(c.shape, (batch_size, 32, 32, 32, 32))
 
   def testJacobian(self):
@@ -299,6 +298,22 @@ class InteropTest(tf.test.TestCase):
     self.assertIsInstance(jacobian[0], np.ndarray)
     self.assertIsInstance(jacobian[1], np.ndarray)
     self.assertAllClose(jacobian, answer)
+
+  def testBatchJacobian(self):
+    with tf.GradientTape() as g:
+      x = np.asarray([[1., 2.], [3., 4.]])
+      y = np.asarray([[3., 4.], [5., 6.]])
+      g.watch(x)
+      g.watch(y)
+      z = x * x * y
+
+    batch_jacobian = g.batch_jacobian(z, x)
+    answer = tf.stack(
+        [tf.linalg.diag(2 * x[0] * y[0]),
+         tf.linalg.diag(2 * x[1] * y[1])])
+
+    self.assertIsInstance(batch_jacobian, np.ndarray)
+    self.assertAllClose(batch_jacobian, answer)
 
 
 class FunctionTest(InteropTest):

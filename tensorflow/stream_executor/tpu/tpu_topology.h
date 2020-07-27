@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TOPOLOGY_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
 namespace tensorflow {
 namespace tpu {

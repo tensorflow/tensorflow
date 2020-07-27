@@ -105,7 +105,7 @@ void TestAveragePoolingQuantized(
     std::initializer_list<int> output_dims_data, float output_min,
     float output_max, TfLitePadding padding, TfLiteFusedActivation activation,
     T* output_data) {
-  static_assert(sizeof(T) == 1, "Only int8/uint8 data types allowed.");
+  static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
 
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
@@ -246,7 +246,7 @@ void TestMaxPoolQuantized(std::initializer_list<int> input_dims_data,
                           std::initializer_list<int> output_dims_data,
                           TfLitePadding padding,
                           TfLiteFusedActivation activation, T* output_data) {
-  static_assert(sizeof(T) == 1, "Only int8/uint8 data types allowed.");
+  static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
 
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);

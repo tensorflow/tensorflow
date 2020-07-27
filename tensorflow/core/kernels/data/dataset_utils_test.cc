@@ -63,6 +63,14 @@ string full_name(string key) {
   return strings::StrCat(kFullNameRandomHex, kPipe, "Iterator:", key);
 }
 
+TEST(DatasetUtilsTest, MatchesAnyVersion) {
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2"));
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3"));
+  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "BatchV2Dataset"));
+  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "PaddedBatchDataset"));
+}
+
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
   VariantTensorDataWriter writer;
   TF_ASSERT_OK(writer.WriteScalar(full_name("Int64"), 24));

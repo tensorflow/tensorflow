@@ -188,6 +188,9 @@ class ParamResolverInterface {
                                      CompleteInstanceResponse* response,
                                      CancellationManager* cancel_mgr,
                                      const StatusCallback& done) = 0;
+
+  // Aborts the resolver. After abortion the resolver can no longer be used.
+  virtual void StartAbort(const Status& s) = 0;
 };
 
 // Graphs which utilize Collective Ops in a common instance must

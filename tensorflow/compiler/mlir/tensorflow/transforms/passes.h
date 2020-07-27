@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
@@ -148,6 +150,10 @@ CreateTensorArrayOpsDecompositionPass();
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 
+// Addds the HLO to TF rewrite patterns to the specified pattern list.
+void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
+                                     MLIRContext* context);
+
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be
 // generally used beyond exporting to runtimes that supports these ops. In the
 // future these fusions may be codegen'd automatically.
@@ -155,6 +161,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 
 // Creates function pass to select device index/fold tf.DeviceIndex.
 std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
+
+// Creates function pass to replace InitializeTableFromTextFileV2Ops with
+// LookupTableImportV2Op ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 }  // namespace TF
 
 namespace tf_executor {
@@ -236,6 +246,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass();
 // same data across replicas.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateAnnotateParameterReplicationPass();
+
+// Creates a pass that marks unsupported ops in device cluster for outside
+// compilation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMarkOpsForOutsideCompilationPass();
 
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`

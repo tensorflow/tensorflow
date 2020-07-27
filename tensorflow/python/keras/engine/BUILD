@@ -90,8 +90,6 @@ py_library(
         "//tensorflow/python:control_flow_v2_func_graphs",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",

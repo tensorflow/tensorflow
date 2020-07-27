@@ -141,6 +141,7 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
 void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   dst->AppendMarkers(src.Markers());
   dst->AppendEvents(src.Events());
+  dst->AppendCollectives(src.Collectives());
 }
 
 EventType ClassifyDeviceCompute(absl::string_view event_name,
@@ -171,6 +172,9 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
     return DEVICE_TO_HOST;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoD"))
     return DEVICE_TO_DEVICE;
+  if (absl::StartsWithIgnoreCase(event_name, "nccl")) {
+    return DEVICE_COLLECTIVES;
+  }
   return ClassifyDeviceCompute(event_name, tensor_shapes);
 }
 
@@ -283,6 +287,8 @@ StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
         step_details.Markers();
     *non_overlapped_step_events[step_id].MutableEvents() =
         ToNonOverlappedEvents(step_details.Events());
+    *non_overlapped_step_events[step_id].MutableCollectives() =
+        step_details.Collectives();
   }
   return non_overlapped_step_events;
 }
@@ -297,6 +303,17 @@ void StepDetails::AppendMarkers(const std::vector<StepMarker>& other_markers) {
 
 void StepDetails::AppendEvents(const std::vector<EventTypeSpan>& other_events) {
   events_.insert(events_.end(), other_events.begin(), other_events.end());
+}
+
+void StepDetails::AppendCollectives(
+    const absl::flat_hash_map<uint32, AllReduceDbResult>& collectives) {
+  for (const auto& it : collectives) {
+    collectives_[it.first] = it.second;
+  }
+}
+
+void StepDetails::AddCollectiveOpEvent(uint64 core_id, const AllReduceInfo& e) {
+  *collectives_[core_id].add_all_reduce_info() = e;
 }
 
 Timespan StepDetails::StepTime() const {

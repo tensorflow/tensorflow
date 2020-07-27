@@ -17,6 +17,8 @@
 
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/expiring_lru_cache.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/ram_file_block_cache.h"
 #include "tensorflow/c/tf_status.h"
 
 void ParseGCSPath(const std::string& fname, bool object_empty_ok,
@@ -45,10 +47,34 @@ uint64_t Length(const TF_ReadOnlyMemoryRegion* region);
 }  // namespace tf_read_only_memory_region
 
 namespace tf_gcs_filesystem {
+typedef struct GcsFileStat {
+  TF_FileStatistics base;
+  int64_t generation_number;
+} GcsFileStat;
+
 typedef struct GCSFile {
   google::cloud::storage::Client gcs_client;  // owned
   bool compose;
+  absl::Mutex block_cache_lock;
+  std::shared_ptr<RamFileBlockCache> file_block_cache
+      ABSL_GUARDED_BY(block_cache_lock);
+  uint64_t block_size;  // Reads smaller than block_size will trigger a read
+                        // of block_size.
+  std::unique_ptr<ExpiringLRUCache<GcsFileStat>> stat_cache;
+  GCSFile(google::cloud::storage::Client&& gcs_client);
+  // This constructor is used for testing purpose only.
+  GCSFile(google::cloud::storage::Client&& gcs_client, bool compose,
+          uint64_t block_size, size_t max_bytes, uint64_t max_staleness,
+          uint64_t stat_cache_max_age, size_t stat_cache_max_entries);
 } GCSFile;
+
+// This function is used to initialize a filesystem without the need of setting
+// manually environement variables.
+void InitTest(TF_Filesystem* filesystem, bool compose, uint64_t block_size,
+              size_t max_bytes, uint64_t max_staleness,
+              uint64_t stat_cache_max_age, size_t stat_cache_max_entries,
+              TF_Status* status);
+
 void Init(TF_Filesystem* filesystem, TF_Status* status);
 void Cleanup(TF_Filesystem* filesystem);
 void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,

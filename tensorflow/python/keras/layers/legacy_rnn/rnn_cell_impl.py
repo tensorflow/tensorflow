@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
@@ -334,7 +335,7 @@ class RNNCell(base_layer.Layer):
       if (last_batch_size == batch_size and last_dtype == dtype and
           last_state_size == state_size):
         return last_output
-    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+    with backend.name_scope(type(self).__name__ + "ZeroState"):
       output = _zero_state_tensors(state_size, batch_size, dtype)
     if is_eager:
       self._last_zero_state = (state_size, batch_size, dtype, output)
@@ -1235,7 +1236,7 @@ class MultiRNNCell(RNNCell):
     super(MultiRNNCell, self).__init__()
     if not cells:
       raise ValueError("Must specify at least one cell for MultiRNNCell.")
-    if not nest.is_sequence(cells):
+    if not nest.is_nested(cells):
       raise TypeError("cells must be a list or tuple, but saw: %s." % cells)
 
     if len(set(id(cell) for cell in cells)) < len(cells):
@@ -1252,7 +1253,7 @@ class MultiRNNCell(RNNCell):
         self._track_trackable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
-      if any(nest.is_sequence(c.state_size) for c in self._cells):
+      if any(nest.is_nested(c.state_size) for c in self._cells):
         raise ValueError("Some cells return tuples of states, but the flag "
                          "state_is_tuple is not set.  State sizes are: %s" %
                          str([c.state_size for c in self._cells]))
@@ -1269,7 +1270,7 @@ class MultiRNNCell(RNNCell):
     return self._cells[-1].output_size
 
   def zero_state(self, batch_size, dtype):
-    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+    with backend.name_scope(type(self).__name__ + "ZeroState"):
       if self._state_is_tuple:
         return tuple(cell.zero_state(batch_size, dtype) for cell in self._cells)
       else:
@@ -1309,7 +1310,7 @@ class MultiRNNCell(RNNCell):
     for i, cell in enumerate(self._cells):
       with vs.variable_scope("cell_%d" % i):
         if self._state_is_tuple:
-          if not nest.is_sequence(state):
+          if not nest.is_nested(state):
             raise ValueError(
                 "Expected state to be a tuple of length %d, but received: %s" %
                 (len(self.state_size), state))

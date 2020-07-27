@@ -48,8 +48,11 @@ tf_py_test(
     size = "medium",  # NOTE(ebrevdo): This test is NOT small.
     srcs = ["barrier_ops_test.py"],
     shard_count = 20,
-    # TODO(b/129706424): Re-enable this test on Mac.
-    tags = ["no_mac"],
+    tags = [
+        "no_mac",  # TODO(b/129706424): Re-enable this test on Mac.
+        "nomsan",  # TODO(b/161902335): Re-enable.
+        "notsan",  # TODO(b/161829717): Re-enable.
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
@@ -3532,7 +3535,11 @@ cuda_py_test(
     size = "medium",
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
+<<<<<<< HEAD
     tags = ["no_rocm"],
+=======
+    xla_enable_strict_auto_jit = False,  # b/161856380
+>>>>>>> google-upstream/master
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

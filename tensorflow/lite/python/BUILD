@@ -195,9 +195,6 @@ py_test(
     srcs = ["lite_flex_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_mac",  # TODO(b/159077703): Enable Python API Flex support on MacOS.
-    ],
     deps = [
         ":lite",
         "//tensorflow/python:client_testlib",

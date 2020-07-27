@@ -57,7 +57,7 @@ def main():
   ] + opt_flags
 
   if (compiling_cpp == 1):
-    # create a blacklist of folders that will be skipped when compiling
+    # create a denylist of folders that will be skipped when compiling
     # with triSYCL
     skip_extensions = ['.cu.cc']
     skip_folders = [

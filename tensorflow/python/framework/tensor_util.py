@@ -114,9 +114,9 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       dtypes.quint8.as_numpy_dtype:
           fast_tensor_util.AppendUInt8ArrayToTensorProto,
       dtypes.qint16.as_numpy_dtype:
-          fast_tensor_util.AppendInt8ArrayToTensorProto,
+          fast_tensor_util.AppendInt16ArrayToTensorProto,
       dtypes.quint16.as_numpy_dtype:
-          fast_tensor_util.AppendUInt8ArrayToTensorProto,
+          fast_tensor_util.AppendUInt16ArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype:
           fast_tensor_util.AppendInt32ArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.

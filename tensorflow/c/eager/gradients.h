@@ -31,7 +31,8 @@ namespace gradients {
 //
 // class AddGradientFunction : public GradientFunction {
 //  public:
-//   Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+//   Status Compute(Context* ctx,
+//                  absl::Span<AbstractTensorHandle* const> grad_inputs,
 //                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
 //     grad_outputs->resize(2);
 //     (*grad_outputs)[0] = grad_inputs[0];
@@ -50,11 +51,16 @@ namespace gradients {
 // Status RegisterGradients(GradientRegistry* registry) {
 //   return registry->Register("Add", AddRegisterer);
 // }
+struct Context {
+ public:
+  AbstractContext* ctx;
+};
 class GradientFunction {
  public:
   // TODO(srbs): How we support CompositeTensors e.g. IndexedSlices in
   // `grad_inputs`.
-  virtual Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
+  virtual Status Compute(Context* ctx,
+                         absl::Span<AbstractTensorHandle* const> grad_inputs,
                          std::vector<AbstractTensorHandle*>* grad_outputs) = 0;
   virtual ~GradientFunction() {}
 };

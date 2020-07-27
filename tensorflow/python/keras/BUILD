@@ -55,7 +55,6 @@ py_library(
         "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:ctc_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
@@ -87,6 +86,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/keras/engine:keras_tensor",
+        "//tensorflow/python/keras/utils:control_flow_util",
     ],
 )
 

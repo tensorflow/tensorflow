@@ -4946,7 +4946,18 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
                                  node_def.name());
   }
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-
+  if (!params->use_implicit_batch && tensor->getDimensions().d[1] == -1) {
+    // This check is to make sure that channel dimension is known during
+    // conversion.
+    //
+    // We check this only in explicit batch mode and reject an op with unknown
+    // channel dimension during segmentation. In implicit batch mode we have
+    // known shapes during conversion even though the shapes may not be known
+    // during segmentation (see the actual argument for input_shapes when
+    // ConvertGraphDefToEngine is called from TRTEngineOp::BuildEngine).
+    return errors::InvalidArgument("Channel dimension must be static, at ",
+                                   node_def.name());
+  }
   //  Check parameter types
   auto parameter_type = inputs.at(1).weights().TrtDType();
   if ((parameter_type != nvinfer1::DataType::kFLOAT) &&

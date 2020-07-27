@@ -76,9 +76,10 @@ std::string GuaranteedConstFingerprint(
   if (fingerprint_in_metadata.empty()) {
     uint64_t fingerprint = 0;
     for (const Tensor& constant : guaranteed_constants) {
-      fingerprint = TpuCompile_CreateGuaranteedConstFingerprint(
-          fingerprint, constant.tensor_data().data(),
-          constant.tensor_data().size());
+      fingerprint =
+          tpu::UtilApiFn()->TpuCompile_CreateGuaranteedConstFingerprintFn(
+              fingerprint, constant.tensor_data().data(),
+              constant.tensor_data().size());
     }
     return std::to_string(fingerprint);
   } else {
@@ -109,21 +110,23 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
     }
   }
   CompilationCacheKeyResult result =
-      TpuCompile_CreateCompilationCacheKey(CompilationCacheKeyProperty{
-          config_prefix.data(),
-          shapes_prefix.data(),
-          function_name.data(),
-          mlir_module.data(),
-          flattened_device_ids.data(),
-          flattened_device_ids.size(),
-          guaranteed_constants.size(),
-          function_library_fingerprint,
-          metadata.num_cores_per_replica(),
-          metadata.num_replicas(),
-          mesh_state.data(),
-      });
-  auto buffer_cleanup = gtl::MakeCleanup(
-      [result]() { TpuCompile_DestroyCompilationCacheKey(result); });
+      tpu::UtilApiFn()->TpuCompile_CreateCompilationCacheKeyFn(
+          CompilationCacheKeyProperty{
+              config_prefix.data(),
+              shapes_prefix.data(),
+              function_name.data(),
+              mlir_module.data(),
+              flattened_device_ids.data(),
+              flattened_device_ids.size(),
+              guaranteed_constants.size(),
+              function_library_fingerprint,
+              metadata.num_cores_per_replica(),
+              metadata.num_replicas(),
+              mesh_state.data(),
+          });
+  auto buffer_cleanup = gtl::MakeCleanup([result]() {
+    tpu::UtilApiFn()->TpuCompile_DestroyCompilationCacheKeyFn(result);
+  });
   TpuCompilationCacheKey key;
   key.prefix = result.key;
   key.debug_string = result.debug_string;

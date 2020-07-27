@@ -410,10 +410,12 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         self._container_strategy())
 
   def _experimental_distribute_values_from_function(self, value_fn):
-    # TODO(b/137795644): Implement this method for ParameterServerStrategy if
-    # needed.
-    raise NotImplementedError("_experimental_distribute_values_from_function "
-                              "not yet implemented in ParameterServerStrategy.")
+    per_replica_values = []
+    for replica_id in range(self._num_replicas_in_sync):
+      per_replica_values.append(
+          value_fn(distribute_lib.ValueContext(replica_id,
+                                               self._num_replicas_in_sync)))
+    return distribute_utils.regroup(per_replica_values, always_wrap=True)
 
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay

@@ -33,28 +33,29 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
 
 namespace {
-Status CreateWorkerStub(const std::string& address,
-                        const std::string& protocol_,
+Status CreateWorkerStub(const std::string& address, const std::string& protocol,
                         std::unique_ptr<WorkerService::Stub>* stub) {
   ::grpc::ChannelArguments args;
   args.SetMaxReceiveMessageSize(-1);
   std::shared_ptr<::grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
+      CredentialsFactory::CreateClientCredentials(protocol, &credentials));
   auto channel = ::grpc::CreateCustomChannel(address, credentials, args);
   *stub = WorkerService::NewStub(channel);
   return Status::OK();
 }
 }  // namespace
 
-DataServiceDispatcherImpl::DataServiceDispatcherImpl(const std::string protocol)
-    : protocol_(protocol) {}
+DataServiceDispatcherImpl::DataServiceDispatcherImpl(
+    const experimental::DispatcherConfig& config)
+    : config_(config) {}
 
 Status DataServiceDispatcherImpl::RegisterWorker(
     const RegisterWorkerRequest* request, RegisterWorkerResponse* response) {
@@ -295,7 +296,8 @@ DataServiceDispatcherImpl::CreateTaskLocked(Job* job,
 Status DataServiceDispatcherImpl::EnsureWorkerStubInitialized(Worker* worker) {
   if (!worker->stub()) {
     std::unique_ptr<WorkerService::Stub> stub;
-    TF_RETURN_IF_ERROR(CreateWorkerStub(worker->address(), protocol_, &stub));
+    TF_RETURN_IF_ERROR(
+        CreateWorkerStub(worker->address(), config_.protocol(), &stub));
     worker->set_stub(std::move(stub));
   }
   return Status::OK();

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
@@ -147,7 +146,10 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 // interpreter_build.cc. To export the function name globally, the function name
 // must be matched with patterns in tf_version_script.lds
 extern "C" {
-TFL_CAPI_EXPORT tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
+#if defined(_WIN32)
+__declspec(dllexport)
+#endif
+    tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
   return tflite::FlexDelegate::Create();
 }
 }  // extern "C"

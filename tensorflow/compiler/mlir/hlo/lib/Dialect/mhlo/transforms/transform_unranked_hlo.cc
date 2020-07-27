@@ -61,10 +61,9 @@ struct UnaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
     // Generate IR to flatten the operand.
     auto loc = op.getLoc();
     Value shape = rewriter.create<shape::ShapeOfOp>(loc, operand);
-    Value numElements = rewriter.create<shape::NumElementsOp>(
-        loc, rewriter.getType<shape::SizeType>(), shape);
-    Value numElementsAsIndex = rewriter.create<shape::SizeToIndexOp>(
-        loc, rewriter.getIndexType(), numElements);
+    Value numElements = rewriter.create<shape::NumElementsOp>(loc, shape);
+    Value numElementsAsIndex =
+        rewriter.create<shape::SizeToIndexOp>(loc, numElements);
     Value flatShapeAsDimTensor =
         rewriter.create<TensorFromElementsOp>(loc, numElementsAsIndex);
     auto flatTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},

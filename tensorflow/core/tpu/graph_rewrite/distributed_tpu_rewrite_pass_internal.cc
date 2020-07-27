@@ -33,11 +33,11 @@ void OverrideNodeIdForTesting(const int64 node_id) {
 }
 
 uint64 GetNodeId() {
+  static absl::BitGen bitgen;
   if (overridden_node_id > -1) {
     return overridden_node_id;
   } else {
-    return absl::Uniform(absl::SharedBitGen(), uint64{0},
-                         std::numeric_limits<uint64>::max());
+    return absl::Uniform(bitgen, uint64{0}, std::numeric_limits<uint64>::max());
   }
 }
 

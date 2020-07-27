@@ -56,7 +56,34 @@ TEST(RemoveSingleInputAdd, Smoke) {
   ASSERT_EQ(output, graph.values()[1]);
 }
 
-TEST(RemoveSingleInputAdd, DoNotTrigger_Tensor) {
+TEST(RemoveSingleInputAdd, DoNotTrigger_TensorHWC) {
+  GraphFloat32 graph;
+  auto input = graph.NewValue();
+  auto first_node = graph.NewNode();
+  ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
+
+  auto add_node = graph.NewNode();
+  Value* output;
+  ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
+  add_node->operation.type = ToString(OperationType::ADD);
+  AddAttributes attr;
+  attr.param = Tensor<HWC, DataType::FLOAT32>();
+  add_node->operation.attributes = attr;
+
+  Value* temp;
+  ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
+  ASSERT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(3, graph.values().size());
+
+  auto transformation = NewRemoveSingleInputAdd();
+  ModelTransformer transformer(&graph, nullptr);
+  transformer.Apply("noop", transformation.get());
+
+  EXPECT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(3, graph.values().size());
+}
+
+TEST(RemoveSingleInputAdd, DoNotTrigger_LinearTensor) {
   GraphFloat32 graph;
   auto input = graph.NewValue();
   auto first_node = graph.NewNode();

@@ -358,7 +358,6 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",

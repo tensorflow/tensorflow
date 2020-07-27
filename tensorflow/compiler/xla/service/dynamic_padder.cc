@@ -688,9 +688,7 @@ StatusOr<bool> RewriteDynamicConcat(
           dynamic_size));
     }
   }
-  for (HloInstruction* user : prev_users) {
-    TF_RETURN_IF_ERROR(concat->ReplaceUseWith(user, rewritten_concat));
-  }
+  TF_RETURN_IF_ERROR(concat->ReplaceUsesWith(prev_users, rewritten_concat));
   TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
       concat, rewritten_concat, {}));
   return true;

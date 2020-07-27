@@ -206,7 +206,7 @@ class SplitVOpCPUImpl {
     const int num_split = split_start_points.size();
     const bool use_parallelism_between_outputs =
         (num_split >= 4 &&
-         input_element_count >= std::max(num_threads, num_split) * 4096 &&
+         input_element_count >= std::min(num_threads, num_split) * 4096 &&
          input_element_count < num_split * 180 * 1024);
 
     auto range_output_func = [&indices, context, &input_shape, split_dim,

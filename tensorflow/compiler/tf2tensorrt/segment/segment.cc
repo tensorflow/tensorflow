@@ -711,15 +711,15 @@ Status SegmentGraph(const Graph* tf_graph,
   std::unordered_set<string> unsupported_ops;
   int num_unsupported_ops = 0;
 
-  // Getting the operations blacklisted for conversion
-  string tftrt_op_blacklist_str;
+  // Getting the operations denylisted for conversion
+  string tftrt_op_denylist_str;
   TF_CHECK_OK(
-      ReadStringFromEnvVar("TF_TRT_OP_BLACKLIST", "", &tftrt_op_blacklist_str));
+      ReadStringFromEnvVar("TF_TRT_OP_DENYLIST", "", &tftrt_op_denylist_str));
 
-  auto tftrt_op_blacklist = gtl::FlatSet<string>{};  // non-absl ok
+  auto tftrt_op_denylist = gtl::FlatSet<string>{};  // non-absl ok
 
-  for (const auto& x : str_util::Split(tftrt_op_blacklist_str, ",")) {
-    tftrt_op_blacklist.insert(x);
+  for (const auto& x : str_util::Split(tftrt_op_denylist_str, ",")) {
+    tftrt_op_denylist.insert(x);
   }
 
   // Parsing each node of the graph
@@ -761,13 +761,13 @@ Status SegmentGraph(const Graph* tf_graph,
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
         exclude_node(status.error_message());
-      } else if (tftrt_op_blacklist.count(node->tf_node()->type_string())) {
+      } else if (tftrt_op_denylist.count(node->tf_node()->type_string())) {
         // WARNING verbosity since the user explicitly requests this behavior.
         LOG_WARNING_WITH_PREFIX
-            << "Blacklisted as TF-TRT candidate, "
+            << "Denylisted as TF-TRT candidate, "
             << "(Op type: " << node->tf_node()->type_string() << "), "
             << "(Op name: " << node->name() << ")";
-        exclude_node("Blacklisted with the env var TF_TRT_OP_BLACKLIST");
+        exclude_node("Denylisted with the env var TF_TRT_OP_DENYLIST");
       } else {
         VLOG(2) << "Accepted as a TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "
