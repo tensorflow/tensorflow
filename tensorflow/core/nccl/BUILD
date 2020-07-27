@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
     ]),
     alwayslink = 1,
 )
