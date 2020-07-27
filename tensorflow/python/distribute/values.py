@@ -700,49 +700,49 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     if self._policy:
-      return self._policy.scatter_sub(
+      self._policy.scatter_sub(
           self, sparse_delta, use_locking=use_locking, name=name)
     return values_util.scatter_sub(
         self, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
     if self._policy:
-      return self._policy.scatter_add(
+      self._policy.scatter_add(
           self, sparse_delta, use_locking=use_locking, name=name)
     return values_util.scatter_add(
         self, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_mul(self, sparse_delta, use_locking=False, name=None):
     if self._policy:
-      return self._policy.scatter_mul(
+      self._policy.scatter_mul(
           self, sparse_delta, use_locking=use_locking, name=name)
     return values_util.scatter_mul(
         self, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_div(self, sparse_delta, use_locking=False, name=None):
     if self._policy:
-      return self._policy.scatter_div(
+      self._policy.scatter_div(
           self, sparse_delta, use_locking=use_locking, name=name)
     return values_util.scatter_div(
         self, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_min(self, sparse_delta, use_locking=False, name=None):
     if self._policy:
-      return self._policy.scatter_min(
+      self._policy.scatter_min(
           self, sparse_delta, use_locking=use_locking, name=name)
     return values_util.scatter_min(
         self, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_max(self, sparse_delta, use_locking=False, name=None):
     if self._policy:
-      return self._policy.scatter_max(
+      self._policy.scatter_max(
           self, sparse_delta, use_locking=use_locking, name=name)
     return values_util.scatter_max(
         self, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_update(self, sparse_delta, use_locking=False, name=None):
     if self._policy:
-      return self._policy.scatter_update(
+      self._policy.scatter_update(
           self, sparse_delta, use_locking=use_locking, name=name)
     return values_util.scatter_update(
         self, sparse_delta, use_locking=use_locking, name=name)

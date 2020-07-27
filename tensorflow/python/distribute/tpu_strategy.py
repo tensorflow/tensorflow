@@ -544,9 +544,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           context.async_wait()
       atexit.register(async_wait)
 
-    # Flag to turn on VariablePolicy
-    self._use_var_policy = False
-
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
 
@@ -873,8 +870,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     return distribute_utils.create_mirrored_variable(
         self._container_strategy(), _real_mirrored_creator,
-        distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
-        distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
+        tpu_values.TPUMirroredVariable, tpu_values.TPUSyncOnReadVariable,
+        **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
