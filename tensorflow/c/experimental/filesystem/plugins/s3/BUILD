@@ -1,11 +1,11 @@
-# Experimental gcs filesystem plugin.
-load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object")
+# Experimental s3 filesystem plugin.
+load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object", "tf_cc_test")
 
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Filesystem implementation for GCS environments
+# Filesystem implementation for S3 environments
 tf_cc_shared_object(
     name = "s3_filesystem",
     framework_so = [],
