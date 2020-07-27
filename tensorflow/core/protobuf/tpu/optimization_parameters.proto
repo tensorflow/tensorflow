@@ -57,7 +57,9 @@ message LearningRate {
 // https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adagrad
 // https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L1634
 message AdagradParameters {
-  float initial_accumulator = 1;
+  // Old initial accumulator parameter.
+  reserved "initial_accumulator";
+  reserved 1;
 }
 
 // Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
@@ -84,9 +86,11 @@ message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
   float lr_power = 3;
-  float initial_accum = 4;
-  float initial_linear = 5;
   bool multiply_linear_by_lr = 6;
+
+  // Old initial accumulator parameters.
+  reserved "initial_accum", "initial_linear";
+  reserved 4, 5;
 }
 
 // The Adam optimizer does not implement hyper-parameter update; use the dynamic
@@ -113,10 +117,12 @@ message AdamParameters {
   float beta1 = 3;
   float beta2 = 4;
   float epsilon = 5;
-  float initial_m = 6;
-  float initial_v = 7;
   bool use_non_lazy_adam = 8;
   bool use_sum_inside_sqrt = 10;
+
+  // Old initial accumulator parameters.
+  reserved "initial_m", "initial_v";
+  reserved 6, 7;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/SGD
@@ -124,7 +130,10 @@ message AdamParameters {
 message MomentumParameters {
   float momentum = 1;
   bool use_nesterov = 2;
-  float initial_accum = 3;
+
+  // Old initial accumulator parameter.
+  reserved "initial_accum";
+  reserved 3;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/RMSprop
@@ -133,8 +142,10 @@ message RmsPropParameters {
   float rho = 1;
   float momentum = 2;
   float epsilon = 3;
-  float initial_ms = 4;
-  float initial_mom = 5;
+
+  // Old initial accumulator parameters.
+  reserved "initial_ms", "initial_mom";
+  reserved 4, 5;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/RMSprop
@@ -143,9 +154,10 @@ message CenteredRmsPropParameters {
   float rho = 1;
   float momentum = 2;
   float epsilon = 3;
-  float initial_ms = 4;
-  float initial_mom = 5;
-  float initial_mg = 6;
+
+  // Old initial accumulator parameters.
+  reserved "initial_ms", "initial_mom", "initial_mg";
+  reserved 4, 5, 6;
 }
 
 // Variant of algorithm in http://proceedings.mlr.press/v44/shamir15.pdf
@@ -162,9 +174,10 @@ message MdlAdagradLightParameters {
   float mdl_hard_limit = 10;
   bool hard_limit_min_benefit = 11;
   bool mdl_regularize = 12;
-  float initial_accumulator = 13;
-  float initial_weight = 14;
-  float initial_benefit = 15;
+
+  // Old initial accumulator parameters.
+  reserved "initial_accumulator", "initial_weight", "initial_benefit";
+  reserved 13, 14, 15;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adadelta
@@ -172,8 +185,10 @@ message MdlAdagradLightParameters {
 message AdadeltaParameters {
   float rho = 1;
   float epsilon = 2;
-  float initial_accumulator = 3;
-  float initial_update = 4;
+
+  // Old initial accumulator parameters.
+  reserved "initial_accumulator", "initial_update";
+  reserved 3, 4;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/compat/v1/train/ProximalAdagradOptimizer
@@ -181,7 +196,10 @@ message AdadeltaParameters {
 message ProximalAdagradParameters {
   float l1 = 1;
   float l2 = 2;
-  float initial_accumulator = 3;
+
+  // Old initial accumulator parameter.
+  reserved "initial_accumulator";
+  reserved 3;
 }
 
 // The online Yogi optimizer does not implement hyper-parameter update; use the
