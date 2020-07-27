@@ -476,12 +476,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
-  def _benchmark_defun_matmul_with_signature(self, m, num_iters, execution_mode=None):
-    
+  def _benchmark_defun_matmul_with_signature(self,
+                                             m,
+                                             num_iters,
+                                             execution_mode=None):
     def func_matmul(m):
       return math_ops.matmul(m, m)
     f = function.defun(
-        func_matmul, input_signature=[tensor_spec.TensorSpec([2, 2], dtypes.float32)])
+        func_matmul,
+        input_signature=[tensor_spec.TensorSpec([2, 2], dtypes.float32)])
     
     func = lambda: f(m)
     self._run(func, num_iters, execution_mode=execution_mode)
@@ -589,7 +592,8 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmark_defun_matmul_2_by_2_CPU_with_signature(self):
     with context.device(CPU):
       m = self._m_2_by_2.cpu()
-      self._benchmark_defun_matmul_with_signature(m, num_iters=self._num_iters_2_by_2)
+      self._benchmark_defun_matmul_with_signature(
+          m, num_iters=self._num_iters_2_by_2)
 
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def benchmark_defun_args_matmul_2_by_2_CPU(self):
@@ -677,7 +681,8 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       return
     with context.device(GPU):
       m = self._m_2_by_2.gpu()
-      self._benchmark_defun_matmul_with_signature(m, num_iters=self._num_iters_2_by_2)
+      self._benchmark_defun_matmul_with_signature(
+          m, num_iters=self._num_iters_2_by_2)
 
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def benchmark_defun_args_matmul_2_by_2_GPU(self):
