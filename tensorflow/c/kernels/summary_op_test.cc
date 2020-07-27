@@ -53,7 +53,7 @@ void ExpectSummaryMatches(const Summary& actual, const string& expected_str) {
 }
 
 
-void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
+void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_output,
                          error::Code expected_code) {
   // Initialize node used to fetch OpKernel 
   Status status;
@@ -92,9 +92,12 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
     Summary summary; 
     ASSERT_TRUE(ParseProtoUnlimited(&summary, ctx.mutable_output(0)->
         scalar<tstring>()()));
-    ExpectSummaryMatches(summary, expected_summary);
-    
+    ExpectSummaryMatches(summary, expected_output);
   } 
+  else { 
+    EXPECT_TRUE(absl::StrContains(ctx.status().ToString(), expected_output))
+    << ctx.status(); 
+  }
 }
 
 TEST(ScalarSummaryOpTest, SimpleFloat) {
@@ -153,7 +156,8 @@ TEST(ScalarSummaryOpTest, Error_WrongDimsTags) {
   tags.matrix<tstring>()(1, 0) = "tag2";
   values.vec<float>()(0) = 1.0f; 
   values.vec<float>()(1) = -2.0f;
-  TestScalarSummaryOp(&tags, &values, R"()", error::INVALID_ARGUMENT); 
+  TestScalarSummaryOp(&tags, &values, "tags and values are not the same shape", 
+                      error::INVALID_ARGUMENT); 
 }
 
 TEST(ScalarSummaryOpTest, Error_WrongValuesTags) {
@@ -163,7 +167,8 @@ TEST(ScalarSummaryOpTest, Error_WrongValuesTags) {
   tags.vec<tstring>()(1) = "tag2";
   values.matrix<float>()(0, 0) = 1.0f; 
   values.matrix<float>()(1, 0) = -2.0f;
-  TestScalarSummaryOp(&tags, &values, R"()", error::INVALID_ARGUMENT); 
+  TestScalarSummaryOp(&tags, &values, "tags and values are not the same shape", 
+                      error::INVALID_ARGUMENT); 
 }
 
 TEST(ScalarSummaryOpTest, Error_WrongWithSingleTag) {
@@ -172,7 +177,8 @@ TEST(ScalarSummaryOpTest, Error_WrongWithSingleTag) {
   tags.vec<tstring>()(0) = "tag1";
   values.matrix<float>()(0, 0) = 1.0f; 
   values.matrix<float>()(1, 0) = -2.0f; 
-  TestScalarSummaryOp(&tags, &values, R"()", error::INVALID_ARGUMENT); 
+  TestScalarSummaryOp(&tags, &values, "tags and values are not the same shape", 
+                      error::INVALID_ARGUMENT); 
 }
 
 

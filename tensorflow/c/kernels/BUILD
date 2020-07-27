@@ -28,15 +28,14 @@ tf_kernel_library(
     name = "summary_op",
     prefix = "summary_op",
     deps = [
-        "//tensorflow/c/kernels:tensor_shape_utils",
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/c:tf_status",
+        "//tensorflow/c/kernels:tensor_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
 )
-
 
 tf_gen_op_libs(
     op_lib_names = ["bitcast"],
@@ -81,15 +80,15 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib"
+        "//tensorflow/core:testlib",
     ],
 )
 
 cc_library(
     name = "tensor_shape_utils",
-    srcs = ["tensor_shape_utils.cc",],
-    hdrs = ["tensor_shape_utils.h",],
-    deps = [ "//tensorflow/c:tf_tensor",], 
+    srcs = ["tensor_shape_utils.cc"],
+    hdrs = ["tensor_shape_utils.h"],
+    deps = [ "//tensorflow/c:tf_tensor"], 
     visibility = ["//visibility:private"],
 )
 
@@ -116,7 +115,7 @@ filegroup(
     name = "android_all_op_kernels",
     srcs = [
         "bitcast_op.cc", 
-        "summary_op.cc"
+        "summary_op.cc",
     ],
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
@@ -125,6 +124,6 @@ filegroup(
     name = "android_all_ops",
     srcs = [
         "ops/bitcast.cc", 
-        "ops/summary.cc"
+        "ops/summary.cc",
     ],
 )
