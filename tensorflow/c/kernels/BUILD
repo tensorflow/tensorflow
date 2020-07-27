@@ -30,8 +30,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_tensor",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c/kernels:tensor_shape_utils",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -96,10 +96,10 @@ tf_cc_test(
     name = "tensor_shape_utils_test",
     srcs = ["tensor_shape_utils_test.cc"],
     deps = [
+        "//tensorflow/core:framework",
         ":tensor_shape_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:framework",
         "//tensorflow/core:test_main",
     ],
 )
