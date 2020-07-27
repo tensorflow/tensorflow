@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/mnist_gradients_util.h"
 #include "tensorflow/c/eager/gradients.h"
+#include "tensorflow/c/experimental/ops/array_ops.h"
 
 #include <memory>
 
@@ -327,6 +328,7 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
   for (auto sm_output : sm_outputs) {
     sm_output->Release();
   }
+
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
   delete tape;
@@ -366,6 +368,7 @@ Status MNISTGradModel(AbstractContext* ctx,
   AbstractTensorHandle* scores = temp_outputs[0];
   
   temp_outputs.resize(2);
+  // std::vector<AbstractTensorHandle*> loss_outputs(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs), 
       "softmaxloss", registry));  // W2*Relu(X*W1)
 
@@ -381,17 +384,77 @@ Status MNISTGradModel(AbstractContext* ctx,
       source_tensors_that_are_targets,
       /*output_gradients=*/{}, &out_grads));
   
-  for (auto temp_output : temp_outputs) {
-    temp_output->Release();
-  }
-
+  // Only release 2nd temp output as first holds loss values.  
+  temp_outputs[1]->Release();
+  
   outputs[0] = out_grads[0];  // dW1
   outputs[1] = out_grads[1];  // dW2
+  outputs[2] = loss;  
+    
+  delete tape;
+  return Status::OK();
+}
+
+Status ScalarMulModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry) {
+  
+  AbstractTensorHandle* eta = inputs[0];
+  AbstractTensorHandle* A = inputs[1];
+ 
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  std::vector<AbstractTensorHandle*> temp_outputs(1);
+
+  TF_RETURN_IF_ERROR(Mul(ctx, tape, {eta, A}, absl::MakeSpan(temp_outputs),
+                     "scalarMul0", registry));  // Compute X*W1
+
+  outputs[0] =  temp_outputs[0];
+
   delete tape;
   return Status::OK();
 }
 
 // ============================= End Models ================================
+
+Status UpdateWeights(AbstractContext* ctx,
+                std::vector<AbstractTensorHandle*>& grads,
+                std::vector<AbstractTensorHandle*>& weights, 
+                AbstractTensorHandle* learning_rate) {
+  
+  /* Update weights one by one using gradient update rule:
+   * 
+   *    w += lr*grad[w]
+   *
+   *  NOTE: assuming learning rate is already negative
+   */
+  
+  Status s;  
+  int num_grads = grads.size();
+  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  std::string update_str;
+
+  for(int i = 0; i < num_grads; i++) {
+    // Compute dW = -lr * grad(w[i]) 
+    update_str = "update_mul_" + std::to_string(i);
+    s = ops::Mul(ctx, {learning_rate, grads[i]}, absl::MakeSpan(temp_outputs),
+          update_str.c_str());                                    
+    
+    AbstractTensorHandle* dW = temp_outputs[0];
+
+    // Compute temp = weights[i] + dW
+    update_str = "update_add_" + std::to_string(i);
+    s = ops::Add(ctx, {weights[i], dW}, absl::MakeSpan(temp_outputs),
+          update_str.c_str());
+
+    // Update the weights
+    weights[i] = temp_outputs[0];
+  }
+
+  return Status::OK();
+}
+
 
 AbstractContext* BuildFunction(const char* fn_name) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(

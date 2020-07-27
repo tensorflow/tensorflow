@@ -34,6 +34,10 @@ Status MatMul(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name,
                 bool transpose_a, bool transpose_b); 
 
+Status Mul(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
 Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
@@ -43,6 +47,10 @@ Status ReluGrad(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle*> outputs, 
                 const char* name);
 
+Status Add(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs,
+                const char* name);
 
 }  // namespace ops
 }  // namespace tensorflow

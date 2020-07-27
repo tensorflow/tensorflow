@@ -38,6 +38,28 @@ Status Identity(AbstractContext* ctx,
   return identity_op->Execute(outputs, &num_retvals);
 }
 
+Status Add(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs,
+                const char* name) {
+  
+  AbstractOperationPtr add_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      add_op->Reset("AddV2", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(add_op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(add_op.get())
+                           ->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(add_op->AddInput(inputs[0]));
+  TF_RETURN_IF_ERROR(add_op->AddInput(inputs[1]));
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(add_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
 Status MatMul(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name,
@@ -60,6 +82,29 @@ Status MatMul(AbstractContext* ctx,
   
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(matmul_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+
+Status Mul(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  
+  AbstractOperationPtr mul_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      mul_op->Reset("Mul", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(mul_op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(mul_op.get())
+                           ->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(mul_op->AddInput(inputs[0]));
+  TF_RETURN_IF_ERROR(mul_op->AddInput(inputs[1]));
+
+  
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(mul_op->Execute(outputs, &num_retvals));
   return Status::OK();
 }
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradients.h"
+#include "tensorflow/c/experimental/ops/array_ops.h"
 
 #include <memory>
 
@@ -129,6 +130,18 @@ Status MNISTGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry);
+
+// Test Model to verify scalar-tensor multiplication Op 
+Status ScalarMulModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
+
+// Updates the weights for a neural network given incoming grads and learning rate
+Status UpdateWeights(AbstractContext* ctx,
+                std::vector<AbstractTensorHandle*>& grads,
+                std::vector<AbstractTensorHandle*>& weights, 
+                AbstractTensorHandle* learning_rate);
 
 AbstractContext* BuildFunction(const char* fn_name);
 
