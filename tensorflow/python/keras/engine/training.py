@@ -545,7 +545,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           loss, loss_weights, output_names=self.output_names)
       mc = compile_utils.MetricsContainer(metrics,
                                           weighted_metrics,
-                                          loss=loss,
+                                          loss=self.compiled_loss,
                                           output_names=self.output_names)
       self.compiled_metrics = mc
 
