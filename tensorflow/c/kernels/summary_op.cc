@@ -15,10 +15,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <sstream>
+#include <string>
 
+#include "tensorflow/c/kernels/tensor_shape_utils.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/c/kernels/tensor_shape_utils.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -60,7 +67,7 @@ void ScalarSummaryOp_Delete(void* kernel) {
 bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2);
 // Returns a string representation of a single tag or empty string if there 
 // are multiple tags 
-tensorflow::string SingleTag(TF_Tensor* tags); 
+std::string SingleTag(TF_Tensor* tags); 
 
 template<typename T>
 void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
@@ -117,7 +124,7 @@ bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2) {
   return true; 
 }
 
-tensorflow::string SingleTag(TF_Tensor* tags) { 
+std::string SingleTag(TF_Tensor* tags) { 
   if (TF_TensorElementCount(tags) == 1) { 
     const char* single_tag = static_cast<tensorflow::tstring*>(
         TF_TensorData(tags))->c_str(); 

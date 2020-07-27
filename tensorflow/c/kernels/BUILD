@@ -31,7 +31,9 @@ tf_kernel_library(
         "//tensorflow/c/kernels:tensor_shape_utils",
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_tensor",
-        "//tensorflow/core:framework"
+        "//tensorflow/c:tf_status",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -51,6 +53,7 @@ tf_gen_op_libs(
     op_lib_names = ["summary"],
     deps = [
         "//tensorflow/c:ops",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:lib",
     ],
 )
@@ -73,7 +76,10 @@ tf_cc_test(
     srcs = ["summary_op_test.cc"],
     deps = [
         ":summary_op",
-        ":summary_op_lib",
+        "//tensorflow/c:kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib"
     ],
@@ -94,6 +100,7 @@ tf_cc_test(
         ":tensor_shape_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test_main",
     ],
 )
