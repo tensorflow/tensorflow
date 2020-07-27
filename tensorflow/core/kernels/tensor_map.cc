@@ -58,8 +58,8 @@ static Status TensorMapDeviceCopy(
   for (const std::pair<TensorKey,Tensor>& p : from.tensors()) {
     TensorKey to_key(p.first.dtype());
     Tensor to_val(p.second.dtype());
-    copy(p.first, &to_key);
-    copy(p.second, &to_val);
+    TF_RETURN_IF_ERROR(copy(p.first, &to_key));
+    TF_RETURN_IF_ERROR(copy(p.second, &to_val));
     to->tensors().emplace(to_key, to_val);
   }
   return Status::OK();
