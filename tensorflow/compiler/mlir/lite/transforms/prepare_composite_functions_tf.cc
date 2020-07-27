@@ -239,18 +239,14 @@ LogicalResult CheckOutputConsumer(
 
 LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
   for (auto func : module.getOps<FuncOp>()) {
-    auto result = func.walk([&](Operation* op) {
-      if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-        CallInterfaceCallable callable = call_op.getCallableForCallee();
-        if (auto sym = callable.dyn_cast<SymbolRefAttr>()) {
-          if (sym.getRootReference() == lstm_func.getName()) {
-            // Keras LSTM have 5 outputs.
-            // We should make sure only the first or the second output are
-            // consumed.
-            if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
-              return WalkResult::interrupt();
-          }
-        }
+    if (func == lstm_func) continue;
+    auto result = func.walk([&](CallOpInterface op) {
+      if (dyn_cast<FuncOp>(op.resolveCallable()) == lstm_func) {
+        // Keras LSTM have 5 outputs.
+        // We should make sure only the first or the second output are
+        // consumed.
+        if (failed(CheckOutputConsumer(op.getOperation(), 5, {0, 1})))
+          return WalkResult::interrupt();
       }
       return WalkResult::advance();
     });
