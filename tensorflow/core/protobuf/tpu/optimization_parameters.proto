@@ -54,8 +54,8 @@ message LearningRate {
 // Each optimizer's parameter proto has a link to its documentation and CPU
 // implementation (if available) for user reference.
 
-// https://www.tensorflow.org/api_docs/python/tf/train/AdagradOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L151
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adagrad
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L1634
 message AdagradParameters {
   float initial_accumulator = 1;
 }
@@ -74,12 +74,12 @@ message BoundedAdagradParameters {
   float max_accumulator = 3;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L423
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/SGD
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L629
 message StochasticGradientDescentParameters {}
 
-// https://www.tensorflow.org/api_docs/python/tf/train/FtrlOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L192
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Ftrl
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L2646
 message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
@@ -94,8 +94,8 @@ message FtrlParameters {
 // user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
 // Here, t is the current timestep.
 //
-// https://www.tensorflow.org/api_docs/python/tf/train/AdamOptimizer
-// https://github.com/tensorflow/tensorflow/blob/ab51450c817674c8ff08a7ae4f8ac50cdc4bed8b/tensorflow/python/training/adam.py#L54
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adam
+// https://github.com/tensorflow/tensorflow/blob/ab51450c817674c8ff08a7ae4f8ac50cdc4bed8b/tensorflow/python/training/adam.py#L32
 //
 // Note that the code by default implements the lazy version of Adam
 // (https://www.tensorflow.org/api_docs/python/tf/contrib/opt/LazyAdamOptimizer)
@@ -119,16 +119,16 @@ message AdamParameters {
   bool use_sum_inside_sqrt = 10;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/MomentumOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L271
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/SGD
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L3068
 message MomentumParameters {
   float momentum = 1;
   bool use_nesterov = 2;
   float initial_accum = 3;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L356
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/RMSprop
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L4229
 message RmsPropParameters {
   float rho = 1;
   float momentum = 2;
@@ -137,8 +137,8 @@ message RmsPropParameters {
   float initial_mom = 5;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L372
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/RMSprop
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L4358
 message CenteredRmsPropParameters {
   float rho = 1;
   float momentum = 2;
@@ -167,8 +167,8 @@ message MdlAdagradLightParameters {
   float initial_benefit = 15;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/AdadeltaOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L68
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adadelta
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L933
 message AdadeltaParameters {
   float rho = 1;
   float epsilon = 2;
@@ -176,8 +176,8 @@ message AdadeltaParameters {
   float initial_update = 4;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/ProximalAdagradOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L164
+// https://www.tensorflow.org/api_docs/python/tf/compat/v1/train/ProximalAdagradOptimizer
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L1961
 message ProximalAdagradParameters {
   float l1 = 1;
   float l2 = 2;
