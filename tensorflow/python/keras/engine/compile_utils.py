@@ -280,14 +280,13 @@ class MetricsContainer(Container):
                metrics=None, 
                weighted_metrics=None, 
                output_names=None,
-               loss=None):
+               loss_container=None):
     super(MetricsContainer, self).__init__(output_names=output_names)
 
     # Keep user-supplied values untouched for recompiling and serialization.
     self._user_metrics = metrics
     self._user_weighted_metrics = weighted_metrics
-
-    self._loss = loss
+    self._loss_container = loss_container
     self._metrics = metrics
     self._weighted_metrics = weighted_metrics
     self._built = False
@@ -420,9 +419,13 @@ class MetricsContainer(Container):
   def _get_metric_objects(self, metrics, y_t, y_p):
     """Convert user-supplied metrics to `Metric` objects."""
     metrics = nest.flatten(metrics)
-    return [self._get_metric_object(m, y_t, y_p) for m in metrics]
-
-  def _get_metric_object(self, metric, y_t, y_p):
+    if self._loss_container:
+      losses = nest.map_structure(self._loss_container._get_loss_object, self._loss_container._losses)
+      losses = nest.flatten(losses)
+      return [self._get_metric_object(m, losses[idx], y_t, y_p) for idx, m in enumerate(metrics)]
+    else:
+      return [self._get_metric_object(m, None , y_t, y_p) for m in metrics]
+  def _get_metric_object(self, metric, loss, y_t, y_p):
     """Converts user-supplied metric to a `Metric` object.
 
     Arguments:
@@ -446,9 +449,9 @@ class MetricsContainer(Container):
       y_t_last_dim = y_t.shape.as_list()[-1]
       y_p_last_dim = y_p.shape.as_list()[-1]
       is_binary_crossentropy = (
-          isinstance(self._loss, losses_mod.BinaryCrossentropy) or
-          (isinstance(self._loss, losses_mod.LossFunctionWrapper) and
-           (self._loss.fn == losses_mod.binary_crossentropy)))
+          isinstance(loss, losses_mod.BinaryCrossentropy) or
+          (isinstance(loss, losses_mod.LossFunctionWrapper) and
+           (loss.fn == losses_mod.binary_crossentropy)))
       is_binary = y_p_last_dim == 1 or is_binary_crossentropy
       is_sparse_categorical = (
           y_t_rank < y_p_rank or y_t_last_dim == 1 and y_p_last_dim > 1)
