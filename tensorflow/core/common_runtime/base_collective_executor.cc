@@ -226,19 +226,12 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 
   // On any individual collective Op failure we need to abort the
   // BufRendezvous so that other Ops in the instance don't hang
-  // waiting for transmissions that will never happen.  Do so after a
-  // delay so that the original error status is more likely to
-  // propagate up, and peers are unlikely to re-create the purged
-  // BufRendezvous by late-arriving requests.
+  // waiting for transmissions that will never happen.
   StatusCallback done_safe = [this, done, is_callback_called](const Status& s) {
     auto should_call_callback = !is_callback_called->exchange(true);
     if (should_call_callback) {
       if (!s.ok()) {
-        Ref();  // Ensure this lasts until the closure executes.
-        SchedNonBlockingClosureAfter(1000000, [this, s] {
-          remote_access_->buf_rendezvous()->StartAbort(s);
-          Unref();
-        });
+        remote_access_->buf_rendezvous()->StartAbort(s);
       }
       done(s);
     }
