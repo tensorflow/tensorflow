@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -34,6 +35,29 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
+// Forward declaration, defined below.
+class TpuCompileOpKernelCommon;
+
+// A base factory class for creating a `TpuCompileOpKernelImpl` variant.
+// By design, the actual factory can only be set once.
+class CompileOpImplFactory {
+ public:
+  virtual ~CompileOpImplFactory() = default;
+
+  virtual stream_executor::port::StatusOr<
+      std::unique_ptr<TpuCompileOpKernelCommon>>
+  CreateNonMlirImpl(OpKernelConstruction* ctx) = 0;
+
+  virtual stream_executor::port::StatusOr<
+      std::unique_ptr<TpuCompileOpKernelCommon>>
+  CreateMlirImpl(OpKernelConstruction* ctx) = 0;
+
+  static CompileOpImplFactory* Get();
+  static void Register(CompileOpImplFactory* factory);
+
+ private:
+  static CompileOpImplFactory* factory_;
+};
 
 // Abstract base class for TpuCompileOpKernel implementation.
 class TpuCompileOpKernelCommon {
@@ -120,8 +144,7 @@ class TpuCompileOpKernelCommon {
 
   // Sleeps for `kSleepSeconds` seconds to give time for TPUCompileOp to finish
   // before terminating peacefully.
-  static void ExitCountdown(OpKernelContext* ctx,
-                            std::shared_ptr<std::atomic<bool>> done);
+  static void ExitCountdown(Env* env, std::shared_ptr<std::atomic<bool>> done);
 
   // Converts the `dynamic_shapes` arguments to the compile operator into
   // TensorShapes.
@@ -214,7 +237,6 @@ class TpuCompileOpKernelCommon {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);
 };
-
 }  // namespace tpu
 }  // namespace tensorflow
 

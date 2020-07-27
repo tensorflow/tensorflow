@@ -593,7 +593,7 @@ Status MakeShapeHelper(const T* dims, int64 n, Shape* out) {
       if (TF_PREDICT_FALSE(new_num_elements < 0)) {
         TensorShapeProto proto;
         for (int64 j = 0; j < n; ++j) {
-          proto.add_dim()->set_size(dim);
+          proto.add_dim()->set_size(internal::SubtleMustCopy(dims[j]));
         }
         return errors::InvalidArgument(
             "Shape ", TensorShape::DebugString(proto),

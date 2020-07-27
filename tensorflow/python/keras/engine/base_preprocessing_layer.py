@@ -21,9 +21,11 @@ import abc
 import collections
 
 import numpy as np
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -37,13 +39,17 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
+_kpl_gauge = monitoring.StringGauge(
+    '/tensorflow/api/keras/layers/preprocessing',
+    'keras preprocessing layers usage', 'TFVersion')
+
+
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
+@six.add_metaclass(abc.ABCMeta)
 class PreprocessingLayer(Layer):
   """Base class for PreprocessingLayers."""
-  __metaclass__ = abc.ABCMeta
   _must_restore_from_config = True
 
-  @abc.abstractmethod
   def adapt(self, data, reset_state=True):
     # TODO(momernick): Add examples.
     """Fits the state of the preprocessing layer to the data being passed.

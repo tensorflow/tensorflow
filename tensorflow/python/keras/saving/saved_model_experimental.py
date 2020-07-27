@@ -29,6 +29,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -42,7 +43,6 @@ from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import keras_export
 
 # To avoid circular dependencies between keras/engine and keras/saving,

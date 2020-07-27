@@ -72,17 +72,17 @@ inline void Concatenation(const ConcatenationParams& params,
 // TODO(prabhumk): This is the same as the optimized implementation.
 inline void ConcatenationWithScaling(const ConcatenationParams& params,
                                      const RuntimeShape* const* input_shapes,
-                                     const uint8* const* input_data,
+                                     const uint8_t* const* input_data,
                                      const RuntimeShape& output_shape,
-                                     uint8* output_data) {
+                                     uint8_t* output_data) {
   int axis = params.axis;
-  const int32* input_zeropoint = params.input_zeropoint;
+  const int32_t* input_zeropoint = params.input_zeropoint;
   const float* input_scale = params.input_scale;
   int inputs_count = params.inputs_count;
-  const int32 output_zeropoint = params.output_zeropoint;
+  const int32_t output_zeropoint = params.output_zeropoint;
   const float output_scale = params.output_scale;
   const bool fixed_point_scaling = params.fixed_point_scaling;
-  const int32* effective_scale_multiplier = params.effective_scale_multiplier;
+  const int32_t* effective_scale_multiplier = params.effective_scale_multiplier;
   const int* effective_scale_shift = params.effective_scale_shift;
 
   const int concat_dimensions = output_shape.DimensionsCount();
@@ -114,11 +114,11 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
   // calculation
   const float inverse_output_scale =
       fixed_point_scaling ? 0.f : 1.f / output_scale;
-  uint8* output_ptr = output_data;
+  uint8_t* output_ptr = output_data;
   for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
       const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
-      const uint8* input_ptr = input_data[i] + k * copy_size;
+      const uint8_t* input_ptr = input_data[i] + k * copy_size;
       if (input_zeropoint[i] == output_zeropoint &&
           input_scale[i] == output_scale) {
         memcpy(output_ptr, input_ptr, copy_size);

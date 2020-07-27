@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -99,40 +100,19 @@ void TestHardSwishQuantized(int size, const T* output_data,
                             output_zero_point),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_HARD_SWISH);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
+  const TfLiteRegistration registration =
+      tflite::ops::micro::Register_HARD_SWISH();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, /*builtin_data=*/nullptr,
+                             micro_test::reporter);
 
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   AsymmetricDequantize<T>(output_data, output_elements_count, output_scale,
                           output_zero_point, dequantized_output);
@@ -151,10 +131,6 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
                                 float output_max, float tolerated_bias,
                                 float* float_input_values,
                                 float* float_ref_output_values) {
-  const float quantized_type_range =
-      static_cast<float>(std::numeric_limits<T>::max()) -
-      static_cast<float>(std::numeric_limits<T>::min());
-
   const float input_scale = ScaleFromMinMax<T>(input_min, input_max);
   const float output_scale = ScaleFromMinMax<T>(output_min, output_max);
 
@@ -188,13 +164,6 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
   const int input_dims_data[] = {2, 1, size};
   const int output_dims_data[] = {2, 1, size};
 
-  // The numerical error for any 8bit quantized function is at least one half
-  // times the quantization step: 0.5 * (kOutMax - kOutMin) / 256.
-  // To that we add again the quantization step (kOutMax - kOutMin) / 256
-  // to allow for an off-by-one rounding error.
-  const float kTolerance =
-      std::max(input_max - input_min, output_max - output_min) * (1.5f / 256.f);
-
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
@@ -211,40 +180,19 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
                             output_zero_point),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_HARD_SWISH);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
+  const TfLiteRegistration registration =
+      tflite::ops::micro::Register_HARD_SWISH();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, /*builtin_data=*/nullptr,
+                             micro_test::reporter);
 
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   AsymmetricDequantize<T>(output_data, output_elements_count, output_scale,
                           output_zero_point, dequantized_output);
@@ -284,37 +232,20 @@ void TestHardSwishFloat(const int size, float* output_data,
       CreateFloatTensor(float_input_values, input_dims),
       CreateFloatTensor(output_data, output_dims),
   };
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_HARD_SWISH);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
 
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  const TfLiteRegistration registration =
+      tflite::ops::micro::Register_HARD_SWISH();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, /*builtin_data=*/nullptr,
+                             micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(float_ref_output_values[i], output_data[i],

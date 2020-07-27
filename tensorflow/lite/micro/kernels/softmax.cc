@@ -42,7 +42,8 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
       if (output->type == kTfLiteInt16) {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
-        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // NOTE: Current int16_t softmax output does not require symmetric
+        // scaling
         // - so no need to verify scale here.
       } else {
         TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
@@ -101,12 +102,7 @@ void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
 
 void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(SoftmaxParams),
-                                        &data) == kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(SoftmaxParams));
 }
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {

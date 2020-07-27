@@ -34,6 +34,10 @@ py_library(
 cuda_py_test(
     name = "densenet_benchmark_test",
     srcs = ["densenet_benchmark_test.py"],
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -43,6 +47,10 @@ cuda_py_test(
 cuda_py_test(
     name = "efficientnet_benchmark_test",
     srcs = ["efficientnet_benchmark_test.py"],
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -52,6 +60,10 @@ cuda_py_test(
 cuda_py_test(
     name = "inception_resnet_v2_benchmark_test",
     srcs = ["inception_resnet_v2_benchmark_test.py"],
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -61,6 +73,10 @@ cuda_py_test(
 cuda_py_test(
     name = "mobilenet_benchmark_test",
     srcs = ["mobilenet_benchmark_test.py"],
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -70,6 +86,10 @@ cuda_py_test(
 cuda_py_test(
     name = "nasnet_large_benchmark_test",
     srcs = ["nasnet_large_benchmark_test.py"],
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -79,6 +99,10 @@ cuda_py_test(
 cuda_py_test(
     name = "resnet152_v2_benchmark_test",
     srcs = ["resnet152_v2_benchmark_test.py"],
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -88,6 +112,10 @@ cuda_py_test(
 cuda_py_test(
     name = "vgg_benchmark_test",
     srcs = ["vgg_benchmark_test.py"],
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -97,6 +125,10 @@ cuda_py_test(
 cuda_py_test(
     name = "xception_benchmark_test",
     srcs = ["xception_benchmark_test.py"],
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",

@@ -6,7 +6,7 @@ Mobile application developers typically interact with typed objects such as
 bitmaps or primitives such as integers. However, the TensorFlow Lite Interpreter
 that runs the on-device machine learning model uses tensors in the form of
 ByteBuffer, which can be difficult to debug and manipulate. The
-[TensorFlow Lite Android Support Library](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/support/java)
+[TensorFlow Lite Android Support Library](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/java)
 is designed to help process the input and output of TensorFlow Lite models, and
 make the TensorFlow Lite interpreter easier to use.
 

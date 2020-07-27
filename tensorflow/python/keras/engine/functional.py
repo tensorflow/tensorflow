@@ -107,10 +107,6 @@ class Functional(training_lib.Model):
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, inputs=None, outputs=None, name=None, trainable=True):
-    # generic_utils.validate_kwargs(
-    #     kwargs, {'name', 'trainable'},
-    #     'Functional models may only specify `name` and `trainable` keyword '
-    #     'arguments during initialization. Got an unexpected argument:')
     super(Functional, self).__init__(name=name, trainable=trainable)
     self._init_graph_network(inputs, outputs)
 
@@ -134,9 +130,9 @@ class Functional(training_lib.Model):
     # be called with a dict, where the keys of the dict are the names
     # of the `Input` objects. Extra keys are ignored with warning.
     self._enable_dict_to_input_mapping = (
-        not nest.is_sequence(self._nested_inputs) or
+        not nest.is_nested(self._nested_inputs) or
         (isinstance(self._nested_inputs, (list, tuple, dict)) and
-         not any(nest.is_sequence(t) for t in self._nested_inputs)))
+         not any(nest.is_nested(t) for t in self._nested_inputs)))
 
     if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
       base_layer_utils.create_keras_history(self._nested_outputs)
@@ -523,7 +519,7 @@ class Functional(training_lib.Model):
     """Maps `tensors` to their respective `keras.Input`."""
     if self._enable_dict_to_input_mapping and isinstance(tensors, dict):
       ref_inputs = self._nested_inputs
-      if not nest.is_sequence(ref_inputs):
+      if not nest.is_nested(ref_inputs):
         ref_inputs = [self._nested_inputs]
       if isinstance(ref_inputs, dict):
         # In the case that the graph is constructed with dict input tensors,
@@ -1158,7 +1154,9 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     # Call layer on its inputs, thus creating the node
     # and building the layer if needed.
     if input_tensors is not None:
-      input_tensors = base_layer_utils.unnest_if_single_tensor(input_tensors)
+      if not layer._preserve_input_structure_in_config:
+        input_tensors = (
+            base_layer_utils.unnest_if_single_tensor(input_tensors))
       output_tensors = layer(input_tensors, **kwargs)
 
       # Update node index map.
@@ -1293,7 +1291,7 @@ def get_network_config(network, serialize_layer_fn=None):
         tf_utils.ListWrapper([layer.name, new_node_index, tensor_index]))
   model_inputs = nest.pack_sequence_as(network._nested_inputs, model_inputs)
   # Preserve external Keras compat for Models with single input.
-  if not nest.is_sequence(model_inputs):
+  if not nest.is_nested(model_inputs):
     model_inputs = [model_inputs]
   model_inputs = tf_utils.convert_inner_node_data(model_inputs)
   config['input_layers'] = model_inputs
@@ -1309,7 +1307,7 @@ def get_network_config(network, serialize_layer_fn=None):
         tf_utils.ListWrapper([layer.name, new_node_index, tensor_index]))
   model_outputs = nest.pack_sequence_as(network._nested_outputs, model_outputs)
   # Preserve external Keras compat for Models with single output.
-  if not nest.is_sequence(model_outputs):
+  if not nest.is_nested(model_outputs):
     model_outputs = [model_outputs]
   model_outputs = tf_utils.convert_inner_node_data(model_outputs)
   config['output_layers'] = model_outputs

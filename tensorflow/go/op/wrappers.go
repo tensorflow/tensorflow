@@ -8508,99 +8508,6 @@ func IteratorGetNextSync(scope *Scope, iterator tf.Output, output_types []tf.Dat
 	return components
 }
 
-// RaggedCountSparseOutputAttr is an optional argument to RaggedCountSparseOutput.
-type RaggedCountSparseOutputAttr func(optionalAttr)
-
-// RaggedCountSparseOutputMinlength sets the optional minlength attribute to value.
-//
-// value: Minimum value to count. Can be set to -1 for no minimum.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RaggedCountSparseOutputMinlength(value int64) RaggedCountSparseOutputAttr {
-	return func(m optionalAttr) {
-		m["minlength"] = value
-	}
-}
-
-// RaggedCountSparseOutputMaxlength sets the optional maxlength attribute to value.
-//
-// value: Maximum value to count. Can be set to -1 for no maximum.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RaggedCountSparseOutputMaxlength(value int64) RaggedCountSparseOutputAttr {
-	return func(m optionalAttr) {
-		m["maxlength"] = value
-	}
-}
-
-// Performs sparse-output bin counting for a ragged tensor input.
-//
-//   Counts the number of times each value occurs in the input.
-//
-// Arguments:
-//	splits: Tensor containing the row splits of the ragged tensor to count.
-//	values: Tensor containing values of the sparse tensor to count.
-//	weights: A Tensor of the same shape as indices containing per-index weight values.
-// May also be the empty tensor if no weights are used.
-//	binary_output: Whether to output the number of occurrences of each value or 1.
-//
-// Returns:
-//	output_indices: Indices tensor for the resulting sparse tensor object.
-//	output_values: Values tensor for the resulting sparse tensor object.
-//	output_dense_shape: Shape tensor for the resulting sparse tensor object.
-//   END
-//   }
-//   attr {
-//     name: "T"
-//     description: <<END
-// Dtype of the input values tensor.
-func RaggedCountSparseOutput(scope *Scope, splits tf.Output, values tf.Output, weights tf.Output, binary_output bool, optional ...RaggedCountSparseOutputAttr) (output_indices tf.Output, output_values tf.Output, output_dense_shape tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"binary_output": binary_output}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RaggedCountSparseOutput",
-		Input: []tf.Input{
-			splits, values, weights,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Gets the next output from the given iterator .
-func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "IteratorGetNext",
-		Input: []tf.Input{
-			iterator,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
-		scope.UpdateErr("IteratorGetNext", err)
-		return
-	}
-	return components
-}
-
 // Makes a new iterator from the given `dataset` and stores it in `iterator`.
 //
 // This operation may be executed multiple times. Each execution will reset the
@@ -10233,6 +10140,34 @@ func TensorArraySizeV2(scope *Scope, handle tf.Output, flow_in tf.Output) (size 
 	return op.Output(0)
 }
 
+// Creates a dataset that changes the batch size.
+//
+// Creates a dataset that rebatches elements from `input_dataset` into new batch
+// sizes.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	batch_sizes: A vector of integers representing the size of batches to produce. These values
+// are cycled through in order.
+//
+//
+//
+func RebatchDatasetV2(scope *Scope, input_dataset tf.Output, batch_sizes tf.Output, drop_remainder tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "RebatchDatasetV2",
+		Input: []tf.Input{
+			input_dataset, batch_sizes, drop_remainder,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RebatchDatasetAttr is an optional argument to RebatchDataset.
 type RebatchDatasetAttr func(optionalAttr)
 
@@ -11318,6 +11253,114 @@ func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged 
 		Type: "DynamicStitch",
 		Input: []tf.Input{
 			tf.OutputList(indices), tf.OutputList(data),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RaggedCountSparseOutputAttr is an optional argument to RaggedCountSparseOutput.
+type RaggedCountSparseOutputAttr func(optionalAttr)
+
+// RaggedCountSparseOutputMinlength sets the optional minlength attribute to value.
+//
+// value: Minimum value to count. Can be set to -1 for no minimum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RaggedCountSparseOutputMinlength(value int64) RaggedCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["minlength"] = value
+	}
+}
+
+// RaggedCountSparseOutputMaxlength sets the optional maxlength attribute to value.
+//
+// value: Maximum value to count. Can be set to -1 for no maximum.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RaggedCountSparseOutputMaxlength(value int64) RaggedCountSparseOutputAttr {
+	return func(m optionalAttr) {
+		m["maxlength"] = value
+	}
+}
+
+// Performs sparse-output bin counting for a ragged tensor input.
+//
+//   Counts the number of times each value occurs in the input.
+//
+// Arguments:
+//	splits: Tensor containing the row splits of the ragged tensor to count.
+//	values: Tensor containing values of the sparse tensor to count.
+//	weights: A Tensor of the same shape as indices containing per-index weight values.
+// May also be the empty tensor if no weights are used.
+//	binary_output: Whether to output the number of occurrences of each value or 1.
+//
+// Returns:
+//	output_indices: Indices tensor for the resulting sparse tensor object.
+//	output_values: Values tensor for the resulting sparse tensor object.
+//	output_dense_shape: Shape tensor for the resulting sparse tensor object.
+//   END
+//   }
+//   attr {
+//     name: "T"
+//     description: <<END
+// Dtype of the input values tensor.
+func RaggedCountSparseOutput(scope *Scope, splits tf.Output, values tf.Output, weights tf.Output, binary_output bool, optional ...RaggedCountSparseOutputAttr) (output_indices tf.Output, output_values tf.Output, output_dense_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"binary_output": binary_output}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RaggedCountSparseOutput",
+		Input: []tf.Input{
+			splits, values, weights,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Gets the next output from the given iterator .
+func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "IteratorGetNext",
+		Input: []tf.Input{
+			iterator,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("IteratorGetNext", err)
+		return
+	}
+	return components
+}
+
+// Computes the static batch size of a dataset sans partial batches.
+func ComputeBatchSize(scope *Scope, input_dataset tf.Output) (batch_size tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ComputeBatchSize",
+		Input: []tf.Input{
+			input_dataset,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -14945,9 +14988,8 @@ func MatrixInverseAdjoint(value bool) MatrixInverseAttr {
 	}
 }
 
-// Computes the inverse of one or more square invertible matrices or their
+// Computes the inverse of one or more square invertible matrices or their adjoints (conjugate transposes).
 //
-// adjoints (conjugate transposes).
 //
 // The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 // form square matrices. The output is a tensor of the same shape as the input
@@ -28322,6 +28364,9 @@ func AvgPool3DDataFormat(value string) AvgPool3DAttr {
 }
 
 // Performs 3D average pooling on the input.
+//
+// Each entry in `output` is the mean of the corresponding size `ksize` window in
+// `value`.
 //
 // Arguments:
 //	input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.

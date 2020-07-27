@@ -42,13 +42,13 @@ absl::Status CreateImageBufferFromBuffer(const CLContext& context,
   format.image_channel_data_type = ToImageChannelType(data_type);
   format.image_channel_order = CL_RGBA;
 
-  cl_int error;
+  cl_int error_code;
   *result = clCreateImage(context.context(), CL_MEM_READ_WRITE, &format, &desc,
-                          nullptr, &error);
-  if (error != CL_SUCCESS) {
+                          nullptr, &error_code);
+  if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
-        absl::StrCat("Failed to create Texture2D (clCreateImage)",
-                     CLErrorCodeToString(error)));
+        absl::StrCat("Failed to create Image from Buffer (clCreateImage): ",
+                     CLErrorCodeToString(error_code)));
   }
   return absl::OkStatus();
 }
@@ -485,7 +485,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                      data_size, nullptr, &error_code);
       if (!memory) {
         return absl::UnknownError(
-            absl::StrCat("Failed to allocate device memory with clCreateBuffer",
+            absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
                          CLErrorCodeToString(error_code)));
       }
       *result = CLMemory(memory, true);
@@ -512,7 +512,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
-            absl::StrCat("Failed to create Texture2D (clCreateImage)",
+            absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
@@ -540,7 +540,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
-            absl::StrCat("Failed to create Texture3D (clCreateImage)",
+            absl::StrCat("Failed to create 3D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
@@ -569,7 +569,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                     &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
-            absl::StrCat("Failed to create TextureArray (clCreateImage)",
+            absl::StrCat("Failed to create 2D texture array (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
@@ -609,7 +609,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
-            absl::StrCat("Failed to create Texture2D (clCreateImage)",
+            absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 

@@ -132,7 +132,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 #define TF_LITE_CONCATENATION_QUANTIZED()                                     \
   {                                                                           \
     VectorOfQuantizedTensors all_inputs(*context, *node->inputs);             \
-    std::vector<int32> effective_scale_multiplier;                            \
+    std::vector<int32_t> effective_scale_multiplier;                          \
     std::vector<int> effective_scale_shift;                                   \
     if (params->fixed_point_scaling) {                                        \
       effective_scale_multiplier.resize(node->inputs->size);                  \

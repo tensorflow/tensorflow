@@ -130,6 +130,19 @@ Status SetPerCoreArgShapes(
 
 }  // namespace
 
+CompileOpImplFactory* CompileOpImplFactory::factory_ = nullptr;
+
+/* static */
+CompileOpImplFactory* CompileOpImplFactory::Get() { return factory_; }
+
+/* static */
+void CompileOpImplFactory::Register(CompileOpImplFactory* factory) {
+  CHECK_EQ(factory_, nullptr)
+      << "CompileOpImplFactory can only be registered "
+         "once and there can only be one factory active and used.";
+  factory_ = factory;
+}
+
 Status TpuCompileOpKernelCommon::AssignReturnValueToCore(
     std::vector<tpu::ShardingAndIndex>* retval_core_mapping) {
   std::vector<int> per_core_retval_counts(metadata_.num_cores_per_replica(), 0);
@@ -176,6 +189,7 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
     XlaCompiler::Argument& arg = args->back();
     arg.type = proto_arg.dtype();
     arg.shape = arg_shapes[i];
+    arg.node_name = proto_arg.name();
     switch (proto_arg.kind()) {
       case tpu::TPUCompileMetadataProto::Arg::PARAMETER:
         arg.kind = XlaCompiler::Argument::kParameter;
@@ -371,16 +385,18 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
 }
 
 /* static */ void TpuCompileOpKernelCommon::ExitCountdown(
-    OpKernelContext* ctx, std::shared_ptr<std::atomic<bool>> done) {
+    Env* env, std::shared_ptr<std::atomic<bool>> done) {
   const int kSleepSeconds = 300;
   LOG(INFO) << "TpuCompileOp was cancelled. Sleeping for " << kSleepSeconds
             << " seconds to give time for TPUCompileOp to finished.";
-  ctx->env()->SleepForMicroseconds(kSleepSeconds * 1000000);
+  env->SleepForMicroseconds(kSleepSeconds * 1000000);
   if (done->load()) {
-    // If the TPUCompileOp has finished, then terminate peacefully.
+    // If the TpuCompileOp has finished, then terminate peacefully.
     return;
   }
 
+  LOG(ERROR) << "Aborting process due to cancelled TpuCompileOp. This "
+             << "termination is to ensure a consistent state.";
   std::exit(42);
 }
 
@@ -562,7 +578,8 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
 
         // Sleep and exit in another thread so the cancellation manager can
         // continue running callbacks.
-        ctx->env()->SchedClosure([ctx, done]() { ExitCountdown(ctx, done); });
+        Env* env = ctx->env();
+        env->SchedClosure([env, done]() { ExitCountdown(env, done); });
       });
 
   // If the RPC was cancelled before we registered the cancellation callback,

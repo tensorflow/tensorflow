@@ -41,7 +41,7 @@ def main():
     # compile for C
     return call([CPU_C_COMPILER] + compiler_flags)
 
-  # create a blacklist of folders that will be skipped when compiling with ComputeCpp
+  # create a denylist of folders that will be skipped when compiling with ComputeCpp
   skip_extensions = [".cu.cc"]
   skip_folders = ["tensorflow/compiler", "tensorflow/docs_src", "third_party", "external", "hexagon"]
   skip_folders = [(folder + '/') for folder in skip_folders]

@@ -54,8 +54,13 @@ void TestAveragePoolingFloat(std::initializer_list<int> input_dims_data,
       resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
-                                   filter_width, filter_height, activation};
+  TfLitePoolParams builtin_data = {padding,
+                                   stride_width,
+                                   stride_height,
+                                   filter_width,
+                                   filter_height,
+                                   activation,
+                                   {}};
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
   void* user_data = nullptr;
@@ -100,7 +105,7 @@ void TestAveragePoolingQuantized(
     std::initializer_list<int> output_dims_data, float output_min,
     float output_max, TfLitePadding padding, TfLiteFusedActivation activation,
     T* output_data) {
-  static_assert(sizeof(T) == 1, "Only int8/uint8 data types allowed.");
+  static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
 
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
@@ -122,8 +127,13 @@ void TestAveragePoolingQuantized(
       resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
-                                   filter_width, filter_height, activation};
+  TfLitePoolParams builtin_data = {padding,
+                                   stride_width,
+                                   stride_height,
+                                   filter_width,
+                                   filter_height,
+                                   activation,
+                                   {}};
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
   void* user_data = nullptr;
@@ -185,10 +195,13 @@ void TestMaxPoolFloat(std::initializer_list<int> input_dims_data,
       resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLitePoolParams builtin_data = {
-      padding,      stride_width,  stride_height,
-      filter_width, filter_height, activation,
-  };
+  TfLitePoolParams builtin_data = {padding,
+                                   stride_width,
+                                   stride_height,
+                                   filter_width,
+                                   filter_height,
+                                   activation,
+                                   {}};
 
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
@@ -233,7 +246,7 @@ void TestMaxPoolQuantized(std::initializer_list<int> input_dims_data,
                           std::initializer_list<int> output_dims_data,
                           TfLitePadding padding,
                           TfLiteFusedActivation activation, T* output_data) {
-  static_assert(sizeof(T) == 1, "Only int8/uint8 data types allowed.");
+  static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
 
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
@@ -255,10 +268,13 @@ void TestMaxPoolQuantized(std::initializer_list<int> input_dims_data,
       resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLitePoolParams builtin_data = {
-      padding,      stride_width,  stride_height,
-      filter_width, filter_height, activation,
-  };
+  TfLitePoolParams builtin_data = {padding,
+                                   stride_width,
+                                   stride_height,
+                                   filter_width,
+                                   filter_height,
+                                   activation,
+                                   {}};
 
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;

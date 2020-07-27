@@ -240,6 +240,8 @@ tf_cuda_cc_test(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
@@ -260,6 +262,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:refcount",
     ],
 )
 
@@ -308,6 +311,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util:abstract_stack_trace",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -514,7 +519,6 @@ tf_cuda_cc_test(
     extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
-        "noasan",  # leaks gRPC server instances
     ],
     deps = [
         ":c_api",
@@ -581,7 +585,6 @@ tf_cuda_cc_test(
     extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
-        "noasan",  # leaks gRPC server instances
     ],
     deps = [
         ":c_api",

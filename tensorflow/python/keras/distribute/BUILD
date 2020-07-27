@@ -198,7 +198,7 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
     ],
@@ -412,7 +412,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
-        "notap",  # TODO(b/161144880): flaky
         "notsan",
     ],
     deps = [

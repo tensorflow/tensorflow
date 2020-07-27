@@ -77,12 +77,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -104,7 +99,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                         input->type, input, filter, bias,
                                         output, data));
 
-  if (input->type == kTfLiteInt8 && nullptr != GetTensorData<int32>(bias)) {
+  if (input->type == kTfLiteInt8 && nullptr != GetTensorData<int32_t>(bias)) {
     RuntimeShape filter_shape = GetTensorShape(filter);
     RuntimeShape output_shape = GetTensorShape(output);
 
@@ -135,7 +130,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                const TfLiteTensor* bias, TfLiteTensor* output) {
   // The 'if' condition can be removed when null handling of bias is added to
   // arm_fully_connected_s8
-  if (nullptr != GetTensorData<int32>(bias)) {
+  if (nullptr != GetTensorData<int32_t>(bias)) {
     RuntimeShape output_shape = GetTensorShape(output);
     TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
     const int batches = output_shape.Dims(0);
@@ -194,7 +189,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
         arm_fully_connected_s8(&ctx, &fc_params, &quant_params, &input_dims,
                                GetTensorData<int8_t>(input), &filter_dims,
                                GetTensorData<int8_t>(filter), &bias_dims,
-                               GetTensorData<int32>(bias), &output_dims,
+                               GetTensorData<int32_t>(bias), &output_dims,
                                GetTensorData<int8_t>(output)),
         ARM_MATH_SUCCESS);
   } else {

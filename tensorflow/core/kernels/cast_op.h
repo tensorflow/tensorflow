@@ -278,48 +278,6 @@ template <typename From, typename To>
 struct functor_traits<scalar_cast_op<std::complex<From>, std::complex<To>>>
     : functor_traits_complex_impl<std::complex<From>, std::complex<To>> {};
 
-// Specialized cast op impls for bfloat16.
-template <>
-struct scalar_cast_op<::tensorflow::bfloat16, float> {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_cast_op)
-  typedef float result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(
-      const ::tensorflow::bfloat16& a) const {
-    float ret;
-    uint16_t* p = reinterpret_cast<uint16_t*>(&ret);
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    p[0] = a.value;
-    p[1] = 0;
-#else
-    static_assert(::tensorflow::port::kLittleEndian,
-                  "Not a little endian system!");
-    p[0] = 0;
-    p[1] = a.value;
-#endif
-    return ret;
-  }
-};
-
-template <>
-struct functor_traits<scalar_cast_op<::tensorflow::bfloat16, float>> {
-  enum { Cost = NumTraits<float>::AddCost, PacketAccess = false };
-};
-
-template <>
-struct scalar_cast_op<float, ::tensorflow::bfloat16> {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_cast_op)
-  typedef ::tensorflow::bfloat16 result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const ::tensorflow::bfloat16 operator()(
-      const float a) const {
-    return ::tensorflow::bfloat16(a);
-  }
-};
-
-template <>
-struct functor_traits<scalar_cast_op<float, ::tensorflow::bfloat16>> {
-  enum { Cost = NumTraits<float>::AddCost, PacketAccess = false };
-};
-
 }  // namespace internal
 }  // namespace Eigen
 

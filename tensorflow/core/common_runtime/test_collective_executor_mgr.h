@@ -53,6 +53,30 @@ class TestCollectiveExecutor : public CollectiveExecutor {
   }
 };
 
+class TestParamResolver : public ParamResolverInterface {
+  void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+                           CancellationManager* cancel_mgr,
+                           const StatusCallback& done) override {
+    done(errors::Internal("Unimplemented"));
+  }
+
+  void CompleteGroupAsync(const CompleteGroupRequest* request,
+                          CompleteGroupResponse* response,
+                          CancellationManager* cancel_mgr,
+                          const StatusCallback& done) override {
+    done(errors::Internal("Unimplemented"));
+  }
+
+  void CompleteInstanceAsync(const CompleteInstanceRequest* request,
+                             CompleteInstanceResponse* response,
+                             CancellationManager* cancel_mgr,
+                             const StatusCallback& done) override {
+    done(errors::Internal("Unimplemented"));
+  }
+
+  void StartAbort(const Status& s) override { return; }
+};
+
 class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  public:
   TestCollectiveExecutorMgr() {}
@@ -87,8 +111,7 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   }
 
   ParamResolverInterface* GetParamResolver() const override {
-    LOG(FATAL);
-    return nullptr;
+    return &param_resolver_;
   }
 
   DeviceResolverInterface* GetDeviceResolver() const override {
@@ -115,6 +138,7 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
 
   mutex mu_;
   gtl::FlatMap<int64, CollectiveExecutor*> table_ TF_GUARDED_BY(mu_);
+  mutable TestParamResolver param_resolver_;
 };
 
 }  // namespace tensorflow

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 
-#include "tensorflow/core/data/service/master.grpc.pb.h"
+#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -67,11 +67,11 @@ class DataServiceClientBase {
   const std::string protocol_;
 };
 
-// Client for communicating with the tf.data service master.
-class DataServiceMasterClient : public DataServiceClientBase {
+// Client for communicating with the tf.data service dispatcher.
+class DataServiceDispatcherClient : public DataServiceClientBase {
  public:
-  DataServiceMasterClient(const std::string& address,
-                          const std::string& protocol)
+  DataServiceDispatcherClient(const std::string& address,
+                              const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
   // Registers a dataset with the tf.data service, and stores the generated
@@ -90,13 +90,13 @@ class DataServiceMasterClient : public DataServiceClientBase {
                         const std::string& job_name, int job_name_index,
                         int64* job_id);
 
-  // Queries the master for the tasks associated with the specified job.
+  // Queries the dispatcher for the tasks associated with the specified job.
   // The tasks will be stored in *tasks, and whether the job is finished will
   // be stored in `*job_finished`.
   Status GetTasks(int64 job_id, std::vector<TaskInfo>* tasks,
                   bool* job_finished);
 
-  // Queries the master for its registered workers. The worker info will be
+  // Queries the dispatcher for its registered workers. The worker info will be
   // stored in `*workers`.
   Status GetWorkers(std::vector<WorkerInfo>* workers);
 
@@ -104,7 +104,7 @@ class DataServiceMasterClient : public DataServiceClientBase {
   Status EnsureInitialized() override;
 
  private:
-  std::unique_ptr<MasterService::Stub> stub_;
+  std::unique_ptr<DispatcherService::Stub> stub_;
 };
 
 // Client for communicating with the tf.data service worker.
@@ -127,10 +127,10 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   std::unique_ptr<WorkerService::Stub> stub_;
 };
 
-// Creates and initializes a new tf.data service master client.
-Status CreateDataServiceMasterClient(
+// Creates and initializes a new tf.data service dispatcher client.
+Status CreateDataServiceDispatcherClient(
     const std::string& address, const std::string& protocol,
-    std::unique_ptr<DataServiceMasterClient>* out);
+    std::unique_ptr<DataServiceDispatcherClient>* out);
 
 // Creates and initializes a new tf.data service worker client.
 Status CreateDataServiceWorkerClient(

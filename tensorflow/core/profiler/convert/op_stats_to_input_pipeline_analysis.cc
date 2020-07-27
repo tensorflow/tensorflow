@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
@@ -207,7 +208,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
                                   GetTimeInMs(type_ps, DEVICE_WAIT_HOST));
     details.set_output_ms(GetTimeInMs(type_ps, DEVICE_TO_HOST));
     details.set_device_compute_ms(GetTimeInMs(type_ps, DEVICE_COMPUTE_16) +
-                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32));
+                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32) +
+                                  GetTimeInMs(type_ps, DEVICE_COLLECTIVES));
     details.set_device_to_device_ms(GetTimeInMs(type_ps, DEVICE_TO_DEVICE) +
                                     GetTimeInMs(type_ps, DEVICE_WAIT_DEVICE));
     details.set_host_compute_ms(GetTimeInMs(type_ps, HOST_COMPUTE));
@@ -553,12 +555,13 @@ StepSummary ComputeStepTimeSummaryInMs(
 }
 
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
-    const OpStats& op_stats, const HardwareType& hardware_type) {
+    const OpStats& op_stats) {
   InputPipelineAnalysisResult result =
       ComputeGenericInputPipelineAnalysisResult(
           op_stats.step_db().step_sequence());
   PopulateStepDiagnostics(op_stats, result.mutable_diagnostics());
-  result.set_hardware_type(HardwareType_Name(hardware_type));
+  result.set_hardware_type(HardwareType_Name(
+      ParseHardwareType(op_stats.run_environment().device_type())));
   GenerateHostResult(op_stats.host_op_metrics_db(), &result);
 
   InputPipelineAnalysisRecommendation recommendation = GenerateRecommendation();

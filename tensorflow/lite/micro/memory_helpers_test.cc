@@ -20,9 +20,15 @@ limitations under the License.
 
 namespace {
 
-TfLiteStatus FakeAllocatePersistentBuffer(TfLiteContext* context, size_t bytes,
-                                          void** ptr) {
-  return kTfLiteOk;
+// This just needs to be big enough to handle the array of 5 ints allocated
+// in TestAllocateOutputDimensionsFromInput below.
+const int kGlobalPersistentBufferLength = 100;
+char global_persistent_buffer[kGlobalPersistentBufferLength];
+
+// Only need to handle a single allocation at a time for output dimensions
+// in TestAllocateOutputDimensionsFromInput.
+void* FakeAllocatePersistentBuffer(TfLiteContext* context, size_t bytes) {
+  return reinterpret_cast<void*>(global_persistent_buffer);
 }
 
 }  // namespace
@@ -33,78 +39,78 @@ TF_LITE_MICRO_TEST(TestAlignPointerUp) {
   uint8_t* input0 = reinterpret_cast<uint8_t*>(0);
 
   uint8_t* input0_aligned1 = tflite::AlignPointerUp(input0, 1);
-  TF_LITE_MICRO_EXPECT_EQ(input0, input0_aligned1);
+  TF_LITE_MICRO_EXPECT(input0 == input0_aligned1);
 
   uint8_t* input0_aligned2 = tflite::AlignPointerUp(input0, 2);
-  TF_LITE_MICRO_EXPECT_EQ(input0, input0_aligned2);
+  TF_LITE_MICRO_EXPECT(input0 == input0_aligned2);
 
   uint8_t* input0_aligned3 = tflite::AlignPointerUp(input0, 3);
-  TF_LITE_MICRO_EXPECT_EQ(input0, input0_aligned3);
+  TF_LITE_MICRO_EXPECT(input0 == input0_aligned3);
 
   uint8_t* input0_aligned16 = tflite::AlignPointerUp(input0, 16);
-  TF_LITE_MICRO_EXPECT_EQ(input0, input0_aligned16);
+  TF_LITE_MICRO_EXPECT(input0 == input0_aligned16);
 
   uint8_t* input23 = reinterpret_cast<uint8_t*>(23);
 
   uint8_t* input23_aligned1 = tflite::AlignPointerUp(input23, 1);
-  TF_LITE_MICRO_EXPECT_EQ(input23, input23_aligned1);
+  TF_LITE_MICRO_EXPECT(input23 == input23_aligned1);
 
   uint8_t* input23_aligned2 = tflite::AlignPointerUp(input23, 2);
   uint8_t* expected23_aligned2 = reinterpret_cast<uint8_t*>(24);
-  TF_LITE_MICRO_EXPECT_EQ(expected23_aligned2, input23_aligned2);
+  TF_LITE_MICRO_EXPECT(expected23_aligned2 == input23_aligned2);
 
   uint8_t* input23_aligned3 = tflite::AlignPointerUp(input23, 3);
   uint8_t* expected23_aligned3 = reinterpret_cast<uint8_t*>(24);
-  TF_LITE_MICRO_EXPECT_EQ(expected23_aligned3, input23_aligned3);
+  TF_LITE_MICRO_EXPECT(expected23_aligned3 == input23_aligned3);
 
   uint8_t* input23_aligned16 = tflite::AlignPointerUp(input23, 16);
   uint8_t* expected23_aligned16 = reinterpret_cast<uint8_t*>(32);
-  TF_LITE_MICRO_EXPECT_EQ(expected23_aligned16, input23_aligned16);
+  TF_LITE_MICRO_EXPECT(expected23_aligned16 == input23_aligned16);
 }
 
 TF_LITE_MICRO_TEST(TestAlignPointerDown) {
   uint8_t* input0 = reinterpret_cast<uint8_t*>(0);
 
   uint8_t* input0_aligned1 = tflite::AlignPointerDown(input0, 1);
-  TF_LITE_MICRO_EXPECT_EQ(input0, input0_aligned1);
+  TF_LITE_MICRO_EXPECT(input0 == input0_aligned1);
 
   uint8_t* input0_aligned2 = tflite::AlignPointerDown(input0, 2);
-  TF_LITE_MICRO_EXPECT_EQ(input0, input0_aligned2);
+  TF_LITE_MICRO_EXPECT(input0 == input0_aligned2);
 
   uint8_t* input0_aligned3 = tflite::AlignPointerDown(input0, 3);
-  TF_LITE_MICRO_EXPECT_EQ(input0, input0_aligned3);
+  TF_LITE_MICRO_EXPECT(input0 == input0_aligned3);
 
   uint8_t* input0_aligned16 = tflite::AlignPointerDown(input0, 16);
-  TF_LITE_MICRO_EXPECT_EQ(input0, input0_aligned16);
+  TF_LITE_MICRO_EXPECT(input0 == input0_aligned16);
 
   uint8_t* input23 = reinterpret_cast<uint8_t*>(23);
 
   uint8_t* input23_aligned1 = tflite::AlignPointerDown(input23, 1);
-  TF_LITE_MICRO_EXPECT_EQ(input23, input23_aligned1);
+  TF_LITE_MICRO_EXPECT(input23 == input23_aligned1);
 
   uint8_t* input23_aligned2 = tflite::AlignPointerDown(input23, 2);
   uint8_t* expected23_aligned2 = reinterpret_cast<uint8_t*>(22);
-  TF_LITE_MICRO_EXPECT_EQ(expected23_aligned2, input23_aligned2);
+  TF_LITE_MICRO_EXPECT(expected23_aligned2 == input23_aligned2);
 
   uint8_t* input23_aligned3 = tflite::AlignPointerDown(input23, 3);
   uint8_t* expected23_aligned3 = reinterpret_cast<uint8_t*>(21);
-  TF_LITE_MICRO_EXPECT_EQ(expected23_aligned3, input23_aligned3);
+  TF_LITE_MICRO_EXPECT(expected23_aligned3 == input23_aligned3);
 
   uint8_t* input23_aligned16 = tflite::AlignPointerDown(input23, 16);
   uint8_t* expected23_aligned16 = reinterpret_cast<uint8_t*>(16);
-  TF_LITE_MICRO_EXPECT_EQ(expected23_aligned16, input23_aligned16);
+  TF_LITE_MICRO_EXPECT(expected23_aligned16 == input23_aligned16);
 }
 
 TF_LITE_MICRO_TEST(TestAlignSizeUp) {
-  TF_LITE_MICRO_EXPECT_EQ(1, tflite::AlignSizeUp(1, 1));
-  TF_LITE_MICRO_EXPECT_EQ(2, tflite::AlignSizeUp(1, 2));
-  TF_LITE_MICRO_EXPECT_EQ(3, tflite::AlignSizeUp(1, 3));
-  TF_LITE_MICRO_EXPECT_EQ(16, tflite::AlignSizeUp(1, 16));
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1), tflite::AlignSizeUp(1, 1));
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(2), tflite::AlignSizeUp(1, 2));
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(3), tflite::AlignSizeUp(1, 3));
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(16), tflite::AlignSizeUp(1, 16));
 
-  TF_LITE_MICRO_EXPECT_EQ(23, tflite::AlignSizeUp(23, 1));
-  TF_LITE_MICRO_EXPECT_EQ(24, tflite::AlignSizeUp(23, 2));
-  TF_LITE_MICRO_EXPECT_EQ(24, tflite::AlignSizeUp(23, 3));
-  TF_LITE_MICRO_EXPECT_EQ(32, tflite::AlignSizeUp(23, 16));
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(23), tflite::AlignSizeUp(23, 1));
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(24), tflite::AlignSizeUp(23, 2));
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(24), tflite::AlignSizeUp(23, 3));
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(32), tflite::AlignSizeUp(23, 16));
 }
 
 TF_LITE_MICRO_TEST(TestTypeSizeOf) {
@@ -157,16 +163,16 @@ TF_LITE_MICRO_TEST(TestBytesRequiredForTensor) {
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, tflite::BytesRequiredForTensor(*tensor100, &bytes, &type_size,
                                                 micro_test::reporter));
-  TF_LITE_MICRO_EXPECT_EQ(400, bytes);
-  TF_LITE_MICRO_EXPECT_EQ(4, type_size);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(400), bytes);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), type_size);
 
   const tflite::Tensor* tensor200 =
       tflite::testing::Create1dFlatbufferTensor(200);
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, tflite::BytesRequiredForTensor(*tensor200, &bytes, &type_size,
                                                 micro_test::reporter));
-  TF_LITE_MICRO_EXPECT_EQ(800, bytes);
-  TF_LITE_MICRO_EXPECT_EQ(4, type_size);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(800), bytes);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), type_size);
 }
 
 TF_LITE_MICRO_TEST(TestAllocateOutputDimensionsFromInput) {
@@ -181,8 +187,8 @@ TF_LITE_MICRO_TEST(TestAllocateOutputDimensionsFromInput) {
   TfLiteTensor output_tensor = tflite::testing::CreateInt32Tensor(
       nullptr, tflite::testing::IntArrayFromInts(output_dims));
   TfLiteContext context;
-  // Set allocator to no-op to avoid segfault. Memory is already allocated for
-  // output dims.
+  // Only need to allocate space for output_tensor.dims.  Use a simple
+  // fake allocator.
   context.AllocatePersistentBuffer = FakeAllocatePersistentBuffer;
 
   TF_LITE_MICRO_EXPECT_EQ(

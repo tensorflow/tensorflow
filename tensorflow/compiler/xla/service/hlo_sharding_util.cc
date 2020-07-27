@@ -190,13 +190,22 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       target_dims_stack.push_back(t_size);
     } else if (s_size > t_size) {
       // Dimension split.
-      if (s_size % t_size != 0 || t_size % s_partitions != 0) {
+      if (s_size % t_size != 0 || s_size % s_partitions != 0) {
         return absl::nullopt;
       }
-      target_tile_assignment_dimensions.push_back(s_partitions);
-      // We have part of the s_size unprocessed, so put it back to stack.
-      source_dims_stack.push_back(s_size / t_size);
-      sharding_tile_dims_stack.push_back(1);
+      if (t_size % s_partitions == 0) {
+        target_tile_assignment_dimensions.push_back(s_partitions);
+        // We have part of the s_size unprocessed, so put it back to stack.
+        source_dims_stack.push_back(s_size / t_size);
+        sharding_tile_dims_stack.push_back(1);
+      } else if (s_partitions % t_size == 0) {
+        target_tile_assignment_dimensions.push_back(t_size);
+        // We have part of the s_size unprocessed, so put it back to stack.
+        source_dims_stack.push_back(s_size / t_size);
+        sharding_tile_dims_stack.push_back(s_partitions / t_size);
+      } else {
+        return absl::nullopt;
+      }
     } else {
       // Dimension merge. Also merge the source dimension with the next, and
       // process it next time.

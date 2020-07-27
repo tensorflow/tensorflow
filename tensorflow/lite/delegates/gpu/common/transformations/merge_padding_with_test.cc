@@ -108,7 +108,7 @@ TEST(MergePaddingWith, MergeTwo) {
   EXPECT_EQ(HW(2, 2), conv_attr.padding.appended);
 }
 
-TEST(MergePaddingWithAdd, MergeOne) {
+TEST(MergePaddingWithAdd, MergeAlignedPadding) {
   GraphFloat32 graph;
   auto input0 = graph.NewValue();
   input0->tensor.shape = BHWC(1, 4, 4, 8);
@@ -144,6 +144,46 @@ TEST(MergePaddingWithAdd, MergeOne) {
   ASSERT_EQ(1, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
   EXPECT_EQ(add_node, graph.nodes()[0]);
+}
+
+TEST(MergePaddingWithAdd, DoNotTrigger_AddWithAttributes) {
+  GraphFloat32 graph;
+  auto input0 = graph.NewValue();
+  input0->tensor.shape = BHWC(1, 4, 4, 8);
+  auto input1 = graph.NewValue();
+  auto padded = graph.NewValue();
+  auto output = graph.NewValue();
+
+  auto pad_node = graph.NewNode();
+  pad_node->operation.type = ToString(OperationType::PAD);
+  PadAttributes pad_attr;
+  pad_attr.prepended = BHWC(0, 0, 0, 0);
+  pad_attr.appended = BHWC(0, 0, 0, 32);
+  pad_node->operation.attributes = pad_attr;
+
+  ASSERT_TRUE(graph.AddConsumer(pad_node->id, input0->id).ok());
+  ASSERT_TRUE(graph.SetProducer(pad_node->id, padded->id).ok());
+
+  auto add_node = graph.NewNode();
+  AddAttributes add_attr;
+  add_attr.param = Tensor<HWC, DataType::FLOAT32>();
+  ASSERT_TRUE(graph.AddConsumer(add_node->id, padded->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(add_node->id, input1->id).ok());
+  ASSERT_TRUE(graph.SetProducer(add_node->id, output->id).ok());
+  add_node->operation.type = ToString(OperationType::ADD);
+  add_node->operation.attributes = add_attr;
+
+  ASSERT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(4, graph.values().size());
+
+  auto transformation = NewMergePaddingWithAdd();
+  ModelTransformer transformer(&graph, nullptr);
+  transformer.Apply("merge_padding", transformation.get());
+
+  ASSERT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(4, graph.values().size());
+  EXPECT_EQ(pad_node, graph.nodes()[0]);
+  EXPECT_EQ(add_node, graph.nodes()[1]);
 }
 
 }  // namespace

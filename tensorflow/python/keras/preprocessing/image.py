@@ -120,25 +120,24 @@ def smart_resize(x, size, interpolation='bilinear'):
   shape = array_ops.shape(img)
   height, width = shape[0], shape[1]
   target_height, target_width = size
-  target_ratio = float(target_height) / target_width
-  img_ratio = math_ops.cast(
-      height, 'float32') / math_ops.cast(width, 'float32')
-  if target_ratio < img_ratio:
-    crop_height = math_ops.cast(
-        math_ops.cast(width, 'float32') * target_height / target_width, 'int32')
-    crop_box_hstart = math_ops.cast(
-        math_ops.cast(height - crop_height, 'float32') / 2, 'int32')
-    crop_box_start = [crop_box_hstart, 0, 0]
-    crop_box_size = [crop_height, -1, -1]
-  else:
-    crop_width = math_ops.cast(
-        math_ops.cast(height * target_width, 'float32') / target_height,
-        'int32')
-    crop_box_wstart = math_ops.cast((width - crop_width) / 2, 'int32')
-    crop_box_start = [0, crop_box_wstart, 0]
-    crop_box_size = [-1, crop_width, -1]
-  crop_box_start = array_ops.stack(crop_box_start)
-  crop_box_size = array_ops.stack(crop_box_size)
+
+  crop_height = math_ops.cast(
+      math_ops.cast(width * target_height, 'float32') / target_width, 'int32')
+  crop_width = math_ops.cast(
+      math_ops.cast(height * target_width, 'float32') / target_height, 'int32')
+
+  # Set back to input height / width if crop_height / crop_width is not smaller.
+  crop_height = math_ops.minimum(height, crop_height)
+  crop_width = math_ops.minimum(width, crop_width)
+
+  crop_box_hstart = math_ops.cast(
+      math_ops.cast(height - crop_height, 'float32') / 2, 'int32')
+  crop_box_wstart = math_ops.cast(
+      math_ops.cast(width - crop_width, 'float32') / 2, 'int32')
+
+  crop_box_start = array_ops.stack([crop_box_hstart, crop_box_wstart, 0])
+  crop_box_size = array_ops.stack([crop_height, crop_width, -1])
+
   img = array_ops.slice(img, crop_box_start, crop_box_size)
   img = image_ops.resize_images_v2(
       images=img,

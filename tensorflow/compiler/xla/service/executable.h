@@ -105,6 +105,8 @@ class ExecutionInput {
     unowned_indices_.erase(index);
   }
 
+  const std::set<ShapeIndex>& unowned_indices() { return unowned_indices_; }
+
   const ShapeTree<MaybeOwningDeviceMemory>& Buffers() const { return buffers_; }
 
   ShapeTree<MaybeOwningDeviceMemory>* MutableBuffers() { return &buffers_; }
@@ -188,6 +190,12 @@ class ExecutionOutput {
 
   std::vector<se::OwningDeviceMemory> ConsumeToBeReleased() {
     return std::move(to_be_released_);
+  }
+
+  std::vector<ShapeIndex> ConsumeAliasedIndices() {
+    auto aliased = std::move(aliased_indices_);
+    aliased_indices_.clear();
+    return aliased;
   }
 
  private:

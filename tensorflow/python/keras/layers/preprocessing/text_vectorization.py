@@ -25,7 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
@@ -71,7 +71,7 @@ _ACCUMULATOR_NUM_DOCUMENTS = "num_documents"
 
 @keras_export(
     "keras.layers.experimental.preprocessing.TextVectorization", v1=[])
-class TextVectorization(CombinerPreprocessingLayer):
+class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Text vectorization layer.
 
   This layer has basic options for managing text in a Keras model. It
@@ -291,6 +291,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     super(TextVectorization, self).__init__(
         combiner=None,
         **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("TextVectorization")
 
     mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(

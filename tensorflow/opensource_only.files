@@ -169,6 +169,7 @@ tensorflow/third_party/systemlibs/BUILD
 tensorflow/third_party/systemlibs/BUILD.tpl
 tensorflow/third_party/systemlibs/absl_py.BUILD
 tensorflow/third_party/systemlibs/absl_py.absl.flags.BUILD
+tensorflow/third_party/systemlibs/absl_py.absl.logging.BUILD
 tensorflow/third_party/systemlibs/absl_py.absl.testing.BUILD
 tensorflow/third_party/systemlibs/astor.BUILD
 tensorflow/third_party/systemlibs/boringssl.BUILD

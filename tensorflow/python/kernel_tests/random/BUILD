@@ -119,7 +119,7 @@ cuda_py_test(
     name = "stateless_random_ops_test",
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
-    shard_count = 2,
+    shard_count = 10,
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",

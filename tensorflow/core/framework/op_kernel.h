@@ -177,12 +177,10 @@ class OpKernel {
   // Returns a trace string for current computation, op name/type and input
   // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
   // should use the default implementation.
-  // Override this function to add OpKernel specific attributes that are
-  // necessary for cost analysis.
-  virtual string TraceString(OpKernelContext* ctx, bool verbose);
+  virtual string TraceString(const OpKernelContext& ctx, bool verbose) const;
 
  protected:
-  string GetTraceArgument(OpKernelContext* ctx);
+  string ShapeTraceString(const OpKernelContext& ctx) const;
 
  private:
   const std::shared_ptr<const NodeProperties> props_;
@@ -734,7 +732,7 @@ class OpKernelContext {
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
-  const Tensor& input(int index);
+  const Tensor& input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
