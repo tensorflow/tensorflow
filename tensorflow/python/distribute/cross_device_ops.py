@@ -1110,6 +1110,9 @@ class CollectiveAllReduce(CrossDeviceOps):
                   control_inputs,
                   executors=self._executors))
 
+    for e in self._executors:
+      e.wait()
+
     mirrored = []
     # Reverse the order of reduced value to recover the order in the input.
     for value in reversed(reduced_values):
