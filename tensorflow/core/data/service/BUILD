@@ -131,6 +131,42 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "journal",
+    srcs = ["journal.cc"],
+    hdrs = ["journal.h"],
+    deps = [
+        ":journal_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "journal_test",
+    srcs = ["journal_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":journal",
+        ":journal_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_proto_library(
+    name = "journal_proto",
+    srcs = ["journal.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":common_proto",
+    ],
+)
+
+cc_library(
     name = "credentials_factory",
     srcs = ["credentials_factory.cc"],
     hdrs = ["credentials_factory.h"],
