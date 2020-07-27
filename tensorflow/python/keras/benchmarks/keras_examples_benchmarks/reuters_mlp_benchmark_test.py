@@ -78,8 +78,8 @@ class MLPReutersBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_mlp_reuters_bs_128_gpu_1(self):
-    """Measure performance with batch_size=128, run_iters=2, gpu=1 and
+  def benchmark_mlp_reuters_bs_128_gpu_3(self):
+    """Measure performance with batch_size=128, run_iters=2, gpu=3 and
     distribution_strategy='mirrored'"""
     batch_size = 128
     run_iters = 2
@@ -89,7 +89,7 @@ class MLPReutersBenchmark(tf.test.Benchmark):
         y=self.y_train,
         batch_size=batch_size,
         run_iters=run_iters,
-        num_gpus=1,
+        num_gpus=3,
         distribution_strategy="mirrored",
         epochs=self.epochs,
         optimizer='adam',
