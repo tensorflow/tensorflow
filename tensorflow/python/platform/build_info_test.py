@@ -30,6 +30,10 @@ class BuildInfoTest(test.TestCase):
     self.assertEqual(build_info.build_info['is_cuda_build'],
                      test.is_built_with_cuda())
 
+  def testDeterministicOrder(self):
+    self.assertEqual(['is_cuda_build', 'is_rocm_build'],
+                     list(build_info.build_info.keys()))
+
 
 if __name__ == '__main__':
   test.main()
