@@ -140,29 +140,6 @@ TEST_F(AlgebraicSimplifierTest, MultiplyChain) {
           m::MultiplyAnyOrder(m::ConstantScalar(2), m::ConstantScalar(4)))));
 }
 
-// MUL(MUL(X, BROADCAST(constant)), BROADCAST(Y)) ==>
-// MUL(X, BROADCAST(MUL(Y, BROADCAST(constant))))
-TEST_F(AlgebraicSimplifierTest, MultiplyBroadcastReassoc) {
-  const char* kModuleStr = R"(
-    HloModule m
-    test {
-      p0 = f32[2,2] parameter(0)
-      p1 = f32[] parameter(1)
-      b = f32[] constant(2)
-      c = f32[2, 2] broadcast(b), dimensions={}
-      x = f32[2,2] multiply(p0, c)
-      y = f32[2,2] broadcast(p1), dimensions={}
-      ROOT z = f32[2,2] multiply(y, x)
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::MultiplyAnyOrder(
-                  m::Parameter(0), m::Broadcast(m::MultiplyAnyOrder(
-                                       m::Parameter(1), m::Constant())))));
-}
-
 // A*C + B*C => (A+B)*C if C is a broadcast of a floating-point power of 2.
 TEST_F(AlgebraicSimplifierTest, FactorFpAdditionWithBroadcast) {
   const char* kModuleStr = R"(

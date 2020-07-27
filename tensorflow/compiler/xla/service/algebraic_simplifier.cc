@@ -2502,43 +2502,6 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     }
   }
 
-  {
-    HloInstruction *a, *b, *constant, *op;
-    // Mul(Mul(a, constant1), Broadcast(b)) =>
-    // Mul(Broadcast(Mul(b, constant1), a))
-    if (Match(multiply,
-              m::MultiplyAnyOrder(m::MultiplyAnyOrder(m::NonConstant(&a),
-                                                      m::Constant(&constant)),
-                                  m::Op(&op))) ||
-        Match(multiply,
-              m::MultiplyAnyOrder(
-                  m::MultiplyAnyOrder(m::NonConstant(&a),
-                                      m::Broadcast(m::Constant(&constant))),
-                  m::Op(&op)))) {
-      // Check that the other side was a broadcast, and not of a constant.
-      if (ShapeUtil::IsScalar(constant->shape()) &&
-          Match(op, m::Broadcast(m::NonConstant()))) {
-        auto dims = op->dimensions();
-        b = op->mutable_operand(0);
-        if (!ShapeUtil::IsScalar(b->shape())) {
-          constant = computation_->AddInstruction(
-              HloInstruction::CreateBroadcast(b->shape(), constant, {}));
-        }
-
-        auto new_mul =
-            computation_->AddInstruction(HloInstruction::CreateBinary(
-                b->shape(), HloOpcode::kMultiply, b, constant));
-
-        return ReplaceWithNewInstruction(
-            multiply,
-            HloInstruction::CreateBinary(
-                multiply->shape(), HloOpcode::kMultiply, a,
-                computation_->AddInstruction(HloInstruction::CreateBroadcast(
-                    multiply->shape(), new_mul, dims))));
-      }
-    }
-  }
-
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
   if (Match(multiply,
