@@ -1042,14 +1042,6 @@ class ProgbarLogger(Callback):
   def _finalize_progbar(self, logs, counter):
     logs = tf_utils.to_numpy_or_python_type(logs or {})
     if self.target is None:
-<<<<<<< HEAD
-      self.target = self.seen
-      self.progbar.target = self.seen
-    logs = tf_utils.to_numpy_or_python_type(logs)
-    items=list(logs.items())
-    items.sort()
-    self.progbar.update(self.seen, items, finalize=True)
-=======
       if counter is not None:
         counter = counter.numpy()
         if not self.use_steps:
@@ -1057,7 +1049,6 @@ class ProgbarLogger(Callback):
       self.target = counter or self.seen
       self.progbar.target = self.target
     self.progbar.update(self.target, list(logs.items()), finalize=True)
->>>>>>> google-upstream/master
 
 
 @keras_export('keras.callbacks.History')

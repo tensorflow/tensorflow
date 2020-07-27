@@ -168,17 +168,6 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
       block_size_limit);
   CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-  // Earlier versions of this HIP routine incorrectly returned void.
-  // TODO re-enable hipError_t error checking when HIP is fixed.
-#if TENSORFLOW_COMPILER_IS_HIP_CLANG
-  // ROCm 3.5 (hipclang) and above have the same interface as CUDA
-  // no need anymore for the unsigned int conversions
-  hipOccupancyMaxPotentialBlockSize(&block_count, &thread_per_block, func,
-                                    dynamic_shared_memory_size,
-                                    block_size_limit);
-#else
-=======
 #if TENSORFLOW_COMPILER_IS_HIP_CLANG
   hipError_t err = hipOccupancyMaxPotentialBlockSize(
       &block_count, &thread_per_block, func, dynamic_shared_memory_size,
@@ -187,7 +176,6 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
 #else
   // Earlier versions of this HIP routine incorrectly returned void.
   // TODO re-enable hipError_t error checking when HIP is fixed.
->>>>>>> google-upstream/master
   // ROCm interface uses unsigned int, convert after checking
   uint32_t block_count_uint = 0;
   uint32_t thread_per_block_uint = 0;

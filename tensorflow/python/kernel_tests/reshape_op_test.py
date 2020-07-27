@@ -203,18 +203,6 @@ class ReshapeTest(test.TestCase):
     self.assertEqual([100, 1], y.get_shape().as_list())
 
   def testInt64Shape(self):
-<<<<<<< HEAD
-    if test.is_built_with_rocm():
-      self.skipTest("[50000, 50000] tensor is too large and caused OOM on ROCm.")
-
-    x = array_ops.zeros([50000, 50000])
-    # Provide dimension larger than int32
-    y = array_ops.reshape(x, [50000**2])
-    self.assertEqual([50000**2], y.get_shape().as_list())
-    # Even if first dimension is within int32, ensure we correctly go to int64
-    y = array_ops.reshape(x, [1, 50000**2])
-    self.assertEqual([1, 50000**2], y.get_shape().as_list())
-=======
     with ops.device("/device:CPU:0"):
       x = array_ops.zeros([50000, 50000], dtype=dtypes.bool)
       # Provide dimension larger than int32
@@ -223,7 +211,6 @@ class ReshapeTest(test.TestCase):
       # Even if first dimension is within int32, ensure we correctly go to int64
       y = array_ops.reshape(x, [1, 50000**2])
       self.assertEqual([1, 50000**2], y.get_shape().as_list())
->>>>>>> google-upstream/master
 
 
 if __name__ == "__main__":

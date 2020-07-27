@@ -479,17 +479,13 @@ glob_lit_tests(
         "no_pip",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
-<<<<<<< HEAD
     tags_override = {
         "scatter.hlo": ["no_rocm"],  # needs ROCm support for hlo_to_llvm_ir
     },
-    test_file_exts = ["hlo"],
-=======
     test_file_exts = [
         "hlo",
         "mlir",
     ],
->>>>>>> google-upstream/master
 )
 
 # Bundle together all of the test utilities that are used by tests.

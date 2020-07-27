@@ -507,7 +507,6 @@ REGISTER_OP("TruncateDiv")
 REGISTER_OP("RealDiv").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
-<<<<<<< HEAD
 inline bool broadcast_merge(InferenceContext* c, DimensionHandle a,
                             DimensionHandle b, DimensionHandle& out) {
   if (!c->ValueKnown(a) && !c->ValueKnown(b)) {
@@ -635,9 +634,7 @@ REGISTER_OP("_FusedMulSub2")
     .Attr("T: {half, float, double}")
     .SetShapeFn(BroadcastFMA2OpOutputShape);
 
-=======
 // Note SquaredDifference implements conj(x - y)*(x - y).
->>>>>>> google-upstream/master
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()

@@ -214,7 +214,6 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "Tanh",
         "TanhGrad",
     };
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
       list.insert("_FusedMulAdd");
       list.insert("_FusedMulAdd2");
@@ -228,11 +227,9 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
       list.insert("_ROCmFusedBatchNormActivationBackward");
       list.insert("_ROCmFusedConvolutionBiasBatchNormActivation");
 #endif
-=======
     UpdateList("INFERLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
     // TODO(reedwm): This should be removed if we don't have active users.
->>>>>>> google-upstream/master
     UpdateList("GRAYLIST", &list);
     return list;
   }

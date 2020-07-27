@@ -3535,11 +3535,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     xla_enable_strict_auto_jit = False,  # b/161856380
->>>>>>> google-upstream/master
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
