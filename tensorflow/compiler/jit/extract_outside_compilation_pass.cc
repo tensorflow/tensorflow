@@ -2420,6 +2420,7 @@ Status ExtractOutsideCompilationForFunction(
     auto updated_fdef = absl::make_unique<FunctionDef>();
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*g, new_func_name, updated_fdef.get()));
+    updated_fdef->mutable_signature()->set_is_stateful(true);
     const FunctionDef* original_fdef = fld->Find(func_name);
     if (original_fdef) {
       for (const auto& attr : original_fdef->attr()) {

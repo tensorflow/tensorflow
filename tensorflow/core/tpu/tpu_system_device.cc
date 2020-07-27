@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/virtual_device.h"

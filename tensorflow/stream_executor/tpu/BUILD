@@ -68,7 +68,7 @@ cc_library(
     deps = [
         ":c_api_decl",
         ":tpu_executor_c_api_hdrs",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
     ],
 )
@@ -103,9 +103,7 @@ cc_library(
         ":tpu_executor_interface",
         ":tpu_platform_interface",
         ":tpu_stream_interface",
-        "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
@@ -131,8 +129,6 @@ cc_library(
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
@@ -164,8 +160,6 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
@@ -274,10 +268,8 @@ cc_library(
     hdrs = ["tpu_platform_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/stream_executor:multi_platform_manager",
-        "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor",
     ],
 )
 
@@ -334,7 +326,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":c_api_decl",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
     ],
 )
