@@ -44,3 +44,20 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+tf_cc_test(
+    name = "s3_filesystem_test",
+    srcs = [
+        "s3_filesystem_test.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":s3_filesystem_impl",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:stacktrace_handler",
+        "//tensorflow/core/platform:test",
+    ],
+)
