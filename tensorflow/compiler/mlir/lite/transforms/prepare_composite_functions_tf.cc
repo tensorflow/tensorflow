@@ -258,6 +258,15 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
     if (result.wasInterrupted()) return failure();
   }
 
+  // We should know the batch size in advance for the lstm fusion.
+  // A good indicator of batch size is both cell state and input state have
+  // fixed shape. (indices 1 & 2).
+  for (int i = 1; i < 3; ++i) {
+    auto input = lstm_func.getArgument(i);
+    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!input_type || !input_type.hasStaticShape()) return failure();
+  }
+
   return success();
 }
 
