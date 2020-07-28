@@ -151,10 +151,13 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
     return errors::Unimplemented("Only support a single exported name.");
   }
 
+  tensorflow::GraphImportConfig specs;
+  specs.upgrade_legacy = true;
+
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,
-                                       exported_names, &context));
+                                       exported_names, specs, &context));
 
   if (!model_flags.input_arrays().empty() ||
       !model_flags.output_arrays().empty()) {

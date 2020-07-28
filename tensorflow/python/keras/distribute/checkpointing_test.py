@@ -29,6 +29,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
@@ -92,6 +93,46 @@ class TrainingCheckpointTests(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(
           ValueError, "optimizer slot variable under the scope"):
         checkpoint.restore(save_path)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.cloud_tpu_strategy,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["eager"]))
+  def testCheckpointSaveRestoreIoDevice(self, distribution):
+
+    def state():
+      with distribution.scope():
+        v = variables_lib.Variable(random_ops.random_normal([]))
+        return v
+
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_io_device="/job:localhost")
+
+    def checkpoint():
+      v = state()
+      # Save random weights into checkpoint.
+      checkpoint = trackable_utils.Checkpoint(v=v)
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      with self.test_session():
+        save_path = checkpoint.save(prefix, options=ckpt_options)
+      return save_path
+
+    save_path = checkpoint()
+
+    v = state()
+    checkpoint = trackable_utils.Checkpoint(v=v)
+    # Restore from the checkpoint inside a distribution.scope().
+    # Check that restore works without error.
+    with self.test_session():
+      with distribution.scope():
+        checkpoint.restore(save_path, options=ckpt_options)
 
 
 if __name__ == "__main__":

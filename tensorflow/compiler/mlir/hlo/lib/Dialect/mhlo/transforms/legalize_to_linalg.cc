@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
 #include "absl/memory/memory.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -297,8 +298,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
     auto nloops = resultType.getRank();
     auto loc = op.getLoc();
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, isLHLO ? ArrayRef<Type>{} : resultType, args, /*inputCount=*/1,
-        /*outputCount=*/1, indexing_maps, GetNParallelLoopsAttrs(nloops),
+        loc, isLHLO ? ArrayRef<Type>{} : resultType, args, /*argsIn=*/1,
+        /*argsOut=*/1, indexing_maps, GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
           nestedBuilder.create<linalg::YieldOp>(loc, *args.begin());
         });
@@ -419,7 +420,7 @@ class LhloBroadcastInDimConverter
           rewriter.create<LoadOp>(loc, operand, llvm::makeArrayRef({zero}));
       rewriter.create<linalg::GenericOp>(
           loc, llvm::None, llvm::makeArrayRef(operand_adaptor.output()),
-          /*inputCount=*/0, /*outputCount=*/1,
+          /*argsIn=*/0, /*argsOut=*/1,
           llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
           GetNParallelLoopsAttrs(nloops),
           [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
@@ -432,7 +433,7 @@ class LhloBroadcastInDimConverter
       rewriter.create<linalg::GenericOp>(
           loc, llvm::None,
           llvm::makeArrayRef({operand, operand_adaptor.output()}),
-          /*inputCount=*/1, /*outputCount=*/1, indexing_maps,
+          /*argsIn=*/1, /*argsOut=*/1, indexing_maps,
           GetNParallelLoopsAttrs(nloops),
           [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
             nestedBuilder.create<linalg::YieldOp>(loc, *args.begin());
@@ -639,25 +640,25 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
   }
 };
 
-class IotaConverter : public OpConversionPattern<lmhlo::IotaOp> {
+template <typename OpTy, bool isLHLO = true>
+class IotaConverter : public OpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern<lmhlo::IotaOp>::OpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::IotaOp iotaOp, ArrayRef<Value> args,
+      OpTy iotaOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    auto resultMemrefType =
-        iotaOp.getOperand().getType().dyn_cast<MemRefType>();
-    if (!resultMemrefType) return failure();
+    ShapedType resultShapedType = getHloOpResultType<isLHLO>(iotaOp);
+    if (!resultShapedType) return failure();
 
-    auto resultElementType = resultMemrefType.getElementType();
+    auto resultElementType = resultShapedType.getElementType();
     if (!resultElementType.isSignlessIntOrFloat()) return failure();
 
     // Construct the indexing maps needed for linalg.generic ops.
-    unsigned nloops = resultMemrefType.getRank();
+    unsigned nloops = resultShapedType.getRank();
 
-    rewriter.create<linalg::IndexedGenericOp>(
-        iotaOp.getLoc(), ArrayRef<Type>{}, args,
+    auto linalgOp = rewriter.create<linalg::IndexedGenericOp>(
+        iotaOp.getLoc(), isLHLO ? ArrayRef<Type>{} : resultShapedType, args,
         0,  // args_in
         1,  // args_out
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
@@ -668,14 +669,16 @@ class IotaConverter : public OpConversionPattern<lmhlo::IotaOp> {
               nestedLoc, ivs[iotaOp.iota_dimension().getZExtValue()],
               nestedBuilder.getIntegerType(
                   resultElementType.getIntOrFloatBitWidth()));
-          if (resultElementType.isa<FloatType>()) {
+          if (resultElementType.template isa<FloatType>()) {
             castOp = nestedBuilder.create<SIToFPOp>(nestedLoc, castOp,
                                                     resultElementType);
           }
           nestedBuilder.create<linalg::YieldOp>(nestedLoc, castOp);
         });
-
-    rewriter.replaceOp(iotaOp, llvm::None);
+    if (isLHLO)
+      rewriter.replaceOp(iotaOp, llvm::None);
+    else
+      rewriter.replaceOp(iotaOp, linalgOp.output_tensors());
     return success();
   }
 };
@@ -692,7 +695,8 @@ class ConstConverter : public OpConversionPattern<lmhlo::ConstOp> {
     if (valueAttr.getType().getRank() != 0) return failure();
     auto stdConstOp =
         rewriter.create<mlir::ConstantOp>(loc, valueAttr.getValue({}));
-    rewriter.create<mlir::StoreOp>(loc, stdConstOp, constOp.getOperand());
+    rewriter.create<mlir::AffineStoreOp>(loc, stdConstOp, constOp.getOperand(),
+                                         ValueRange());
     rewriter.eraseOp(constOp);
     return success();
   }
@@ -766,7 +770,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
   patterns->insert<BroadcastConverter<lmhlo::BroadcastOp>,
                    ConstConverter,
                    ConvToLinalgConverter,
-                   IotaConverter,
+                   IotaConverter<lmhlo::IotaOp>,
                    LhloBroadcastInDimConverter,
                    PointwiseToLinalgConverter<lmhlo::AbsOp>,
                    PointwiseToLinalgConverter<lmhlo::AddOp>,
@@ -827,7 +831,8 @@ struct LhloLegalizeToLinalg
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect>();
+    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
+                           AffineDialect>();
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -867,36 +872,37 @@ namespace mhlo {
 
 void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
-  patterns->insert<BroadcastConverter<mhlo::BroadcastOp, false>,
-                   HloBroadcastInDimConverter,
-                   PointwiseToLinalgConverter<mhlo::AbsOp, false>,
-                   PointwiseToLinalgConverter<mhlo::AddOp, false>,
-                   PointwiseToLinalgConverter<mhlo::AndOp, false>,
-                   PointwiseToLinalgConverter<mhlo::CeilOp, false>,
-                   PointwiseToLinalgConverter<mhlo::CompareOp, false>,
-                   PointwiseToLinalgConverter<mhlo::ComplexOp, false>,
-                   PointwiseToLinalgConverter<mhlo::ConvertOp, false>,
-                   PointwiseToLinalgConverter<mhlo::CopyOp, false>,
-                   PointwiseToLinalgConverter<mhlo::CosOp, false>,
-                   PointwiseToLinalgConverter<mhlo::DivOp, false>,
-                   PointwiseToLinalgConverter<mhlo::ExpOp, false>,
-                   PointwiseToLinalgConverter<mhlo::ImagOp, false>,
-                   PointwiseToLinalgConverter<mhlo::LogOp, false>,
-                   PointwiseToLinalgConverter<mhlo::MaxOp, false>,
-                   PointwiseToLinalgConverter<mhlo::MinOp, false>,
-                   PointwiseToLinalgConverter<mhlo::MulOp, false>,
-                   PointwiseToLinalgConverter<mhlo::NegOp, false>,
-                   PointwiseToLinalgConverter<mhlo::RealOp, false>,
-                   PointwiseToLinalgConverter<mhlo::RemOp, false>,
-                   PointwiseToLinalgConverter<mhlo::RsqrtOp, false>,
-                   PointwiseToLinalgConverter<mhlo::SelectOp, false>,
-                   PointwiseToLinalgConverter<mhlo::SinOp, false>,
-                   PointwiseToLinalgConverter<mhlo::SqrtOp, false>,
-                   PointwiseToLinalgConverter<mhlo::SubOp, false>,
-                   PointwiseToLinalgConverter<mhlo::TanhOp, false>,
-                   ReshapeOpConverter<mhlo::ReshapeOp, false>,
-                   ReverseConverter<mhlo::ReverseOp, false>,
-                   TransposeConverter<mhlo::TransposeOp, false>>(context);
+  patterns
+      ->insert<BroadcastConverter<mhlo::BroadcastOp, false>,
+               HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
+               PointwiseToLinalgConverter<mhlo::AbsOp, false>,
+               PointwiseToLinalgConverter<mhlo::AddOp, false>,
+               PointwiseToLinalgConverter<mhlo::AndOp, false>,
+               PointwiseToLinalgConverter<mhlo::CeilOp, false>,
+               PointwiseToLinalgConverter<mhlo::CompareOp, false>,
+               PointwiseToLinalgConverter<mhlo::ComplexOp, false>,
+               PointwiseToLinalgConverter<mhlo::ConvertOp, false>,
+               PointwiseToLinalgConverter<mhlo::CopyOp, false>,
+               PointwiseToLinalgConverter<mhlo::CosOp, false>,
+               PointwiseToLinalgConverter<mhlo::DivOp, false>,
+               PointwiseToLinalgConverter<mhlo::ExpOp, false>,
+               PointwiseToLinalgConverter<mhlo::ImagOp, false>,
+               PointwiseToLinalgConverter<mhlo::LogOp, false>,
+               PointwiseToLinalgConverter<mhlo::MaxOp, false>,
+               PointwiseToLinalgConverter<mhlo::MinOp, false>,
+               PointwiseToLinalgConverter<mhlo::MulOp, false>,
+               PointwiseToLinalgConverter<mhlo::NegOp, false>,
+               PointwiseToLinalgConverter<mhlo::RealOp, false>,
+               PointwiseToLinalgConverter<mhlo::RemOp, false>,
+               PointwiseToLinalgConverter<mhlo::RsqrtOp, false>,
+               PointwiseToLinalgConverter<mhlo::SelectOp, false>,
+               PointwiseToLinalgConverter<mhlo::SinOp, false>,
+               PointwiseToLinalgConverter<mhlo::SqrtOp, false>,
+               PointwiseToLinalgConverter<mhlo::SubOp, false>,
+               PointwiseToLinalgConverter<mhlo::TanhOp, false>,
+               ReshapeOpConverter<mhlo::ReshapeOp, false>,
+               ReverseConverter<mhlo::ReverseOp, false>,
+               TransposeConverter<mhlo::TransposeOp, false>>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {

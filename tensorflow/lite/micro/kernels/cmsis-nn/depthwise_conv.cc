@@ -102,12 +102,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -309,7 +304,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                          &ctx, &dw_conv_params, &quant_params, &input_dims,
                          GetTensorData<int8_t>(input), &filter_dims,
                          GetTensorData<int8_t>(filter), &bias_dims,
-                         GetTensorData<int32>(bias), &output_dims,
+                         GetTensorData<int32_t>(bias), &output_dims,
                          GetTensorData<int8_t>(output)),
                      ARM_MATH_SUCCESS);
   } else {
@@ -332,10 +327,10 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     reference_integer_ops::DepthwiseConvPerChannel(
         op_params, data->per_channel_output_multiplier,
         data->per_channel_output_shift, GetTensorShape(input),
-        GetTensorData<int8>(input), GetTensorShape(filter),
-        GetTensorData<int8>(filter), GetTensorShape(bias),
-        GetTensorData<int32>(bias), GetTensorShape(output),
-        GetTensorData<int8>(output));
+        GetTensorData<int8_t>(input), GetTensorShape(filter),
+        GetTensorData<int8_t>(filter), GetTensorShape(bias),
+        GetTensorData<int32_t>(bias), GetTensorShape(output),
+        GetTensorData<int8_t>(output));
   }
 }
 

@@ -148,8 +148,9 @@ def piecewise_constant(x, boundaries, values, name=None):
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  boundaries = nest.map_structure(ops.convert_to_tensor_v2, boundaries)
-  values = nest.map_structure(ops.convert_to_tensor_v2, values)
+  boundaries = nest.map_structure(ops.convert_to_tensor_v2,
+                                  nest.flatten(boundaries))
+  values = nest.map_structure(ops.convert_to_tensor_v2, nest.flatten(values))
   x_recomp = ops.convert_to_tensor(x)
   # Avoid explicit conversion to x's dtype. This could result in faulty
   # comparisons, for example if floats are converted to integers.

@@ -26,7 +26,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import loss_reduction
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -62,8 +61,7 @@ def remove_squeezable_dimensions(
   Returns:
     Tuple of `labels` and `predictions`, possibly with last dim squeezed.
   """
-  with ops.name_scope(name, 'remove_squeezable_dimensions',
-                      [labels, predictions]):
+  with K.name_scope(name or 'remove_squeezable_dimensions'):
     predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
     labels = ops.convert_to_tensor_v2_with_dispatch(labels)
     predictions_shape = predictions.get_shape()
@@ -260,8 +258,16 @@ def compute_weighted_loss(losses,
 
     if not isinstance(sample_weight, keras_tensor.KerasTensor):
       sample_weight = ops.convert_to_tensor_v2(sample_weight)
-    weighted_losses = tf_losses_utils.scale_losses_by_sample_weight(
-        losses, sample_weight)
+
+    # TODO(psv): Handle casting here in a better way, eg. if losses is float64
+    # we do not want to lose precision.
+    losses = math_ops.cast(losses, 'float32')
+    sample_weight = math_ops.cast(sample_weight, 'float32')
+    # Update dimensions of `sample_weight` to match with `losses` if possible.
+    losses, _, sample_weight = squeeze_or_expand_dimensions(  # pylint: disable=unbalanced-tuple-unpacking
+        losses, None, sample_weight)
+    weighted_losses = math_ops.multiply(losses, sample_weight)
+
     # Apply reduction function to the individual weighted losses.
     loss = reduce_weighted_loss(weighted_losses, reduction)
     # Convert the result back to the input type.

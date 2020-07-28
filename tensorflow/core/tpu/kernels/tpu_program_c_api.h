@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_C_API_H_
 
 #include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
+#include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 typedef struct XLA_TpuProgram XLA_TpuProgram;
@@ -23,33 +24,59 @@ typedef struct XLA_TpuProgram XLA_TpuProgram;
 extern "C" {
 
 // Creates a new TPU program.
-XLA_TpuProgram* TpuProgram_New();
+TFTPU_CAPI_EXPORT XLA_TpuProgram* TpuProgram_New();
 
 // Destroys the `tpu_program`.
-void TpuProgram_Free(XLA_TpuProgram* tpu_program);
+TFTPU_CAPI_EXPORT void TpuProgram_Free(XLA_TpuProgram* tpu_program);
+
+// Creates an array of `XLA_TpuProgram*`.
+TFTPU_CAPI_EXPORT XLA_TpuProgram** TpuProgram_NewArray(size_t count);
+
+// Destroys an array of `XLA_TpuProgram*`.
+TFTPU_CAPI_EXPORT void TpuProgram_FreeArray(XLA_TpuProgram* tpu_program[]);
 
 // Unloads and destroys the `tpu_program`. Once the TPU program is unloaded and
 // destroyed, it is in an unusable state.
-void TpuProgram_UnloadAndDestroy(XLA_TpuProgram* tpu_program,
-                                 SE_Status* status);
+TFTPU_CAPI_EXPORT void TpuProgram_UnloadAndDestroy(XLA_TpuProgram* tpu_program,
+                                                   SE_Status* status);
 
 // Gets TPU program size in bytes from the `tpu_program`.
-int64_t TpuProgram_GetProgramSize(const XLA_TpuProgram* tpu_program);
+TFTPU_CAPI_EXPORT int64_t
+TpuProgram_GetProgramSize(const XLA_TpuProgram* tpu_program);
 
 // Logs the summary of current memory state snapshot of the `tpu_program`.
-bool TpuProgram_LogProgramMemorySummary(const XLA_TpuProgram* tpu_program);
+TFTPU_CAPI_EXPORT bool TpuProgram_LogProgramMemorySummary(
+    const XLA_TpuProgram* tpu_program);
 
 // Gets TPU program executable info from the `tpu_program`.
-void TpuProgram_GetExecutableInfo(const XLA_TpuProgram* tpu_program,
-                                  TpuSerializedProto* executable_info);
+TFTPU_CAPI_EXPORT void TpuProgram_GetExecutableInfo(
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* executable_info);
 
 // Gets host transfer info proto.
-void TpuProgram_GetHostTransferInfo(const XLA_TpuProgram* tpu_program,
-                                    TpuSerializedProto* host_transfer_info);
+TFTPU_CAPI_EXPORT void TpuProgram_GetHostTransferInfo(
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* host_transfer_info);
 
 // Gets HLO metadata proto.
-void TpuProgram_GetHloMetadata(const XLA_TpuProgram* tpu_program,
-                               TpuSerializedProto* hlo_metadata);
+TFTPU_CAPI_EXPORT void TpuProgram_GetHloMetadata(
+    const XLA_TpuProgram* tpu_program, TpuSerializedProto* hlo_metadata);
+
+// Gets may modify variables boolean value.
+TFTPU_CAPI_EXPORT void TpuProgram_GetMayModifyVariables(
+    const XLA_TpuProgram* tpu_program, bool* may_modify_variables);
+
+struct TfTpu_TpuProgramApiFn {
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_NewArray);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_FreeArray);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_UnloadAndDestroy);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetProgramSize);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_LogProgramMemorySummary);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetExecutableInfo);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetHostTransferInfo);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetHloMetadata);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetMayModifyVariables);
+};
 
 }  // extern "C"
 

@@ -248,7 +248,7 @@ class CapturableResource(base.Trackable):
         self._resource_handle = self._create_resource()
     return self._resource_handle
 
-  def _map_resources(self):
+  def _map_resources(self, _):
     """For implementing `Trackable`."""
     new_obj = copy.copy(self)
     # pylint: disable=protected-access

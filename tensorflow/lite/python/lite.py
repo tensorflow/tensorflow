@@ -199,10 +199,20 @@ class QuantizationMode(object):
             self._representative_dataset is not None and
             self._smallest_supported_type() == constants.INT8)
 
-  def is_post_training_integer_quantize(self):
-    """Post training integer quantization."""
+  def is_post_training_integer_quantize_8(self):
+    """Post training integer 8 quantization."""
     return (self.post_training_int8_no_float() or
             self.post_training_int8_allow_float())
+
+  def is_post_training_integer_quantize_16x8(self):
+    """Post training integer 16x8 quantization."""
+    return (self.post_training_int16x8_no_float() or
+            self.post_training_int16x8_allow_float())
+
+  def is_post_training_integer_quantize(self):
+    """Post training integer quantization."""
+    return (self.is_post_training_integer_quantize_8() or
+            self.is_post_training_integer_quantize_16x8())
 
   def training_time_int8_allow_float(self):
     """Training-time int8 quantize, allow float fallback."""
@@ -510,6 +520,10 @@ class TFLiteConverterBase(object):
       if not self._saved_model_exported_names:
         self._saved_model_exported_names = []
       self._saved_model_version = saved_model_proto.saved_model_schema_version
+      if self._saved_model_version == 0:
+        self.saved_model_dir = None
+        logging.warning("SavedModel schema version is zero.")
+        return
       if self._saved_model_version not in [1, 2]:
         raise ValueError("SavedModel file format({0}) is not supported".format(
             self._saved_model_version))
@@ -552,11 +566,14 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
 
   def _validate_inference_input_output_types(self, quant_mode):
     """Validate inference_input_type and inference_output_type flags."""
-    default_types = [constants.FLOAT, None]
+    default_types = [constants.FLOAT]
     # We only support integer types for post training integer quantization
     # as we have statistical information to quantize the input and output.
     if quant_mode.is_post_training_integer_quantize():
-      all_types = default_types + [constants.INT8, constants.QUANTIZED_UINT8]
+      if quant_mode.is_post_training_integer_quantize_16x8():
+        all_types = default_types + [constants.INT16]
+      else:
+        all_types = default_types + [constants.INT8, constants.QUANTIZED_UINT8]
       if self.inference_input_type not in all_types or \
           self.inference_output_type not in all_types:
         all_types_names = ["tf." + t.name for t in all_types]

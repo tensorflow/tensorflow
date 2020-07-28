@@ -35,14 +35,15 @@ TEST(Bfloat16Test, FlushDenormalsToZero) {
   for (float denorm = -std::numeric_limits<float>::denorm_min();
        denorm < std::numeric_limits<float>::denorm_min();
        denorm = std::nextafterf(denorm, 1.0f)) {
-    bfloat16 bf_trunc = bfloat16::truncate_to_bfloat16(denorm);
+    bfloat16 bf_trunc =
+        bfloat16(Eigen::bfloat16_impl::truncate_to_bfloat16(denorm));
     ASSERT_EQ(static_cast<float>(bf_trunc), 0.0f);
     if (std::signbit(denorm)) {
       ASSERT_EQ(bf_trunc.value, 0x8000) << denorm;
     } else {
       ASSERT_EQ(bf_trunc.value, 0x0000) << denorm;
     }
-    bfloat16 bf_round = bfloat16::round_to_bfloat16(denorm);
+    bfloat16 bf_round(denorm);
     ASSERT_EQ(static_cast<float>(bf_round), 0.0f);
     if (std::signbit(denorm)) {
       ASSERT_EQ(bf_round.value, 0x8000) << denorm;
@@ -88,7 +89,8 @@ class Bfloat16Test : public ::testing::Test,
                      public ::testing::WithParamInterface<Bfloat16TestParam> {};
 
 TEST_P(Bfloat16Test, TruncateTest) {
-  bfloat16 truncated = bfloat16::truncate_to_bfloat16((GetParam().input));
+  bfloat16 truncated =
+      bfloat16(Eigen::bfloat16_impl::truncate_to_bfloat16((GetParam().input)));
 
   if (std::isnan(GetParam().input)) {
     EXPECT_TRUE(std::isnan(float(truncated)) || std::isinf(float(truncated)));
@@ -97,7 +99,7 @@ TEST_P(Bfloat16Test, TruncateTest) {
 
   EXPECT_EQ(GetParam().expected_truncation, float(truncated));
 
-  bfloat16 rounded = bfloat16::round_to_bfloat16((GetParam().input));
+  bfloat16 rounded(GetParam().input);
   if (std::isnan(GetParam().input)) {
     EXPECT_TRUE(std::isnan(float(rounded)) || std::isinf(float(rounded)));
     return;
@@ -172,9 +174,13 @@ TEST(Bfloat16Test, Conversion) {
 }
 
 TEST(Bfloat16Test, Epsilon) {
-  EXPECT_LT(1.0f, static_cast<float>(bfloat16::epsilon() + bfloat16(1.0f)));
-  EXPECT_EQ(1.0f, static_cast<float>((bfloat16::epsilon() / bfloat16(2.0f)) +
-                                     bfloat16(1.0f)));
+  EXPECT_LT(1.0f,
+            static_cast<float>(Eigen::NumTraits<Eigen::bfloat16>::epsilon() +
+                               bfloat16(1.0f)));
+  EXPECT_EQ(1.0f,
+            static_cast<float>((Eigen::NumTraits<Eigen::bfloat16>::epsilon() /
+                                bfloat16(2.0f)) +
+                               bfloat16(1.0f)));
 }
 
 TEST(Bfloat16Test, Negate) {

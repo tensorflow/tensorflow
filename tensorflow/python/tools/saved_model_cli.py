@@ -24,7 +24,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import collections
 import os
 import re
 import sys
@@ -51,6 +50,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.tools import saved_model_aot_compile
 from tensorflow.python.tools import saved_model_utils
 from tensorflow.python.tpu import tpu
+from tensorflow.python.util.compat import collections_abc
 
 
 _XLA_DEBUG_OPTIONS_URL = (
@@ -58,8 +58,8 @@ _XLA_DEBUG_OPTIONS_URL = (
     'tensorflow/compiler/xla/debug_options_flags.cc')
 
 
-# Set of ops to blacklist.
-_OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
+# Set of ops to denylist.
+_OP_DENYLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
 
 
 def _show_tag_sets(saved_model_dir):
@@ -241,7 +241,7 @@ def _print_args(arguments, argument_type='Argument', indent=0):
       in_print('  %s' % element)
     elif isinstance(element, tensor_spec.TensorSpec):
       print((indent + 1) * '  ' + '%s: %s' % (element.name, repr(element)))
-    elif (isinstance(element, collections.Iterable) and
+    elif (isinstance(element, collections_abc.Iterable) and
           not isinstance(element, dict)):
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: [', end='')
@@ -349,9 +349,9 @@ def get_signature_def_map(saved_model_dir, tag_set):
 
 
 def scan_meta_graph_def(meta_graph_def):
-  """Scans meta_graph_def and reports if there are ops on blacklist.
+  """Scans meta_graph_def and reports if there are ops on denylist.
 
-  Print ops if they are on black list, or print success if no blacklisted ops
+  Print ops if they are on black list, or print success if no denylisted ops
   found.
 
   Args:
@@ -359,13 +359,14 @@ def scan_meta_graph_def(meta_graph_def):
   """
   all_ops_set = set(
       meta_graph_lib.ops_used_by_graph_def(meta_graph_def.graph_def))
-  blacklisted_ops = _OP_BLACKLIST & all_ops_set
-  if blacklisted_ops:
+  denylisted_ops = _OP_DENYLIST & all_ops_set
+  if denylisted_ops:
     # TODO(yifeif): print more warnings
-    print('MetaGraph with tag set %s contains the following blacklisted ops:' %
-          meta_graph_def.meta_info_def.tags, blacklisted_ops)
+    print(
+        'MetaGraph with tag set %s contains the following denylisted ops:' %
+        meta_graph_def.meta_info_def.tags, denylisted_ops)
   else:
-    print('MetaGraph with tag set %s does not contain blacklisted ops.' %
+    print('MetaGraph with tag set %s does not contain denylisted ops.' %
           meta_graph_def.meta_info_def.tags)
 
 
@@ -957,7 +958,7 @@ def add_run_subparser(subparsers):
 def add_scan_subparser(subparsers):
   """Add parser for `scan`."""
   scan_msg = ('Usage example:\n'
-              'To scan for blacklisted ops in SavedModel:\n'
+              'To scan for denylisted ops in SavedModel:\n'
               '$saved_model_cli scan --dir /tmp/saved_model\n'
               'To scan a specific MetaGraph, pass in --tag_set\n')
   parser_scan = subparsers.add_parser(

@@ -1227,6 +1227,26 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_small_val))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorStridedSliceAssignWithInputForward(self):
+    """Tests tensor_strided_slice_update with input-forwarding taking effect."""
+    @def_function.function
+    def assign(x):
+      y = x + 1
+      return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
+    self.assertAllEqual([0, 1], self.evaluate(assign(array_ops.zeros([2]))))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorStridedSliceAssignNoInputForward(self):
+    """Tests tensor_strided_slice_update with no input-forwarding."""
+    x = constant_op.constant([0.2, 0.3])
+    y = x + 1
+    # y's buffer won't be forwarded to z because y and z will be alive at the
+    # same time later.
+    z = gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0.4])
+    ans = y + z
+    self.assertAllClose([1.6, 2.6], self.evaluate(ans))
+
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
@@ -1277,7 +1297,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       res = array_ops.sequence_mask(constant_op.constant([1, 3, 2]), 5)
       self.assertAllEqual(res.get_shape(), [3, 5])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
@@ -1289,7 +1309,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant([0, 1, 4]), dtype=dtypes.float32)
       self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
   @test_util.run_deprecated_v1
@@ -1298,8 +1318,8 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       res = array_ops.sequence_mask(constant_op.constant([0, 1, 4]))
       self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
-          res.eval(), [[False, False, False, False],
-                       [True, False, False, False], [True, True, True, True]])
+          res, [[False, False, False, False], [True, False, False, False],
+                [True, True, True, True]])
 
   @test_util.run_deprecated_v1
   def testTwoDimensional(self):
@@ -1315,7 +1335,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant([[0, 1, 4], [1, 2, 3]]), dtype=dtypes.float32)
       self.assertAllEqual(res.get_shape().as_list(), [2, 3, 4])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]],
            [[1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 1.0, 0.0]]])
 
@@ -1334,7 +1354,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant(5, dtype=maxlen_dtype))
       self.assertAllEqual(res.get_shape(), [3, 5])
       self.assertAllEqual(
-          res.eval(),
+          res,
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 

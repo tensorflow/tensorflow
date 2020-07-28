@@ -38,6 +38,13 @@ void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
 void PopulateComplexLoweringPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
+void PopulateOptimizeMHLOPatterns(MLIRContext *context,
+                                  OwningRewritePatternList *patterns);
+
+// Rewrite patterns for gather to equivalent torch index select legalization.
+void PopulateGatherToTorchIndexSelectPatterns(
+    mlir::MLIRContext *context, OwningRewritePatternList *patterns);
+
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
 

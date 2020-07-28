@@ -24,22 +24,23 @@ namespace tflite {
 
 namespace reference_ops {
 
-inline int32 GetNearestNeighbor(const int input_value, const int32 input_size,
-                                const int32 output_size,
-                                const bool align_corners,
-                                const bool half_pixel_centers) {
+inline int32_t GetNearestNeighbor(const int input_value,
+                                  const int32_t input_size,
+                                  const int32_t output_size,
+                                  const bool align_corners,
+                                  const bool half_pixel_centers) {
   const float scale =
       (align_corners && output_size > 1)
           ? (input_size - 1) / static_cast<float>(output_size - 1)
           : input_size / static_cast<float>(output_size);
   const float offset = half_pixel_centers ? 0.5f : 0.0f;
-  int32 output_value = std::min(
+  int32_t output_value = std::min(
       align_corners
-          ? static_cast<int32>(TfLiteRound((input_value + offset) * scale))
-          : static_cast<int32>(std::floor((input_value + offset) * scale)),
+          ? static_cast<int32_t>(TfLiteRound((input_value + offset) * scale))
+          : static_cast<int32_t>(std::floor((input_value + offset) * scale)),
       input_size - 1);
   if (half_pixel_centers) {
-    output_value = std::max(static_cast<int32>(0), output_value);
+    output_value = std::max(static_cast<int32_t>(0), output_value);
   }
   return output_value;
 }
@@ -48,7 +49,7 @@ template <typename T>
 inline void ResizeNearestNeighbor(
     const tflite::ResizeNearestNeighborParams& op_params,
     const RuntimeShape& unextended_input_shape, const T* input_data,
-    const RuntimeShape& output_size_shape, const int32* output_size_data,
+    const RuntimeShape& output_size_shape, const int32_t* output_size_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -58,16 +59,16 @@ inline void ResizeNearestNeighbor(
   const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32 input_height = input_shape.Dims(1);
-  int32 input_width = input_shape.Dims(2);
-  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+  int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32_t input_height = input_shape.Dims(1);
+  int32_t input_width = input_shape.Dims(2);
+  int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
 
   // The Tensorflow version of this op allows resize on the width and height
   // axis only.
   TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
-  int32 output_height = output_size_data[0];
-  int32 output_width = output_size_data[1];
+  int32_t output_height = output_size_data[0];
+  int32_t output_width = output_size_data[1];
 
   const int col_offset = input_shape.Dims(3);
   const int row_offset = input_shape.Dims(2) * col_offset;
@@ -77,14 +78,14 @@ inline void ResizeNearestNeighbor(
   T* output_ptr = output_data;
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      int32 in_y = GetNearestNeighbor(y, input_height, output_height,
-                                      op_params.align_corners,
-                                      op_params.half_pixel_centers);
-      const T* y_input_ptr = input_ptr + in_y * row_offset;
-      for (int x = 0; x < output_width; ++x) {
-        int32 in_x = GetNearestNeighbor(x, input_width, output_width,
+      int32_t in_y = GetNearestNeighbor(y, input_height, output_height,
                                         op_params.align_corners,
                                         op_params.half_pixel_centers);
+      const T* y_input_ptr = input_ptr + in_y * row_offset;
+      for (int x = 0; x < output_width; ++x) {
+        int32_t in_x = GetNearestNeighbor(x, input_width, output_width,
+                                          op_params.align_corners,
+                                          op_params.half_pixel_centers);
         const T* x_input_ptr = y_input_ptr + in_x * col_offset;
         memcpy(output_ptr, x_input_ptr, depth * sizeof(T));
         output_ptr += depth;

@@ -170,6 +170,10 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
   if (it != ndef.attr().end()) {
     options.executor_type = it->second.s();
   }
+  const auto& is_component_fn_it = ndef.attr().find("is_component_function");
+  if (is_component_fn_it != ndef.attr().end()) {
+    options.is_component_function = is_component_fn_it->second.b();
+  }
 #if !defined(IS_MOBILE_PLATFORM)
   // Android tf library does not include grappler.
   const auto& config_it = ndef.attr().find("config_proto");
@@ -292,7 +296,7 @@ Status KernelAndDeviceOp::Run(
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
-        [&] { return kernel_->TraceString(&context, /*verbose=*/false); },
+        [&] { return kernel_->TraceString(context, /*verbose=*/false); },
         profiler::TraceMeLevel::kInfo);
     device_->Compute(kernel_.get(), &context);
   }

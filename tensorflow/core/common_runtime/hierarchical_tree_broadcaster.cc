@@ -186,7 +186,7 @@ Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
 }
 
 Status HierarchicalTreeBroadcaster::InitializeCollectiveContext(
-    CollectiveContext* col_ctx) {
+    std::shared_ptr<CollectiveContext> col_ctx) {
   CHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
   col_params_ = &col_ctx->col_params;

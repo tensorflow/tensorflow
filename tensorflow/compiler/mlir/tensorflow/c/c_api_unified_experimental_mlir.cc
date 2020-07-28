@@ -93,7 +93,14 @@ class MlirTensor : public TracingTensorHandle {
   explicit MlirTensor(Value value)
       : TracingTensorHandle(kMlir), value_(value) {}
 
-  void Release() override { delete this; }
+  tensorflow::DataType DataType() const override {
+    tensorflow::DataType type;
+    Status s = ConvertScalarTypeToDataType(value_.getType(), &type);
+    if (!s.ok()) {
+      return tensorflow::DT_INVALID;
+    }
+    return type;
+  }
 
   Value getValue() { return value_; }
 
@@ -127,7 +134,7 @@ class MlirAbstractOp : public TracingOperation {
   Status SetDeviceName(const char* name) override;
 
   Status AddInput(AbstractTensorHandle* input) override;
-  Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) override;
+  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override;
 
@@ -464,7 +471,8 @@ Status MlirAbstractOp::SetDeviceName(const char* name) {
   return Status::OK();
 }
 
-Status MlirAbstractOp::AddInputList(absl::Span<AbstractTensorHandle*> inputs) {
+Status MlirAbstractOp::AddInputList(
+    absl::Span<AbstractTensorHandle* const> inputs) {
   return tensorflow::errors::Unimplemented(
       "AddInputList has not been implemented yet.");
 }

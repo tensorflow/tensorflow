@@ -166,8 +166,7 @@ LogicalResult HandleTensorArrayV3Op(
               ArrayRef<TensorType>{buffer.getType().cast<TensorType>()},
               ta.getContext()));
   auto local_var = builder.create<TF::MlirLocalVarOp>(
-      ta.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{},
-      ArrayRef<NamedAttribute>{});
+      ta.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
   cutil::WriteLocalVariable(local_var, buffer, builder, ta.getLoc());
   ta.handle().replaceAllUsesWith(local_var);
   // The flow output is just a way for the front end to enforce ordering among
@@ -227,8 +226,7 @@ LogicalResult HandleTensorArrayWriteV3Op(
     elem = builder.create<TF::ReshapeOp>(
         write.getLoc(), ArrayRef<Type>{slice_type},
         ArrayRef<Value>{elem, cutil::GetR1Const(slice_type.getShape(), builder,
-                                                write.getLoc())},
-        ArrayRef<NamedAttribute>{});
+                                                write.getLoc())});
     elem =
         cutil::AccumulateBuffers(elem, original_elem, builder, write.getLoc());
   }
@@ -261,8 +259,7 @@ LogicalResult HandleTensorArrayConcatV3Op(
       ArrayRef<Type>{
           RankedTensorType::get(shape, buffer_type.getElementType())},
       ArrayRef<Value>{buffer,
-                      cutil::GetR1Const(shape, builder, concat.getLoc())},
-      ArrayRef<NamedAttribute>{});
+                      cutil::GetR1Const(shape, builder, concat.getLoc())});
   concat.value().replaceAllUsesWith(buffer);
 
   // Create the lengths as a list of the same value (element size).
@@ -302,8 +299,7 @@ LogicalResult HandleTensorArraySplitV3Op(
                             buffer_shape, elem_type.getElementType())},
                         ArrayRef<Value>{split.value(),
                                         cutil::GetR1Const(buffer_shape, builder,
-                                                          split.getLoc())},
-                        ArrayRef<NamedAttribute>{})
+                                                          split.getLoc())})
                     .output();
   // Accumulate with the old buffer.
   auto old_buffer =
@@ -339,8 +335,7 @@ LogicalResult CreateAndInitializeGradVariable(Type local_var_type,
                                               Operation* op, Value* var) {
   OpBuilder builder(op);
   *var = builder.create<TF::MlirLocalVarOp>(
-      op->getLoc(), ArrayRef<Type>{local_var_type}, ArrayRef<Value>{},
-      ArrayRef<NamedAttribute>{});
+      op->getLoc(), ArrayRef<Type>{local_var_type}, ArrayRef<Value>{});
   Value buffer;
   auto buffer_type = getElementTypeOrSelf(local_var_type)
                          .cast<TF::ResourceType>()
@@ -600,8 +595,6 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
                                   operands, while_op.getAttrs());
-  // Clear the output shapes as it is not needed for XLA lowering.
-  new_while.setAttr("output_shapes", builder.getArrayAttr({}));
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -668,8 +661,6 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
   auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
                                          then_branch.getType().getResults(),
                                          operands, if_op.getAttrs());
-  // Clear the output shapes as it is not needed for XLA lowering.
-  new_if.setAttr("output_shapes", builder.getArrayAttr({}));
   auto ret_forwards_input = [](FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = retval.dyn_cast<BlockArgument>();

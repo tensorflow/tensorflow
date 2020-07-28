@@ -56,10 +56,10 @@ size_t RecordingSimpleMemoryAllocator::GetAllocatedCount() const {
   return alloc_count_;
 }
 
-uint8_t* RecordingSimpleMemoryAllocator::AllocateFromHead(size_t size,
-                                                          size_t alignment) {
+uint8_t* RecordingSimpleMemoryAllocator::AdjustHead(size_t size,
+                                                    size_t alignment) {
   const uint8_t* previous_head = GetHead();
-  uint8_t* result = SimpleMemoryAllocator::AllocateFromHead(size, alignment);
+  uint8_t* result = SimpleMemoryAllocator::AdjustHead(size, alignment);
   if (result != nullptr) {
     used_bytes_ += GetHead() - previous_head;
     requested_bytes_ += size;

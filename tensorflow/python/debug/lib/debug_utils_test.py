@@ -291,12 +291,12 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertItemsEqual(["a1", "a1/Assign"], node_names)
 
-  def testWatchGraph_nodeNameBlacklist(self):
-    debug_utils.watch_graph_with_blacklists(
+  def testWatchGraph_nodeNameDenylist(self):
+    debug_utils.watch_graph_with_denylists(
         self._run_options,
         self._graph,
         debug_urls="file:///tmp/tfdbg_1",
-        node_name_regex_blacklist="(a1$|a1_init$|a1/.*|p1$)")
+        node_name_regex_denylist="(a1$|a1_init$|a1/.*|p1$)")
 
     node_names = self._verify_watches(
         self._run_options.debug_options.debug_tensor_watch_opts, 0,
@@ -305,37 +305,37 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         sorted(["b_init", "b", "b/Assign", "b/read", "c", "s"]),
         sorted(node_names))
 
-  def testWatchGraph_opTypeBlacklist(self):
-    debug_utils.watch_graph_with_blacklists(
+  def testWatchGraph_opTypeDenylist(self):
+    debug_utils.watch_graph_with_denylists(
         self._run_options,
         self._graph,
         debug_urls="file:///tmp/tfdbg_1",
-        op_type_regex_blacklist="(Variable|Identity|Assign|Const)")
+        op_type_regex_denylist="(Variable|Identity|Assign|Const)")
 
     node_names = self._verify_watches(
         self._run_options.debug_options.debug_tensor_watch_opts, 0,
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertEqual(sorted(["p1", "s"]), sorted(node_names))
 
-  def testWatchGraph_nodeNameAndOpTypeBlacklists(self):
-    debug_utils.watch_graph_with_blacklists(
+  def testWatchGraph_nodeNameAndOpTypeDenylists(self):
+    debug_utils.watch_graph_with_denylists(
         self._run_options,
         self._graph,
         debug_urls="file:///tmp/tfdbg_1",
-        node_name_regex_blacklist="p1$",
-        op_type_regex_blacklist="(Variable|Identity|Assign|Const)")
+        node_name_regex_denylist="p1$",
+        op_type_regex_denylist="(Variable|Identity|Assign|Const)")
 
     node_names = self._verify_watches(
         self._run_options.debug_options.debug_tensor_watch_opts, 0,
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertEqual(["s"], node_names)
 
-  def testWatchGraph_tensorDTypeBlacklists(self):
-    debug_utils.watch_graph_with_blacklists(
+  def testWatchGraph_tensorDTypeDenylists(self):
+    debug_utils.watch_graph_with_denylists(
         self._run_options,
         self._graph,
         debug_urls="file:///tmp/tfdbg_1",
-        tensor_dtype_regex_blacklist=".*_ref")
+        tensor_dtype_regex_denylist=".*_ref")
 
     node_names = self._verify_watches(
         self._run_options.debug_options.debug_tensor_watch_opts, 0,
@@ -346,13 +346,13 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
     self.assertNotIn("b/Assign", node_names)
     self.assertIn("s", node_names)
 
-  def testWatchGraph_nodeNameAndTensorDTypeBlacklists(self):
-    debug_utils.watch_graph_with_blacklists(
+  def testWatchGraph_nodeNameAndTensorDTypeDenylists(self):
+    debug_utils.watch_graph_with_denylists(
         self._run_options,
         self._graph,
         debug_urls="file:///tmp/tfdbg_1",
-        node_name_regex_blacklist="^s$",
-        tensor_dtype_regex_blacklist=".*_ref")
+        node_name_regex_denylist="^s$",
+        tensor_dtype_regex_denylist=".*_ref")
 
     node_names = self._verify_watches(
         self._run_options.debug_options.debug_tensor_watch_opts, 0,

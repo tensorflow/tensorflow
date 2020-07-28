@@ -22,6 +22,33 @@ limitations under the License.
 
 TF_LITE_MICRO_TESTS_BEGIN
 
+TF_LITE_MICRO_TEST(TestAdjustHead) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  // First allocation from head.
+  {
+    uint8_t* result = allocator.AdjustHead(100, 1);
+    TF_LITE_MICRO_EXPECT(arena == result);
+    TF_LITE_MICRO_EXPECT(arena + 100 == allocator.GetHead());
+  }
+  // Second allocation doesn't require as much space so head pointer didn't
+  // move.
+  {
+    uint8_t* result = allocator.AdjustHead(10, 1);
+    TF_LITE_MICRO_EXPECT(arena == result);
+    TF_LITE_MICRO_EXPECT(arena + 100 == allocator.GetHead());
+  }
+  // Third allocation increase head memory usage.
+  {
+    uint8_t* result = allocator.AdjustHead(1000, 1);
+    TF_LITE_MICRO_EXPECT(arena == result);
+    TF_LITE_MICRO_EXPECT(arena + 1000 == allocator.GetHead());
+  }
+}
+
 TF_LITE_MICRO_TEST(TestJustFits) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
@@ -29,7 +56,7 @@ TF_LITE_MICRO_TEST(TestJustFits) {
                                           arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(arena_size, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
+  TF_LITE_MICRO_EXPECT(nullptr != result);
 }
 
 TF_LITE_MICRO_TEST(TestAligned) {
@@ -39,11 +66,12 @@ TF_LITE_MICRO_TEST(TestAligned) {
                                           arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(1, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
+  TF_LITE_MICRO_EXPECT(nullptr != result);
 
   result = allocator.AllocateFromTail(16, 4);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
-  TF_LITE_MICRO_EXPECT_EQ(0, reinterpret_cast<std::uintptr_t>(result) & 3);
+  TF_LITE_MICRO_EXPECT(nullptr != result);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(0),
+                          reinterpret_cast<std::uintptr_t>(result) & 3);
 }
 
 TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
@@ -53,10 +81,71 @@ TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
                                           arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(768, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
+  TF_LITE_MICRO_EXPECT(nullptr != result);
 
   result = allocator.AllocateFromTail(768, 1);
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, result);
+  TF_LITE_MICRO_EXPECT(nullptr == result);
 }
+
+TF_LITE_MICRO_TEST(TestTempAllocations) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  uint8_t* temp1 = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT(nullptr != temp1);
+
+  uint8_t* temp2 = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT(nullptr != temp2);
+
+  // Expect that the next micro allocation is 100 bytes away from each other.
+  TF_LITE_MICRO_EXPECT_EQ(temp2 - temp1, 100);
+}
+
+TF_LITE_MICRO_TEST(TestResetTempAllocations) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  uint8_t* temp1 = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT(nullptr != temp1);
+
+  allocator.ResetTempAllocations();
+
+  uint8_t* temp2 = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT(nullptr != temp2);
+
+  // Reset temp allocations should have the same start address:
+  TF_LITE_MICRO_EXPECT_EQ(temp2 - temp1, 0);
+}
+
+TF_LITE_MICRO_TEST(TestAllocateHeadWithoutResettingTemp) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  uint8_t* temp = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT(nullptr != temp);
+
+  // Allocation should be null since temp allocation was not followed by a call
+  // to ResetTempAllocations().
+  uint8_t* head = allocator.AdjustHead(100, 1);
+  TF_LITE_MICRO_EXPECT(nullptr == head);
+
+  allocator.ResetTempAllocations();
+
+  head = allocator.AdjustHead(100, 1);
+  TF_LITE_MICRO_EXPECT(nullptr != head);
+
+  // The most recent head allocation should be in the same location as the
+  // original temp allocation pointer.
+  TF_LITE_MICRO_EXPECT(temp == head);
+}
+
+// TODO(b/161171251): Add more coverage to this test - specifically around -1
+// alignments and other odd allocation requests.
 
 TF_LITE_MICRO_TESTS_END

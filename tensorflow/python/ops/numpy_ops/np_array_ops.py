@@ -37,8 +37,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.util import nest
+
+
+newaxis = np_export.np_export_constant(__name__, 'newaxis', np.newaxis)
 
 
 @np_utils.np_doc('empty')
@@ -374,6 +378,15 @@ def _promote_dtype(*arrays):
       return a
     return _array_internal(a, dtype=dtype, copy=False)
   return [_fast_asarray(a) for a in arrays]
+
+
+def _promote_dtype_binary(t1, t2):
+  dtype = np_utils._result_type_binary(t1, t2)  # pylint: disable=protected-access
+  if not(isinstance(t1, np_arrays.ndarray) and dtype == t1.dtype):
+    t1 = _array_internal(t1, dtype=dtype, copy=False)
+  if not(isinstance(t2, np_arrays.ndarray) and dtype == t2.dtype):
+    t2 = _array_internal(t2, dtype=dtype, copy=False)
+  return t1, t2
 
 
 @np_utils.np_doc('all')

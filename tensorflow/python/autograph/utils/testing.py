@@ -18,20 +18,82 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import imp
+import types
+import unittest
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-def fake_tf():
-  """Creates a fake module that looks like TensorFlow, for testing."""
-  mod = imp.new_module('tensorflow')
-  mod_contents = {}
-  mod_contents.update(gen_math_ops.__dict__)
-  mod_contents.update(math_ops.__dict__)
-  mod_contents.update(ops.__dict__)
-  mod_contents.update(mod.__dict__)
-  mod.__dict__.update(mod_contents)
-  return mod
+class AutoGraphTestCase(test.TestCase):
+  """Tests specialized for AutoGraph, which run as tf.functions.
+
+  These tests use a staged programming-like approach: most of the test code runs
+  as-is inside a tf.function, but the assertions are lifted outside the
+  function, and run with the corresponding function values instead.
+
+  For example, the test:
+
+      def test_foo(self):
+        baz = bar();
+        self.assertEqual(baz, value)
+
+  is equivalent to writing:
+
+      def test_foo(self):
+        @tf.function
+        def test_fn():
+          baz = bar();
+          return baz, value
+
+        baz_actual, value_actual = test_fn()
+        self.assertEqual(baz_actual, value_actual)
+  """
+
+  def __new__(cls, *args):
+    obj = super().__new__(cls)
+
+    for name in cls.__dict__:
+      if not name.startswith(unittest.TestLoader.testMethodPrefix):
+        continue
+      m = getattr(obj, name)
+      if callable(m):
+        wrapper = obj._run_as_tf_function(m)
+        setattr(obj, name, types.MethodType(wrapper, obj))
+
+    return obj
+
+  def _run_as_tf_function(self, fn):
+
+    def wrapper(self):
+      @def_function.function(autograph=False)  # Testing autograph itself.
+      def fn_wrapper():
+        self.assertions = []
+        fn()
+        targets = [args for _, args in self.assertions]
+        return targets
+      actuals = self.evaluate(fn_wrapper())
+      for (_, args), value in zip(self.assertions, actuals):
+        args[:] = value
+    return wrapper
+
+  def variable(self, name, value, dtype):
+    with ops.init_scope():
+      if name not in self.variables:
+        self.variables[name] = variables.Variable(value, dtype=dtype)
+        self.evaluate(self.variables[name].initializer)
+    return self.variables[name]
+
+  def setUp(self):
+    super().setUp()
+    self.variables = {}
+
+  def tearDown(self):
+    for fn, args in self.assertions:
+      fn(*args)
+    super().tearDown()
+
+  def assertEqual(self, *args):
+    self.assertions.append((super().assertEqual, list(args)))

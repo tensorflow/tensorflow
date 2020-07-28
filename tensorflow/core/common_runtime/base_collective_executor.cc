@@ -214,6 +214,7 @@ BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
   VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
+  cem_->GetParamResolver()->StartAbort(s);
   remote_access_->StartAbort(s);
 }
 
@@ -225,19 +226,12 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 
   // On any individual collective Op failure we need to abort the
   // BufRendezvous so that other Ops in the instance don't hang
-  // waiting for transmissions that will never happen.  Do so after a
-  // delay so that the original error status is more likely to
-  // propagate up, and peers are unlikely to re-create the purged
-  // BufRendezvous by late-arriving requests.
+  // waiting for transmissions that will never happen.
   StatusCallback done_safe = [this, done, is_callback_called](const Status& s) {
     auto should_call_callback = !is_callback_called->exchange(true);
     if (should_call_callback) {
       if (!s.ok()) {
-        Ref();  // Ensure this lasts until the closure executes.
-        SchedNonBlockingClosureAfter(1000000, [this, s] {
-          remote_access_->buf_rendezvous()->StartAbort(s);
-          Unref();
-        });
+        remote_access_->buf_rendezvous()->StartAbort(s);
       }
       done(s);
     }
@@ -271,13 +265,12 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     DCHECK_EQ(nullptr, col_impl);
     return;
   }
-  CollectiveContext* col_ctx =
-      new CollectiveContext(this, dev_mgr_, ctx, CtxParams(ctx), col_params,
-                            exec_key, step_id_, input, output);
+  auto col_ctx = std::make_shared<CollectiveContext>(
+      this, dev_mgr_, ctx, CtxParams(ctx), col_params, exec_key, step_id_,
+      input, output);
   status = col_impl->InitializeCollectiveContext(col_ctx);
   if (!status.ok()) {
     done_safe(status);
-    delete col_ctx;
     delete col_impl;
     return;
   }
@@ -285,15 +278,15 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // starve executor threads.
   remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
     profiler::TraceMe activity(
-        [&] {
-          return strings::StrCat(ctx->op_kernel().name_view(), ":",
-                                 ctx->op_kernel().type_string_view(),
-                                 "#id=", ctx->step_id(), "#");
+        [ctx] {
+          string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
+                                          ctx->op_kernel().type_string_view());
+          return profiler::TraceMeEncode(std::move(op),
+                                         {{"id", ctx->step_id()}});
         },
         profiler::TraceMeLevel::kInfo);
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
       done_safe(s);
-      delete col_ctx;
       delete col_impl;
     });
   });

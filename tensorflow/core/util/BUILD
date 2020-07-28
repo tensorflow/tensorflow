@@ -25,10 +25,12 @@ load(
     "if_static",
 )
 
+default_package_visibility = [
+    "//tensorflow/core:__subpackages__",
+]
+
 package(
-    default_visibility = [
-        "//tensorflow/core:__subpackages__",
-    ],
+    default_visibility = default_package_visibility,
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -61,6 +63,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "abstract_stack_trace.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -93,6 +96,8 @@ filegroup(
         "port.h",
         "presized_cuckoo_map.h",
         "ptr_util.h",
+        "ragged_to_dense_util.cc",
+        "ragged_to_dense_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
         "saved_tensor_slice_util.h",
@@ -311,6 +316,7 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
+        "abstract_stack_trace.h",
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
@@ -368,6 +374,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ragged_to_dense_util",
+    srcs = [
+        "ragged_to_dense_util.cc",
+    ],
+    hdrs = [
+        "ragged_to_dense_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_to_dense_util_test",
+    srcs = [
+        "ragged_to_dense_util_test.cc",
+    ],
+    deps = [
+        ":ragged_to_dense_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "stats_calculator_test",
     srcs = ["stats_calculator_test.cc"],
@@ -404,6 +439,22 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "abstract_stack_trace",
+    hdrs = ["abstract_stack_trace.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime/eager:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/eager:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
 )
 
 tf_cuda_library(
@@ -509,6 +560,7 @@ cc_library(
     name = "incremental_barrier",
     srcs = ["incremental_barrier.cc"],
     hdrs = ["incremental_barrier.h"],
+    visibility = default_package_visibility + ["//tensorflow_serving:__subpackages__"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/functional:bind_front",

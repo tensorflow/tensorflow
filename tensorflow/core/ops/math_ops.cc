@@ -494,6 +494,7 @@ REGISTER_OP("TruncateDiv")
 REGISTER_OP("RealDiv").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+// Note SquaredDifference implements conj(x - y)*(x - y).
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()
@@ -1446,9 +1447,11 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   }
 
   auto size = (std::is_integral<T>::value
-                   ? ((std::abs(limit - start) + std::abs(delta) - T(1)) /
-                      std::abs(delta))
-                   : (std::ceil(std::abs((limit - start) / delta))));
+                   ? ((Eigen::numext::abs(limit - start) +
+                       Eigen::numext::abs(delta) - T(1)) /
+                      Eigen::numext::abs(delta))
+                   : (Eigen::numext::ceil(
+                         Eigen::numext::abs((limit - start) / delta))));
   c->set_output(0, c->Vector(static_cast<int64>(size)));
   return Status::OK();
 }

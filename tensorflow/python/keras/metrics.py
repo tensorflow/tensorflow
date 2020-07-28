@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
 from tensorflow.python.keras.losses import categorical_hinge
@@ -208,7 +209,12 @@ class Metric(base_layer.Layer):
 
     def replica_local_fn(*args, **kwargs):
       """Updates the state of the metric in a replica-local context."""
-      update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
+      if any(
+          isinstance(arg, keras_tensor.KerasTensor)
+          for arg in nest.flatten((args, kwargs))):
+        update_op = None
+      else:
+        update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
       update_ops = []
       if update_op is not None:
         update_ops.append(update_op)
@@ -547,7 +553,7 @@ class MeanRelativeError(Mean):
     y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
-    y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
+    y_pred, self.normalizer = losses_utils.remove_squeezable_dimensions(
         y_pred, self.normalizer)
     y_pred.shape.assert_is_compatible_with(y_true.shape)
     relative_errors = math_ops.div_no_nan(

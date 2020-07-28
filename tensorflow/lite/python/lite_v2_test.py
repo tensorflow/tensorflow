@@ -36,9 +36,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
+from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
 
@@ -73,7 +75,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
   @parameterized.named_parameters(
       ('_INT8InputOutput', lite.constants.INT8),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
   @test_util.run_v2_only
   def testInvalidFloat(self, inference_input_output_type):
     root = self._getSimpleVariableModel()
@@ -194,7 +197,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
   @parameterized.named_parameters(
       ('_INT8InputOutput', lite.constants.INT8),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
   @test_util.run_v2_only
   def testInvalidPostTrainingDynamicRangeQuantization(
       self, inference_input_output_type):
@@ -254,15 +258,78 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Ensure that the quantized tflite model is smaller.
     self.assertLess(len(quantized_tflite_model), len(tflite_model))
 
+  def testPostTrainingIntegerAllowFloatQuantizationINT16InputOutput(self):
+    func, calibration_gen = self._getCalibrationQuantizeModel()
+
+    # Convert float model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Post-training quantization 16x8 with float fallback allowed.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.\
+        EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+        lite.OpsSet.TFLITE_BUILTINS
+    ]
+    inference_input_output_type = lite.constants.INT16
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertTrue(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details[0]['dtype'])
+
+    # Ensure that the quantized tflite model is smaller.
+    self.assertLess(len(quantized_tflite_model), len(tflite_model))
+
+  def testPostTrainingIntegerQuant16x8MismatchInferenceParams(self):
+    # In this test we check that when we do 16x8 post-training
+    # quantization and set inference_input(output)_type to
+    # constants.INT8, we have an error.
+    func, calibration_gen = self._getCalibrationQuantizeModel()
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.\
+          EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.inference_input_type = lite.constants.INT8
+      quantized_converter.inference_output_type = lite.constants.INT8
+      quantized_converter.convert()
+    self.assertEqual(
+        "The inference_input_type and inference_output_type "
+        "must be in ['tf.float32', 'tf.int16'].", str(error.exception))
+
   @parameterized.named_parameters(
       ('_DefaultFLOAT32InputOutput_UseTargetTypesFlag', lite.constants.FLOAT,
-       False), ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT, True),
-      ('_INT8InputOutput', lite.constants.INT8, True),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8, True))
+       False, False),
+      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT, True, False),
+      ('_INT8InputOutput', lite.constants.INT8, True, False),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8, True, False),
+      ('_INT16InputOutput', lite.constants.INT16, True, True))
   @test_util.run_v2_only
   def testPostTrainingIntegerNoFloatQuantization(self,
                                                  inference_input_output_type,
-                                                 use_target_ops_flag):
+                                                 use_target_ops_flag,
+                                                 quantization_16x8):
     func, calibration_gen = self._getCalibrationQuantizeModel()
 
     # Convert float model.
@@ -276,9 +343,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
     if use_target_ops_flag:
-      quantized_converter.target_spec.supported_ops = [
-          lite.OpsSet.TFLITE_BUILTINS_INT8
-      ]
+      if quantization_16x8:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.\
+            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS_INT8
+        ]
     else:
       quantized_converter.target_spec.supported_types = [lite.constants.INT8]
     quantized_converter.inference_input_type = inference_input_output_type
@@ -393,7 +466,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
   @parameterized.named_parameters(
       ('_INT8InputOutput', lite.constants.INT8),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
   def testInvalidTrainingTimeQuantization(self, inference_input_output_type):
     # We currently don't support integer inference_input_type and
     # inference_output_type flags for training time quantization.
@@ -547,6 +621,25 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       self.assertEqual(np.float32, output_details[0]['dtype'])
       self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
       self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  @test_util.run_v2_only
+  def testTF1HubFormattedModel(self):
+    """Test a TF1 hub formatted model."""
+    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+
+    # TF1 hub model is based on V1 saved model and they omit the saved model
+    # schema version setting.
+    saved_model_proto = parse_saved_model(saved_model_dir)
+    saved_model_proto.saved_model_schema_version = 0
+
+    saved_model_pb_file_path = os.path.join(saved_model_dir, 'saved_model.pb')
+    with file_io.FileIO(saved_model_pb_file_path, 'wb') as writer:
+      writer.write(saved_model_proto.SerializeToString())
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
   @test_util.run_v2_only
   def testConstModel(self):

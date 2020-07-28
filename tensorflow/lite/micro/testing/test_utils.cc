@@ -36,23 +36,17 @@ constexpr size_t kBufferAlignment = 16;
 // We store the pointer to the ith scratch buffer to implement the Request/Get
 // ScratchBuffer API for the tests. scratch_buffers_[i] will be the ith scratch
 // buffer and will still be allocated from within raw_arena_.
-constexpr size_t kNumScratchBuffers = 5;
+constexpr int kNumScratchBuffers = 5;
 uint8_t* scratch_buffers_[kNumScratchBuffers];
-size_t scratch_buffer_count_ = 0;
+int scratch_buffer_count_ = 0;
 
 // Note that the context parameter in this function is only needed to match the
 // signature of TfLiteContext::AllocatePersistentBuffer and isn't needed in the
 // implementation because we are assuming a single global
 // simple_memory_allocator_
-TfLiteStatus AllocatePersistentBuffer(TfLiteContext* context, size_t bytes,
-                                      void** ptr) {
+void* AllocatePersistentBuffer(TfLiteContext* context, size_t bytes) {
   TFLITE_DCHECK(simple_memory_allocator_ != nullptr);
-  TFLITE_DCHECK(ptr != nullptr);
-  *ptr = simple_memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
-  if (*ptr == nullptr) {
-    return kTfLiteError;
-  }
-  return kTfLiteOk;
+  return simple_memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
 }
 
 TfLiteStatus RequestScratchBufferInArena(TfLiteContext* context, size_t bytes,
@@ -85,6 +79,11 @@ void* GetScratchBuffer(TfLiteContext* context, int buffer_index) {
     return nullptr;
   }
   return scratch_buffers_[buffer_index];
+}
+
+TfLiteTensor* GetTensor(const struct TfLiteContext* context, int subgraph_idx) {
+  // TODO(b/160894903): Return this value from temp allocated memory.
+  return &context->tensors[subgraph_idx];
 }
 
 }  // namespace
@@ -136,6 +135,9 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
   context->recommended_num_threads = 1;
   context->GetExternalContext = nullptr;
   context->SetExternalContext = nullptr;
+
+  context->GetTensor = GetTensor;
+  context->GetEvalTensor = nullptr;
 
   context->AllocatePersistentBuffer = AllocatePersistentBuffer;
   context->RequestScratchBufferInArena = RequestScratchBufferInArena;
@@ -246,8 +248,8 @@ TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
   result.type = kTfLiteInt32;
   result.data.i32 = const_cast<int32_t*>(data);
   result.dims = dims;
-  // Quantized int32 tensors always have a zero point of 0, since the range of
-  // int32 values is large, and because zero point costs extra cycles during
+  // Quantized int32_t tensors always have a zero point of 0, since the range of
+  // int32_t values is large, and because zero point costs extra cycles during
   // processing.
   result.params = {scale, 0};
   result.allocation_type = kTfLiteMemNone;

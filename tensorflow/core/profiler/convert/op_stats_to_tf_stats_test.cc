@@ -80,7 +80,7 @@ TEST(OpStatsToTfStats, GpuTfStats) {
                        kKernel3DurationNs, /*on_device=*/true, kKernel3,
                        &device_plane, &stream2);
 
-  const OpStats op_stats = ConvertXSpaceToOpStats(space);
+  const OpStats op_stats = ConvertXSpaceToOpStats(space, {OP_METRICS_DB});
   const TfStatsDatabase tf_stats = ConvertOpStatsToTfStats(op_stats);
 
   // TfOp1, TfOp2, Idle

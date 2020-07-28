@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -lhlo-legalize-to-linalg -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
@@ -329,7 +329,7 @@ func @constant(%value: memref<i32>) {
   return
 }
 // CHECK: %[[CONSTANT:.*]] = constant 10 : i32
-// CHECK: store %[[CONSTANT]], %{{.*}}[] : memref<i32>
+// CHECK: affine.store %[[CONSTANT]], %{{.*}}[] : memref<i32>
 
 // -----
 

@@ -16,27 +16,28 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
 namespace tpu {
-
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;
-using xla::ComputationLayout;
-using xla::DebugOptions;
-using xla::DeviceAssignment;
-using xla::HloModuleConfig;
-using xla::HloSharding;
-using xla::InvalidArgument;
-using xla::ProgramShape;
-using xla::Shape;
-using xla::ShapeTree;
-using xla::ShapeUtil;
+using ::stream_executor::port::Status;
+using ::stream_executor::port::StatusOr;
+using ::xla::ComputationLayout;
+using ::xla::DebugOptions;
+using ::xla::DeviceAssignment;
+using ::xla::HloModuleConfig;
+using ::xla::HloSharding;
+using ::xla::InvalidArgument;
+using ::xla::ProgramShape;
+using ::xla::Shape;
+using ::xla::ShapeTree;
+using ::xla::ShapeUtil;
 
 Status ValidateResultShape(const Shape& client_shape,
                            const Shape& result_shape) {
@@ -434,6 +435,110 @@ StatusOr<TpuAotCompilationRequestProto> CreateTpuAotCompilationRequest(
 
   VLOG(1) << "TpuAotCompilationRequest:\n" << aot_request.DebugString();
   return aot_request;
+}
+
+StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
+    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const TPUCompileMetadataProto& metadata,
+    const std::vector<TensorShape>& arg_shapes) {
+  VLOG(1) << "CreateTpuCompilationRequest.";
+  TpuCompilationRequestProto compilation_request;
+  bool use_mlir = computation.index() == 0;
+  compilation_request.set_use_mlir(use_mlir);
+  if (use_mlir) {
+    VLOG(1) << "Serializing MlirModule";
+    const MlirToHloArgs& mlir_computation = absl::get<0>(computation);
+    *compilation_request.mutable_mlir_module() = mlir_computation.mlir_module;
+  } else {
+    VLOG(1) << "Serializing FunctionDefinitionLibrary";
+    const FunctionToHloArgs& function_computation = absl::get<1>(computation);
+    *compilation_request.mutable_fdef_lib() =
+        function_computation.flib_def->ToProto();
+    compilation_request.set_graph_def_version(
+        function_computation.graph_def_version);
+    *compilation_request.mutable_function() = *function_computation.function;
+    // TODO(b/160937500): serializing and copying large guaranteed_constants can
+    // be a perf hit. There is a future work to refactor the compilation layer
+    // to avoid passing guaranteed_constants over C_API.
+    if (function_computation.guaranteed_constants.index() == 0) {
+      absl::Span<const TensorProto* const> guaranteed_constants =
+          absl::get<0>(function_computation.guaranteed_constants);
+      for (const TensorProto* constant : guaranteed_constants) {
+        *compilation_request.add_guaranteed_constants() = *constant;
+      }
+    } else {
+      CHECK_EQ(function_computation.guaranteed_constants.index(), 1);
+      const OpInputList& guaranteed_constants =
+          *absl::get<1>(function_computation.guaranteed_constants);
+      for (const Tensor& constant : guaranteed_constants) {
+        constant.AsProtoTensorContent(
+            compilation_request.add_guaranteed_constants());
+      }
+    }
+  }
+
+  for (const TensorShape& shape : arg_shapes) {
+    shape.AsProto(compilation_request.add_arg_shapes());
+  }
+
+  *(compilation_request.mutable_metadata()) = metadata;
+
+  VLOG(1) << "TpuCompilationRequest:\n" << compilation_request.DebugString();
+  return compilation_request;
+}
+
+Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
+                                    TPUCompileMetadataProto* metadata,
+                                    NameAttrList* function_name,
+                                    std::string* mlir_module) {
+  CHECK_NE(metadata, nullptr);
+
+  int num_computations;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("num_computations", &num_computations));
+
+  std::string metadata_string;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("metadata", &metadata_string));
+  if (!metadata->ParsePartialFromString(metadata_string)) {
+    return errors::InvalidArgument("Unable to parse TPUCompileMetadataProto");
+  }
+
+  if (function_name != nullptr) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("function", function_name));
+  }
+
+  if (mlir_module != nullptr) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("mlir_module", mlir_module));
+  }
+
+  if (num_computations != metadata->num_cores_per_replica()) {
+    return errors::InvalidArgument(
+        "num_computations must be equal to "
+        "num_cores_per_replica in the 'metadata' "
+        "attribute (",
+        num_computations, " vs ", metadata->num_cores_per_replica(), ")");
+  }
+
+  if (metadata->has_device_assignment()) {
+    StatusOr<std::unique_ptr<DeviceAssignment>> device_assignment_or_error =
+        DeviceAssignment::Deserialize(metadata->device_assignment());
+    TF_RETURN_IF_ERROR(device_assignment_or_error.status());
+    const DeviceAssignment& device_assignment =
+        *device_assignment_or_error.ValueOrDie();
+    const int num_replicas = metadata->num_replicas();
+    if (device_assignment.replica_count() != num_replicas) {
+      return errors::InvalidArgument(
+          "Device assignment replica_count != num_replicas; ",
+          device_assignment.replica_count(), " vs ", num_replicas);
+    }
+    if (device_assignment.computation_count() !=
+        metadata->num_cores_per_replica()) {
+      return errors::InvalidArgument(
+          "Device assignment computation_count != num_cores_per_replica; ",
+          device_assignment.computation_count(), " vs ",
+          metadata->num_cores_per_replica());
+    }
+  }
+  return Status::OK();
 }
 }  // namespace tpu
 }  // namespace tensorflow

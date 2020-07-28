@@ -77,13 +77,14 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     return tensorflow::errors::Internal(
         "Permutations for dynamic shapes are not yet supported");
   }
-  llvm::SmallVector<int64_t, 2> permuted_sizes;
-  for (auto dim : llvm::reverse(shape.layout().minor_to_major())) {
-    permuted_sizes.push_back(shape.dimensions(dim));
+  int64_t accumulated_stride = 1;
+  llvm::SmallVector<int64_t, 4> strides(shape.rank(), 1);
+  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+    strides[dim] = accumulated_stride;
+    accumulated_stride *= shape.dimensions(dim);
   }
-  return llvm::SmallVector<AffineMap, 1>{AffineMap::get(
-      permuted_sizes.size(), 0,
-      makeCanonicalStridedLayoutExpr(permuted_sizes, builder.getContext()))};
+  return llvm::SmallVector<AffineMap, 1>{
+      makeStridedLinearLayoutMap(strides, /*offset=*/0, builder.getContext())};
 }
 
 }  // namespace

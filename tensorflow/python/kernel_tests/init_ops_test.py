@@ -1325,7 +1325,7 @@ class IdentityInitializerTest(test.TestCase):
     init = init_ops.identity_initializer()
     shape = (10, 5)
     with self.session(graph=ops.Graph(), use_gpu=True):
-      self.assertAllClose(init(shape).eval(), np.eye(*shape))
+      self.assertAllClose(init(shape), np.eye(*shape))
 
   @test_util.run_deprecated_v1
   def testGain(self):
@@ -1334,9 +1334,9 @@ class IdentityInitializerTest(test.TestCase):
       init_default = init_ops.identity_initializer(dtype=dtype)
       init_custom = init_ops.identity_initializer(gain=0.9, dtype=dtype)
       with self.session(graph=ops.Graph(), use_gpu=True):
-        self.assertAllClose(init_default(shape).eval(), np.eye(*shape))
+        self.assertAllClose(init_default(shape), np.eye(*shape))
       with self.session(graph=ops.Graph(), use_gpu=True):
-        self.assertAllClose(init_custom(shape).eval(), np.eye(*shape) * 0.9)
+        self.assertAllClose(init_custom(shape), np.eye(*shape) * 0.9)
 
   @test_util.run_deprecated_v1
   def testPartitions(self):

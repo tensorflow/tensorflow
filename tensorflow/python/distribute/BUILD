@@ -302,6 +302,7 @@ py_library(
         ":distribute_lib",
         ":reduce_util",
         ":shared_variable_creator",
+        ":tpu_values",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:config",
@@ -648,11 +649,27 @@ tpu_py_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
+        ":strategy_test_lib",
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_strategy_compilation_test",
+    srcs = ["tpu_strategy_compilation_test.py"],
+    disable_experimental = True,
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -983,6 +1000,7 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":reduce_util",
         ":strategy_combinations",
+        ":tpu_strategy",
         ":values",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
@@ -1145,6 +1163,8 @@ distribute_py_test(
     deps = [
         ":combinations",
         ":distribute_lib",
+        ":distribute_utils",
+        ":packed_distributed_variable",
         ":strategy_combinations",
         ":test_util",
         ":tpu_strategy",
@@ -1174,7 +1194,7 @@ distribute_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/saved_model/model_utils:mode_keys",
+        "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",
@@ -1201,6 +1221,46 @@ distribute_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model/model_utils:mode_keys",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "vars_test",
+    size = "medium",
+    srcs = ["vars_test.py"],
+    main = "vars_test.py",
+    shard_count = 5,
+    tags = [
+        "multi_and_single_gpu",
+        "no_rocm",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/150954621 Target too big to run serially reliably.
+    ],
+    deps = [
+        ":combinations",
+        ":distribute_lib",
+        ":strategy_combinations",
+        ":tpu_strategy",
+        ":tpu_values",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:indexed_slices",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/tpu:tpu_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1682,10 +1742,20 @@ distribute_py_test(
     ],
     deps = [
         ":combinations",
+        ":device_util",
         ":strategy_combinations",
+        ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

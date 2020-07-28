@@ -331,7 +331,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
 template <typename T>
 class MklFusedConv2DWithBiasOpTest : public MklFusedConv2DOpTest<T> {};
 
-TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest);
+TYPED_TEST_SUITE_P(MklFusedConv2DWithBiasOpTest);
 
 // -------------------------------------------------------------------------- //
 // Conv2D + BiasAdd + {Activation}                                            //
@@ -437,7 +437,7 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddElu) {
   this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Add", "Elu"});
 }
 
-REGISTER_TYPED_TEST_CASE_P(
+REGISTER_TYPED_TEST_SUITE_P(
     MklFusedConv2DWithBiasOpTest, OneByOneConvolution, SpatialConvolution,
     OneByOneConvolutionAndRelu, SpatialConvolutionAndRelu,
     OneByOneConvolutionAndRelu6, SpatialConvolutionAndRelu6,
@@ -448,8 +448,8 @@ REGISTER_TYPED_TEST_CASE_P(
     OneByOneConvolutionAndAddElu, SpatialConvolutionAndAddElu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedConv2DWithBiasOpTest,
-                              MklFusedBiasAddDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedConv2DWithBiasOpTest,
+                               MklFusedBiasAddDataTypes);
 
 // Testing MKL's fused depthwise convolution ops
 template <typename T>
@@ -668,13 +668,51 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedDepthwiseConv2DWithBiasOpTest,
                                MklFusedBiasAddDataTypes);
 
 // Testing fusion of pad and convolution
-
+template <typename T>
 class FusedPadConvOpTest : public OpsTestBase {
  public:
-  template <typename T>
-  void Run(DataType dtype, Tensor& image, Tensor& filter, Tensor& padding,
-           Tensor& expected, const string data_format) {
+  void Run(const string data_format) {
+    DataType dtype = DataTypeToEnum<T>::v();
+    const int depth = 1;
+    const int image_width = 4;
+    const int image_height = 3;
+    const int image_batch_count = 1;
     const int stride = 1;
+
+    Tensor image, expected;
+    if (data_format == "NHWC") {
+      image =
+          Tensor(dtype, {image_batch_count, image_height, image_width, depth});
+    } else {
+      image =
+          Tensor(dtype, {image_batch_count, depth, image_height, image_width});
+    }
+    test::FillValues<T>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+
+    const int kFilterSize = 3;
+    const int kFilterCount = 1;
+    Tensor filter(dtype, {kFilterSize, kFilterSize, depth, kFilterCount});
+    test::FillValues<T>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
+
+    const int padding_height = 4;
+    const int padding_width = 2;
+    Tensor padding(DT_INT32, {padding_height, padding_width});
+    if (data_format == "NHWC") {
+      test::FillValues<int32>(&padding, {0, 0, 3, 4, 1, 2, 0, 0});
+    } else {
+      test::FillValues<int32>(&padding, {0, 0, 0, 0, 3, 4, 1, 2});
+    }
+
+    if (data_format == "NHWC") {
+      expected = Tensor(dtype, TensorShape({1, 8, 5, 1}));
+    } else {
+      expected = Tensor(dtype, TensorShape({1, 1, 8, 5}));
+    }
+    test::FillValues<T>(
+        &expected,
+        {0,  0,   0,   0,   0,   24, 42,  60,  33,  12,  105, 150, 183, 95,
+         32, 235, 312, 357, 178, 56, 187, 234, 261, 121, 32,  106, 126, 138,
+         59, 12,  0,   0,   0,   0,  0,   0,   0,   0,   0,   0});
 
     // Create a fused pad+conv2d node
     TF_EXPECT_OK(NodeDefBuilder("fused_pad_conv_op", "_MklPadWithConv2D")
@@ -705,65 +743,25 @@ class FusedPadConvOpTest : public OpsTestBase {
     const Tensor& first = *GetOutput(0);
     const Tensor& second = *GetOutput(2);
     CommonTestUtilities<T> test_util;
-    test_util.ConvertAndCompare(dtype, first, second, expected);
+    test_util.ConvertAndCompareIntegral(dtype, first, second, expected);
   }
 };
 
-TEST_F(FusedPadConvOpTest, PaddingConvTest) {
-  const int depth = 1;
-  const int image_width = 4;
-  const int image_height = 3;
-  const int image_batch_count = 1;
-  Tensor image(DT_FLOAT, {image_batch_count, image_height, image_width, depth});
-  test::FillValues<float>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+TYPED_TEST_SUITE_P(FusedPadConvOpTest);
 
-  const int kFilterSize = 3;
-  const int kFilterCount = 1;
-  Tensor filter(DT_FLOAT, {kFilterSize, kFilterSize, depth, kFilterCount});
-  test::FillValues<float>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
+TYPED_TEST_P(FusedPadConvOpTest, PaddingConvTest) { this->Run("NHWC"); }
 
-  const int padding_height = 4;
-  const int padding_width = 2;
-  Tensor padding(DT_INT32, {padding_height, padding_width});
-  test::FillValues<int32>(&padding, {0, 0, 3, 4, 1, 2, 0, 0});
+TYPED_TEST_P(FusedPadConvOpTest, PaddingConvTestNchw) { this->Run("NCHW"); }
 
-  Tensor expected(DT_FLOAT, TensorShape({1, 8, 5, 1}));
-  test::FillValues<float>(
-      &expected,
-      {0,  0,   0,   0,   0,   24, 42,  60,  33,  12,  105, 150, 183, 95,
-       32, 235, 312, 357, 178, 56, 187, 234, 261, 121, 32,  106, 126, 138,
-       59, 12,  0,   0,   0,   0,  0,   0,   0,   0,   0,   0});
+REGISTER_TYPED_TEST_SUITE_P(FusedPadConvOpTest, PaddingConvTest,
+                            PaddingConvTestNchw);
 
-  Run<float>(DT_FLOAT, image, filter, padding, expected, "NHWC");
-}
-
-TEST_F(FusedPadConvOpTest, PaddingConvTestNchw) {
-  const int depth = 1;
-  const int image_width = 4;
-  const int image_height = 3;
-  const int image_batch_count = 1;
-  Tensor image(DT_FLOAT, {image_batch_count, depth, image_height, image_width});
-  test::FillValues<float>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-
-  const int kFilterSize = 3;
-  const int kFilterCount = 1;
-  Tensor filter(DT_FLOAT, {kFilterSize, kFilterSize, depth, kFilterCount});
-  test::FillValues<float>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
-
-  const int padding_height = 4;
-  const int padding_width = 2;
-  Tensor padding(DT_INT32, {padding_height, padding_width});
-  test::FillValues<int32>(&padding, {0, 0, 0, 0, 3, 4, 1, 2});
-
-  Tensor expected(DT_FLOAT, TensorShape({1, 1, 8, 5}));
-  test::FillValues<float>(
-      &expected,
-      {0,  0,   0,   0,   0,   24, 42,  60,  33,  12,  105, 150, 183, 95,
-       32, 235, 312, 357, 178, 56, 187, 234, 261, 121, 32,  106, 126, 138,
-       59, 12,  0,   0,   0,   0,  0,   0,   0,   0,   0,   0});
-
-  Run<float>(DT_FLOAT, image, filter, padding, expected, "NCHW");
-}
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+using FusedPadConvDataTypes = ::testing::Types<float, bfloat16>;
+#else
+using FusedPadConvDataTypes = ::testing::Types<float>;
+#endif
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedPadConvOpTest, FusedPadConvDataTypes);
 
 class FilterCacheTest : public OpsTestBase {
  public:
@@ -928,7 +926,7 @@ class MklFusedMatMulOpTest : public OpsTestBase {
   }
 };
 
-TYPED_TEST_CASE_P(MklFusedMatMulOpTest);
+TYPED_TEST_SUITE_P(MklFusedMatMulOpTest);
 
 TYPED_TEST_P(MklFusedMatMulOpTest, WithBias) {
   const int batch = 3;
@@ -965,15 +963,15 @@ TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndElu) {
                           {"BiasAdd", "Elu"});
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklFusedMatMulOpTest,  //
-                           WithBias,              //
-                           WithBiasAndRelu,       //
-                           WithBiasAndRelu6,      //
-                           WithBiasAndElu);
+REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
+                            WithBias,              //
+                            WithBiasAndRelu,       //
+                            WithBiasAndRelu6,      //
+                            WithBiasAndElu);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedMatMulOpTest,
-                              MklFusedMatMulDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,
+                               MklFusedMatMulDataTypes);
 
 // Test the performance of MklFusedMatMul weight cache.
 // For the first time B matrix will be reordered and cached which will be
@@ -1363,7 +1361,7 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
   }
 };
 
-TYPED_TEST_CASE_P(MklPadWithFusedConv2DOpTest);
+TYPED_TEST_SUITE_P(MklPadWithFusedConv2DOpTest);
 
 TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasAndRoundPad) {
   const int kFilterSize = 1;
@@ -1393,15 +1391,15 @@ TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasReluAndPartialPad) {
   this->VerifyPadAndConv2DWithBiasRelu(kFilterSize, kFilterCount);
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklPadWithFusedConv2DOpTest,  //
-                           WithBiasAndRoundPad,          //
-                           WithBiasAndPartialPad,        //
-                           WithBiasReluAndRoundPad,      //
-                           WithBiasReluAndPartialPad);
+REGISTER_TYPED_TEST_SUITE_P(MklPadWithFusedConv2DOpTest,  //
+                            WithBiasAndRoundPad,          //
+                            WithBiasAndPartialPad,        //
+                            WithBiasReluAndRoundPad,      //
+                            WithBiasReluAndPartialPad);
 
 using MklPadWithFusedConv2DDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, MklPadWithFusedConv2DOpTest,
-                              MklPadWithFusedConv2DDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklPadWithFusedConv2DOpTest,
+                               MklPadWithFusedConv2DDataTypes);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

@@ -410,10 +410,7 @@ def TFL_ComparisonBinaryBuilder : OpBuilder<
 
 class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
-      [DeclareOpInterfaceMethods<TFL_RuntimeVerification>,
-       // All TFL ops are supported on CPU.
-       DeclareOpInterfaceMethods<TFL_CpuTargetOp>
-      ])> {
+      [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
   // FlatBuffer generation specific information.
   // -------------------------------------------
   // When generating the FlatBuffer output some operations have
@@ -435,8 +432,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    AffineQuantizedOpInterface, AffineOpCoefficient<index, 1>,
-    TFL_GpuTargetOp, TFL_SparseOp]> {
+    AffineQuantizedOpInterface, AffineOpCoefficient<index, 1>, TFL_SparseOp]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -473,8 +469,7 @@ def TFL_AbsOp : TFL_Op<"abs", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Absolute value operator";
 
   let description = [{
@@ -495,8 +490,7 @@ def TFL_AddOp : TFL_Op<"add", [
       CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">>,
     ResultsBroadcastableShape,
     NoSideEffect,
-    Commutative,
-    TFL_GpuTargetOp]> {
+    Commutative]> {
   let summary = "Addition operator";
 
   let description = [{
@@ -573,7 +567,6 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
     AccumulatorUniformScale<3, 1, 2>,
     AffineQuantizedOpInterface, AffineOpCoefficient<0, 2>,
-    TFL_GpuTargetOp,
     TFL_SparseOp]> {
   let summary = "Transpose convolution operator";
 
@@ -612,8 +605,7 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d",
            [NoSideEffect,
-            SameOperandsAndResultsScale,
-            TFL_GpuTargetOp]> {
+            SameOperandsAndResultsScale]> {
   let summary = "Average_pool_2d operator";
 
   let description = [{
@@ -713,8 +705,7 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
     NoSideEffect,
     PredOpTrait<"values and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultsScale,
-    TFL_GpuTargetOp
+    SameOperandsAndResultsScale
   ]> {
   let summary = "Concatenation operator";
 
@@ -861,8 +852,7 @@ def TFL_CosOp: TFL_Op<"cos", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Cosine operator";
 
   let description = [{
@@ -916,8 +906,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
     AffineQuantizedOpInterface,
     AffineOpCoefficient<-1, 1>,
-    TFL_SparseOp,
-    TFL_GpuTargetOp]> {
+    TFL_SparseOp]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -954,7 +943,10 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    NoSideEffect,
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
-   SameOperandsAndResultElementType]> {
+   PredOpTrait<"x and output must have same element type",
+       TFL_TCresVTEtIsSameAsOp<0, 0>>,
+   PredOpTrait<"y and output must have same element type",
+       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -1070,8 +1062,7 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Less_equal operator";
 
   let description = [{
@@ -1132,8 +1123,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     ResultsBroadcastableShape,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Greater_equal operator";
 
   let description = [{
@@ -1360,8 +1350,7 @@ def TFL_DivOp : TFL_Op<"div", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     ResultsBroadcastableShape,
     NoSideEffect,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Division operator";
 
   let description = [{
@@ -1427,7 +1416,6 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
 def TFL_EqualOp: TFL_Op<"equal", [
     Commutative,
-    NoQuantizableResult,
     ResultsBroadcastableShape,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {
@@ -1449,8 +1437,7 @@ def TFL_EqualOp: TFL_Op<"equal", [
 }
 
 def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect,
-                              SameOperandsAndResultType,
-                              TFL_GpuTargetOp]> {
+                              SameOperandsAndResultType]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
@@ -1634,8 +1621,7 @@ def TFL_GreaterOp : TFL_Op<"greater", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1659,8 +1645,7 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
     NoSideEffect,
     SameOperandsAndResultShape,
     PredOpTrait<"input and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_GpuTargetOp]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Hardswish activation function.";
   let description = [{
     Computes hard-swish activation function
@@ -1676,12 +1661,7 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
-    FixedOutputRangeInterface,
-    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
-    // zero_point = central_value
-    // scale = 1. / (central_value - min_value)
-    FixedResultScale<Int8UniformQuantizedType<0, 78125, -7>>,
-    FixedResultScale<UInt8UniformQuantizedType<128, 78125, -7>>]> {
+    FixedOutputRangeInterface]> {
   let summary = "L2 Normalize Operator";
 
   let description = [{
@@ -1703,29 +1683,12 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType().cast<ShapedType>();
-    if (!result_type.getElementType().isa<FloatType>()) return {};
-    Builder builder(result_type.getContext());
-
-    // Only support 8-bits
-    if (bit_width != 8) return {};
-    IntegerType storage_type = builder.getIntegerType(bit_width);
-
-    double scale = 1.0 / 128;
-    int64_t zero_point, storage_min, storage_max;
-    if (is_signed) {
-      zero_point = 0;
-      storage_min = -128;
-      storage_max = 127;
-    } else {
-      zero_point = 128;
-      storage_min = 0;
-      storage_max = 255;
-    }
-
-    return quant::UniformQuantizedType::getChecked(
-        is_signed, storage_type, result_type.getElementType(), scale,
-        zero_point, storage_min, storage_max, builder.getUnknownLoc());
+    auto result_type = output().getType();
+    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
+    // zero_point = central_value
+    // scale = 1. / (central_value - min_value)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 128, /*zero_point=*/0);
   }
   }];
 }
@@ -1757,8 +1720,7 @@ def TFL_LessOp : TFL_Op<"less", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Less operator";
 
   let description = [{
@@ -1834,12 +1796,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultShape,
-    // zero_point = 0
-    // scale = 1. / (max_value + 1)
-    FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
-    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
-    FixedOutputRangeInterface,
-    TFL_GpuTargetOp]> {
+    FixedOutputRangeInterface]> {
   let summary = "Logistic operator";
 
   let description = [{
@@ -1854,29 +1811,11 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = y().getType().cast<ShapedType>();
-    if (!result_type.getElementType().isa<FloatType>()) return {};
-    Builder builder(result_type.getContext());
-
-    // Only support 8-bits
-    if (bit_width != 8) return {};
-    IntegerType storage_type = builder.getIntegerType(bit_width);
-
-    double scale = 1.0 / 256;
-    int64_t zero_point, storage_min, storage_max;
-    if (is_signed) {
-      zero_point = -128;
-      storage_min = -128;
-      storage_max = 127;
-    } else {
-      zero_point = 0;
-      storage_min = 0;
-      storage_max = 255;
-    }
-
-    return quant::UniformQuantizedType::getChecked(
-        is_signed, storage_type, result_type.getElementType(), scale,
-        zero_point, storage_min, storage_max, builder.getUnknownLoc());
+    auto result_type = y().getType();
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 256, /*zero_point=*/-128);
   }
   }];
 }
@@ -1885,8 +1824,7 @@ def TFL_LogOp: TFL_Op<"log", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
@@ -1905,10 +1843,7 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     SameOperandsAndResultShape,
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    // zero_point = max_value
-    // scale = -log_softmax_output_min / (max_value + 1)
-    FixedResultScale<Int8UniformQuantizedType<127, 625, -4>>,
-    FixedResultScale<UInt8UniformQuantizedType<255, 625, -4>>]> {
+    FixedOutputRangeInterface]> {
   let summary = "Log softmax operator";
 
   let description = [{
@@ -1922,6 +1857,18 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
   let results = (outs TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = output().getType();
+    // zero_point = max_value
+    // scale = -log_softmax_output_min / (max_value + 1)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/16.0 / 256, /*zero_point=*/127);
+  }
+  }];
 }
 
 // TODO(ashwinm): Revisit the granularity of the PredOpTraits. We could
@@ -1943,8 +1890,7 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     MaxPoolOperandAndResultConstraints,
-    SameOperandsAndResultsScale,
-    TFL_GpuTargetOp]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Max Pool 2D op";
 
   let description = [{
@@ -1976,8 +1922,7 @@ def TFL_MaximumOp : TFL_Op<"maximum", [
     NoSideEffect,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     Commutative,
-    SameOperandsAndResultsScale,
-    TFL_GpuTargetOp]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Max operator";
   let description = [{
     Element-wise max operation.
@@ -2000,8 +1945,7 @@ def TFL_MaximumOp : TFL_Op<"maximum", [
 def TFL_MeanOp : TFL_Op<"mean", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
-    TFL_GpuTargetOp]> {
+    NoSideEffect]> {
   let summary = "Mean operator";
 
   let description = [{
@@ -2079,8 +2023,7 @@ def TFL_SliceOp : TFL_Op<"slice", [
     SameOperandsAndResultsScale,
     TFL_OperandHasRankAtMost<0, 4>,
     TFL_OperandHasRankAtMost<1, 1>,
-    TFL_OperandHasRankAtMost<2, 1>,
-    TFL_GpuTargetOp]> {
+    TFL_OperandHasRankAtMost<2, 1>]> {
   let summary = "Return a slice from 'input'.";
 
   let description = [{
@@ -2211,8 +2154,7 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
     NoSideEffect,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     Commutative,
-    SameOperandsAndResultsScale,
-    TFL_GpuTargetOp]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Min operator";
   let description = [{
     Element-wise min operation.
@@ -2238,8 +2180,7 @@ def TFL_MulOp : TFL_Op<"mul", [
     Commutative,
     BinaryOpSameElementTypeConstraint,
     TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
-      CPred<"TFL::VerifyMulOpShapeConstraints(llvm::cast<MulOp>($_op))">>,
-    TFL_GpuTargetOp]> {
+      CPred<"TFL::VerifyMulOpShapeConstraints(llvm::cast<MulOp>($_op))">>]> {
   let summary = "Multiplication operator";
 
   let description = [{
@@ -2345,8 +2286,7 @@ def TFL_PadOp : TFL_Op<"pad", [
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
     PredOpTrait<"the first dim size of the padding argument must be at most 4",
       Or<[TFL_OperandIsUnrankedPred<1>,
-          TFL_OperandDimIsAtMost<1, 0, 4>]>>,
-    TFL_GpuTargetOp]> {
+          TFL_OperandDimIsAtMost<1, 0, 4>]>>]> {
   let summary = "Padding operator";
 
   let description = [{
@@ -2439,8 +2379,7 @@ def TFL_PowOp : TFL_Op<"pow", [
     ResultsBroadcastableShape,
     NoSideEffect,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Power operator";
 
   let description = [{
@@ -2463,7 +2402,6 @@ def TFL_PowOp : TFL_Op<"pow", [
 def TFL_PReluOp : TFL_Op<"prelu", [
     NoSideEffect,
     ResultsBroadcastableShape,
-    TFL_GpuTargetOp,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
@@ -2505,8 +2443,7 @@ def TFL_ReluOp: TFL_Op<"relu", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultsScale,
-    TFL_GpuTargetOp]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Relu operator";
 
   let description = [{
@@ -2535,8 +2472,7 @@ def TFL_Relu6Op: TFL_Op<"relu6", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultsScale,
-    TFL_GpuTargetOp]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Relu6 operator";
 
   let description = [{
@@ -2590,7 +2526,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
 }
 
 def TFL_ReshapeOp: TFL_Op<"reshape", [
-    NoSideEffect, SameOperandsAndResultsScale, TFL_GpuTargetOp]> {
+    NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Reshape operator";
 
   let description = [{
@@ -2645,8 +2581,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
                                   SameOperandsAndResultType,
                                   SameOperandsAndResultShape,
-                                  NoQuantizableResult,
-                                  TFL_GpuTargetOp]> {
+                                  NoQuantizableResult]> {
   let summary = "Reciprocal of square root operator";
 
   let description = [{
@@ -2741,6 +2676,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 // are unranked. Therefore, we skip adding shape constraints here.
 def TFL_SelectOp : TFL_Op<"select", [
   NoSideEffect,
+  SameOperandsAndResultsScale,
   PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
@@ -2812,8 +2748,7 @@ def TFL_SinOp: TFL_Op<"sin", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Sine operator";
 
   let description = [{
@@ -2833,11 +2768,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRankRange<0, 1, 4>,
     SameOperandsAndResultShape,
-    // zero_point = 0
-    // scale = 1. / (max_value + 1)
-    FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
-    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
-    TFL_GpuTargetOp]> {
+    FixedOutputRangeInterface]> {
   let summary = "Softmax operator";
 
   let description = [{
@@ -2854,14 +2785,25 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = output().getType();
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 256, /*zero_point=*/-128);
+  }
+  }];
 }
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Square root operator";
 
   let description = [{
@@ -2879,8 +2821,7 @@ def TFL_SquareOp: TFL_Op<"square", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Square operator";
 
   let description = [{
@@ -2933,8 +2874,7 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
     SameOperandsAndResultElementType,
     ResultsBroadcastableShape,
     NoSideEffect,
-    NoQuantizableResult,
-    TFL_GpuTargetOp]> {
+    NoQuantizableResult]> {
   let summary = "Squared difference operator";
 
   let description = [{
@@ -2959,12 +2899,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     SameOperandsAndResultShape,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
-    // zero_point = central_value
-    // scale = 1. / (central_value - min_value)
-    FixedResultScale<Int8UniformQuantizedType<0, 78125, -7>>,
-    FixedResultScale<UInt8UniformQuantizedType<128, 78125, -7>>,
-    TFL_GpuTargetOp]> {
+    FixedOutputRangeInterface]> {
   let summary = "Hyperbolic tangent operator";
 
   let description = [{
@@ -2985,6 +2920,19 @@ def TFL_TanhOp: TFL_Op<"tanh", [
       state.addTypes(input.getType());
     }]>
   ];
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = output().getType();
+    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
+    // zero_point = central_value
+    // scale = 1. / (central_value - min_value)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 128, /*zero_point=*/0);
+  }
+  }];
 }
 
 def TFL_TileOp: TFL_Op<"tile", [
@@ -3052,8 +3000,7 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultsScale,
-    TFL_GpuTargetOp]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Transpose operator";
 
   let description = [{
@@ -3187,8 +3134,7 @@ def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_OperandHasRankAtMost<0, 4>,
-    TFL_GpuTargetOp
+    TFL_OperandHasRankAtMost<0, 4>
   ]> {
   let summary = "SpaceToDepth operator";
 
@@ -3400,8 +3346,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
     TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRank<1, 1>,
     TFL_OperandHasRank<2, 1>,
-    TFL_OperandHasRank<3, 1>,
-    TFL_GpuTargetOp
+    TFL_OperandHasRank<3, 1>
   ]> {
   let summary = "StridedSlice Op";
 
@@ -3451,7 +3396,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 }
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
-                     NoSideEffect, TFL_OperandHasRank<1, 2>, TFL_GpuTargetOp]> {
+                     NoSideEffect, TFL_OperandHasRank<1, 2>]> {
   let summary = "MirrorPad Operator. Pads a tensor with mirrored values.";
 
   let description = [{
@@ -4354,7 +4299,8 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let hasCanonicalizer = 1;
 }
 
-def TFL_CustomOp : Op<TFL_Dialect, "custom", [NoSideEffect]> {
+def TFL_CustomOp : Op<TFL_Dialect, "custom", [
+  NoSideEffect, NoQuantizableResult]> {
   let summary = "Custom op";
 
   let description = [{
@@ -4375,6 +4321,31 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [NoSideEffect]> {
   let results = (outs Variadic<AnyTensor>:$output);
 
   let verifier = [{ return Verify(*this); }];
+}
+
+def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
+  // Currently the custom ops have no side effect
+  // TODO(karimnosseir): Revisit if this needs updating.
+  NoSideEffect,
+  NoQuantizableResult,
+  SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "Wrapper Op for TF custom ops.";
+
+  let description = [{
+    A wrapper op around any Custom TF op. These includes ops defined using
+    custom_opdefs or linked which are not defined in TF dialect.
+    This Op just wraps the custom op inside a region.
+    Note #1, this Op will not include TF Lite custom ops defined using CustomOp.
+    Note #2, this op is just internal representation inside the converter and
+    are not exposed/exported when the model is exported to Flatbuffer.
+  }];
+
+  let arguments = (ins
+    Variadic<TFL_TensorOfOrNone<[AnyType]>>:$input
+  );
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  let regions = (region SizedRegion<1>:$body);
 }
 
 #endif // TFL_OPS

@@ -16,6 +16,7 @@
 -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="org.tensorflow.demo">
 
     <uses-permission android:name="android.permission.CAMERA" />
@@ -25,10 +26,10 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application android:allowBackup="true"
-        android:debuggable="true"
         android:label="@string/app_name"
         android:icon="@drawable/ic_launcher"
-        android:theme="@style/MaterialTheme">
+        android:theme="@style/MaterialTheme"
+        android:banner="@drawable/ic_launcher">
 
         <activity android:name="org.tensorflow.demo.ClassifierActivity"
                   android:screenOrientation="portrait"

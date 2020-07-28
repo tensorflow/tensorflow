@@ -13,6 +13,11 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+package_group(
+    name = "micro",
+    packages = ["//tensorflow/lite/micro/..."],
+)
+
 cc_library(
     name = "micro_compatibility",
     hdrs = [
@@ -294,9 +299,11 @@ tflite_micro_cc_test(
         "micro_allocator_test.cc",
     ],
     deps = [
+        ":memory_helpers",
         ":micro_framework",
         ":test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:test_conv_model",
     ],
 )
 

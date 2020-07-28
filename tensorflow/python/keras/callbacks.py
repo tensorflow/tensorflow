@@ -180,7 +180,7 @@ def set_callback_parameters(callback_list,
 
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
-  return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
+  return (hasattr(data, '__next__') or hasattr(data, 'next') or isinstance(
       data, (Sequence, iterator_ops.Iterator, iterator_ops.OwnedIterator)))
 
 
@@ -424,8 +424,6 @@ class CallbackList(object):
           the values of the `Model`'s metrics are returned.  Example:
           `{'loss': 0.2, 'accuracy': 0.7}`.
     """
-    # TODO(b/150629188): Make ProgBarLogger callback not use batch hooks
-    # when verbose != 1
     if self._should_call_train_batch_hooks:
       self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
 
@@ -929,6 +927,9 @@ class ProgbarLogger(Callback):
     self.verbose = 1
     self.epochs = 1
 
+    self._train_step, self._test_step, self._predict_step = None, None, None
+    self._call_batch_hooks = True
+
     self._called_in_fit = False
 
   def set_params(self, params):
@@ -941,6 +942,15 @@ class ProgbarLogger(Callback):
     else:
       self.target = None  # Will be inferred at the end of the first epoch.
 
+    self._call_batch_hooks = self.verbose == 1
+    if self.target is None:
+      try:
+        self._train_step = self.model._train_counter  # pylint: disable=protected-access
+        self._test_step = self.model._test_counter  # pylint: disable=protected-access
+        self._predict_step = self.model._predict_counter  # pylint: disable=protected-access
+      except AttributeError:
+        self._call_batch_hooks = True
+
   def on_train_begin(self, logs=None):
     # When this logger is called inside `fit`, validation is silent.
     self._called_in_fit = True
@@ -948,12 +958,15 @@ class ProgbarLogger(Callback):
   def on_test_begin(self, logs=None):
     if not self._called_in_fit:
       self._reset_progbar()
+      self._maybe_init_progbar()
 
   def on_predict_begin(self, logs=None):
     self._reset_progbar()
+    self._maybe_init_progbar()
 
   def on_epoch_begin(self, epoch, logs=None):
     self._reset_progbar()
+    self._maybe_init_progbar()
     if self.verbose and self.epochs > 1:
       print('Epoch %d/%d' % (epoch + 1, self.epochs))
 
@@ -969,14 +982,14 @@ class ProgbarLogger(Callback):
     self._batch_update_progbar(batch, None)
 
   def on_epoch_end(self, epoch, logs=None):
-    self._finalize_progbar(logs)
+    self._finalize_progbar(logs, self._train_step)
 
   def on_test_end(self, logs=None):
     if not self._called_in_fit:
-      self._finalize_progbar(logs)
+      self._finalize_progbar(logs, self._test_step)
 
   def on_predict_end(self, logs=None):
-    self._finalize_progbar(logs)
+    self._finalize_progbar(logs, self._predict_step)
 
   def _reset_progbar(self):
     self.seen = 0
@@ -985,7 +998,7 @@ class ProgbarLogger(Callback):
   def _maybe_init_progbar(self):
     if self.stateful_metrics is None:
       if self.model:
-        self.stateful_metrics = (set(m.name for m in self.model.metrics))
+        self.stateful_metrics = set(m.name for m in self.model.metrics)
       else:
         self.stateful_metrics = set()
 
@@ -995,6 +1008,15 @@ class ProgbarLogger(Callback):
           verbose=self.verbose,
           stateful_metrics=self.stateful_metrics,
           unit_name='step' if self.use_steps else 'sample')
+
+  def _implements_train_batch_hooks(self):
+    return self._call_batch_hooks
+
+  def _implements_test_batch_hooks(self):
+    return self._call_batch_hooks
+
+  def _implements_predict_batch_hooks(self):
+    return self._call_batch_hooks
 
   def _batch_update_progbar(self, batch, logs=None):
     """Updates the progbar."""
@@ -1016,14 +1038,16 @@ class ProgbarLogger(Callback):
       logs = tf_utils.to_numpy_or_python_type(logs)
       self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
-  def _finalize_progbar(self, logs):
-    logs = logs or {}
-    self._maybe_init_progbar()
+  def _finalize_progbar(self, logs, counter):
+    logs = tf_utils.to_numpy_or_python_type(logs or {})
     if self.target is None:
-      self.target = self.seen
-      self.progbar.target = self.seen
-    logs = tf_utils.to_numpy_or_python_type(logs)
-    self.progbar.update(self.seen, list(logs.items()), finalize=True)
+      if counter is not None:
+        counter = counter.numpy()
+        if not self.use_steps:
+          counter *= logs.get('size', 1)
+      self.target = counter or self.seen
+      self.progbar.target = self.target
+    self.progbar.update(self.target, list(logs.items()), finalize=True)
 
 
 @keras_export('keras.callbacks.History')
@@ -1244,6 +1268,10 @@ class ModelCheckpoint(Callback):
         except (IOError, ValueError) as e:
           raise ValueError('Error loading file from {}. Reason: {}'.format(
               filepath_to_load, e))
+
+  def _implements_train_batch_hooks(self):
+    # Only call batch hooks when saving on batch
+    return self.save_freq != 'epoch'
 
   def on_train_batch_end(self, batch, logs=None):
     if self._should_save_on_batch(batch):
@@ -1986,8 +2014,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
     self._writers = {}  # Resets writers.
 
+    self._should_write_train_graph = False
     if self.write_graph:
-      self._write_keras_model_graph()
+      self._write_keras_model_summary()
+      self._should_write_train_graph = True
     if self.embeddings_freq:
       self._configure_embeddings()
 
@@ -2014,13 +2044,19 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     distributed_file_utils.remove_temp_dirpath(self.log_dir,
                                                self.model.distribute_strategy)
 
-  def _write_keras_model_graph(self):
-    """Writes Keras graph networks to TensorBoard."""
+  def _write_keras_model_train_graph(self):
+    """Writes Keras model train_function graph to TensorBoard."""
     with self._train_writer.as_default():
       with summary_ops_v2.always_record_summaries():
-        if not self.model.run_eagerly:
-          summary_ops_v2.graph(K.get_graph(), step=0)
+        train_fn = self.model.train_function
+        # If the train_function is a `tf.function`, we can write out a graph
+        if hasattr(train_fn, 'function_spec'):
+          summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph, step=0)  # pylint: disable=protected-access
 
+  def _write_keras_model_summary(self):
+    """Writes Keras graph network summary to TensorBoard."""
+    with self._train_writer.as_default():
+      with summary_ops_v2.always_record_summaries():
         summary_writable = (
             self.model._is_graph_network or  # pylint: disable=protected-access
             self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
@@ -2139,7 +2175,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       raise ValueError(profile_batch_error_message)
 
     if self._start_batch > 0:
-      profiler.warmup()  # Improve the profiling accuracy.
+      # Warm up and improve the profiling accuracy.
+      profiler.start('')
+      profiler.stop(save=False)
     # True when a trace is running.
     self._is_tracing = False
 
@@ -2165,6 +2203,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def on_test_end(self, logs=None):
     self._pop_writer()
 
+  def _implements_train_batch_hooks(self):
+    return self._should_trace  # Only call batch hooks when tracing is enabled
+
   def on_train_batch_begin(self, batch, logs=None):
     self._global_train_batch += 1
     if not self._should_trace:
@@ -2174,6 +2215,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       self._start_trace()
 
   def on_train_batch_end(self, batch, logs=None):
+    if self._should_write_train_graph:
+      self._write_keras_model_train_graph()
+      self._should_write_train_graph = False
     if not self._should_trace:
       return
 
