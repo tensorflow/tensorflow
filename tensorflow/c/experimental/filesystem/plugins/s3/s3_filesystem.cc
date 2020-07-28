@@ -82,9 +82,8 @@ static inline void TF_SetStatusFromAWSError(
   }
 }
 
-static void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
-                        Aws::String* bucket, Aws::String* object,
-                        TF_Status* status) {
+void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
+                 Aws::String* bucket, Aws::String* object, TF_Status* status) {
   size_t scheme_end = fname.find("://") + 2;
   if (fname.substr(0, scheme_end + 1) != "s3://") {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
