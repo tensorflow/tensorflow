@@ -555,9 +555,7 @@ cc_test(
     ],
     tags = [
         "no_mac",  # b/161990368
-        "noasan",  # b/162027436
-        "nomsan",  # b/162027436
-        "notsan",  # b/162027436
+        "tflite_not_portable",
     ],
     deps = [
         ":test_tflite_lib",

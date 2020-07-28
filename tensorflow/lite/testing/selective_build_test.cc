@@ -51,8 +51,8 @@ bool RunWithRandomInputs(const std::string& filename) {
     for (auto it = data.begin(); it != data.end(); ++it) {
       *it = random();
     }
-    tensor->data.raw = reinterpret_cast<char*>(data.data());
     sample.push_back(data);
+    tensor->data.raw = reinterpret_cast<char*>(sample.rbegin()->data());
   }
 
   // Running inference.
