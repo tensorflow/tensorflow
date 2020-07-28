@@ -906,9 +906,10 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
     return Status::OK();
   }
 
-  if (metadata->creation_timestamp() >=
-      static_cast<int64>(static_cast<int64>(EnvTime::NowMicros()) -
-       pending_snapshot_expiry_seconds * 1000000)) {
+  int64 expiration_timer = EnvTime::NowMicros() 
+  		     - pending_snapshot_expiry_seconds * 1000000;
+  
+  if (metadata->creation_timestamp() >= expiration_timer) {
     // Someone else is already writing and time has not expired.
     *mode = PASSTHROUGH;
     return Status::OK();
