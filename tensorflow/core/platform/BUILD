@@ -85,6 +85,8 @@ exports_files(
         "mutex.h",
         "net.h",
         "numa.h",
+        "profile_utils/cpu_utils.h",
+        "profile_utils/i_cpu_utils_helper.h",
         "ram_file_system.h",
         "resource_loader.h",
         "resource.h",
