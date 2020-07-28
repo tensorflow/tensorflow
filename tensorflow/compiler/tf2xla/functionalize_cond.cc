@@ -224,8 +224,8 @@ string DebugString(const CondArgNodes& nodes) {
 }
 
 StateMap::CondId StateMap::LookupCondId(const Node* node) const {
-  const int64  node_to_condid_map_size =  node_to_condid_map_.size();
-  if (node->id() < node_to_condid_map_size)
+  const int64  map_size =  node_to_condid_map_.size();
+  if (node->id() < map_size)
     return node_to_condid_map_[node->id()];
   return added_node_condid_mapping_.at(node->id());
 }
