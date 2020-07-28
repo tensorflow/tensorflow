@@ -519,11 +519,11 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     llvm::StringMap<Operation*> name_to_op;
     for (const auto& it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
       // Skip control rets.
-      const int64 it_index = it.index();
-      if (it_index >= num_data_results) break;
+      const int64 index = it.index();
+      if (index >= num_data_results) break;
       // TODO(jpienaar): If there is a result index specified, ensure only one
       // and that it matches the result index of the op.
-      std::string orig_name(output_names[it.index()]);
+      std::string orig_name(output_names[index]);
       auto tensor_id = ParseTensorName(orig_name);
       auto name = LegalizeNodeName(
           llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
