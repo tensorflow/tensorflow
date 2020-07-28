@@ -34,7 +34,7 @@ limitations under the License.
 
 #if !defined(INTEL_MKL_DNN_ONLY)
 #include "mkl_cblas.h"
-#endif  // INTEL_MKL_DNN_ONLY
+#endif  // !INTEL_MKL_DNN_ONLY
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
