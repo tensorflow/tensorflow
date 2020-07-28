@@ -67,6 +67,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
@@ -522,7 +523,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       raise RuntimeError("as_numpy_iterator() is not supported while tracing "
                          "functions")
     for component_spec in nest.flatten(self.element_spec):
-      if not isinstance(component_spec, tensor_spec.TensorSpec):
+      if not isinstance(
+          component_spec,
+          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec)):
         raise TypeError(
             "Dataset.as_numpy_iterator() does not support datasets containing "
             + str(component_spec.value_type))
