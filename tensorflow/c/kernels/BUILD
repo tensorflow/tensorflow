@@ -54,14 +54,17 @@ tf_kernel_library(
     deps = [
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_tensor",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
 tf_gen_op_libs(
-    op_lib_names = ["histogram"],
+    op_lib_names = ["histogram_summary"],
     deps = [
         "//tensorflow/c:ops",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:lib",
     ],
 )

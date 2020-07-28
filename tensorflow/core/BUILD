@@ -863,7 +863,7 @@ cc_library(
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
-        "//tensorflow/c/kernels:histogram_op_lib",
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_chromiumos(
         [],

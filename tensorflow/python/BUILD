@@ -2903,7 +2903,7 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
     deps = [
-        "//tensorflow/c/kernels:histogram_op_lib",
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
         "//tensorflow/core:logging_ops_op_lib",
     ],
 )
