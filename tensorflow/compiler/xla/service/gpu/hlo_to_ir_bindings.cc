@@ -35,7 +35,7 @@ namespace gpu {
 using absl::StrAppend;
 using absl::StrCat;
 
-Status HloToIrBindings::EmitBasePointersForHlos(
+void HloToIrBindings::EmitBasePointersForHlos(
     absl::Span<const HloInstruction* const> io_hlos,
     absl::Span<const HloInstruction* const> non_io_hlos) {
   CHECK(is_nested_);
@@ -77,44 +77,23 @@ Status HloToIrBindings::EmitBasePointersForHlos(
       continue;
     }
 
-    if (!buffer_assignment_->HasTopLevelAllocation(non_io_hlo)) {
-      continue;
-    }
-
-    auto status = ShapeUtil::ForEachSubshapeWithStatus(
+    ShapeUtil::ForEachSubshape(
         non_io_hlo->shape(),
         [&](const Shape& /*subshape*/, const ShapeIndex& index) {
-          // A non-IO HLO with a buffer is bound to an alloca if it is
-          // thread-local.
-          auto slice_result =
-              buffer_assignment_->GetUniqueSlice(non_io_hlo, index);
-          if (!slice_result.ok()) {
-            return Status::OK();
-          }
-          const BufferAllocation::Slice slice =
-              slice_result.ConsumeValueOrDie();
-          if (slice.allocation()->is_thread_local()) {
+          if (non_io_hlo->opcode() == HloOpcode::kConstant) {
+            llvm::Value* global_for_constant = module_->getGlobalVariable(
+                llvm_ir::ConstantHloToGlobalName(*non_io_hlo));
+            BindHloToIrValue(*non_io_hlo, global_for_constant);
+          } else {
             llvm::Type* pointee_type =
                 llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
             BindHloToIrValue(*non_io_hlo,
                              llvm_ir::EmitAllocaAtFunctionEntry(
                                  pointee_type, /*name=*/"", b_),
                              index);
-          } else if (slice.allocation()->is_constant()) {
-            llvm::Value* global_for_constant = module_->getGlobalVariable(
-                llvm_ir::ConstantBufferAllocationToGlobalName(
-                    *slice.allocation()));
-            BindHloToIrValue(*non_io_hlo, global_for_constant);
-          } else {
-            return InternalError(
-                "Nested computation are not expected to take the temporary "
-                "buffer. All buffers are either constant or thread-local.");
           }
-          return Status::OK();
         });
-    TF_RETURN_IF_ERROR(status);
   }
-  return Status::OK();
 }
 
 llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
@@ -214,7 +193,8 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
   // Therefore if hlo's output buffer is not modified within consumer, and if
   // consumer runs hlo only once (so that it doesn't create two different
   // outputs), then we can mark ir_array as invariant over the whole program.
-  if (BuffersInvariantWithinConsumer(hlo, consumer, buffer_assignment_)) {
+  if (!is_nested_ &&
+      BuffersInvariantWithinConsumer(hlo, consumer, buffer_assignment_)) {
     VLOG(2) << "Marking " << hlo.name() << " as invariant within "
             << consumer.name();
     ir_array.MarkInvariantOverWholeProgram(&module_->getContext());

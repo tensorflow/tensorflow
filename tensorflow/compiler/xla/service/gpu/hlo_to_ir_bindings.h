@@ -43,7 +43,7 @@ class HloToIrBindings {
         b_(b),
         module_(llvm_module) {}
 
-  Status EmitBasePointersForHlos(
+  void EmitBasePointersForHlos(
       absl::Span<const HloInstruction* const> io_hlos,
       absl::Span<const HloInstruction* const> non_io_hlos);
 

@@ -104,7 +104,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
       non_io_hlos.push_back(hlo);
     }
   }
-  TF_RETURN_IF_ERROR(bindings_.EmitBasePointersForHlos(io_hlos, non_io_hlos));
+  bindings_.EmitBasePointersForHlos(io_hlos, non_io_hlos);
 
   TF_RETURN_IF_ERROR(nested_computation_.root_instruction()->Accept(this));
   b_.SetInsertPoint(ret_instr);
