@@ -609,6 +609,17 @@ def _create_local_rocm_repository(repository_ctx):
         outs = rocm_lib_outs,
     ))
 
+    # copy files mentioned in third_party/gpus/rocm/BUILD
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "rocm-bin",
+        srcs = [
+            rocm_config.rocm_toolkit_path + "/llvm//bin/" + "clang-offload-bundler",
+        ],
+        outs = [
+            "rocm/bin/" + "clang-offload-bundler",
+        ],
+    ))
     # Set up BUILD file for rocm/
     repository_ctx.template(
         "rocm/build_defs.bzl",
