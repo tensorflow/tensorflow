@@ -982,8 +982,8 @@ LogicalResult HoistForFunctionalControlFlow(
   RemoveIdentity(block);
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
-      auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
-      auto cond = llvm::cast<FuncOp>(module.lookupSymbol(while_op.cond()));
+      auto body = while_op.body_func();
+      auto cond = while_op.cond_func();
       // Recursively handle the nested control flow.
       HoistForFunctionalControlFlow(&body.front(), module,
                                     lifted_partitioned_call_callees);
@@ -991,10 +991,8 @@ LogicalResult HoistForFunctionalControlFlow(
                                     lifted_partitioned_call_callees);
       if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      auto then_branch =
-          llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));
-      auto else_branch =
-          llvm::cast<FuncOp>(module.lookupSymbol(if_op.else_branch()));
+      auto then_branch = if_op.then_func();
+      auto else_branch = if_op.else_func();
       // Recursively handle the nested control flow.
       HoistForFunctionalControlFlow(&then_branch.front(), module,
                                     lifted_partitioned_call_callees);
@@ -1015,12 +1013,10 @@ LogicalResult HoistForFunctionalControlFlow(
       }
       if (failed(HandleCaseOrIfOp(case_op, branch_functions))) return failure();
     } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
-      if (!call_op.f().isa<FlatSymbolRefAttr>()) {
+      auto callee = call_op.func();
+      if (!callee)
         return call_op.emitOpError(
             "resource lifting does not support call with nested references.");
-      }
-      auto callee = llvm::cast<FuncOp>(
-          module.lookupSymbol(call_op.f().getRootReference()));
       if (failed(HandlePartitionedCallOp(call_op, callee, module,
                                          lifted_partitioned_call_callees))) {
         // Nested control flow handling is done in HandlePartitionedCallOp().
@@ -1028,8 +1024,7 @@ LogicalResult HoistForFunctionalControlFlow(
       }
     } else if (auto call_op =
                    llvm::dyn_cast<TF::StatefulPartitionedCallOp>(&op)) {
-      auto callee = llvm::cast<FuncOp>(module.lookupSymbol(call_op.f()));
-      if (failed(HandlePartitionedCallOp(call_op, callee, module,
+      if (failed(HandlePartitionedCallOp(call_op, call_op.func(), module,
                                          lifted_partitioned_call_callees))) {
         return failure();
       }
