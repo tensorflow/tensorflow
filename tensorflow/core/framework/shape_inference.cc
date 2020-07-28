@@ -211,7 +211,6 @@ void InferenceContext::PostInputInit(
     }
     input_handle_shapes_and_types_ = std::move(input_handle_data);
   }
-
   const int inputs_size = inputs_.size();
   if (inputs_size != num_inputs_from_node_def) {
     construction_status_ = errors::InvalidArgument(
