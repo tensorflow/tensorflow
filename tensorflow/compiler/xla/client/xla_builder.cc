@@ -774,9 +774,9 @@ XlaOp XlaBuilder::BroadcastInDim(
           operand_shape->rank(), broadcast_dimensions.size());
     }
     for (int i = 0, end = broadcast_dimensions.size(); i < end; i++) {
-      const tensorflow::int64 out_dim_size_size = out_dim_size.size();
+      const tensorflow::int64 num_dims = out_dim_size.size();
       if (broadcast_dimensions[i] < 0 ||
-          broadcast_dimensions[i] > out_dim_size_size) {
+          broadcast_dimensions[i] > num_dims) {
         return InvalidArgument("Broadcast dimension %lld is out of bound",
                                broadcast_dimensions[i]);
       }

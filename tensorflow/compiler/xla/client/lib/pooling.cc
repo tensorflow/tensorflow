@@ -198,16 +198,16 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64> gradients_size,
   XlaBuilder* b = out_backprop.builder();
   return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     const int num_dims = kernel_size.size();
-    const int gradients_size_size = gradients_size.size();
-    if (gradients_size_size != num_dims) {
+    const int num_gradients = gradients_size.size();
+    if (num_gradients != num_dims) {
       return tensorflow::errors::InvalidArgument("gradients must be ", num_dims,
                                                  "-dimensional");
     }
 
     TF_ASSIGN_OR_RETURN(Shape out_backprop_xla_shape,
                         b->GetShape(out_backprop));
-    const int obxsd_size = out_backprop_xla_shape.dimensions().size();
-    if (obxsd_size != num_dims) {
+    const int backprop_xla_num_dims = out_backprop_xla_shape.dimensions().size();
+    if (backprop_xla_num_dims != num_dims) {
       return tensorflow::errors::InvalidArgument("out_backprop must be ",
                                                  num_dims, "-dimensional");
     }
