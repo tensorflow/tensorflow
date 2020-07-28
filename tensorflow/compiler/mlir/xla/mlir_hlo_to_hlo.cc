@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -463,7 +462,7 @@ class ConvertToHloModule {
   // single value.
   explicit ConvertToHloModule(
       mlir::ModuleOp module, bool use_tuple_args, bool return_tuple,
-      tensorflow::XlaCompiler::ShapeRepresentationFn shape_representation_fn)
+      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : module_(module),
         module_builder_("main"),
         use_tuple_args_(use_tuple_args),
@@ -545,7 +544,7 @@ class ConvertToHloModule {
 
   // Shape representation function to determine entry function argument and
   // result shapes.
-  tensorflow::XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+  tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -1500,7 +1499,7 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
                            bool use_tuple_args, bool return_tuple,
-                           const tensorflow::XlaCompiler::ShapeRepresentationFn
+                           const tensorflow::XlaHelpers::ShapeRepresentationFn
                                shape_representation_fn) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   ConvertToHloModule converter(module, use_tuple_args, return_tuple,

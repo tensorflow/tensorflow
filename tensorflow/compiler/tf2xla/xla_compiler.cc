@@ -422,39 +422,6 @@ Status BuildComputation(
 
 }  // namespace
 
-bool XlaCompiler::Argument::operator==(
-    const XlaCompiler::Argument& other) const {
-  if (std::tie(kind, resource_kind, type, name, initialized, max_array_size,
-               tensor_array_gradients) !=
-      std::tie(other.kind, other.resource_kind, other.type, other.name,
-               other.initialized, other.max_array_size,
-               other.tensor_array_gradients)) {
-    return false;
-  }
-  if (absl::holds_alternative<xla::Shape>(shape)) {
-    if (!absl::holds_alternative<xla::Shape>(other.shape)) {
-      return false;
-    }
-    if (!xla::Shape::Equal()(absl::get<xla::Shape>(shape),
-                             absl::get<xla::Shape>(other.shape))) {
-      return false;
-    }
-  } else {
-    if (!absl::holds_alternative<TensorShape>(other.shape)) {
-      return false;
-    }
-    if (absl::get<TensorShape>(shape) != absl::get<TensorShape>(other.shape)) {
-      return false;
-    }
-  }
-  if (constant_value.shape() != other.constant_value.shape()) {
-    return false;
-  }
-  if (is_same_data_across_replicas != other.is_same_data_across_replicas) {
-    return false;
-  }
-  return constant_value.tensor_data() == other.constant_value.tensor_data();
-}
 
 string XlaCompiler::Argument::HumanString() const {
   string common;
@@ -1492,95 +1459,6 @@ xla::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
                                       node_name);
   }
   return iter->second;
-}
-
-XlaCompiler::ShapeRepresentationFn IdentityShapeRepresentationFn() {
-  return [](const TensorShape& shape, DataType dtype,
-            bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
-    xla::Shape xla_shape;
-    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
-    return xla_shape;
-  };
-}
-
-// Rewrites the layout of xla_shape if there is tiled sharding.
-Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    xla::Shape* xla_shape) {
-  if (sharding && !sharding->IsTileMaximal()) {
-    // After sharding, per core shape might have different layout. For example,
-    // before sharding, a shape [128, 128] will be assigned default
-    // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,
-    // the sharded shapes will have minor-to-major {0, 1}.
-    //
-    // As a result, for sharded shapes, we set their layout to per core shape's
-    // layout.
-    //
-    // TODO(endlessroad): for variable input & update, we might have
-    // different layouts which will prevent input output aliasing and
-    // increase memory usage. Investigate such cases.
-    int64 device = *sharding->tile_assignment().begin();
-    std::vector<int64> offset =
-        sharding->TileOffsetForDevice(*xla_shape, device);
-    std::vector<int64> limit = sharding->TileLimitForDevice(*xla_shape, device);
-    std::vector<int64> dimensions(xla_shape->rank());
-    for (int64 i = 0; i < xla_shape->rank(); ++i) {
-      dimensions[i] = limit[i] - offset[i];
-    }
-    xla::Shape per_device_xla_shape =
-        xla::ShapeUtil::MakeShape(xla_shape->element_type(), dimensions);
-    TensorShape per_device_tensor_shape;
-    TF_RETURN_IF_ERROR(
-        XLAShapeToTensorShape(per_device_xla_shape, &per_device_tensor_shape));
-    TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
-                                            xla_shape->element_type()));
-    TF_ASSIGN_OR_RETURN(per_device_xla_shape,
-                        shape_representation_fn(per_device_tensor_shape, dtype,
-                                                use_fast_memory));
-    *xla_shape->mutable_layout() = per_device_xla_shape.layout();
-  }
-  return Status::OK();
-}
-
-// There is a shape_representation_fn or sharding for an output, this function
-// uses a reshape to fix the layout.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
-    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem) {
-  if (original_shape.IsTuple()) {
-    std::vector<xla::XlaOp> elements;
-    for (int64 i = 0; i < original_shape.tuple_shapes_size(); ++i) {
-      auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
-      TF_ASSIGN_OR_RETURN(auto element,
-                          ReshapeWithCorrectRepresentationAndSharding(
-                              builder, xla::GetTupleElement(original, i),
-                              original_shape.tuple_shapes(i),
-                              shape_representation_fn, subsharding, fast_mem));
-      elements.push_back(element);
-    }
-    return xla::Tuple(builder, elements);
-  }
-  if (!original_shape.IsArray()) return original;
-  TensorShape shape;
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(original_shape, &shape));
-  TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
-                                          original_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(auto to_shape,
-                      shape_representation_fn(shape, dtype, fast_mem));
-  if (sharding) {
-    TF_ASSIGN_OR_RETURN(auto hlo_sharding,
-                        xla::HloSharding::FromProto(*sharding));
-    TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
-        hlo_sharding, fast_mem, shape_representation_fn, &to_shape));
-  }
-  if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
-    for (int64 i = 0; i < original_shape.rank(); ++i) {
-      to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
-    }
-  }
-  return xla::Reshape(to_shape, original);
 }
 
 }  // namespace tensorflow

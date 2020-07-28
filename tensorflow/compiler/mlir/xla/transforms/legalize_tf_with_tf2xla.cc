@@ -48,7 +48,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -410,7 +411,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
         device_->GetAllocator(tensorflow::AllocatorAttributes()), expr.dtype(),
         shape_or.ValueOrDie());
     tensorflow::Tensor& tensor = tensors.back();
-    tensorflow::XlaOpKernelContext::AssignExpressionToTensor(expr, &tensor);
+    tensorflow::XlaExpression::AssignExpressionToTensor(expr, &tensor);
     inputs.emplace_back(&tensor);
   }
 
@@ -438,7 +439,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   for (int i = 0, e = op_->getNumResults(); i < e; i++) {
     tensorflow::Tensor* output = op_context.mutable_output(i);
     const tensorflow::XlaExpression* expr =
-        tensorflow::XlaOpKernelContext::CastExpressionFromTensor(*output);
+        tensorflow::XlaExpression::CastExpressionFromTensor(*output);
     if (expr->kind() != tensorflow::XlaExpression::Kind::kXlaOp)
       return op_->emitError(
           "expects XlaExpression of kind kXlaOp in compiled output");
