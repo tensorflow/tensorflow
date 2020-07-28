@@ -691,6 +691,7 @@ void LegalizeTF::runOnFunction() {
       return;
     }
   }
+}
 
 }  // namespace
 
