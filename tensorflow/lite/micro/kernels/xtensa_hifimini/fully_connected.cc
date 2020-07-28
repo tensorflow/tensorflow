@@ -36,16 +36,16 @@ namespace hifimini {
 void FullyConnected(const FullyConnectedParams& params,
                     const RuntimeShape& input_shape, const int8_t* input_data,
                     const RuntimeShape& filter_shape, const int8_t* filter_data,
-                    const RuntimeShape& bias_shape, const int32* bias_data,
+                    const RuntimeShape& bias_shape, const int32_t* bias_data,
                     const RuntimeShape& output_shape, int8_t* output_data) {
   // TODO(b/154032858): Investigate removing extra copies.
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
 
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int batches = output_shape.Dims(0);

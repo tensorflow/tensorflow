@@ -10140,6 +10140,34 @@ func TensorArraySizeV2(scope *Scope, handle tf.Output, flow_in tf.Output) (size 
 	return op.Output(0)
 }
 
+// Creates a dataset that changes the batch size.
+//
+// Creates a dataset that rebatches elements from `input_dataset` into new batch
+// sizes.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	batch_sizes: A vector of integers representing the size of batches to produce. These values
+// are cycled through in order.
+//
+//
+//
+func RebatchDatasetV2(scope *Scope, input_dataset tf.Output, batch_sizes tf.Output, drop_remainder tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "RebatchDatasetV2",
+		Input: []tf.Input{
+			input_dataset, batch_sizes, drop_remainder,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RebatchDatasetAttr is an optional argument to RebatchDataset.
 type RebatchDatasetAttr func(optionalAttr)
 
@@ -14960,9 +14988,8 @@ func MatrixInverseAdjoint(value bool) MatrixInverseAttr {
 	}
 }
 
-// Computes the inverse of one or more square invertible matrices or their
+// Computes the inverse of one or more square invertible matrices or their adjoints (conjugate transposes).
 //
-// adjoints (conjugate transposes).
 //
 // The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 // form square matrices. The output is a tensor of the same shape as the input
@@ -28338,6 +28365,9 @@ func AvgPool3DDataFormat(value string) AvgPool3DAttr {
 
 // Performs 3D average pooling on the input.
 //
+// Each entry in `output` is the mean of the corresponding size `ksize` window in
+// `value`.
+//
 // Arguments:
 //	input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 //	ksize: 1-D tensor of length 5. The size of the window for each dimension of
@@ -31976,7 +32006,7 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 	return op.Output(0)
 }
 
-// Returns (x - y)(x - y) element-wise.
+// Returns conj(x - y)(x - y) element-wise.
 //
 // *NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)

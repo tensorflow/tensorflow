@@ -251,9 +251,9 @@ inline void Mean(const tflite::MeanParams& op_params,
 
 inline void Mean(const tflite::MeanParams& op_params,
                  const RuntimeShape& unextended_input_shape,
-                 const uint8_t* input_data, int32 input_zero_point,
+                 const uint8_t* input_data, int32_t input_zero_point,
                  float input_scale, const RuntimeShape& unextended_output_shape,
-                 uint8_t* output_data, int32 output_zero_point,
+                 uint8_t* output_data, int32_t output_zero_point,
                  float output_scale) {
   ruy::profiler::ScopeLabel label("Mean4D/Uint8");
 
@@ -282,9 +282,9 @@ inline void Mean(const tflite::MeanParams& op_params,
   constexpr int32_t kMinValue = std::numeric_limits<uint8_t>::min();
   constexpr int32_t kMaxValue = std::numeric_limits<uint8_t>::max();
 
-  int32 bias =
+  int32_t bias =
       output_zero_point -
-      static_cast<int32>(input_zero_point * input_scale / output_scale);
+      static_cast<int32_t>(input_zero_point * input_scale / output_scale);
   double real_scale =
       static_cast<double>(input_scale / (num_elements_in_axis * output_scale));
 
@@ -293,7 +293,7 @@ inline void Mean(const tflite::MeanParams& op_params,
   QuantizeMultiplier(real_scale, &multiplier, &shift);
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     for (int out_d = 0; out_d < output_depth; ++out_d) {
-      int32 acc = 0;
+      int32_t acc = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
           acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
@@ -312,10 +312,10 @@ inline void Mean(const tflite::MeanParams& op_params,
 // It does so in two stages, first calculates the sum of elements along the axis
 // then divides it by the number of element in axis for quantized values.
 template <typename T, typename U>
-inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
+inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
                                float input_scale, const int* input_dims,
                                const int input_num_dims, T* output_data,
-                               int32 output_zero_point, float output_scale,
+                               int32_t output_zero_point, float output_scale,
                                const int* output_dims,
                                const int output_num_dims, const int* axis,
                                const int num_axis_dimensions, bool keep_dims,

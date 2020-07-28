@@ -448,6 +448,41 @@ GCSFile::GCSFile(google::cloud::storage::Client&& gcs_client)
       stat_cache_max_age, stat_cache_max_entries);
 }
 
+GCSFile::GCSFile(google::cloud::storage::Client&& gcs_client, bool compose,
+                 uint64_t block_size, size_t max_bytes, uint64_t max_staleness,
+                 uint64_t stat_cache_max_age, size_t stat_cache_max_entries)
+    : gcs_client(gcs_client),
+      compose(compose),
+      block_cache_lock(),
+      block_size(block_size) {
+  file_block_cache = std::make_unique<RamFileBlockCache>(
+      block_size, max_bytes, max_staleness,
+      [this](const std::string& filename, size_t offset, size_t buffer_size,
+             char* buffer, TF_Status* status) {
+        return LoadBufferFromGCS(filename, offset, buffer_size, buffer, this,
+                                 status);
+      });
+  stat_cache = std::make_unique<ExpiringLRUCache<GcsFileStat>>(
+      stat_cache_max_age, stat_cache_max_entries);
+}
+
+void InitTest(TF_Filesystem* filesystem, bool compose, uint64_t block_size,
+              size_t max_bytes, uint64_t max_staleness,
+              uint64_t stat_cache_max_age, size_t stat_cache_max_entries,
+              TF_Status* status) {
+  google::cloud::StatusOr<gcs::Client> client =
+      gcs::Client::CreateDefaultClient();
+  if (!client) {
+    TF_SetStatusFromGCSStatus(client.status(), status);
+    return;
+  }
+
+  filesystem->plugin_filesystem =
+      new GCSFile(std::move(client.value()), compose, block_size, max_bytes,
+                  max_staleness, stat_cache_max_age, stat_cache_max_entries);
+  TF_SetStatus(status, TF_OK, "");
+}
+
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
   google::cloud::StatusOr<gcs::Client> client =
       gcs::Client::CreateDefaultClient();

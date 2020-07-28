@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import threading
 import time
+import unittest
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -740,6 +742,7 @@ class CollectiveOpTest(test.TestCase):
     def_function.function(collective_fn)()
 
   @test_util.run_v2_only
+  @unittest.skipIf(os.name == 'nt', 'b/161922535: Flaky on Windows')
   def testAbortInstanceParamsResolution(self):
     cpus = config.list_physical_devices('CPU')
     config.set_logical_device_configuration(cpus[0], [
@@ -799,6 +802,7 @@ class CollectiveOpTest(test.TestCase):
     def_function.function(collective_fn)()
 
   @test_util.run_v2_only
+  @unittest.skipIf(os.name == 'nt', 'b/161922535: Flaky on Windows')
   def testAbortRing(self):
     cpus = config.list_physical_devices('CPU')
     config.set_logical_device_configuration(cpus[0], [

@@ -56,7 +56,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["eager_microbenchmarks_test.py"],
     python_version = "PY3",
-    tags = COMMON_TAGS,
+    tags = COMMON_TAGS + [
+        "no_oss_py38",  # TODO(b/162044699)
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
     ],

@@ -153,6 +153,11 @@ class XlaBuilder {
   // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
 
+  // Similar to SetOpMetadata, but only set the metadata for the next op.
+  void SetOneShotOpMetadata(OpMetadata metadata) {
+    metadata_ = std::move(metadata);
+  }
+
   // Clears the HloMetadata state.
   void ClearOpMetadata() { metadata_.Clear(); }
 
@@ -841,6 +846,9 @@ class XlaBuilder {
   // operation, in order to simplify client code (and not sprinkle this metadata
   // throughout the TensorFlow op kernel implementations).
   OpMetadata metadata_;
+
+  // A temporary metadata that will only be applied to the next op created.
+  absl::optional<OpMetadata> one_shot_metadata_;
 
   // Sharding for this operator. This is structured as a "model"-like operation,
   // in order to simplify client code, similar to metadata_.

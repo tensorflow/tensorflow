@@ -792,6 +792,15 @@ REGISTER_OP("RebatchDataset")
     .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("RebatchDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("batch_sizes: int64")
+    .Input("drop_remainder: bool")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("SamplingDataset")
     .Input("input_dataset: variant")
     .Input("rate: float32")

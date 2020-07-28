@@ -39,6 +39,7 @@ tf_py_test(
     srcs = ["server_lib_test.py"],
     deps = [
         ":server_lib",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform_test",
     ],
 )

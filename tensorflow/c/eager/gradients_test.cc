@@ -93,7 +93,7 @@ Status AddGradModel(AbstractContext* ctx,
       source_tensors_that_are_targets,
       /*output_gradients=*/{}, &out_grads));
   for (auto add_output : add_outputs) {
-    add_output->Release();
+    add_output->Unref();
   }
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
@@ -144,14 +144,14 @@ Status RunModel(Model model, AbstractContext* ctx,
       TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
                                absl::MakeSpan(output_list.outputs), registry));
       for (auto func_input : func_inputs) {
-        func_input->Release();
+        func_input->Unref();
       }
       AbstractFunction* func = nullptr;
       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
                              ->Finalize(&output_list, &func));
       scoped_func.reset(func);
-      output_list.outputs[0]->Release();
-      output_list.outputs[1]->Release();
+      output_list.outputs[0]->Unref();
+      output_list.outputs[1]->Unref();
       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
     }
 
@@ -252,7 +252,7 @@ TEST_P(CppGradients, TestAddGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);
-  outputs[0]->Release();
+  outputs[0]->Unref();
   TF_DeleteTensor(result_tensor);
   result_tensor = nullptr;
 
@@ -260,7 +260,7 @@ TEST_P(CppGradients, TestAddGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);
-  outputs[1]->Release();
+  outputs[1]->Unref();
   TF_DeleteTensor(result_tensor);
 }
 
@@ -270,7 +270,7 @@ TEST_P(CppGradients, TestAddGrad) {
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
     ::testing::Combine(::testing::Values("graphdef"),
-                       /*tfrt*/ ::testing::Values(false),
+                       /*tfrt*/ ::testing::Values(true, false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
 #else
 INSTANTIATE_TEST_SUITE_P(

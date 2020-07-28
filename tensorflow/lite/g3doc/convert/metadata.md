@@ -389,7 +389,7 @@ is the minimum version of metadata parser (the Flatbuffers generated code) that
 can read the metadata Flatbuffers in full. The version is effectively the
 largest version number among the versions of all the fields populated and the
 smallest compatible version indicated by the file identifier. The minimum
-necessary metadata parser version is automaticaly populated by the
+necessary metadata parser version is automatically populated by the
 `MetadataPopulator` when the metadata is populated into a TFLite model. See the
 [metadata extractor](../guide/codegen.md#read-the-metadata-from-models) about
 how the minimum necessary metadata parser version is used.

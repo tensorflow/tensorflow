@@ -46,11 +46,7 @@ class XStatsBuilder {
   }
   void AddStatValue(const XStatMetadata& metadata,
                     unsigned long value) {  // NOLINT
-    if (sizeof(unsigned long) == 8) {       // NOLINT
-      AddStat(metadata)->set_uint64_value(value);
-    } else {
-      AddStat(metadata)->set_uint32_value(value);
-    }
+    AddStat(metadata)->set_uint64_value(value);
   }
   void AddStatValue(const XStatMetadata& metadata,
                     unsigned long long value) {  // NOLINT
@@ -60,11 +56,7 @@ class XStatsBuilder {
     AddStat(metadata)->set_int64_value(value);
   }
   void AddStatValue(const XStatMetadata& metadata, long value) {  // NOLINT
-    if (sizeof(long) == 8) {                                      // NOLINT
-      AddStat(metadata)->set_int64_value(value);
-    } else {
-      AddStat(metadata)->set_int32_value(value);
-    }
+    AddStat(metadata)->set_int64_value(value);
   }
   void AddStatValue(const XStatMetadata& metadata, long long value) {  // NOLINT
     AddStat(metadata)->set_int64_value(value);

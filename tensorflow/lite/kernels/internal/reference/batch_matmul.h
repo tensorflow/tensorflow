@@ -266,13 +266,13 @@ inline void BatchMatMul(const FullyConnectedParams& params,
   const int rhs_cols = extended_rhs_shape.Dims(4);
   const int accum_depth = extended_lhs_shape.Dims(4);
 
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   for (int b0 = 0; b0 < batch_dim0; ++b0) {
@@ -292,8 +292,8 @@ inline void BatchMatMul(const FullyConnectedParams& params,
           for (int i = 0; i < lhs_rows; ++i) {
             int32_t total = 0;
             for (int k = 0; k < accum_depth; ++k) {
-              int32 lhs_val = lhs_ptr2[accum_depth * i + k];
-              int32 rhs_val = rhs_ptr2[accum_depth * j + k];
+              int32_t lhs_val = lhs_ptr2[accum_depth * i + k];
+              int32_t rhs_val = rhs_ptr2[accum_depth * j + k];
               total += (lhs_val + filter_offset) * (rhs_val + input_offset);
             }
             total = MultiplyByQuantizedMultiplier(total, output_multiplier,

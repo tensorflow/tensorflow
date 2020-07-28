@@ -32,7 +32,7 @@ void ValidateQuantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  // Version 1 of quantize supports int8 and uint8 quantization.
+  // Version 1 of quantize supports int8_t and uint8_t quantization.
   ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_QUANTIZE);

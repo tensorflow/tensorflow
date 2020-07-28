@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -126,7 +127,8 @@ StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
   return result;
 }
 
-StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
+StepEvents ConvertDeviceTraceXLineToStepEvents(const uint64 device_id,
+                                               const XLineVisitor& line) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
@@ -148,10 +150,17 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
     });
 
     if (correlation_id >= 0 && group_id >= 0) {
-      EventTypeSpan event_type_span(
-          ClassifyGpuEvent(event.Name(), tensor_shapes),
-          Timespan(event.TimestampPs(), event.DurationPs()));
+      EventType event_type = ClassifyGpuEvent(event.Name(), tensor_shapes);
+      EventTypeSpan event_type_span(event_type, event.GetTimespan());
       result[group_id].AddEvent(event_type_span);
+      if (event_type == DEVICE_COLLECTIVES) {
+        AllReduceInfo collective_ops;
+        collective_ops.set_name(string(event.Name()));
+        collective_ops.set_start_time_ps(event.TimestampPs());
+        collective_ops.set_end_time_ps(event.EndOffsetPs());
+        // TODO(jiesun): figure out how to get size info etc.
+        result[group_id].AddCollectiveOpEvent(device_id, collective_ops);
+      }
     }
   });
   return result;
@@ -167,7 +176,8 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
     } else if (IsDerivedThreadId(line_id)) {
       return;
     } else {
-      CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);
+      CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(plane.Id(), line),
+                        &result);
     }
   });
   return result;

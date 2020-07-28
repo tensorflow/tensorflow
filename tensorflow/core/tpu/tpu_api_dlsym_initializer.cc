@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_node_device.h"
 #include "tensorflow/core/tpu/tpu_system_device.h"
+#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif
 

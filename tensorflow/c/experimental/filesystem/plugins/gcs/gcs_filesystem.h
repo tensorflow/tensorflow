@@ -62,7 +62,18 @@ typedef struct GCSFile {
                         // of block_size.
   std::unique_ptr<ExpiringLRUCache<GcsFileStat>> stat_cache;
   GCSFile(google::cloud::storage::Client&& gcs_client);
+  // This constructor is used for testing purpose only.
+  GCSFile(google::cloud::storage::Client&& gcs_client, bool compose,
+          uint64_t block_size, size_t max_bytes, uint64_t max_staleness,
+          uint64_t stat_cache_max_age, size_t stat_cache_max_entries);
 } GCSFile;
+
+// This function is used to initialize a filesystem without the need of setting
+// manually environement variables.
+void InitTest(TF_Filesystem* filesystem, bool compose, uint64_t block_size,
+              size_t max_bytes, uint64_t max_staleness,
+              uint64_t stat_cache_max_age, size_t stat_cache_max_entries,
+              TF_Status* status);
 
 void Init(TF_Filesystem* filesystem, TF_Status* status);
 void Cleanup(TF_Filesystem* filesystem);
