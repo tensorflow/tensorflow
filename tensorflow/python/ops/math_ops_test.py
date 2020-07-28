@@ -261,7 +261,10 @@ class ModTest(test_util.TensorFlowTestCase):
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   def testSquaredDifference(self):
-    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype,
+        np.int32, np.int64
+    ]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
