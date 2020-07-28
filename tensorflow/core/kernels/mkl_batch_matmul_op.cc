@@ -255,7 +255,7 @@ class BatchMatMulMkl : public OpKernel {
     dnnl_gemm_batch<float>(TransA_Array, TransB_Array, M_Array, N_Array,
                            K_Array, alpha_Array, *A_Array, *B_Array, beta_Array,
                            *C_Array, group_count, group_size, ctx);
-#endif  // INTEL_MKL_DNN_ONLY
+#endif  // !INTEL_MKL_DNN_ONLY
   }
 // BatchMatMul BFloat16 support only exists in DNNL 1.2 onwards.
 #if defined(ENABLE_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
