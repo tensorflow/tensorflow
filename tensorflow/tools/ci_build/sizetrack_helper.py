@@ -99,7 +99,7 @@ size = parser.add_mutually_exclusive_group()
 size.add_argument(
     "--artifact",
     type=argparse.FileType("r"),
-    help="Local to file you are measuring.")
+    help="Local file you are measuring.")
 size.add_argument(
     "--manual_bytes",
     type=int,
