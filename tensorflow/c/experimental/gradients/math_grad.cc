@@ -178,13 +178,14 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
         absl::MakeSpan(sm_outputs), name.c_str()));
 
     // TODO(amturati): fix error where we have to return the softmax loss as the
-    // 2nd grad for the labels to avoid mangled stack trace
+    // 2nd grad for the labels to avoid mangled stack trace. Also avoid running
+    // forward operation again, check to see if forward_outputs are being
+    // passed.
 
     // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd
     // output.
     (*grad_outputs)[0] = sm_outputs[1];  // return backprop for scores
-    (*grad_outputs)[1] =
-        sm_outputs[0];  // nullptr;  <--- nullptr causes Mangled Stack Trace
+    (*grad_outputs)[1] = sm_outputs[0];  // nullptr causes Mangled Stack Trace
 
     counter += 1;
     return Status::OK();
