@@ -21,23 +21,22 @@ namespace tensorflow {
 namespace ops {
 
 // Softmax Loss given scores and labels, used by the SoftMaxLossGradient
-Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
-  
+Status SparseSoftmaxCrossEntropyLoss(
+    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+    absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr sm_loss_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      sm_loss_op->Reset("SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(sm_loss_op->Reset("SparseSoftmaxCrossEntropyWithLogits",
+                                       /*raw_device_name=*/nullptr));
 
   if (isa<tracing::TracingOperation>(sm_loss_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(sm_loss_op.get())
-                           ->SetOpName(name));
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(sm_loss_op.get())->SetOpName(name));
   }
 
-  TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[0])); // input scores
-  TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[1])); // labels
+  TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[0]));  // input scores
+  TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[1]));  // labels
 
-  // Outputs will contain: [loss_vals, gradients]. 
+  // Outputs will contain: [loss_vals, gradients].
   int num_retvals = 2;
   TF_RETURN_IF_ERROR(sm_loss_op->Execute(outputs, &num_retvals));
   return Status::OK();
@@ -46,9 +45,7 @@ Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
 // Computes Relu gradient given input features
 Status ReluGrad(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, 
-                const char* name) {
-  
+                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr relugrad_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(
       relugrad_op->Reset("ReluGrad", /*raw_device_name=*/nullptr));
@@ -58,8 +55,8 @@ Status ReluGrad(AbstractContext* ctx,
                            ->SetOpName(name));
   }
 
-  TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[0])); //upstream grads
-  TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[1])); //relu inputs
+  TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[0]));  // upstream grads
+  TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[1]));  // relu inputs
 
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(relugrad_op->Execute(outputs, &num_retvals));
@@ -68,6 +65,3 @@ Status ReluGrad(AbstractContext* ctx,
 
 }  // namespace ops
 }  // namespace tensorflow
-
-
-

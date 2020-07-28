@@ -54,9 +54,8 @@ class AddGradientFunction : public GradientFunction {
   }
   ~AddGradientFunction() override {}
 
-  private:
-    long counter;
-
+ private:
+  long counter;
 };
 
 class ExpGradientFunction : public GradientFunction {
@@ -88,10 +87,9 @@ class MatMulGradientFunction : public GradientFunction {
   
   Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
-    
     /* Given upstream grad U and a matmul op A*B, the gradients are:
-     *      
-     *    dA = U * B.T   
+     *
+     *    dA = U * B.T
      *    dB = A.T * U
      *
      *    where A.T means `transpose(A)`
@@ -101,7 +99,6 @@ class MatMulGradientFunction : public GradientFunction {
     grad_outputs->resize(2);
     std::vector<AbstractTensorHandle*> matmul_outputs(1);
 
-    
     // Gradient for A
     TF_RETURN_IF_ERROR(MatMul(ctx_, {upstream_grad, forward_inputs[1]},
                               absl::MakeSpan(matmul_outputs), "mm0",  
@@ -109,7 +106,6 @@ class MatMulGradientFunction : public GradientFunction {
 
     (*grad_outputs)[0] = matmul_outputs[0];
 
-    
     // Gradient for B
     TF_RETURN_IF_ERROR(MatMul(ctx_, {forward_inputs[0], upstream_grad},
                               absl::MakeSpan(matmul_outputs), "mm1", 
@@ -117,7 +113,7 @@ class MatMulGradientFunction : public GradientFunction {
 
     (*grad_outputs)[1] = matmul_outputs[0];
 
-    counter += 1; // update counter for names 
+    counter += 1;  // update counter for names
     return Status::OK();
   }
   ~MatMulGradientFunction() override {}
@@ -127,8 +123,6 @@ class MatMulGradientFunction : public GradientFunction {
   std::vector<AbstractTensorHandle*> forward_inputs;
   long counter;
   std::vector<AbstractTensorHandle*> forward_inputs;
-  
-
 };
 
 class ReluGradientFunction : public GradientFunction {
@@ -138,7 +132,6 @@ class ReluGradientFunction : public GradientFunction {
   
   Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
-    
     AbstractTensorHandle* upstream_grad = grad_inputs[0];
     AbstractTensorHandle* input_features = forward_inputs[0];
     grad_outputs->resize(1);
@@ -149,7 +142,7 @@ class ReluGradientFunction : public GradientFunction {
                               absl::MakeSpan(relugrad_outputs), "relu_grad"));
 
     (*grad_outputs)[0] = relugrad_outputs[0];
-    
+
     counter += 1;
     return Status::OK();
   }
@@ -158,7 +151,6 @@ class ReluGradientFunction : public GradientFunction {
  private:
   AbstractContext* ctx_;
   std::vector<AbstractTensorHandle*> forward_inputs;
-
 };
 
 class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
@@ -169,25 +161,31 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
   
   Status Compute(absl::Span<AbstractTensorHandle* const> grad_inputs,
                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
-    
     // Forward Inputs : [scores, labels]
 
-    grad_outputs->resize(2); 
+    grad_outputs->resize(2);
     std::vector<AbstractTensorHandle*> sm_outputs(2);
     
     // Calculate Grad
     TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx_, {forward_inputs[0], forward_inputs[1]},
                               absl::MakeSpan(sm_outputs), "softmax_loss"));
 
+    // Calculate Grad
+    std::string name = "sm_loss" + std::to_string(counter);
 
+    TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
+        ctx->ctx, {forward_inputs[0], forward_inputs[1]},
+        absl::MakeSpan(sm_outputs), name.c_str()));
 
-    // TODO(amturati): fix error where we have to return the softmax loss as the 
+    // TODO(amturati): fix error where we have to return the softmax loss as the
     // 2nd grad for the labels to avoid mangled stack trace
 
-    // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd output.
+    // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd
+    // output.
     (*grad_outputs)[0] = sm_outputs[1];  // return backprop for scores
-    (*grad_outputs)[1] = sm_outputs[0]; // nullptr;  <--- nullptr causes Mangled Stack Trace
-    
+    (*grad_outputs)[1] =
+        sm_outputs[0];  // nullptr;  <--- nullptr causes Mangled Stack Trace
+
     counter += 1;
     return Status::OK();
   }
@@ -197,9 +195,7 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
   AbstractContext* ctx_;
   std::vector<AbstractTensorHandle*> forward_inputs;
   std::vector<AbstractTensorHandle*> forward_outputs;
-
 };
-
 
 }  // namespace
 
