@@ -88,6 +88,10 @@ parser.add_argument(
     type=str,
     help="Unique ID for your artifact, used for sorting dashboards.")
 parser.add_argument(
+    "-n", "--dry_run",
+    action="store_true",
+    help="Dry run: do not load to BigQuery or upload to GCS.")
+parser.add_argument(
     "--print_schema",
     action="store_true",
     help="Print the table schema and don't do anything else.")
@@ -181,7 +185,8 @@ def git_pretty(commit_range, pretty_format, n=None):
     print(e.stdout)
     raise e
   out = ret.stdout.replace("\n", "")
-  return list(map(str.strip, out.split("\0")))
+  # Split by \0 and make list of text, extra whitespace and empty lines removed
+  return list(filter(None, map(str.strip, out.split("\0"))))
 
 
 def gcloud(tool, args, stdin=None):
@@ -306,28 +311,37 @@ def main():
 
   # Generate data about this artifact into a Tab Separated Value file
   next_tsv_row = build_row()
-  with open("data.tsv", "w") as tsvfile:
-    writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(next_tsv_row)
 
   # Load into BigQuery
-  gcloud("bq", [
-      "--project_id", FLAGS.project, "load", "--source_format", "CSV",
-      "--field_delimiter", "tab", PROJECT_LEVEL_TABLE_NAME, "data.tsv", SCHEMA
-  ])
+  if FLAGS.dry_run:
+    print("DRY RUN: Generated this TSV row:")
+    print("\t".join(map(str, next_tsv_row)))
+  else:
+    with open("data.tsv", "w") as tsvfile:
+      writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
+      writer.writerow(next_tsv_row)
+    gcloud("bq", [
+        "--project_id", FLAGS.project, "load", "--source_format", "CSV",
+        "--field_delimiter", "tab", PROJECT_LEVEL_TABLE_NAME, "data.tsv", SCHEMA
+    ])
 
-  # Upload artifact into GCS
-  if FLAGS.upload:
-    # note: not os.path.join here, because gsutil is always linux-style
+  # Upload artifact into GCS if it exists
+  if FLAGS.upload and FLAGS.artifact:
     head_info = git_pretty("HEAD", PRETTY_HEAD_INFO, n=1)
     _, current_cl, _, _, _, _, _ = head_info[0].split("\t")
-    path = "{bucket}/{team}/{artifact_id}/{cl}.{artifact}".format(
+    artifact_filename = os.path.basename(FLAGS.artifact.name)
+    # note: not os.path.join here, because gsutil is always linux-style
+    path = "{bucket}/{team}/{artifact_id}/{cl}.{artifact_filename}".format(
         bucket=FLAGS.bucket,
         team=FLAGS.team,
         artifact_id=FLAGS.artifact_id,
         cl=current_cl,
-        artifact=FLAGS.artifact)
-    gcloud("gsutil", ["cp", FLAGS.artifact, path])
+        artifact_filename=artifact_filename)
+    if FLAGS.dry_run:
+      print("DRY RUN: Would gsutil cp to:\n{}".format(path))
+    else:
+      gcloud("gsutil", ["cp", FLAGS.artifact, path])
+
 
 if __name__ == "__main__":
   main()
