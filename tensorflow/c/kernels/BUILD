@@ -29,9 +29,9 @@ tf_kernel_library(
     prefix = "summary_op",
     deps = [
         "//tensorflow/c:kernels",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/c/kernels:tensor_shape_utils",
-        "//tensorflow/c:tf_status",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -88,16 +88,16 @@ cc_library(
     name = "tensor_shape_utils",
     srcs = ["tensor_shape_utils.cc"],
     hdrs = ["tensor_shape_utils.h"],
-    deps = [ "//tensorflow/c:tf_tensor"], 
     visibility = ["//visibility:private"],
+    deps = ["//tensorflow/c:tf_tensor"],
 )
 
 tf_cc_test(
     name = "tensor_shape_utils_test",
     srcs = ["tensor_shape_utils_test.cc"],
     deps = [
-        "//tensorflow/core:framework",
         ":tensor_shape_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -114,7 +114,7 @@ tf_cc_test(
 filegroup(
     name = "android_all_op_kernels",
     srcs = [
-        "bitcast_op.cc", 
+        "bitcast_op.cc",
         "summary_op.cc",
     ],
 )
@@ -123,7 +123,7 @@ filegroup(
 filegroup(
     name = "android_all_ops",
     srcs = [
-        "ops/bitcast.cc", 
+        "ops/bitcast.cc",
         "ops/summary.cc",
     ],
 )
