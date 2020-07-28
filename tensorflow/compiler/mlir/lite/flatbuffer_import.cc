@@ -342,6 +342,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       values.reserve(elem_count);
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
+        
       for (int i = 0; i < elem_count; i++) {
         uint32_t bit_repr =
             llvm::support::endian::readNext<uint32_t, llvm::support::little,
