@@ -94,7 +94,7 @@ cuda_py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "text_classification_transformer_benchmark_test",
     srcs = ["keras_examples_benchmarks/text_classification_transformer_benchmark_test.py"],
     python_version = "PY3",
@@ -116,7 +116,7 @@ cuda_py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "mnist_conv_benchmark_test",
     srcs = ["keras_examples_benchmarks/mnist_conv_benchmark_test.py"],
     python_version = "PY3",
@@ -128,7 +128,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "mnist_hierarchical_rnn_benchmark_test",
     srcs = ["keras_examples_benchmarks/mnist_hierarchical_rnn_benchmark_test.py"],
     python_version = "PY3",
@@ -139,7 +139,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "mnist_irnn_benchmark_test",
     srcs = ["keras_examples_benchmarks/mnist_irnn_benchmark_test.py"],
     python_version = "PY3",
@@ -150,7 +150,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "reuters_mlp_benchmark_test",
     srcs = ["keras_examples_benchmarks/reuters_mlp_benchmark_test.py"],
     python_version = "PY3",
