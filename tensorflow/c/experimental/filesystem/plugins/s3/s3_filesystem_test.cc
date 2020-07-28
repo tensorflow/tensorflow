@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 #define ASSERT_TF_OK(x) ASSERT_EQ(TF_OK, TF_GetCode(x)) << TF_Message(x)
+#define EXPECT_TF_OK(x) EXPECT_EQ(TF_OK, TF_GetCode(x)) << TF_Message(x)
 
 static std::string InitializeTmpDir() {
   // This env should be something like `s3://bucket/path`
@@ -82,6 +83,70 @@ class S3FilesystemTest : public ::testing::Test {
     return translated_name;
   }
 
+  std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile* file)>
+  GetWriter() {
+    std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile * file)> writer(
+        new TF_WritableFile, [](TF_WritableFile* file) {
+          if (file != nullptr) {
+            if (file->plugin_file != nullptr) tf_writable_file::Cleanup(file);
+            delete file;
+          }
+        });
+    writer->plugin_file = nullptr;
+    return writer;
+  }
+
+  std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile* file)>
+  GetReader() {
+    std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile * file)>
+        reader(new TF_RandomAccessFile, [](TF_RandomAccessFile* file) {
+          if (file != nullptr) {
+            if (file->plugin_file != nullptr)
+              tf_random_access_file::Cleanup(file);
+            delete file;
+          }
+        });
+    reader->plugin_file = nullptr;
+    return reader;
+  }
+
+  void WriteString(const std::string& path, const std::string& content) {
+    auto writer = GetWriter();
+    tf_s3_filesystem::NewWritableFile(filesystem_, path.c_str(), writer.get(),
+                                      status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+    tf_writable_file::Append(writer.get(), content.c_str(), content.length(),
+                             status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+    tf_writable_file::Close(writer.get(), status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+  }
+
+  std::string ReadAll(const string& path) {
+    auto reader = GetReader();
+    tf_s3_filesystem::NewRandomAccessFile(filesystem_, path.c_str(),
+                                          reader.get(), status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+
+    auto file_size =
+        tf_s3_filesystem::GetFileSize(filesystem_, path.c_str(), status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+
+    std::string content;
+    content.resize(file_size);
+    auto read = tf_random_access_file::Read(reader.get(), 0, file_size,
+                                            &content[0], status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+    if (read >= 0) content.resize(read);
+    if (file_size != content.size())
+      TF_SetStatus(
+          status_, TF_DATA_LOSS,
+          std::string("expected " + std::to_string(file_size) + " got " +
+                      std::to_string(content.size()) + " bytes")
+              .c_str());
+    return content;
+  }
+
  protected:
   TF_Filesystem* filesystem_;
   TF_Status* status_;
@@ -90,7 +155,59 @@ class S3FilesystemTest : public ::testing::Test {
   std::string root_dir_;
 };
 
-TEST_F(S3FilesystemTest, Init) { ASSERT_TF_OK(status_); }
+TEST_F(S3FilesystemTest, NewRandomAccessFile) {
+  const std::string path = GetURIForPath("RandomAccessFile");
+  const std::string content = "abcdefghijklmn";
+
+  WriteString(path, content);
+  ASSERT_TF_OK(status_);
+
+  auto reader = GetReader();
+  tf_s3_filesystem::NewRandomAccessFile(filesystem_, path.c_str(), reader.get(),
+                                        status_);
+  EXPECT_TF_OK(status_);
+
+  std::string result;
+  result.resize(content.size());
+  auto read = tf_random_access_file::Read(reader.get(), 0, content.size(),
+                                          &result[0], status_);
+  result.resize(read);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(content.size(), result.size());
+  EXPECT_EQ(content, result);
+
+  result.clear();
+  result.resize(4);
+  read = tf_random_access_file::Read(reader.get(), 2, 4, &result[0], status_);
+  result.resize(read);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(4, result.size());
+  EXPECT_EQ(content.substr(2, 4), result);
+}
+
+TEST_F(S3FilesystemTest, NewWritableFile) {
+  auto writer = GetWriter();
+  const std::string path = GetURIForPath("WritableFile");
+  tf_s3_filesystem::NewWritableFile(filesystem_, path.c_str(), writer.get(),
+                                    status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Append(writer.get(), "content1,", strlen("content1,"),
+                           status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Append(writer.get(), "content2", strlen("content2"),
+                           status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Flush(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Sync(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Close(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+
+  auto content = ReadAll(path);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("content1,content2", content);
+}
 
 }  // namespace
 }  // namespace tensorflow
