@@ -78,21 +78,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "batch_gather_op_test",
-    srcs = ["batch_gather_op_test.py"],
-    tags = [
-        "no_gpu",  # b/127001953
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "batch_scatter_ops_test",
     srcs = ["batch_scatter_ops_test.py"],
     deps = [
