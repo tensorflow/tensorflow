@@ -1601,14 +1601,16 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
   switch (subshape().element_type()) {
     case PRED:
       return EqualElementsInternal<bool>(other, &multi_index);
-    case U8:
-      return EqualElementsInternal<uint8>(other, &multi_index);
+    case S8:
+      return EqualElementsInternal<int8>(other, &multi_index);
     case S16:
       return EqualElementsInternal<int16>(other, &multi_index);
     case S32:
       return EqualElementsInternal<int32>(other, &multi_index);
     case S64:
       return EqualElementsInternal<int64>(other, &multi_index);
+    case U8:
+      return EqualElementsInternal<uint8>(other, &multi_index);
     case U16:
       return EqualElementsInternal<uint16>(other, &multi_index);
     case U32:
