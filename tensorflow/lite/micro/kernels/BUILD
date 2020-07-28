@@ -4,7 +4,6 @@ load(
 )
 load(
     "//tensorflow/lite/micro:build_def.bzl",
-    "cc_library",
     "micro_copts",
 )
 
@@ -93,8 +92,6 @@ cc_library(
         ],
     }),
     hdrs = ["micro_ops.h"],
-    # TODO(b/153609488): enable embedded build once we can properly support it.
-    #build_for_embedded = True,
     copts = micro_copts(),
     visibility = [
         # Needed for micro:op_resolvers but visibility can not be finer-grained
@@ -460,7 +457,6 @@ tflite_micro_cc_test(
 cc_library(
     name = "activation_utils",
     hdrs = ["activation_utils.h"],
-    build_for_embedded = True,
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -503,7 +499,6 @@ cc_library(
         "kernel_runner.cc",
     ],
     hdrs = ["kernel_runner.h"],
-    build_for_embedded = True,
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -517,7 +512,6 @@ cc_library(
         "kernel_util.cc",
     ],
     hdrs = ["kernel_util.h"],
-    build_for_embedded = True,
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:types",
@@ -527,7 +521,6 @@ cc_library(
 cc_library(
     name = "micro_utils",
     hdrs = ["micro_utils.h"],
-    build_for_embedded = True,
 )
 
 tflite_micro_cc_test(
