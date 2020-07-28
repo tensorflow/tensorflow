@@ -61,8 +61,6 @@ string Hostname() {
   return string(hostname);
 }
 
-string JobName() { return ""; }
-
 int NumSchedulableCPUs() {
 #if defined(__linux__) && !defined(__ANDROID__)
   cpu_set_t cpuset;

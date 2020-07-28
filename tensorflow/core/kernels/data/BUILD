@@ -1243,7 +1243,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:platform_port",
     ],
 )
 

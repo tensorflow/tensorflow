@@ -2661,10 +2661,6 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'optimizations\', \'output_types\', \'output_shapes\', \'optimization_configs\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
-    name: "OptimizeDatasetV2"
-    argspec: "args=[\'input_dataset\', \'optimizations_enabled\', \'optimizations_disabled\', \'optimizations_default\', \'output_types\', \'output_shapes\', \'optimization_configs\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
-  }
-  member_method {
     name: "OptionalFromValue"
     argspec: "args=[\'components\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

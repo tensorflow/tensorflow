@@ -30,13 +30,11 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.data.util import random_seed
@@ -376,18 +374,16 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     graph_rewrites = options._graph_rewrites()
     graph_rewrite_configs = options._graph_rewrite_configs()
     # pylint: enable=protected-access
-    if graph_rewrites.enabled or graph_rewrites.default:
+    if graph_rewrites:
       if self._has_captured_ref():
         warnings.warn(
             "tf.data graph rewrites are not compatible with tf.Variable. "
             "The following rewrites will be disabled: %s. To enable "
             "rewrites, use resource variables instead by calling "
             "`tf.enable_resource_variables()` at the start of the program." %
-            ", ".join(graph_rewrites.enabled + graph_rewrites.default))
+            ", ".join(graph_rewrites))
       else:
-        dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
-                                   graph_rewrites.disabled,
-                                   graph_rewrites.default,
+        dataset = _OptimizeDataset(dataset, graph_rewrites,
                                    graph_rewrite_configs)
 
     # (3) Apply autotune options
@@ -2891,39 +2887,22 @@ class Options(options_lib.OptionsBase):
       "is being captured.")
 
   def _graph_rewrites(self):
-    """Produces lists of enabled, disabled, default static graph rewrites.
-
-    Returns:
-      result: a namedtuple with three attributes. `result.enabled` is the list
-        of user enabled graph rewrites. `result.disabled` is the list of user
-        disabled graph rewrites. `result.default` is the list of graph
-        rewrites that are enabled by default (the user has not explicitly
-        enabled or disabled them).
-    """
+    """Produces the list of enabled static graph rewrites."""
+    result = []
     if self.experimental_optimization is not None:
-      result = self.experimental_optimization._graph_rewrites()  # pylint: disable=protected-access
+      result.extend(self.experimental_optimization._graph_rewrites())  # pylint: disable=protected-access
     else:
       # Apply default options
-      result = optimization_options.OptimizationOptions()._graph_rewrites()  # pylint: disable=protected-access
+      result.extend(
+          optimization_options.OptimizationOptions()._graph_rewrites())  # pylint: disable=protected-access
 
     if self.experimental_deterministic is False:  # pylint: disable=g-bool-id-comparison
-      result.enabled.append("make_sloppy")
-    elif self.experimental_deterministic is True:  # pylint: disable=g-bool-id-comparison
-      result.disabled.append("make_sloppy")
-    if self.experimental_stats:
-      if  self.experimental_stats.latency_all_edges is True:  # pylint: disable=g-bool-id-comparison
-        result.enabled.append("latency_all_edges")
-      elif self.experimental_stats.latency_all_edges is False:  # pylint: disable=g-bool-id-comparison
-        result.disabled.append("latency_all_edges")
-    if self.experimental_slack is True:  # pylint: disable=g-bool-id-comparison
-      result.enabled.append("slack")
-    elif self.experimental_slack is False:  # pylint: disable=g-bool-id-comparison
-      result.disabled.append("slack")
-
-    graph_rewrites = options_lib.graph_rewrites()
-    return graph_rewrites(enabled=list(set(result.enabled)),
-                          disabled=list(set(result.disabled)),
-                          default=list(set(result.default)))
+      result.append("make_sloppy")
+    if self.experimental_stats and self.experimental_stats.latency_all_edges:
+      result.append("latency_all_edges")
+    if self.experimental_slack:
+      result.append("slack")
+    return result
 
   def _graph_rewrite_configs(self):
     """Produces the list of configurations for enabled graph optimizations."""
@@ -4408,55 +4387,19 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
 class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
-  def __init__(self,
-               input_dataset,
-               optimizations_enabled,
-               optimizations_disabled,
-               optimizations_default,
-               optimization_configs=None):
+  def __init__(self, input_dataset, optimizations, optimization_configs=None):
     self._input_dataset = input_dataset
+    if optimizations is None:
+      optimizations = []
     if optimization_configs is None:
       optimization_configs = []
-
-    if compat.forward_compatible(2020, 8, 6):
-      self._optimizations_enabled = convert.optional_param_to_tensor(
-          argument_name="optimizations_enabled",
-          argument_value=optimizations_enabled,
-          argument_default=[],
-          argument_dtype=dtypes.string)
-      self._optimizations_disabled = convert.optional_param_to_tensor(
-          argument_name="optimizations_disabled",
-          argument_value=optimizations_disabled,
-          argument_default=[],
-          argument_dtype=dtypes.string)
-      self._optimizations_default = convert.optional_param_to_tensor(
-          argument_name="optimizations_default",
-          argument_value=optimizations_default,
-          argument_default=[],
-          argument_dtype=dtypes.string)
-
-      variant_tensor = gen_dataset_ops.optimize_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._optimizations_enabled,
-          self._optimizations_disabled,
-          self._optimizations_default,
-          optimization_configs=optimization_configs,
-          **self._flat_structure)
-    else:
-      if optimizations_enabled is None:
-        optimizations_enabled = []
-      if optimizations_default is None:
-        optimizations_default = []
-
-      self._optimizations = ops.convert_to_tensor(
-          optimizations_enabled + optimizations_default,
-          dtype=dtypes.string,
-          name="optimizations")
-      variant_tensor = gen_dataset_ops.optimize_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._optimizations,
-          optimization_configs=optimization_configs,
-          **self._flat_structure)
+    self._optimizations = ops.convert_to_tensor(
+        optimizations, dtype=dtypes.string, name="optimizations")
+    variant_tensor = gen_dataset_ops.optimize_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._optimizations,
+        optimization_configs=optimization_configs,
+        **self._flat_structure)
     super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
 
 

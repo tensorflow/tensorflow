@@ -36,19 +36,13 @@ def model():
   return _apply_fn
 
 
-def optimize(optimizations_enabled=None, optimizations_disabled=None,
-             optimizations_default=None):
+def optimize(optimizations=None):
   """A transformation that applies optimizations.
 
   Args:
-    optimizations_enabled: (Optional.) A `tf.string` vector `tf.Tensor`
-    identifying enabled optimizations. If not specified, set to be empty.
-
-    optimizations_disabled: (Optional.) A `tf.string` vector `tf.Tensor`
-    identifying disabled optimizations. If not specified, set to be empty.
-
-    optimizations_default: (Optional.) A `tf.string` vector `tf.Tensor`
-    identifying default optimizations. If not specified, set to be empty.
+    optimizations: (Optional.) A `tf.string` vector `tf.Tensor` identifying
+      optimizations to use. If not specified, the default set of optimizations
+      is applied.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -57,11 +51,7 @@ def optimize(optimizations_enabled=None, optimizations_disabled=None,
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return dataset_ops._OptimizeDataset(  # pylint: disable=protected-access
-        dataset,
-        optimizations_enabled,
-        optimizations_disabled,
-        optimizations_default)
+    return dataset_ops._OptimizeDataset(dataset, optimizations)  # pylint: disable=protected-access
 
   return _apply_fn
 
