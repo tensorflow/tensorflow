@@ -39,7 +39,7 @@ bool NewJournalDir(std::string* journal_dir) {
 
 Update MakeCreateJobUpdate() {
   Update update;
-  CreateJob* create_job = update.mutable_create_job();
+  CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_dataset_id(3);
   create_job->set_job_id(8);
   create_job->set_processing_mode(ProcessingModeDef::PARALLEL_EPOCHS);
@@ -48,14 +48,14 @@ Update MakeCreateJobUpdate() {
 
 Update MakeFinishJobUpdate() {
   Update update;
-  FinishJob* finish_job = update.mutable_finish_job();
+  FinishJobUpdate* finish_job = update.mutable_finish_job();
   finish_job->set_job_id(8);
   return update;
 }
 
 Update MakeCreateTaskUpdate() {
   Update update;
-  CreateTask* create_task = update.mutable_create_task();
+  CreateTaskUpdate* create_task = update.mutable_create_task();
   create_task->set_task_id(2);
   create_task->set_dataset_id(4);
   create_task->set_job_id(5);
