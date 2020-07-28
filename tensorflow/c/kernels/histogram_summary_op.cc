@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 
-// Wrappers to clean up resources once the resource is out of scope. 
+// Wrappers to delete resources once the resource is out of scope. 
 struct Tensor_Wrapper { 
   TF_Tensor* t; 
   Tensor_Wrapper() : t(nullptr) {}
@@ -72,7 +72,7 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
     TF_OpKernelContext_Failure(ctx, status_wrapper.s);
     return; 
   }
-  // Cast values to array to access elements by index 
+  // Cast values to array to access tensor elements by index 
   auto values_array = static_cast<T*>(TF_TensorData(values_wrapper.t)); 
   tensorflow::histogram::Histogram histo; 
   for (int i = 0; i < TF_TensorElementCount(values_wrapper.t); ++i) { 
@@ -98,8 +98,8 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   v->set_tag(tag.data(), tag.size()); 
   histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */); 
 
-  // Use a new status for AllocateOutput if status_wrapper.s set to 
-  // TF_INVALID_ARGUMENT 
+  // Must use new status for TF_AllocateOutput if previous status is set 
+  // because of an invalid values argument.  
   Status_Wrapper allocation_status_wrapper;
   Tensor_Wrapper summary_tensor_wrapper; 
   TF_Tensor* summary_tensor= TF_AllocateOutput(ctx, 0,
@@ -154,4 +154,4 @@ TF_ATTRIBUTE_UNUSED static bool  IsHistogramSummaryOpKernelRegistered = []() {
     RegisterHistogramSummaryOpKernel<double>();                                  
   }                                                                           
   return true;                                                                
-}();   
+}(); 
