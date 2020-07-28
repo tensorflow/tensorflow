@@ -788,6 +788,25 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "image_projective_transform_op_test",
+    size = "small",
+    timeout = "long",
+    srcs = ["image_projective_transform_op_test.py"],
+    python_version = "PY3",
+    shard_count = 10,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "listdiff_op_test",
     size = "small",
     srcs = ["listdiff_op_test.py"],

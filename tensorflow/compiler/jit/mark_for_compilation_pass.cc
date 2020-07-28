@@ -1896,6 +1896,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "IgammaGradA",
                                      "RandomGammaGrad",
                                      "Igammac",
+                                     "ImageProjectiveTransformV3",
                                      "FFT",
                                      "FFT2D",
                                      "FFT3D",
