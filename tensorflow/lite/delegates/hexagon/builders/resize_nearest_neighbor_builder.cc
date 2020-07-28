@@ -32,12 +32,6 @@ TfLiteStatus ResizeNearestNeighborOpBuilder::PopulateSubGraph(
   int tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
-  auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
-  auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
 
   // Output dimensions tensor.
   tensor_id = inputs->data[1];
@@ -53,8 +47,7 @@ TfLiteStatus ResizeNearestNeighborOpBuilder::PopulateSubGraph(
   }
 
   // Min/max values for input tensor.
-  AddInput(TensorID(input_min_const->GetID(), 0));
-  AddInput(TensorID(input_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, input_tensor));
 
   // Align corners.
   const TfLiteResizeNearestNeighborParams* params =
