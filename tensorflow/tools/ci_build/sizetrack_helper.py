@@ -88,7 +88,8 @@ parser.add_argument(
     type=str,
     help="Unique ID for your artifact, used for sorting dashboards.")
 parser.add_argument(
-    "-n", "--dry_run",
+    "-n",
+    "--dry_run",
     action="store_true",
     help="Dry run: do not load to BigQuery or upload to GCS.")
 parser.add_argument(
@@ -138,6 +139,7 @@ SCHEMA = ",".join([
     "bytes:int64",
     "team:string",
     "logged_date:timestamp",
+    "uploaded_to:string",
 ])
 # Select the earliest recorded commit in the same table for the same artifact
 # and team. Used to determine the full range of tested commits for each
@@ -266,15 +268,33 @@ def get_all_tested_commits():
     return [""] * 6
 
 
+def get_upload_path():
+  """Generate URL for 'gsutil cp'."""
+  if FLAGS.upload and FLAGS.artifact:
+    head_info = git_pretty("HEAD", PRETTY_HEAD_INFO, n=1)
+    _, current_cl, _, _, _, _, _ = head_info[0].split("\t")
+    artifact_filename = os.path.basename(FLAGS.artifact.name)
+    # note: not os.path.join here, because gsutil is always linux-style
+    path = "{bucket}/{team}/{artifact_id}/{cl}.{artifact_filename}".format(
+        bucket=FLAGS.bucket,
+        team=FLAGS.team,
+        artifact_id=FLAGS.artifact_id,
+        cl=current_cl,
+        artifact_filename=artifact_filename)
+    return path
+  else:
+    return ""
+
+
 def build_row():
   """Assemble one row of data about this artifact."""
-  (earliest_commit, early_cl, early_author_date,
-   early_commit_date, all_commits, all_changelists) = get_all_tested_commits()
+  (earliest_commit, early_cl, early_author_date, early_commit_date, all_commits,
+   all_changelists) = get_all_tested_commits()
 
   # Use UTC to make sure machines in different timezones load consistent data
   current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
-  artifact_filename = ("NO_FILE" if not FLAGS.artifact
-                       else os.path.basename(FLAGS.artifact.name))
+  artifact_filename = ("NO_FILE" if not FLAGS.artifact else os.path.basename(
+      FLAGS.artifact.name))
   size_bytes = FLAGS.manual_bytes or os.path.getsize(FLAGS.artifact.name)
   head_info = git_pretty("HEAD", PRETTY_HEAD_INFO, n=1)
   all_head_info_items = head_info[0].split("\t")
@@ -291,6 +311,7 @@ def build_row():
       size_bytes,
       FLAGS.team,
       current_time,
+      get_upload_path(),
   ]
 
 
@@ -305,12 +326,19 @@ def main():
     print(
         "--team and --artifact_id are required if --print_schema is not "
         "specified.\nYou must also specify one of --artifact or --manual_bytes."
-        "\nPass -h or --help for usage."
-    )
+        "\nPass -h or --help for usage.")
     exit(1)
 
   # Generate data about this artifact into a Tab Separated Value file
   next_tsv_row = build_row()
+
+  # Upload artifact into GCS if it exists
+  if FLAGS.upload and FLAGS.artifact:
+    upload_path = get_upload_path()
+    if FLAGS.dry_run:
+      print("DRY RUN: Would gsutil cp to:\n{}".format(upload_path))
+    else:
+      gcloud("gsutil", ["cp", FLAGS.artifact.name, upload_path])
 
   # Load into BigQuery
   if FLAGS.dry_run:
@@ -324,23 +352,6 @@ def main():
         "--project_id", FLAGS.project, "load", "--source_format", "CSV",
         "--field_delimiter", "tab", PROJECT_LEVEL_TABLE_NAME, "data.tsv", SCHEMA
     ])
-
-  # Upload artifact into GCS if it exists
-  if FLAGS.upload and FLAGS.artifact:
-    head_info = git_pretty("HEAD", PRETTY_HEAD_INFO, n=1)
-    _, current_cl, _, _, _, _, _ = head_info[0].split("\t")
-    artifact_filename = os.path.basename(FLAGS.artifact.name)
-    # note: not os.path.join here, because gsutil is always linux-style
-    path = "{bucket}/{team}/{artifact_id}/{cl}.{artifact_filename}".format(
-        bucket=FLAGS.bucket,
-        team=FLAGS.team,
-        artifact_id=FLAGS.artifact_id,
-        cl=current_cl,
-        artifact_filename=artifact_filename)
-    if FLAGS.dry_run:
-      print("DRY RUN: Would gsutil cp to:\n{}".format(path))
-    else:
-      gcloud("gsutil", ["cp", FLAGS.artifact, path])
 
 
 if __name__ == "__main__":
