@@ -143,8 +143,11 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_api",
+        ":tpu_compilation_device",
         ":tpu_config_c_api",
         ":tpu_library_init_fns",
+        ":tpu_node_device",
+        ":tpu_system_device",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
