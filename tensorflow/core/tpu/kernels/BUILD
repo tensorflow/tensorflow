@@ -209,19 +209,14 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_entry",
-    srcs = ["tpu_compilation_cache_entry.cc"],
     hdrs = [
         "tpu_compilation_cache_entry.h",
     ],
     deps = [
-        ":compiled_subgraph",
-        ":tpu_compilation_cache_proto_cc",
         ":tpu_executable_info_proto_cc",
-        ":tpu_program_group",
+        ":tpu_program_group_interface",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/platform:casts",
     ],
 )
 
