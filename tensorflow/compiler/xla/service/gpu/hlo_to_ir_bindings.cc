@@ -35,16 +35,18 @@ namespace gpu {
 using absl::StrAppend;
 using absl::StrCat;
 
-void HloToIrBindings::EmitBasePointersForHlos(
+Status HloToIrBindings::EmitBasePointersForHlos(
     absl::Span<const HloInstruction* const> io_hlos,
     absl::Span<const HloInstruction* const> non_io_hlos) {
+  CHECK(is_nested_);
+
   // I/O HLOs are bound to the arguments of the current IR function,
   // *excluding* the output argument, which is added to non-I/O HLOs.
   // I.e.,
   //
-  // void IrFunction(io_0, io_1, ..., io_{m-1}, output_arg, temp_buffer_base) {
+  // void IrFunction(io_0, io_1, ..., io_{m-1}, output_arg);
   llvm::Function* function = b_->GetInsertBlock()->getParent();
-  CHECK_EQ(io_hlos.size() + 2, function->arg_size());
+  CHECK_EQ(io_hlos.size() + 1, function->arg_size());
 
   // An HLO can have duplicated operands. This data structure remembers which
   // operand HLOs are already bound to avoid rebinding the same HLO.
@@ -55,11 +57,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
           !absl::c_count(non_io_hlos, io_hlo))
         << "IO HLOs and non-IO HLOs should be disjoint";
     if (!already_bound_for_this_function.contains(io_hlo)) {
-      if (!is_nested_ && io_hlo->opcode() == HloOpcode::kGetTupleElement) {
-        BindHloToIrValue(*io_hlo, EmitGetTupleElement(io_hlo, &*arg_iter));
-      } else {
-        BindHloToIrValue(*io_hlo, &*arg_iter);
-      }
+      BindHloToIrValue(*io_hlo, &*arg_iter);
       already_bound_for_this_function.insert(io_hlo);
     }
     ++arg_iter;
@@ -69,9 +67,6 @@ void HloToIrBindings::EmitBasePointersForHlos(
   arg_iter->setName("output_arg");
   ++arg_iter;
 
-  temp_buffer_base_ = &*arg_iter;
-  temp_buffer_base_->setName("temp_buffer");
-
   for (const HloInstruction* non_io_hlo : non_io_hlos) {
     if (already_bound_for_this_function.contains(non_io_hlo)) {
       continue;
@@ -79,22 +74,6 @@ void HloToIrBindings::EmitBasePointersForHlos(
     already_bound_for_this_function.insert(non_io_hlo);
 
     if (non_io_hlo->opcode() == HloOpcode::kGetTupleElement) {
-      if (!is_nested_) {
-        // Lookup allocation GetTupleElement operand.
-        const BufferAllocation::Slice slice =
-            buffer_assignment_
-                ->GetUniqueTopLevelSlice(non_io_hlo->LatestNonGteAncestor())
-                .ConsumeValueOrDie();
-        // We are not in a nested context, so check non-thread-local allocation.
-        CHECK(!slice.allocation()->is_thread_local());
-        const int64 offset = slice.offset();
-        CHECK_NE(nullptr, temp_buffer_base_);
-        // Emit IR for GetTupleElement instruction and bind to emitted value.
-        llvm::Value* base_ptr =
-            b_->CreateInBoundsGEP(temp_buffer_base_, b_->getInt64(offset));
-        BindHloToIrValue(*non_io_hlo,
-                         EmitGetTupleElement(non_io_hlo, base_ptr));
-      }
       continue;
     }
 
@@ -102,17 +81,15 @@ void HloToIrBindings::EmitBasePointersForHlos(
       continue;
     }
 
-    ShapeUtil::ForEachSubshape(
+    auto status = ShapeUtil::ForEachSubshapeWithStatus(
         non_io_hlo->shape(),
         [&](const Shape& /*subshape*/, const ShapeIndex& index) {
-          // A non-IO HLO with a buffer is bound to
-          // (1) an alloca if it is thread-local, or
-          // (2) an internal pointer in temp_buffer_base according to its
-          // offset.
+          // A non-IO HLO with a buffer is bound to an alloca if it is
+          // thread-local.
           auto slice_result =
               buffer_assignment_->GetUniqueSlice(non_io_hlo, index);
           if (!slice_result.ok()) {
-            return;
+            return Status::OK();
           }
           const BufferAllocation::Slice slice =
               slice_result.ConsumeValueOrDie();
@@ -129,15 +106,15 @@ void HloToIrBindings::EmitBasePointersForHlos(
                     *slice.allocation()));
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
-            const int64 offset = slice.offset();
-            CHECK_NE(nullptr, temp_buffer_base_);
-            BindHloToIrValue(
-                *non_io_hlo,
-                b_->CreateInBoundsGEP(temp_buffer_base_, b_->getInt64(offset)),
-                index);
+            return InternalError(
+                "Nested computation are not expected to take the temporary "
+                "buffer. All buffers are either constant or thread-local.");
           }
+          return Status::OK();
         });
+    TF_RETURN_IF_ERROR(status);
   }
+  return Status::OK();
 }
 
 llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
