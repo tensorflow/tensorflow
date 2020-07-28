@@ -32,7 +32,7 @@ bool IsZeroVector(const float* vector, int v_size) {
   return PortableIsZeroVector(vector, v_size);
 }
 
-// Check if all entries of a vector are zero for int8.
+// Check if all entries of a vector are zero for int8_t.
 bool IsZeroVector(const int8_t* vector, int v_size) {
   return PortableIsZeroVector(vector, v_size);
 }

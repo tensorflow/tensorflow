@@ -66,6 +66,8 @@ constexpr size_t kReadAppendableFileBufferSize = 1024 * 1024;  // In bytes.
 constexpr int kGetChildrenDefaultPageSize = 1000;
 // The HTTP response code "308 Resume Incomplete".
 constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
+// The HTTP response code "412 Precondition Failed".
+constexpr uint64 HTTP_CODE_PRECONDITION_FAILED = 412;
 // The environment variable that overrides the size of the readahead buffer.
 ABSL_DEPRECATED("Use GCS_READ_CACHE_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
@@ -1659,27 +1661,50 @@ Status GcsFileSystem::DeleteFile(
 
 Status GcsFileSystem::CreateDir(
     const string& dirname /*, TransactionToken* token */) {
+  string dirname_with_slash = MaybeAppendSlash(dirname);
+  VLOG(3) << "CreateDir: creating directory with dirname: " << dirname
+          << " and dirname_with_slash: " << dirname_with_slash;
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(dirname, true, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(dirname_with_slash, /*empty_object_ok=*/true,
+                                  &bucket, &object));
   if (object.empty()) {
     bool is_bucket;
     TF_RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
     return is_bucket ? Status::OK()
-                     : errors::NotFound("The specified bucket ", dirname,
-                                        " was not found.");
+                     : errors::NotFound("The specified bucket ",
+                                        dirname_with_slash, " was not found.");
   }
 
-  const string dirname_with_slash = MaybeAppendSlash(dirname);
-
   if (FileExists(dirname_with_slash).ok()) {
+    // Use the original name for a correct error here.
+    VLOG(3) << "CreateDir: directory already exists, not uploading " << dirname;
     return errors::AlreadyExists(dirname);
   }
 
-  // Create a zero-length directory marker object.
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(NewWritableFile(dirname_with_slash, &file));
-  TF_RETURN_IF_ERROR(file->Close());
-  return Status::OK();
+  std::unique_ptr<HttpRequest> request;
+  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+
+  request->SetUri(strings::StrCat(
+      kGcsUploadUriBase, "b/", bucket,
+      "/o?uploadType=media&name=", request->EscapeString(object),
+      // Adding this parameter means HTTP_CODE_PRECONDITION_FAILED
+      // will be returned if the object already exists, so avoid reuploading.
+      "&ifGenerationMatch=0"));
+
+  request->SetPostEmptyBody();
+  request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
+  const Status& status = request->Send();
+  if (status.ok()) {
+    VLOG(3) << "CreateDir: finished uploading directory " << dirname;
+    return Status::OK();
+  }
+  if (request->GetResponseCode() != HTTP_CODE_PRECONDITION_FAILED) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(status, " when uploading ",
+                                    dirname_with_slash);
+  }
+  VLOG(3) << "Ignoring directory already exists on object "
+          << dirname_with_slash;
+  return errors::AlreadyExists(dirname);
 }
 
 // Checks that the directory is empty (i.e no objects with this prefix exist).

@@ -28,11 +28,11 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-struct 
+struct
 #if GOOGLE_CUDA
-__align__(16) 
+    __align__(16)
 #endif
-Box {
+        Box {
   float x1, y1, x2, y2;
 };
 
@@ -327,12 +327,12 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   // do Cub::deviceSelect::flagged
   size_t flagged_buffer_size = 0;
   gpuprim::DeviceSelect::Flagged(static_cast<void*>(nullptr),  // temp_storage
-                             flagged_buffer_size,
-                             static_cast<int*>(nullptr),   // input
-                             static_cast<char*>(nullptr),  // selection flag
-                             static_cast<int*>(nullptr),   // selected items
-                             static_cast<int*>(nullptr),   // num_selected
-                             num_boxes, device.stream());
+                                 flagged_buffer_size,
+                                 static_cast<int*>(nullptr),   // input
+                                 static_cast<char*>(nullptr),  // selection flag
+                                 static_cast<int*>(nullptr),   // selected items
+                                 static_cast<int*>(nullptr),   // num_selected
+                                 num_boxes, device.stream());
   Tensor cub_scratch;
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT8, TensorShape({(int64)flagged_buffer_size}),
@@ -379,9 +379,10 @@ Status CountIf(OpKernelContext* context, const float* dev_array, const Op& op,
   size_t workspace_size = 0;
   auto cuda_stream = tensorflow::GetGpuStream(context);
   auto device = context->eigen_gpu_device();
-  gpuprim::DeviceSelect::If(nullptr, workspace_size, static_cast<float*>(nullptr),
-                        static_cast<float*>(nullptr),
-                        static_cast<int*>(nullptr), num_elements, op);
+  gpuprim::DeviceSelect::If(nullptr, workspace_size,
+                            static_cast<float*>(nullptr),
+                            static_cast<float*>(nullptr),
+                            static_cast<int*>(nullptr), num_elements, op);
 
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT, TensorShape({num_elements}), &scratch_output));

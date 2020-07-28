@@ -53,7 +53,7 @@ struct ExecuteNodeInfo {
 
 // Returns whether `node` is in `execute_nodes` or `(identity) -> execute`.
 bool IsExecuteNodeOrIdentityToExecuteNode(
-    const Graph& graph, const std::unordered_set<Node*>& loop_nodes,
+    const Graph& graph, const std::unordered_set<Node*>& loop_nodes,  // NOLINT
     const absl::flat_hash_set<Node*>& execute_nodes, Node* node) {
   if (execute_nodes.find(node) != execute_nodes.end()) return true;
   if (loop_nodes.find(node) == loop_nodes.end()) return false;
@@ -90,7 +90,7 @@ xla::StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
 }
 
 xla::StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
-    const Graph& graph, const std::unordered_set<Node*>& loop_nodes,
+    const Graph& graph, const std::unordered_set<Node*>& loop_nodes,  // NOLINT
     const Node* enter_node, const absl::flat_hash_set<Node*> execute_nodes) {
   for (const Edge* output_edge : enter_node->out_edges()) {
     Node* output_node = output_edge->dst();
@@ -111,7 +111,7 @@ xla::StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
 // TPUCompileMetadataProto of TPUCompile node must be reset to `new_metadata`
 // if new reshard ops are added.
 Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
-                              const std::unordered_set<Node*>& loop_nodes,
+                              const std::unordered_set<Node*>& loop_nodes,  // NOLINT
                               std::vector<ExecuteNodeInfo>* execute_node_info,
                               TPUCompileMetadataProto* new_metadata) {
   string metadata_string;

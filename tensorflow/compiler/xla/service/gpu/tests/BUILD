@@ -481,8 +481,12 @@ glob_lit_tests(
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
         "scatter.hlo": ["no_rocm"],  # needs ROCm support for hlo_to_llvm_ir
+        "execute_memzero_thunk.mlir": ["no_rocm"],  # needs ROCm support for xla-thunks-opt
     },
-    test_file_exts = ["hlo"],
+    test_file_exts = [
+        "hlo",
+        "mlir",
+    ],
 )
 
 # Bundle together all of the test utilities that are used by tests.
@@ -490,7 +494,17 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/xla/service/gpu/tests:hlo_to_llvm_ir",
+        ":hlo_to_llvm_ir",
+        ":xla-thunks-opt",
         "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+# Binary with only the thunks dialect registered, for testing purposes.
+tf_cc_binary(
+    name = "xla-thunks-opt",
+    deps = [
+        "//tensorflow/compiler/mlir:tf_mlir_opt_main",
+        "//tensorflow/compiler/xla/service/gpu:xla_thunks_dialect_registration",
     ],
 )

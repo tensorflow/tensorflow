@@ -527,8 +527,8 @@ def _get_next_as_optional(iterator, strategy, name=None):
   # TODO(b/131423105): we should be able to short-cut the all-reduce in some
   # cases.
   if getattr(strategy.extended, "_support_per_replica_values", True):
-    # Slight hack: `reduce` expects a `PerReplica`, so we pass it one, even
-    # though it doesn't actually have a value per replica.
+    # `reduce` expects a `PerReplica`, so we pass it one, even
+    # though it doesn't actually have a value per replica
     worker_has_values = values.PerReplica(worker_has_values)
     global_has_value = strategy.reduce(
         reduce_util.ReduceOp.SUM, worker_has_values, axis=None)
@@ -968,7 +968,7 @@ class DistributedDataset(_IterableInput):
       try:
         # pylint: disable=protected-access
         with ops.colocate_with(dataset._variant_tensor):
-          dataset = distribute._RebatchDataset(dataset, split_batch_by)
+          dataset = distribute._LegacyRebatchDataset(dataset, split_batch_by)
           # Add a prefetch to pipeline rebatching for performance.
           # TODO(rachelim): Instead of inserting an extra prefetch stage here,
           # leverage static graph rewrites to insert _RebatchDataset before

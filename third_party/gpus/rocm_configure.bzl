@@ -196,6 +196,13 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/11.0.0/include")
 
+    # Support hcc based off clang 10.0.0 (for ROCm 3.3)
+    inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
+    inc_dirs.append(rocm_toolkit_path + "/hcc/lib/clang/10.0.0/include")
+
+    # Add hcc headers
+    inc_dirs.append(rocm_toolkit_path + "/hcc/include")
+
     return inc_dirs
 
 def _enable_rocm(repository_ctx):

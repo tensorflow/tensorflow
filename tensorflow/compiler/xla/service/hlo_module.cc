@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
+#include <algorithm>
 #include <iterator>
 #include <set>
 #include <sstream>
@@ -650,30 +651,28 @@ bool CompareComputationsByContent(HloComputation* a, HloComputation* b) {
 }  // anonymous namespace
 
 std::vector<HloComputation*> HloModule::MakeComputationSorted() const {
-  std::vector<HloComputation*> result;
-  result.reserve(computations_.size());
-  for (const auto& computation : computations_) {
-    result.push_back(computation.get());
+  std::vector<HloComputation*> result = MakeComputationPostOrder();
+  if (config().content_aware_computation_sorting()) {
+    absl::c_sort(result, CompareComputationsByContent);
   }
-  std::sort(result.begin(), result.end(), CompareComputationsByContent);
   return result;
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
-  std::vector<HloComputation*> result;
-  for (auto* c : computations()) {
-    if (c->IsFusionComputation()) {
-      continue;
-    }
-    result.push_back(c);
-  }
+  std::vector<HloComputation*> result = MakeComputationPostOrder();
+  result.erase(std::remove_if(
+                   result.begin(), result.end(),
+                   [](HloComputation* c) { return c->IsFusionComputation(); }),
+               result.end());
   return result;
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
     const {
   auto result = MakeNonfusionComputations();
-  std::sort(result.begin(), result.end(), CompareComputationsByContent);
+  if (config().content_aware_computation_sorting()) {
+    absl::c_sort(result, CompareComputationsByContent);
+  }
   return result;
 }
 

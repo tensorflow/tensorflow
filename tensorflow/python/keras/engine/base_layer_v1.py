@@ -255,6 +255,12 @@ class Layer(base_layer.Layer):
     # Mark this layer as having been originally built as a tf1 layer/model
     self._originally_built_as_v1 = True
 
+    # For backwards compat reasons, most built-in layers do not guarantee
+    # That they will 100% preserve the structure of input args when saving
+    # / loading configs. E.g. they may un-nest an arg that is
+    # a list with one element.
+    self._preserve_input_structure_in_config = False
+
   @trackable.no_automatic_dependency_tracking
   @generic_utils.default
   def build(self, input_shape):

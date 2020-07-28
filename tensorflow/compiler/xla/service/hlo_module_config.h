@@ -188,6 +188,14 @@ class HloModuleConfig {
     alias_passthrough_params_ = alias_passthrough_params;
   }
 
+  bool content_aware_computation_sorting() const {
+    return content_aware_computation_sorting_;
+  }
+  void set_content_aware_computation_sorting(
+      bool content_aware_computation_sorting) {
+    content_aware_computation_sorting_ = content_aware_computation_sorting;
+  }
+
   FusionConfigCollection fusion_config_collection() const {
     return fusion_config_collection_;
   }
@@ -250,6 +258,8 @@ class HloModuleConfig {
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 
   bool alias_passthrough_params_ = false;
+
+  bool content_aware_computation_sorting_ = false;
 
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;

@@ -21,7 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cgi
+import html
 import json
 
 FAILED = "FAILED"
@@ -45,7 +45,7 @@ def make_report_table(fp, title, reports):
   reports.sort(key=lambda x: x[1]["tf"], reverse=True)
   def result_cell(x, row, col):
     """Produce a cell with the condition string `x`."""
-    s = cgi.escape(repr(x), quote=True)
+    s = html.escape(repr(x), quote=True)
     color = "#44ff44" if x == SUCCESS else (
         "#ff4444" if x == FAILED else "#eeeeee")
     handler = "ShowLog(%d, %d)" % (row, col)
@@ -76,8 +76,8 @@ log.innerHTML = "<pre>" + data[row][col]  + "</pre>";
 }
 """)
   fp.write("var data = \n")
-  fp.write(json.dumps([[cgi.escape(x[1]["tf_log"], quote=True),
-                        cgi.escape(x[1]["toco_log"], quote=True)]
+  fp.write(json.dumps([[html.escape(x[1]["tf_log"], quote=True),
+                        html.escape(x[1]["toco_log"], quote=True)]
                        for x in reports]))
   fp.write(";</script>\n")
 
@@ -100,14 +100,14 @@ log.innerHTML = "<pre>" + data[row][col]  + "</pre>";
   fp.write("<table>\n")
   fp.write("<tr>\n")
   for p in param_keys:
-    fp.write("<th>%s</th>\n" % cgi.escape(p, quote=True))
+    fp.write("<th>%s</th>\n" % html.escape(p, quote=True))
   fp.write("<th>TensorFlow</th>\n")
   fp.write("<th>TOCO</th>\n")
   fp.write("</tr>\n")
   for idx, (params, vals) in enumerate(reports):
     fp.write("<tr>\n")
     for p in param_keys:
-      fp.write("  <td>%s</td>\n" % cgi.escape(repr(params[p]), quote=True))
+      fp.write("  <td>%s</td>\n" % html.escape(repr(params[p]), quote=True))
 
     result_cell(vals["tf"], idx, 0)
     result_cell(vals["toco"], idx, 1)

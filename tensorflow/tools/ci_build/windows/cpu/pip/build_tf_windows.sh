@@ -136,12 +136,12 @@ fi
 
 run_configure_for_cpu_build
 
-bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
+bazel build ${EXTRA_BUILD_FLAGS}  \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu \
   --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
-bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
+bazel build --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 

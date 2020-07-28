@@ -54,7 +54,7 @@ struct HostTrainingLoopInfo {
   // Exit and Enter node names for each loop arguments.
   std::vector<LoopArgInfo> loop_arguments;
 
-  std::unordered_set<Node*> loop_nodes;
+  std::unordered_set<Node*> loop_nodes;  // NOLINT
 };
 
 // Walks through the `graph`, recursively if functional nodes exist, and

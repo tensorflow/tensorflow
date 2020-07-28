@@ -97,6 +97,16 @@ def _get_layer_computation_test_cases():
               np.float32),
       "testcase_name":
           "3d_multiple_axis"
+  }, {
+      "adapt_data":
+          np.zeros((3, 4)),
+      "axis": -1,
+      "test_data":
+          np.zeros((3, 4)),
+      "expected":
+          np.zeros((3, 4)),
+      "testcase_name":
+          "zero_variance"
   })
 
   crossed_test_cases = []

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -154,6 +155,10 @@ se::port::StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
     const TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& arg_shapes);
 
+se::port::Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
+                                              TPUCompileMetadataProto* metadata,
+                                              NameAttrList* function_name,
+                                              std::string* mlir_module);
 }  // namespace tpu
 }  // namespace tensorflow
 

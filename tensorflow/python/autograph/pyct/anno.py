@@ -101,6 +101,7 @@ class Static(NoValue):
   LIVE_VARS_OUT = ('Symbols live when exiting the node. See liveness.py.')
   LIVE_VARS_IN = ('Symbols live when entering the node. See liveness.py.')
   TYPES = 'Static type information. See type_inference.py.'
+  CLOSURE_TYPES = 'Types of closure symbols at each detected call site.'
 
 
 FAIL = object()

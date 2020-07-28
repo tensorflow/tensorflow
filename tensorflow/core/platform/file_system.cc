@@ -70,7 +70,8 @@ string FileSystem::TranslateName(const string& name) const {
   return this->CleanPath(path);
 }
 
-Status FileSystem::IsDirectory(const string& name) {
+Status FileSystem::IsDirectory(
+    const string& name /*, TransactionToken *token */) {
   // Check if path exists.
   TF_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
@@ -86,10 +87,11 @@ Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
   return Status::OK();
 }
 
-void FileSystem::FlushCaches() {}
+void FileSystem::FlushCaches(/* TransactionToken *token */) {}
 
-bool FileSystem::FilesExist(const std::vector<string>& files,
-                            std::vector<Status>* status) {
+bool FileSystem::FilesExist(
+    const std::vector<string>& files,
+    std::vector<Status>* status /*, TransactionToken *token */) {
   bool result = true;
   for (const auto& file : files) {
     Status s = FileExists(file);
@@ -104,9 +106,9 @@ bool FileSystem::FilesExist(const std::vector<string>& files,
   return result;
 }
 
-Status FileSystem::DeleteRecursively(const string& dirname,
-                                     int64* undeleted_files,
-                                     int64* undeleted_dirs) {
+Status FileSystem::DeleteRecursively(
+    const string& dirname, int64* undeleted_files,
+    int64* undeleted_dirs /*, TransactionToken *token */) {
   CHECK_NOTNULL(undeleted_files);
   CHECK_NOTNULL(undeleted_dirs);
 
@@ -176,7 +178,8 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   return ret;
 }
 
-Status FileSystem::RecursivelyCreateDir(const string& dirname) {
+Status FileSystem::RecursivelyCreateDir(
+    const string& dirname /*, TransactionToken *token */) {
   StringPiece scheme, host, remaining_dir;
   this->ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
@@ -221,7 +224,8 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   return Status::OK();
 }
 
-Status FileSystem::CopyFile(const string& src, const string& target) {
+Status FileSystem::CopyFile(
+    const string& src, const string& target /*, TransactionToken *token */) {
   return FileSystemCopyFile(this, src, this, target);
 }
 
@@ -434,6 +438,16 @@ string FileSystem::CreateURI(StringPiece scheme, StringPiece host,
     return string(path);
   }
   return strings::StrCat(scheme, "://", host, path);
+}
+
+std::string FileSystem::DecodeTransaction(const TransactionToken* token) {
+  // TODO(sami): Switch using StrCat when void* is supported
+  if (token) {
+    std::stringstream oss;
+    oss << "Token= " << token->token << ", Owner=" << token->owner;
+    return oss.str();
+  }
+  return "No Transaction";
 }
 
 }  // namespace tensorflow

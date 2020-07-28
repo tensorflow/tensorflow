@@ -95,21 +95,21 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
 Shape TpuExecutable::HostShapeToDeviceShape(const Shape& host_shape) {
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
-  TpuConversions::XlaShapeToCShape(host_shape, &c_host_shape);
+  ApiConverter::ToC(host_shape, &c_host_shape);
   tensorflow::tpu::ExecuteApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
-  Shape device_shape = TpuConversions::CShapeToXlaShape(&c_device_shape);
-  TpuConversions::CShapeCleanup(&c_host_shape);
-  TpuConversions::CShapeCleanup(&c_device_shape);
+  Shape device_shape = ApiConverter::FromC(&c_device_shape);
+  ApiConverter::Free(&c_host_shape);
+  ApiConverter::Free(&c_device_shape);
   return device_shape;
 }
 
 int64 TpuExecutable::ShapeSize(const Shape& shape) {
   XLA_Shape c_shape;
-  TpuConversions::XlaShapeToCShape(shape, &c_shape);
+  ApiConverter::ToC(shape, &c_shape);
   int64 size =
       tensorflow::tpu::ExecuteApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
-  TpuConversions::CShapeCleanup(&c_shape);
+  ApiConverter::Free(&c_shape);
   return size;
 }
 

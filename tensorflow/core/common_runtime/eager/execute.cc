@@ -634,7 +634,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     auto node = absl::make_unique<AsyncExecuteNode>(
         &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
         graph_collector, op->GetCancellationManager(),
-        absl::Span<TensorHandle*>(retvals, num_outputs));
+        absl::Span<TensorHandle*>(retvals, num_outputs), op->GetStackTrace());
     // Release the inputs from the eager operation since the AsyncExecuteNode
     // would have taken ownership. This allows the inputs to be forwarded if
     // possible.

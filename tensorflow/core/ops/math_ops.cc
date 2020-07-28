@@ -634,6 +634,7 @@ REGISTER_OP("_FusedMulSub2")
     .Attr("T: {half, float, double}")
     .SetShapeFn(BroadcastFMA2OpOutputShape);
 
+// Note SquaredDifference implements conj(x - y)*(x - y).
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()

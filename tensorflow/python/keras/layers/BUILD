@@ -358,7 +358,6 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -487,7 +486,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "convolutional_test",
-    size = "medium",
+    size = "large",
     srcs = ["convolutional_test.py"],
     python_version = "PY3",
     shard_count = 8,

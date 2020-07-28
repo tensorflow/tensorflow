@@ -560,6 +560,13 @@ tpu_py_test(
     ],
 )
 
+# NOTE this target should only be depended on by the tpu_test_wrapper macro.
+py_library(
+    name = "tpu_test_deps",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/python:client_testlib"],
+)
+
 tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],

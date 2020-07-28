@@ -90,13 +90,194 @@ const char kShardingAttribute[] = "_XlaSharding";
 const char kTPUPartitionedInput[] = "TPUPartitionedInput";
 const char kTPUPartitionedOutput[] = "TPUPartitionedOutput";
 
-// TODO(phawkins) add a canonical copy of these operator names and refactor
-// everything to use it.
-static const char* const kSendFromHostOp = "_XlaSendFromHost";
-static const char* const kRecvAtHostOp = "_XlaRecvAtHost";
-
 static const char* const kTPUCompilationResultAttr = "_tpu_compilation_status";
 static const char* const kPostDeviceRewriteAttr = "_post_device_rewrite";
+
+class IntrusiveHeapLink {
+ public:
+  using size_type = size_t;
+  static constexpr size_type kNotMember = -1;
+
+  IntrusiveHeapLink() = default;
+
+  // Only IntrusiveHeap and LinkAccess objects should make these objects.
+  explicit IntrusiveHeapLink(size_type pos) : pos_{pos} {}
+
+  // Only IntrusiveHeap and LinkAccess should get the value.
+  size_type get() const { return pos_; }
+
+ private:
+  size_type pos_{kNotMember};
+};
+
+template <typename T, IntrusiveHeapLink T::*M>
+struct IntrusiveHeapDataMemberLinkAccess {
+  IntrusiveHeapLink Get(const T* elem) const { return elem->*M; }
+  void Set(T* elem, IntrusiveHeapLink link) const { elem->*M = link; }
+};
+
+template <typename T>
+struct DefaultIntrusiveHeapLinkAccess {
+  IntrusiveHeapLink Get(const T* elem) const { return elem->heap; }
+  void Set(T* elem, IntrusiveHeapLink link) const { elem->heap = link; }
+};
+
+template <typename T, typename PtrCompare,
+          typename LinkAccess = DefaultIntrusiveHeapLinkAccess<T>,
+          typename Alloc = std::allocator<T*>>
+class IntrusiveHeap {
+ public:
+  typedef typename IntrusiveHeapLink::size_type size_type;
+  typedef T value_type;
+  typedef T* pointer;
+  typedef const T* const_pointer;
+  typedef PtrCompare pointer_compare_type;
+  typedef LinkAccess link_access_type;
+  typedef Alloc allocator_type;
+
+  explicit IntrusiveHeap(
+      const pointer_compare_type& comp = pointer_compare_type(),
+      const link_access_type& link_access = link_access_type(),
+      const allocator_type& alloc = allocator_type())
+      : rep_(comp, link_access, alloc) {}
+
+  size_type size() const { return heap().size(); }
+
+  bool empty() const { return heap().empty(); }
+
+  // Return the top element, but don't remove it.
+  pointer top() const {
+    DCHECK(!empty());
+    return heap()[0];
+  }
+
+  // Remove the top() pointer from the heap and return it.
+  pointer Pop() {
+    pointer t = top();
+    Remove(t);
+    return t;
+  }
+
+  // Insert 't' into the heap.
+  void Push(pointer t) {
+    SetPositionOf(t, heap().size());
+    heap().push_back(t);
+    FixHeapUp(t);
+  }
+
+  // Adjust the heap to accommodate changes in '*t'.
+  void Adjust(pointer t) {
+    DCHECK(Contains(t));
+    size_type h = GetPositionOf(t);
+    if (h != 0 && compare()(t, heap()[(h - 1) >> 1])) {
+      FixHeapUp(t);
+    } else {
+      FixHeapDown(t);
+    }
+  }
+
+  // Remove the specified pointer from the heap.
+  void Remove(pointer t) {
+    DCHECK(Contains(t));
+    size_type h = GetPositionOf(t);
+    SetPositionOf(t, IntrusiveHeapLink::kNotMember);
+    if (h == heap().size() - 1) {
+      // Fast path for removing from back of heap.
+      heap().pop_back();
+      return;
+    }
+    // Move the element from the back of the heap to overwrite 't'.
+    pointer& elem = heap()[h];
+    elem = heap().back();
+    SetPositionOf(elem, h);  // Element has moved, so update its link.
+    heap().pop_back();
+    Adjust(elem);  // Restore the heap invariant.
+  }
+
+  void Clear() { heap().clear(); }
+
+  bool Contains(const_pointer t) const {
+    size_type h = GetPositionOf(t);
+    return (h != IntrusiveHeapLink::kNotMember) && (h < size()) &&
+           heap()[h] == t;
+  }
+
+  void reserve(size_type n) { heap().reserve(n); }
+
+  size_type capacity() const { return heap().capacity(); }
+
+  allocator_type get_allocator() const { return rep_.heap_.get_allocator(); }
+
+ private:
+  typedef std::vector<pointer, allocator_type> heap_type;
+
+  // Empty base class optimization for pointer_compare and link_access.
+  // The heap_ data member retains a copy of the allocator, so it is not
+  // stored explicitly.
+  struct Rep : pointer_compare_type, link_access_type {
+    explicit Rep(const pointer_compare_type& cmp,
+                 const link_access_type& link_access,
+                 const allocator_type& alloc)
+        : pointer_compare_type(cmp),
+          link_access_type(link_access),
+          heap_(alloc) {}
+    heap_type heap_;  // NOLINT
+  };
+
+  const pointer_compare_type& compare() const { return rep_; }
+
+  const link_access_type& link_access() const { return rep_; }
+
+  const heap_type& heap() const { return rep_.heap_; }
+  heap_type& heap() { return rep_.heap_; }
+
+  size_type GetPositionOf(const_pointer t) const {
+    return link_access().Get(t).get();
+  }
+
+  void SetPositionOf(pointer t, size_type pos) const {
+    return link_access().Set(t, IntrusiveHeapLink(pos));
+  }
+
+  void FixHeapUp(pointer t) {
+    size_type h = GetPositionOf(t);
+    while (h != 0) {
+      size_type parent = (h - 1) >> 1;
+      if (compare()(heap()[parent], t)) {
+        break;
+      }
+      heap()[h] = heap()[parent];
+      SetPositionOf(heap()[h], h);
+      h = parent;
+    }
+    heap()[h] = t;
+    SetPositionOf(t, h);
+  }
+
+  void FixHeapDown(pointer t) {
+    size_type h = GetPositionOf(t);
+    for (;;) {
+      size_type kid = (h << 1) + 1;
+      if (kid >= heap().size()) {
+        break;
+      }
+      if (kid + 1 < heap().size() && compare()(heap()[kid + 1], heap()[kid])) {
+        ++kid;
+      }
+      if (compare()(t, heap()[kid])) {
+        break;
+      }
+      heap()[h] = heap()[kid];
+      SetPositionOf(heap()[h], h);
+      h = kid;
+    }
+
+    heap()[h] = t;
+    SetPositionOf(t, h);
+  }
+
+  Rep rep_;
+};
 
 string CoreDeviceLabel(int core) {
   return strings::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
@@ -124,15 +305,6 @@ Status SetNodeDeviceForTPUCommunication(DeviceNameUtils::ParsedName device,
 
   node->set_assigned_device_name(DeviceNameUtils::ParsedNameToString(device));
   return Status::OK();
-}
-
-Status SetNodeDeviceForTPUCommunication(const string& tpu_device_name,
-                                        const string& target_device_type,
-                                        Node* node) {
-  // Parse the TPU device.
-  DeviceNameUtils::ParsedName device;
-  TF_RET_CHECK(DeviceNameUtils::ParseFullName(tpu_device_name, &device));
-  return SetNodeDeviceForTPUCommunication(device, target_device_type, node);
 }
 
 // Iterate over the nodes in the original graph and find all the TPUReplicate
@@ -261,11 +433,10 @@ class TensorDevicePlacer {
         sizes_[i] = undefined_shape_size;
       }
     }
-    min_heap_.reserve(num_devices);
+
     for (int64 i = 0; i < num_devices; ++i) {
-      min_heap_.push_back(&index_nodes_[i]);
+      heap_.Push(&index_nodes_[i]);
     }
-    std::make_heap(min_heap_.begin(), min_heap_.end(), DeviceNodeCompare);
   }
 
   // Reports that the argument/return-value at index has been assigned
@@ -273,28 +444,32 @@ class TensorDevicePlacer {
   void ReportDeviceAssigned(int64 device, int64 index) {
     DeviceNode* node = &index_nodes_.at(device);
     node->size += sizes_.at(index);
-    std::make_heap(min_heap_.begin(), min_heap_.end(), DeviceNodeCompare);
+    heap_.Adjust(node);
   }
 
   // Retrieves the device at which the argument/return-value at index
   // should be assigned to.
   int64 RetrieveAssignment(int64 index) {
-    DeviceNode* node = *(min_heap_.begin());
+    DeviceNode* node = heap_.top();
     int64 device = node - index_nodes_.data();
     node->size += sizes_.at(index);
-    std::make_heap(min_heap_.begin(), min_heap_.end(), DeviceNodeCompare);
+    heap_.Adjust(node);
     return device;
   }
 
  private:
   struct DeviceNode {
+    struct Compare {
+      // Compare functor to implement a min heap using the ::gtl::IntrusiveHeap
+      // infrastructure.
+      bool operator()(const DeviceNode* lhs, const DeviceNode* rhs) const {
+        return lhs->size < rhs->size;
+      }
+    };
+
+    IntrusiveHeapLink heap;
     int64 size = 0;
   };
-
-  // std::push_heap, etc... creates a max-heap, but we want a min-heap.
-  static bool DeviceNodeCompare(const DeviceNode* lhs, const DeviceNode* rhs) {
-    return lhs->size > rhs->size;
-  }
 
   static int64 GetInferredShapeSize(const InferredShape& ishape,
                                     DataType dtype) {
@@ -304,7 +479,7 @@ class TensorDevicePlacer {
   }
 
   std::vector<DeviceNode> index_nodes_;
-  std::vector<DeviceNode*> min_heap_;
+  IntrusiveHeap<DeviceNode, typename DeviceNode::Compare> heap_;
   std::vector<int64> sizes_;
 };
 
@@ -1519,7 +1694,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     const std::vector<InferredShape>& retval_shapes, const Graph& graph,
     const Node* replicate_node, FunctionLibraryRuntime* flr,
     std::vector<xla::OpSharding>* arg_sharding, std::vector<bool>* arg_fast_mem,
-    std::vector<xla::OpSharding>* retval_sharding) {
+    std::vector<xla::OpSharding>* retval_sharding,
+    std::vector<std::string>* arg_names) {
   // Builds vectors of the argument and return nodes.
   std::vector<Node*> args(arg_types.size());
   std::vector<Node*> retvals(retval_types.size());
@@ -1569,6 +1745,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   TensorDevicePlacer args_device_selector(num_cores_per_replica, arg_types,
                                           arg_shapes);
   arg_sharding->resize(args.size());
+  arg_names->resize(args.size());
   arg_fast_mem->resize(args.size());
   CachedFunctionHandles cached_function_handles(flr);
   const bool use_spmd = UseSpmdForXlaPartitioning(replicate_node) ||
@@ -1657,6 +1834,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     }
     (*arg_sharding)[i] = *sharding;
     (*arg_fast_mem)[i] = is_fast_mem;
+    (*arg_names)[i] = n->name();
     if (is_fast_mem) {
       VLOG(3) << "Add " << TPU_FAST_MEM_ATTR << " attribute to "
               << args[i]->name();
@@ -1825,6 +2003,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     const string& session_handle,
     const std::vector<xla::OpSharding>& arg_sharding,
     const std::vector<bool>& arg_fast_mem,
+    const std::vector<std::string>& arg_names,
     const std::vector<xla::OpSharding>& retval_sharding,
     int num_cores_per_replica, const string& compile_device,
     const xla::DeviceAssignment* xla_device_assignment,
@@ -1866,6 +2045,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     tpu::TPUCompileMetadataProto::Arg* arg = proto.add_args();
     DataType type = arg_types[i];
     const InferredShape& arg_shape = arg_shapes[i];
+    arg->set_name(arg_names[i]);
     if (type == DT_RESOURCE) {
       TF_RET_CHECK(arg_shape.handle_type != DT_INVALID) << i;
       arg->set_dtype(arg_shape.handle_type);
@@ -3314,7 +3494,11 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   // topology proto being leaked to cloud TPU users (e.g. through GetStatus
   // calls); this may be okay, but to be conservative, just assume that the
   // master session has the proper flags set.
-  auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform();
+
+  // We do not initialize platform right now, but we can still retrieve the
+  // TPU topology even with an uninitialized platform.
+  auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform(
+      /*initialize_platform=*/false);
   TF_RET_CHECK(tpu_platform);
   tpu::TpuTopologyExternal tpu_topology(tpu_platform->GetTopologyPtr());
   TF_RET_CHECK(num_tpus_per_task ==
@@ -3633,11 +3817,12 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
 
   std::vector<xla::OpSharding> arg_sharding;
   std::vector<bool> arg_fast_mem;
+  std::vector<std::string> arg_names;
   std::vector<xla::OpSharding> retval_sharding;
   TF_RETURN_IF_ERROR(AssignArgsAndRetvalsToCores(
       num_cores_per_replica, params_info, arg_types, arg_shapes, retval_types,
       retval_shapes, *computation, replicate_node, flr, &arg_sharding,
-      &arg_fast_mem, &retval_sharding));
+      &arg_fast_mem, &retval_sharding, &arg_names));
 
   VLOG(1) << DumpGraphToFile("distributed_tpu_graph_to_replicate", *computation,
                              flib_def);
@@ -3695,7 +3880,7 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
   TF_RETURN_IF_ERROR(BuildCompileNode(
       replicate_node, *function, library_fingerprint, params_info, arg_shapes,
       arg_types, guaranteed_constant_nodes, session_handle, arg_sharding,
-      arg_fast_mem, retval_sharding, num_cores_per_replica,
+      arg_fast_mem, arg_names, retval_sharding, num_cores_per_replica,
       /*compile_device=*/tpu_compilation_device, xla_device_assignment.get(),
       dynamic_shape_nodes, graph, &compile_node, autotuner_thresh));
 

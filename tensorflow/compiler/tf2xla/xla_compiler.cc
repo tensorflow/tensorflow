@@ -1030,6 +1030,11 @@ Status XlaCompiler::BuildArguments(
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, it == arg_shardings.end() ? absl::optional<xla::OpSharding>()
                                              : it->second);
+      auto& arg = args[input_to_args->at(i)];
+
+      xla::OpMetadata arg_metadata;
+      arg_metadata.set_op_name(arg.node_name);
+      builder->SetOneShotOpMetadata(arg_metadata);
       arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
   } else {

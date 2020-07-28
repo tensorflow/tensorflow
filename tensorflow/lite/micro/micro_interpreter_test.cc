@@ -72,7 +72,7 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
 
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
 
-  constexpr size_t allocator_buffer_size = 1000;
+  constexpr size_t allocator_buffer_size = 2000;
   uint8_t allocator_buffer[allocator_buffer_size];
 
   // Create a new scope so that we can test the destructor.
@@ -127,7 +127,7 @@ TF_LITE_MICRO_TEST(TestKernelMemoryPlanning) {
 
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
 
-  constexpr size_t allocator_buffer_size = 1024;
+  constexpr size_t allocator_buffer_size = 2048;
   uint8_t allocator_buffer[allocator_buffer_size];
   tflite::MicroInterpreter interpreter(model, op_resolver, allocator_buffer,
                                        allocator_buffer_size,
@@ -312,13 +312,7 @@ TF_LITE_MICRO_TEST(TestIncompleteInitializationAllocationsWithSmallArena) {
       static_cast<size_t>(0),
       allocator
           ->GetRecordedAllocation(
-              tflite::RecordedAllocationType::kTfLiteTensorArray)
-          .used_bytes);
-  TF_LITE_MICRO_EXPECT_EQ(
-      static_cast<size_t>(0),
-      allocator
-          ->GetRecordedAllocation(tflite::RecordedAllocationType::
-                                      kTfLiteTensorArrayQuantizationData)
+              tflite::RecordedAllocationType::kTfLiteEvalTensorData)
           .used_bytes);
   TF_LITE_MICRO_EXPECT_EQ(
       static_cast<size_t>(0),
@@ -358,13 +352,13 @@ TF_LITE_MICRO_TEST(TestInterpreterDoesNotAllocateUntilInvoke) {
       static_cast<size_t>(0),
       allocator
           ->GetRecordedAllocation(
-              tflite::RecordedAllocationType::kTfLiteTensorArray)
+              tflite::RecordedAllocationType::kTfLiteTensorVariableBufferData)
           .used_bytes);
   TF_LITE_MICRO_EXPECT_EQ(
       static_cast<size_t>(0),
       allocator
           ->GetRecordedAllocation(
-              tflite::RecordedAllocationType::kTfLiteTensorVariableBufferData)
+              tflite::RecordedAllocationType::kTfLiteEvalTensorData)
           .used_bytes);
   TF_LITE_MICRO_EXPECT_EQ(
       static_cast<size_t>(0),
@@ -382,9 +376,9 @@ TF_LITE_MICRO_TEST(TestInterpreterDoesNotAllocateUntilInvoke) {
   TF_LITE_MICRO_EXPECT_GT(
       allocator
           ->GetRecordedAllocation(
-              tflite::RecordedAllocationType::kTfLiteTensorArray)
+              tflite::RecordedAllocationType::kTfLiteEvalTensorData)
           .used_bytes,
-      static_cast<size_t>(0));
+      0);
 
   TF_LITE_MICRO_EXPECT_GT(
       allocator

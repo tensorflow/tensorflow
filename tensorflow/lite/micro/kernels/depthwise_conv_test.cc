@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -42,13 +42,16 @@ TfLiteStatus ValidateDepthwiseConvGoldens(
     const T* expected_output_data, int output_length,
     TfLiteDepthwiseConvParams* conv_params, float tolerance, int tensors_size,
     TfLiteTensor* tensors) {
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
+  int inputs_array_data[] = {3, 0, 1, 2};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 3};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_DEPTHWISE_CONV_2D);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+  const TfLiteRegistration registration =
+      tflite::ops::micro::Register_DEPTHWISE_CONV_2D();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(conv_params), micro_test::reporter);
 
   int input_depth = tensors[0].dims->data[3];
   int output_depth = tensors[1].dims->data[3];
@@ -60,32 +63,13 @@ TfLiteStatus ValidateDepthwiseConvGoldens(
   conv_params->depth_multiplier = depth_mul;
 
   const char* init_data = reinterpret_cast<const char*>(conv_params);
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
-  int inputs_array_data[] = {3, 0, 1, 2};
-  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  int outputs_array_data[] = {1, 3};
-  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(conv_params);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  if (registration->prepare) {
-    TF_LITE_ENSURE_OK(context, registration->prepare(&context, &node));
+  // TODO(b/154240825): Use a test macro here which fails and returns.
+  TfLiteStatus status = runner.InitAndPrepare(init_data);
+  if (status != kTfLiteOk) {
+    return status;
   }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_ENSURE_OK(context, registration->invoke(&context, &node));
-
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   const T* output_data = tflite::GetTensorData<T>(&tensors[kOutputTensorIndex]);
   for (int i = 0; i < output_length; ++i) {
@@ -803,7 +787,7 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
   TfLiteIntArray* bias_dims = tflite::testing::IntArrayFromInts(bias_shape);
   TfLiteIntArray* output_dims = tflite::testing::IntArrayFromInts(output_shape);
 
-  // Create per-layer quantized int8 input tensor.
+  // Create per-layer quantized int8_t input tensor.
   TfLiteTensor input_tensor = tflite::testing::CreateQuantizedTensor(
       input_values, input_quantized, input_dims, input_scale, 0);
   int input_zero_points[2] = {1, 0};
@@ -813,7 +797,7 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
       tflite::testing::IntArrayFromInts(input_zero_points), 0};
   input_tensor.quantization = {kTfLiteAffineQuantization, &input_quant};
 
-  // Create per-layer quantized int8 filter tensor.
+  // Create per-layer quantized int8_t filter tensor.
   TfLiteTensor filter_tensor = tflite::testing::CreateQuantizedTensor(
       filter_values, filter_quantized, filter_dims, filter_scale, 0);
   int filter_zero_points[2] = {1, 0};
@@ -823,7 +807,7 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
       tflite::testing::IntArrayFromInts(filter_zero_points), 0};
   filter_tensor.quantization = {kTfLiteAffineQuantization, &filter_quant};
 
-  // Create per-layer quantized int32 bias tensor.
+  // Create per-layer quantized int32_t bias tensor.
   tflite::SymmetricQuantize(bias_values, bias_quantized, bias_elements,
                             input_scale * output_scale);
   TfLiteTensor bias_tensor =
@@ -836,7 +820,7 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
       tflite::testing::IntArrayFromInts(bias_zero_points), 0};
   bias_tensor.quantization = {kTfLiteAffineQuantization, &bias_quant};
 
-  // Create per-layer quantized int8 output tensor.
+  // Create per-layer quantized int8_t output tensor.
   TfLiteTensor output_tensor = tflite::testing::CreateQuantizedTensor(
       output_data, output_dims, output_scale, 0);
   int output_zero_points[2] = {1, 0};
@@ -938,7 +922,7 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
   TfLiteIntArray* bias_dims = tflite::testing::IntArrayFromInts(bias_shape);
   TfLiteIntArray* output_dims = tflite::testing::IntArrayFromInts(output_shape);
 
-  // Create per-tensor quantized int8 input tensor.
+  // Create per-tensor quantized int8_t input tensor.
   int8_t input_quantized[input_elements];
   TfLiteTensor input_tensor = tflite::testing::CreateQuantizedTensor(
       input_values, input_quantized, input_dims, input_scale, input_zero_point);
@@ -951,7 +935,7 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
       tflite::testing::IntArrayFromInts(input_zero_points), 0};
   input_tensor.quantization = {kTfLiteAffineQuantization, &input_quant};
 
-  // Create per-tensor quantized int8 filter tensor.
+  // Create per-tensor quantized int8_t filter tensor.
   int8_t filter_quantized[filter_elements];
   TfLiteTensor filter_tensor = tflite::testing::CreateQuantizedTensor(
       filter_values, filter_quantized, filter_dims, filter_scale, 0);
@@ -964,7 +948,7 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
       tflite::testing::IntArrayFromInts(filter_zero_points), 0};
   filter_tensor.quantization = {kTfLiteAffineQuantization, &filter_quant};
 
-  // Create per-tensor quantized int32 bias tensor.
+  // Create per-tensor quantized int32_t bias tensor.
   int32_t bias_quantized[bias_elements];
   // See https://www.tensorflow.org/lite/performance/quantization_spec for a
   // detailed explanation of why bias scale is input_scale * filter_scale.
@@ -981,7 +965,7 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
       tflite::testing::IntArrayFromInts(bias_zero_points), 0};
   bias_tensor.quantization = {kTfLiteAffineQuantization, &bias_quant};
 
-  // Create per-tensor quantized int8 output tensor.
+  // Create per-tensor quantized int8_t output tensor.
   int8_t output_quantized[output_elements];
   TfLiteTensor output_tensor = tflite::testing::CreateQuantizedTensor(
       output_quantized, output_dims, output_scale, output_zero_point);

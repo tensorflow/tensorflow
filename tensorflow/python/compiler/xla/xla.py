@@ -44,7 +44,7 @@ _MAX_WARNING_LINES = 5
 
 # Operations that indicate some error in the users graph. For example, XLA
 # computation should not have any Placeholder op.
-_BLACKLISTED_OPS = set([
+_DENYLISTED_OPS = set([
     'Placeholder',
 ])
 
@@ -195,7 +195,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
   def AddOp(self, op):
     """Create op in XLACompileContext and notifies outer context recursively."""
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_OPS:
+    if op.type in _DENYLISTED_OPS:
       logging.error(
           'Operation of type %s (%s) is not supported in XLA. Execution will '
           'fail if this op is used in the graph. ', op.type, op.name)

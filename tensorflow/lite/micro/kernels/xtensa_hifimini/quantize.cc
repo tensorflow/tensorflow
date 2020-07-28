@@ -109,12 +109,7 @@ struct OpData {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -161,7 +156,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
-// quantized output, in int8 or uint8 format.
+// quantized output, in int8_t or uint8_t format.
 TfLiteRegistration Register_QUANTIZE() {
   return {/*init=*/quantize::Init,
           /*free=*/nullptr,

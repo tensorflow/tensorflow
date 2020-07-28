@@ -537,7 +537,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._logical_device_stack = [0]
 
     if context.executing_eagerly():
-      # In async remote eager, we want to sync the exectors before exiting the
+      # In async remote eager, we want to sync the executors before exiting the
       # program.
       def async_wait():
         if context.context()._context_handle is not None:  # pylint: disable=protected-access

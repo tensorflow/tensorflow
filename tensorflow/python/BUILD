@@ -56,9 +56,8 @@ visibility = [
     "//third_party/py/reverb:__subpackages__",
     "//third_party/py/neural_structured_learning:__subpackages__",
     "//third_party/py/tensorflow_examples:__subpackages__",
+    "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
-    # TODO(aselle): to pass open source test.
-    "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
     "//third_party/py/tensorflow_docs:__subpackages__",
 ]
 
@@ -2478,7 +2477,10 @@ tf_py_test(
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
     python_version = "PY3",
-    tags = ["no_pip"],  # test_ops_2 is not available in pip.
+    tags = [
+        "no_pip", # test_ops_2 is not available in pip.
+        "no_rocm",
+    ], 
     tfrt_enabled = True,
     deps = [
         ":cond_v2",
@@ -2757,8 +2759,6 @@ tf_py_test(
 tf_gen_op_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -2772,8 +2772,6 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "bitwise_ops_gen",
     visibility = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
@@ -2969,8 +2967,6 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
     visibility = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -2981,8 +2977,6 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "nn_ops_gen",
     visibility = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -3145,6 +3139,7 @@ py_library(
         "ops/inplace_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = visibility,
     deps = [
         ":array_ops_gen",
         ":common_shapes",
@@ -3317,6 +3312,9 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_rocm",  # FAILS on ROCm 3.5
+    ],
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -4128,6 +4126,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":bitwise_ops_gen",
         ":common_shapes",
         ":constant_op",
         ":control_flow_ops_gen",
@@ -5671,9 +5670,11 @@ cc_library(
     hdrs = ["util/stack_trace.h"],
     deps = [
         ":py_util",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/util:abstract_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -6095,7 +6096,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
-        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
@@ -6107,7 +6107,9 @@ pywrap_tensorflow_macro(
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + if_tpu(["//tensorflow/core/tpu:tpu_api_dlsym_initializer"]),
+    ]) + if_tpu([
+        "//tensorflow/core/tpu:tpu_api_dlsym_initializer",
+    ]) + if_static(extra_deps = ["//tensorflow/core/platform:tf32_utils"]),
 )
 
 # ** Targets for Windows build (start) **

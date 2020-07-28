@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
@@ -37,13 +36,16 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+const absl::string_view kXPlanePb = "xplane.pb";
+
 Status CollectDataToResponse(const ProfileRequest& req,
                              ProfilerSession* profiler,
                              ProfileResponse* response) {
   profiler::XSpace xspace;
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
-  TF_RETURN_IF_ERROR(
-      profiler::ConvertXSpaceToProfileResponse(xspace, req, response));
+  auto* tool_data = response->add_tool_data();
+  tool_data->set_name(kXPlanePb.data(), kXPlanePb.size());
+  xspace.SerializeToString(tool_data->mutable_data());
   return Status::OK();
 }
 

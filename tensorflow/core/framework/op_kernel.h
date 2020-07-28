@@ -177,12 +177,10 @@ class OpKernel {
   // Returns a trace string for current computation, op name/type and input
   // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
   // should use the default implementation.
-  // Override this function to add OpKernel specific attributes that are
-  // necessary for cost analysis.
-  virtual string TraceString(OpKernelContext* ctx, bool verbose);
+  virtual string TraceString(const OpKernelContext& ctx, bool verbose) const;
 
  protected:
-  string GetTraceArgument(OpKernelContext* ctx);
+  string ShapeTraceString(const OpKernelContext& ctx) const;
 
  private:
   const std::shared_ptr<const NodeProperties> props_;
@@ -734,7 +732,7 @@ class OpKernelContext {
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
-  const Tensor& input(int index);
+  const Tensor& input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
@@ -887,10 +885,14 @@ class OpKernelContext {
 
   // Tries to forward one of the inputs given in input_indices to
   // output[output_index]. If none of the given inputs can be forwarded, calls
-  // allocate_output() to allocate a new output buffer.
+  // allocate_output() to allocate a new output buffer. The index of the
+  // forwarded input will be assign to output argument forwarded_input (if it's
+  // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
+  // -1.
   Status forward_input_or_allocate_output(
       gtl::ArraySlice<int> candidate_input_indices, int output_index,
-      const TensorShape& output_shape, Tensor** output) TF_MUST_USE_RESULT;
+      const TensorShape& output_shape, Tensor** output,
+      int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
   Status forward_input_or_allocate_output(
       gtl::ArraySlice<StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
@@ -1638,12 +1640,18 @@ inline TensorValue OpKernelContext::release_output(int index) {
 
 inline Status OpKernelContext::forward_input_or_allocate_output(
     gtl::ArraySlice<int> candidate_input_indices, int output_index,
-    const TensorShape& output_shape, Tensor** output) {
+    const TensorShape& output_shape, Tensor** output, int* forwarded_input) {
   for (int input_index : candidate_input_indices) {
     if (forward_input_to_output_with_shape(input_index, output_index,
                                            output_shape, output)) {
+      if (forwarded_input != nullptr) {
+        *forwarded_input = input_index;
+      }
       return Status::OK();
     }
+  }
+  if (forwarded_input != nullptr) {
+    *forwarded_input = -1;
   }
   return allocate_output(output_index, output_shape, output);
 }
