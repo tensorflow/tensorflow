@@ -609,6 +609,20 @@ def _create_local_rocm_repository(repository_ctx):
         outs = rocm_lib_outs,
     ))
 
+    clang_offload_bundler_path = rocm_config.rocm_toolkit_path + _if_hipcc_is_hipclang(
+            repository_ctx, rocm_config, bash_bin, "llvm/bin", "/hcc/bin/") + "clang-offload-bundler"
+
+    # copy files mentioned in third_party/gpus/rocm/BUILD
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "rocm-bin",
+        srcs = [
+            clang_offload_bundler_path,
+        ],
+        outs = [
+            "rocm/bin/" + "clang-offload-bundler",
+        ],
+    ))
     # Set up BUILD file for rocm/
     repository_ctx.template(
         "rocm/build_defs.bzl",

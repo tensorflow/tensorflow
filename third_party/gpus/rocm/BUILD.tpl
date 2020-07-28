@@ -143,4 +143,11 @@ cc_library(
     data = ["rocm/lib/%{hipsparse_lib}"],
 )
 
+filegroup(
+    name = "rocm_root",
+    srcs = [
+        "rocm/bin/clang-offload-bundler",
+    ],
+)
+
 %{copy_rules}
