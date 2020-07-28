@@ -315,6 +315,15 @@ class InteropTest(tf.test.TestCase):
     self.assertIsInstance(batch_jacobian, np.ndarray)
     self.assertAllClose(batch_jacobian, answer)
 
+  def testMapFn(self):
+    x = np.asarray([1., 2.])
+    mapped_x = tf.map_fn(lambda x: (x[0]+1, x[1]+1), (x, x))
+
+    self.assertIsInstance(mapped_x[0], np.ndarray)
+    self.assertIsInstance(mapped_x[1], np.ndarray)
+    self.assertAllClose(mapped_x[0], [2., 3.])
+    self.assertAllClose(mapped_x[1], [2., 3.])
+
 
 class FunctionTest(InteropTest):
 
