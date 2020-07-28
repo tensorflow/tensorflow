@@ -8345,47 +8345,6 @@ func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output
 	return op.Output(0)
 }
 
-// OptimizeDatasetV2Attr is an optional argument to OptimizeDatasetV2.
-type OptimizeDatasetV2Attr func(optionalAttr)
-
-// OptimizeDatasetV2OptimizationConfigs sets the optional optimization_configs attribute to value.
-// If not specified, defaults to <>
-func OptimizeDatasetV2OptimizationConfigs(value []string) OptimizeDatasetV2Attr {
-	return func(m optionalAttr) {
-		m["optimization_configs"] = value
-	}
-}
-
-// Creates a dataset by applying related optimizations to `input_dataset`.
-//
-// Creates a dataset by applying related optimizations to `input_dataset`.
-//
-// Arguments:
-//	input_dataset: A variant tensor representing the input dataset.
-//	optimizations_enabled: A `tf.string` vector `tf.Tensor` identifying user enabled optimizations.
-//	optimizations_disabled: A `tf.string` vector `tf.Tensor` identifying user disabled optimizations.
-//	optimizations_default: A `tf.string` vector `tf.Tensor` identifying optimizations by default.
-//
-//
-func OptimizeDatasetV2(scope *Scope, input_dataset tf.Output, optimizations_enabled tf.Output, optimizations_disabled tf.Output, optimizations_default tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...OptimizeDatasetV2Attr) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "OptimizeDatasetV2",
-		Input: []tf.Input{
-			input_dataset, optimizations_enabled, optimizations_disabled, optimizations_default,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // OptimizeDatasetAttr is an optional argument to OptimizeDataset.
 type OptimizeDatasetAttr func(optionalAttr)
 
