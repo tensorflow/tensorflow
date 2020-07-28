@@ -36,8 +36,14 @@ import gast
 
 class NoValue(enum.Enum):
 
+  def of(self, node, default=None):
+    return getanno(node, self, default=default)
+
+  def exists(self, node):
+    return hasanno(node, self)
+
   def __repr__(self):
-    return self.name
+    return str(self.name)
 
 
 class Basic(NoValue):
@@ -102,6 +108,7 @@ class Static(NoValue):
   LIVE_VARS_IN = ('Symbols live when entering the node. See liveness.py.')
   TYPES = 'Static type information. See type_inference.py.'
   CLOSURE_TYPES = 'Types of closure symbols at each detected call site.'
+  VALUE = 'Static value information. See type_inference.py.'
 
 
 FAIL = object()
