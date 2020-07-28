@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/c/eager/mnist_gradients_util.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
+#include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/experimental/ops/nn_ops.h"
 
 #include <memory>
 
@@ -537,8 +539,3 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   return Status::OK();
 }
 
-
-// }  // namespace
-// }  // namespace internal
-// }  // namespace gradients
-// }  // namespace tensorflow

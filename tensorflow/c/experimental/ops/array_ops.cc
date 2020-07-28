@@ -20,9 +20,6 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
-// ============== Ops used for Gradient Computation =============================
-
-// Creates an Identity op.
 Status Identity(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name) {
@@ -38,121 +35,121 @@ Status Identity(AbstractContext* ctx,
   return identity_op->Execute(outputs, &num_retvals);
 }
 
-Status Add(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs,
-                const char* name) {
+// Status Add(AbstractContext* ctx,
+//                 absl::Span<AbstractTensorHandle* const> inputs,
+//                 absl::Span<AbstractTensorHandle*> outputs,
+//                 const char* name) {
   
-  AbstractOperationPtr add_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      add_op->Reset("AddV2", /*raw_device_name=*/nullptr));
+//   AbstractOperationPtr add_op(ctx->CreateOperation());
+//   TF_RETURN_IF_ERROR(
+//       add_op->Reset("AddV2", /*raw_device_name=*/nullptr));
 
-  if (isa<tracing::TracingOperation>(add_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(add_op.get())
-                           ->SetOpName(name));
-  }
+//   if (isa<tracing::TracingOperation>(add_op.get())) {
+//     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(add_op.get())
+//                            ->SetOpName(name));
+//   }
 
-  TF_RETURN_IF_ERROR(add_op->AddInput(inputs[0]));
-  TF_RETURN_IF_ERROR(add_op->AddInput(inputs[1]));
+//   TF_RETURN_IF_ERROR(add_op->AddInput(inputs[0]));
+//   TF_RETURN_IF_ERROR(add_op->AddInput(inputs[1]));
 
-  int num_retvals = 1;
-  TF_RETURN_IF_ERROR(add_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
+//   int num_retvals = 1;
+//   TF_RETURN_IF_ERROR(add_op->Execute(outputs, &num_retvals));
+//   return Status::OK();
+// }
 
-Status MatMul(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name,
-                bool transpose_a, bool transpose_b) {
+// Status MatMul(AbstractContext* ctx,
+//                 absl::Span<AbstractTensorHandle* const> inputs,
+//                 absl::Span<AbstractTensorHandle*> outputs, const char* name,
+//                 bool transpose_a, bool transpose_b) {
   
-  AbstractOperationPtr matmul_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      matmul_op->Reset("MatMul", /*raw_device_name=*/nullptr));
+//   AbstractOperationPtr matmul_op(ctx->CreateOperation());
+//   TF_RETURN_IF_ERROR(
+//       matmul_op->Reset("MatMul", /*raw_device_name=*/nullptr));
 
-  if (isa<tracing::TracingOperation>(matmul_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(matmul_op.get())
-                           ->SetOpName(name));
-  }
+//   if (isa<tracing::TracingOperation>(matmul_op.get())) {
+//     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(matmul_op.get())
+//                            ->SetOpName(name));
+//   }
 
-  TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[0]));
-  TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[1]));
+//   TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[0]));
+//   TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[1]));
 
-  TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_a", transpose_a));
-  TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_b", transpose_b));
+//   TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_a", transpose_a));
+//   TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_b", transpose_b));
   
-  int num_retvals = 1;
-  TF_RETURN_IF_ERROR(matmul_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
+//   int num_retvals = 1;
+//   TF_RETURN_IF_ERROR(matmul_op->Execute(outputs, &num_retvals));
+//   return Status::OK();
+// }
 
 
-Status Mul(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+// Status Mul(AbstractContext* ctx,
+//                 absl::Span<AbstractTensorHandle* const> inputs,
+//                 absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   
-  AbstractOperationPtr mul_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      mul_op->Reset("Mul", /*raw_device_name=*/nullptr));
+//   AbstractOperationPtr mul_op(ctx->CreateOperation());
+//   TF_RETURN_IF_ERROR(
+//       mul_op->Reset("Mul", /*raw_device_name=*/nullptr));
 
-  if (isa<tracing::TracingOperation>(mul_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(mul_op.get())
-                           ->SetOpName(name));
-  }
+//   if (isa<tracing::TracingOperation>(mul_op.get())) {
+//     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(mul_op.get())
+//                            ->SetOpName(name));
+//   }
 
-  TF_RETURN_IF_ERROR(mul_op->AddInput(inputs[0]));
-  TF_RETURN_IF_ERROR(mul_op->AddInput(inputs[1]));
+//   TF_RETURN_IF_ERROR(mul_op->AddInput(inputs[0]));
+//   TF_RETURN_IF_ERROR(mul_op->AddInput(inputs[1]));
 
   
-  int num_retvals = 1;
-  TF_RETURN_IF_ERROR(mul_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
+//   int num_retvals = 1;
+//   TF_RETURN_IF_ERROR(mul_op->Execute(outputs, &num_retvals));
+//   return Status::OK();
+// }
 
-// Softmax Loss given scores and labels, used by the SoftMaxLossGradient
-Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+// // Softmax Loss given scores and labels, used by the SoftMaxLossGradient
+// Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx,
+//                 absl::Span<AbstractTensorHandle* const> inputs,
+//                 absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   
-  AbstractOperationPtr sm_loss_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      sm_loss_op->Reset("SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr));
+//   AbstractOperationPtr sm_loss_op(ctx->CreateOperation());
+//   TF_RETURN_IF_ERROR(
+//       sm_loss_op->Reset("SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr));
 
-  if (isa<tracing::TracingOperation>(sm_loss_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(sm_loss_op.get())
-                           ->SetOpName(name));
-  }
+//   if (isa<tracing::TracingOperation>(sm_loss_op.get())) {
+//     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(sm_loss_op.get())
+//                            ->SetOpName(name));
+//   }
 
-  TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[0])); // input scores
-  TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[1])); // labels
+//   TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[0])); // input scores
+//   TF_RETURN_IF_ERROR(sm_loss_op->AddInput(inputs[1])); // labels
 
-  // Outputs will contain: [loss_vals, gradients]. 
-  int num_retvals = 2;
-  TF_RETURN_IF_ERROR(sm_loss_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
+//   // Outputs will contain: [loss_vals, gradients]. 
+//   int num_retvals = 2;
+//   TF_RETURN_IF_ERROR(sm_loss_op->Execute(outputs, &num_retvals));
+//   return Status::OK();
+// }
 
-// Computes Relu gradient given input features
-Status ReluGrad(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, 
-                const char* name) {
+// // Computes Relu gradient given input features
+// Status ReluGrad(AbstractContext* ctx,
+//                 absl::Span<AbstractTensorHandle* const> inputs,
+//                 absl::Span<AbstractTensorHandle*> outputs, 
+//                 const char* name) {
   
-  AbstractOperationPtr relugrad_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      relugrad_op->Reset("ReluGrad", /*raw_device_name=*/nullptr));
+//   AbstractOperationPtr relugrad_op(ctx->CreateOperation());
+//   TF_RETURN_IF_ERROR(
+//       relugrad_op->Reset("ReluGrad", /*raw_device_name=*/nullptr));
 
-  if (isa<tracing::TracingOperation>(relugrad_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(relugrad_op.get())
-                           ->SetOpName(name));
-  }
+//   if (isa<tracing::TracingOperation>(relugrad_op.get())) {
+//     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(relugrad_op.get())
+//                            ->SetOpName(name));
+//   }
 
-  TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[0])); //upstream grads
-  TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[1])); //relu inputs
+//   TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[0])); //upstream grads
+//   TF_RETURN_IF_ERROR(relugrad_op->AddInput(inputs[1])); //relu inputs
 
-  int num_retvals = 1;
-  TF_RETURN_IF_ERROR(relugrad_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
+//   int num_retvals = 1;
+//   TF_RETURN_IF_ERROR(relugrad_op->Execute(outputs, &num_retvals));
+//   return Status::OK();
+// }
 
 
 }  // namespace ops
