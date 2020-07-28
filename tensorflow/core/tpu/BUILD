@@ -57,6 +57,7 @@ cc_library(
         ":tpu_defs",
         ":tpu_node_device_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
     ],
     alwayslink = 1,
 )
@@ -78,8 +79,7 @@ cc_library(
     srcs = ["tpu_compile_interface.cc"],
     hdrs = ["tpu_compile_interface.h"],
     deps = [
-        "//tensorflow/core/platform:fingerprint",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -144,27 +144,21 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_api",
+        ":tpu_compilation_device",
         ":tpu_config_c_api",
         ":tpu_library_init_fns",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
+        ":tpu_node_device",
+        ":tpu_system_device",
+        "//tensorflow/core:lib",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_execute_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
-    ] + select({
-        "//tensorflow:oss": [
-            ":tpu_node_device",
-            ":tpu_system_device",
-            "//tensorflow/stream_executor/tpu:tpu_executor",
-            "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
-            "//tensorflow/core/tpu:tpu_on_demand_compiler",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -187,17 +181,12 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:copy_tensor",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/common_runtime:dma_helper",
-        "//tensorflow/core/framework:kernel_def_proto_cc",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/tpu/kernels:tpu_configuration_ops",
-        "//tensorflow/core/tpu/kernels:tpu_util",
         "//tensorflow/stream_executor/tpu:c_api_conversions",
         "//tensorflow/stream_executor/tpu:status_helper",
         "//tensorflow/stream_executor/tpu:tpu_node_context",
@@ -213,11 +202,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":virtual_device",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/lib/core:status",
         "//tensorflow/stream_executor/tpu:tpu_executor_base",
     ],
 )
@@ -239,7 +227,6 @@ cc_library(
     hdrs = ["tpu_execute.h"],
     deps = [
         ":tpu_api",
-        "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
@@ -296,4 +283,21 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_runtime",
+    srcs = [],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_api_dlsym_initializer",
+        ":tpu_compilation_device",
+        ":tpu_node_device",
+        ":tpu_system_device",
+        "//tensorflow/core/tpu:tpu_on_demand_compiler",
+        "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
+        "//tensorflow/core/tpu/ops",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
+        "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
+    ],
 )

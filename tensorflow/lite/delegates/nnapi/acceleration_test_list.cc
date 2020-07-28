@@ -214,6 +214,7 @@ TypesGatherOpTest/Float32Int32,29
 TypesGatherOpTest/Int32Int32,29
 TypesGatherOpTest/Uint8Int32,29
 TypesGatherOpTest/Int8Int32,29
+-TypesGatherOpTest/.*Int16.*
 
 # hashtable_lookup_test
 # All test excepted the string one should be accelerated
@@ -244,9 +245,21 @@ CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest/NonLayerNormLstmBlackBo
 
 # lstm_test
 -LstmOpTest/InvalidTypes
-.+LstmOpTest/Float,29
--.+LstmOpTest/HybridInt8
-.+LstmOpTest/HybridUint8,29
+# Float
+Parameterized/LstmOpTest.+/0,29
+Parameterized/LstmOpTest.+/1,29
+Parameterized/LstmOpTest.+/2,29
+Parameterized/LstmOpTest.+/3,29
+# HybridUint8
+Parameterized/LstmOpTest.+/4,29
+Parameterized/LstmOpTest.+/5,29
+Parameterized/LstmOpTest.+/6,29
+Parameterized/LstmOpTest.+/7,29
+# HybridInt8
+-Parameterized/LstmOpTest.+/8
+-Parameterized/LstmOpTest.+/9
+-Parameterized/LstmOpTest.+/10
+-Parameterized/LstmOpTest.+/11
 
 # maximum_minimum_test
 MaxMinOpTest/.+nt8Test,29

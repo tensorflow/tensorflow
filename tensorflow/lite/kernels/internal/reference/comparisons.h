@@ -105,30 +105,30 @@ inline void Comparison(const ComparisonParams& op_params,
                            input2_data, output_shape, output_data);
 }
 
-template <typename T, ComparisonFn<int32> F>
+template <typename T, ComparisonFn<int32_t> F>
 inline void ComparisonWithScaling(
     const ComparisonParams& op_params, const RuntimeShape& input1_shape,
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, bool* output_data) {
   int left_shift = op_params.left_shift;
-  int32 input1_offset = op_params.input1_offset;
-  int32 input1_multiplier = op_params.input1_multiplier;
+  int32_t input1_offset = op_params.input1_offset;
+  int32_t input1_multiplier = op_params.input1_multiplier;
   int input1_shift = op_params.input1_shift;
-  int32 input2_offset = op_params.input2_offset;
-  int32 input2_multiplier = op_params.input2_multiplier;
+  int32_t input2_offset = op_params.input2_offset;
+  int32_t input2_multiplier = op_params.input2_multiplier;
   int input2_shift = op_params.input2_shift;
 
   const int64_t flatsize =
       MatchingFlatSize(input1_shape, input2_shape, output_shape);
   for (int64_t i = 0; i < flatsize; ++i) {
-    const int32 input1_val = input1_offset + input1_data[i];
-    const int32 input2_val = input2_offset + input2_data[i];
-    const int32 shifted_input1_val = input1_val * (1 << left_shift);
-    const int32 shifted_input2_val = input2_val * (1 << left_shift);
-    const int32 scaled_input1_val =
+    const int32_t input1_val = input1_offset + input1_data[i];
+    const int32_t input2_val = input2_offset + input2_data[i];
+    const int32_t shifted_input1_val = input1_val * (1 << left_shift);
+    const int32_t shifted_input2_val = input2_val * (1 << left_shift);
+    const int32_t scaled_input1_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input1_val, input1_multiplier, input1_shift);
-    const int32 scaled_input2_val =
+    const int32_t scaled_input2_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input2_val, input2_multiplier, input2_shift);
     output_data[i] = F(scaled_input1_val, scaled_input2_val);
@@ -218,7 +218,7 @@ inline void BroadcastComparison4DSlow(const ComparisonParams& op_params,
                                           output_shape, output_data);
 }
 
-template <typename T, ComparisonFn<int32> F>
+template <typename T, ComparisonFn<int32_t> F>
 inline void BroadcastComparison4DSlowWithScaling(
     const ComparisonParams& op_params,
     const RuntimeShape& unextended_input1_shape, const T* input1_data,
@@ -230,29 +230,29 @@ inline void BroadcastComparison4DSlowWithScaling(
                                           unextended_output_shape);
 
   int left_shift = op_params.left_shift;
-  int32 input1_offset = op_params.input1_offset;
-  int32 input1_multiplier = op_params.input1_multiplier;
+  int32_t input1_offset = op_params.input1_offset;
+  int32_t input1_multiplier = op_params.input1_multiplier;
   int input1_shift = op_params.input1_shift;
-  int32 input2_offset = op_params.input2_offset;
-  int32 input2_multiplier = op_params.input2_multiplier;
+  int32_t input2_offset = op_params.input2_offset;
+  int32_t input2_multiplier = op_params.input2_multiplier;
   int input2_shift = op_params.input2_shift;
 
   for (int b = 0; b < dims.output_shape.Dims(0); ++b) {
     for (int y = 0; y < dims.output_shape.Dims(1); ++y) {
       for (int x = 0; x < dims.output_shape.Dims(2); ++x) {
         for (int c = 0; c < dims.output_shape.Dims(3); ++c) {
-          const int32 input1_val =
+          const int32_t input1_val =
               input1_offset +
               input1_data[SubscriptToIndex(dims.desc1, b, y, x, c)];
-          const int32 input2_val =
+          const int32_t input2_val =
               input2_offset +
               input2_data[SubscriptToIndex(dims.desc2, b, y, x, c)];
-          const int32 shifted_input1_val = input1_val * (1 << left_shift);
-          const int32 shifted_input2_val = input2_val * (1 << left_shift);
-          const int32 scaled_input1_val =
+          const int32_t shifted_input1_val = input1_val * (1 << left_shift);
+          const int32_t shifted_input2_val = input2_val * (1 << left_shift);
+          const int32_t scaled_input1_val =
               MultiplyByQuantizedMultiplierSmallerThanOneExp(
                   shifted_input1_val, input1_multiplier, input1_shift);
-          const int32 scaled_input2_val =
+          const int32_t scaled_input2_val =
               MultiplyByQuantizedMultiplierSmallerThanOneExp(
                   shifted_input2_val, input2_multiplier, input2_shift);
           output_data[Offset(dims.output_shape, b, y, x, c)] =

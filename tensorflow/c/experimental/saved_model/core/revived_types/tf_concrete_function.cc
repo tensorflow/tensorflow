@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
@@ -60,16 +62,12 @@ Status TFConcreteFunction::Create(
   return Status();
 }
 
-const std::vector<ImmediateExecutionTensorHandle*>&
-TFConcreteFunction::GetCaptures() const {
-  return captures_;
-}
-
 const FunctionMetadata& TFConcreteFunction::GetFunctionMetadata() const {
   return metadata_;
 }
 
-Status TFConcreteFunction::GetCallOp(ImmediateOpPtr* out) {
+Status TFConcreteFunction::GetCallOp(
+    absl::Span<AbstractTensorHandle* const> inputs, ImmediateOpPtr* out) {
   out->reset(ctx_->CreateOperation());
   // In eager mode, TF2 python executes functions by constructing an op with
   // the name of the functiondef:
@@ -81,6 +79,16 @@ Status TFConcreteFunction::GetCallOp(ImmediateOpPtr* out) {
   // PartitionedCallOp for compatibility with "tooling that assumes functions in
   // graphs are PartitionedCallOps".
   TF_RETURN_IF_ERROR((*out)->Reset(name_.c_str(), nullptr));
+
+  // Adding the user-provided inputs to the function.
+  TF_RETURN_IF_ERROR((*out)->AddInputList(inputs));
+
+  absl::Span<AbstractTensorHandle* const> captures(
+      reinterpret_cast<AbstractTensorHandle**>(captures_.data()),
+      captures_.size());
+
+  // Adding the captures of the function.
+  TF_RETURN_IF_ERROR((*out)->AddInputList(captures));
   return Status();
 }
 

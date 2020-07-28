@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 licenses(["notice"])
 
 py_test(

@@ -48,9 +48,6 @@ tf_fuzz_target(
 tf_fuzz_target(
     name = "arg_def_case_fuzz",
     srcs = ["arg_def_case_fuzz.cc"],
-    tags = [
-        "notap",  # TODO(b/160990158): ArgDefCase invariant is broken
-    ],
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
@@ -63,5 +60,13 @@ tf_fuzz_target(
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "stringprintf_fuzz",
+    srcs = ["stringprintf_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:stringprintf",
     ],
 )

@@ -304,6 +304,7 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Set);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Message);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Code);
@@ -346,6 +347,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Index);
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
 
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunHloPasses);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunBackend);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);

@@ -881,6 +881,7 @@ cc_library(
             ":tpu_outfeed_ops_op_lib",
             ":tpu_ordinal_selector_ops_op_lib",
             ":tpu_replication_ops_op_lib",
+            "//tensorflow/core/tpu/ops",
         ],
     ) + if_mkl([
         ":mkl_array_ops_op_lib",

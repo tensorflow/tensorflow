@@ -955,6 +955,8 @@ def _slice_helper(tensor, slice_spec, var=None):
     TypeError: If the slice indices aren't int, slice, ellipsis,
       tf.newaxis or scalar int32/int64 tensors.
   """
+  tensor = ops.convert_to_tensor(tensor)
+
   if isinstance(slice_spec, bool) or \
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
   (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
@@ -2804,6 +2806,8 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = False
     elif dtype == dtypes.string:
       zero = ""
+    elif dtype.is_quantized:
+      zero = np.zeros([]).astype(dtype.as_numpy_dtype)
     else:
       zero = 0
 

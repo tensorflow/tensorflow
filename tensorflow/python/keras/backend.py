@@ -83,7 +83,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import keras_export
 
 py_all = all
@@ -395,9 +394,6 @@ def _default_learning_phase():
           False, shape=(), name='keras_learning_phase')
 
 
-@deprecated('2020-10-11',
-            'Simply pass a True/False value to the `training` argument '
-            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.set_learning_phase')
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
@@ -423,6 +419,10 @@ def set_learning_phase(value):
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
   """
+  logging.warning('`tf.keras.backend.set_learning_phase` is deprecated and '
+                  'will be removed after 2020-10-11. To update it, simply '
+                  'pass a True/False value to the `training` argument of the '
+                  '`__call__` method of your layer or model.')
   deprecated_internal_set_learning_phase(value)
 
 
@@ -459,9 +459,6 @@ def deprecated_internal_set_learning_phase(value):
     _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
-@deprecated('2020-10-11',
-            'Simply pass a True/False value to the `training` argument '
-            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.learning_phase_scope')
 @tf_contextlib.contextmanager
 def learning_phase_scope(value):
@@ -479,6 +476,10 @@ def learning_phase_scope(value):
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
+  logging.warning('`tf.keras.backend.learning_phase_scope` is deprecated and '
+                  'will be removed after 2020-10-11. To update it, simply '
+                  'pass a True/False value to the `training` argument of the '
+                  '`__call__` method of your layer or model.')
   with deprecated_internal_learning_phase_scope(value):
     try:
       yield
@@ -5862,7 +5863,6 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
       shape, minval=minval, maxval=maxval, dtype=dtype, seed=seed)
 
 
-@deprecated(None, 'Use `tf.keras.backend.random_bernoulli` instead.')
 @keras_export('keras.backend.random_binomial')
 @dispatch.add_dispatch_support
 def random_binomial(shape, p=0.0, dtype=None, seed=None):
@@ -5891,6 +5891,8 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
   <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
   dtype=float32)>
   """
+  logging.warning('`tf.keras.backend.random_binomial` is deprecated. '
+                  'Please use `tf.keras.backend.random_bernoulli` instead.')
   if dtype is None:
     dtype = floatx()
   if seed is None:

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
@@ -38,10 +39,9 @@ class ConcreteFunction {
   virtual ~ConcreteFunction() = default;
 
   // This method returns the "Call" Op used to execute the function.
-  virtual Status GetCallOp(ImmediateOpPtr* out) = 0;
+  virtual Status GetCallOp(absl::Span<AbstractTensorHandle* const> inputs,
+                           ImmediateOpPtr* out) = 0;
 
-  virtual const std::vector<ImmediateExecutionTensorHandle*>& GetCaptures()
-      const = 0;
   virtual const FunctionMetadata& GetFunctionMetadata() const = 0;
 };
 

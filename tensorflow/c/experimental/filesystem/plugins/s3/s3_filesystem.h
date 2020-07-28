@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
 
+void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
+                 Aws::String* bucket, Aws::String* object, TF_Status* status);
+
 namespace tf_s3_filesystem {
 typedef struct S3File {
   std::shared_ptr<Aws::S3::S3Client> s3_client;

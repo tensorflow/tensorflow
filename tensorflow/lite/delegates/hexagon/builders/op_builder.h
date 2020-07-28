@@ -182,6 +182,14 @@ class OpBuilder {
     }
   }
 
+  // Computes the min and max for 'tensor' and adds them as input
+  // to the node.
+  TfLiteStatus ComputeAndAddMinAndMax(TfLiteContext* context,
+                                      const TfLiteTensor& tensor);
+
+  // Computes the float min and max for 'tensor', given 'min_value' and
+  // 'max_value' data range. The float min and max will be set in 'min' and
+  // 'max' params
   template <typename T>
   static TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
                                                   float* min, float* max,

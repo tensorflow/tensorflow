@@ -5,9 +5,9 @@
 func @sqr_transform_result(%a: tensor<*xf32>) -> tensor<*xf32> {
 
   // Flatten operand shape.
-  %shape = shape.shape_of %a : tensor<*xf32>
-  %num_elements = shape.num_elements %shape
-  %num_elements_as_index = shape.size_to_index %num_elements
+  %shape = shape.shape_of %a : tensor<*xf32> -> tensor<?xindex>
+  %num_elements = shape.num_elements %shape : tensor<?xindex> -> index
+  %num_elements_as_index = shape.size_to_index %num_elements : index
   %flat_shape = tensor_from_elements(%num_elements_as_index) : tensor<1xindex>
   %flat_a = "mhlo.dynamic_reshape"(%a, %flat_shape)
       : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
@@ -16,7 +16,7 @@ func @sqr_transform_result(%a: tensor<*xf32>) -> tensor<*xf32> {
   %flat_b = "mhlo.sqrt"(%flat_a) : (tensor<?xf32>) -> tensor<?xf32>
 
   // Restore original shape.
-  %shape_as_extent_tensor = shape.to_extent_tensor %shape : tensor<?xindex>
+  %shape_as_extent_tensor = shape.to_extent_tensor %shape : tensor<?xindex> -> tensor<?xindex>
   %b = "mhlo.dynamic_reshape"(%flat_b, %shape_as_extent_tensor)
       : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 
@@ -73,14 +73,14 @@ func @sqrt_static(%a: tensor<2x3xf32>) -> tensor<2x3xf32> {
 func @add_unranked(%a : tensor<*xf32>, %b : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[SHAPE_A:.*]] = shape.shape_of %[[A]]
   // CHECK: %[[SHAPE_B:.*]] = shape.shape_of %[[B]]
-  // CHECK: %[[SHAPE:.*]] = shape.any %[[SHAPE_A]], %[[SHAPE_B]]
+  // CHECK: %[[SHAPE:.*]] = "shape.any"(%[[SHAPE_A]], %[[SHAPE_B]])
   // CHECK: %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE]]
   // CHECK: %[[NUM_ELEMENTS_AS_INDEX:.*]] = shape.size_to_index %[[NUM_ELEMENTS]]
   // CHECK: %[[FLAT_SHAPE:.*]] = tensor_from_elements(%[[NUM_ELEMENTS_AS_INDEX]]) : tensor<1xindex>
   // CHECK: %[[FLAT_A:.*]] = "mhlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK: %[[FLAT_B:.*]] = "mhlo.dynamic_reshape"(%[[B]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK: %[[FLAT_RESULT:.*]] = mhlo.add %[[FLAT_A]], %[[FLAT_B]] : tensor<?xf32>
-  // CHECK: %[[SHAPE_AS_EXTENT_TENSOR:.*]] = shape.to_extent_tensor %[[SHAPE]] : tensor<?xindex>
+  // CHECK: %[[SHAPE_AS_EXTENT_TENSOR:.*]] = shape.to_extent_tensor %[[SHAPE]]
   // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[FLAT_RESULT]], %[[SHAPE_AS_EXTENT_TENSOR]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
   // CHECK: return %[[RESULT]] : tensor<*xf32>
   %result = mhlo.add %a, %b : tensor<*xf32>

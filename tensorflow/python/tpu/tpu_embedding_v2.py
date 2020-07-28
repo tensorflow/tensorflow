@@ -251,7 +251,10 @@ class TPUEmbedding(tracking.AutoTrackable):
         evaluation.
       optimizer: An instance of one of `tf.tpu.experimental.embedding.SGD`,
         `tf.tpu.experimental.embedding.Adagrad` or
-        `tf.tpu.experimental.embedding.Adam`.
+        `tf.tpu.experimental.embedding.Adam`. When not created under
+        TPUStrategy may be set to None to avoid the creation of the optimizer
+        slot variables, useful for optimizing memory consumption when exporting
+        the model for serving where slot variables aren't needed.
       pipeline_execution_with_tensor_core: If True, the TPU embedding
         computations will overlap with the TensorCore computations (and hence
         will be one step old). Set to True for improved performance.
@@ -262,7 +265,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     Raises:
       ValueError: If optimizer is not one of tf.tpu.experimental.embedding.(SGD,
-      Adam or Adagrad).
+      Adam or Adagrad) or None when created under a TPUStrategy.
     """
     self._strategy = distribution_strategy_context.get_strategy()
     self._using_tpu = isinstance(self._strategy, (tpu_strategy.TPUStrategy,
@@ -299,7 +302,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       if table.optimizer is None:
         # TODO(bfontain) Should we allow some sort of optimizer merging here?
         table.optimizer = optimizer
-      if not isinstance(table.optimizer, tpu_embedding_v2_utils._Optimizer):  # pylint: disable=protected-access
+      if ((table.optimizer is not None or self._using_tpu) and
+          not isinstance(table.optimizer, tpu_embedding_v2_utils._Optimizer)):  # pylint: disable=protected-access
         raise ValueError("{} is an unsupported optimizer class. Please pass an "
                          "instance of one of the optimizer classes under "
                          "tf.tpu.experimental.embedding.".format(
@@ -740,7 +744,10 @@ class TPUEmbedding(tracking.AutoTrackable):
                                 initializer,
                                 False)
 
-      slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+      if table.optimizer is not None:
+        slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+      else:
+        slot_vars = {}
       slot_vars["parameters"] = parameters
       return slot_vars
 

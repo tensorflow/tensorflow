@@ -168,11 +168,11 @@ class MirroredFunctionReplicaContext(distribute_lib.ReplicaContext):
     distribute_lib.ReplicaContext.__init__(self, strategy, None)
 
   @property
-  def _replica_id_in_sync_group(self):
+  def replica_id_in_sync_group(self):
     return _replica_id_tensor()
 
-  @_replica_id_in_sync_group.setter
-  def _replica_id_in_sync_group(self, value):
+  @replica_id_in_sync_group.setter
+  def replica_id_in_sync_group(self, value):
     assert value is None
 
   def _merge_call(self, merge_fn, args, kwargs):

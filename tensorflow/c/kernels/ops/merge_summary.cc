@@ -11,6 +11,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/ops.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -18,7 +19,7 @@ limitations under the License.
 static void merge_summary_shape_inference_fn(TF_ShapeInferenceContext* ctx,
                                               TF_Status* status) {
 	TF_SetStatus(status, TF_OK, ""); 
-  TF_ShapeHandle* result = TF_ShapeInferenceContext_Scalar(ctx);
+  TF_ShapeHandle* result = TF_ShapeInferenceContextScalar(ctx);
   TF_ShapeInferenceContextSetOutput(ctx, 0, result, status);
   TF_DeleteShapeHandle(result);
 }

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import enum
 import threading
 
@@ -958,8 +959,18 @@ class CollectiveAllReduce(CrossDeviceOps):
     self._collective_keys = (collective_keys or
                              cross_device_utils.CollectiveKeys())
     self._communication = communication
+    # This lock guards all collective launches, i.e. calls to
+    # cross_device_utils.build_collectve_*.
+    #
     # In a multi threaded eager program we need to ensure different groups of
-    # collectives don't interleave each other, otherwise there will be deadlock.
+    # collectives don't interleave each other, otherwise there couuld be
+    # deadlocks. E.g.
+    #   user-thread-0  device0                 device1
+    #   user-thread-1          device0 device1
+    # Note that thanks to protection in the runtime, this is only an issue when
+    # the instance key is re-used. The instance key is reused if the user builds
+    # a tf.function and runs it in multiple threads, since the instance key is
+    # an attribute of the collective ops.
     self._lock = threading.Lock()
 
     # Collective ops requires all devices to participate and is blocking. In
@@ -1085,30 +1096,34 @@ class CollectiveAllReduce(CrossDeviceOps):
               self._devices), self._group_size, communication, len(packs)), 10)
 
     reduced_values = []
-    for pack in packs:
-      # By placing all CollectiveReduce ops in a pack under single name scope,
-      # we ensure they will be picked up by the `ScopedAllocator` grappler
-      # optimizer and packed into a single all-reduce.
-      with self._lock, ops.name_scope("allreduce"):
-        for per_replica in pack:
-          # Add control dependencies per device from the last gradients to the
-          # current set, in order to serialize NCCL launches.
-          if (communication == CollectiveCommunication.NCCL.value and
-              reduced_values):
-            control_inputs = list(reduced_values[-1])
-          else:
-            control_inputs = None
-          reduced_values.append(
-              cross_device_utils.build_collective_reduce(
-                  per_replica.values,
-                  self._devices,
-                  self._group_size,
-                  self._collective_keys,
-                  "Add",
-                  "Id",
-                  communication,
-                  control_inputs,
-                  executors=self._executors))
+    with self._lock:
+      for pack in packs:
+        # By placing all CollectiveReduce ops in a pack under single name scope,
+        # we ensure they will be picked up by the `ScopedAllocator` grappler
+        # optimizer and packed into a single all-reduce.
+        with ops.name_scope("allreduce"):
+          for per_replica in pack:
+            # Add control dependencies per device from the last gradients to the
+            # current set, in order to serialize NCCL launches.
+            if (communication == CollectiveCommunication.NCCL.value and
+                reduced_values):
+              control_inputs = list(reduced_values[-1])
+            else:
+              control_inputs = None
+            reduced_values.append(
+                cross_device_utils.build_collective_reduce(
+                    per_replica.values,
+                    self._devices,
+                    self._group_size,
+                    self._collective_keys,
+                    "Add",
+                    "Id",
+                    communication,
+                    control_inputs,
+                    executors=self._executors))
+
+    for e in self._executors:
+      e.wait()
 
     mirrored = []
     # Reverse the order of reduced value to recover the order in the input.
@@ -1139,7 +1154,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       communication_hint = CollectiveCommunication.AUTO.value
 
     gathered_values = []
-    with ops.name_scope("allreduce"):
+    with self._lock, ops.name_scope("allreduce"):
       for per_replica in per_replica_values:
         gathered_values.append(
             cross_device_utils.build_collective_gather_indexed_slices(
@@ -1160,8 +1175,9 @@ class CollectiveAllReduce(CrossDeviceOps):
   def __deepcopy__(self, memo):
     # distribute_coordinator deep-copies the strategy object, so
     # CollectiveAllReduce needs to support deep copy as well.
-    return CollectiveAllReduce(self._devices, self._group_size,
-                               self._collective_keys, self._communication)
+    collective_keys = copy.deepcopy(self._collective_keys, memo)
+    return CollectiveAllReduce(self._devices, self._group_size, collective_keys,
+                               self._communication)
 
 
 def choose_the_best(devices, session_config=None):

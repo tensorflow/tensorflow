@@ -53,15 +53,17 @@ tf_kernel_library(
     prefix = "merge_summary_op",
     deps = [
         "//tensorflow/c:kernels",
-        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
 tf_gen_op_libs(
     op_lib_names = ["merge_summary"],
     deps = [
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/c:ops",
         "//tensorflow/core:lib",
     ],
@@ -78,11 +80,15 @@ filegroup(
     name = "android_all_op_kernels",
     srcs = [
         "bitcast_op.cc",
+        "merge_summary_op.cc",
     ],
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
 filegroup(
     name = "android_all_ops",
-    srcs = ["ops/bitcast.cc"],
+    srcs = [
+        "ops/bitcast.cc",
+        "ops/merge_summary.cc",
+    ],
 )

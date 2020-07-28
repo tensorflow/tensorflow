@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -23,7 +24,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestMaxMinFloat(tflite::BuiltinOperator op,
+void TestMaxMinFloat(const TfLiteRegistration& registration,
                      std::initializer_list<int> input1_dims_data,
                      std::initializer_list<float> input1_data,
                      std::initializer_list<int> input2_dims_data,
@@ -45,32 +46,17 @@ void TestMaxMinFloat(tflite::BuiltinOperator op,
       CreateFloatTensor(output_data, output_dims),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = nullptr;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
@@ -78,14 +64,17 @@ void TestMaxMinFloat(tflite::BuiltinOperator op,
   }
 }
 
-void TestMaxMinQuantized(
-    tflite::BuiltinOperator op, std::initializer_list<int> input1_dims_data,
-    std::initializer_list<uint8_t> input1_data, float input1_min,
-    float input1_max, std::initializer_list<int> input2_dims_data,
-    std::initializer_list<uint8_t> input2_data, float input2_min,
-    float input2_max, std::initializer_list<uint8_t> expected_output_data,
-    float output_min, float output_max,
-    std::initializer_list<int> output_dims_data, uint8_t* output_data) {
+void TestMaxMinQuantized(const TfLiteRegistration& registration,
+                         std::initializer_list<int> input1_dims_data,
+                         std::initializer_list<uint8_t> input1_data,
+                         float input1_min, float input1_max,
+                         std::initializer_list<int> input2_dims_data,
+                         std::initializer_list<uint8_t> input2_data,
+                         float input2_min, float input2_max,
+                         std::initializer_list<uint8_t> expected_output_data,
+                         float output_min, float output_max,
+                         std::initializer_list<int> output_dims_data,
+                         uint8_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInitializer(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInitializer(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
@@ -100,32 +89,17 @@ void TestMaxMinQuantized(
       CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = nullptr;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[i], output_data[i]);
@@ -133,7 +107,8 @@ void TestMaxMinQuantized(
 }
 
 void TestMaxMinQuantizedInt32(
-    tflite::BuiltinOperator op, std::initializer_list<int> input1_dims_data,
+    const TfLiteRegistration& registration,
+    std::initializer_list<int> input1_dims_data,
     std::initializer_list<int32_t> input1_data, float input1_scale,
     std::initializer_list<int> input2_dims_data,
     std::initializer_list<int32_t> input2_data, float input2_scale,
@@ -153,32 +128,17 @@ void TestMaxMinQuantizedInt32(
       CreateQuantized32Tensor(output_data, output_dims, output_scale),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = nullptr;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr, micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[i], output_data[i]);
@@ -197,14 +157,14 @@ TF_LITE_MICRO_TEST(FloatTest) {
   float output_data[6];
 
   tflite::testing::TestMaxMinFloat(
-      tflite::BuiltinOperator_MAXIMUM, {3, 3, 1, 2},
+      tflite::ops::micro::Register_MAXIMUM(), {3, 3, 1, 2},
       data1,                               // input1 shape and data
       {3, 3, 1, 2}, data2,                 // input2 shape and data
       {1.0, 0.0, 1.0, 12.0, -2.0, -1.43},  // expected output
       {3, 3, 1, 2}, output_data);          // output shape and data buffer
 
   tflite::testing::TestMaxMinFloat(
-      tflite::BuiltinOperator_MINIMUM, {3, 3, 1, 2},
+      tflite::ops::micro::Register_MINIMUM(), {3, 3, 1, 2},
       data1,                                 // input1 shape and data
       {3, 3, 1, 2}, data2,                   // input2 shape and data
       {-1.0, 0.0, -1.0, 11.0, -3.0, -1.44},  // expected output
@@ -224,7 +184,7 @@ TF_LITE_MICRO_TEST(Uint8Test) {
   uint8_t output_data[6];
 
   tflite::testing::TestMaxMinQuantized(
-      tflite::BuiltinOperator_MAXIMUM,
+      tflite::ops::micro::Register_MAXIMUM(),
       // input1 shape, data and bounds
       {3, 3, 1, 2}, data1, input1_min, input1_max,
       // input2 shape, data and bounds
@@ -235,7 +195,7 @@ TF_LITE_MICRO_TEST(Uint8Test) {
       output_min, output_max, {3, 3, 1, 2}, output_data);
 
   tflite::testing::TestMaxMinQuantized(
-      tflite::BuiltinOperator_MINIMUM,
+      tflite::ops::micro::Register_MINIMUM(),
       // input1 shape, data and bounds
       {3, 3, 1, 2}, data1, input1_min, input1_max,
       // input2 shape, data and bounds
@@ -252,14 +212,14 @@ TF_LITE_MICRO_TEST(FloatWithBroadcastTest) {
   float output_data[6];
 
   tflite::testing::TestMaxMinFloat(
-      tflite::BuiltinOperator_MAXIMUM, {3, 3, 1, 2},
+      tflite::ops::micro::Register_MAXIMUM(), {3, 3, 1, 2},
       data1,                            // input1 shape and data
       {1, 2}, data2,                    // input2 shape and data
       {1.0, 2.0, 0.5, 2.0, 0.5, 11.0},  // expected output
       {3, 3, 1, 2}, output_data);       // output shape and data buffer
 
   tflite::testing::TestMaxMinFloat(
-      tflite::BuiltinOperator_MINIMUM, {3, 3, 1, 2},
+      tflite::ops::micro::Register_MINIMUM(), {3, 3, 1, 2},
       data1,                               // input1 shape and data
       {1, 2}, data2,                       // input2 shape and data
       {0.5, 0.0, -1.0, -2.0, -1.44, 2.0},  // expected output
@@ -275,7 +235,7 @@ TF_LITE_MICRO_TEST(Int32WithBroadcastTest) {
   int32_t output_data[6];
 
   tflite::testing::TestMaxMinQuantizedInt32(
-      tflite::BuiltinOperator_MAXIMUM,
+      tflite::ops::micro::Register_MAXIMUM(),
       // input1 shape, data and scale
       {3, 3, 1, 2}, data1, input1_scale,
       // input2 shape, data and scale
@@ -286,7 +246,7 @@ TF_LITE_MICRO_TEST(Int32WithBroadcastTest) {
       output_scale, {3, 3, 1, 2}, output_data);
 
   tflite::testing::TestMaxMinQuantizedInt32(
-      tflite::BuiltinOperator_MINIMUM,
+      tflite::ops::micro::Register_MINIMUM(),
       // input1 shape, data and scale
       {3, 3, 1, 2}, data1, input1_scale,
       // input2 shape, data and scale

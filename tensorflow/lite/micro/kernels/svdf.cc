@@ -32,8 +32,8 @@ namespace svdf {
 namespace {
 
 struct OpData {
-  int32 effective_scale_1_a;
-  int32 effective_scale_2_a;
+  int32_t effective_scale_1_a;
+  int32_t effective_scale_2_a;
   // b versions of each scale are kept at int since the numbers are just the
   // shift value - typically between [-32, 32].
   int effective_scale_1_b;
@@ -377,7 +377,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 2);
 
   // Validate Tensor Output:
-  // [0] = float/int8, {2, batch_size, num_units}
+  // [0] = float/int8_t, {2, batch_size, num_units}
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE_EQ(context, NumDimensions(output), 2);
@@ -416,24 +416,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
 
-    const auto* input_params =
-        reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
-    const auto* weights_feature_params =
-        static_cast<const TfLiteAffineQuantization*>(
-            weights_feature->quantization.params);
-    const auto* state_params = static_cast<const TfLiteAffineQuantization*>(
-        activation_state->quantization.params);
-    const auto* weight_time_params =
-        static_cast<const TfLiteAffineQuantization*>(
-            weights_time->quantization.params);
-    const auto* output_params = static_cast<const TfLiteAffineQuantization*>(
-        output->quantization.params);
     const double effective_scale_1 = static_cast<double>(
-        input_params->scale->data[0] * weights_feature_params->scale->data[0] /
-        state_params->scale->data[0]);
-    const double effective_scale_2 = static_cast<double>(
-        state_params->scale->data[0] * weight_time_params->scale->data[0] /
-        output_params->scale->data[0]);
+        input->params.scale * weights_feature->params.scale /
+        activation_state->params.scale);
+    const double effective_scale_2 =
+        static_cast<double>(activation_state->params.scale *
+                            weights_time->params.scale / output->params.scale);
+
+    // TODO(b/162018098): Use TF_LITE_ENSURE_NEAR when it is ready.
+    TF_LITE_ENSURE(
+        context,
+        std::abs(static_cast<double>(bias->params.scale) -
+                 static_cast<double>(activation_state->params.scale *
+                                     weights_time->params.scale)) < 1e-5);
 
     TFLITE_DCHECK(node->user_data != nullptr);
     OpData* data = static_cast<OpData*>(node->user_data);
@@ -503,8 +498,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     case kTfLiteInt8: {
-      TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
-
       EvalIntegerSVDF(context, node, input, weights_feature, weights_time, bias,
                       params, activation_state, output, data,
                       input->params.zero_point, output->params.zero_point);

@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteSelectTfOps'
-  s.version          = '2.2.0'
+  s.version          = '2.3.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :http => "https://dl.google.com/dl/cpdc/9604b128278441ac/TensorFlowLiteSelectTfOps-2.2.0.tar.gz" }
+  s.source           = { :http => "https://dl.google.com/dl/cpdc/4f626bc24212fd61/TensorFlowLiteSelectTfOps-#{s.version}.tar.gz" }
   s.summary          = 'TensorFlow Lite Select TF Ops'
   s.description      = <<-DESC
 

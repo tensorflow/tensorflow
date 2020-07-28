@@ -384,7 +384,7 @@ class CollectiveContext {
 // implement this interface and register the implementation via the
 // CollectiveRegistry detailed below.  See common_runtime/ring_reducer and
 // common_runtime/hierarchical_tree_broadcaster for examples.
-class CollectiveImplementationInterface {
+class CollectiveImplementationInterface : public core::RefCounted {
  public:
   virtual ~CollectiveImplementationInterface() = default;
 

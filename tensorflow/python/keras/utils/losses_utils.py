@@ -61,8 +61,7 @@ def remove_squeezable_dimensions(
   Returns:
     Tuple of `labels` and `predictions`, possibly with last dim squeezed.
   """
-  with ops.name_scope(name, 'remove_squeezable_dimensions',
-                      [labels, predictions]):
+  with K.name_scope(name or 'remove_squeezable_dimensions'):
     predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
     labels = ops.convert_to_tensor_v2_with_dispatch(labels)
     predictions_shape = predictions.get_shape()

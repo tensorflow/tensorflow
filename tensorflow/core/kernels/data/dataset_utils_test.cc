@@ -30,6 +30,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::testing::UnorderedElementsAre;
+
 class DatasetHashUtilsTest : public ::testing::Test {
  protected:
   uint64 GetHash(const FunctionDefLibrary& library, const FunctionDef& fn) {
@@ -61,6 +63,14 @@ class DatasetHashUtilsTest : public ::testing::Test {
 
 string full_name(string key) {
   return strings::StrCat(kFullNameRandomHex, kPipe, "Iterator:", key);
+}
+
+TEST(DatasetUtilsTest, MatchesAnyVersion) {
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2"));
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3"));
+  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "BatchV2Dataset"));
+  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "PaddedBatchDataset"));
 }
 
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
@@ -1122,6 +1132,141 @@ TEST_F(DatasetHashUtilsTest, HashStringTensor) {
   EXPECT_EQ(GetHash(v1), GetHash(v2));
   EXPECT_NE(GetHash(v1), GetHash(v3));
 }
+
+class SelectOptimizationsHashTest : public ::testing::TestWithParam<uint64> {};
+
+TEST_P(SelectOptimizationsHashTest, DatasetUtils) {
+  const uint64 hash_result = GetParam();
+  string job_name = "job";
+  const string opt_ins_raw = "";
+  const string opt_outs_raw = "";
+  auto hash_func = [hash_result](const string& str) { return hash_result; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 0},  {"exp2", 20}, {"exp3", 33}, {"exp4", 45},
+      {"exp5", 67}, {"exp6", 88}, {"exp7", 100}};
+  std::vector<tstring> optimizations_enabled, optimizations_disabled,
+      optimizations_default;
+  std::vector<tstring> optimizations =
+      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
+                          optimizations_enabled, optimizations_disabled,
+                          optimizations_default, hash_func);
+
+  int tested_times = 0;
+  switch (hash_result) {
+    case 0:
+    case 100:
+    case 200:
+      tested_times++;
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4",
+                                                      "exp5", "exp6", "exp7"));
+      break;
+    case 33:
+    case 133:
+      tested_times++;
+      EXPECT_THAT(optimizations,
+                  UnorderedElementsAre("exp4", "exp5", "exp6", "exp7"));
+      break;
+    case 67:
+    case 167:
+      tested_times++;
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp6", "exp7"));
+      break;
+  }
+  EXPECT_EQ(tested_times, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsHashTest,
+                         ::testing::Values(0, 33, 67, 100, 133, 167, 200));
+
+class SelectOptimizationsOptTest
+    : public ::testing::TestWithParam<std::tuple<string, string>> {};
+
+TEST_P(SelectOptimizationsOptTest, DatasetUtils) {
+  string job_name = "job";
+  const string opt_ins_raw = std::get<0>(GetParam());
+  const string opt_outs_raw = std::get<1>(GetParam());
+  auto hash_func = [](const string& str) { return 50; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 0}, {"exp2", 25}, {"exp3", 50}, {"exp4", 75}, {"exp5", 100}};
+  std::vector<tstring> optimizations_enabled, optimizations_disabled,
+      optimizations_default;
+  std::vector<tstring> optimizations =
+      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
+                          optimizations_enabled, optimizations_disabled,
+                          optimizations_default, hash_func);
+
+  int tested_times = 0;
+  if (opt_outs_raw == "all") {
+    EXPECT_THAT(optimizations, UnorderedElementsAre());
+    tested_times++;
+  } else if (opt_outs_raw.empty()) {
+    if (opt_ins_raw == "all") {
+      EXPECT_THAT(optimizations,
+                  UnorderedElementsAre("exp1", "exp2", "exp3", "exp4", "exp5"));
+      tested_times++;
+    } else if (opt_ins_raw.empty()) {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp4", "exp5"));
+      tested_times++;
+    } else if (opt_ins_raw == "exp2,exp4") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4", "exp5"));
+      tested_times++;
+    }
+  } else if (opt_outs_raw == "exp1,exp5") {
+    if (opt_ins_raw == "all") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4"));
+      tested_times++;
+    } else if (opt_ins_raw.empty()) {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp4"));
+      tested_times++;
+    } else if (opt_ins_raw == "exp2,exp4") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4"));
+      tested_times++;
+    }
+  }
+  EXPECT_EQ(tested_times, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Test, SelectOptimizationsOptTest,
+    ::testing::Combine(::testing::Values("all", "", "exp2,exp4"),
+                       ::testing::Values("all", "", "exp1,exp5")));
+
+class SelectOptimizationsConflictTest
+    : public ::testing::TestWithParam<std::tuple<string, string, uint64>> {};
+
+TEST_P(SelectOptimizationsConflictTest, DatasetUtils) {
+  string job_name = "job";
+  const string opt_ins_raw = std::get<0>(GetParam());
+  const string opt_outs_raw = std::get<1>(GetParam());
+  const uint64 hash_result = std::get<2>(GetParam());
+  auto hash_func = [hash_result](const string& str) { return hash_result; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 20}, {"exp2", 30}, {"exp3", 40},
+      {"exp4", 60}, {"exp5", 70}, {"exp6", 80}};
+  std::vector<tstring> optimizations_enabled = {"exp1", "exp4"},
+                       optimizations_disabled = {"exp2", "exp5"},
+                       optimizations_default = {"exp3", "exp6"};
+  std::vector<tstring> optimizations =
+      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
+                          optimizations_enabled, optimizations_disabled,
+                          optimizations_default, hash_func);
+
+  int tested_times = 0;
+  if (opt_outs_raw.empty()) {
+    EXPECT_THAT(optimizations,
+                UnorderedElementsAre("exp1", "exp3", "exp4", "exp6"));
+    tested_times++;
+  } else if (opt_outs_raw == "exp1,exp3") {
+    EXPECT_THAT(optimizations, UnorderedElementsAre("exp1", "exp4", "exp6"));
+    tested_times++;
+  }
+  EXPECT_EQ(tested_times, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsConflictTest,
+                         ::testing::Combine(::testing::Values("", "exp2"),
+                                            ::testing::Values("", "exp1,exp3"),
+                                            ::testing::Values(10, 50, 90)));
 
 }  // namespace
 }  // namespace data

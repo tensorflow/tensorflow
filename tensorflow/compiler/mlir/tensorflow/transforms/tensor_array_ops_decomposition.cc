@@ -442,38 +442,20 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
       if (auto grad = llvm::dyn_cast<TF::TensorArrayGradV3Op>(&op)) {
         insert(grad.handle(), grad.source().str());
       } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
-        auto body = module.lookupSymbol<FuncOp>(while_op.body());
-        auto cond = module.lookupSymbol<FuncOp>(while_op.cond());
-        for (const auto& entry : AccessedGradients({body, cond}, module)) {
-          for (const string& source : entry.getSecond()) {
+        for (const auto& entry : AccessedGradients(
+                 {while_op.body_func(), while_op.cond_func()}, module))
+          for (const string& source : entry.getSecond())
             insert(while_op.getOperand(entry.getFirst()), source);
-          }
-        }
       } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-        auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-        auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
         for (const auto& entry :
-             AccessedGradients({then_branch, else_branch}, module)) {
-          for (const string& source : entry.getSecond()) {
+             AccessedGradients({if_op.then_func(), if_op.else_func()}, module))
+          for (const string& source : entry.getSecond())
             insert(if_op.getOperand(entry.getFirst() + 1), source);
-          }
-        }
-      } else if (auto pc = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
-        if (!pc.f().isa<FlatSymbolRefAttr>()) continue;
-        auto callee = module.lookupSymbol<FuncOp>(pc.f().getRootReference());
-        for (const auto& entry : AccessedGradients({callee}, module)) {
-          for (const string& source : entry.getSecond()) {
-            insert(pc.getOperand(entry.getFirst()), source);
-          }
-        }
-      } else if (auto spc =
-                     llvm::dyn_cast<TF::StatefulPartitionedCallOp>(&op)) {
-        auto callee = module.lookupSymbol<FuncOp>(spc.f());
-        for (const auto& entry : AccessedGradients({callee}, module)) {
-          for (const string& source : entry.getSecond()) {
-            insert(spc.getOperand(entry.getFirst()), source);
-          }
-        }
+      } else if (auto call = llvm::dyn_cast<CallOpInterface>(&op)) {
+        auto callee = dyn_cast<FuncOp>(call.resolveCallable());
+        for (const auto& entry : AccessedGradients({callee}, module))
+          for (const string& source : entry.getSecond())
+            insert(call.getArgOperands()[entry.getFirst()], source);
       }
     }
   }
@@ -527,8 +509,8 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
                             llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
                             llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
                                 decomposed_partitioned_call_callees) {
-  auto body = module.lookupSymbol<FuncOp>(while_op.body());
-  auto cond = module.lookupSymbol<FuncOp>(while_op.cond());
+  auto body = while_op.body_func();
+  auto cond = while_op.cond_func();
   auto grads = AccessedGradients({body, cond}, module);
   auto ta_arg_buffer_type = [&](int64_t index) -> Type {
     auto it = stats->find(while_op.getOperand(index));
@@ -595,8 +577,6 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
                                   operands, while_op.getAttrs());
-  // Clear the output shapes as it is not needed for XLA lowering.
-  new_while.setAttr("output_shapes", builder.getArrayAttr({}));
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -612,8 +592,8 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
                          llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
                          llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
                              decomposed_partitioned_call_callees) {
-  auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-  auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
+  auto then_branch = if_op.then_func();
+  auto else_branch = if_op.else_func();
   auto grads = AccessedGradients({then_branch, else_branch}, module);
   auto ta_arg_buffer_type = [&](int64_t index) -> Type {
     auto it = stats->find(if_op.getOperand(index + 1));
@@ -663,8 +643,6 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
   auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
                                          then_branch.getType().getResults(),
                                          operands, if_op.getAttrs());
-  // Clear the output shapes as it is not needed for XLA lowering.
-  new_if.setAttr("output_shapes", builder.getArrayAttr({}));
   auto ret_forwards_input = [](FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = retval.dyn_cast<BlockArgument>();
@@ -842,21 +820,22 @@ LogicalResult DecomposeTensorArrayOps(
         return failure();
       }
     } else if (auto pcall = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
-      if (!pcall.f().isa<FlatSymbolRefAttr>()) {
+      auto callee = pcall.func();
+      if (!callee)
         return pcall.emitOpError(
             "TensorArray decomposition does not support call with nested "
             "references.");
-      }
-      if (failed(HandlePartitionedCallOp(
-              pcall, module.lookupSymbol<FuncOp>(pcall.f().getRootReference()),
-              module, stats, decomposed_partitioned_call_callees))) {
+
+      if (failed(
+              HandlePartitionedCallOp(pcall, callee, module, stats,
+                                      decomposed_partitioned_call_callees))) {
         return failure();
       }
     } else if (auto spcall =
                    llvm::dyn_cast<TF::StatefulPartitionedCallOp>(&op)) {
-      if (failed(HandlePartitionedCallOp(
-              spcall, module.lookupSymbol<FuncOp>(spcall.f()), module, stats,
-              decomposed_partitioned_call_callees))) {
+      if (failed(
+              HandlePartitionedCallOp(spcall, spcall.func(), module, stats,
+                                      decomposed_partitioned_call_callees))) {
         return failure();
       }
     }

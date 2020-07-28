@@ -339,12 +339,12 @@ def random_flip_up_down(image, seed=None):
   Example usage:
 
   >>> import numpy as np
-
   >>> image = np.array([[[1], [2]], [[3], [4]]])
   >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
   [[[3], [4]], [[1], [2]]]
 
   Randomly flip multiple images.
+
   >>> images = np.array(
   ... [
   ...     [[[1], [2]], [[3], [4]]],
@@ -2931,10 +2931,18 @@ def sample_distorted_bounding_box_v2(image_size,
     Provide as input to `tf.image.draw_bounding_boxes`.
   """
   seed1, seed2 = random_seed.get_seed(seed) if seed else (0, 0)
-  return sample_distorted_bounding_box(image_size, bounding_boxes, seed1, seed2,
-                                       min_object_covered, aspect_ratio_range,
-                                       area_range, max_attempts,
-                                       use_image_if_no_bounding_boxes, name)
+  with ops.name_scope(name, 'sample_distorted_bounding_box'):
+    return gen_image_ops.sample_distorted_bounding_box_v2(
+        image_size,
+        bounding_boxes,
+        seed=seed1,
+        seed2=seed2,
+        min_object_covered=min_object_covered,
+        aspect_ratio_range=aspect_ratio_range,
+        area_range=area_range,
+        max_attempts=max_attempts,
+        use_image_if_no_bounding_boxes=use_image_if_no_bounding_boxes,
+        name=name)
 
 
 @tf_export(v1=['image.sample_distorted_bounding_box'])

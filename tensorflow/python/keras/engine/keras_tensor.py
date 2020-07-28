@@ -180,6 +180,15 @@ class KerasTensor(object):
     raise TypeError('Tensors are unhashable. (%s)'
                     'Instead, use tensor.ref() as the key.' % self)
 
+  # Note: This enables the KerasTensor's overloaded "right" binary
+  # operators to run when the left operand is an ndarray, because it
+  # accords the Tensor class higher priority than an ndarray, or a
+  # numpy matrix.
+  # In the future explore chaning this to using numpy's __numpy_ufunc__
+  # mechanism, which allows more control over how Tensors interact
+  # with ndarrays.
+  __array_priority__ = 100
+
   def __array__(self):
     raise TypeError(
         'Cannot convert a symbolic Keras input/output to a numpy array. '

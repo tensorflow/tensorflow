@@ -17,10 +17,10 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/selective_registration.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/default/logging.h"
 

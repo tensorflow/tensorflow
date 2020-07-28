@@ -16,7 +16,6 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "//tensorflow/core/profiler/lib:profiler_session_headers",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",

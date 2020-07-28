@@ -85,10 +85,12 @@ enum HostEventType {
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
   kIterator,
+  kDeviceInputPipelineSecondIterator,
   kPrefetchProduce,
   kPrefetchConsume,
   kParallelInterleaveProduce,
   kParallelInterleaveConsume,
+  kParallelInterleaveInitializedInput,
   kParallelMapProduce,
   kParallelMapConsume,
   kMapAndBatchProduce,
@@ -211,6 +213,9 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
 }
 
 absl::optional<int64> FindStatType(absl::string_view stat_name);
+
+// Returns true if the given event shouldn't be shown in the trace viewer.
+bool IsInternalEvent(absl::optional<int64> event_type);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
 bool IsInternalStat(absl::optional<int64> stat_type);

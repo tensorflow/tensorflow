@@ -34,6 +34,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -411,6 +413,13 @@ def type_spec_from_value(value):
     return tensor_spec.TensorSpec(value.shape, value.dtype)
   else:
     return type_spec.type_spec_from_value(value)
+
+
+def is_ragged(tensor):
+  """Returns true if `tensor` is a ragged tensor or ragged tensor value."""
+  return isinstance(
+      tensor,
+      (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue))
 
 
 def is_tensor_or_variable(x):

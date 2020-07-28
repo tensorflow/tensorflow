@@ -306,8 +306,15 @@ class StridedSliceAssignOp : public OpKernel {
     if (isTensor) {
       const Tensor& input = context->input(0);
 
-      OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                  {0}, 0, input.shape(), &old_lhs));
+      int forwarded_input;
+      OP_REQUIRES_OK(context,
+                     context->forward_input_or_allocate_output(
+                         {0}, 0, input.shape(), &old_lhs, &forwarded_input));
+      if (forwarded_input < 0) {
+        OP_REQUIRES_OK(context,
+                       tensorflow::functor::DoCopy(
+                           context->eigen_device<Device>(), input, old_lhs));
+      }
     } else {
       if (context->input_dtype(0) == DT_RESOURCE) {
         core::RefCountPtr<Var> v;

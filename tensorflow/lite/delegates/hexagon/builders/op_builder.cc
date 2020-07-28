@@ -279,6 +279,21 @@ const OpNode* OpBuilder::Build() {
   return &op_node_;
 }
 
+TfLiteStatus OpBuilder::ComputeAndAddMinAndMax(TfLiteContext* context,
+                                               const TfLiteTensor& tensor) {
+  float tensor_min, tensor_max;
+  TF_LITE_ENSURE_STATUS(
+      ComputeMinAndMaxQuantValues(tensor, &tensor_min, &tensor_max));
+  auto* min_const_node = graph_builder_->AddConstNodeWithData(
+      kScalarShape, reinterpret_cast<char*>(&tensor_min), sizeof(tensor_min));
+  auto* max_const_node = graph_builder_->AddConstNodeWithData(
+      kScalarShape, reinterpret_cast<char*>(&tensor_max), sizeof(tensor_max));
+  AddInput(TensorID(min_const_node->GetID(), 0));
+  AddInput(TensorID(max_const_node->GetID(), 0));
+
+  return kTfLiteOk;
+}
+
 // Static
 constexpr int OpBuilder::kScalarShape[];
 

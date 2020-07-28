@@ -29,7 +29,6 @@ limitations under the License.
 
 namespace mlir {
 namespace chlo {
-
 namespace {
 
 // Converts binary ops that statically are determined to not broadcast directly

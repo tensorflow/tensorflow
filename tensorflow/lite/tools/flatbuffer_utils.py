@@ -29,7 +29,7 @@ import copy
 import os
 import random
 
-from flatbuffers.python import flatbuffers
+import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
 _TFLITE_FILE_IDENTIFIER = b'TFL3'
