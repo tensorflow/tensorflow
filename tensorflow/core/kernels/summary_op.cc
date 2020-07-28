@@ -131,46 +131,4 @@ struct HistogramResource : public ResourceBase {
   }
 };
 
-// class SummaryMergeOp : public OpKernel {
-//  public:
-//   explicit SummaryMergeOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-//   void Compute(OpKernelContext* c) override {
-//     Summary s;
-//     std::unordered_set<string> tags;
-//     for (int input_num = 0; input_num < c->num_inputs(); input_num++) {
-//       const Tensor& in = c->input(input_num);
-//       auto in_vec = in.flat<tstring>();
-//       for (int i = 0; i < in_vec.dimension(0); i++) {
-//         const string& s_in = in_vec(i);
-//         Summary summary_in;
-//         if (!ParseProtoUnlimited(&summary_in, s_in)) {
-//           c->SetStatus(errors::InvalidArgument(
-//               "Could not parse one of the summary inputs"));
-//           return;
-//         }
-
-//         for (int v = 0; v < summary_in.value_size(); v++) {
-//           const string& tag = summary_in.value(v).tag();
-//           // The tag is unused by the TensorSummary op, so no need to check
-//           // for duplicates.
-//           if ((!tag.empty()) && !tags.insert(tag).second) {
-//             c->SetStatus(errors::InvalidArgument(strings::StrCat(
-//                 "Duplicate tag ", tag, " found in summary inputs")));
-//             return;
-//           }
-//           *s.add_value() = summary_in.value(v);
-//         }
-//       }
-//     }
-
-//     Tensor* summary_tensor = nullptr;
-//     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-//     CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
-//   }
-// };
-
-// REGISTER_KERNEL_BUILDER(Name("MergeSummary").Device(DEVICE_CPU),
-//                         SummaryMergeOp);
-
 }  // namespace tensorflow

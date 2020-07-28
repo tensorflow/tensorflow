@@ -863,6 +863,7 @@ cc_library(
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/c/kernels:merge_summary_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_chromiumos(
         [],
@@ -970,6 +971,7 @@ cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/c/kernels:bitcast_op",
+        "//tensorflow/c/kernels:merge_summary_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:batch_kernels",
