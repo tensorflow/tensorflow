@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_INFER_FUSIBILITY_OP_INTERFACE_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_INFER_FUSIBILITY_OP_INTERFACE_H_
-
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/StandardTypes.h"
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_REGISTER_H_
+#define MLIR_HLO_DIALECT_MHLO_IR_REGISTER_H_
 
 namespace mlir {
+namespace mhlo {
 
-#include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h.inc"
+void registerAllDialects();
 
+}
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_INFER_FUSIBILITY_OP_INTERFACE_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_REGISTER_H_

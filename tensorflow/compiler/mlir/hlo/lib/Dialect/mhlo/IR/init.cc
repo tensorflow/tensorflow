@@ -13,16 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_INFER_FUSIBILITY_OP_INTERFACE_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_INFER_FUSIBILITY_OP_INTERFACE_H_
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/register.h"
 
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/StandardTypes.h"
+// Static initialization for *HLO dialects registration.
 
-namespace mlir {
+void mlir::mhlo::registerAllDialects() {
+  static bool init_once = []() {
+    registerDialect<mlir::chlo::HloClientDialect>();
+    registerDialect<mlir::lmhlo::LmhloDialect>();
+    registerDialect<mlir::mhlo::MhloDialect>();
+    return true;
+  }();
+  (void)init_once;
 
-#include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h.inc"
-
-}  // namespace mlir
-
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_INFER_FUSIBILITY_OP_INTERFACE_H_
+  // Dependent dialects
+}
