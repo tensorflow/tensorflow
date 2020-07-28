@@ -21,8 +21,12 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 
-// Return the hostname of the machine on which this process is running
+// Return the hostname of the machine on which this process is running.
 string Hostname();
+
+// Return the job name as a string if it exists, otherwise return an empty
+// string.
+string JobName();
 
 }  // namespace port
 }  // namespace tensorflow
