@@ -18,14 +18,8 @@ limitations under the License.
 static void merge_summary_shape_inference_fn(TF_ShapeInferenceContext* ctx,
                                               TF_Status* status) {
 	TF_SetStatus(status, TF_OK, ""); 
-  TF_ShapeHandle* result = TF_NewShapeHandle();
-  // Make shape handle a scalar value (empty shape)
+  TF_ShapeHandle* result = TF_ShapeInferenceContext_Scalar(ctx);
   TF_ShapeInferenceContextSetOutput(ctx, 0, result, status);
-  if (TF_GetCode(status) != TF_OK) {
-    std::ostringstream err;
-    err << "Error in setting output shape inference"; 
-    TF_SetStatus(status, TF_INVALID_ARGUMENT, err.str().c_str());
-  }
   TF_DeleteShapeHandle(result);
 }
 

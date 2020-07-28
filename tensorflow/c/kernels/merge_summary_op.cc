@@ -14,14 +14,15 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/c/kernels.h"
-#include "tensorflow/c/ops.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/default/logging.h"
 
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
 // Used to delete tensor and status in its destructor upon kernel return. 
