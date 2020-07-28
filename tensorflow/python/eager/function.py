@@ -2902,8 +2902,9 @@ class Function(object):
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
-    self._hashable_input_signature = _make_input_signature_hashable(
-        self.flat_input_signature)
+    if self.input_signature is not None:
+      self._hashable_input_signature = _make_input_signature_hashable(
+          self.flat_input_signature)
 
     self._lock = threading.Lock()
     # _descriptor_cache is a of instance of a class to an instance-specific
@@ -2941,11 +2942,6 @@ class Function(object):
   def flat_input_signature(self):
     """Returns the flattened input signature."""
     return self._function_spec.flat_input_signature
-
-  @property
-  def hashable_input_signature(self):
-    """Returns a cached hashable object for the flattened input signature."""
-    return self._hashable_input_signature
 
   def _get_concrete_function_internal_garbage_collected(self, *args, **kwargs):
     """Returns a concrete function which cleans up its graph function."""
@@ -3083,7 +3079,8 @@ class Function(object):
     else:
       del args, kwargs
       assert not include_tensor_ranks_only
-      hashable_input_signature = self.hashable_input_signature
+      assert hasattr(self, '_hashable_input_signature')
+      hashable_input_signature = self._hashable_input_signature
 
     ctx = context.context()
 
