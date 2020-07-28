@@ -298,8 +298,8 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     float elapsed_time = cost_analysis_.GetInstructionElapsed(
         *instruction_and_logical_time.first);
     int64 logical_time = instruction_and_logical_time.second;
-    const int64 instructions_elapsed_time_size = instructions_elapsed_time.size();
-    if (logical_time >= instructions_elapsed_time_size) {
+    const int64 actual_time = instructions_elapsed_time.size();
+    if (logical_time >= actual_time) {
       instructions_elapsed_time.resize(logical_time + 1, 0.0);
       while_nest_level_.resize(logical_time + 1, 0);
     }
