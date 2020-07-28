@@ -92,8 +92,8 @@ void GraphAnalyzer::FindSubgraphs() {
 }
 
 void GraphAnalyzer::ExtendSubgraph(Subgraph* parent) {
-  const int parent_id_size_plus_one = parent->id().size() + 1;
-  bool will_complete = (parent_id_size_plus_one == subgraph_size_);
+  const int next_parent_id = parent->id().size() + 1;
+  bool will_complete = (next_parent_id == subgraph_size_);
   SubgraphPtrSet& sg_set = will_complete ? result_ : partial_;
 
   const GenNode* last_all_or_none_node = nullptr;
