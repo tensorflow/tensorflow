@@ -11661,7 +11661,7 @@ create these operators.
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
 }
 
-def TF__FusedMatMulOp : TF_Op<"_FusedMatMul", [NoSideEffect]> {
+def TF__FusedMatMulOp : TF_Op<"_FusedMatMul", [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = [{
 Performs a MatMul followed by a specified series of operations.
   }];
@@ -11687,9 +11687,9 @@ expected to create these operators.
   }];
 
   let arguments = (ins
-    F32Tensor:$a,
-    F32Tensor:$b,
-    Variadic<F32Tensor>:$args,
+    TensorOf<[BF16, F32]>:$a,
+    TensorOf<[BF16, F32]>:$b,
+    Variadic<TensorOf<[BF16, F32]>>:$args,
 
     DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
     DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
@@ -11698,7 +11698,7 @@ expected to create these operators.
   );
 
   let results = (outs
-    F32Tensor:$product
+    TensorOf<[BF16, F32]>:$product
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
