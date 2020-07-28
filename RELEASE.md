@@ -57,8 +57,8 @@
     dispatch to logical ops. This brings them more in line with Python and NumPy
     benavior.
   * Added `tf.SparseTensor.with_values`. This returns a new SparseTensor with
-    the same sparsity pattern, but with new provided values. It is similar to 
-    the `with_values` function of `RaggedTensor`.
+    the same sparsity pattern, but with new provided values. It is similar to
+  the `with_values` function of `RaggedTensor`.
 * `tf.data`:
     * Added new `tf.data.experimental.service.register_dataset` and
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
@@ -88,6 +88,8 @@
 *   `tf.lite`:
     * `DynamicBuffer::AddJoinedString()` will now add a separator if the first
       string to be joined is empty.
+    * `TFLiteConverter`:
+      * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
