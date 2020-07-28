@@ -316,7 +316,7 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
   std::vector<AbstractTensorHandle*> sm_outputs(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
       ctx, tape, inputs, absl::MakeSpan(sm_outputs), "softmax0",
-      registry));  // Compute x*y.
+      registry)); 
 
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
@@ -413,7 +413,7 @@ Status ScalarMulModel(AbstractContext* ctx,
   std::vector<AbstractTensorHandle*> temp_outputs(1);
 
   TF_RETURN_IF_ERROR(Mul(ctx, tape, {eta, A}, absl::MakeSpan(temp_outputs),
-                         "scalarMul0", registry));  // Compute X*W1
+                         "scalarMul0", registry));  // Compute eta*A
 
   outputs[0] = temp_outputs[0];
 

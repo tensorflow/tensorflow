@@ -154,8 +154,7 @@ void printTensor(AbstractTensorHandle* t, int size) {
   TF_DeleteTensor(tensor);
 }
 
-// ============================== Start Tests
-// =================================================
+// =========================== Start Tests ================================
 
 TEST_P(CppGradients, TestAddGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
