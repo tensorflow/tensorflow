@@ -556,7 +556,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
 }
 
 Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
-    const std::map<int, Tensor>& constant_args,
+    const std::map<int, Tensor>& must_be_constant_args,
     absl::Span<VariableInfo const> variable_args, OpKernelContext* ctx,
     std::vector<XlaCompiler::Argument>* args) {
   args->resize(ctx->num_inputs());
@@ -572,9 +572,9 @@ Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
   for (int64 input_num = 0; input_num < ctx->num_inputs(); ++input_num) {
     XlaCompiler::Argument& arg = (*args)[input_num];
 
-    if (constant_args.count(input_num) > 0) {
+    if (must_be_constant_args.count(input_num) > 0) {
       // Handles compile-time constants.
-      const Tensor& input = constant_args.at(input_num);
+      const Tensor& input = must_be_constant_args.at(input_num);
       TF_RET_CHECK(input.dtype() != DT_RESOURCE);
       arg.kind = XlaCompiler::Argument::kConstant;
       arg.type = input.dtype();
