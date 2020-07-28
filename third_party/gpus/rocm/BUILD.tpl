@@ -147,6 +147,7 @@ filegroup(
     name = "rocm_root",
     srcs = [
         "rocm/bin/clang-offload-bundler",
+        "rocm/bin/bin2c.py",
     ],
 )
 

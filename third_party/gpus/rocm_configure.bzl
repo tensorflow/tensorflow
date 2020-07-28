@@ -617,9 +617,11 @@ def _create_local_rocm_repository(repository_ctx):
         repository_ctx,
         name = "rocm-bin",
         srcs = [
+	    repository_ctx.path(Label("//third_party/gpus/rocm:bin2c.py")),
             clang_offload_bundler_path,
         ],
         outs = [
+            "rocm/bin/" + "bin2c.py",
             "rocm/bin/" + "clang-offload-bundler",
         ],
     ))
