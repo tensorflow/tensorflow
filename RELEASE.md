@@ -14,18 +14,6 @@
 * Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
 * `tensorflow.python`, `tensorflow.core` and `tensorflow.compiler` modules are
     now hidden. These modules are not part of TensorFlow public API.
-* A major refactoring of the internals of the Keras Functional API may affect code that is relying on certain internal details:
-    * Code that uses `isinstance(x, tf.Tensor)` instead of `tf.is_tensor` when checking Keras symbolic inputs/outputs should switch to using `tf.is_tensor`.
-    * Code that is overly dependent on the exact names attached to symbolic tensors (e.g. assumes there will be ":0" at the end of the inputs, treats names as unique identifiers instead of using `tensor.ref()`, etc.)
-    * Code that uses `get_concrete_function` to trace Keras symbolic inputs directly should switch to building matching `tf.TensorSpec`s directly and tracing the `TensorSpec` objects.
-    * Code that relies on the exact number and names of the op layers that TensorFlow operations were converted into. These may have changed.
-    * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and happens to work before TF 2.4. These will explicitly be unsupported now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly or being silently buggy.
-    * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to return a static or symbolic value depending on if the input had a fully static shape or not. Now these ops always return symbolic values.
-    * Code already susceptible to leaking tensors outside of graphs becomes slightly more likely to do so now.
-    * Code that requires very tricky shape manipulation via converted op layers in order to work, where the Keras symbolic shape inference proves insufficient.
-    * Code that tries manually walking a `tf.keras.Model` layer by layer and assumes layers only ever have one positional argument. This assumption doesn't hold true before TF 2.4 either, but is more likely to cause issues know.
-    * Code that manually enters `keras.backend.get_graph()` before building a functional model. This is no longer needed.
-
 
 ## Known Caveats
 
@@ -36,7 +24,6 @@
 * <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 * <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 * A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See tensorflow/python/ops/numpy_ops/README.md for details of what are supported and what are the differences with NumPy.
-* A major refactoring of the internals of the Keras Functional API has been completed, that should improve the reliability, stability, and performance of constructing Functional models.
 
 ## Bug Fixes and Other Changes
 
@@ -73,13 +60,7 @@
       option.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
-* `tf.keras`:
-    * Improvements from the functional API refactoring:
-      * Functional model construction does not need to maintain a global workspace graph, removing memory leaks especially when building many models or very large models.
-      * Functional model construction should be ~8-10% faster on average.
-      * Functional models can now contain non-symbolic values in their call inputs inside of the first positional argument.
-      * Several classes of TF ops that were not reliably converted to Keras layers during functional API construction should now work, e.g. `tf.image.ssim_multiscale`
-      * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
+*   `tf.keras`:
     * <ADD RELEASE NOTES HERE>
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When

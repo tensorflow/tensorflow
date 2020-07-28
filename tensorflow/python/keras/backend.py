@@ -1180,7 +1180,7 @@ def placeholder(shape=None,
 
   >>> input_ph = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> input_ph
-  <KerasTensor: shape=(2, 4, 5) dtype=float32 (Symbolic value ...)>
+  <tf.Tensor 'Placeholder_...' shape=(2, 4, 5) dtype=float32>
 
   """
   if sparse and ragged:
@@ -1281,7 +1281,7 @@ def shape(x):
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
   >>> input = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> tf.keras.backend.shape(input)
-  <KerasTensor: shape=(3,) dtype=int32 inferred_value=[2, 4, 5] ...>
+  <tf.Tensor 'Shape_...' shape=(3,) dtype=int32>
 
   """
   return array_ops.shape(x)
@@ -1796,13 +1796,13 @@ def dot(x, y):
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
-  <KerasTensor: shape=(2, 4) dtype=float32 ...>
+  <tf.Tensor ... shape=(2, 4) dtype=float32>
 
   >>> x = tf.keras.backend.placeholder(shape=(32, 28, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
-  <KerasTensor: shape=(32, 28, 4) dtype=float32 ...>
+  <tf.Tensor ... shape=(32, 28, 4) dtype=float32>
 
   >>> x = tf.keras.backend.random_uniform_variable(shape=(2, 3), low=0, high=1)
   >>> y = tf.keras.backend.ones((4, 3, 5))
@@ -2052,10 +2052,10 @@ def transpose(x):
          [3.,  6.]], dtype=float32)
   >>> input = tf.keras.backend.placeholder((2, 3))
   >>> input
-  <KerasTensor: shape=(2, 3) dtype=float32 ...>
+  <tf.Tensor 'Placeholder_...' shape=(2, 3) dtype=float32>
   >>> input_transposed = tf.keras.backend.transpose(input)
   >>> input_transposed
-  <KerasTensor: shape=(3, 2) dtype=float32 ...>
+  <tf.Tensor 'Transpose_...' shape=(3, 2) dtype=float32>
   """
   return array_ops.transpose(x)
 
