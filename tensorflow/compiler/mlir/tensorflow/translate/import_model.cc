@@ -2387,8 +2387,8 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
                                      "' is missing attribute 'index'");
 
     auto index = attr->i();
-    const int nodes_size = nodes->size();
-    if (nodes_size < index + 1) nodes->resize(index + 1);
+    const int num_nodes = nodes->size();
+    if (num_nodes < index + 1) nodes->resize(index + 1);
 
     if ((*nodes)[index].node != nullptr)
       return errors::InvalidArgument(node->type_string(), " node '",
