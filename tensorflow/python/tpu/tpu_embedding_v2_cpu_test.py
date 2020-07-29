@@ -105,7 +105,6 @@ class CPUEmbeddingTest(test.TestCase):
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
     return tpu_embedding_v2.TPUEmbedding(
         feature_config=self.feature_config,
-        batch_size=self.batch_size,
         optimizer=optimizer)
 
   def _get_dense_tensors(self, dtype=dtypes.int32):
@@ -285,7 +284,6 @@ class CPUEmbeddingTest(test.TestCase):
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
     mid_level = tpu_embedding_v2.TPUEmbedding(
         feature_config=feature_config,
-        batch_size=self.batch_size,
         optimizer=optimizer)
     features = tuple(self._get_sparse_tensors()[:1])
     with self.assertRaisesRegex(
@@ -302,8 +300,10 @@ class CPUEmbeddingTest(test.TestCase):
             table=self.table_video, name='watched', max_sequence_length=2),)
     mid_level = tpu_embedding_v2.TPUEmbedding(
         feature_config=feature_config,
-        batch_size=self.batch_size,
         optimizer=None)
+    # Build the layer manually to create the variables. Normally calling enqueue
+    # would do this.
+    mid_level.build()
     self.assertEqual(
         list(mid_level._variables[self.table_video.name].keys()),
         ['parameters'])
