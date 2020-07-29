@@ -45,6 +45,12 @@ void Flush(const TF_WritableFile* file, TF_Status* status);
 void Close(const TF_WritableFile* file, TF_Status* status);
 }  // namespace tf_writable_file
 
+namespace tf_read_only_memory_region {
+void Cleanup(TF_ReadOnlyMemoryRegion* region);
+const void* Data(const TF_ReadOnlyMemoryRegion* region);
+uint64_t Length(const TF_ReadOnlyMemoryRegion* region);
+}  // namespace tf_read_only_memory_region
+
 namespace tf_s3_filesystem {
 typedef struct S3File {
   std::shared_ptr<Aws::S3::S3Client> s3_client;
@@ -70,6 +76,10 @@ void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
                        TF_WritableFile* file, TF_Status* status);
 int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
                     TF_Status* status);
+void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
+                                     const char* path,
+                                     TF_ReadOnlyMemoryRegion* region,
+                                     TF_Status* status);
 }  // namespace tf_s3_filesystem
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_FILESYSTEM_H_

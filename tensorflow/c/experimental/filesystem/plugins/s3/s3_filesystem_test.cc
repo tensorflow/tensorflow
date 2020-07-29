@@ -224,6 +224,31 @@ TEST_F(S3FilesystemTest, NewAppendableFile) {
   EXPECT_TF_OK(status_);
 }
 
+TEST_F(S3FilesystemTest, NewReadOnlyMemoryRegionFromFile) {
+  const std::string path = GetURIForPath("MemoryFile");
+  const std::string content = "content";
+  WriteString(path, content);
+  ASSERT_TF_OK(status_);
+
+  std::unique_ptr<TF_ReadOnlyMemoryRegion,
+                  void (*)(TF_ReadOnlyMemoryRegion * file)>
+      region(new TF_ReadOnlyMemoryRegion, [](TF_ReadOnlyMemoryRegion* file) {
+        if (file != nullptr) {
+          if (file->plugin_memory_region != nullptr)
+            tf_read_only_memory_region::Cleanup(file);
+          delete file;
+        }
+      });
+  region->plugin_memory_region = nullptr;
+  tf_s3_filesystem::NewReadOnlyMemoryRegionFromFile(filesystem_, path.c_str(),
+                                                    region.get(), status_);
+  EXPECT_TF_OK(status_);
+  std::string result(reinterpret_cast<const char*>(
+                         tf_read_only_memory_region::Data(region.get())),
+                     tf_read_only_memory_region::Length(region.get()));
+  EXPECT_EQ(content, result);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
