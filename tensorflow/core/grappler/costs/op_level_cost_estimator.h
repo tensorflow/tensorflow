@@ -64,6 +64,7 @@ class OpLevelCostEstimator {
   // Implementation of costs other than
   // execution_time is optional, depending on the
   // device.
+  Costs PredictNaryOp(const OpContext& op_context) const;
   Costs PredictConv2D(const OpContext& op_context) const;
   Costs PredictCwiseOp(const OpContext& op_context) const;
   Costs PredictConv2DBackpropInput(const OpContext& op_context) const;

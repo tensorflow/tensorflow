@@ -32,6 +32,7 @@ namespace grappler {
 
 constexpr int kOpsPerMac = 2;
 constexpr char kGuaranteeConst[] = "GuaranteeConst";
+constexpr char kAddN[] = "AddN";
 constexpr char kBitCast[] = "BitCast";
 constexpr char kConcatV2[] = "ConcatV2";
 constexpr char kConv2d[] = "Conv2D";
@@ -504,6 +505,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(
       kAssignSubVariableOp,
       wrap(&OpLevelCostEstimator::PredictAssignVariableOps));
+  device_cost_impl_.emplace(kAddN, wrap(&OpLevelCostEstimator::PredictNaryOp));
 
   persistent_ops_ = {
       kConst,       kVariable,       kVariableV2,   kAutoReloadVariable,
@@ -686,7 +688,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   // use the count for the largest input here to be more robust in case that the
   // shape is unknown or partially known for other input.
   int64 op_count = CalculateLargestInputCount(op_info, &found_unknown_shapes);
-  // If output shape is available, try use the element count calculated from
+  // If output shape is available, try to use the element count calculated from
   // that.
   if (op_info.outputs_size() > 0) {
     op_count = std::max(
@@ -2229,6 +2231,38 @@ Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
   costs.inaccurate = found_unknown_shapes;
   costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictNaryOp(const OpContext& op_context) const {
+  const auto& op_info = op_context.op_info;
+  bool found_unknown_shapes = false;
+  // Calculate the largest known tensor size across all inputs and output.
+  int64 op_count = CalculateLargestInputCount(op_info, &found_unknown_shapes);
+  // If output shape is available, try to use the element count calculated from
+  // that.
+  if (op_info.outputs_size() > 0) {
+    op_count = std::max(
+        op_count,
+        CalculateTensorElementCount(op_info.outputs(0), &found_unknown_shapes));
+  }
+  // Also calculate the output shape possibly resulting from broadcasting.
+  // Note that the some Nary ops (such as AddN) do not support broadcasting,
+  // but we're including this here for completeness.
+  if (op_info.inputs_size() >= 2) {
+    op_count = std::max(op_count, CwiseOutputElementCount(op_info));
+  }
+
+  // Nary ops perform one operation for every element in every input tensor.
+  op_count *= op_info.inputs_size() - 1;
+
+  const auto sum_cost = Eigen::internal::functor_traits<
+      Eigen::internal::scalar_sum_op<float>>::Cost;
+  Costs costs = PredictOpCountBasedCost(op_count * sum_cost, op_info);
+  if (found_unknown_shapes) {
+    costs.inaccurate = true;
+  }
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 }  // end namespace grappler

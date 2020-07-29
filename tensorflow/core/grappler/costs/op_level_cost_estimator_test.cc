@@ -1838,6 +1838,24 @@ TEST_F(OpLevelCostEstimatorTest, PredictResourceVariableOps) {
   }
 }
 
+TEST_F(OpLevelCostEstimatorTest, AddNExecutionTime) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("AddN");
+
+  DescribeTensor4D(1, 10, 10, 10, op_context.op_info.add_inputs());
+  DescribeTensor4D(1, 10, 10, 10, op_context.op_info.add_inputs());
+  DescribeTensor4D(1, 10, 10, 10, op_context.op_info.add_inputs());
+
+  auto cost = PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(1200), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(200), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(1400), cost.execution_time);
+  EXPECT_EQ(1, cost.num_ops_total);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
 TEST_F(OpLevelCostEstimatorTest, IdentityOpExecutionTime) {
   std::vector<std::string> identity_ops = {
       "_Recv",         "_Send",        "BitCast",         "Identity",
