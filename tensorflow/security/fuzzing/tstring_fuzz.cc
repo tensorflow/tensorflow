@@ -32,7 +32,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     const size_t initial_size = base.size();
     tensorflow::tstring pair = fuzzed_data.ConsumeRandomLengthString(10);
     base.append(pair);
-    assert(base.size() == pair.size() + initial_size);
+    assert(base.size() <= base.capacity());
   }
 
   return 0;
