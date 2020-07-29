@@ -192,7 +192,7 @@ TF_CAPI_EXPORT extern void TF_JoinThread(TF_Thread* thread);
 //
 // On success, place OK in status and return the newly created library handle.
 // Otherwise returns nullptr and set error status.
-TF_CAPI_EXPORT extern void* TF_LoadLibraryFromEnv(const char* library_filename,
+TF_CAPI_EXPORT extern void* TF_LoadSharedLibrary(const char* library_filename,
                                                   TF_Status* status);
 
 // \brief Get a pointer to a symbol from a dynamic library.
