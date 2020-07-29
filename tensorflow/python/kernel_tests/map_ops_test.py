@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
-  '''
+  
   def testEmptyTensorMapSize(self):
     m = map_ops.empty_tensor_map()
     s = map_ops.tensor_map_size(m)
@@ -120,7 +120,18 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 lambda: default_value)
     self.assertAllClose(l, v)
     self.assertAllClose(l2, default_value)
-'''
+
+  def testListKeys(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    k2 = constant_op.constant(2.0)
+    v = constant_op.constant(21.0)
+    v2 = constant_op.constant(22.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    m = map_ops.tensor_map_insert(m, k2, v2)
+    keys = map_ops.tensor_map_list_keys(m, k.dtype)
+    #print(keys)
+
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:
       m = map_ops.empty_tensor_map()

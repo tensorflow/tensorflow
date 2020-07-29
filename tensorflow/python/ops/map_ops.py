@@ -46,8 +46,8 @@ def tensor_map_erase(input_handle, key, value_dtype):
 def tensor_map_has_key(input_handle, key):
   return gen_map_ops.tensor_map_has_key(input_handle, key)
 
-def tensor_map_list_keys(input_handle):
-  return gen_map_ops.tensor_map_list_keys(input_handle)
+def tensor_map_list_keys(input_handle, key_dtype):
+  return gen_map_ops.tensor_map_list_keys(input_handle, key_dtype)
 
 @ops.RegisterGradient("TensorMapLookup")
 def LookupGrad(op, dval):
