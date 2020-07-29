@@ -646,7 +646,8 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
         head_object_outcome.GetResult().GetLastModified().Millis() * 1e6;
     found = true;
   } else {
-    return TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION) return;
   }
 
   auto prefix = object;
