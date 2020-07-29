@@ -314,6 +314,26 @@ TEST_F(S3FilesystemTest, CreateDir) {
   EXPECT_TRUE(stat.is_directory);
 }
 
+TEST_F(S3FilesystemTest, DeleteDir) {
+  // s3 object storage doesn't support empty directory, we create file in the
+  // directory
+  const std::string dir = GetURIForPath("DeleteDir");
+  const std::string file = io::JoinPath(dir, "DeleteDirFile.csv");
+  WriteString(file, "test");
+  ASSERT_TF_OK(status_);
+  tf_s3_filesystem::DeleteDir(filesystem_, dir.c_str(), status_);
+  EXPECT_NE(TF_GetCode(status_), TF_OK);
+
+  TF_SetStatus(status_, TF_OK, "");
+  tf_s3_filesystem::DeleteFile(filesystem_, file.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_s3_filesystem::DeleteDir(filesystem_, dir.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  TF_FileStatistics stat;
+  tf_s3_filesystem::Stat(filesystem_, dir.c_str(), &stat, status_);
+  EXPECT_EQ(TF_GetCode(status_), TF_NOT_FOUND) << TF_Message(status_);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
