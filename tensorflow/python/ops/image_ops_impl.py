@@ -340,7 +340,6 @@ def random_flip_up_down(image, seed=None):
 
   Example usage:
 
-  >>> import numpy as np
   >>> image = np.array([[[1], [2]], [[3], [4]]])
   >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
   [[[3], [4]], [[1], [2]]]
@@ -381,8 +380,6 @@ def random_flip_left_right(image, seed=None):
   independent of other images.
 
   Example usage:
-
-  >>> import numpy as np
 
   >>> image = np.array([[[1], [2]], [[3], [4]]])
   >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
@@ -425,8 +422,6 @@ def stateless_random_flip_left_right(image, seed):
 
   Example usage:
 
-  >>> import numpy as np
-
   >>> image = np.array([[[1], [2]], [[3], [4]]])
   >>> seed = (2, 3)
   >>> tf.image.stateless_random_flip_left_right(image, seed).numpy().tolist()
@@ -457,8 +452,6 @@ def stateless_random_flip_up_down(image, seed):
   `tf.random.set_seed`).
 
   Example usage:
-
-  >>> import numpy as np
 
   >>> image = np.array([[[1], [2]], [[3], [4]]])
   >>> seed = (2, 3)
