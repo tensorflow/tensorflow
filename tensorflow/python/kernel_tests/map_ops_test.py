@@ -52,12 +52,23 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l = map_ops.tensor_map_lookup(m, k, dtypes.float32)
     self.assertAllClose(l, v)
 
-  def testTensorMapLookupMissingKeyFails(self):
+  def testTensorMapLookupFromEmptyMapFails(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "Trying to lookup non-existent key."):
       l = map_ops.tensor_map_lookup(m, k, dtypes.float32)
+      self.evaluate(l)
+
+  def testTensorMapLookupMissingKeyFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    k2 = constant_op.constant(2.0)
+    v = constant_op.constant(11.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Trying to lookup non-existent key."):
+      l = map_ops.tensor_map_lookup(m, k2, dtypes.float32)
       self.evaluate(l)
 
   def testTensorMapErase(self):
