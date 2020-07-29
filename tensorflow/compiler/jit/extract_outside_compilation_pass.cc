@@ -226,8 +226,8 @@ xla::StatusOr<Node*> BuildSendFromHostNode(
   for (auto* n : ret_nodes) {
     int index;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-    const int send_from_host_dtypes_size = send_from_host_dtypes.size();
-    if (index < 0 || index >= send_from_host_dtypes_size) {
+    const int num_dtypes = send_from_host_dtypes.size();
+    if (index < 0 || index >= num_dtypes) {
       return errors::Internal("Invalid _Retval index: ", index);
     }
     for (auto edge : n->in_edges()) {
