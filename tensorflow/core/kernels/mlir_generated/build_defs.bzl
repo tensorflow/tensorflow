@@ -136,7 +136,7 @@ def _gen_mlir_op_impl(ctx):
     ctx.actions.run_shell(
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
-        command = "cat %s | sed s/f99/%s/g > %s" % (
+        command = "cat %s | sed s/elem_type/%s/g > %s" % (
             ctx.file.template.path,
             ctx.attr.type,
             ctx.outputs.out.path,

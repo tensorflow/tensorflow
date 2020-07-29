@@ -203,36 +203,36 @@ void ResourceDeviceInference::runOnOperation() {
   // called function's arguments.
   auto propagate_operands_to_callee_arguments =
       [&](Operation* caller, Operation::operand_range caller_operands,
-          llvm::StringRef called_func_name,
-          const PerFunctionResult& caller_res) {
-        auto callee =
-            llvm::dyn_cast<FuncOp>(module.lookupSymbol(called_func_name));
-        assert(callee);
-        auto& callee_res = per_function_results.find(callee)->getSecond();
-        bool callee_needs_recompute = false;
-        for (auto operand_and_argument :
-             llvm::zip(caller_operands, callee.getArguments())) {
-          if (!mlir::getElementTypeOrSelf(
-                   std::get<0>(operand_and_argument).getType())
-                   .isa<TF::ResourceType>()) {
-            continue;
+          ArrayRef<FuncOp> callees, const PerFunctionResult& caller_res) {
+        for (FuncOp callee : callees) {
+          assert(callee);
+          auto& callee_res = per_function_results.find(callee)->getSecond();
+          bool callee_needs_recompute = false;
+          for (auto operand_and_argument :
+               llvm::zip(caller_operands, callee.getArguments())) {
+            if (!mlir::getElementTypeOrSelf(
+                     std::get<0>(operand_and_argument).getType())
+                     .isa<TF::ResourceType>()) {
+              continue;
+            }
+            auto device =
+                caller_res.DeviceForResource(std::get<0>(operand_and_argument));
+            if (!device) continue;
+            if (failed(AddResourceDeviceAndEmitError(
+                    std::get<1>(operand_and_argument), *device, caller,
+                    &callee_res, &callee_needs_recompute))) {
+              return failure();
+            }
           }
-          auto device =
-              caller_res.DeviceForResource(std::get<0>(operand_and_argument));
-          if (!device) continue;
-          if (failed(AddResourceDeviceAndEmitError(
-                  std::get<1>(operand_and_argument), *device, caller,
-                  &callee_res, &callee_needs_recompute))) {
-            return failure();
+          // If the callee recording is modified, make sure that it will be
+          // reprocessed.
+          if (callee_needs_recompute) {
+            worklist.insert(callee);
           }
-        }
-        // If the callee recording is modified, make sure that it will be
-        // reprocessed.
-        if (callee_needs_recompute) {
-          worklist.insert(callee);
         }
         return success();
       };
+
   while (!worklist.empty()) {
     auto func_op = worklist.back();
     worklist.pop_back();
@@ -245,18 +245,14 @@ void ResourceDeviceInference::runOnOperation() {
     auto walk_res = func_op.walk([&](Operation* op) {
       if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
-                while_op, while_op.getOperands(), while_op.body(), func_res)) ||
-            failed(propagate_operands_to_callee_arguments(
-                while_op, while_op.getOperands(), while_op.cond(), func_res))) {
+                while_op, while_op.getOperands(),
+                {while_op.body_func(), while_op.cond_func()}, func_res)))
           return WalkResult::interrupt();
-        }
       } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
-                if_op, if_op.input(), if_op.then_branch(), func_res)) ||
-            failed(propagate_operands_to_callee_arguments(
-                if_op, if_op.input(), if_op.else_branch(), func_res))) {
+                if_op, if_op.input(), {if_op.then_func(), if_op.else_func()},
+                func_res)))
           return WalkResult::interrupt();
-        }
       }
       return WalkResult::advance();
     });

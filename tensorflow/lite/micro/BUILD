@@ -4,7 +4,6 @@ load(
 )
 load(
     "//tensorflow/lite/micro:build_def.bzl",
-    "cc_library",
     "micro_copts",
 )
 
@@ -23,7 +22,6 @@ cc_library(
     hdrs = [
         "compatibility.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
 )
 
@@ -41,7 +39,6 @@ cc_library(
         "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":memory_helpers",
@@ -81,7 +78,6 @@ cc_library(
     hdrs = [
         "test_helpers.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_utils",
@@ -106,7 +102,6 @@ cc_library(
         "micro_mutable_op_resolver.h",
         "micro_op_resolver.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_compatibility",
@@ -127,7 +122,6 @@ cc_library(
     hdrs = [
         "debug_log.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
 )
 
@@ -139,7 +133,6 @@ cc_library(
     hdrs = [
         "micro_error_reporter.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":debug_log",
@@ -157,7 +150,6 @@ cc_library(
     hdrs = [
         "micro_string.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -170,7 +162,6 @@ cc_library(
     hdrs = [
         "micro_time.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -183,7 +174,6 @@ cc_library(
     hdrs = [
         "micro_profiler.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_compatibility",
@@ -201,7 +191,6 @@ cc_library(
     hdrs = [
         "micro_utils.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -220,7 +209,6 @@ cc_library(
         "recording_micro_interpreter.h",
         "recording_simple_memory_allocator.h",
     ],
-    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_compatibility",

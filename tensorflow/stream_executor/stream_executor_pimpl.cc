@@ -478,7 +478,7 @@ port::Status StreamExecutor::GetStatus(Stream *stream) {
 
 DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
   if (memory_limit_bytes_ > 0 &&
-      mem_alloc_bytes_ + size > memory_limit_bytes_) {
+      static_cast<int64>(mem_alloc_bytes_ + size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
                  << " within provided limit. [used=" << mem_alloc_bytes_

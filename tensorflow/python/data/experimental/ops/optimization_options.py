@@ -53,9 +53,13 @@ class MapVectorizationOptions(options.OptionsBase):
       "defaults to False.")
 
   def _graph_rewrites(self):
-    if self.enabled:
-      return ["map_vectorization"]
-    return []
+    graph_rewrites = options.graph_rewrites()
+    result = graph_rewrites(enabled=[], disabled=[], default=[])
+    if self.enabled is True:  # pylint: disable=g-bool-id-comparison
+      result.enabled.append("map_vectorization")
+    elif self.enabled is False:  # pylint: disable=g-bool-id-comparison
+      result.disabled.append("map_vectorization")
+    return result
 
   def _graph_rewrite_configs(self):
     if not self.enabled:
@@ -229,8 +233,20 @@ class OptimizationOptions(options.OptionsBase):
     return autotune, algorithm, cpu_budget
 
   def _graph_rewrites(self):
-    """Produces the list of enabled graph optimizations."""
-    result = set()
+    """Produces lists of enabled, disabled and default graph optimizations.
+
+    Returns:
+      result: a namedtuple with three attributes. `result.enabled` is the list
+        of user enabled optimizations. `result.disabled` is the list of user
+        disabled optimizations. `result.default` is the list of optimizations
+        that are enabled by default (the user has not explicitly enabled or
+        disabled them).
+    """
+    if self.map_vectorization is not None:
+      result = self.map_vectorization._graph_rewrites()  # pylint: disable=protected-access
+    else:
+      result = MapVectorizationOptions()._graph_rewrites()  # pylint: disable=protected-access
+
     all_optimizations = [
         "filter_fusion",
         "filter_with_random_uniform_fusion",
@@ -244,11 +260,8 @@ class OptimizationOptions(options.OptionsBase):
         "reorder_data_discarding_ops",
         "shuffle_and_repeat_fusion",
     ]
-    for optimization in all_optimizations:
-      if getattr(self, optimization):
-        result.add(optimization)
 
-    if self.apply_default_optimizations is not False:
+    if self.apply_default_optimizations is not False:  # pylint: disable=g-bool-id-comparison
       # The following optimizations are turned on by default, unless the user
       # explicitly disables them.
       optimizations_to_disable = [
@@ -257,21 +270,29 @@ class OptimizationOptions(options.OptionsBase):
           "shuffle_and_repeat_fusion",
       ]
       for optimization in optimizations_to_disable:
-        if getattr(self, optimization) is not False:
-          result.add(optimization)
+        if getattr(self, optimization) is None:
+          result.default.append(optimization)
 
-    if self.map_vectorization is not None:
-      result.update(self.map_vectorization._graph_rewrites())  # pylint: disable=protected-access
+    # Each of these attributes on the Options object is either True (explicitly
+    # enabled), False (explicitly disabled), or None (default).
+    for optimization in all_optimizations:
+      if getattr(self, optimization) is True:  # pylint: disable=g-bool-id-comparison
+        result.enabled.append(optimization)
+      elif getattr(self, optimization) is False:  # pylint: disable=g-bool-id-comparison
+        result.disabled.append(optimization)
 
     autotune_buffers = self._autotune_buffers()
-    if self.autotune is not False and autotune_buffers:  # pylint: disable=g-bool-id-comparison
+    if self.autotune is not False and autotune_buffers is True:  # pylint: disable=g-bool-id-comparison
       # When autotuning buffer sizes is enabled, we inject a `prefetch`
       # transformation after asynchronous dataset ops. Only the buffer sizes of
       # prefetch transformations will be autotuned, though this is practically
       # equivalent to tuning the buffer sizes of the other asynchronous
       # transformations.
-      result.add("inject_prefetch")
-    return sorted(list(result))
+      result.enabled.append("inject_prefetch")
+    if self.autotune is False:  # pylint: disable=g-bool-id-comparison
+      result.disabled.append("inject_prefetch")
+
+    return result
 
   def _graph_rewrite_configs(self):
     if self.map_vectorization is not None:

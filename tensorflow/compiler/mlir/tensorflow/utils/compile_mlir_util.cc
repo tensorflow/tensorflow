@@ -83,7 +83,7 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
 Status GetXlaInputShapes(
     mlir::ModuleOp module, llvm::ArrayRef<TensorShape> arg_shapes,
     bool use_tuple_args,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     std::vector<xla::Shape>* xla_input_shapes) {
   xla_input_shapes->clear();
 
@@ -135,9 +135,8 @@ Status GetXlaInputShapes(
 // output based on static shapes in MLIR module
 Status GetOutputInfo(
     mlir::ModuleOp module,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    xla::Shape* xla_output_shape,
-    std::vector<XlaCompiler::OutputDescription>* outputs) {
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* xla_output_shape, std::vector<XlaOutputDescription>* outputs) {
   auto shape_representation_fn_no_fast_memory =
       [shape_representation_fn](const TensorShape& shape, DataType dtype) {
         return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false);
@@ -161,7 +160,7 @@ Status GetOutputInfo(
 
     // Construct OutputDescription for result.
     outputs->emplace_back();
-    XlaCompiler::OutputDescription& out_desc = outputs->back();
+    XlaOutputDescription& out_desc = outputs->back();
     TF_RETURN_IF_ERROR(ConvertToDataType(tensor_type, &out_desc.type));
     // TODO(ycao): Support constant output.
     out_desc.is_constant = false;
@@ -185,7 +184,7 @@ Status GetOutputInfo(
 // TODO(ycao): Implement logic to compute resource updates when we need to
 // support graphs with resource updates in MLIR-based TF compiler bridge.
 void GetResourceUpdatesForMlir(
-    std::vector<XlaCompiler::ResourceUpdate>* resource_updates) {
+    std::vector<XlaResourceUpdate>* resource_updates) {
   resource_updates->clear();
 }
 
@@ -265,7 +264,7 @@ Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
     bool return_tuple,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
@@ -341,8 +340,8 @@ Status ConvertMLIRToXlaComputation(
 static Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    XlaCompiler::CompilationResult* compilation_result,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("mlir_compile_before", module_op);
@@ -391,8 +390,8 @@ static Status CompileMlirToXlaHlo(
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    XlaCompiler::CompilationResult* compilation_result,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
   RegisterDialects();
   mlir::MLIRContext mlir_context;
@@ -411,16 +410,16 @@ Status CompileSerializedMlirToXlaHlo(
 // removed from the signature.
 // Returns the original indices for the other arguments on success.
 static StatusOr<std::vector<int>> RewriteWithArgs(
-    mlir::ModuleOp module, llvm::ArrayRef<const XlaCompiler::Argument> args) {
+    mlir::ModuleOp module, llvm::ArrayRef<const XlaArgument> args) {
   mlir::FuncOp main_fn = module.lookupSymbol<mlir::FuncOp>("main");
   std::vector<int> params;
 
   auto builder = mlir::OpBuilder(main_fn.getBody());
   std::vector<int> args_to_erase;
   for (int idx = 0; idx < args.size(); idx++) {
-    const XlaCompiler::Argument& xla_arg = args[idx];
+    const XlaArgument& xla_arg = args[idx];
     mlir::BlockArgument mlir_arg = main_fn.getArgument(idx);
-    if (xla_arg.kind != XlaCompiler::Argument::kConstant) {
+    if (xla_arg.kind != XlaArgument::kConstant) {
       params.push_back(idx);
       continue;
     }
@@ -439,11 +438,11 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
 }
 
 Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<const XlaCompiler::Argument> args,
+    const Graph& graph, llvm::ArrayRef<const XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    XlaCompiler::CompilationResult* compilation_result,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
   RegisterDialects();
 

@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections as pycoll
-import threading
 
 from tensorflow.python.distribute import all_reduce
 from tensorflow.python.distribute import values as value_lib
@@ -229,14 +228,6 @@ def split_grads_by_size(threshold_size, device_grads):
   return small_grads, large_grads
 
 
-# threading.Lock() and threading.local() cannot be pickled and therefore cannot
-# be a field of CollectiveKeys. Right now _thread_local is not necessary to be
-# an instance member of CollectiveKeys since we always create a new thread for
-# each replica.
-_lock = threading.Lock()
-_thread_local = threading.local()
-
-
 # TODO(yuefengz): use random key starts to avoid reusing keys?
 class CollectiveKeys(object):
   """Class that manages collective keys.
@@ -271,15 +262,8 @@ class CollectiveKeys(object):
     self._group_key_table = {}
 
     assert op_instance_key_start != variable_instance_key_start
-    self._op_instance_key_start = op_instance_key_start
+    self._op_instance_key = op_instance_key_start
     self._variable_instance_key = variable_instance_key_start
-
-  def _get_thread_local_object(self):
-    # We make instance key without key ids thread local so that it will work
-    # with MirroredStrategy and distribute coordinator.
-    if not hasattr(_thread_local, 'op_instance_key'):
-      _thread_local.op_instance_key = self._op_instance_key_start
-    return _thread_local
 
   def get_group_key(self, devices):
     """Returns a group key for the set of devices.
@@ -298,17 +282,16 @@ class CollectiveKeys(object):
     # task_type and task_id.
     names = sorted(['%s:%d' % (d.device_type, d.device_index) for d in parsed])
     key_id = ','.join(names)
-    with _lock:
-      if key_id not in self._group_key_table:
-        new_key = self._group_key
-        self._group_key += 1
-        self._group_key_table[key_id] = new_key
+    if key_id not in self._group_key_table:
+      new_key = self._group_key
+      self._group_key += 1
+      self._group_key_table[key_id] = new_key
     return self._group_key_table[key_id]
 
   def get_op_instance_key(self):
     """Returns a new instance key for use in defining a collective op."""
-    v = self._get_thread_local_object().op_instance_key
-    self._get_thread_local_object().op_instance_key += 1
+    v = self._op_instance_key
+    self._op_instance_key += 1
     return v
 
   def get_variable_instance_key(self):

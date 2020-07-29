@@ -204,7 +204,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
             model_input_time = SelfInputTime();
           }
           model_->Optimize(dataset()->algorithm_, dataset()->cpu_budget_,
-                           dataset()->ram_budget_, model_input_time);
+                           dataset()->ram_budget_, /*model_input_time=*/0);
           // Exponentially increase the period of running the optimization
           // until a threshold is reached.
           if (optimization_period_ms != kOptimizationPeriodThresholdMs) {

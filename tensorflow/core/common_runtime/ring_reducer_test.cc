@@ -393,12 +393,13 @@ class RingReducerTest : public ::testing::Test {
     cp->instance.impl_details.subdiv_permutations.clear();
     cp->subdiv_rank.clear();
     // Create a stub ring reducer only for testing param initialization.
-    RingReducer reducer;
-    TF_CHECK_OK(reducer.InitializeCollectiveParams(cp));
+    RingReducer* reducer = new RingReducer;
+    core::ScopedUnref unref(reducer);
+    TF_CHECK_OK(reducer->InitializeCollectiveParams(cp));
     EXPECT_EQ(expected_subdiv_perms,
               cp->instance.impl_details.subdiv_permutations);
     EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
-    reducer.group_size_tensor_ready_.Notify();  // To unblock destructor.
+    reducer->group_size_tensor_ready_.Notify();  // To unblock destructor.
   }
 
   class DeviceInstance {
@@ -506,14 +507,15 @@ class RingReducerTest : public ::testing::Test {
       // Prepare a RingReducer instance.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      RingReducer reducer;
+      RingReducer* reducer = new RingReducer;
+      core::ScopedUnref unref(reducer);
       auto col_ctx = std::make_shared<CollectiveContext>(
           parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
           col_params_, exec_key, kStepId, &tensor_, &tensor_);
-      TF_CHECK_OK(reducer.InitializeCollectiveContext(col_ctx));
+      TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-reduce.
-      reducer.Run([this](Status s) { status_ = s; });
+      reducer->Run([this](Status s) { status_ = s; });
       if (status_.ok()) {
         CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
       }

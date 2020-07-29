@@ -3346,11 +3346,9 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "guitar",
-        "manual",
         "multi_gpu",
-        "no_oss",
         "no_rocm",
-        "notap",
+        "no_windows",
     ],
     deps = [
         ":client_testlib",

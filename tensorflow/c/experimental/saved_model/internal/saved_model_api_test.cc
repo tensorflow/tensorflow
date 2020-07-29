@@ -102,27 +102,18 @@ TEST_P(CSavedModelAPITest, LoadsSavedModel) {
       TF_GetSavedModelConcreteFunction(saved_model, "compute", status);
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
-  TFE_Op* compute_fn_op = TF_ConcreteFunctionGetCallOp(compute_fn, status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-
-  const TF_TensorHandleList* captures =
-      TF_ConcreteFunctionGetCaptures(compute_fn);
-
-  // TODO(bmzhao): Finish API on FunctionMetadata args, so we know how many
-  // inputs + outputs a function has.
   std::vector<TFE_TensorHandle*> compute_fn_inputs;
   TFE_TensorHandle* input_a = TestScalarTensorHandle(ctx, 2.0f);
   TFE_TensorHandle* input_b = TestScalarTensorHandle(ctx, 1.0f);
-  compute_fn_inputs.reserve(2 + TF_TensorHandleListSize(captures));
   compute_fn_inputs.push_back(input_a);
   compute_fn_inputs.push_back(input_b);
-  for (int i = 0; i < TF_TensorHandleListSize(captures); ++i) {
-    compute_fn_inputs.push_back(TF_TensorHandleListGet(captures, i));
-  }
-  TFE_OpAddInputList(compute_fn_op, compute_fn_inputs.data(),
-                     compute_fn_inputs.size(), status);
+
+  TFE_Op* compute_fn_op = TF_ConcreteFunctionGetCallOp(
+      compute_fn, compute_fn_inputs.data(), compute_fn_inputs.size(), status);
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
+  // TODO(bmzhao): Finish API on FunctionMetadata args, so we know how many
+  // inputs + outputs a function has.
   TFE_TensorHandle* compute_fn_outputs[1] = {nullptr};
   int num_retvals = 1;
 

@@ -28,8 +28,34 @@ from tensorflow.python.keras import models
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.platform import test
+
+
+def _compute_fans(shape):
+  """Computes the number of input and output units for a weight shape.
+
+  Args:
+    shape: Integer shape tuple or TF tensor shape.
+
+  Returns:
+    A tuple of integer scalars (fan_in, fan_out).
+  """
+  if len(shape) < 1:  # Just to avoid errors for constants.
+    fan_in = fan_out = 1
+  elif len(shape) == 1:
+    fan_in = fan_out = shape[0]
+  elif len(shape) == 2:
+    fan_in = shape[0]
+    fan_out = shape[1]
+  else:
+    # Assuming convolution kernels (2D, 3D, or more).
+    # kernel shape: (..., input_depth, depth)
+    receptive_field_size = 1
+    for dim in shape[:-2]:
+      receptive_field_size *= dim
+    fan_in = shape[-2] * receptive_field_size
+    fan_out = shape[-1] * receptive_field_size
+  return int(fan_in), int(fan_out)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -88,7 +114,7 @@ class KerasInitializersTest(test.TestCase):
   def test_lecun_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
-      fan_in, _ = init_ops._compute_fans(tensor_shape)
+      fan_in, _ = _compute_fans(tensor_shape)
       std = np.sqrt(1. / fan_in)
       self._runner(
           initializers.LecunUniformV2(seed=123),
@@ -99,7 +125,7 @@ class KerasInitializersTest(test.TestCase):
   def test_glorot_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
-      fan_in, fan_out = init_ops._compute_fans(tensor_shape)
+      fan_in, fan_out = _compute_fans(tensor_shape)
       std = np.sqrt(2. / (fan_in + fan_out))
       self._runner(
           initializers.GlorotUniformV2(seed=123),
@@ -110,7 +136,7 @@ class KerasInitializersTest(test.TestCase):
   def test_he_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
-      fan_in, _ = init_ops._compute_fans(tensor_shape)
+      fan_in, _ = _compute_fans(tensor_shape)
       std = np.sqrt(2. / fan_in)
       self._runner(
           initializers.HeUniformV2(seed=123),
@@ -121,7 +147,7 @@ class KerasInitializersTest(test.TestCase):
   def test_lecun_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
-      fan_in, _ = init_ops._compute_fans(tensor_shape)
+      fan_in, _ = _compute_fans(tensor_shape)
       std = np.sqrt(1. / fan_in)
       self._runner(
           initializers.LecunNormalV2(seed=123),
@@ -132,7 +158,7 @@ class KerasInitializersTest(test.TestCase):
   def test_glorot_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
-      fan_in, fan_out = init_ops._compute_fans(tensor_shape)
+      fan_in, fan_out = _compute_fans(tensor_shape)
       std = np.sqrt(2. / (fan_in + fan_out))
       self._runner(
           initializers.GlorotNormalV2(seed=123),
@@ -143,7 +169,7 @@ class KerasInitializersTest(test.TestCase):
   def test_he_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
-      fan_in, _ = init_ops._compute_fans(tensor_shape)
+      fan_in, _ = _compute_fans(tensor_shape)
       std = np.sqrt(2. / fan_in)
       self._runner(
           initializers.HeNormalV2(seed=123),

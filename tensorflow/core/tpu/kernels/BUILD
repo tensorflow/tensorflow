@@ -209,19 +209,14 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_entry",
-    srcs = ["tpu_compilation_cache_entry.cc"],
     hdrs = [
         "tpu_compilation_cache_entry.h",
     ],
     deps = [
-        ":compiled_subgraph",
-        ":tpu_compilation_cache_proto_cc",
         ":tpu_executable_info_proto_cc",
-        ":tpu_program_group",
+        ":tpu_program_group_interface",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/platform:casts",
     ],
 )
 
@@ -656,6 +651,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -673,6 +669,7 @@ cc_library(
     srcs = ["topk_ops.cc"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core/tpu:tpu_defs",

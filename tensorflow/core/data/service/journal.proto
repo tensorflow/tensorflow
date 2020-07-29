@@ -10,20 +10,20 @@ import "tensorflow/core/data/service/common.proto";
 // Update message to the journal.
 message Update {
   oneof update_type {
-    RegisterDataset register_dataset = 1;
-    CreateJob create_job = 2;
-    FinishJob finish_job = 3;
-    CreateTask create_task = 4;
+    RegisterDatasetUpdate register_dataset = 1;
+    CreateJobUpdate create_job = 2;
+    FinishJobUpdate finish_job = 3;
+    CreateTaskUpdate create_task = 4;
   }
 }
 
-message RegisterDataset {
+message RegisterDatasetUpdate {
   int64 dataset_id = 1;
-  // A file where the dataset graph has been written.
-  string filename = 2;
+  DatasetDef dataset_def = 2;
+  uint64 fingerprint = 3;
 }
 
-message CreateJob {
+message CreateJobUpdate {
   int64 job_id = 1;
   int64 dataset_id = 2;
   ProcessingModeDef processing_mode = 3;
@@ -31,11 +31,11 @@ message CreateJob {
   google.protobuf.StringValue job_name = 4;
 }
 
-message FinishJob {
+message FinishJobUpdate {
   int64 job_id = 1;
 }
 
-message CreateTask {
+message CreateTaskUpdate {
   int64 task_id = 1;
   int64 job_id = 2;
   int64 dataset_id = 3;

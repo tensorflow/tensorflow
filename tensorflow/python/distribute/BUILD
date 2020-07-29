@@ -1727,6 +1727,7 @@ distribute_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
