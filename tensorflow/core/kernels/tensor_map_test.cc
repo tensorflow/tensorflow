@@ -107,6 +107,17 @@ TEST(TensorMapTest, Replace) {
   test::ExpectTensorEqual<int32>(map_it->second, v2);
 }
 
+TEST(TensorMapTest, ListKeys) {
+  TensorMap tm;
+  TensorKey k = Tensor(11);
+  TensorKey k2 = Tensor(12);
+  Tensor v = Tensor(22);
+  Tensor v2 = Tensor(23);
+  tm.insert(k, v);
+  tm.insert(k2, v2);
+  
+}
+
 TEST(TensorMapTest, Copy) {
   TensorMap tm;
   TensorKey k = Tensor(11);

@@ -76,5 +76,14 @@ REGISTER_OP("TensorMapHasKey")
     .Attr("element_dtype: type")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("TensorMapListKeys")
+    .Input("input_handle: variant")
+    .Output("keys: variant")
+    //.Attr("element_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar()); // output map
+      return Status::OK();
+    });
+
 }  // namespace
 }  // namespace tensorflow

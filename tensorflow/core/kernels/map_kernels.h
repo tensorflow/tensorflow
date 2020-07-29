@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/tensor_map.h"
+#include "tensorflow/core/kernels/tensor_list.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 
@@ -184,6 +185,21 @@ class TensorMapHasKey : public OpKernel {
   }
 };
 
+class TensorMapListKeys : public OpKernel {
+ public:
+  explicit TensorMapListKeys(OpKernelConstruction* c) : OpKernel(c) {}
+  ~TensorMapListKeys() override {}
+
+  void Compute(OpKernelContext* c) override {
+    const TensorMap* m = nullptr;
+    OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
+    Tensor* result;
+    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result));
+    TensorList* keys = m->keys();
+    result->scalar<Variant>()() = std::move(keys);
+    // c->set_output(0, std::move(keys));
+  }
+};
 
 template <typename Device>
 Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
