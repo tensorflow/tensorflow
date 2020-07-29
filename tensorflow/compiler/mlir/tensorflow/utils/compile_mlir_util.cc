@@ -461,6 +461,14 @@ Status CompileGraphToXlaHlo(
   for (unsigned idx : remaining_params)
     arg_shapes.push_back(absl::get<TensorShape>(args[idx].shape));
 
+  mlir::PassManager pm(&context);
+  mlir::TF::StandardPipelineOptions tf_options;
+  mlir::TF::CreateTFStandardPipeline(pm, tf_options);
+  {
+    mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+    if (failed(pm.run(module))) return diag_handler.ConsumeStatus();
+  }
+
   auto status = CompileMlirToXlaHlo(
       module, arg_shapes, device_type, use_tuple_args, shape_representation_fn,
       compilation_result, std::move(custom_legalization_passes));
