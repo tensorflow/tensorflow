@@ -236,16 +236,16 @@ StateMap::CondId StateMap::GetCondId(const StateMap::CondState& state) {
 }
 
 void StateMap::ResetCondId(const Node* node, StateMap::CondId id) {
-  const int64 node_to_condid_map_size = node_to_condid_map_.size(); 
-  if (node->id() < node_to_condid_map_size)
+  const int64 node_to_map_size = node_to_condid_map_.size(); 
+  if (node->id() < node_to_map_size)
     node_to_condid_map_[node->id()] = id;
   else
     added_node_condid_mapping_[node->id()] = id;
 }
 
 StateMap::AncestorId StateMap::LookupAncestorId(const Node* node) const {
-  const int64 node_to_ancestorid_map_size = node_to_ancestorid_map_.size();
-  if (node->id() < node_to_ancestorid_map_size)
+  const int64 node_to_map_size = node_to_ancestorid_map_.size();
+  if (node->id() < node_to_map_size)
     return node_to_ancestorid_map_[node->id()];
   return added_node_ancestorid_mapping_.at(node->id());
 }
@@ -257,8 +257,8 @@ StateMap::AncestorId StateMap::GetAncestorId(
 }
 
 void StateMap::ResetAncestorId(const Node* node, StateMap::AncestorId id) {
-  const int64 node_to_ancestorid_map_size = node_to_ancestorid_map_.size();
-  if (node->id() < node_to_ancestorid_map_size)
+  const int64 node_to_map_size = node_to_ancestorid_map_.size();
+  if (node->id() < node_to_map_size)
     node_to_ancestorid_map_[node->id()] = id;
   else
     added_node_ancestorid_mapping_[node->id()] = id;

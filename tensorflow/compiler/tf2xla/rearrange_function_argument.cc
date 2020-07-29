@@ -146,7 +146,7 @@ Status ReorderOutputEdges(Graph* g, Node* n, int input_count,
     int dst_input = e->dst_input();
     g->RemoveEdge(e);
 
-    if (new_src_output < static_cast<int64>(input_count - resource_input_count)) {
+    if (new_src_output < input_count - resource_input_count) {
       g->AddEdge(n, new_src_output, dst, dst_input);
     } else {
       const Edge* input_edge;
