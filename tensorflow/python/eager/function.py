@@ -3079,7 +3079,6 @@ class Function(object):
     else:
       del args, kwargs
       assert not include_tensor_ranks_only
-      assert hasattr(self, '_hashable_input_signature')
       hashable_input_signature = self._hashable_input_signature
 
     ctx = context.context()
