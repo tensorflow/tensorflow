@@ -257,8 +257,8 @@ StateMap::AncestorId StateMap::GetAncestorId(
 }
 
 void StateMap::ResetAncestorId(const Node* node, StateMap::AncestorId id) {
-  const int64 node_to_map_size = node_to_ancestorid_map_.size();
-  if (node->id() < node_to_map_size)
+  const int64 map_size = node_to_ancestorid_map_.size();
+  if (node->id() < map_size)
     node_to_ancestorid_map_[node->id()] = id;
   else
     added_node_ancestorid_mapping_[node->id()] = id;
