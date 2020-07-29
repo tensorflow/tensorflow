@@ -236,8 +236,8 @@ StateMap::CondId StateMap::GetCondId(const StateMap::CondState& state) {
 }
 
 void StateMap::ResetCondId(const Node* node, StateMap::CondId id) {
-  const int64 node_to_map_size = node_to_condid_map_.size(); 
-  if (node->id() < node_to_map_size)
+  const int64 map_size = node_to_condid_map_.size(); 
+  if (node->id() < map_size)
     node_to_condid_map_[node->id()] = id;
   else
     added_node_condid_mapping_[node->id()] = id;
