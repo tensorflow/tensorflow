@@ -1132,8 +1132,8 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
     if (n->type_string() == kArgOp) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-      const int types_size = types->size(); 
-      if (index < 0 || index >= types_size) {
+      const int num_types = types->size(); 
+      if (index < 0 || index >= num_types) {
         return errors::InvalidArgument("Invalid argument number");
       }
       (*types)[index] = n->output_type(0);
