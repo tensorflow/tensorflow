@@ -571,7 +571,7 @@ def _tf_iterator_for_stmt(
 
   def aug_body():
     """Main body passed to _tf_while_stmt."""
-    opt_iterate = iterator_ops.get_next_as_optional(iter_)
+    opt_iterate = iter_.get_next_as_optional()
     has_next.value = opt_iterate.has_value()
     loop_vars = aug_get_state()  # updated by set_state() in _tf_while_loop.
 
