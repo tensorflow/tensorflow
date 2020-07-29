@@ -21,7 +21,7 @@ namespace tflite {
 namespace ops {
 namespace micro {
 
-TensorSlicer::TensorSlicer(const mli_tensor* full_tensor, uint32_t slice_dim,
+TensorSlicer::TensorSlicer(const mli_tensor* full_tensor, int slice_dim,
                            int slice_size, int padding_pre, int padding_post,
                            int overlap, bool interleave_mode)
     : full_tensor_(full_tensor),
@@ -37,7 +37,7 @@ TensorSlicer::TensorSlicer(const mli_tensor* full_tensor, uint32_t slice_dim,
   slice in the C dimenstion. in this mode the data is not contiguous in memory
   anymore */
   if (interleave_mode) {
-    for (uint32_t i = 0; i < full_tensor->rank; i++) {
+    for (int i = 0; i < static_cast<int>(full_tensor->rank); i++) {
       if (i > slice_dim) {
         sub_cfg_.size[i] = 1;
       } else if (i == slice_dim) {
@@ -53,7 +53,7 @@ TensorSlicer::TensorSlicer(const mli_tensor* full_tensor, uint32_t slice_dim,
     dimension up to the slice_dim for example in an HWC layout this mode can be
     used to slice in the H dimension. in this mode the data of the slice is
     still contiguous in memory (if that was the case in the input tensor */
-    for (uint32_t i = 0; i < full_tensor->rank; i++) {
+    for (int i = 0; i < static_cast<int>(full_tensor->rank); i++) {
       if (i < slice_dim) {
         sub_cfg_.size[i] = 1;
       } else if (i == slice_dim) {

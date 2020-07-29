@@ -46,6 +46,8 @@ constexpr int kOutputTensor = 0;
 // https://www.tensorflow.org/lite/performance/quantization_spec
 constexpr int kDepthwiseConvQuantizedDimension = 3;
 
+bool mli_is_applicable = false;
+
 struct OpData {
   TfLitePaddingValues padding;
 
@@ -108,7 +110,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
-  if (data_type != kTfLiteFloat32) {
+  if (data_type != kTfLiteFloat32 && !mli_is_applicable) {
     const TfLiteTensor* input = GetInput(context, node, kInputTensor);
     const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
     const TfLiteTensor* bias =
@@ -145,6 +147,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   const TfLiteType data_type = input->type;
   int width = SizeOfDimension(input, 2);
@@ -162,6 +165,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   data->per_channel_output_shift =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
+
+  mli_is_applicable = IsMliApplicable(context, input, filter, bias, params);
 
   // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {
@@ -420,7 +425,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.input_offset = -data.input_zero_point;
   op_params.weights_offset = 0;
   op_params.output_offset = data.output_zero_point;
-  // TODO(b/130439627): Use calculated value for clamping.
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
 
@@ -491,11 +495,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias =
       (NumInputs(node) == 3) ? GetInput(context, node, kBiasTensor) : nullptr;
 
-  bool mli_is_applicable =
-      IsMliApplicable(context, input, filter, bias, params);
-
-  // TODO(aselle): Consider whether float conv and quantized conv should be
-  // separate ops to avoid dispatch overhead here.
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       EvalFloat(context, node, params, data, input, filter, bias, output);

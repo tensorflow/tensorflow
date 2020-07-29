@@ -30,8 +30,8 @@ static void get_arc_two_buffer_sizes(int request_size_1, int request_size_2,
                                      int* grant_size_1, int* grant_size_2) {
   int maxrequest = 0;
   int secondrequest = 0;
-  uint32_t maxavailable = 0;
-  uint32_t secondavail = 0;
+  int maxavailable = 0;
+  int secondavail = 0;
 
   // determine the largest requested buffer.
   if (request_size_1 > request_size_2) {
@@ -120,7 +120,7 @@ TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
   if (!inside_arc_ccm(weights->data)) {
     int weights_size = mli_hlp_count_elem_num(weights, 0) *
                        mli_hlp_tensor_element_size(weights);
-    uint32_t max_weights_size = 0;
+    int max_weights_size = 0;
     weights->data = get_arc_scratch_buffer(weights_size);
     weights->capacity = weights_size;
     if (weights->data == NULL) {
@@ -144,7 +144,7 @@ TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
   }
 
   if (bias->data == NULL) {
-    uint32_t max_bias_size = 0;
+    int max_bias_size = 0;
     get_arc_scratch_buffer_max_size(&max_bias_size);
     bias->data = get_arc_scratch_buffer(max_bias_size);
     bias->capacity = max_bias_size;
@@ -185,7 +185,7 @@ TfLiteStatus get_arc_scratch_buffer_for_fully_connect_tensors(
   if (!inside_arc_ccm(weights->data)) {
     int weights_size = mli_hlp_count_elem_num(weights, 0) *
                        mli_hlp_tensor_element_size(weights);
-    uint32_t max_weights_size = 0;
+    int max_weights_size = 0;
     weights->data = get_arc_scratch_buffer(weights_size);
     weights->capacity = weights_size;
     if (weights->data == NULL) {
@@ -209,7 +209,7 @@ TfLiteStatus get_arc_scratch_buffer_for_fully_connect_tensors(
        only count the size if the inner most dimension */
     int out_size = mli_hlp_count_elem_num(out, out->rank - 1) *
                    mli_hlp_tensor_element_size(out);
-    uint32_t max_out_size = 0;
+    int max_out_size = 0;
     out->data = get_arc_scratch_buffer(out_size);
     out->capacity = out_size;
     if (out->data == NULL) {
@@ -222,7 +222,7 @@ TfLiteStatus get_arc_scratch_buffer_for_fully_connect_tensors(
   }
 
   if (bias->data == NULL) {
-    uint32_t max_bias_size = 0;
+    int max_bias_size = 0;
     get_arc_scratch_buffer_max_size(&max_bias_size);
     bias->data = get_arc_scratch_buffer(max_bias_size);
     bias->capacity = max_bias_size;
@@ -239,19 +239,19 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
     const int stride_height, const int padding_top, const int padding_bot,
     int* in_slice_height, int* out_slice_height) {
   const int height_dimension = 1;
-  const uint32_t in_height = in->shape[height_dimension];
-  const uint32_t out_height = out->shape[height_dimension];
-  const uint32_t line_size_in =
+  const int in_height = in->shape[height_dimension];
+  const int out_height = out->shape[height_dimension];
+  const int line_size_in =
       mli_hlp_count_elem_num(in, height_dimension + 1) *
                            mli_hlp_tensor_element_size(in);
-  const uint32_t line_size_out =
+  const int line_size_out =
       mli_hlp_count_elem_num(out, height_dimension + 1) *
                             mli_hlp_tensor_element_size(out);
-  uint32_t max_lines_in = 0;
-  uint32_t max_lines_out = 0;
-  uint32_t max_out_lines_for_input = 0;
-  bool fit = (in->capacity >= in_height * line_size_in) &&
-             (out->capacity >= out_height * line_size_out);
+  int max_lines_in = 0;
+  int max_lines_out = 0;
+  int max_out_lines_for_input = 0;
+  bool fit = (static_cast<int>(in->capacity) >= in_height * line_size_in) &&
+             (static_cast<int>(out->capacity) >= out_height * line_size_out);
   if (fit) {
     // in case both tensors completely fit in the capacity, there is no need for
     // slicing. As padding can affect effective input region, we also derive it 
@@ -297,16 +297,16 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
 TfLiteStatus arc_scratch_buffer_calc_slice_size_weights(
     const mli_tensor* weights, const mli_tensor* bias,
     const int weight_out_ch_dimension, int* slice_channels) {
-  const uint32_t channels = weights->shape[weight_out_ch_dimension];
-  const uint32_t ch_size_w = (mli_hlp_count_elem_num(weights, 0) / channels) *
+  const int channels = weights->shape[weight_out_ch_dimension];
+  const int ch_size_w = (mli_hlp_count_elem_num(weights, 0) / channels) *
                         mli_hlp_tensor_element_size(weights);
-  const uint32_t ch_size_b = (mli_hlp_count_elem_num(bias, 0) / channels) *
+  const int ch_size_b = (mli_hlp_count_elem_num(bias, 0) / channels) *
                         mli_hlp_tensor_element_size(bias);
-  uint32_t max_ch_weigths = 0;
-  uint32_t max_ch_bias = 0;
+  int max_ch_weigths = 0;
+  int max_ch_bias = 0;
 
-  bool fit = (weights->capacity >= channels * ch_size_w) &&
-             (bias->capacity >= channels * ch_size_b);
+  bool fit = (static_cast<int>(weights->capacity) >= channels * ch_size_w) &&
+             (static_cast<int>(bias->capacity) >= channels * ch_size_b);
   if (fit) {
     // in case both tensors completely fit in the capacity, there is no need for
     // slicing

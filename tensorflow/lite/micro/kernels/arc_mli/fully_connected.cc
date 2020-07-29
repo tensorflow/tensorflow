@@ -52,6 +52,8 @@ constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
+bool mli_is_applicable = false;
+
 bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteTensor* filter, const TfLiteTensor* bias,
                      const TfLiteFullyConnectedParams* params) {
@@ -72,7 +74,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
                              OpData* data) {
   TfLiteStatus status = kTfLiteOk;
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
-  if (data_type != kTfLiteFloat32) {
+  if (data_type != kTfLiteFloat32 && !mli_is_applicable) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
@@ -106,6 +108,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  mli_is_applicable = IsMliApplicable(context, input, filter, bias, params);
 
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
@@ -232,7 +236,6 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.weights_offset = -filter->params.zero_point;
   op_params.output_offset = output->params.zero_point;
   op_params.output_multiplier = data.output_multiplier;
-  // TODO(b/138810107): Figure out whether output shift should be inverted
   op_params.output_shift = -data.output_shift;
   op_params.quantized_activation_min = data.output_activation_min;
   op_params.quantized_activation_max = data.output_activation_max;
@@ -341,7 +344,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalFloat(context, node, params->activation, input, filter, bias,
                        output);
     case kTfLiteInt8:
-      if (IsMliApplicable(context, input, filter, bias, params)) {
+      if (mli_is_applicable) {
         return EvalMliQuantizedInt8(context, node, params, data, input, filter,
                                     bias, output);
       } else {

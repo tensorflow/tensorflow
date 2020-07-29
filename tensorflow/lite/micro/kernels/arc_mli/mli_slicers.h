@@ -23,7 +23,7 @@ namespace micro {
 
 class TensorSlicer {
  public:
-  TensorSlicer(const mli_tensor* full_tensor, uint32_t slice_dim, int slice_size,
+  TensorSlicer(const mli_tensor* full_tensor, int slice_dim, int slice_size,
                int padding_pre = 0, int padding_post = 0, int overlap = 0,
                bool interleave_mode = false);
   ~TensorSlicer() = default;

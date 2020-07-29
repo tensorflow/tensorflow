@@ -43,6 +43,8 @@ constexpr int kOutputTensor = 0;
 // https://www.tensorflow.org/lite/performance/quantization_spec
 constexpr int kConvQuantizedDimension = 0;
 
+bool mli_is_applicable = false;
+
 // This file has 2 implementation of Conv.
 
 struct OpData {
@@ -112,11 +114,10 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
       params->stride_height, params->stride_width,
       params->dilation_height_factor, params->dilation_width_factor, height,
       width, filter_height, filter_width, padding, &out_height, &out_width);
-
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
-  if (data_type != kTfLiteFloat32) {
+  if (data_type != kTfLiteFloat32 && !mli_is_applicable) {
     const TfLiteTensor* input = GetInput(context, node, kInputTensor);
     const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
     const TfLiteTensor* bias =
@@ -151,6 +152,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   int input_width = input->dims->data[2];
   int input_height = input->dims->data[1];
@@ -167,6 +169,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   data->per_channel_output_shift =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
+
+  mli_is_applicable = IsMliApplicable(context, input, filter, bias, params);
 
   // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {
@@ -208,7 +212,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   const int32_t filter_offset = -data.filter_zero_point;
   const int32_t output_offset = data.output_zero_point;
 
-  // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
   op_params.padding_type = RuntimePaddingType(params->padding);
   op_params.padding_values.width = data.padding.width;
@@ -404,7 +407,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              const TfLiteTensor* bias, TfLiteTensor* output,
                              TfLiteTensor* im2col) {
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
-  // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
   op_params.input_offset = -data.input_zero_point;
   op_params.output_offset = data.output_zero_point;
@@ -439,7 +441,6 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
-  // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
   op_params.padding_type = RuntimePaddingType(params->padding);
   op_params.padding_values.width = data.padding.width;
@@ -474,9 +475,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
-
-  bool mli_is_applicable =
-      IsMliApplicable(context, input, filter, bias, params);
 
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
