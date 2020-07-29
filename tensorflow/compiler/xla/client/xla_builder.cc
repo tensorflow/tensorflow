@@ -788,7 +788,7 @@ XlaOp XlaBuilder::BroadcastInDim(
                            *operand_shape, output_shape, broadcast_dimensions)
                            .status());
     std::vector<int64> in_dim_size(out_dim_size.begin(), out_dim_size.end());
-    for (int i = 0, end = broadcast_dimensions.size(); i < end; i++) {
+    for (int i = 0; i < broadcast_rank; i++) {
       in_dim_size[broadcast_dimensions[i]] = operand_shape->dimensions(i);
     }
     const auto& in_dim_shape =
