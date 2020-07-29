@@ -93,6 +93,8 @@ tf_kernel_library(
     deps = [
         ":tpu_compilation_cache_factory",
         ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_local_lookup",
+        ":tpu_compilation_cache_lookup",
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         "//tensorflow/c:tf_status",
@@ -287,6 +289,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
