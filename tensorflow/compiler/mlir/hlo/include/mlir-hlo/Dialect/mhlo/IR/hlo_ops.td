@@ -1324,7 +1324,7 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
     HLO_PredIntOrFpTensor:$a,
     HLO_PredIntOrFpTensor:$b,
-    I64Tensor:$shape
+    HLO_DimensionTensor:$shape
   );
 
   let results = (outs HLO_PredIntOrFpTensor);
@@ -1336,7 +1336,7 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   let arguments = (ins
     HLO_FpTensor:$mu,
     HLO_FpTensor:$sigma,
-    I64Tensor:$shape
+    HLO_DimensionTensor:$shape
   );
 
   let results = (outs HLO_FpTensor);
