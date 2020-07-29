@@ -131,6 +131,55 @@ def _shape_op_slice_and_range_known_dim():
     return keras.Model(inputs, inputs)
 
 
+def _int32_manipulation_too_big_for_shape():
+  # This test verifies that the Keras Functional API
+  # won't crash when manipulating int32 tensors that are too large
+  # to represent shapes.
+  inputs = keras.Input(batch_size=2, shape=(10,))
+  batch_size = array_ops.shape(inputs)[0]
+  num_features = 3 * 1024 * 16
+  x = math_ops.range(batch_size * num_features, dtype='int32')
+  assert x.shape.as_list() == [inputs.shape[0] * num_features]
+  x = array_ops.reshape(x, (batch_size, num_features))
+  x = math_ops.cast(x, dtype='float32')
+  outputs = keras.layers.Dense(10)(x)
+  if context.executing_eagerly():
+    return keras.Model(inputs, outputs)
+  else:
+    # In V1 the op layer fails for some reason,
+    # but we don't have access to the test case to call
+    # self.skip_test in this util method
+    return keras.Model(inputs, inputs)
+
+
+def _int32_manipulation_at_max_shape_dims_limit():
+  # This test verifies that the Keras Functional API
+  # won't crash when manipulating int32 tensors that are at the limit
+  # of the max tensor size Keras can try inferring values for.
+  inputs = keras.Input(batch_size=2, shape=(10,))
+  batch_size = array_ops.shape(inputs)[0]
+  num_features = int(keras_tensor._MAX_TENSOR_DIMS / int(inputs.shape[0]))
+  x = math_ops.range(batch_size * num_features, dtype='int32')
+  assert x.shape.as_list() == [keras_tensor._MAX_TENSOR_DIMS]
+
+  # Verify that a value was actually inferred for a tensor that *might*
+  # represent the shape, bying checking that a value in
+  # the range appears in the printed inferred value
+  if keras_tensor.keras_tensors_enabled():
+    assert str(keras_tensor._MAX_TENSOR_DIMS - 1) in str(x)
+
+  x = array_ops.reshape(x, (batch_size, num_features))
+  x = math_ops.cast(x, dtype='float32')
+  outputs = keras.layers.Dense(10)(x)
+  if context.executing_eagerly():
+    return keras.Model(inputs, outputs)
+  else:
+    # In V1 the op layer fails for some reason,
+    # but we don't have access to the test case to call
+    # self.skip_test in this util method
+    return keras.Model(inputs, inputs)
+
+
 def _single_standalone_branch():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
@@ -252,6 +301,10 @@ class AutoLambdaTest(keras_parameterized.TestCase):
       ('shape_op_slice_and_range', _shape_op_slice_and_range),
       ('shape_op_slice_and_range_known_dim',
        _shape_op_slice_and_range_known_dim),
+      ('int32_manipulation_too_big_for_shape',
+       _int32_manipulation_too_big_for_shape),
+      ('int32_manipulation_at_max_shape_dims_limit',
+       _int32_manipulation_at_max_shape_dims_limit),
       ('single_standalone_branch', _single_standalone_branch),
       ('single_op_with_attrs', _single_op_with_attrs),
       ('multiple_uses', _multiple_uses),
