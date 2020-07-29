@@ -291,6 +291,31 @@ class GcsFileSystem : public FileSystem {
   virtual Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
                                    char* buffer, size_t* bytes_transferred);
 
+  // Creates an upload session for an upcoming GCS object upload.
+  virtual Status CreateNewUploadSession(uint64 start_offset,
+                                        const std::string& object_to_upload,
+                                        const std::string& bucket,
+                                        uint64 file_size,
+                                        const std::string& gcs_path,
+                                        std::string* session_uri);
+
+  // Uploads object data to session.
+  virtual Status UploadToSession(const std::string& session_uri,
+                                 uint64 start_offset, uint64 already_uploaded,
+                                 const std::string& tmp_content_filename,
+                                 uint64 file_size,
+                                 const std::string& file_path);
+
+  /// \brief Requests status of a previously initiated upload session.
+  ///
+  /// If the upload has already succeeded, sets 'completed' to true.
+  /// Otherwise sets 'completed' to false and 'uploaded' to the currently
+  /// uploaded size in bytes.
+  virtual Status RequestUploadSessionStatus(const string& session_uri,
+                                            uint64 file_size,
+                                            const std::string& gcs_path,
+                                            bool* completed, uint64* uploaded);
+
   Status ParseGcsPathForScheme(StringPiece fname, string scheme,
                                bool empty_object_ok, string* bucket,
                                string* object);
