@@ -846,26 +846,18 @@ tf_py_test(
     ],
 )
 
-tf_xla_py_test(
+cuda_py_test(
     name = "def_function_xla_jit_test",
     srcs = ["def_function_xla_jit_test.py"],
-    enable_mlir_bridge = True,
-    enabled_backends = [
-        # TODO(b/162438052): Enable the test on TPU.
-        "cpu",
-        "gpu",
-    ],
     python_version = "PY3",
     tags = [
         "no_mac",
-        "no_pip",
         "no_windows",
     ],
-    use_xla_device = False,
+    xla_enabled = True,
     deps = [
         ":backprop",
         ":def_function",
-        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
