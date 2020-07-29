@@ -970,11 +970,10 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       border_inputs, border_outputs, require_shape_type, &graph, &fused_node));
 
   for (const Node* node : graph.nodes()) {
-    for (int i = 0, iter_limit = node->num_inputs(); i < iter_limit; ++i) {
+    for (int i = 0, end = node->num_inputs(); i < end; ++i) {
       const Edge* edge = nullptr;
       TF_RETURN_IF_ERROR(node->input_edge(i, &edge));
-      for (int j = 0, second_iter_limit = border_outputs.size();
-           j < second_iter_limit; ++j) {
+      for (int j = 0, second_end = border_outputs.size(); j < second_end; ++j) {
         const string& output = border_outputs.at(j);
         const TensorId tid = ParseTensorName(output);
         const string output_name(tid.first);
