@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import numpy as np
 
 from tensorflow.python.compat import compat
@@ -37,6 +38,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sort_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import deprecation
@@ -364,7 +366,8 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _random_flip(image, 0, seed, 'random_flip_up_down')
+  random_func = functools.partial(random_ops.random_uniform, seed=seed)
+  return _random_flip(image, 0, random_func, 'random_flip_up_down')
 
 
 @tf_export('image.random_flip_left_right')
@@ -407,19 +410,86 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _random_flip(image, 1, seed, 'random_flip_left_right')
+  random_func = functools.partial(random_ops.random_uniform, seed=seed)
+  return _random_flip(image, 1, random_func, 'random_flip_left_right')
 
 
-def _random_flip(image, flip_index, seed, scope_name):
+@tf_export('image.stateless_random_flip_left_right', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_flip_left_right(image, seed):
+  """Randomly flip an image horizontally (left to right) deterministically.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  Example usage:
+
+  >>> import numpy as np
+
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> seed = (2, 3)
+  >>> tf.image.stateless_random_flip_left_right(image, seed).numpy().tolist()
+  [[[2], [1]], [[4], [3]]]
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    A tensor of the same type and shape as `image`.
+  """
+  random_func = functools.partial(
+      stateless_random_ops.stateless_random_uniform, seed=seed)
+  return _random_flip(
+      image, 1, random_func, 'stateless_random_flip_left_right')
+
+
+@tf_export('image.stateless_random_flip_up_down', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_flip_up_down(image, seed):
+  """Randomly flip an image vertically (upside down) deterministically.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  Example usage:
+
+  >>> import numpy as np
+
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> seed = (2, 3)
+  >>> tf.image.stateless_random_flip_up_down(image, seed).numpy().tolist()
+  [[[3], [4]], [[1], [2]]]
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    A tensor of the same type and shape as `image`.
+  """
+  random_func = functools.partial(
+      stateless_random_ops.stateless_random_uniform, seed=seed)
+  return _random_flip(
+      image, 0, random_func, 'stateless_random_flip_up_down')
+
+
+def _random_flip(image, flip_index, random_func, scope_name):
   """Randomly (50% chance) flip an image along axis `flip_index`.
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     flip_index: Dimension along which to flip the image.
-      Vertical: 0, Horizontal: 1
-    seed: A Python integer. Used to create a random seed. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      Vertical is 0, Horizontal is 1.
+    random_func: partial function for calling either stateful or stateless
+      random ops with `seed` parameter specified.
     scope_name: Name of the scope in which the ops are added.
 
   Returns:
@@ -434,7 +504,7 @@ def _random_flip(image, flip_index, seed, scope_name):
     shape = image.get_shape()
 
     def f_rank3():
-      uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
+      uniform_random = random_func(shape=[], minval=0, maxval=1.0)
       mirror_cond = math_ops.less(uniform_random, .5)
       result = control_flow_ops.cond(
           mirror_cond,
@@ -445,10 +515,7 @@ def _random_flip(image, flip_index, seed, scope_name):
 
     def f_rank4():
       batch_size = array_ops.shape(image)[0]
-      uniform_random = random_ops.random_uniform([batch_size],
-                                                 0,
-                                                 1.0,
-                                                 seed=seed)
+      uniform_random = random_func(shape=[batch_size], minval=0, maxval=1.0)
       flips = math_ops.round(
           array_ops.reshape(uniform_random, [batch_size, 1, 1, 1]))
       flips = math_ops.cast(flips, image.dtype)
