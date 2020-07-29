@@ -209,6 +209,21 @@ TEST_F(S3FilesystemTest, NewWritableFile) {
   EXPECT_EQ("content1,content2", content);
 }
 
+TEST_F(S3FilesystemTest, NewAppendableFile) {
+  const std::string path = GetURIForPath("AppendableFile");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+
+  auto writer = GetWriter();
+  tf_s3_filesystem::NewAppendableFile(filesystem_, path.c_str(), writer.get(),
+                                      status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Append(writer.get(), "content", strlen("content"), status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Close(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
