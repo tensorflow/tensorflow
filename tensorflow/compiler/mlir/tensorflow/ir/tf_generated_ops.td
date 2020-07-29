@@ -11705,24 +11705,6 @@ expected to create these operators.
   TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
 }
 
-def TF__HostComputeMlirOp : TF_Op<"_HostComputeMlir", []> {
-  let summary = "A host-side computation called from a TPU device.";
-
-  let arguments = (ins
-    Variadic<TF_Tensor>:$inputs,
-
-    StrAttr:$key,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core
-  );
-
-  let results = (outs
-    Variadic<TF_Tensor>:$outputs
-  );
-
-  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
-}
-
 def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", []> {
   let summary = "An op that receives embeddng activations on the TPU.";
 
@@ -11780,6 +11762,45 @@ used to look up the program in the compilation cache.
 
   TF_DerivedResultSizeAttr num_computations = TF_DerivedResultSizeAttr<1>;
   TF_DerivedOperandSizeAttr NumDynamicShapes = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF__TPUCompileMlirPlaceholderProgramKeyOp : TF_Op<"_TPUCompileMlirPlaceholderProgramKey", []> {
+  let summary = [{
+Placeholder program key (compilation cache key) of a _TPUCompileMlir `program`.
+  }];
+
+  let description = [{
+This op can be used when certain rewrite passes materialize ops that require a
+program key but the _TPUCompileMlir op has not been added yet. Subsequent
+rewrite passes must replace this op with a _TPUCompileMlir op `program` output.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_StrTensor:$program
+  );
+}
+
+def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", []> {
+  let summary = [{
+A pseudo-op to represent host-side computation in an XLA program.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    StrAttr:$send_key,
+    StrAttr:$recv_key,
+    DefaultValuedAttr<I64Attr, "0">:$tpu_core
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF__XlaRecvAtHostOp : TF_Op<"_XlaRecvAtHost", []> {

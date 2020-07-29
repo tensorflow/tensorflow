@@ -489,7 +489,7 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
             $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
-// PartitionedCall op patterns.
+// PartitionedCall and LegacyCall op patterns.
 //===----------------------------------------------------------------------===//
 
 def ArgTypesMatchCallee : Constraint<
@@ -501,6 +501,12 @@ foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
             (CallOp $f, $args),
           [(ArgTypesMatchCallee $op, $args, $f)]>;
 }
+
+// The extra attr on this op is _disable_call_shape_inference, which we ignore
+// in the bridge.
+def : Pat<(TF_LegacyCallOp:$op $args, FlatSymbolRefAttr:$f, $attr),
+          (CallOp $f, $args),
+        [(ArgTypesMatchCallee $op, $args, $f)]>;
 
 //===----------------------------------------------------------------------===//
 // Reverse op patterns.

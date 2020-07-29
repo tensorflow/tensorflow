@@ -209,6 +209,7 @@ tf_cc_test(
     name = "type_to_shape_test",
     srcs = ["type_to_shape_test.cc"],
     deps = [
+        ":hlo_utils",
         ":type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",

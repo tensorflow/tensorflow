@@ -1363,6 +1363,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       values.append(array_ops.zeros(shape=(1000,)))
     self._run(lambda: np.array([x.numpy() for x in values]), 1000)
 
+  def benchmark_function_trace(self):
+
+    def func(x):
+      return x
+
+    self._run(lambda: (def_function.function(func)(x) for x in range(1000)),
+              30000)
+
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function
     def add_all(*args):

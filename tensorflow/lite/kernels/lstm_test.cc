@@ -124,7 +124,7 @@ class LSTMOpModel : public SingleOpModel {
       }
     }
 
-    output_ = AddOutput({TensorType_FLOAT32, {n_output}});
+    output_ = AddOutput({TensorType_FLOAT32, {n_batch, n_output}});
 
     // TODO(b/161825581): Add tests where cell_clip and/or proj_clip is not the
     // default 0.

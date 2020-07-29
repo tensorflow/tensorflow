@@ -280,12 +280,11 @@ PyObject* RegisterPyObject(PyObject* name, PyObject* value);
 // Variant of RegisterPyObject that requires the object's value to be a type.
 PyObject* RegisterType(PyObject* type_name, PyObject* type);
 
-}  // namespace swig
-
 // Returns a borrowed reference to an object that was registered with
-// RegisterPyObject.  (Do not call PY_DECREF on the result).
+// RegisterPyObject.  (Do not call Py_DECREF on the result).
 PyObject* GetRegisteredPyObject(const std::string& name);
 
+}  // namespace swig
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_UTIL_UTIL_H_

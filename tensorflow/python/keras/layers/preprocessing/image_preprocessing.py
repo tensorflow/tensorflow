@@ -29,7 +29,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine.base_preprocessing_layer import PreprocessingLayer
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -252,11 +252,11 @@ class RandomCrop(PreprocessingLayer):
       input_width_t = input_shape[W_AXIS]
       ratio_cond = (input_height_t / input_width_t > (self.height / self.width))
       # pylint: disable=g-long-lambda
-      resized_height = tf_utils.smart_cond(
+      resized_height = control_flow_util.smart_cond(
           ratio_cond,
           lambda: math_ops.cast(self.width * input_height_t / input_width_t,
                                 input_height_t.dtype), lambda: self.height)
-      resized_width = tf_utils.smart_cond(
+      resized_width = control_flow_util.smart_cond(
           ratio_cond, lambda: self.width,
           lambda: math_ops.cast(self.height * input_width_t / input_height_t,
                                 input_width_t.dtype))
@@ -273,8 +273,8 @@ class RandomCrop(PreprocessingLayer):
       outputs = array_ops.slice(resized_inputs, bbox_begin, bbox_size)
       return outputs
 
-    output = tf_utils.smart_cond(training, random_cropped_inputs,
-                                 resize_and_center_cropped_inputs)
+    output = control_flow_util.smart_cond(training, random_cropped_inputs,
+                                          resize_and_center_cropped_inputs)
     original_shape = inputs.shape.as_list()
     batch_size, num_channels = original_shape[0], original_shape[3]
     output_shape = [batch_size] + [self.height, self.width] + [num_channels]
@@ -414,8 +414,8 @@ class RandomFlip(PreprocessingLayer):
             flipped_outputs, self.seed)
       return flipped_outputs
 
-    output = tf_utils.smart_cond(training, random_flipped_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_flipped_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -561,8 +561,8 @@ class RandomTranslation(PreprocessingLayer):
           interpolation=self.interpolation,
           fill_mode=self.fill_mode)
 
-    output = tf_utils.smart_cond(training, random_translated_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_translated_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -836,8 +836,8 @@ class RandomRotation(PreprocessingLayer):
           fill_mode=self.fill_mode,
           interpolation=self.interpolation)
 
-    output = tf_utils.smart_cond(training, random_rotated_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_rotated_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -987,8 +987,8 @@ class RandomZoom(PreprocessingLayer):
           fill_mode=self.fill_mode,
           interpolation=self.interpolation)
 
-    output = tf_utils.smart_cond(training, random_zoomed_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_zoomed_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -1103,8 +1103,8 @@ class RandomContrast(PreprocessingLayer):
       return image_ops.random_contrast(inputs, 1. - self.lower, 1. + self.upper,
                                        self.seed)
 
-    output = tf_utils.smart_cond(training, random_contrasted_inputs,
-                                 lambda: inputs)
+    output = control_flow_util.smart_cond(training, random_contrasted_inputs,
+                                          lambda: inputs)
     output.set_shape(inputs.shape)
     return output
 
@@ -1201,7 +1201,8 @@ class RandomHeight(PreprocessingLayer):
       output.set_shape(output_shape)
       return output
 
-    return tf_utils.smart_cond(training, random_height_inputs, lambda: inputs)
+    return control_flow_util.smart_cond(training, random_height_inputs,
+                                        lambda: inputs)
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -1300,7 +1301,8 @@ class RandomWidth(PreprocessingLayer):
       output.set_shape(output_shape)
       return output
 
-    return tf_utils.smart_cond(training, random_width_inputs, lambda: inputs)
+    return control_flow_util.smart_cond(training, random_width_inputs,
+                                        lambda: inputs)
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

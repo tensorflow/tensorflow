@@ -187,13 +187,19 @@ float QuantizedTypeMaxAsFloat(DataType data_type) {
 }  // namespace
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
-                                 DeviceBase* cpu_device)
-    : opt_level_(opt_level), cpu_device_(cpu_device) {
+                                 DeviceBase* cpu_device,
+                                 bool disable_compressed_tensor_optimization)
+    : opt_level_(opt_level),
+      cpu_device_(cpu_device),
+      disable_compressed_tensor_optimization_(
+          disable_compressed_tensor_optimization) {
   resource_mgr_.reset(new ResourceMgr());
 }
 
-ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
-    : ConstantFolding(RewriterConfig::ON, cpu_device) {}
+ConstantFolding::ConstantFolding(DeviceBase* cpu_device,
+                                 bool disable_compressed_tensor_optimization)
+    : ConstantFolding(RewriterConfig::ON, cpu_device,
+                      disable_compressed_tensor_optimization) {}
 
 // static
 string ConstantFolding::AddControlDependency(const string& input_name,
@@ -813,6 +819,9 @@ Status ConstantFolding::MaterializeReductionIndices(
 
 Status ConstantFolding::MaterializeConstantValuedNode(
     NodeDef* node, const GraphProperties& properties) {
+  if (disable_compressed_tensor_optimization_) {
+    return Status::OK();
+  }
   // Nodes that generate constant-valued outputs can be represented compactly in
   // compressed format, regardless of their shape.
   const std::vector<OpInfo::TensorProperties>& output_props =
@@ -974,6 +983,9 @@ bool ConstantFolding::IsFoldableUncached(
     }
   }
   if (is_merge && !merge_has_constant_input) return false;
+  if (disable_compressed_tensor_optimization_ &&
+      (IsFill(node) || IsZerosLike(node) || IsOnesLike(node)))
+    return false;
 
   // If we know the output shapes, make sure that the outputs are small enough
   // to materialize.

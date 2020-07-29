@@ -499,7 +499,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
         original_input_type.getShape();
     SmallVector<int64_t, 4> new_shape;
     int index = 0;
-    while (index < original_input_shape.size() || new_axis_mask) {
+    const int original_input_rank = original_input_shape.size();
+    while (index < original_input_rank || new_axis_mask) {
       if (new_axis_mask & 1) {
         new_shape.emplace_back(1);
       } else {

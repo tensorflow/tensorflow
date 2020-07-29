@@ -16,8 +16,6 @@ gentbl(
     tbl_outs = [
         ("-gen-op-decls", "tf_framework_ops.h.inc"),
         ("-gen-op-defs", "tf_framework_ops.cc.inc"),
-        ("-gen-struct-attr-decls", "tf_framework_structs.h.inc"),
-        ("-gen-struct-attr-defs", "tf_framework_structs.cc.inc"),
         ("-gen-dialect-decls", "tf_framework_dialect.h.inc"),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",

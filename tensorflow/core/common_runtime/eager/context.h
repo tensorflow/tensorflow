@@ -481,8 +481,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status FindCompositeDeviceFromName(StringPiece device_name,
                                      CompositeDevice** device) const;
 
-  Status FindCustomDeviceFromName(const string& device_name,
-                                  CustomDevice** dev) const;
+  bool FindCustomDeviceFromName(const string& device_name,
+                                CustomDevice** dev) const;
 
   Status RegisterCustomDevice(const string& name,
                               std::unique_ptr<CustomDevice> device);
