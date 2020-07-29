@@ -80,31 +80,35 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
 
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
-  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
-  if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
-    std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
-        uncompilable_node_info;
-    for (const auto& it : uncompilable_nodes_map) {
-      for (const auto& info : it.second.second) {
-        uncompilable_node_info.emplace_back(info);
+
+  // Only check for compilability if the MLIR bridge is not enabled.
+  if (!GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+    RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
+    if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
+      std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+          uncompilable_node_info;
+      for (const auto& it : uncompilable_nodes_map) {
+        for (const auto& info : it.second.second) {
+          uncompilable_node_info.emplace_back(info);
+        }
       }
-    }
-    string message = absl::StrCat(
-        "Function invoked by the following node is not compilable: ",
-        SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
-    absl::StrAppend(&message, "Uncompilable nodes:");
-    for (const auto& node_info : uncompilable_node_info) {
-      string node_message =
-          absl::StrCat("\n", node_info.name, ": ",
-                       node_info.uncompilable_reason, "\n", "\tStacktrace:\n");
-      for (const auto& stack_frame : node_info.stack_trace) {
-        absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
-                              stack_frame.name, stack_frame.function_name);
+      string message = absl::StrCat(
+          "Function invoked by the following node is not compilable: ",
+          SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
+      absl::StrAppend(&message, "Uncompilable nodes:");
+      for (const auto& node_info : uncompilable_node_info) {
+        string node_message = absl::StrCat("\n", node_info.name, ": ",
+                                           node_info.uncompilable_reason, "\n",
+                                           "\tStacktrace:\n");
+        for (const auto& stack_frame : node_info.stack_trace) {
+          absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
+                                stack_frame.name, stack_frame.function_name);
+        }
+        absl::StrAppend(&message, node_message);
       }
-      absl::StrAppend(&message, node_message);
+      VLOG(1) << message;
+      return errors::InvalidArgument(message);
     }
-    VLOG(1) << message;
-    return errors::InvalidArgument(message);
   }
 
   // Get function body, constant args, and resource args.
