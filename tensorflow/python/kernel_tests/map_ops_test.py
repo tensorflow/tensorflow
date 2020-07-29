@@ -127,8 +127,8 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                               lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
                               lambda: default_value)
     l2 = control_flow_ops.cond(map_ops.tensor_map_has_key(m, k2),
-                                lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
-                                lambda: default_value)
+                               lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
+                               lambda: default_value)
     self.assertAllClose(l, v)
     self.assertAllClose(l2, default_value)
 
