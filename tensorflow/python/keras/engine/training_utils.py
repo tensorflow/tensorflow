@@ -819,7 +819,7 @@ def collect_per_output_metric_info(metrics,
   """Maps metric names and functions to model outputs.
 
   Arguments:
-      metrics: a list or a list of lists or a dict of metric functions.
+      metrics: a Python list, list of lists, or a dict, of metric functions.
       output_names: a list of the names (strings) of model outputs.
       output_shapes: a list of the shapes (strings) of model outputs.
       loss_fns: a list of the loss functions corresponding to the model outputs.
@@ -1519,13 +1519,13 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
 
   Arguments:
       training_endpoints: List of model training endpoints.
-      loss_weights: Optional list or dictionary specifying scalar coefficients
-        (Python floats) to weight the loss contributions of different model
-        outputs. The loss value that will be minimized by the model will then be
-        the *weighted sum* of all individual losses, weighted by the
-          `loss_weights` coefficients. If a list, it is expected to have a 1:1
-            mapping to the model's outputs. If a dict, it is expected to map
-            output names (strings) to scalar coefficients.
+      loss_weights: Optional dictionary or Python list specifying scalar
+        coefficients (Python floats) to weight the loss contributions of
+        different model outputs. The loss value that will be minimized by the
+        model will then be the *weighted sum* of all individual losses, weighted
+        by the `loss_weights` coefficients. If a list, it is expected to have a
+        1:1 mapping to the model's outputs. If a dict, it is expected to map
+        output names (strings) to scalar coefficients.
 
   Raises:
       ValueError: If loss weight is a dict with key not in model output names,
@@ -1551,7 +1551,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
       e.loss_weight = w
   else:
     raise TypeError('Could not interpret loss_weights argument: ' +
-                    str(loss_weights) + ' - expected a list of dicts.')
+                    str(loss_weights) + ' - expected a dict or Python list.')
 
 
 # TODO(rohanj): This is a hack to get around not depending on feature_column and
