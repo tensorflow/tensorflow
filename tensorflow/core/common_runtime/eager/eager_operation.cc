@@ -392,7 +392,7 @@ Status EagerOperation::SetDeviceName(const char* c_name) {
     last_set_device_name_ = name;
     device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
     CustomDevice* custom_device;
-    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
+    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device)) {
       device_ = custom_device;
     } else {
       // Device placement for physical devices happens lazily in
