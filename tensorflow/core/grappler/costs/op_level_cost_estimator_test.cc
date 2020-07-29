@@ -1864,5 +1864,33 @@ TEST_F(OpLevelCostEstimatorTest, IdentityOpExecutionTime) {
   }
 }
 
+TEST_F(OpLevelCostEstimatorTest, PureMemoryOpExecutionTime) {
+  std::vector<std::string> reshape_ops = {
+      "ConcatV2",     "DataFormatVecPermute",
+      "DepthToSpace", "ExpandDims",
+      "Fill",         "Pack",
+      "SpaceToDepth", "Split",
+      "Squeeze",      "Transpose",
+      "Unpack"};
+
+  const int kTensorSize = 1000;
+  for (auto reshape_op : reshape_ops) {
+    OpContext op_context = DescribeUnaryOp(reshape_op, kTensorSize);
+
+    const int kExpectedMemoryTime = 800;
+    const int kExpectedComputeTime = 0;
+
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(kExpectedMemoryTime), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(kExpectedComputeTime), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(kExpectedComputeTime + kExpectedMemoryTime),
+              cost.execution_time);
+    EXPECT_EQ(cost.max_memory, kTensorSize * 4);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow
