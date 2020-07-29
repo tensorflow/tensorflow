@@ -3148,7 +3148,7 @@ class Function(object):
           save_context.get_save_options().experimental_variable_policy)
     else:
       variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
-    
+
     return CacheKey(
         hashable_input_signature, parent_graph,
         device_functions, colocation_stack, in_cross_replica_context,
