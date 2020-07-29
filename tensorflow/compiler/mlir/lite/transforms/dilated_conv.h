@@ -276,7 +276,7 @@ ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
   }
   // Check that the block_shape of `stb_op` and `bts_op` are equal.
   if (stb_bs_attr.getNumElements() != bts_bs_attr.getNumElements()) return {};
-  for (uint64_t i = 0; i < stb_bs_attr.getNumElements(); ++i) {
+  for (uint64_t i = 0, end = stb_bs_attr.getNumElements(); i < end; ++i) {
     if (stb_bs_attr.getValue({i}) != bts_bs_attr.getValue({i})) return {};
   }
 
