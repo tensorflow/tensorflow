@@ -1806,7 +1806,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
       continue;
     }
     
-    const int input_size_check = e->dst_input() < inputs.size(); 
+    const bool input_size_check = e->dst_input() < static_cast<int>(inputs.size()); 
     TF_RET_CHECK(e->dst_input() >= 0 && input_size_check);
     inputs[e->dst_input()] =
         NodeDefBuilder::NodeOut{e->src()->name(), e->src_output(),
