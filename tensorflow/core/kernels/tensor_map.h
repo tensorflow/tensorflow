@@ -151,14 +151,16 @@ class TensorMap {
     return tensors_->values_.size();
   }
 
-  std::vector<Tensor>& keys() {
-    std::vector<TensorKey> keys;
+  std::vector<Tensor> keys() {
+    std::vector<Tensor> keys;
     keys.reserve(tensors_->values_.size());
     absl::flat_hash_map<TensorKey,Tensor>::iterator it = tensors_->values_.begin();
     while(it != tensors_->values_.end()) {
       keys.push_back(it->first);
+      //keys.push_back(dummy);
       it++;
     }
+    return keys;
   }
 
   // Is this TensorMap the only one with a reference to the underlying

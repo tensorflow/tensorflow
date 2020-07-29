@@ -195,8 +195,13 @@ class TensorMapListKeys : public OpKernel {
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
     Tensor* result;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result));
-    TensorList* keys = m->keys();
-    result->scalar<Variant>()() = std::move(keys);
+    TensorList output_keys = TensorList();
+    std::vector<Tensor> key_vector = m->keys();
+    for (Tensor k : key_vector) {
+      output_keys.tensors().push_back(k);
+    }
+    //= m->keys();
+    result->scalar<Variant>()() = std::move(&output_keys);
     // c->set_output(0, std::move(keys));
   }
 };
