@@ -514,8 +514,8 @@ class Reader::NestedDataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      const int64 dataset_datasets_size = dataset()->datasets_.size();
-      *end_of_sequence = dataset_datasets_size == index_;
+      const int64 num_datasets = dataset()->datasets_.size();
+      *end_of_sequence = num_datasets == index_;
       if (!*end_of_sequence) {
         Tensor tensor(DT_VARIANT, TensorShape({}));
 
