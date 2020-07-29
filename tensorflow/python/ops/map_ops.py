@@ -23,6 +23,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops.gen_map_ops import *
 
@@ -58,12 +59,15 @@ def LookupGrad(op, dval):
 def InsertGrad(op, dmap):
   _, k, v = op.inputs
   key_grad = None
-  value_grad = control_flow_ops.cond(tensor_map_has_key(dmap, k),
+  '''value_grad = control_flow_ops.cond_v2(tensor_map_has_key(dmap, k),
                                      lambda: tensor_map_lookup(dmap, k, v.dtype),
                                      lambda: array_ops.zeros_like(v))
-  map_grad = control_flow_ops.cond(tensor_map_has_key(dmap, k),
+  map_grad = control_flow_ops.cond_v2(tensor_map_has_key(dmap, k),
                                    lambda: tensor_map_erase(dmap, k, v.dtype)[0],
-                                   lambda: dmap)
+                                   lambda: dmap)'''
+  (value_grad, map_grad) = control_flow_ops.cond(tensor_map_has_key(dmap, k),
+                                                 lambda: (tensor_map_lookup(dmap, k, v.dtype), tensor_map_erase(dmap, k, v.dtype)[0]),
+                                                 lambda: (array_ops.zeros_like(v), dmap))
   return map_grad, key_grad, value_grad
 
 @ops.RegisterGradient("TensorMapErase")
