@@ -289,6 +289,14 @@ TEST_F(S3FilesystemTest, GetChildren) {
   EXPECT_EQ(std::vector<string>({"SubDir", "TestFile.csv"}), childrens);
 }
 
+TEST_F(S3FilesystemTest, DeleteFile) {
+  const std::string path = GetURIForPath("DeleteFile");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  tf_s3_filesystem::DeleteFile(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+}
+
 }  // namespace
 }  // namespace tensorflow
 

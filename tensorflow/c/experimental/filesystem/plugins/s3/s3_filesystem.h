@@ -86,6 +86,8 @@ void CreateDir(const TF_Filesystem* filesystem, const char* path,
                TF_Status* status);
 int GetChildren(const TF_Filesystem* filesystem, const char* path,
                 char*** entries, TF_Status* status);
+void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status);
 }  // namespace tf_s3_filesystem
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_FILESYSTEM_H_
