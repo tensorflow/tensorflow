@@ -44,6 +44,38 @@ absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
 }
 }  // namespace
 
+GPUResources BufferDescriptor::GetGPUResources(AccessType access_type) const {
+  GPUResources resources;
+  GPUBufferDescriptor desc;
+  desc.data_type = element_type;
+  desc.access_type = access_type;
+  desc.element_size = element_size;
+  resources.buffers.push_back({"buffer", desc});
+  return resources;
+}
+
+absl::Status BufferDescriptor::PerformSelector(
+    const std::string& selector, const std::vector<std::string>& args,
+    const std::vector<std::string>& template_args, std::string* result) const {
+  if (selector == "Read") {
+    return PerformReadSelector(args, result);
+  } else {
+    return absl::NotFoundError(absl::StrCat(
+        "BufferDescriptor don't have selector with name - ", selector));
+  }
+}
+
+absl::Status BufferDescriptor::PerformReadSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  if (args.size() != 1) {
+    return absl::NotFoundError(
+        absl::StrCat("BufferDescriptor Read require one argument, but ",
+                     args.size(), " was passed"));
+  }
+  *result = absl::StrCat("buffer[", args[0], "]");
+  return absl::OkStatus();
+}
+
 Buffer::Buffer(cl_mem buffer, size_t size_in_bytes)
     : buffer_(buffer), size_(size_in_bytes) {}
 
@@ -69,6 +101,12 @@ void Buffer::Release() {
     buffer_ = nullptr;
     size_ = 0;
   }
+}
+
+GPUResourcesWithValue Buffer::GetGPUResources(AccessType access_type) const {
+  GPUResourcesWithValue resources;
+  resources.buffers.push_back({"buffer", buffer_});
+  return resources;
 }
 
 absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,

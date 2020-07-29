@@ -261,7 +261,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
       rewriter->setInsertionPointToStart(outer.getBody());
     }
     scf::ParallelOp inner = rewriter->create<scf::ParallelOp>(
-        loc, reduce_lower, reduce_upper, reduce_step, init_value);
+        loc, reduce_lower, reduce_upper, reduce_step, ValueRange(init_value));
     Value reduction_result = *inner.getResults().begin();
 
     SmallVector<Value, 1> out_indices;
@@ -406,7 +406,7 @@ class ReduceWindowOpConverter
           rewriter->create<ConstantIndexOp>(loc, window_dim.getSExtValue()));
     }
     auto window_loop = rewriter->create<scf::ParallelOp>(
-        loc, window_lower, window_upper, window_step, init_value);
+        loc, window_lower, window_upper, window_step, ValueRange(init_value));
 
     Value reduction_result = *window_loop.getResults().begin();
     auto output_ivs = output_loop.getInductionVars();
@@ -711,7 +711,7 @@ struct LhloLegalizeToParallelLoops
     target.addIllegalOp<xla_lhlo::ReduceOp, xla_lhlo::ReduceWindowOp,
                         xla_lhlo::SelectAndScatterOp>();
 
-    if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
+    if (failed(applyPartialConversion(func, target, patterns))) {
       signalPassFailure();
     }
   }

@@ -25,6 +25,7 @@ def tpu_py_test(
         disable_v2 = False,
         disable_v3 = False,
         disable_experimental = False,
+        disable_mlir_bridge = True,
         args = [],
         **kwargs):
     """Generates identical unit test variants for various Cloud TPU versions.
@@ -37,6 +38,7 @@ def tpu_py_test(
         disable_v2: If true, don't generate TPU v2 tests.
         disable_v3: If true, don't generate TPU v3 tests.
         disable_experimental: Unused.
+        disable_mlir_bridge: Unused.
         args: Arguments to apply to tests.
         **kwargs: Additional named arguments to apply to tests.
     """

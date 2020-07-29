@@ -825,10 +825,14 @@ class Lambda(Layer):
       returned as output mask regardless of what the input is.
     arguments: Optional dictionary of keyword arguments to be passed to the
       function.
-  Input shape: Arbitrary. Use the keyword argument input_shape (tuple of
+
+  Input shape:
+    Arbitrary. Use the keyword argument input_shape (tuple of
     integers, does not include the samples axis) when using this layer as the
     first layer in a model.
-  Output shape: Specified by `output_shape` argument
+
+  Output shape:
+    Specified by `output_shape` argument
   """
 
   @trackable.no_automatic_dependency_tracking

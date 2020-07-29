@@ -25,15 +25,13 @@ namespace {
 template <typename input_type = int32_t,
           TfLiteType tensor_input_type = kTfLiteInt32>
 inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
-                                 const char* name, bool is_variable = false) {
+                                 bool is_variable = false) {
   TfLiteTensor result;
   result.type = tensor_input_type;
   result.data.raw = reinterpret_cast<char*>(const_cast<input_type*>(data));
   result.dims = dims;
   result.allocation_type = kTfLiteMemNone;
   result.bytes = ElementCount(*dims) * sizeof(input_type);
-  result.allocation = nullptr;
-  result.name = name;
   result.is_variable = is_variable;
   return result;
 }
@@ -41,9 +39,9 @@ inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
 template <typename input_type = int32_t,
           TfLiteType tensor_input_type = kTfLiteInt32>
 inline TfLiteTensor CreateTensor(std::initializer_list<input_type> data,
-                                 TfLiteIntArray* dims, const char* name,
+                                 TfLiteIntArray* dims,
                                  bool is_variable = false) {
-  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims, name,
+  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims,
                                                      is_variable);
 }
 
@@ -73,15 +71,11 @@ void TestStrideSlide(std::initializer_list<int> input_shape,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateTensor<input_type, tensor_input_type>(input_data, input_dims,
-                                                  "input_tensor"),
-      CreateTensor<int32_t, kTfLiteInt32>(begin_data, begin_dims,
-                                          "begin_tensor"),
-      CreateTensor<int32_t, kTfLiteInt32>(end_data, end_dims, "end_tensor"),
-      CreateTensor<int32_t, kTfLiteInt32>(strides_data, strides_dims,
-                                          "stride_tensor"),
-      CreateTensor<input_type, tensor_input_type>(output_data, output_dims,
-                                                  "output_tensor"),
+      CreateTensor<input_type, tensor_input_type>(input_data, input_dims),
+      CreateTensor<int32_t, kTfLiteInt32>(begin_data, begin_dims),
+      CreateTensor<int32_t, kTfLiteInt32>(end_data, end_dims),
+      CreateTensor<int32_t, kTfLiteInt32>(strides_data, strides_dims),
+      CreateTensor<input_type, tensor_input_type>(output_data, output_dims),
   };
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);

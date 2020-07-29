@@ -23,8 +23,8 @@ cc_library(
     ],
     deps = [
         ":function_metadata",
-        "//tensorflow/c/eager:operation_interface",
-        "//tensorflow/c/eager:tensor_handle_interface",
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -57,6 +57,7 @@ cc_library(
         ":concrete_function",
         ":saved_model_api",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:context",
         "@com_google_absl//absl/types:optional",
     ],
 )

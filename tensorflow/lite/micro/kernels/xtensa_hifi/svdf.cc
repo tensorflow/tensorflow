@@ -432,7 +432,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // EvalIntegerSVDF().
 
     // Validate output tensor:
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
   } else {
     TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
 
@@ -457,7 +457,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // TODO(b/132070898): Use input tensor as variable until scratch tensor
     // allocation has been implemented.
     // TF_LITE_ENSURE_EQ(context, node->temporaries->size, 1);
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
   }
 
   return kTfLiteOk;

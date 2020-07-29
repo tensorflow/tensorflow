@@ -48,7 +48,7 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
   }
   // Record data types of output before processing, so we can see at the
   // end if we changed anything, and return the correct boolean value.
-  std::unordered_map<string, ArrayDataType> old_output_data_types;
+  std::unordered_map<std::string, ArrayDataType> old_output_data_types;
   for (const auto& output : op->outputs) {
     old_output_data_types[output] = model->GetArray(output).data_type;
   }
@@ -171,7 +171,7 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
         return ::tensorflow::Status::OK();
       }
       for (int i = 0; i < op->outputs.size(); ++i) {
-        const string& output = op->outputs[i];
+        const std::string& output = op->outputs[i];
         const ArrayDataType data_type = unsupported_op->output_data_types[i];
         model->GetArray(output).data_type = data_type;
       }

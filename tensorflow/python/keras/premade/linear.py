@@ -41,7 +41,7 @@ class LinearModel(training.Model):
   ```python
   model = LinearModel()
   model.compile(optimizer='sgd', loss='mse')
-  model.fit(x, y, epochs)
+  model.fit(x, y, epochs=epochs)
   ```
 
   This model accepts sparse float inputs as well:

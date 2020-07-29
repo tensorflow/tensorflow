@@ -53,7 +53,11 @@ _did_connect_to_cluster = False
 
 
 # pylint: disable=missing-docstring
-def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
+def _get_tpu_strategy_creator(steps_per_run,
+                              use_single_core=False,
+                              enable_packed_variable=False,
+                              **kwargs):
+
   def _create_tpu_strategy():
     global _did_connect_to_cluster
 
@@ -87,10 +91,13 @@ def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
 
     # Steps per run is only supported in TF 1.x
     if tf2.enabled():
-      return tpu_lib.TPUStrategy(resolver, device_assignment, **kwargs)
+      strategy = tpu_lib.TPUStrategy(resolver, device_assignment, **kwargs)
     else:
-      return tpu_lib.TPUStrategyV1(resolver, steps_per_run,
-                                   device_assignment, **kwargs)
+      strategy = tpu_lib.TPUStrategyV1(resolver, steps_per_run,
+                                       device_assignment, **kwargs)
+    strategy._enable_packed_variable_in_eager_mode = enable_packed_variable  # pylint: disable=protected-access
+    return strategy
+
   return _create_tpu_strategy
 
 
@@ -117,6 +124,10 @@ one_device_strategy_gpu_on_worker_1 = combinations.NamedDistribution(
     required_gpus=1)
 tpu_strategy = combinations.NamedDistribution(
     "TPU", _get_tpu_strategy_creator(steps_per_run=2), required_tpu=True)
+tpu_strategy_packed_var = combinations.NamedDistribution(
+    "TPUPackedVar",
+    _get_tpu_strategy_creator(steps_per_run=2, enable_packed_variable=True),
+    required_tpu=True)
 tpu_strategy_one_step = combinations.NamedDistribution(
     "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1), required_tpu=True)
 tpu_strategy_one_core = combinations.NamedDistribution(
@@ -286,6 +297,7 @@ strategies_minus_default_and_tpu = [
 tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
     tpu_strategy_one_step,
+    tpu_strategy_packed_var,
     cloud_tpu_strategy,
 ]
 

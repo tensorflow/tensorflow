@@ -1,10 +1,13 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cc_test_mkl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cc_test_mkl", "tf_copts", "tf_cuda_cc_test", "tf_kernel_library")
 
 # Platform specific build config
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "mkl_deps",
 )
 
 package(
@@ -610,6 +613,7 @@ cc_library(
         "auto_mixed_precision.h",
         "auto_mixed_precision_lists.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":custom_graph_optimizer_registry",
@@ -627,7 +631,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:virtual_placer",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
+    ] + mkl_deps(),
 )
 
 tf_cuda_cc_test(

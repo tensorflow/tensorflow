@@ -225,6 +225,18 @@ const NnApi LoadNnApi() {
                          ANeuralNetworksExecution_setTimeout);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_setLoopTimeout);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_create);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_free);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_addInputRole);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_addOutputRole);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemoryDesc_setDimensions);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemoryDesc_finish);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemory_createFromDesc);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemory_copy);
 
   return nnapi;
 }

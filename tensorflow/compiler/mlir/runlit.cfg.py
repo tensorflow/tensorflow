@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import platform
+import sys
 import lit.formats
 from lit.llvm import llvm_config
 from lit.llvm.subst import ToolSubst

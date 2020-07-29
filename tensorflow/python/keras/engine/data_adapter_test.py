@@ -278,7 +278,7 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
       def _get_epoch(ds_iter):
         ds_data = []
         for _ in range(int(math.ceil(num_samples / batch_size))):
-          ds_data.append(next(ds_iter)[0].numpy())
+          ds_data.append(next(ds_iter).numpy())
         return np.concatenate(ds_data)
 
       ds_iter = iter(adapter.get_dataset())
@@ -507,7 +507,7 @@ class GenericArrayLikeDataAdapterTest(DataAdapterTestBase):
       def _get_epoch(ds_iter):
         ds_data = []
         for _ in range(int(math.ceil(num_samples / batch_size))):
-          ds_data.append(next(ds_iter)[0].numpy())
+          ds_data.append(next(ds_iter).numpy())
         return np.concatenate(ds_data)
 
       ds_iter = iter(adapter.get_dataset())
@@ -980,6 +980,22 @@ class DataHandlerTest(keras_parameterized.TestCase):
               1: 1.,
               2: 1.5
           })
+
+  @parameterized.named_parameters(('numpy', True), ('dataset', False))
+  def test_single_x_input_no_tuple_wrapping(self, use_numpy):
+    x = np.ones((10, 1))
+
+    if use_numpy:
+      batch_size = 2
+    else:
+      x = dataset_ops.Dataset.from_tensor_slices(x).batch(2)
+      batch_size = None
+
+    data_handler = data_adapter.DataHandler(x, batch_size=batch_size)
+    for _, iterator in data_handler.enumerate_epochs():
+      for _ in data_handler.steps():
+        # Check that single x input is not wrapped in a tuple.
+        self.assertIsInstance(next(iterator), ops.Tensor)
 
 
 class TestValidationSplit(keras_parameterized.TestCase):

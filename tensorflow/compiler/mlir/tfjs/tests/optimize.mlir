@@ -1,5 +1,5 @@
 // Run optimize pass only and check the results.
-// RUN: tf-opt %s -tfjs-optimize | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -tfjs-optimize | FileCheck %s
 
 // CHECK-LABEL: prelu_fusion
 func @prelu_fusion(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {

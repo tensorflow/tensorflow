@@ -106,7 +106,7 @@ void CodeWriter::AppendInternal(const std::string& text, bool newline) {
   while (i < text.size()) {
     char cur = text[i];
     char cur_next = i == text.size() - 1 ? '\0' : text[i + 1];  // Set guardian
-    if (in_token == false) {
+    if (!in_token) {
       if (cur == '{' && cur_next == '{') {  // Enter token
         in_token = true;
         i += 2;

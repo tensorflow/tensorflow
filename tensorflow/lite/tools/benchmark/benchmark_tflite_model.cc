@@ -613,6 +613,7 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
     std::unique_ptr<tflite::CpuBackendContext> cpu_backend_context(
         new tflite::CpuBackendContext());
     cpu_backend_context->SetUseCaching(true);
+    cpu_backend_context->SetMaxNumThreads(num_threads);
     external_context_->set_internal_backend_context(
         std::move(cpu_backend_context));
     interpreter_->SetExternalContext(kTfLiteCpuBackendContext,

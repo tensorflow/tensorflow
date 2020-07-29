@@ -183,16 +183,8 @@ def _override_helper(clazz_object, operator, func):
     func: the function that replaces the overridden operator.
 
   Raises:
-    ValueError: If operator has already been overwritten,
-      or if operator is not allowed to be overwritten.
+    ValueError: If operator is not allowed to be overwritten.
   """
-  existing = getattr(clazz_object, operator, None)
-  if existing is not None:
-    # Check to see if this is a default method-wrapper or slot wrapper which
-    # will be true for the comparison operators.
-    if not isinstance(existing, type(object.__lt__)):
-      raise ValueError("operator %s cannot be overwritten again on class %s." %
-                       (operator, clazz_object))
   if operator not in Tensor.OVERLOADABLE_OPERATORS:
     raise ValueError("Overriding %s is disallowed" % operator)
   setattr(clazz_object, operator, func)

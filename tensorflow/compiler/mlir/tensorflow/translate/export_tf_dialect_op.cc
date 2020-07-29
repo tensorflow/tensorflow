@@ -22,7 +22,6 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -149,14 +148,11 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::OperationState result(inst->getLoc(),
                                 inst->getName().getStringRef().drop_front());
     for (mlir::Value operand : inst->getOperands())
-      if (!operand.getType().isa<mlir::TFControlFlow::TFControlType>())
-        result.operands.push_back(operand);
+      result.operands.push_back(operand);
 
     // Add a result type for each non-control result we find
-    for (mlir::Type result_type : inst->getResultTypes()) {
-      if (result_type.isa<mlir::TFControlFlow::TFControlType>()) break;
+    for (mlir::Type result_type : inst->getResultTypes())
       result.types.push_back(result_type);
-    }
     cloned_inst.reset(mlir::Operation::create(result));
     cloned_inst->setAttrs(inst->getAttrs());
     inst = cloned_inst.get();

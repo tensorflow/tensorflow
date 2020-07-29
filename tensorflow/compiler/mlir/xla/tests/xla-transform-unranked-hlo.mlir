@@ -1,4 +1,4 @@
-// RUN: xla-opt -transform-unranked-hlo -split-input-file %s | FileCheck --dump-input=fail %s
+// RUN: xla-opt -transform-unranked-hlo -split-input-file %s | FileCheck %s
 
 // Check the validity of expected IR.
 // CHECK-LABEL: @sqr_transform_result
@@ -16,8 +16,7 @@ func @sqr_transform_result(%a: tensor<*xf32>) -> tensor<*xf32> {
   %flat_b = "xla_hlo.sqrt"(%flat_a) : (tensor<?xf32>) -> tensor<?xf32>
 
   // Restore original shape.
-  %shape_as_extent_tensor = "shape.to_extent_tensor"(%shape)
-      : (!shape.shape) -> tensor<?xindex>
+  %shape_as_extent_tensor = shape.to_extent_tensor %shape : tensor<?xindex>
   %b = "xla_hlo.dynamic_reshape"(%flat_b, %shape_as_extent_tensor)
       : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 
@@ -35,7 +34,7 @@ func @sqrt(%a: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-NEXT: %[[FLAT_SHAPE:.*]] = tensor_from_elements(%[[NUM_ELEMENTS_AS_INDEX]]) : tensor<1xindex>
   // CHECK-NEXT: %[[FLAT_A:.*]] = "xla_hlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK-NEXT: %[[FLAT_B:.*]] = "xla_hlo.sqrt"(%[[FLAT_A]]) : (tensor<?xf32>) -> tensor<?xf32>
-  // CHECK-NEXT: %[[SHAPE_AS_EXTENT_TENSOR:.*]] = "shape.to_extent_tensor"(%[[SHAPE]]) : (!shape.shape) -> tensor<?xindex>
+  // CHECK-NEXT: %[[SHAPE_AS_EXTENT_TENSOR:.*]] = shape.to_extent_tensor %[[SHAPE]] : tensor<?xindex>
   // CHECK-NEXT: %[[B:.*]] = "xla_hlo.dynamic_reshape"(%[[FLAT_B]], %[[SHAPE_AS_EXTENT_TENSOR]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
   // CHECK-NEXT: return %[[B]] : tensor<*xf32>
   %b = "xla_hlo.sqrt"(%a) : (tensor<*xf32>) -> tensor<*xf32>

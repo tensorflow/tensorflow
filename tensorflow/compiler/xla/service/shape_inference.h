@@ -303,10 +303,13 @@ class ShapeInference {
       const Shape& updates_shape, const ProgramShape& to_apply_shape,
       const ScatterDimensionNumbers& scatter_dim_numbers);
 
+  // Helper that validates the given input shape to GetDimensionSize.
   static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
                                                     int64 dimension);
 
-  static StatusOr<Shape> InferSetDimensionSizeShape(const Shape& shape,
+  // Helper that validates the given input shape to SetDimensionSize.
+  static StatusOr<Shape> InferSetDimensionSizeShape(const Shape& operand_shape,
+                                                    const Shape& val_shape,
                                                     int64 dimension);
 
   // Helper function for creating a Window proto from user-supplied data.

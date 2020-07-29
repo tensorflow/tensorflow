@@ -412,6 +412,29 @@ void ByteSwap16(void* value) {
   std::swap(p[0], p[1]);
 }
 
+int NPyBfloat16_Compare(const void* a, const void* b, void* arr) {
+  bfloat16 x;
+  memcpy(&x, a, sizeof(bfloat16));
+
+  bfloat16 y;
+  memcpy(&y, b, sizeof(bfloat16));
+
+  if (x < y) {
+    return -1;
+  }
+  if (y < x) {
+    return 1;
+  }
+  // NaNs sort to the end.
+  if (!std::isnan(x) && std::isnan(y)) {
+    return -1;
+  }
+  if (std::isnan(x) && !std::isnan(y)) {
+    return 1;
+  }
+  return 0;
+}
+
 void NPyBfloat16_CopySwapN(void* dstv, npy_intp dstride, void* srcv,
                            npy_intp sstride, npy_intp n, int swap, void* arr) {
   char* dst = reinterpret_cast<char*>(dstv);
@@ -561,6 +584,7 @@ bool Initialize() {
   PyArray_InitArrFuncs(&NPyBfloat16_ArrFuncs);
   NPyBfloat16_ArrFuncs.getitem = NPyBfloat16_GetItem;
   NPyBfloat16_ArrFuncs.setitem = NPyBfloat16_SetItem;
+  NPyBfloat16_ArrFuncs.compare = NPyBfloat16_Compare;
   NPyBfloat16_ArrFuncs.copyswapn = NPyBfloat16_CopySwapN;
   NPyBfloat16_ArrFuncs.copyswap = NPyBfloat16_CopySwap;
   NPyBfloat16_ArrFuncs.nonzero = NPyBfloat16_NonZero;

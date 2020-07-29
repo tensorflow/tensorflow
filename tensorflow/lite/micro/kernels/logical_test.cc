@@ -39,9 +39,9 @@ void TestLogicalOp(tflite::BuiltinOperator op,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateBoolTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateBoolTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateBoolTensor(output_data, output_dims, "output_tensor"),
+      CreateBoolTensor(input1_data, input1_dims),
+      CreateBoolTensor(input2_data, input2_dims),
+      CreateBoolTensor(output_data, output_dims),
   };
 
   TfLiteContext context;

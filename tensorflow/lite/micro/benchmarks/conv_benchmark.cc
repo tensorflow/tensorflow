@@ -160,8 +160,7 @@ int main() {
   // Create per-tensor quantized int8 input tensor.
   int8_t input_quantized[32];
   TfLiteTensor input_tensor = tflite::testing::CreateQuantizedTensor(
-      input_values, input_quantized, input_dims, input_scale, input_zero_point,
-      "input_tensor");
+      input_values, input_quantized, input_dims, input_scale, input_zero_point);
   // Set zero point and scale arrays with a single element for each.
   int input_zero_points[] = {1, input_zero_point};
   float input_scales[] = {1, input_scale};
@@ -174,7 +173,7 @@ int main() {
   int8_t filter_quantized[32 * 32];
   TfLiteTensor filter_tensor = tflite::testing::CreateQuantizedTensor(
       filter_values, filter_quantized, filter_dims, filter_scale,
-      filter_zero_point, "filter_tensor");
+      filter_zero_point);
   // Set zero point and scale arrays with a single element for each.
   int filter_zero_points[] = {1, filter_zero_point};
   float filter_scales[] = {1, filter_scale};
@@ -187,8 +186,8 @@ int main() {
   int32_t bias_quantized[32];
   tflite::SymmetricQuantize(bias_values, bias_quantized, 32,
                             input_scale * output_scale);
-  TfLiteTensor bias_tensor = tflite::testing::CreateInt32Tensor(
-      bias_quantized, bias_dims, "bias_tensor");
+  TfLiteTensor bias_tensor =
+      tflite::testing::CreateInt32Tensor(bias_quantized, bias_dims);
 
   // There is a single zero point of 0, and a single scale of
   // input_scale * filter_scale.
@@ -202,8 +201,7 @@ int main() {
   // Create per-tensor quantized int8 output tensor.
   int8_t output_quantized[32];
   TfLiteTensor output_tensor = tflite::testing::CreateQuantizedTensor(
-      output_quantized, output_dims, output_scale, output_zero_point,
-      "output_tensor");
+      output_quantized, output_dims, output_scale, output_zero_point);
   // Set zero point and scale arrays with a single element for each.
   int output_zero_points[] = {1, output_zero_point};
   float output_scales[] = {1, output_scale};

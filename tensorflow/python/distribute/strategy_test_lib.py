@@ -27,9 +27,9 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -348,7 +348,8 @@ class DistributionTestBase(test.TestCase):
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
-          [values.select_replica(r, next_element) for r in range(len(devices))])
+          [distribute_utils.select_replica(r, next_element) for r in
+           range(len(devices))])
       if ignore_order:
         self.assertCountEqual(expected_value, computed_value)
       else:
@@ -357,7 +358,8 @@ class DistributionTestBase(test.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
       evaluate(
-          [values.select_replica(r, next_element) for r in range(len(devices))])
+          [distribute_utils.select_replica(r, next_element) for r in
+           range(len(devices))])
 
     # After re-initializing the iterator, should be able to iterate again.
     if test_reinitialize:
@@ -366,7 +368,8 @@ class DistributionTestBase(test.TestCase):
       for expected_value in expected_values:
         next_element = iterator.get_next()
         computed_value = evaluate([
-            values.select_replica(r, next_element) for r in range(len(devices))
+            distribute_utils.select_replica(r, next_element) for r in
+            range(len(devices))
         ])
         if ignore_order:
           self.assertCountEqual(expected_value, computed_value)

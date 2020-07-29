@@ -1,5 +1,5 @@
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s --dump-input=fail
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo -emit-use-tuple-args %s | FileCheck %s --check-prefix=TUPLE --dump-input=fail
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo -emit-use-tuple-args %s | FileCheck %s --check-prefix=TUPLE
 
 // Test entry function with no dynamic parameter bindings.
 

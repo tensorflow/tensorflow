@@ -59,9 +59,13 @@ class InterleaveMany : public Node {
       (*input_times)[long_name()] = old_input_time;
       return;
     }
-    double new_input_time =
-        old_input_time +
-        SelfProcessingTimeLocked() * static_cast<double>(num_inputs() - 1);
+    // Here `old_input_time + SelfProcessingTimeLocked()` is the average input
+    // time for the interleave node to call one of the `(num_inputs() - 1)`
+    // input nodes(except the first one) to return an element. Regardless of the
+    // `block_length` parameter of interleave node, the average input time for
+    // any of the `(num_inputs() - 1)` input nodes to be called is computed as:
+    double new_input_time = (old_input_time + SelfProcessingTimeLocked()) *
+                            static_cast<double>(num_inputs() - 1);
     (*input_times)[long_name()] = new_input_time;
   }
 

@@ -108,8 +108,7 @@ class XlaExecutableClosure {
   explicit XlaExecutableClosure(
       xla::LocalClient* client, xla::LocalExecutable* executable,
       const XlaCompiler::CompilationResult* compilation_result,
-      std::map<int, OptionalTensor> resource_var_snapshots,
-      int num_constant_args)
+      ResourceVarsSnapshot resource_var_snapshots, int num_constant_args)
       : client_(client),
         executable_(executable),
         compilation_result_(compilation_result),
@@ -124,7 +123,7 @@ class XlaExecutableClosure {
   const XlaCompiler::CompilationResult* compilation_result() const {
     return compilation_result_;
   }
-  const std::map<int, OptionalTensor>& resource_var_snapshots() const {
+  const ResourceVarsSnapshot& resource_var_snapshots() const {
     return resource_var_snapshots_;
   }
   int num_constant_args() const { return num_constant_args_; }
@@ -133,7 +132,7 @@ class XlaExecutableClosure {
   xla::LocalClient* client_;
   xla::LocalExecutable* executable_;
   const XlaCompiler::CompilationResult* compilation_result_;
-  std::map<int, OptionalTensor> resource_var_snapshots_;
+  ResourceVarsSnapshot resource_var_snapshots_;
   int num_constant_args_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExecutableClosure);
@@ -276,10 +275,10 @@ static Status BuildCompilationCache(OpKernelContext* ctx,
 
 static Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
-    const XlaPlatformInfo& platform_info, absl::Span<const int> resources,
+    const XlaPlatformInfo& platform_info,
+    absl::Span<VariableInfo const> variable_infos,
     absl::Span<const int> constants, bool lazy, xla::LocalClient** client,
-    std::map<int, OptionalTensor>* variables,
-    const XlaCompiler::CompilationResult** kernel,
+    const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable) {
   // We store information about the JIT-compiled XLA computation
   // in the ResourceMgr.
@@ -299,7 +298,6 @@ static Status CompileToLocalExecutable(
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
-  TF_RETURN_IF_ERROR(SnapshotResourceVariables(ctx, resources, variables));
   *client = static_cast<xla::LocalClient*>(cache->client());
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
@@ -337,11 +335,11 @@ static Status CompileToLocalExecutable(
 
   std::vector<XlaCompiler::Argument> args;
   TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
-      constant_args, *variables, ctx, &args));
+      constant_args, variable_infos, ctx, &args));
   return cache->Compile(options, function, args, compile_options,
                         lazy ? XlaCompilationCache::CompileMode::kLazy
                              : XlaCompilationCache::CompileMode::kStrict,
-                        kernel, executable);
+                        compilation_result, executable);
 }
 
 void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
@@ -349,16 +347,22 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
           << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
 
   xla::LocalClient* client;
-  const XlaCompiler::CompilationResult* kernel;
+  const XlaCompiler::CompilationResult* compilation_result;
   xla::LocalExecutable* executable;
-  std::map<int, OptionalTensor> variables;
 
+  ResourceVarsSnapshot variables;
   {
+    std::vector<VariableInfo> variable_infos;
+    OP_REQUIRES_OK(
+        ctx, GetVariableInfosFromCtxInputs(ctx, resources_, &variable_infos));
+    OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
     Status s = CompileToLocalExecutable(
         ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_,
-        resources_, constants_, /*lazy=*/false, &client, &variables, &kernel,
-        &executable);
+        variable_infos, constants_, /*lazy=*/false, &client,
+        &compilation_result, &executable);
     OP_REQUIRES_OK(ctx, s);
+    OP_REQUIRES_OK(ctx, SnapshotResourceVariables(ctx, resources_,
+                                                  variable_infos, &variables));
   }
 
   se::Stream* stream =
@@ -373,7 +377,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
       client, allocator,
       /*allocate_xla_tensors=*/platform_info_.is_on_xla_device(),
       platform_info_.UseMultipleStreams());
-  launch_context.PopulateInputs(ctx, kernel, variables,
+  launch_context.PopulateInputs(ctx, compilation_result, variables,
                                 /*missing_ctx_input_prefix=*/0);
 
   // Execute the computation.
@@ -413,7 +417,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
       executable->executable()->module().input_output_alias_config();
   OP_REQUIRES_OK(
       ctx, launch_context.PopulateOutputs(
-               ctx, kernel, run_result.ConsumeValueOrDie(),
+               ctx, compilation_result, run_result.ConsumeValueOrDie(),
                /*missing_ctx_input_prefix=*/0, input_output_alias, variables));
   VLOG(1) << "Done";
 }
@@ -494,7 +498,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   xla::LocalClient* client;
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
-  std::map<int, OptionalTensor> variables;
+  ResourceVarsSnapshot variables;
 
   bool cannot_compile_cluster;
   {
@@ -506,9 +510,16 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
       cannot_compile_cluster) {
     executable = nullptr;
   } else {
+    std::vector<VariableInfo> variable_infos;
+    OP_REQUIRES_OK(
+        ctx, GetVariableInfosFromCtxInputs(ctx, resources_, &variable_infos));
+    OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
     Status status = CompileToLocalExecutable(
-        ctx, function_, has_ref_vars_, platform_info_, resources_, constants_,
-        /*lazy=*/!must_compile_, &client, &variables, &kernel, &executable);
+        ctx, function_, has_ref_vars_, platform_info_, variable_infos,
+        constants_,
+        /*lazy=*/!must_compile_, &client, &kernel, &executable);
+    OP_REQUIRES_OK(ctx, SnapshotResourceVariables(ctx, resources_,
+                                                  variable_infos, &variables));
     if (must_compile_ || status.code() != error::UNIMPLEMENTED) {
       OP_REQUIRES_OK(ctx, status);
     }

@@ -124,5 +124,5 @@ versions {
 # CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @foo110}
 # CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @foo111}
 
-# CHECK-LABEL:  func @foo110() {
-# CHECK-LABEL:  func @foo111() {
+# CHECK-LABEL:  func @foo110() attributes {sym_visibility = "private"}
+# CHECK-LABEL:  func @foo111() attributes {sym_visibility = "private"} 

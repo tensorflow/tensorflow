@@ -223,6 +223,10 @@ string HloModule::ToString(const HloPrintOptions& options) const {
     TF_CHECK_OK(schedule().Verify());
     s << ", is_scheduled=true";
   }
+  std::string serialized_aliasing = input_output_alias_config().ToShortString();
+  if (!serialized_aliasing.empty()) {
+    s << absl::StrFormat(", input_output_alias={ %s }", serialized_aliasing);
+  }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()

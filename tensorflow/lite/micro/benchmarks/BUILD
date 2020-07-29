@@ -1,7 +1,21 @@
-# Benchmarks for the ambient music detection model.
+licenses(["notice"])  # Apache 2.0
 
-package(
-    licenses = ["notice"],  # Apache 2.0
+package_group(
+    name = "micro_top_level",
+    packages = ["//tensorflow/lite/micro"],
+)
+
+cc_library(
+    name = "micro_benchmark",
+    hdrs = [
+        "micro_benchmark.h",
+    ],
+    deps = [
+        "//tensorflow/lite/micro:micro_error_reporter",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_time",
+        "//tensorflow/lite/micro:op_resolvers",
+    ],
 )
 
 cc_binary(
@@ -38,6 +52,9 @@ cc_library(
     hdrs = [
         "keyword_scrambled_model_data.h",
     ],
+    visibility = [
+        ":micro_top_level",
+    ],
 )
 
 cc_binary(
@@ -45,12 +62,12 @@ cc_binary(
     srcs = ["keyword_benchmark.cc"],
     deps = [
         ":keyword_scrambled_model_data",
+        ":micro_benchmark",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/kernels:micro_ops",
-        "//tensorflow/lite/micro/testing:micro_benchmark",
     ],
 )
 
@@ -58,6 +75,7 @@ cc_binary(
     name = "person_detection_benchmark",
     srcs = ["person_detection_benchmark.cc"],
     deps = [
+        ":micro_benchmark",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
@@ -68,7 +86,6 @@ cc_binary(
         "//tensorflow/lite/micro/examples/person_detection:person_detect_model_data",
         "//tensorflow/lite/micro/examples/person_detection:simple_images_test_data",
         "//tensorflow/lite/micro/kernels:micro_ops",
-        "//tensorflow/lite/micro/testing:micro_benchmark",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

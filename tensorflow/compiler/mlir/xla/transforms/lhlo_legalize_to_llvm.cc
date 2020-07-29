@@ -35,7 +35,7 @@ struct StaticMemRefCastOpConverter
     auto loc = op->getLoc();
     auto cast_op = cast<StaticMemRefCastOp>(op);
 
-    StaticMemRefCastOpOperandAdaptor operands_adaptor(operands);
+    StaticMemRefCastOp::Adaptor operands_adaptor(operands);
     MemRefDescriptor sourceMemRef(operands_adaptor.operand());
 
     MemRefType targetMemRefType =
@@ -86,7 +86,7 @@ struct DynamicMemRefCastOpConverter
     auto loc = op->getLoc();
     auto cast_op = cast<DynamicMemRefCastOp>(op);
 
-    DynamicMemRefCastOpOperandAdaptor operands_adaptor(operands);
+    DynamicMemRefCastOp::Adaptor operands_adaptor(operands);
     MemRefDescriptor sourceMemRef(operands_adaptor.operand());
 
     MemRefType targetMemRefType =

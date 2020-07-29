@@ -29,7 +29,7 @@ constexpr int kOutputTensor = 0;
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   reference_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
                        GetTensorShape(output), GetTensorData<float>(output));

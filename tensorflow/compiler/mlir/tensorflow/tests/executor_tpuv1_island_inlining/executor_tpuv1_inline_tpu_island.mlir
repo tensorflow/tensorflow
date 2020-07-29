@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-tpu-v1-island-inlining | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-tpu-v1-island-inlining | FileCheck %s
 
 // Check that the nested module is inlined and erased.
 

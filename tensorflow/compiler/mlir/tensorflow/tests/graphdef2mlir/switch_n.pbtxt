@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-splatted-mlir %s -o - -mlir-print-debuginfo | FileCheck %s --dump-input-on-failure
+# RUN: tf-mlir-translate -graphdef-to-splatted-mlir %s -o - -mlir-print-debuginfo | FileCheck %s
 
 # CHECK: tf_executor.SwitchN
 # CHECK-SAME: of 3 : tensor<*xi32>

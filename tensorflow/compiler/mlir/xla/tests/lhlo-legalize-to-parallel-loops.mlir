@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s
 
 func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,
@@ -103,9 +103,10 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 // CHECK-SAME: [[RESULT_BUF:%.*]]: memref<?x?xf32>) {
 // CHECK-DAG:  [[C0:%.*]] = constant 0 : index
 // CHECK-DAG:  [[C1:%.*]] = constant 1 : index
-// CHECK:  [[DIM0:%.*]] = dim [[ARG_BUF]], 0 : memref<?x?x?xf32>
-// CHECK:  [[DIM1:%.*]] = dim [[ARG_BUF]], 1 : memref<?x?x?xf32>
-// CHECK:  [[DIM2:%.*]] = dim [[ARG_BUF]], 2 : memref<?x?x?xf32>
+// CHECK-DAG:  [[C2:%.*]] = constant 2 : index
+// CHECK:  [[DIM0:%.*]] = dim [[ARG_BUF]], [[C0]] : memref<?x?x?xf32>
+// CHECK:  [[DIM1:%.*]] = dim [[ARG_BUF]], [[C1]] : memref<?x?x?xf32>
+// CHECK:  [[DIM2:%.*]] = dim [[ARG_BUF]], [[C2]] : memref<?x?x?xf32>
 // CHECK:  [[INIT:%.*]] = load [[INIT_BUF]]
 // CHECK:  scf.parallel ([[I:%.*]], [[K:%.*]]) = ([[C0]], [[C0]])
 // CHECK-SAME:                     to ([[DIM0]], [[DIM2]]) step ([[C1]], [[C1]]) {
@@ -150,7 +151,6 @@ func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK-SAME:      [[OPERAND_BUF:%.*]]: memref<112x112xf32>,
 // CHECK-SAME:      [[INIT_BUF:%.*]]: memref<f32>,
 // CHECK-SAME:      [[RESULT_BUF:%.*]]: memref<56x56xf32>) {
-// CHECK-DAG:  [[IN_BOUNDS:%.*]] = constant true
 // CHECK-DAG:  [[C0:%.*]] = constant 0 : index
 // CHECK-DAG:  [[C1:%.*]] = constant 1 : index
 // CHECK-DAG:  [[C2:%.*]] = constant 2 : index
@@ -166,16 +166,13 @@ func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK-SAME:       init ([[INIT]]) -> f32 {
 
 // CHECK:          [[START_I:%.*]] = muli [[I]], [[C2]] : index
-// CHECK:          [[OFFSET_I:%.*]] = subi [[IW]], [[C0]] : index
-// CHECK:          [[INDEX_I:%.*]] = addi [[START_I]], [[OFFSET_I]] : index
+// CHECK:          [[INDEX_I:%.*]] = addi [[START_I]], [[IW]] : index
 // CHECK:          [[INDEX_I_FITS:%.*]] = cmpi "ult", [[INDEX_I]], [[C112]]
-// CHECK:          [[IN_BOUNDS_0:%.*]] = and [[INDEX_I_FITS]], [[IN_BOUNDS]]
 
 // CHECK:          [[START_J:%.*]] = muli [[J]], [[C2]] : index
-// CHECK:          [[OFFSET_J:%.*]] = subi [[JW]], [[C0]] : index
-// CHECK:          [[INDEX_J:%.*]] = addi [[START_J]], [[OFFSET_J]] : index
+// CHECK:          [[INDEX_J:%.*]] = addi [[START_J]], [[JW]] : index
 // CHECK:          [[INDEX_J_FITS:%.*]] = cmpi "ult", [[INDEX_J]], [[C112]]
-// CHECK:          [[IN_BOUNDS_1:%.*]] = and [[IN_BOUNDS_0]], [[INDEX_J_FITS]]
+// CHECK:          [[IN_BOUNDS_1:%.*]] = and [[INDEX_I_FITS]], [[INDEX_J_FITS]]
 
 // CHECK:          [[ELEM_TO_REDUCE:%.*]] = scf.if [[IN_BOUNDS_1]] -> (f32) {
 // CHECK:            [[OPERAND_ELEM:%.*]] =

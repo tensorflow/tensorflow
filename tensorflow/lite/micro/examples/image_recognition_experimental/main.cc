@@ -58,14 +58,10 @@ int main(int argc, char** argv) {
 
   tflite::MicroMutableOpResolver<4> micro_op_resolver;
 
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_MAX_POOL_2D,
-                               tflite::ops::micro::Register_MAX_POOL_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddFullyConnected();
+  micro_op_resolver.AddMaxPool2D();
+  micro_op_resolver.AddSoftmax();
 
   constexpr int tensor_arena_size = 50 * 1024;
   uint8_t tensor_arena[tensor_arena_size];

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TFLITE_WITH_RUY_ONLY
+#ifndef TFLITE_WITH_RUY
 
 #include "tensorflow/lite/kernels/cpu_backend_gemm_eigen.h"
 
@@ -78,4 +78,4 @@ void GemmImplUsingEigen::Run(
 }  // namespace cpu_backend_gemm
 }  // namespace tflite
 
-#endif  // not TFLITE_WITH_RUY_ONLY
+#endif  // not TFLITE_WITH_RUY

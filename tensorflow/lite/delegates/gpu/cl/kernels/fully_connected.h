@@ -61,8 +61,6 @@ class FullyConnected : public GPUOperation {
   void RearrangeWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                         absl::Span<S> dst);
 
-  Buffer weights_;
-  LinearStorage biases_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(0, 0, 0);
 };
@@ -78,17 +76,30 @@ absl::Status FullyConnected::UploadWeights(
 
   const int float4_size = f32_weights ? 16 : 8;
 
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  BufferDescriptor desc;
+  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.element_size = 16;
+
+  Buffer weights_buffer;
+  if (f32_weights) {
     std::vector<float4> gpu_data(dst_depth * src_depth * 4);
     RearrangeWeights(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
-                                context, &weights_);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
+                                         gpu_data.data(), context,
+                                         &weights_buffer));
   } else {
     std::vector<half4> gpu_data(dst_depth * src_depth * 4);
     RearrangeWeights(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
-                                context, &weights_);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
+                                         gpu_data.data(), context,
+                                         &weights_buffer));
   }
+
+  args_.AddObject("weights", AccessType::READ,
+                  absl::make_unique<Buffer>(std::move(weights_buffer)),
+                  absl::make_unique<BufferDescriptor>(desc));
+
+  return absl::OkStatus();
 }
 
 template <DataType T, typename S>

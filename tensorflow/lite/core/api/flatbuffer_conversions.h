@@ -75,6 +75,15 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
 // removed once we are no longer using ParseOpData for the OpResolver
 // implementation in micro.
 
+TfLiteStatus ParseConv2D(const Operator* op, BuiltinOperator op_type,
+                         ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseDepthwiseConv2D(const Operator* op, BuiltinOperator op_type,
+                                  ErrorReporter* error_reporter,
+                                  BuiltinDataAllocator* allocator,
+                                  void** builtin_data);
+
 TfLiteStatus ParseDequantize(const Operator* op, BuiltinOperator op_type,
                              ErrorReporter* error_reporter,
                              BuiltinDataAllocator* allocator,
@@ -89,6 +98,10 @@ TfLiteStatus ParseQuantize(const Operator* op, BuiltinOperator op_type,
                            ErrorReporter* error_reporter,
                            BuiltinDataAllocator* allocator,
                            void** builtin_data);
+
+TfLiteStatus ParseReshape(const Operator* op, BuiltinOperator op_type,
+                          ErrorReporter* error_reporter,
+                          BuiltinDataAllocator* allocator, void** builtin_data);
 
 TfLiteStatus ParseSoftmax(const Operator* op, BuiltinOperator op_type,
                           ErrorReporter* error_reporter,

@@ -49,10 +49,10 @@ cc_library(
         "//conditions:default": [],
     }) + select({
         "//tensorflow:android_arm": [
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//tensorflow:android_arm64": [
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
     }) + select({

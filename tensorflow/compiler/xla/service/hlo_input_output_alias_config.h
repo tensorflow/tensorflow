@@ -36,10 +36,18 @@ class HloInputOutputAliasConfig {
   // compilation time by the user, and has to be respected. A kSystemAlias one
   // might be setup by the compiler, if it decides it is convenient to do so.
   enum AliasKind {
-    kNoAlias,
     kUserAlias,
     kSystemAlias,
   };
+
+  static std::string AliasKindToString(AliasKind kind) {
+    switch (kind) {
+      case kUserAlias:
+        return "USER";
+      case kSystemAlias:
+        return "SYSTEM";
+    }
+  }
 
   // Defines the alias information for a given output buffer. A given output
   // buffer shape index can refer only to one parameter+index.
@@ -52,6 +60,16 @@ class HloInputOutputAliasConfig {
     AliasKind kind;
     int64 parameter_number;
     ShapeIndex parameter_index;
+
+    std::string ToString() {
+      if (kind == kUserAlias) {
+        return absl::StrFormat("(%lld, %s)", parameter_number,
+                               parameter_index.ToString());
+      }
+      return absl::StrFormat("(%lld, %s, %s)", parameter_number,
+                             parameter_index.ToString(),
+                             AliasKindToString(kind));
+    }
   };
 
   HloInputOutputAliasConfig() = default;
@@ -68,15 +86,15 @@ class HloInputOutputAliasConfig {
                     AliasKind kind = AliasKind::kUserAlias);
 
   // Returns the kind of alias for the given parameter number and parameter
-  // index. If no alias exists, AliasKind::kNoAlias is returned.
-  AliasKind ParameterAliasKind(int64 param_number,
-                               const ShapeIndex& param_index) const;
+  // index.
+  absl::optional<AliasKind> ParameterAliasKind(
+      int64 param_number, const ShapeIndex& param_index) const;
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
   bool ParameterHasAlias(int64 param_number,
                          const ShapeIndex& param_index) const {
-    return ParameterAliasKind(param_number, param_index) != AliasKind::kNoAlias;
+    return ParameterAliasKind(param_number, param_index).has_value();
   }
 
   // Checks whether the provided output index has already been aliased.
@@ -122,6 +140,8 @@ class HloInputOutputAliasConfig {
   const Shape& shape() const;
 
   string ToString() const;
+
+  string ToShortString() const;
 
  private:
   // A ShapeTree which indicates the list of buffers that's expected to be

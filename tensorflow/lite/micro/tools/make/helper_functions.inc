@@ -419,6 +419,9 @@ endef
 # 3 - C/C++ header files needed for the test.
 # Calling eval on the output will create the targets that you need.
 define microlite_test
+ifeq (,$(findstring _test, $(1)))
+	$(eval $(call generate_project_third_party_parsing))
+endif
 $(1)_LOCAL_SRCS := $(2)
 $(1)_LOCAL_SRCS := $$(call specialize,$$($(1)_LOCAL_SRCS))
 ALL_SRCS += $$($(1)_LOCAL_SRCS)
@@ -472,3 +475,39 @@ endef
 # 1 - Starting path
 # 2 - File pattern, e.g: *.h
 recursive_find = $(wildcard $(1)$(2)) $(foreach dir,$(wildcard $(1)*),$(call recursive_find,$(dir)/,$(2)))
+
+
+# Modifies the Makefile to include all third party Srcs so that generate
+# projects will create a Makefile that can be immediatley compiled without
+# modification
+define generate_project_third_party_parsing
+
+ifeq ($$(PARSE_THIRD_PARTY), true)
+# Get generated src includes with update path to third party
+THIRD_PARTY_CC_SRCS += $$(filter $$(MAKEFILE_DIR)/downloads/%, $$(MICROLITE_CC_SRCS))
+MICROLITE_CC_SRCS := $$(filter-out $$(THIRD_PARTY_CC_SRCS), $$(MICROLITE_CC_SRCS))
+THIRD_PARTY_CC_SRCS :=  $$(sort $$(patsubst  $$(MAKEFILE_DIR)/downloads/%, third_party/%,  $$(THIRD_PARTY_CC_SRCS)))
+
+# Get generated project includes from the includes with update path to third_party
+GENERATED_PROJECT_INCLUDES += $$(filter -I$$(MAKEFILE_DIR)/downloads/%, $$(INCLUDES))
+GENERATED_PROJECT_INCLUDES := $$(patsubst  -I$$(MAKEFILE_DIR)/downloads/%, -Ithird_party/%,  $$(GENERATED_PROJECT_INCLUDES))
+GENERATED_PROJECT_INCLUDES += $$(filter -isystem$$(MAKEFILE_DIR)/downloads/%, $$(INCLUDES))
+GENERATED_PROJECT_INCLUDES := $$(sort $$(patsubst  -isystem$$(MAKEFILE_DIR)/downloads/%, -isystemthird_party/%,  $$(GENERATED_PROJECT_INCLUDES)))
+
+# We dont copy the libraries, we just want to make sure we link to them correctly.
+MICROLITE_LIBS :=  $$(sort $$(patsubst  $$(MAKEFILE_DIR)/downloads/%, $$(TENSORFLOW_ROOT)$$(MAKEFILE_DIR)/downloads/%, $$(MICROLITE_LIBS)))
+LDFLAGS :=   $$(sort $$(patsubst  $$(MAKEFILE_DIR)/downloads/%, $$(TENSORFLOW_ROOT)$$(MAKEFILE_DIR)/downloads/%, $$(LDFLAGS)))
+
+# Copy all third party headers that are mentioned in includes
+THIRD_PARTY_CC_HDRS += $$(filter $$(MAKEFILE_DIR)/downloads/%, $$(MICROLITE_CC_HDRS))
+MICROLITE_CC_HDRS:= $$(sort $$(filter-out $$(THIRD_PARTY_CC_HDRS), $$(MICROLITE_CC_HDRS)))
+THIRD_PARTY_CC_HDRS :=  $$(sort $$(patsubst  $$(MAKEFILE_DIR)/downloads/%, third_party/%,  $$(THIRD_PARTY_CC_HDRS)))
+
+# Copy all third party headers that are mentioned in includes
+INCLUDE_HDRS := $$(wildcard $$(addsuffix /*.h,$$(filter $$(MAKEFILE_DIR)/downloads/%, $$(patsubst -I%,%,$$(INCLUDES)))))
+INCLUDE_HDRS += $$(wildcard $$(addsuffix /*.h,$$(filter $$(MAKEFILE_DIR)/downloads/%,  $$(patsubst -isystem%,%,$$(INCLUDES)))))
+INCLUDE_HDRS :=  $$(sort $$(INCLUDE_HDRS))
+THIRD_PARTY_CC_HDRS += $ $$(sort $(patsubst  $$(MAKEFILE_DIR)/downloads/%, third_party/%,  $$(INCLUDE_HDRS)))
+endif
+
+endef

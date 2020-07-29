@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-prepare-composite-funcs-tf %s -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tfl-prepare-composite-funcs-tf %s -split-input-file | FileCheck %s
 
 module{
 func @embedding(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*xf32> attributes  {tf._implements = "embedding_matmul", tf._reference = "mlir"} {

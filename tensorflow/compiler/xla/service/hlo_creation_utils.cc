@@ -539,6 +539,15 @@ HloInstruction* BroadcastZeros(HloComputation* computation,
                           /*result_shape_bounds=*/broadcast_dimensions);
 }
 
+HloInstruction* BroadcastOnes(HloComputation* computation,
+                              PrimitiveType element_type,
+                              absl::Span<const int64> broadcast_dimensions) {
+  HloInstruction* one = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::One(element_type)));
+  return MakeBroadcastHlo(one, /*broadcast_dimensions=*/{},
+                          /*result_shape_bounds=*/broadcast_dimensions);
+}
+
 // Recursively creates a dummy op given a shape. Leaf nodes are broadcasted zero
 // while internal nodes are tuples.
 HloInstruction* CreateDummyOp(HloComputation::Builder* b, const Shape& shape) {

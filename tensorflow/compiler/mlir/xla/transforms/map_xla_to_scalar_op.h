@@ -288,6 +288,30 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::ConvertOp>(
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::DotOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  // Dot Op converter from lhlo to affine only accepts float and integer types.
+  const auto& lhs = args[0];
+  const auto& rhs = args[1];
+  const auto& result = args[2];
+  Type element_type = lhs.getType();
+  if (element_type.isa<FloatType>()) {
+    Value float_mul = MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::MulFOp>{}(
+        loc, result_types, {lhs, rhs}, b);
+    return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::AddFOp>{}(
+        loc, result_types, {float_mul, result}, b);
+  }
+  if (element_type.isa<IntegerType>()) {
+    Value int_mul = MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::MulIOp>{}(
+        loc, result_types, {lhs, rhs}, b);
+    return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::AddIOp>{}(
+        loc, result_types, {int_mul, result}, b);
+  }
+  return nullptr;
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<xla_lhlo::CosOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {

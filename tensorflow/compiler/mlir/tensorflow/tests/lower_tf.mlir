@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-tf-lower-tf | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -test-tf-lower-tf | FileCheck %s
 
 // CHECK-LABEL: invert_permutation
 func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {

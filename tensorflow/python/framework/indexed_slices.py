@@ -147,7 +147,7 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
     return "IndexedSlices(indices=%s, values=%s%s)" % (
         self._indices, self._values,
         (", dense_shape=%s" %
-         self._dense_shape) if self._dense_shape is not None else "")
+         (self._dense_shape,)) if self._dense_shape is not None else "")
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)

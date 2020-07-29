@@ -234,13 +234,10 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     x = keras.layers.Input(shape=(3, 2))
     layer = keras.layers.TimeDistributed(keras.layers.BatchNormalization())
     _ = layer(x)
-    self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.trainable_weights), 2)
     layer.trainable = False
-    assert not layer.updates
     assert not layer.trainable_weights
     layer.trainable = True
-    assert len(layer.updates) == 2
     assert len(layer.trainable_weights) == 2
 
   def test_TimeDistributed_with_masked_embedding_and_unspecified_shape(self):

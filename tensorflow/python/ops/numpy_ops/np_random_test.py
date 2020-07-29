@@ -13,22 +13,138 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf numpy random number methods."""
+# pylint: disable=g-direct-tensorflow-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+from absl.testing import parameterized
+import numpy as onp
 from six.moves import range
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import numpy_ops as np
 # Needed for ndarray.reshape.
 from tensorflow.python.ops.numpy_ops import np_array_ops  # pylint: disable=unused-import
+from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_random
 from tensorflow.python.platform import test
 
 
-class RandomTest(test.TestCase):
+class SeedTest(test.TestCase):
+
+  def test(self):
+    np.random.seed(1)
+    np.random.seed(np.int32(1))
+    with self.assertRaises(ValueError):
+      np.random.seed((1, 3))
+
+
+class RandomTestBase(test.TestCase, parameterized.TestCase):
+
+  def _test(self, *args, **kw_args):
+    onp_dtype = kw_args.pop('onp_dtype', None)
+    allow_float64 = kw_args.pop('allow_float64', True)
+    old_allow_float64 = np_dtypes.is_allow_float64()
+    np_dtypes.set_allow_float64(allow_float64)
+    old_func = getattr(self, 'onp_func', None)
+    # TODO(agarwal): Note that onp can return a scalar type while np returns
+    # ndarrays. Currently np does not support scalar types.
+    self.onp_func = lambda *args, **kwargs: onp.asarray(  # pylint: disable=g-long-lambda
+        old_func(*args, **kwargs))
+    np_out = self.np_func(*args, **kw_args)
+    onp_out = onp.asarray(self.onp_func(*args, **kw_args))
+    if onp_dtype is not None:
+      onp_out = onp_out.astype(onp_dtype)
+    self.assertEqual(np_out.shape, onp_out.shape)
+    self.assertEqual(np_out.dtype, onp_out.dtype)
+    np_dtypes.set_allow_float64(old_allow_float64)
+
+
+class RandNTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.randn
+    self.onp_func = onp.random.randn
+    super(RandNTest, self).setUp()
+
+  @parameterized.parameters((), (2), (2, 3))
+  def test_float64(self, *dims):
+    self._test(*dims)
+
+  @parameterized.parameters((), (2), ((2,)), (2, 3))
+  def test_float32(self, *dims):
+    self._test(*dims, allow_float64=False, onp_dtype=np.float32)
+
+
+class UniformTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.uniform
+    self.onp_func = onp.random.uniform
+    super(UniformTest, self).setUp()
+
+  @parameterized.parameters(
+      ((), (), None),
+      (1, (), None),
+      ((), 1, None),
+      (1, 1, None),
+      ((1, 2), (2, 1), None),
+      ((1, 2, 1), (2, 1, 1), (2, 2, 2)),
+      ((), (), (2, 2, 2)),
+  )
+  def test_broadcast(self, low_shape, high_shape, size):
+    low = np.zeros(low_shape).astype(np.float64)
+    high = np.ones(high_shape).astype(np.float64)
+    self._test(low=low, high=high, size=size)
+
+  def test_float32(self):
+    self._test(0, 1, (1, 2), allow_float64=False, onp_dtype=np.float32)
+
+  def test_dtype_cast(self):
+    self._test(np.int8(0), np.uint8(1), (1, 2))
+
+
+class RandomTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.random
+    self.onp_func = onp.random.random
+    super(RandomTest, self).setUp()
+
+  @parameterized.parameters((None,), ((),), ((1,),), ((1, 2),))
+  def test(self, size):
+    self._test(size)
+
+
+class RandTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.rand
+    self.onp_func = onp.random.rand
+    super(RandTest, self).setUp()
+
+  @parameterized.parameters((), (1,), (1, 2))
+  def test(self, *size):
+    self._test(*size)
+
+
+class RandIntTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.randint
+    self.onp_func = onp.random.randint
+    super(RandIntTest, self).setUp()
+
+  @parameterized.parameters((0, 1, None, 'l'), (0, 1, None, np.int64),
+                            (0, 1, 2, np.int32), (0, 1, (), np.int32),
+                            (0, 1, (2), np.int64), (0, 1, (2, 2), 'l'))
+  def test(self, low, high, size, dtype):
+    self._test(low, high, size=size, dtype=dtype)
+
+
+class RandNDistriutionTest(test.TestCase):
 
   def assertNotAllClose(self, a, b, **kwargs):
     try:
@@ -38,7 +154,7 @@ class RandomTest(test.TestCase):
     raise AssertionError('The two values are close at all %d elements' %
                          np.size(a))
 
-  def testRandN(self):
+  def testDistribution(self):
 
     def run_test(*args):
       num_samples = 1000
@@ -50,7 +166,9 @@ class RandomTest(test.TestCase):
       # Test output shape.
       for output in outputs:
         self.assertEqual(output.shape, tuple(args))
-        self.assertEqual(output.dtype.type, np_random.DEFAULT_RANDN_DTYPE)
+        default_dtype = (
+            np.float64 if np_dtypes.is_allow_float64() else np.float32)
+        self.assertEqual(output.dtype.type, default_dtype)
 
       if np.prod(args):  # Don't bother with empty arrays.
         outputs = [output.tolist() for output in outputs]

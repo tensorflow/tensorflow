@@ -40,9 +40,9 @@ void TestMaxMinFloat(tflite::BuiltinOperator op,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input1_data, input1_dims),
+      CreateFloatTensor(input2_data, input2_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
@@ -96,12 +96,9 @@ void TestMaxMinQuantized(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input1_data, input1_dims, "input1_tensor",
-                            input1_min, input1_max),
-      CreateQuantizedTensor(input2_data, input2_dims, "input2_tensor",
-                            input2_min, input2_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input1_data, input1_dims, input1_min, input1_max),
+      CreateQuantizedTensor(input2_data, input2_dims, input2_min, input2_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;
@@ -153,12 +150,9 @@ void TestMaxMinQuantizedInt32(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(input1_data, input1_dims, "input1_tensor",
-                              input1_scale),
-      CreateQuantized32Tensor(input2_data, input2_dims, "input2_tensor",
-                              input2_scale),
-      CreateQuantized32Tensor(output_data, output_dims, "output_tensor",
-                              output_scale),
+      CreateQuantized32Tensor(input1_data, input1_dims, input1_scale),
+      CreateQuantized32Tensor(input2_data, input2_dims, input2_scale),
+      CreateQuantized32Tensor(output_data, output_dims, output_scale),
   };
 
   TfLiteContext context;

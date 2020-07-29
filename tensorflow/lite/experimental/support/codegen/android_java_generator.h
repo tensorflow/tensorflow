@@ -57,6 +57,15 @@ struct ModelInfo {
   std::string model_versioned_name;
   std::vector<TensorInfo> inputs;
   std::vector<TensorInfo> outputs;
+  // Extra helper fields. For models with inputs "a", "b" and outputs "x", "y":
+  std::string input_type_param_list;
+  // e.g. "TensorImage a, TensorBuffer b"
+  std::string inputs_list;
+  // e.g. "a, b"
+  std::string postprocessor_type_param_list;
+  // e.g. "ImageProcessor xPostprocessor, TensorProcessor yPostprocessor"
+  std::string postprocessors_list;
+  // e.g. "xPostprocessor, yPostprocessor"
 };
 
 }  // namespace details_android_java

@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import copy
 import itertools
+import warnings
 
 from six.moves import zip  # pylint: disable=redefined-builtin
 
@@ -131,10 +132,10 @@ class Functional(training_lib.Model):
 
     # Models constructed with a single Tensor or list of Tensors can
     # be called with a dict, where the keys of the dict are the names
-    # of the `Input` objects. Extra keys are ignored.
+    # of the `Input` objects. Extra keys are ignored with warning.
     self._enable_dict_to_input_mapping = (
         not nest.is_sequence(self._nested_inputs) or
-        (isinstance(self._nested_inputs, (list, tuple)) and
+        (isinstance(self._nested_inputs, (list, tuple, dict)) and
          not any(nest.is_sequence(t) for t in self._nested_inputs)))
 
     if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
@@ -524,10 +525,27 @@ class Functional(training_lib.Model):
       ref_inputs = self._nested_inputs
       if not nest.is_sequence(ref_inputs):
         ref_inputs = [self._nested_inputs]
+      if isinstance(ref_inputs, dict):
+        # In the case that the graph is constructed with dict input tensors,
+        # We will use the original dict key to map with the keys in the input
+        # data. Note that the model.inputs is using nest.flatten to process the
+        # input tensors, which means the dict input tensors are ordered by their
+        # keys.
+        ref_input_names = sorted(ref_inputs.keys())
+      else:
+        ref_input_names = [inp._keras_history.layer.name for inp in ref_inputs]
+
+      # Raise an warning if there are more input data comparing to input tensor
+      if len(tensors) > len(ref_input_names):
+        warnings.warn(
+            'Input dict contained keys {} which did not match any model input. '
+            'They will be ignored by the model.'.format(
+                [n for n in tensors.keys() if n not in ref_input_names])
+            )
 
       try:
         # Flatten in the order `Input`s were passed during Model construction.
-        return [tensors[inp._keras_history.layer.name] for inp in ref_inputs]
+        return [tensors[n] for n in ref_input_names]
       except KeyError:
         # TODO(b/151582614)
         return nest.flatten(tensors)
@@ -544,6 +562,7 @@ class Functional(training_lib.Model):
       t_rank = t_shape.rank
       ref_shape = ref_input.shape
       ref_rank = ref_shape.rank
+      keras_history = getattr(tensor, '_keras_history', None)
       if t_rank is not None and ref_rank is not None:
         # Should squeeze last dimension.
         # True if tensor is (BATCH, ..., 1) and reference is (BATCH, ...).
@@ -553,6 +572,8 @@ class Functional(training_lib.Model):
         # True if tensor is (BATCH, ...) and reference is (BATCH, ..., 1).
         elif (t_rank == ref_rank - 1 and ref_shape[-1] == 1):
           tensor = array_ops.expand_dims_v2(tensor, axis=-1)
+      if keras_history is not None:  # Restore keras history.
+        tensor._keras_history = keras_history
 
       # Add shape hints to Tensors that may have None shape dims but have shapes
       # defined by the `keras.Input` (not applicable in eager mode).
@@ -1004,10 +1025,12 @@ def _map_subgraph_network(inputs, outputs):
 
 def _should_skip_first_node(layer):
   """Returns True if the first layer node should not be saved or loaded."""
-  # Networks start with a pre-existing node linking their input to output.
-  # For a sequential model, it is first created with _is_graph_network = False,
-  # we have to keep the _is_graph_network check here.
-  return isinstance(layer, Functional) and layer._is_graph_network
+  # Networks that are constructed with an Input layer/shape start with a
+  # pre-existing node linking their input to output. This node is excluded from
+  # the network config.
+  return (isinstance(layer, Functional) and
+          # Filter out Sequential models without an input shape.
+          isinstance(layer._layers[0], input_layer_module.InputLayer))
 
 
 def _deserialize_keras_tensors(kwargs, layer_map):

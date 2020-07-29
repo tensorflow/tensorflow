@@ -1193,7 +1193,7 @@ cc_library(
     deps = [
         ":compiler",
         "//tensorflow/core:lib_internal",
-        "@llvm-project//llvm:ir",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -1202,6 +1202,9 @@ cc_library(
     srcs = ["transfer_manager.cc"],
     hdrs = ["transfer_manager.h"],
     deps = [
+        ":compiler",
+        ":executable",
+        ":maybe_owning_device_memory",
         ":shaped_buffer",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -1210,8 +1213,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
@@ -1679,6 +1680,7 @@ cc_library(
     hdrs = ["multi_output_fusion.h"],
     deps = [
         ":hlo",
+        ":hlo_dce",
         ":hlo_pass",
         ":hlo_reachability",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -3010,6 +3012,7 @@ cc_library(
     hdrs = ["hlo_replication_analysis.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -3304,12 +3307,22 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "memory_space_assignment_utils",
+    srcs = ["memory_space_assignment_utils.cc"],
+    hdrs = ["memory_space_assignment_utils.h"],
+    deps = [
+        ":heap_simulator",
+    ],
+)
+
+cc_library(
     name = "memory_space_assignment",
     srcs = ["memory_space_assignment.cc"],
     hdrs = ["memory_space_assignment.h"],
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",
     ],
@@ -3906,8 +3919,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:ir",
-        "@llvm-project//llvm:transform_utils",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:TransformUtils",
     ],
 )
 

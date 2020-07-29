@@ -1123,7 +1123,8 @@ Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
 Status ShapeVerifier::HandleSetDimensionSize(HloInstruction* set_size) {
   return CheckShape(set_size,
                     ShapeInference::InferSetDimensionSizeShape(
-                        set_size->operand(0)->shape(), set_size->dimension()));
+                        set_size->operand(0)->shape(),
+                        set_size->operand(1)->shape(), set_size->dimension()));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,

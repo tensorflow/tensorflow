@@ -35,6 +35,7 @@ cc_library(
     ],
     deps = [
         "@com_google_protobuf//:protobuf_headers",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "//tensorflow/core:lib",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",

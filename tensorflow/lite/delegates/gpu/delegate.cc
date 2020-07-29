@@ -369,8 +369,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
             absl::make_unique<DelegateKernel>(gpu_delegate);
         const auto status = gpu_delegate_kernel->Prepare(context, params);
         if (!status.ok()) {
-          context->ReportError(context, "TfLiteGpuDelegate Init: %s",
-                               std::string(status.message()).c_str());
+          TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Init: %s",
+                             std::string(status.message()).c_str());
           return nullptr;
         }
         return gpu_delegate_kernel.release();
@@ -382,7 +382,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       // .prepare
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         if (!node->user_data) {
-          context->ReportError(
+          TF_LITE_KERNEL_LOG(
               context,
               "TfLiteGpuDelegate Prepare: delegate is not initialized");
           return kTfLiteError;
@@ -404,8 +404,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         const auto status = GetDelegateKernel(node)->Invoke(context);
         if (!status.ok()) {
-          context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
-                               std::string(status.message()).c_str());
+          TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Invoke: %s",
+                             std::string(status.message()).c_str());
           return kTfLiteError;
         }
         return kTfLiteOk;

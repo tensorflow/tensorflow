@@ -583,7 +583,11 @@ def _features(cpu, compiler, ctx):
                     ),
                 ],
             ),
-            feature(name = "opt"),
+            feature(name = "disable-assertions"),
+            feature(
+                name = "opt",
+                implies = ["disable-assertions"],
+            ),
             feature(name = "fastbuild"),
             feature(name = "dbg"),
             feature(name = "supports_dynamic_linker", enabled = True),

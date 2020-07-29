@@ -41,25 +41,16 @@ class TensorHandleDeleter {
 
 using TensorHandlePtr = std::unique_ptr<TFE_TensorHandle, TensorHandleDeleter>;
 
-class ExecutorDeleter {
- public:
-  void operator()(TFE_Executor* to_delete) const {
-    TFE_DeleteExecutor(to_delete);
-  }
-};
-
-using ExecutorPtr = std::unique_ptr<TFE_Executor, ExecutorDeleter>;
-
 class ParallelTensor;
-
-using MaybeParallelTensorUnowned =
-    absl::variant<ParallelTensor*, TFE_TensorHandle*>;
+class DeviceThread;
 
 // Forwards operations to `devices`, maintaining ParallelTensor with components
 // placed on each underlying device.
 class ParallelDevice {
  public:
   explicit ParallelDevice(const std::vector<std::string>& devices);
+
+  ~ParallelDevice();
 
   // Helper to copy a tensor handle from another device once for each component
   // of the ParallelDevice.
@@ -79,10 +70,9 @@ class ParallelDevice {
 
   // Takes a description of a single operation being executed on the
   // ParallelDevice, and in turn runs one operation per component device with
-  // its corresponding inputs from the input ParallelTensors (or
-  // implicitly-mirrored tensors on other devices). Wraps the resulting
-  // per-device and per-output TFE_TensorHandles into one ParallelTensor per
-  // output of the original operation.
+  // its corresponding inputs from the input ParallelTensors. Wraps the
+  // resulting per-device and per-output TFE_TensorHandles into one
+  // ParallelTensor per output of the original operation.
   //
   // Attributes are forwarded to executed operations unmodified.
   //
@@ -90,7 +80,7 @@ class ParallelDevice {
   // TF_OK. Bad statuses are forwarded from underlying `TFE_Execute` calls, or
   // if sanity checks on dtypes/metadata fail.
   absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> Execute(
-      TFE_Context* context, std::vector<MaybeParallelTensorUnowned> inputs,
+      TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
       const char* operation_name, const TFE_OpAttrs* attributes,
       int expected_max_outputs, TF_Status* status) const;
 
@@ -98,9 +88,19 @@ class ParallelDevice {
   // A sequence of device names, indicating which devices replicated operations
   // are forwarded to.
   const std::vector<std::string> underlying_devices_;
-  // A sequence of TFE_Executors, one per device, for executing operations in
+  // A sequence of thread wrappers, one per device, for executing operations in
   // parallel.
-  const std::vector<ExecutorPtr> executors_;
+  //
+  // Conceptually this is a thread pool with one thread per device. It requires
+  // less synchronization than a thread pool would for this task, since Execute
+  // acquires each thread in order (and so only one Execute will schedule
+  // blocking collective operations at a time), and avoids some dynamic
+  // allocation/scheduling.
+  //
+  // TODO(allenl): Keep a map from outer thread to list of inner threads rather
+  // than a single list of threads so aliased nested parallel devices don't
+  // re-use a thread.
+  std::vector<std::unique_ptr<DeviceThread>> device_threads_;
 };
 
 // Contains a tuple of tensors, one on each of the `underlying_devices_` of the

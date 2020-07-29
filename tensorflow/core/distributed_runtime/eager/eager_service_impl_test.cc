@@ -1071,6 +1071,8 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   const string device0 = "/job:localhost/replica:0/task:0/device:CPU:0";
   const string device1 = "/job:localhost/replica:0/task:1/device:CPU:0";
   const string device2 = "/job:localhost/replica:0/task:2/device:CPU:0";
+  const string composite_device =
+      "/job:localhost/replica:0/task:0/device:COMPOSITE:0";
 
   uint64 context_id = random::New64();
   CreateContextRequest request;
@@ -1125,6 +1127,8 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
 
   EXPECT_EQ(packed_handle->Type(), TensorHandle::PACKED);
   EXPECT_EQ(packed_handle->NumPackedHandles(), 3);
+  EXPECT_EQ(absl::get<Device*>(packed_handle->device())->name(),
+            composite_device);
 
   TensorHandle* handle0 = nullptr;
   TF_ASSERT_OK(packed_handle->ExtractPackedHandle(0, &handle0));

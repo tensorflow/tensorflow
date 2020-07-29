@@ -774,6 +774,7 @@ class TrackableWeightHandler(object):
     if not isinstance(trackable, tracking.Trackable):
       raise ValueError('%s is not a Trackable object.' % (trackable,))
     self._trackable = trackable
+    self._distribute_strategy = distribution_strategy_context.get_strategy()
 
     # TODO(b/141682913): Figure out why this is private and fix it.
     saveables = trackable._gather_saveables_for_checkpoint().values()  # pylint: disable=protected-access

@@ -44,8 +44,8 @@ TfLiteNode PrepareCircularBufferInt8(const int* input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, 1, 0, "input_tensor"),
-      CreateQuantizedTensor(output_data, output_dims, 1, 0, "output_tensor"),
+      CreateQuantizedTensor(input_data, input_dims, 1, 0),
+      CreateQuantizedTensor(output_data, output_dims, 1, 0),
   };
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
@@ -92,8 +92,8 @@ TfLiteStatus InvokeCircularBufferInt8(const int* input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, 1, 0, "input_tensor"),
-      CreateQuantizedTensor(output_data, output_dims, 1, 0, "output_tensor"),
+      CreateQuantizedTensor(input_data, input_dims, 1, 0),
+      CreateQuantizedTensor(output_data, output_dims, 1, 0),
   };
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);

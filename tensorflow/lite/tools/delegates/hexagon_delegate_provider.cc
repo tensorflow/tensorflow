@@ -23,7 +23,7 @@ limitations under the License.
 #endif
 
 #if defined(TFLITE_ENABLE_HEXAGON)
-#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+#include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #endif
 
 namespace tflite {

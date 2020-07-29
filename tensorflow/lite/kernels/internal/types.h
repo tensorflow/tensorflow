@@ -1035,6 +1035,8 @@ struct SoftmaxParams {
   float* table;
   int16_t* exp_lut;
   int16_t* one_over_one_plus_x_lut;
+  uint8_t* uint8_table1;
+  uint8_t* uint8_table2;
 };
 
 struct SpaceToBatchParams {

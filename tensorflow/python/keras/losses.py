@@ -1238,7 +1238,7 @@ def mean_absolute_error(y_true, y_pred):
 def mean_absolute_percentage_error(y_true, y_pred):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
-  `loss = 100 * mean(abs(y_true - y_pred) / y_true, axis=-1)`
+  `loss = 100 * mean(abs((y_true - y_pred) / y_true), axis=-1)`
 
   Standalone usage:
 

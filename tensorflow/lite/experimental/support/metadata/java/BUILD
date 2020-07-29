@@ -9,9 +9,13 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+METADATA_SRCS = glob(
+    ["src/java/org/tensorflow/lite/support/metadata/**/*.java"],
+)
+
 android_library(
     name = "tensorflow-lite-support-metadata",
-    srcs = glob(["src/java/org/tensorflow/lite/support/metadata/**/*.java"]),
+    srcs = METADATA_SRCS,
     manifest = "AndroidManifest.xml",
     deps = [
         "//tensorflow/lite/experimental/support/metadata:metadata_schema_fbs_android",
@@ -22,7 +26,7 @@ android_library(
 
 java_library(
     name = "tensorflow-lite-support-metadata-lib",
-    srcs = glob(["src/java/org/tensorflow/lite/support/metadata/**/*.java"]),
+    srcs = METADATA_SRCS,
     javacopts = JAVACOPTS,
     resource_jars = [
         "//tensorflow/lite/experimental/support/metadata:libmetadata_schema_java.jar",

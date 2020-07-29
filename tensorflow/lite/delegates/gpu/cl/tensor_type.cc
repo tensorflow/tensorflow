@@ -45,6 +45,15 @@ std::string GetWriteImageFromDataType(DataType data_type) {
 
 }  // namespace
 
+std::string TextureAddressModeToString(TextureAddressMode address_mode) {
+  switch (address_mode) {
+    case TextureAddressMode::DONT_CARE:
+      return "smp_none";
+    case TextureAddressMode::ZERO:
+      return "smp_zero";
+  }
+}
+
 std::string ToString(TensorStorageType type) {
   switch (type) {
     case TensorStorageType::UNKNOWN:
@@ -159,6 +168,8 @@ absl::Status TensorDescriptor::PerformSelector(
     return PerformReadSelector(args, template_args, result);
   } else if (selector == "Write") {
     return PerformWriteSelector(args, result);
+  } else if (selector == "WriteLinear") {
+    return PerformWriteLinearSelector(args, result);
   } else if (selector == "GetAddress") {
     return PerformGetAddressSelector(args, result);
   } else {
@@ -206,6 +217,29 @@ absl::Status TensorDescriptor::PerformReadSelector(
   return absl::OkStatus();
 }
 
+absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
+    const std::vector<std::string>& args, std::string* value_name,
+    std::string* x_coord, std::string* y_coord, std::string* s_coord) const {
+  std::string xc;
+  std::string yc;
+  std::string zc;
+  std::string sc;
+  std::string bc;
+  bool parsed = ParseCoordsFromArgs(args, 1, &xc, &yc, &zc, &sc, &bc);
+  if (args.size() < 2 || !parsed) {
+    return absl::NotFoundError("Unrecognized Write selector");
+  }
+  *value_name = args[0];
+  if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
+    *x_coord = absl::StrCat("((", xc, ") * batch + (", bc, "))");
+  } else {
+    *x_coord = absl::StrCat("(", xc, ")");
+  }
+  *y_coord = absl::StrCat("(", yc, ")");
+  *s_coord = absl::StrCat("(", sc, ")");
+  return absl::OkStatus();
+}
+
 absl::Status TensorDescriptor::PerformWriteSelector(
     const std::vector<std::string>& args, std::string* result) const {
   std::string xc;
@@ -218,6 +252,21 @@ absl::Status TensorDescriptor::PerformWriteSelector(
     return absl::NotFoundError("Unrecognized Write selector");
   }
   *result = Write(args[0], GetGlobalAddressNoDeclaration(xc, yc, zc, sc, bc));
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformWriteLinearSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  if (storage_type != TensorStorageType::BUFFER &&
+      storage_type != TensorStorageType::IMAGE_BUFFER) {
+    return absl::InvalidArgumentError(
+        "WriteLinear selector can be used only with linear "
+        "storages(BUFFER/IMAGE_BUFFER)");
+  }
+  if (args.size() != 2) {
+    return absl::NotFoundError("Unrecognized WriteLinear selector");
+  }
+  *result = Write(args[0], "(" + args[1] + ")");
   return absl::OkStatus();
 }
 
@@ -248,8 +297,10 @@ std::string TensorDescriptor::Read(DataType read_as_type,
     case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_ARRAY:
-      return absl::StrCat(read_as, "(", image_type, ", smp_none, ",
-                          global_address, ")");
+      return absl::StrCat(
+          read_as, "(", image_type,
+          ", " + TextureAddressModeToString(ModeFromState()) + ", ",
+          global_address, ")");
     case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(read_as, "(image_buffer, ", global_address, ")");
     case TensorStorageType::UNKNOWN:
@@ -477,6 +528,14 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
   return false;
 }
 
+void TensorDescriptor::SetTextureAddressMode(TextureAddressMode mode) {
+  if (mode == TextureAddressMode::ZERO) {
+    state_vars_["TextureMode"] = "ZERO";
+  } else {
+    state_vars_["TextureMode"] = "DONT_CARE";
+  }
+}
+
 bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
                                            int offset, std::string* xc,
                                            std::string* yc, std::string* zc,
@@ -524,6 +583,19 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
 bool TensorDescriptor::IsBatchedWidth() const {
   auto it = state_vars_.find("BatchedWidth");
   return it != state_vars_.end() && it->second == "true";
+}
+
+TextureAddressMode TensorDescriptor::ModeFromState() const {
+  auto it = state_vars_.find("TextureMode");
+  if (it != state_vars_.end()) {
+    if (it->second == "ZERO") {
+      return TextureAddressMode::ZERO;
+    } else {
+      return TextureAddressMode::DONT_CARE;
+    }
+  } else {
+    return TextureAddressMode::DONT_CARE;
+  }
 }
 
 }  // namespace cl

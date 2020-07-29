@@ -386,7 +386,6 @@ py_test(
     name = "ram_file_system_test",
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],  # TODO(b/156428279): reenable this test once the image is updated.
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -937,6 +936,13 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tf32_utils",
+    srcs = ["tf32_utils.cc"],
+    hdrs = ["tf32_utils.h"],
+    copts = tf_copts(),
 )
 
 tf_cc_tests(

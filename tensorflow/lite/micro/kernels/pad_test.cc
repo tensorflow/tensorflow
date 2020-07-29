@@ -121,9 +121,9 @@ void TestPadFloat(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateInt32Tensor(pad_data, pad_dims, "padding tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor")};
+      CreateFloatTensor(input_data, input_dims),
+      CreateInt32Tensor(pad_data, pad_dims),
+      CreateFloatTensor(output_data, output_dims)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
@@ -149,10 +149,10 @@ void TestPadV2Float(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateInt32Tensor(pad_data, pad_dims, "padding tensor"),
-      CreateFloatTensor(&pad_value, pad_value_dims, "pad value tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor")};
+      CreateFloatTensor(input_data, input_dims),
+      CreateInt32Tensor(pad_data, pad_dims),
+      CreateFloatTensor(&pad_value, pad_value_dims),
+      CreateFloatTensor(output_data, output_dims)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
@@ -179,10 +179,10 @@ void TestPadQuantized(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(pad_data, pad_dims, "padding tensor"),
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(pad_data, pad_dims),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor")};
+                            output_zero_point)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
@@ -218,13 +218,12 @@ void TestPadV2Quantized(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(pad_data, pad_dims, "padding tensor"),
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(pad_data, pad_dims),
       CreateQuantizedTensor(&pad_value, &pad_value_quantized, pad_value_dims,
-                            pad_value_scale, pad_value_zero_point,
-                            "pad value tensor"),
+                            pad_value_scale, pad_value_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            output_zero_point, "output_tensor")};
+                            output_zero_point)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;

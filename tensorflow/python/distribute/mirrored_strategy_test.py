@@ -22,7 +22,6 @@ import json
 import sys
 
 from absl.testing import parameterized
-import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
@@ -31,6 +30,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
@@ -49,16 +49,12 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras.engine import training as keras_training
-from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import server_lib
 
 
@@ -634,8 +630,6 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignMirroredVarReplicaContextWithoutAggregationType(self,
                                                                 distribution):
-    # Test that we always have an aggregation type set on the mirrored variable
-    # if we assign to it in replica mode.
     def var_fn():
       v = variable_scope.variable(1.0, name="foo")
       return v
@@ -648,11 +642,9 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      with self.assertRaisesRegexp(
-          ValueError, "You must specify an aggregation method to update a "
-                      "MirroredVariable in Replica Context. You can do so by"):
-        self.evaluate(distribution.experimental_local_results(
-            distribution.extended.call_for_each_replica(model_fn)))
+      self.evaluate(distribution.experimental_local_results(
+          distribution.extended.call_for_each_replica(model_fn)))
+      self.assertEqual(5.0, self.evaluate(mirrored_var))
 
   def testAssignMirroredVarReplicaContextWithSum(self, distribution):
     # Test that we don't reduce a non-per-replica value with the "sum"
@@ -991,22 +983,6 @@ class MockModel(object):
     return x
 
 
-class MiniModel(keras_training.Model):
-  """Minimal model for mnist.
-
-  Useful for testing and debugging on slow TPU simulators.
-  """
-
-  def __init__(self):
-    super(MiniModel, self).__init__(name="")
-    self.fc = keras_core.Dense(1, name="fc", kernel_initializer="ones",
-                               bias_initializer="ones")
-
-  def call(self, inputs, training=True):
-    inputs = array_ops.ones([1, 10])
-    return self.fc(inputs)
-
-
 @combinations.generate(
     combinations.combine(
         distribution=[
@@ -1028,8 +1004,9 @@ class MirroredStrategyDefunTest(test.TestCase):
       result = distribution.extended.call_for_each_replica(
           model_fn, args=[mock_model] + inputs)
       for r in range(len(devices)):
-        device_result = values.select_replica(r, result)
-        device_expected_result = values.select_replica(r, expected_result)
+        device_result = distribute_utils.select_replica(r, result)
+        device_expected_result = distribute_utils.select_replica(
+            r, expected_result)
         self.assertAllClose(device_expected_result,
                             self.evaluate(device_result))
 
@@ -1117,32 +1094,6 @@ class MirroredStrategyDefunTest(test.TestCase):
     factors = values.PerReplica((5.0, 3.0))
     expected_result = values.PerReplica((5.0 * 1.25, 3.0 * 1.25))
     self._call_and_check(distribution, fn1, [factors], expected_result, [fn1])
-
-  def testTrain(self, distribution):
-    with distribution.scope():
-      mock_model = MiniModel()
-      mock_model.call = function.defun(mock_model.call)
-
-      def loss_fn(ctx):
-        del ctx
-        return mock_model(array_ops.ones([1, 10]))
-
-      gradients_fn = backprop.implicit_grad(loss_fn)
-      gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
-      grads_and_vars = distribution.extended.call_for_each_replica(
-          gradients_fn, args=(None,))
-
-      optimizer = gradient_descent.GradientDescentOptimizer(0.25)
-      update_ops = optimizer._distributed_apply(distribution, grads_and_vars)  # pylint: disable=protected-access
-
-      if not context.executing_eagerly():
-        self.evaluate(variables.global_variables_initializer())
-        self.evaluate(update_ops)
-
-      updated_var_values = self.evaluate(mock_model.variables)
-      # All variables start at 1.0 and get two updates of 0.25.
-      self.assertAllEqual(0.5 * np.ones([10, 1]), updated_var_values[0])
-      self.assertAllEqual([0.5], updated_var_values[1])
 
 
 @combinations.generate(

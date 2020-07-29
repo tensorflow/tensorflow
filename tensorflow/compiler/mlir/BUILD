@@ -30,7 +30,7 @@ cc_library(
     hdrs = ["op_or_arg_name_mapper.h"],
     deps = [
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -42,7 +42,7 @@ cc_library(
         ":init_mlir",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
@@ -86,7 +86,7 @@ cc_library(
     hdrs = ["init_mlir.h"],
     deps = [
         "//tensorflow/core:lib",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -102,7 +102,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
@@ -155,7 +155,7 @@ tf_cc_binary(
         "//tensorflow/core:tensorflow",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

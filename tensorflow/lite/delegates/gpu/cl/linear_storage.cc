@@ -76,10 +76,7 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
 
 LinearStorage::LinearStorage(int depth, LinearStorageType storage_type,
                              DataType data_type)
-    : depth_(depth), storage_type_(storage_type), data_type_(data_type) {
-  desc_.storage_type = storage_type;
-  desc_.element_type = data_type;
-}
+    : depth_(depth), storage_type_(storage_type), data_type_(data_type) {}
 
 LinearStorage::LinearStorage(LinearStorage&& storage)
     : GPUObject(std::move(storage)),
@@ -89,8 +86,7 @@ LinearStorage::LinearStorage(LinearStorage&& storage)
       depth_(storage.depth_),
       name_(std::move(storage.name_)),
       storage_type_(storage.storage_type_),
-      data_type_(storage.data_type_),
-      desc_(storage.desc_) {
+      data_type_(storage.data_type_) {
   storage.memory_ = nullptr;
 }
 
@@ -103,7 +99,6 @@ LinearStorage& LinearStorage::operator=(LinearStorage&& storage) {
     name_ = std::move(storage.name_);
     std::swap(storage_type_, storage.storage_type_);
     std::swap(data_type_, storage.data_type_);
-    desc_ = storage.desc_;
     GPUObject::operator=(std::move(storage));
   }
   return *this;

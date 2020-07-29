@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/conversion_macros.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 
 // Internal structures used by the SavedModel C API. These are likely to
 // change and should not be depended on.
@@ -29,7 +29,7 @@ typedef struct TF_TensorHandleList TF_TensorHandleList;
 namespace tensorflow {
 
 DEFINE_CONVERSION_FUNCTIONS(
-    std::vector<tensorflow::AbstractTensorHandleInterface*>,
+    std::vector<tensorflow::ImmediateExecutionTensorHandle*>,
     TF_TensorHandleList)
 
 }  // namespace tensorflow

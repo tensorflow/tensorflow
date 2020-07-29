@@ -1,4 +1,4 @@
-// RUN: tf-opt %s | tf-opt | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s | tf-opt | FileCheck %s
 
 // CHECK-LABEL: func @control_type() -> !tf_executor.control
 func @control_type() -> !tf_executor.control
@@ -411,6 +411,17 @@ func @enter_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
     %1:3 = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
 // CHECK: tf_executor.Enter %{{.*}}, %{{.*}}, %{{.*}} frame "some/frame" : tensor<*xf32>
     %res:2 = tf_executor.Enter %arg0, %1#2, %1#2 frame "some/frame" : tensor<*xf32>
+    tf_executor.fetch %res#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @enter_control_longform(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
+func @enter_control_longform(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
+// CHECK: tf_executor.Enter %{{.*}}, %{{.*}}, %{{.*}} frame "some/frame" : tensor<*xf32>
+    %res:2 = tf_executor.Enter %arg0, %1#2, %1#2 frame "some/frame" : (tensor<*xf32>, !tf_executor.control, !tf_executor.control) -> (tensor<*xf32>, !tf_executor.control)
     tf_executor.fetch %res#0 : tensor<*xf32>
   }
   return %0 : tensor<*xf32>

@@ -198,6 +198,8 @@ upper_tabs:
       - title: "Overview"
         status: external
         path: /api_docs/python/tf/lite
+      - heading: "Android (Java)"
+      - include: /lite/api_docs/java/_toc.yaml
       - heading: "C++"
       - title: Overview
         path: /lite/api_docs/cc/

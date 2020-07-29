@@ -50,9 +50,8 @@ namespace TFL {
 // broadcastable shape within the given rank. If any given shapes are
 // non-static and maximum rank is within the given rank, this method returns
 // true.
-bool IsOperandsHaveSameShapesOrBroadcastableShape(Operation *op,
-                                                  ArrayRef<unsigned> indices,
-                                                  int max_bcast_rank) {
+bool VerifyOperandsHaveSameShapesOrBroadcastableShape(
+    Operation *op, ArrayRef<unsigned> indices, int max_bcast_rank) {
   if (indices.empty()) return true;
 
   // First, it checks there are any inputs that has unknown rank.
@@ -108,6 +107,122 @@ bool IsOperandsHaveSameShapesOrBroadcastableShape(Operation *op,
   // If all the shape is known and same, CPU kernels are able to handle inputs
   // regardless of dimension size.
   return has_same_shape || max_rank <= max_bcast_rank;
+}
+
+// Return true when the given element_type is QI8.
+bool IsQI8Type(Type element_type) {
+  auto quantized_type = element_type.dyn_cast<QuantizedType>();
+  return quantized_type != nullptr &&
+         quantized_type.getStorageTypeIntegralWidth() == 8 &&
+         quantized_type.isSigned();
+}
+
+// Return true when the given element_type is QUI8.
+bool IsQUI8Type(Type element_type) {
+  auto quantized_type = element_type.dyn_cast<QuantizedType>();
+  return quantized_type != nullptr &&
+         quantized_type.getStorageTypeIntegralWidth() == 8 &&
+         !quantized_type.isSigned();
+}
+
+// Return true when the given element_type is QI16.
+bool IsQI16Type(Type element_type) {
+  auto quantized_type = element_type.dyn_cast<QuantizedType>();
+  return quantized_type != nullptr &&
+         quantized_type.getStorageTypeIntegralWidth() == 16 &&
+         quantized_type.isSigned();
+}
+
+// Return true when the given element_type is I32.
+bool IsI32Type(Type element_type) {
+  return element_type.isInteger(32) && !element_type.isUnsignedInteger();
+}
+
+// Return true if the given Add operation has the CPU kernel supported shapes.
+bool VerifyAddOpShapeConstraints(AddOp op) {
+  auto element_type = getElementTypeOrSelf(op.output().getType());
+
+  // Allows F32, QI8, and QUI8 outputs when the operands have valid shapes,
+  // which are broadcastable shapes up to five dimension or have same shapes.
+  if (element_type.isF32() || IsQI8Type(element_type) ||
+      IsQUI8Type(element_type)) {
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/5);
+  }
+
+  // Allows I32 output when the operands have valid shapes, which are
+  // broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type)) {
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/4);
+  }
+
+  // Allows QI16 output when operands have the same shape.
+  if (IsQI16Type(element_type)) {
+    return succeeded(
+        mlir::verifyCompatibleShape(op.lhs().getType(), op.rhs().getType()));
+  }
+  return false;
+}
+
+// Return true if the given Sub operation has the CPU kernel supported shapes.
+bool VerifySubOpShapeConstraints(SubOp op) {
+  auto element_type = getElementTypeOrSelf(op.output().getType());
+
+  // Allows F32, QUI8, and QI16 outputs when the operands have valid shapes,
+  // which are broadcastable shapes up to five dimension or have same shapes.
+  if (element_type.isF32() || IsI32Type(element_type) ||
+      IsQUI8Type(element_type) || IsQI16Type(element_type)) {
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/5);
+  }
+
+  // Allows QI8 output when the operands have valid shapes, which are
+  // broadcastable shapes up to four dimension or have same shapes.
+  if (IsQI8Type(element_type)) {
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/4);
+  }
+  return false;
+}
+
+// Return true if the given Mul operation has the CPU kernel supported shapes.
+bool VerifyMulOpShapeConstraints(MulOp op) {
+  auto element_type = getElementTypeOrSelf(op.output().getType());
+
+  // Allows QI8 and QUI8 inputs up to five dimension broadcasting unless the
+  // output type is not QI16. If the output type is Q16, allows onlt the same
+  // shape operands.
+  if (IsQI8Type(element_type) || IsQUI8Type(element_type)) {
+    if (IsQI16Type(getElementTypeOrSelf(op.lhs().getType()))) {
+      return succeeded(
+          mlir::verifyCompatibleShape(op.lhs().getType(), op.rhs().getType()));
+    }
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/5);
+  }
+
+  // Allows F32 output when the operands have valid shapes, which are
+  // broadcastable shapes up to five dimension or have same shapes.
+  if (element_type.isF32()) {
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/5);
+  }
+
+  // Allows I32 and QI16 outputs when the operands have valid shapes, which are
+  // broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type) || IsQI16Type(element_type)) {
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/4);
+  }
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

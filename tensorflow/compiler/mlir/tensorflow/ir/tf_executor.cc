@@ -220,12 +220,12 @@ ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   Region &body = *result.addRegion();
   if (parser.parseRegion(body, llvm::None, llvm::None)) return failure();
 
-  if (body.getBlocks().size() > 1)
-    return parser.emitError(loc) << "expects a single block region";
-
   // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
   GraphOp::ensureTerminator(body, parser.getBuilder(), result.location);
+
+  if (!llvm::hasSingleElement(body))
+    return parser.emitError(loc) << "expects a single block region";
 
   // Get the results type from the terminator type inside the graph.
   Operation &fetch = body.back().back();
@@ -811,11 +811,13 @@ ParseResult ParseEnterOp(OpAsmParser &parser, OperationState &result) {
   // fully qualified) or a short form with a single type (in which case the data
   // input and the outputs are all using this type).
   if (FunctionType type = types.front().dyn_cast<FunctionType>()) {
-    if (type.getNumInputs() != 1)
-      return parser.emitError(parser.getNameLoc())
-             << " expects a single data type";
-    result.types.assign(type.getResults().begin(), type.getResults().end());
-    types.assign(type.getInputs().begin(), type.getInputs().end());
+    // One data input, and any number of control inputs.
+    if (type.getNumInputs() >= 1) {
+      result.types.assign(type.getResults().begin(), type.getResults().end());
+      types.assign(type.getInputs().begin(), type.getInputs().end());
+    } else {
+      return parser.emitError(parser.getNameLoc()) << " expects a data input";
+    }
   } else {
     Type control_type = ControlType::get(context);
     types.append(op_infos.size() - 1, control_type);

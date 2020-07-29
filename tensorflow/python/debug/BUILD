@@ -788,7 +788,6 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -1400,7 +1399,6 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

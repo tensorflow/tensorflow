@@ -54,7 +54,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import profiler_v2 as profiler
+from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.saving import checkpoint_options as checkpoint_options_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
@@ -418,8 +420,9 @@ class CallbackList(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.train_step`. Typically,
+          the values of the `Model`'s metrics are returned.  Example:
+          `{'loss': 0.2, 'accuracy': 0.7}`.
     """
     # TODO(b/150629188): Make ProgBarLogger callback not use batch hooks
     # when verbose != 1
@@ -441,8 +444,9 @@ class CallbackList(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.test_step`. Typically,
+          the values of the `Model`'s metrics are returned.  Example:
+          `{'loss': 0.2, 'accuracy': 0.7}`.
     """
     if self._should_call_test_batch_hooks:
       self._call_batch_hook(ModeKeys.TEST, 'begin', batch, logs=logs)
@@ -462,8 +466,9 @@ class CallbackList(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.predict_step`,
+          it typically returns a dict with a key 'outputs' containing
+          the model's outputs.
     """
     if self._should_call_predict_batch_hooks:
       self._call_batch_hook(ModeKeys.PREDICT, 'begin', batch, logs=logs)
@@ -660,8 +665,9 @@ class Callback(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.train_step`. Typically,
+          the values of the `Model`'s metrics are returned.  Example:
+          `{'loss': 0.2, 'accuracy': 0.7}`.
     """
     # For backwards compatibility.
     self.on_batch_begin(batch, logs=logs)
@@ -692,8 +698,9 @@ class Callback(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.test_step`. Typically,
+          the values of the `Model`'s metrics are returned.  Example:
+          `{'loss': 0.2, 'accuracy': 0.7}`.
     """
 
   @doc_controls.for_subclass_implementers
@@ -720,8 +727,9 @@ class Callback(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.predict_step`,
+          it typically returns a dict with a key 'outputs' containing
+          the model's outputs.
     """
 
   @doc_controls.for_subclass_implementers
@@ -1115,6 +1123,9 @@ class ModelCheckpoint(Callback):
         epochs, the monitored metric may potentially be less reliable (it
         could reflect as little as 1 batch, since the metrics get reset every
         epoch). Defaults to `'epoch'`.
+      options: Optional `tf.train.CheckpointOptions` object if
+        `save_weights_only` is true or optional `tf.saved_model.SavedOptions`
+        object if `save_weights_only` is false.
       **kwargs: Additional arguments for backwards compatibility. Possible key
         is `period`.
   """
@@ -1127,6 +1138,7 @@ class ModelCheckpoint(Callback):
                save_weights_only=False,
                mode='auto',
                save_freq='epoch',
+               options=None,
                **kwargs):
     super(ModelCheckpoint, self).__init__()
     self._supports_tf_logs = True
@@ -1139,6 +1151,20 @@ class ModelCheckpoint(Callback):
     self.epochs_since_last_save = 0
     self._batches_seen_since_last_saving = 0
     self._last_batch_seen = 0
+
+    if save_weights_only:
+      if options is None or isinstance(
+          options, checkpoint_options_lib.CheckpointOptions):
+        self._options = options or checkpoint_options_lib.CheckpointOptions()
+      else:
+        raise TypeError('If save_weights_only is True, then `options` must be'
+                        'either None or a tf.train.CheckpointOptions')
+    else:
+      if options is None or isinstance(options, save_options_lib.SaveOptions):
+        self._options = options or save_options_lib.SaveOptions()
+      else:
+        raise TypeError('If save_weights_only is False, then `options` must be'
+                        'either None or a tf.saved_model.SaveOptions')
 
     # Deprecated field `load_weights_on_restart` is for loading the checkpoint
     # file from `filepath` at the start of `model.fit()`
@@ -1269,9 +1295,10 @@ class ModelCheckpoint(Callback):
                                                self.best, current, filepath))
               self.best = current
               if self.save_weights_only:
-                self.model.save_weights(filepath, overwrite=True)
+                self.model.save_weights(
+                    filepath, overwrite=True, options=self._options)
               else:
-                self.model.save(filepath, overwrite=True)
+                self.model.save(filepath, overwrite=True, options=self._options)
             else:
               if self.verbose > 0:
                 print('\nEpoch %05d: %s did not improve from %0.5f' %
@@ -1280,9 +1307,10 @@ class ModelCheckpoint(Callback):
           if self.verbose > 0:
             print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
           if self.save_weights_only:
-            self.model.save_weights(filepath, overwrite=True)
+            self.model.save_weights(
+                filepath, overwrite=True, options=self._options)
           else:
-            self.model.save(filepath, overwrite=True)
+            self.model.save(filepath, overwrite=True, options=self._options)
 
         self._maybe_remove_file()
       except IOError as e:

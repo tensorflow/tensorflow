@@ -36,8 +36,8 @@ void TestTanhFloat(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
@@ -96,10 +96,8 @@ void TestTanhInt8(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_dims, input_min, input_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;

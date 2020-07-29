@@ -1,5 +1,5 @@
-// RUN: tf-opt -tf-executor-break-up-islands %s | FileCheck %s --dump-input=fail
-// RUN: tf-opt -tf-executor-break-up-islands -tf-executor-break-up-islands %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -tf-executor-break-up-islands %s | FileCheck %s
+// RUN: tf-opt -tf-executor-break-up-islands -tf-executor-break-up-islands %s | FileCheck %s
 
 // All tests also test for idempotence.
 

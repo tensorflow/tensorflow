@@ -32,7 +32,6 @@ struct PassConfig {
         lower_tensor_list_ops(false),
         trim_functions_whitelist({}),
         quant_specs(std::move(specs)),
-        skip_control_dialect(false),
         form_clusters(false),
         unfold_batch_matmul(true),
         legalize_tf_while(true),
@@ -49,13 +48,8 @@ struct PassConfig {
   llvm::ArrayRef<std::string> trim_functions_whitelist;
   // All information about quantization.
   QuantizationSpecs quant_specs;
-  // If `skip_control_dialect` is true, TF executor dialect is not converted to
-  // TF control dialect prior to legalization to TF Lite.
-  // TODO(b/142911013): Remove flag once control dialect is removed.
-  bool skip_control_dialect;
-  // If `form_clusters` is true (and `skip_control_dialect` is true), clusters
-  // are formed by grouping consecutive ops of the same device, under a
-  // `tf_device.launch` op.
+  // If `form_clusters` is true , clusters are formed by grouping consecutive
+  // ops of the same device, under a `tf_device.launch` op.
   bool form_clusters;
   // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
   // of tfl.fully_connected ops.

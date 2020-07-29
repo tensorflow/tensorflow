@@ -724,6 +724,13 @@ class BatchNormalizationBase(Layer):
         outputs = undo_virtual_batching(outputs)
       return outputs
 
+    inputs_dtype = inputs.dtype.base_dtype
+    if inputs_dtype in (dtypes.float16, dtypes.bfloat16):
+      # Do all math in float32 if given 16-bit inputs for numeric stability.
+      # In particular, it's very easy for variance to overflow in float16 and
+      # for safety we also choose to cast bfloat16 to float32.
+      inputs = math_ops.cast(inputs, dtypes.float32)
+
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape
     ndims = len(input_shape)
@@ -852,11 +859,12 @@ class BatchNormalizationBase(Layer):
       offset = math_ops.cast(offset, inputs.dtype)
     if scale is not None:
       scale = math_ops.cast(scale, inputs.dtype)
-    # TODO(reedwm): Maybe do math in float32 if given float16 inputs, if doing
-    # math in float16 hurts validation accuracy of popular models like resnet.
     outputs = nn.batch_normalization(inputs, _broadcast(mean),
                                      _broadcast(variance), offset, scale,
                                      self.epsilon)
+    if inputs_dtype in (dtypes.float16, dtypes.bfloat16):
+      outputs = math_ops.cast(outputs, inputs_dtype)
+
     # If some components of the shape got lost due to adjustments, fix that.
     outputs.set_shape(input_shape)
 

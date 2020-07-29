@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api_dlsym_initializer.h"
 #endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {

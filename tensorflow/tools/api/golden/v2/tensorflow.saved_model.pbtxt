@@ -45,6 +45,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "LoadOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "PREDICT_INPUTS"
     mtype: "<type \'str\'>"
   }
@@ -110,7 +114,7 @@ tf_module {
   }
   member_method {
     name: "load"
-    argspec: "args=[\'export_dir\', \'tags\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'export_dir\', \'tags\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "save"

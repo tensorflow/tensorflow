@@ -1365,6 +1365,28 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsPasses) {
   EXPECT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(), output_shape));
 }
 
+TEST_F(ShapeInferenceTest, ErrorSetDimensionSize) {
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape val_shape = ShapeUtil::MakeShape(S32, {1});
+  auto inferred_status = ShapeInference::InferSetDimensionSizeShape(
+      arg_shape, val_shape, /*dimension=*/0);
+
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("value has to be S32 scalar"));
+}
+
+TEST_F(ShapeInferenceTest, ErrorSetDimensionSizeWrongType) {
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  Shape val_shape = ShapeUtil::MakeShape(U32, {});
+  auto inferred_status = ShapeInference::InferSetDimensionSizeShape(
+      arg_shape, val_shape, /*dimension=*/0);
+
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("value has to be S32 scalar"));
+}
+
 // BatchMatMul with different batch dimension sizes fails.
 TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});

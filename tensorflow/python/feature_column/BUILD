@@ -48,7 +48,6 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras/engine",
         # TODO(scottzhu): Remove metrics after we cleanup the keras internal cyclar dependency.
         #     //third_party/tensorflow/python/feature_column:feature_column
         #     //third_party/tensorflow/python/keras/engine:engine
@@ -91,8 +90,6 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:initializers",
-        "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:data_structures",
         "//third_party/py/numpy",

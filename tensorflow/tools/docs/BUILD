@@ -11,7 +11,7 @@ package(
 
 exports_files(["LICENSE"])
 
-tpu_module = "tpu.,distribute.tpu_strategy"
+tpu_module = "tpu.,distribute.tpu_strategy,distribute.cluster_resolver.tpu,distribute.cluster_resolver.tpu_oss"
 
 py_library(
     name = "tf_doctest_lib",

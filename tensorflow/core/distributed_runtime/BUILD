@@ -439,7 +439,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/debug",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 

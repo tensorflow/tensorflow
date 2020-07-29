@@ -29,7 +29,7 @@ namespace tflite {
 
 // Deprecated and please register new ops/versions in
 // tflite/tools/versioning/op_version.cc".
-string GetMinimumRuntimeVersionForModel(const Model& model) {
+std::string GetMinimumRuntimeVersionForModel(const Model& model) {
   // Use this as the placeholder string if a particular op is not yet included
   // in any Tensorflow's RC/Final release source package. Once that op is
   // included in the release, please update this with the real version string.
@@ -37,8 +37,8 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
   // A map from the version key of an op to its minimum runtime version.
   // For example, {{kAveragePool, 1}, "1.5.0"},  means the 1st version of
   // AveragePool requires a minimum TF Lite runtime version '1.5.0`.
-  static const std::map<std::pair<OperatorType, int>, string>* op_version_map =
-      new std::map<std::pair<OperatorType, int>, string>({
+  static const std::map<std::pair<OperatorType, int>, std::string>*
+      op_version_map = new std::map<std::pair<OperatorType, int>, std::string>({
           {{OperatorType::kAveragePool, 1}, "1.5.0"},
           {{OperatorType::kAveragePool, 2}, "1.14.0"},
           {{OperatorType::kAveragePool, 3}, kPendingReleaseOpVersion},
@@ -253,7 +253,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
       tflite::BuildOperatorByTypeMap(false /*enable_select_tf_ops=*/);
   OperatorSignature op_signature;
   op_signature.model = &model;
-  string model_min_version;
+  std::string model_min_version;
   for (const auto& op : model.operators) {
     if (op_types_map.find(op->type) == op_types_map.end()) continue;
     op_signature.op = op.get();

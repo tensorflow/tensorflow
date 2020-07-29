@@ -126,10 +126,16 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
         source_utils.guess_is_tensorflow_py_library(os.path.normpath(
             "site-packages/tensorflow/python/debug/examples/v3/example_v3.py")))
 
-  def testNonPythonFileRaisesException(self):
-    with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
-      source_utils.guess_is_tensorflow_py_library(
-          os.path.join(os.path.dirname(self.curr_file_path), "foo.cc"))
+  def testReturnsFalseForNonPythonFile(self):
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(
+            os.path.join(os.path.dirname(self.curr_file_path), "foo.cc")))
+
+  def testReturnsFalseForStdin(self):
+    self.assertFalse(source_utils.guess_is_tensorflow_py_library("<stdin>"))
+
+  def testReturnsFalseForEmptyFileName(self):
+    self.assertFalse(source_utils.guess_is_tensorflow_py_library(""))
 
 
 class SourceHelperTest(test_util.TensorFlowTestCase):

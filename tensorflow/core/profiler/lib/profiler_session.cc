@@ -98,9 +98,10 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
   const profiler::XPlane* cupti_driver_api_plane =
       profiler::FindPlaneWithName(*space, profiler::kCuptiDriverApiPlaneName);
   if (cupti_driver_api_plane) {
-    profiler::XPlane* host_plane =
-        profiler::GetOrCreatePlane(space, profiler::kHostThreads);
+    profiler::XPlane* host_plane = profiler::FindOrAddMutablePlaneWithName(
+        space, profiler::kHostThreadsPlaneName);
     profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
+    profiler::SortXLinesBy(host_plane, profiler::XLinesComparatorByName());
     profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
   }
   // 2. Normalize all timestamps by shifting timeline to profiling start time.

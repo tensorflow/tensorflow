@@ -47,6 +47,7 @@ bool ParseStringList(std::string string_list, std::vector<uint32_t>* result) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  std::string input_file = "foo.mlir";
   std::string output_file = "foo.bin";
   int32_t architecture = 50;
   std::vector<uint32_t> tile_sizes;
@@ -75,6 +76,7 @@ int main(int argc, char** argv) {
   };
 
   std::vector<tensorflow::Flag> flag_list = {
+      tensorflow::Flag("input", &input_file, "input file"),
       tensorflow::Flag("output", &output_file, "output file"),
       tensorflow::Flag("arch", &architecture,
                        "target architecture (e.g. 50 for sm_50)"),
@@ -94,8 +96,16 @@ int main(int argc, char** argv) {
   std::pair<int32_t, int32_t> compute_capability(architecture / 10,
                                                  architecture % 10);
 
+  std::string tf_code;
+  auto read_status = tensorflow::ReadFileToString(tensorflow::Env::Default(),
+                                                  input_file, &tf_code);
+  if (!read_status.ok()) {
+    LOG(ERROR) << read_status;
+    return 1;
+  }
+
   auto cubin = tensorflow::kernel_gen::GenerateCubinForTfCode(
-      argv[1], compute_capability, tile_sizes, same_shape, unroll_factors);
+      tf_code, compute_capability, tile_sizes, same_shape, unroll_factors);
 
   if (!cubin.ok()) {
     LOG(ERROR) << cubin.status();

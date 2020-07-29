@@ -164,7 +164,7 @@ class InputLayer(base_layer.Layer):
     else:
       raise_eager_tensor_error = False
       if keras_tensor.keras_tensors_enabled():
-        if not isinstance(input_tensor, keras_tensor.keras_tensors_enabled()):
+        if not isinstance(input_tensor, keras_tensor.KerasTensor):
           raise_eager_tensor_error = True
       else:
         if not tf_utils.is_symbolic_tensor(input_tensor):

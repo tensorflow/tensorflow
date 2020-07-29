@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule CopyTranspose
 
 ENTRY %CopyTranspose (x: f32[2,4]) -> f32[2,4]{0,1} {

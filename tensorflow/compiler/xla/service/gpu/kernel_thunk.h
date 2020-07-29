@@ -77,8 +77,6 @@ class KernelThunk : public Thunk {
   // Will be set by IrEmitterUnnested.
   LaunchDimensions launch_dimensions_;
 
-  // Describes how to load this kernel. ExecuteOnStream reuses this loader
-  // specification for all executions.
   mutable tensorflow::mutex mutex_;
 
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of

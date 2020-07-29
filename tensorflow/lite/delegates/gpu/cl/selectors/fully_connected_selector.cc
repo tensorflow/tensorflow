@@ -109,6 +109,9 @@ absl::Status SelectFullyConnected(const FullyConnectedAttributes& attr,
       return SelectFullyConnectedAdreno(attr, creation_context, op_def,
                                         batch_size, ptr);
     case Vendor::POWERVR:
+    case Vendor::AMD:
+    case Vendor::NVIDIA:
+    case Vendor::INTEL:
       return SelectFullyConnectedPowerVR(attr, creation_context, op_def,
                                          batch_size, ptr);
     case Vendor::MALI:

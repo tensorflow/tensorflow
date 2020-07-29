@@ -914,6 +914,38 @@ REGISTER_OP("SnapshotDatasetV2")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("SaveDataset")
+    .Input("input_dataset: variant")
+    .Input("path: string")
+    .Input("shard_func_other_args: Tshard_func_args")
+    .Attr("compression: string = ''")
+    .Attr("shard_func: func")
+    .Attr("use_shard_func: bool = true")
+    .Attr("Tshard_func_args: list(type) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `path` should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("LoadDataset")
+    .Input("path: string")
+    .Input("reader_func_other_args: Treader_func_args")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("compression: string = ''")
+    .Attr("reader_func: func")
+    .Attr("Treader_func_args: list(type) >= 0")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `path` should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("SqlDataset")
     .Input("driver_name: string")
     .Input("data_source_name: string")

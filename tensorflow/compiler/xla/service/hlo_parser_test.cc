@@ -2397,6 +2397,164 @@ ENTRY c2 {
       "expects only one ENTRY");
 }
 
+TEST_F(HloParserTest, SimpleAliasing) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0}: (0, {0}, USER), {1}: (0, {1}, USER) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  auto module = ParseAndReturnVerifiedModule(original);
+  TF_ASSERT_OK(module.status());
+  std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
+  EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
+            ShapeIndex{0});
+  EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {1}),
+            ShapeIndex{1});
+}
+
+TEST_F(HloParserTest, SimpleAliasingShortForm) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0}: (0, {0}), {1}: (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  auto module = ParseAndReturnVerifiedModule(original);
+  TF_ASSERT_OK(module.status());
+  std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
+  EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
+            ShapeIndex{0});
+  EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {1}),
+            ShapeIndex{1});
+}
+
+TEST_F(HloParserTest, NestedAliasing) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0, 0}: (0, {0}), {1, 1}: (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  %t0 = (f32[], f32[]) tuple(%p0, %p1)
+  %t1 = (f32[], f32[]) tuple(%p0, %p1)
+  ROOT %out = ((f32[], f32[]), (f32[], f32[])) tuple(%t0, %t1)
+}
+  )";
+  auto module = ParseAndReturnVerifiedModule(original);
+  TF_ASSERT_OK(module.status());
+  std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
+  EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
+            ShapeIndex({0, 0}));
+  EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {1}),
+            ShapeIndex({1, 1}));
+}
+
+TEST_F(HloParserTest, AliasingWrongIndex) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0 : (0, {0}), {1}: (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Expects '}' at the end of ShapeIndex");
+}
+
+TEST_F(HloParserTest, AliasingShapeIndexNotNumerical) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0, a}: (0, {0}), {1}: (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "expects integer");
+}
+
+TEST_F(HloParserTest, AliasingWrongFormatNoColon) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0, 0}: (0, {0}), (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Expects '{' at the start of ShapeIndex");
+}
+
+TEST_F(HloParserTest, AliasingWrongFormatTwoColons) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0}: (0, {0}): {0, 1}, {1}: (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Expects '}' at the end of aliasing description");
+}
+
+TEST_F(HloParserTest, AliasingWrongFormatAlphaParam) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0, a}: (zero, {0}), {1}: (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "expects integer");
+}
+
+TEST_F(HloParserTest, AliasingUnexpectedKind) {
+  const string original = R"(
+HloModule Module, input_output_alias={ {0}: (0, {0}, UNKNOWN), {1}: (0, {1}, UNKNOWN) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Unexpected aliasing kind");
+}
+
 TEST_F(HloParserTest, MultipleRoots) {
   const string original = R"(HloModule multiple_roots:
 ENTRY consts {

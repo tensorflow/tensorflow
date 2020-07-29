@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_REGISTER_REF_H_
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace ops {

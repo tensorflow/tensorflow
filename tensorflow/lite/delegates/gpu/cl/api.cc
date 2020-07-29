@@ -513,7 +513,7 @@ class InferenceRunnerImpl : public InferenceRunner {
 
 TensorObjectDef TensorToDef(const Tensor& tensor) {
   TensorObjectDef def;
-  def.dimensions.b = 1;
+  def.dimensions.b = tensor.Batch();
   def.dimensions.h = tensor.Height();
   def.dimensions.w = tensor.Width();
   def.dimensions.c = tensor.Channels();

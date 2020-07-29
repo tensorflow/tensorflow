@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-post-quantize | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -tfl-post-quantize | FileCheck %s
 
 // CHECK-LABEL: RemoveUnused
 func @RemoveUnused(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> (tensor<2xf32>,tensor<2xf32>) {

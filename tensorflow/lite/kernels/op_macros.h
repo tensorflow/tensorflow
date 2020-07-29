@@ -20,7 +20,6 @@ limitations under the License.
 #ifdef TF_LITE_MCU_DEBUG_LOG
 
 #include "tensorflow/lite/micro/debug_log.h"
-#include "tensorflow/lite/micro/micro_error_reporter.h"
 
 #define DEBUG_LOG(x) \
   do {               \
@@ -37,7 +36,6 @@ inline void InfiniteLoop() {
 
 #else  // TF_LITE_MCU_DEBUG_LOG
 
-#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 

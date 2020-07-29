@@ -140,6 +140,9 @@ class Flags {
   // usage_text strings in flag_list[].
   static std::string Usage(const std::string& cmdline,
                            const std::vector<Flag>& flag_list);
+
+  // Return a space separated string containing argv[1, ..., argc-1].
+  static std::string ArgsToString(int argc, const char** argv);
 };
 }  // namespace tflite
 

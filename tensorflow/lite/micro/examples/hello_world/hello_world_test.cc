@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/examples/hello_world/model.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
@@ -46,16 +45,15 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Minimum arena size, at the time of writing. After allocating tensors
   // you can retrieve this value by invoking interpreter.arena_used_bytes().
-  const int model_arena_size = 2352;
+  const int model_arena_size = 2468;
   /* Extra headroom for model + alignment + future interpreter changes */
-  const int extra_arena_size = 560 + 16 + 100;
+  const int extra_arena_size = 570 + 16 + 100;
   const int tensor_arena_size = model_arena_size + extra_arena_size;
   uint8_t tensor_arena[tensor_arena_size];
 
   // Build an interpreter to run the model with
   tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
                                        tensor_arena_size, error_reporter);
-
   // Allocate memory from the tensor_arena for the model's tensors
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 

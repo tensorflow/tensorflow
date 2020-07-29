@@ -13,3 +13,12 @@ cc_test(
         "@flatbuffers",
     ],
 )
+
+cc_test(
+    name = "metadata_parser_test",
+    srcs = ["metadata_parser_test.cc"],
+    deps = [
+        "//tensorflow/lite/experimental/support/metadata/cc:metadata_version",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

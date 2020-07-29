@@ -43,7 +43,7 @@ class TestLhloToLLVMPass
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
     target.addIllegalDialect<XlaLhloDialect>();
 
-    if (failed(applyFullConversion(m, target, patterns, &converter))) {
+    if (failed(applyFullConversion(m, target, patterns))) {
       signalPassFailure();
     }
   }

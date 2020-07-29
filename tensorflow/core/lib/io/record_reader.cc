@@ -31,26 +31,26 @@ namespace io {
 RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
     const string& compression_type) {
   RecordReaderOptions options;
+
+#if defined(IS_SLIM_BUILD)
+  if (compression_type != compression::kNone) {
+    LOG(ERROR) << "Compression is not supported but compression_type is set."
+               << " No compression will be used.";
+  }
+#else
   if (compression_type == compression::kZlib) {
     options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
-#if defined(IS_SLIM_BUILD)
-    LOG(ERROR) << "Compression is not supported but compression_type is set."
-               << " No compression will be used.";
-#else
     options.zlib_options = io::ZlibCompressionOptions::DEFAULT();
-#endif  // IS_SLIM_BUILD
   } else if (compression_type == compression::kGzip) {
     options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
-#if defined(IS_SLIM_BUILD)
-    LOG(ERROR) << "Compression is not supported but compression_type is set."
-               << " No compression will be used.";
-#else
     options.zlib_options = io::ZlibCompressionOptions::GZIP();
-#endif  // IS_SLIM_BUILD
+  } else if (compression_type == compression::kSnappy) {
+    options.compression_type = io::RecordReaderOptions::SNAPPY_COMPRESSION;
   } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
                << ". No compression will be used.";
   }
+#endif
   return options;
 }
 
@@ -63,20 +63,26 @@ RecordReader::RecordReader(RandomAccessFile* file,
     input_stream_.reset(new BufferedInputStream(input_stream_.release(),
                                                 options.buffer_size, true));
   }
-  if (options.compression_type == RecordReaderOptions::ZLIB_COMPRESSION) {
-// We don't have zlib available on all embedded platforms, so fail.
 #if defined(IS_SLIM_BUILD)
-    LOG(FATAL) << "Zlib compression is unsupported on mobile platforms.";
-#else   // IS_SLIM_BUILD
+  if (options.compression_type != RecordReaderOptions::NONE) {
+    LOG(FATAL) << "Compression is unsupported on mobile platforms.";
+  }
+#else
+  if (options.compression_type == RecordReaderOptions::ZLIB_COMPRESSION) {
     input_stream_.reset(new ZlibInputStream(
         input_stream_.release(), options.zlib_options.input_buffer_size,
         options.zlib_options.output_buffer_size, options.zlib_options, true));
-#endif  // IS_SLIM_BUILD
+  } else if (options.compression_type ==
+             RecordReaderOptions::SNAPPY_COMPRESSION) {
+    input_stream_.reset(
+        new SnappyInputStream(input_stream_.release(),
+                              options.snappy_options.output_buffer_size, true));
   } else if (options.compression_type == RecordReaderOptions::NONE) {
     // Nothing to do.
   } else {
     LOG(FATAL) << "Unrecognized compression type :" << options.compression_type;
   }
+#endif
 }
 
 // Read n+4 bytes from file, verify that checksum of first n bytes is

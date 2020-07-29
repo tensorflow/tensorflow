@@ -20,26 +20,19 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.core.framework import device_attributes_pb2
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
-def _get_device_attrs(device_type, device_name=None, cc_major=None,
-                      cc_minor=None):
-  if device_type == 'CPU':
-    return device_attributes_pb2.DeviceAttributes(device_type='CPU')
-  assert device_type == 'GPU', 'Invalid device type: %s' % (device_type,)
-  if not device_name:
-    return device_attributes_pb2.DeviceAttributes(device_type='GPU')
-  physical_device_desc = (
-      'device: 0, name: %s, pci bus id: 0:0:0.0' % device_name)
-  if cc_major:
-    physical_device_desc += ', compute capability: %d.%d' % (cc_major, cc_minor)
-  return device_attributes_pb2.DeviceAttributes(
-      device_type='GPU', physical_device_desc=physical_device_desc)
+def device_details(device_name, compute_capability=None):
+  details = {}
+  if device_name:
+    details['device_name'] = device_name
+  if compute_capability:
+    details['compute_capability'] = compute_capability
+  return details
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -59,57 +52,49 @@ class DeviceCompatibilityCheckTest(test.TestCase):
       mock_warn.assert_not_called()
 
   def test_supported(self):
-    device_attrs_list = [_get_device_attrs('GPU', 'GPU 1', 7, 1)]
+    details_list = [device_details('GPU 1', (7, 1))]
     regex = re.compile(
         r'.*compatibility check \(mixed_float16\): OK\n'
         r'Your GPU will likely run quickly with dtype policy mixed_float16 as '
         r'it has compute capability of at least 7.0. Your GPU: GPU 1, compute '
         r'capability 7.1', flags=re.MULTILINE)
-    self._test_compat_check(device_attrs_list, False, regex)
-    device_attrs_list.append(_get_device_attrs('CPU'))
-    self._test_compat_check(device_attrs_list, False, regex)
+    self._test_compat_check(details_list, False, regex)
 
-    device_attrs_list = [
-        _get_device_attrs('CPU', 'CPU'),
-        _get_device_attrs('GPU', 'GPU 1', 7, 0),
-        _get_device_attrs('GPU', 'GPU 2', 7, 1),
-        _get_device_attrs('GPU', 'GPU 3', 8, 0),
+    details_list = [
+        device_details('GPU 1', (7, 0)),
+        device_details('GPU 2', (7, 1)),
+        device_details('GPU 3', (8, 0)),
     ]
     regex = re.compile(
         r'.*compatibility check \(mixed_float16\): OK\n'
         r'Your GPUs will likely run quickly with dtype policy mixed_float16 as '
         r'they all have compute capability of at least 7.0', flags=re.MULTILINE)
-    self._test_compat_check(device_attrs_list, False, regex)
+    self._test_compat_check(details_list, False, regex)
 
   def test_unsupported(self):
-    device_attrs_list = [
-        _get_device_attrs('GPU', 'GPU 1', 6, 0)
+    details_list = [
+        device_details('GPU 1', (6, 0))
     ]
     regex = re.compile(
         r'.*compatibility check \(mixed_float16\): WARNING\n'
         r'Your GPU may run slowly with dtype policy mixed_float16.*\n'
         r'  GPU 1, compute capability 6.0\n'
         r'See.*', flags=re.MULTILINE)
-    self._test_compat_check(device_attrs_list, True, regex)
-    device_attrs_list.append(_get_device_attrs('CPU'))
-    self._test_compat_check(device_attrs_list, True, regex)
+    self._test_compat_check(details_list, True, regex)
 
-    device_attrs_list = [
-        _get_device_attrs('GPU')
+    details_list = [
+        device_details(None)
     ]
     regex = re.compile(
         r'.*compatibility check \(mixed_float16\): WARNING\n'
         r'Your GPU may run slowly with dtype policy mixed_float16.*\n'
         r'  Unknown GPU, no compute capability \(probably not an Nvidia GPU\)\n'
         r'See.*', flags=re.MULTILINE)
-    self._test_compat_check(device_attrs_list, True, regex)
-    device_attrs_list.append(_get_device_attrs('CPU'))
-    self._test_compat_check(device_attrs_list, True, regex)
+    self._test_compat_check(details_list, True, regex)
 
-    device_attrs_list = [
-        _get_device_attrs('CPU', 'CPU'),
-        _get_device_attrs('GPU', 'GPU 1', 6, 0),
-        _get_device_attrs('GPU', 'GPU 2', 3, 10),
+    details_list = [
+        device_details('GPU 1', (6, 0)),
+        device_details('GPU 2', (3, 10)),
     ]
     regex = re.compile(
         r'.*compatibility check \(mixed_float16\): WARNING\n'
@@ -117,14 +102,13 @@ class DeviceCompatibilityCheckTest(test.TestCase):
         r'  GPU 1, compute capability 6.0\n'
         r'  GPU 2, compute capability 3.10\n'
         r'See.*', flags=re.MULTILINE)
-    self._test_compat_check(device_attrs_list, True, regex)
+    self._test_compat_check(details_list, True, regex)
 
-    device_attrs_list = [
-        _get_device_attrs('CPU', 'CPU'),
-        _get_device_attrs('GPU', 'GPU 1', 6, 0),
-        _get_device_attrs('GPU', 'GPU 1', 6, 0),
-        _get_device_attrs('GPU', 'GPU 1', 6, 0),
-        _get_device_attrs('GPU', 'GPU 2', 3, 10),
+    details_list = [
+        device_details('GPU 1', (6, 0)),
+        device_details('GPU 1', (6, 0)),
+        device_details('GPU 1', (6, 0)),
+        device_details('GPU 2', (3, 10)),
     ]
     regex = re.compile(
         r'.*compatibility check \(mixed_float16\): WARNING\n'
@@ -132,20 +116,20 @@ class DeviceCompatibilityCheckTest(test.TestCase):
         r'  GPU 1, compute capability 6.0 \(x3\)\n'
         r'  GPU 2, compute capability 3.10\n'
         r'See.*', flags=re.MULTILINE)
-    self._test_compat_check(device_attrs_list, True, regex)
+    self._test_compat_check(details_list, True, regex)
 
-    device_attrs_list = [_get_device_attrs('CPU')]
+    details_list = []
     regex = re.compile(
         r'.*compatibility check \(mixed_float16\): WARNING\n'
         r'The dtype policy mixed_float16 may run slowly because this machine '
         r'does not have a GPU', flags=re.MULTILINE)
-    self._test_compat_check(device_attrs_list, True, regex)
+    self._test_compat_check(details_list, True, regex)
 
   def test_mix_of_supported_and_unsupported(self):
-    device_attrs_list = [
-        _get_device_attrs('GPU', 'GPU 1', 7, 0),
-        _get_device_attrs('GPU', 'GPU 1', 7, 0),
-        _get_device_attrs('GPU', 'GPU 2', 6, 0)
+    details_list = [
+        device_details('GPU 1', (7, 0)),
+        device_details('GPU 1', (7, 0)),
+        device_details('GPU 2', (6, 0))
     ]
     regex = re.compile(
         r'.*compatibility check \(mixed_float16\): WARNING\n'
@@ -153,9 +137,7 @@ class DeviceCompatibilityCheckTest(test.TestCase):
         r'  GPU 1, compute capability 7.0 \(x2\)\n'
         r'  GPU 2, compute capability 6.0\n'
         r'See.*', flags=re.MULTILINE)
-    self._test_compat_check(device_attrs_list, True, regex)
-    device_attrs_list.append(_get_device_attrs('CPU'))
-    self._test_compat_check(device_attrs_list, True, regex)
+    self._test_compat_check(details_list, True, regex)
 
 
 if __name__ == '__main__':

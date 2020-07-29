@@ -3,7 +3,10 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_gen_op_wrapper_py")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
@@ -786,6 +789,16 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_tf32_execution",
+    srcs = ["util/tf32.cc"],
+    module_name = "_pywrap_tf32_execution",
+    deps = [
+        "//tensorflow/core/platform:tf32_utils",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["util/port_wrapper.cc"],
     hdrs = ["//tensorflow/core/util:port_hdrs"],
@@ -1055,11 +1068,12 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/python_runtime:headers",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
     ],
 )
 
@@ -1070,6 +1084,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:script_ops_op_lib",
+        "//tensorflow/core/platform:logging",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -1231,6 +1246,19 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "python_op_gen_test",
+    srcs = ["framework/python_op_gen_test.cc"],
+    deps = [
+        ":python_op_gen",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 py_library(
     name = "framework_for_generated_wrappers",
     srcs_version = "PY2AND3",
@@ -1369,6 +1397,7 @@ py_library(
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/python/profiler:traceme",
     ],
 )
 
@@ -3062,6 +3091,7 @@ tf_gen_op_wrapper_private_py(name = "rnn_ops_gen")
 
 tf_gen_op_wrapper_private_py(
     name = "sendrecv_ops_gen",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:sendrecv_ops_op_lib",
     ],
@@ -5270,6 +5300,7 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_windows_gpu",
+        "noasan",  # b/159332048
         "nomsan",  # b/148630708
     ],
     deps = [
@@ -5622,6 +5653,19 @@ tf_py_test(
     ],
 )
 
+cc_library(
+    name = "stack_trace",
+    srcs = ["util/stack_trace.cc"],
+    hdrs = ["util/stack_trace.h"],
+    deps = [
+        ":py_util",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
 py_library(
     name = "util",
     srcs = glob(
@@ -5644,6 +5688,7 @@ py_library(
         "//tensorflow:composite_tensor_whitelist",
     ],
     deps = [
+        ":_pywrap_tf32_execution",
         ":tf_decorator",
         ":tf_export",
         ":tf_stack",
@@ -6032,12 +6077,18 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/compiler/mlir/python:mlir",
     ] + (tf_additional_lib_deps() +
+         tf_monitoring_python_deps() +
          tf_additional_plugin_deps() +
          tf_additional_profiler_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]),
+    ]) + select({
+        "//tensorflow:windows": [],  # TODO(b/159077703): Enable Flex on Windows
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/flex:delegate",
+        ],
+    }),
 )
 
 # ** Targets for Windows build (start) **
@@ -6632,6 +6683,7 @@ tf_py_test(
     deps = [
         ":client",
         ":client_testlib",
+        ":control_flow_v2_toggles",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
@@ -6649,9 +6701,11 @@ tf_py_test(
     python_version = "PY3",
     tags = ["no_rocm"],
     deps = [
-        "client_testlib",
-        "framework_test_lib",
+        ":client_testlib",
+        ":control_flow_v2_toggles",
         ":convert_to_constants",
+        ":framework_test_lib",
+        ":math_ops",
     ],
 )
 

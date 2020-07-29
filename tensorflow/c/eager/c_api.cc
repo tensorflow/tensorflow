@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+
 // clang-format off
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -31,8 +33,8 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
-#include "tensorflow/c/eager/operation_interface.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
@@ -713,8 +715,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
     status->status = tfrt::ListOpHandlerChains(
         opts->session_options.options, &op_handler_chains, &device_attributes);
     if (!status->status.ok()) return nullptr;
-    return tensorflow::wrap(
-        new tfrt::ContextInterface(op_handler_chains, device_attributes));
+    return tensorflow::wrap(new tfrt::ContextInterface(
+        op_handler_chains, device_attributes, opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
@@ -1119,7 +1121,7 @@ size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
-  tensorflow::AbstractOperationInterface* new_op =
+  tensorflow::ImmediateExecutionOperation* new_op =
       tensorflow::unwrap(ctx)->CreateOperation();
   status->status = new_op->Reset(op_or_function_name, nullptr);
   if (!status->status.ok()) {
@@ -1164,7 +1166,9 @@ void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
 void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
                         TF_Status* status) {
   status->status = tensorflow::unwrap(op)->AddInputList(
-      {tensorflow::unwrap(inputs), static_cast<size_t>(num_inputs)});
+      {reinterpret_cast<tensorflow::AbstractTensorHandle**>(
+           tensorflow::unwrap(inputs)),
+       static_cast<size_t>(num_inputs)});
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
@@ -1324,7 +1328,9 @@ void TFE_OpSetAttrShapeList(TFE_Op* op, const char* attr_name,
 void TFE_OpSetAttrFunctionList(TFE_Op* op, const char* attr_name,
                                const TFE_Op** value, int num_values) {
   auto s = tensorflow::unwrap(op)->SetAttrFunctionList(
-      attr_name, {tensorflow::unwrap(value), static_cast<size_t>(num_values)});
+      attr_name, {reinterpret_cast<const tensorflow::AbstractOperation**>(
+                      tensorflow::unwrap(value)),
+                  static_cast<size_t>(num_values)});
   if (!s.ok()) {
     LOG(WARNING) << "Unable to set attribute: " << attr_name;
   }
@@ -1368,7 +1374,10 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
   status->status = tensorflow::unwrap(op)->Execute(
-      absl::MakeSpan(tensorflow::unwrap(retvals), *num_retvals), num_retvals);
+      absl::MakeSpan(reinterpret_cast<tensorflow::AbstractTensorHandle**>(
+                         tensorflow::unwrap(retvals)),
+                     *num_retvals),
+      num_retvals);
 }
 
 TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
@@ -1473,14 +1482,10 @@ const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
-  tensorflow::AttrValueMap m;
-  tensorflow::unwrap(attrs)->FillAttrValueMap(&m);
   tensorflow::EagerOperation* operation =
       OperationFromInterface(tensorflow::unwrap(op));
   tensorflow::AttrBuilder* destination = operation->MutableAttrs();
-  for (const auto& attribute : m) {
-    destination->Set(attribute.first, attribute.second);
-  }
+  destination->CopyAttributes(*tensorflow::unwrap(attrs));
 }
 
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,

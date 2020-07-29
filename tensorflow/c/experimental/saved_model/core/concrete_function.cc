@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 
 namespace tensorflow {
 
-const std::vector<tensorflow::AbstractTensorHandleInterface*>&
+const std::vector<tensorflow::ImmediateExecutionTensorHandle*>&
 ConcreteFunction::GetCaptures() const {
   return captures_;
 }

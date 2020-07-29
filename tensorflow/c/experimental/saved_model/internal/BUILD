@@ -144,7 +144,9 @@ cc_library(
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
+        "//tensorflow/c/experimental/saved_model/core:tf_saved_model_impl",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:context",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -176,7 +178,7 @@ cc_library(
         ":tensorhandle_list_type",
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:tensor_handle_interface",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
     ],
 )
@@ -188,7 +190,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c:conversion_macros",
-        "//tensorflow/c/eager:tensor_handle_interface",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
     ],
 )
 

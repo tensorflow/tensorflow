@@ -1886,6 +1886,10 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
 }
 
 void HloInstruction::AppendOperand(HloInstruction* operand) {
+  if (operand->parent() != nullptr) {
+    CHECK(!operand->parent()->IsMarkedAsDead(operand))
+        << "Operand " << operand->name() << " is already marked dead";
+  }
   operands_.push_back(operand);
   operand->AddUser(this);
 }
@@ -3902,6 +3906,10 @@ const Shape& HloInstruction::outfeed_shape() const {
 
 const string& HloInstruction::outfeed_config() const {
   return Cast<HloOutfeedInstruction>(this)->outfeed_config();
+}
+
+void HloInstruction::set_outfeed_config(const string& config) {
+  return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(config);
 }
 
 const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {

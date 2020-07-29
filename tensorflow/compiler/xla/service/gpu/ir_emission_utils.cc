@@ -226,6 +226,11 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
       dims_to_keep.push_back(dim);
     }
   }
+
+  // We support fast codegen for three cases:
+  // 1) Row reduction: (K, R)
+  // 2) Column reduction: (K, R, K)
+  // 3) "Batched" row reduction: (R, K, R)
   if (!LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
                                             dims_to_keep) &&
       !LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),

@@ -37,7 +37,8 @@ class PyExecutable {
  public:
   PyExecutable(std::shared_ptr<PyClient> client,
                std::unique_ptr<PjRtExecutable> executable,
-               std::unique_ptr<Traceback> traceback);
+               std::shared_ptr<Traceback> traceback);
+  ~PyExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
 
@@ -64,9 +65,16 @@ class PyExecutable {
   Traceback* traceback() { return traceback_.get(); }
 
  private:
+  friend class PyClient;
+
   std::shared_ptr<PyClient> client_;
   std::unique_ptr<PjRtExecutable> executable_;
-  std::unique_ptr<Traceback> traceback_;
+  std::shared_ptr<Traceback> traceback_;
+
+  // Doubly-linked list of all executables known to the client. Protected by the
+  // GIL.
+  PyExecutable* next_;
+  PyExecutable* prev_;
 };
 
 }  // namespace xla

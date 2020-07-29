@@ -101,13 +101,11 @@ port::StatusOr<void*> GetCurandDsoHandle() {
 }
 
 port::StatusOr<void*> GetCuptiDsoHandle() {
-#if defined(ANDROID_TEGRA)
-  // On Android devices the CUDA version number is not added to the library
-  // name.
+  // Load specific version of CUPTI this is built.
+  auto status_or_handle = GetDsoHandle("cupti", GetCudaVersion());
+  if (status_or_handle.ok()) return status_or_handle;
+  // Load whatever libcupti.so user specified.
   return GetDsoHandle("cupti", "");
-#else
-  return GetDsoHandle("cupti", GetCudaVersion());
-#endif
 }
 
 port::StatusOr<void*> GetCudnnDsoHandle() {

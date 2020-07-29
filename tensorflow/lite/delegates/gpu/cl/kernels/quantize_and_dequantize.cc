@@ -30,6 +30,20 @@ QuantizeAndDequantize::QuantizeAndDequantize(
     const OperationDef& definition, const QuantizeAndDequantizeAttributes& attr,
     CalculationsPrecision scalar_precision)
     : ElementwiseOperation(definition) {
+  if (definition.precision == CalculationsPrecision::F32) {
+    args_.AddFloat("min", attr.min);
+    args_.AddFloat("max", attr.max);
+    args_.AddFloat("scale", attr.scale);
+  } else {
+    args_.AddHalf("min", half(attr.min));
+    args_.AddHalf("max", half(attr.max));
+    args_.AddHalf("scale", half(attr.scale));
+  }
+  code_ = R"(
+FLT4 clamped_value = min((FLT4)(args.max), max((FLT4)(args.min), in_out_value));
+FLT4 quantized_value = round((clamped_value - (FLT4)(args.min)) / (FLT4)(args.scale));
+FLT4 dequantized_value = quantized_value * (FLT4)(args.scale) + (FLT4)(args.min);
+in_out_value = dequantized_value;)";
   min_ = FLT(scalar_precision, attr.min);
   max_ = FLT(scalar_precision, attr.max);
   scale_ = FLT(scalar_precision, attr.scale);

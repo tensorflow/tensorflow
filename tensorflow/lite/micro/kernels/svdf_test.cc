@@ -341,13 +341,12 @@ void TestSVDF(const int batch_size, const int num_units, const int input_size,
 
   const int tensor_count = 5;  // 4 inputs, 1 output
   TfLiteTensor tensors[] = {
-      CreateFloatTensor(input_data, input_dims, "input"),
-      CreateFloatTensor(weights_feature_data, weights_feature_dims,
-                        "weights_feature"),
-      CreateFloatTensor(weights_time_data, weights_time_dims, "weights_time"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(weights_feature_data, weights_feature_dims),
+      CreateFloatTensor(weights_time_data, weights_time_dims),
       CreateFloatTensor(activation_state_data, activation_state_dims,
-                        "activation_state", true /* is_variable */),
-      CreateFloatTensor(output_data, output_dims, "output"),
+                        /*is_variable=*/true),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   ValidateSVDFGoldens(batch_size, num_units, input_size, rank, tensors,
@@ -393,19 +392,17 @@ inline void TestIntegerSVDF(
 
   TfLiteTensor tensors[] = {
       CreateQuantizedTensor(input_data, input_dims, input_scale,
-                            0 /* zero-point */, "input"),
+                            /*zero_point=*/0),
       CreateQuantizedTensor(weights_feature_data, weights_feature_dims,
-                            weights_feature_scale, 0 /* zero-point */,
-                            "weights_feature"),
+                            weights_feature_scale, /*zero_point=*/0),
       CreateQuantizedTensor(weights_time_data, weights_time_dims,
-                            weights_time_scale, 0 /* zero-point */,
-                            "weights_time"),
-      CreateQuantized32Tensor(bias_data, bias_dims, "bias", bias_scale),
+                            weights_time_scale, /*zero_point=*/0),
+      CreateQuantized32Tensor(bias_data, bias_dims, bias_scale),
       CreateQuantizedTensor(activation_state_data, activation_state_dims,
-                            activation_scale, 0 /* zero-point */,
-                            "activation_state", true /* is_variable */),
+                            activation_scale, /*zero_point=*/0,
+                            /*is_variable=*/true),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
-                            0 /* zero-point */, "output")};
+                            /*zero_point=*/0)};
 
   // TODO(b/147839421): Affine Quantization Params should be set on tensor
   // creation.

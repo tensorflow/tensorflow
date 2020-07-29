@@ -341,10 +341,11 @@ class Bidirectional(Wrapper):
       combined. One of {'sum', 'mul', 'concat', 'ave', None}. If None, the
       outputs will not be combined, they will be returned as a list. Default
       value is 'concat'.
-    backward_layer: Optional `keras.layers.RNN`, or keras.layers.Layer` instance
-      to be used to handle backwards input processing. If `backward_layer` is
-      not provided, the layer instance passed as the `layer` argument will be
-      used to generate the backward layer automatically.
+    backward_layer: Optional `keras.layers.RNN`, or `keras.layers.Layer`
+      instance to be used to handle backwards input processing.
+      If `backward_layer` is not provided, the layer instance passed as the
+      `layer` argument will be used to generate the backward layer
+      automatically.
       Note that the provided `backward_layer` layer should have properties
       matching those of the `layer` argument, in particular it should have the
       same values for `stateful`, `return_states`, `return_sequence`, etc.

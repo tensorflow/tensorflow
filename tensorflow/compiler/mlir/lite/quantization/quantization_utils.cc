@@ -55,7 +55,7 @@ static Type GetQuantizedType(Builder builder, Type input_type,
   } else if (min.size() == max.size()) {
     auto shape = input_type.dyn_cast<ShapedType>();
     if (!shape || shape.getRank() <= quant_dim ||
-        min.size() != shape.getDimSize(quant_dim)) {
+        static_cast<int64_t>(min.size()) != shape.getDimSize(quant_dim)) {
       return {};
     }
     // TODO(b/141508873): the quantization dim is set to the last dimension.
@@ -76,7 +76,8 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
   if (auto qtype = ele_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     ArrayRef<double> scales = qtype.getScales();
     // Broadcasting hasn't been implemented yet.
-    if (scales.size() != factor_values.getNumElements()) return {};
+    if (static_cast<int64_t>(scales.size()) != factor_values.getNumElements())
+      return {};
     SmallVector<double, 4> new_scales;
     new_scales.reserve(scales.size());
     auto scales_iter = scales.begin();
@@ -270,7 +271,7 @@ Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
                                              bool narrow_range) {
   Builder builder(attr.getContext());
   auto shape = attr.getType().cast<ShapedType>().getShape();
-  if (shape.size() <= quant_dim) return {};
+  if (static_cast<int>(shape.size()) <= quant_dim) return {};
   // `symmetric` can only be used when it is `signed` and `narrow_range`.
   if (symmetric && (!is_signed || !narrow_range)) return {};
 
@@ -335,7 +336,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
     const std::vector<quant::QuantizedType>& op_types) {
   if (op_types.empty()) return {};
 
-  int axis_size = 1;
+  size_t axis_size = 1;
   int32_t quant_dim = -1;
   Type expressed_type;
   // Requires all the op types are valid UniformQuantizedTypes or
@@ -369,7 +370,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         scales[index_scale.index()] *= index_scale.value();
       }
     } else if (auto type = op_type.dyn_cast<quant::UniformQuantizedType>()) {
-      for (int index = 0; index != axis_size; ++index) {
+      for (int index = 0, e = axis_size; index != e; ++index) {
         scales[index] *= type.getScale();
       }
     }

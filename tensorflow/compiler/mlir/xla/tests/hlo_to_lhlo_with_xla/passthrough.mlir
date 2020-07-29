@@ -1,4 +1,4 @@
-// RUN: xla-opt -xla-hlo-to-lhlo-with-xla %s | FileCheck --enable-var-scope --dump-input=fail %s
+// RUN: xla-opt -xla-hlo-to-lhlo-with-xla %s | FileCheck --enable-var-scope %s
 
 // Current allocation will lead to one buffer argument for the "value" and
 // another one for the output, an no returned values.

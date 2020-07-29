@@ -27,7 +27,7 @@ py_test(
     tags = ["noubsan"],  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
     deps = [
         ":raw_to_bitmap_lib",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
 )

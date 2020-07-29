@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #if (defined(__arm__) || defined(__aarch64__))
-#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+#include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #endif
 #endif
 

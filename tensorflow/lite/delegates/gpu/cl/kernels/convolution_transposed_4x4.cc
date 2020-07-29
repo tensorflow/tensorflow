@@ -270,7 +270,7 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     : GPUOperation(definition) {
   if (device.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (device.IsNvidia()) {
+  } else if (device.IsNvidia() || device.IsIntel()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
   } else if (device.IsAMD()) {
     weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;

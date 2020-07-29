@@ -32,6 +32,10 @@ class RecordingSimpleMemoryAllocator : public SimpleMemoryAllocator {
   // functions.
   ~RecordingSimpleMemoryAllocator() override;
 
+  static RecordingSimpleMemoryAllocator* Create(ErrorReporter* error_reporter,
+                                                uint8_t* buffer_head,
+                                                size_t buffer_size);
+
   // Returns the number of bytes requested from the head or tail.
   size_t GetRequestedBytes() const;
 

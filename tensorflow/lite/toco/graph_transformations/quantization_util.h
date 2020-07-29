@@ -47,7 +47,7 @@ void ChooseQuantizationParamsForArrayAndQuantizedDataType(
 // Quantizes an array by setting its data type and (if constant) quantizing
 // all values in the array.
 void QuantizeArray(GraphTransformation* transformation, Model* model,
-                   const string& name, ArrayDataType quantized_data_type,
+                   const std::string& name, ArrayDataType quantized_data_type,
                    const QuantizationParams& quantization_params);
 
 // Returns true if the given array, when quantized, contains only values between

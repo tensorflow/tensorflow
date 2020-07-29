@@ -299,12 +299,12 @@ ParseResult ParseReplicateOp(OpAsmParser* parser, OperationState* state) {
       parser->parseRegion(body, region_args, region_arg_types))
     return failure();
 
-  if (body.getBlocks().size() > 1)
-    return parser->emitError(loc) << "expects a single block region";
-
   // Ensure that the region is well formed: it contains at least a block with
   // a ReturnOp terminator.
   ReplicateOp::ensureTerminator(body, parser->getBuilder(), state->location);
+
+  if (!llvm::hasSingleElement(body))
+    return parser->emitError(loc) << "expects a single block region";
 
   Operation& terminator = body.front().back();
   if (!isa<ReturnOp>(terminator))

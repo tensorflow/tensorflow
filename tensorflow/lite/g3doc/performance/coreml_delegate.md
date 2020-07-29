@@ -19,7 +19,7 @@ Note: Core ML delegate supports Core ML version 2 and later.
 
 **Supported models**
 
-The Core ML delegate currently supports float32 models.
+The Core ML delegate currently supports float (FP32 and FP16) models.
 
 ## Trying the Core ML delegate on your own model
 

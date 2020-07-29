@@ -43,7 +43,8 @@ struct TensorProperty {
   // Constraints.
   bool restriction = false;
   // scale/zero_point hardcoded.
-  std::pair<float, int> restricted_value = {0.0f, 0};
+  std::pair<float, int> restricted_value_int8 = {0.0f, 0};
+  std::pair<float, int> restricted_value_int16 = {0.0f, 0};
 
   // Use derived scale.
   bool use_derived_scale = false;
@@ -64,7 +65,8 @@ struct TensorProperty {
 struct OperatorProperty {
   // Is a quantized operations currently supported.
   bool quantizable = true;
-
+  // Is a quantized operations currently supported for 16x8
+  bool quantizable_int16 = true;
   // Op has arbitrary number of inputs, such as concat.
   bool arbitrary_inputs = false;
   // Op has arbitrary number of outputs, such as slice.
@@ -93,6 +95,13 @@ struct OperatorProperty {
 
   // Op version.
   int version = 1;
+
+  // When we quantize activations into 16 bit and weights into 8 bit,
+  // we want to quantize all inputs, including constant tensors,
+  // for the operators like Add, Mul into 16-bit as well. The constant
+  // inputs are quantized as weights and this variable indicates
+  // that we want to do quantizations of these tensors as activations.
+  bool quantize_input_as_activations = false;
 };
 
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,

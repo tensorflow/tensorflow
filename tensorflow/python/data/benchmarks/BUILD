@@ -86,6 +86,15 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "prefetch_benchmark",
+    srcs = ["prefetch_benchmark.py"],
+    deps = [
+        ":benchmark_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "range_benchmark",
     srcs = ["range_benchmark.py"],
     deps = [

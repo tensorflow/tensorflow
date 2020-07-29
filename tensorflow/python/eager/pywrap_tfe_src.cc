@@ -2008,7 +2008,7 @@ bool ListContainsNone(PyObject* list) {
 
 static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
-    tensorflow::AbstractTensorHandleInterface* handle =
+    tensorflow::ImmediateExecutionTensorHandle* handle =
         tensorflow::unwrap(EagerTensor_Handle(tensor));
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
@@ -3869,7 +3869,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                                        bool include_tensor_ranks_only,
                                        EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
-    tensorflow::AbstractTensorHandleInterface* handle =
+    tensorflow::ImmediateExecutionTensorHandle* handle =
         tensorflow::unwrap(EagerTensor_Handle(arg));
 
     absl::StrAppend(&result->str, kDType,

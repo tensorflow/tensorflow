@@ -52,10 +52,6 @@ import org.tensorflow.lite.support.metadata.schema.TensorMetadata;
  * MetadataExtractor} omits subgraph index as an input in its methods.
  */
 public class MetadataExtractor {
-  // TODO(b/156539454): remove the hardcode versioning number and populate the version through
-  // genrule.
-  /** The version of the metadata parser that this {@link MetadataExtractor} library depends on. */
-  public static final String METADATA_PARSER_VERSION = "1.0.1";
 
   /** The helper class to load metadata from TFLite model FlatBuffer. */
   private final ModelInfo modelInfo;
@@ -85,7 +81,7 @@ public class MetadataExtractor {
         System.err.printf(
             "<Warning> Some fields in the metadata belong to a future schema. The minimum parser"
                 + " version required is %s, but the version of the current metadata parser is %s",
-            metadataInfo.getMininumParserVersion(), METADATA_PARSER_VERSION);
+            metadataInfo.getMininumParserVersion(), MetadataParser.VERSION);
       }
 
       checkArgument(
@@ -290,7 +286,7 @@ public class MetadataExtractor {
     if (minVersion == null) {
       return true;
     }
-    return compareVersions(minVersion, METADATA_PARSER_VERSION) <= 0;
+    return compareVersions(minVersion, MetadataParser.VERSION) <= 0;
   }
 
   /**

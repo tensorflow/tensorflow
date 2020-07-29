@@ -49,7 +49,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.2.0'
+_VERSION = '2.3.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
@@ -58,11 +58,13 @@ REQUIRED_PACKAGES = [
     'google_pasta >= 0.1.8',
     'h5py >= 2.10.0, < 2.11.0',
     'keras_preprocessing >= 1.1.1, < 1.2',
-    'numpy >= 1.16.0, < 2.0',
+    # TODO(mihaimaruseac): numpy 1.19.0 has ABI breakage
+    # https://github.com/numpy/numpy/pull/15355
+    'numpy >= 1.16.0, < 1.19.0',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
-    'tensorboard >= 2.2.0, < 2.3.0',
-    'tensorflow_estimator >= 2.2.0, < 2.3.0',
+    'tensorboard >= 2.3.0, < 3',
+    'tensorflow_estimator >= 2.3.0, < 2.4.0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
     'wheel >= 0.26',

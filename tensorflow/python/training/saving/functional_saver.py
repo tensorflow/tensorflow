@@ -21,6 +21,7 @@ from __future__ import print_function
 import uuid
 
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -161,7 +162,8 @@ class MultiDeviceSaver(object):
         self._after_restore_callbacks.append(saveable.after_restore)
 
       if is_saveable:
-        saveables_by_device.setdefault(saveable.device, []).append(saveable)
+        host_device = saveable_object_util.set_cpu0(saveable.device)
+        saveables_by_device.setdefault(host_device, []).append(saveable)
 
     self._single_device_savers = {
         device: _SingleDeviceSaver(saveables)
@@ -247,33 +249,50 @@ class MultiDeviceSaver(object):
       tmp_checkpoint_prefix = string_ops.string_join(
           [file_prefix, sharded_suffix])
 
-    num_shards = len(self._single_device_savers)
-    sharded_saves = []
-    sharded_prefixes = []
-    num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
-    last_device = None
-    for shard, (device, saver) in enumerate(
-        sorted(self._single_device_savers.items())):
-      last_device = device
-      with ops.device(saveable_object_util.set_cpu0(device)):
-        shard_prefix = sharded_filename(tmp_checkpoint_prefix, shard,
-                                        num_shards_tensor)
-      sharded_prefixes.append(shard_prefix)
-      with ops.device(device):
-        # _SingleDeviceSaver will use the CPU device when necessary, but initial
-        # read operations should be placed on the SaveableObject's device.
-        sharded_saves.append(saver.save(shard_prefix, options))
+    def save_fn():
+      num_shards = len(self._single_device_savers)
+      sharded_saves = []
+      sharded_prefixes = []
+      num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
+      last_device = None
+      for shard, (device, saver) in enumerate(
+          sorted(self._single_device_savers.items())):
+        last_device = device
+        with ops.device(saveable_object_util.set_cpu0(device)):
+          shard_prefix = sharded_filename(tmp_checkpoint_prefix, shard,
+                                          num_shards_tensor)
+        sharded_prefixes.append(shard_prefix)
+        with ops.device(device):
+          # _SingleDeviceSaver will use the CPU device when necessary, but
+          # initial read operations should be placed on the SaveableObject's
+          # device.
+          sharded_saves.append(saver.save(shard_prefix, options))
 
-    with ops.control_dependencies(sharded_saves):
-      # Merge on the io_device if specified, otherwise co-locates the merge op
-      # with the last device used.
-      merge_device = (options.experimental_io_device or
-                      saveable_object_util.set_cpu0(last_device))
-      with ops.device(merge_device):
-        # V2 format write path consists of a metadata merge step.  Once merged,
-        # attempts to delete the temporary directory, "<user-fed prefix>_temp".
-        return gen_io_ops.merge_v2_checkpoints(
-            sharded_prefixes, file_prefix, delete_old_dirs=True)
+      with ops.control_dependencies(sharded_saves):
+        # Merge on the io_device if specified, otherwise co-locates the merge op
+        # with the last device used.
+        merge_device = (
+            options.experimental_io_device or
+            saveable_object_util.set_cpu0(last_device))
+        with ops.device(merge_device):
+          # V2 format write path consists of a metadata merge step.  Once
+          # merged, attempts to delete the temporary directory,
+          # "<user-fed prefix>_temp".
+          return gen_io_ops.merge_v2_checkpoints(
+              sharded_prefixes, file_prefix, delete_old_dirs=True)
+
+    # Since this will causes a function re-trace on each save, limit this to the
+    # cases where it is needed: eager and when there are multiple tasks/single
+    # device savers. Note that the retrace is needed to ensure we pickup the
+    # latest values of options like experimental_io_device.
+    if context.executing_eagerly() and len(self._single_device_savers) > 1:
+      # Explicitly place the identity op on the first device.
+      @def_function.function(experimental_compile=False)
+      def tf_function_save():
+        save_fn()
+      tf_function_save()
+    else:
+      return save_fn()
 
   def restore(self, file_prefix, options=None):
     """Restore the saveable objects from a checkpoint with `file_prefix`.
@@ -287,12 +306,38 @@ class MultiDeviceSaver(object):
       A dictionary mapping from SaveableObject names to restore operations.
     """
     options = options or checkpoint_options.CheckpointOptions()
-    restore_ops = {}
-    # Sort by device name to avoid propagating non-deterministic dictionary
-    # ordering in some Python versions.
-    for device, saver in sorted(self._single_device_savers.items()):
-      with ops.device(device):
-        restore_ops.update(saver.restore(file_prefix, options))
+
+    def restore_fn():
+      restore_ops = {}
+      # Sort by device name to avoid propagating non-deterministic dictionary
+      # ordering in some Python versions.
+      for device, saver in sorted(self._single_device_savers.items()):
+        with ops.device(device):
+          restore_ops.update(saver.restore(file_prefix, options))
+
+      return restore_ops
+
+    # Since this will causes a function re-trace on each save, limit this to the
+    # cases where it is needed: eager and when there are multiple tasks/single
+    # device savers. Note that the retrace is needed to ensure we pickup the
+    # latest values of options like experimental_io_device.
+    if context.executing_eagerly() and len(self._single_device_savers) > 1:
+      first_device, _ = list(self._single_device_savers.items())[0]
+      @def_function.function(experimental_compile=False)
+      def tf_function_restore():
+        restore_ops = restore_fn()
+        restore_tensors = {}
+        # tf.functions must return tensors, thus we use control dependencies so
+        # that we can return a tensor which depends on the given op.
+        with ops.device(saveable_object_util.set_cpu0(first_device)):
+          for name, op in restore_ops.items():
+            with ops.control_dependencies([op]):
+              restore_tensors[name] = array_ops.identity(file_prefix)
+        return restore_tensors
+
+      restore_ops = tf_function_restore()
+    else:
+      restore_ops = restore_fn()
 
     for callback in self._after_restore_callbacks:
       callback()

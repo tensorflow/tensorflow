@@ -29,7 +29,7 @@ inline ActivationFunctionType TfLiteActivationToSchemaActivation(
       return ActivationFunctionType_NONE;
     case kTfLiteActRelu:
       return ActivationFunctionType_RELU;
-    case kTfLiteActRelu1:
+    case kTfLiteActReluN1To1:
       return ActivationFunctionType_RELU_N1_TO_1;
     case kTfLiteActRelu6:
       return ActivationFunctionType_RELU6;

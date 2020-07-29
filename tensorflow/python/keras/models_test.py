@@ -79,7 +79,7 @@ def _get_model(input_shape=(4,)):
 
 class TestModelCloning(keras_parameterized.TestCase):
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
       {'testcase_name': 'has_input_layer',
        'input_shape': (4,),
@@ -122,7 +122,7 @@ class TestModelCloning(keras_parameterized.TestCase):
         isinstance(new_model._layers[0], keras.layers.InputLayer),
         add_input_layer)
     self.assertEqual(new_model._is_graph_network, model._is_graph_network)
-    if input_shape:
+    if input_shape and not ops.executing_eagerly_outside_functions():
       # update ops from batch norm needs to be included
       self.assertGreaterEqual(len(new_model.updates), 2)
 
@@ -142,7 +142,7 @@ class TestModelCloning(keras_parameterized.TestCase):
       self.assertIsInstance(new_model._layers[0], keras.layers.InputLayer)
       self.assertTrue(new_model._is_graph_network)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
       {'testcase_name': 'clone_weights', 'share_weights': False},
       {'testcase_name': 'share_weights', 'share_weights': True},
@@ -173,7 +173,8 @@ class TestModelCloning(keras_parameterized.TestCase):
 
     # With placeholder creation
     new_model = clone_fn(model)
-    self.assertGreaterEqual(len(new_model.updates), 2)
+    if not ops.executing_eagerly_outside_functions():
+      self.assertGreaterEqual(len(new_model.updates), 2)
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
@@ -185,7 +186,8 @@ class TestModelCloning(keras_parameterized.TestCase):
     input_b = keras.Input(shape=(4,), name='b')
     new_model = keras.models.clone_model(
         model, input_tensors=[input_a, input_b])
-    self.assertLen(new_model.updates, 2)
+    if not ops.executing_eagerly_outside_functions():
+      self.assertLen(new_model.updates, 2)
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',

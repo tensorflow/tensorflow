@@ -277,12 +277,12 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConvolutionGroupConverter>(
       cost_model,
       /*convert_batch_groups_only=*/false);
-  pipeline.AddPass<ScatterExpander>();
   pipeline.AddPass<BatchNormExpander>(
       /*rewrite_training_op=*/true,
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
   pipeline.AddPass<DynamicPadder>();
+  pipeline.AddPass<ScatterExpander>();
   pipeline.AddPass<HloGetDimensionSizeRewriter>();
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {

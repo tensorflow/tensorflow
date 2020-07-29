@@ -242,6 +242,8 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
   } else if (gpu.IsAMD()) {
     return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
                                      : TensorStorageType::BUFFER;
+  } else if (gpu.IsIntel()) {
+    return TensorStorageType::BUFFER;
   }
   return TensorStorageType::BUFFER;
 }
@@ -264,6 +266,8 @@ TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
   } else if (gpu.IsAMD()) {
     return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
                                      : TensorStorageType::BUFFER;
+  } else if (gpu.IsIntel()) {
+    return TensorStorageType::BUFFER;
   }
   return TensorStorageType::BUFFER;
 }

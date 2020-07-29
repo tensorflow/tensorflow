@@ -146,6 +146,9 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // We can simply change name of TPU program's main function because there
       // should be no other reference to it.
       clone.setName("main");
+      clone.setVisibility(FuncOp::Visibility::Public);
+    } else {
+      clone.setVisibility(FuncOp::Visibility::Private);
     }
     symbol_table.insert(clone);
   }

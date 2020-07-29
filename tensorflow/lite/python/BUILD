@@ -40,7 +40,6 @@ py_test(
         "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
-        "notsan",  # TODO(b/149882556): enable after this is fixed.
     ],
     deps = [
         ":interpreter",
@@ -194,9 +193,8 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        # TODO(b/111881877): Enable in oss after resolving op registry issues.
-        "no_oss",
-        "no_windows",
+        "no_mac",  # TODO(b/159077703): Enable Python API Flex support on MacOS.
+        "no_windows",  # TODO(b/159077703): Enable Python API Flex support on Windows.
     ],
     deps = [
         ":lite",

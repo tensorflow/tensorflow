@@ -63,7 +63,8 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
       node.mutable_attr()->swap(new_attr);
       // As Identity op only takes one input, mark redundant inputs as control
       // input.
-      for (size_t i = 1; i < node.input_size(); ++i) {
+      for (int i = 1, node_input_size = node.input_size(); i < node_input_size;
+           ++i) {
         if (!IsControlInput(node.input(i))) {
           *node.mutable_input(i) = AsControlDependency(NodeName(node.input(i)));
         }

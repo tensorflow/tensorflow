@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
 namespace tensorflow {
@@ -34,7 +33,8 @@ namespace {
 // the events to TraceMeRecorder.
 class PythonTracer : public ProfilerInterface {
  public:
-  explicit PythonTracer() = default;
+  explicit PythonTracer(const PythonHooksOptions& options)
+      : options_(options) {}
   ~PythonTracer() override;
 
   // Starts recording TraceMes.
@@ -51,6 +51,7 @@ class PythonTracer : public ProfilerInterface {
 
  private:
   bool recording_ = false;
+  const PythonHooksOptions options_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PythonTracer);
 };
@@ -66,7 +67,7 @@ Status PythonTracer::Start() {
   }
   VLOG(1) << __FUNCTION__;
   recording_ = true;
-  PythonHooks::GetSingleton()->Start();
+  PythonHooks::GetSingleton()->Start(options_);
   return Status::OK();
 }
 
@@ -75,7 +76,7 @@ Status PythonTracer::Stop() {
     return errors::Internal("TraceMeRecorder not started");
   }
   VLOG(1) << __FUNCTION__;
-  PythonHooks::GetSingleton()->Stop();
+  PythonHooks::GetSingleton()->Stop(options_);
   recording_ = false;
   return Status::OK();
 }
@@ -105,18 +106,15 @@ Status PythonTracer::CollectData(XSpace* space) {
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<ProfilerInterface> CreatePythonTracer(
     const ProfileOptions& options) {
-  if (options.python_tracer_level() == 0) return nullptr;
-  // This ProfilerInterface rely on TraceMeRecorder to be active.
-  if (options.host_tracer_level() == 0) return nullptr;
-  return absl::make_unique<PythonTracer>();
+  PythonHooksOptions pyhooks_options;
+  pyhooks_options.enable_trace_python_function =
+      options.python_tracer_level() && options.host_tracer_level();
+  pyhooks_options.enable_python_traceme = options.host_tracer_level() != 0;
+  return absl::make_unique<PythonTracer>(pyhooks_options);
 }
 
 auto register_python_tracer_factory = [] {
-  bool enable;
-  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_PYTHON_TRACER", true, &enable));
-  if (enable) {
-    RegisterProfilerFactory(&CreatePythonTracer);
-  }
+  RegisterProfilerFactory(&CreatePythonTracer);
   return 0;
 }();
 

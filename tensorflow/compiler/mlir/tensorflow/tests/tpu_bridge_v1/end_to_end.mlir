@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-tpu-bridge-v1 | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-tpu-bridge-v1 | FileCheck %s
 
 module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"], tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 296 : i32}} {
   func @main() {

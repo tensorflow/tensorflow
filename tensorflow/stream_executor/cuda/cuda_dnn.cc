@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/tf32_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -254,10 +255,8 @@ cudnnConvolutionBwdFilterAlgo_t ToConvBackwardFilterAlgo(
     // Based on cudnn.h, the following is not implemented.
     // case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD:
     case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED:
+    case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING:
       return algo;
-    // Produces incorrect results for some shapes. Disabled for now, see
-    // NVIDIA bug 2072856. TODO(csigg): Only disable for subset of shapes.
-    // case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING:
     default:
       LOG(FATAL)
           << "Unsupported Cudnn convolution backward algorithm for filter: "
@@ -603,31 +602,6 @@ class CudnnFilterDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnFilterDescriptor);
 };
 
-// A helper function to decide whether to enable the TENSOR_OP_MATH math type
-bool TensorOpMathEnabled() {
-  static bool is_enabled = [] {
-    bool is_disabled = false;
-    TF_CHECK_OK(
-        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_TENSOR_OP_MATH",
-                                       /*default_val=*/false, &is_disabled));
-    return !is_disabled;
-  }();
-  return is_enabled;
-}
-
-// A helper function to decide whether to enable the TENSOR_OP_MATH math type
-// for RNNs.
-bool RnnTensorOpMathEnabled() {
-  static bool is_enabled = [] {
-    bool is_disabled = false;
-    TF_CHECK_OK(
-        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_RNN_TENSOR_OP_MATH",
-                                       /*default_val=*/false, &is_disabled));
-    return !is_disabled;
-  }();
-  return is_enabled;
-}
-
 // A helper function to decide whether to use
 // CUDNN_BATCHNORM_SPATIAL_PERSISTENT in batchnorm. This mode can be faster in
 // some tasks because an optimized path may be selected for CUDNN_DATA_FLOAT
@@ -732,10 +706,6 @@ class CudnnConvolutionDescriptor {
             : CUDNN_CROSS_CORRELATION,
         data_type));
 
-    // NOTE(benbarsdell): This only applies if tensor op math is enabled
-    //                      and algo selection is set to Default.
-    this->set_use_tensor_op_math(true);
-
 #if CUDNN_MAJOR >= 7
     VLOG(2) << "Requesting grouped convolution: "
             << convolution_descriptor.group_count();
@@ -747,13 +717,15 @@ class CudnnConvolutionDescriptor {
 #endif
   }
 
-  void set_use_tensor_op_math(bool use_tensor_op_math) const {
+  void set_use_tensor_op_math(bool use_tensor_op_math) {
 #if CUDNN_VERSION >= 7000
     cudnnMathType_t math_type =
+#if CUDNN_VERSION >= 8000
+        (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH);
+#else
         (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH);
-    if (TensorOpMathEnabled()) {
-      CHECK_CUDNN_OK(cudnnSetConvolutionMathType(handle_.get(), math_type));
-    }
+#endif
+    CHECK_CUDNN_OK(cudnnSetConvolutionMathType(handle_.get(), math_type));
 #endif
   }
 
@@ -764,6 +736,40 @@ class CudnnConvolutionDescriptor {
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnConvolutionDescriptor);
 };
+
+// A helper function to query if a CudnnConvolutionDescriptor has tensor_op_math
+// set
+static bool IsTensorMathOpSet(const CudnnConvolutionDescriptor& conv) {
+  cudnnMathType_t math_type;
+  CHECK_CUDNN_OK(cudnnGetConvolutionMathType(conv.handle(), &math_type));
+#if CUDNN_VERSION >= 8000
+  return math_type != CUDNN_FMA_MATH;
+#else
+  return math_type == CUDNN_TENSOR_OP_MATH;
+#endif
+}
+
+static bool TensorOpMathAvailable(int cc_major) {
+  return cc_major >= 7 && CUDNN_VERSION >= 7000;
+}
+
+static bool IsTensorMathAllowed(Stream* stream, dnn::DataType input_type) {
+  int cc_major, cc_minor;
+  std::tie(cc_major, cc_minor) = GetCcMajorMinor(stream);
+  if (!TensorOpMathAvailable(cc_major)) {
+    return false;
+  }
+  if (input_type == dnn::DataType::kFloat) {
+#if CUDNN_VERSION < 8000
+    return false;
+#else
+    if (!tensorflow::tf32_execution_allowed()) {
+      return false;
+    }
+#endif
+  }
+  return true;
+}
 
 // Turns a PoolingDescriptor structure into a cudnn pooling descriptor handle
 // within a scope.
@@ -1157,21 +1163,27 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // in profile mode, which is run with algorithms returned from
     // GetRnnAlgorithms() (which are non-default and explicitly set whether to
     // use tensor ops). CuDNN 7.2.1 fixed this issue
-    if (RnnTensorOpMathEnabled()) {
-      cudnnMathType_t math_type;
-      if (algorithm_config.algorithm().has_value()) {
-        math_type = algorithm_config.algorithm()->tensor_ops_enabled()
-                        ? CUDNN_TENSOR_OP_MATH
-                        : CUDNN_DEFAULT_MATH;
-      } else {
-#if CUDNN_VERSION >= 7201
-        math_type = CUDNN_TENSOR_OP_MATH;
-#else
-        math_type = CUDNN_DEFAULT_MATH;
-#endif  // CUDNN_VERSION >= 7201
-      }
-      CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
+    bool allow_tensor_ops =
+        data_type != CUDNN_DATA_FLOAT || tensorflow::tf32_execution_allowed();
+    bool use_tensor_ops;
+    if (algorithm_config.algorithm().has_value()) {
+      use_tensor_ops = algorithm_config.algorithm()->tensor_ops_enabled();
+    } else {
+      use_tensor_ops = CUDNN_VERSION >= 7201 && allow_tensor_ops;
     }
+
+    if (use_tensor_ops && !allow_tensor_ops) {
+      return port::Status(port::error::INVALID_ARGUMENT,
+                          "Algo requests disallowed tensor op evaluation.");
+    }
+
+    cudnnMathType_t math_type;
+#if CUDNN_VERSION >= 8000
+    math_type = use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH;
+#else
+    math_type = use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
+#endif
+    CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
 #endif  // CUDNN_VERSION >= 7000
 
     return CudnnRnnDescriptor(cudnn, std::move(rnn_desc), std::move(rnn_plan),
@@ -2562,10 +2574,11 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
     const CudnnTensorDescriptor& output_nd,
     const dnn::AlgorithmDesc& algorithm_desc,
     ScratchAllocator* scratch_allocator) {
-  // TODO(csigg): This has side effects on the convolution descriptor. It is
-  // functionally correct because the convolution is run with the algorithm of
-  // the last call to this function, but should be fixed anyway.
-  conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
+  if (IsTensorMathOpSet(conv) != algorithm_desc.tensor_ops_enabled()) {
+    return port::Status(
+        port::error::INTERNAL,
+        "Mismatch between cudnn conv and algorithm descriptors.");
+  }
 
   // Query the size of the workspace and allocate it.
   size_t size_in_bytes;
@@ -2605,10 +2618,11 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
     const CudnnTensorDescriptor& output_nd,
     const dnn::AlgorithmDesc& algorithm_desc,
     ScratchAllocator* scratch_allocator) {
-  // TODO(csigg): This has side effects on the convolution descriptor. It is
-  // functionally correct because the convolution is run with the algorithm of
-  // the last call to this function, but should be fixed anyway.
-  conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
+  if (IsTensorMathOpSet(conv) != algorithm_desc.tensor_ops_enabled()) {
+    return port::Status(
+        port::error::INTERNAL,
+        "Mismatch between cudnn conv and algorithm descriptors.");
+  }
 
   // Query the size of the workspace and allocate it.
   size_t size_in_bytes;
@@ -2650,10 +2664,11 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
     const CudnnTensorDescriptor& output_nd,
     const dnn::AlgorithmDesc& algorithm_desc,
     ScratchAllocator* scratch_allocator) {
-  // TODO(csigg): This has side effects on the convolution descriptor. It is
-  // functionally correct because the convolution is run with the algorithm of
-  // the last call to this function, but should be fixed anyway.
-  conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
+  if (IsTensorMathOpSet(conv) != algorithm_desc.tensor_ops_enabled()) {
+    return port::Status(
+        port::error::INTERNAL,
+        "Mismatch between cudnn conv and algorithm descriptors.");
+  }
 
   // Query the size of the workspace and allocate it.
   size_t size_in_bytes;
@@ -2687,18 +2702,42 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
   return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
-static bool TensorOpMathAvailable(int cc_major) {
-  return cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled();
+port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
+                                  absl::optional<dnn::AlgorithmDesc> desc) {
+  bool use_tensor_ops;
+  if (desc.has_value()) {
+    use_tensor_ops = desc->tensor_ops_enabled();
+    if (use_tensor_ops && !IsTensorMathAllowed(stream, type)) {
+      return port::Status(port::error::INVALID_ARGUMENT,
+                          "Algo requests disallowed tensor op evaluation.");
+    }
+  } else {
+    use_tensor_ops = IsTensorMathAllowed(stream, type);
+  }
+  return use_tensor_ops;
 }
+
+cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
+dnn::DataType GetConvAccumulatorType(dnn::DataType data_type);
 
 port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
     const dnn::AlgorithmConfig& algorithm_config,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
-    const CudnnConvolutionDescriptor& conv,
+    dnn::DataType element_type,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
   absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+
+  CudnnConvolutionDescriptor conv(
+      convolution_descriptor,
+      ToCudnnDataType(GetConvAccumulatorType(element_type)));
+  bool use_tensor_ops;
+  SE_ASSIGN_OR_RETURN(use_tensor_ops,
+                      UseTensorOps(stream, element_type, algo_desc));
+  conv.set_use_tensor_op_math(use_tensor_ops);
+
   if (!algo_desc.has_value()) {
     // Pick fastest algorithm within memory limit according to cuDNN's
     // heuristics.
@@ -2711,10 +2750,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
                         GetCudnnConvolutionForwardAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
                             specify_workspace_limit, memory_limit_bytes));
-    int cc_major, cc_minor;
-    std::tie(cc_major, cc_minor) = GetCcMajorMinor(stream);
-    algo_desc = dnn::AlgorithmDesc(
-        algo, /*use_tensor_ops=*/TensorOpMathAvailable(cc_major));
+    algo_desc = dnn::AlgorithmDesc(algo, use_tensor_ops);
   }
 
   const auto scratch_or = AllocateCudnnConvolutionForwardWorkspace(
@@ -2738,6 +2774,9 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
                      "Returned status: ", scratch_or.status().ToString()));
   }
 
+  SE_ASSIGN_OR_RETURN(use_tensor_ops,
+                      UseTensorOps(stream, element_type, algo_desc));
+  conv.set_use_tensor_op_math(use_tensor_ops);
   SE_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionForwardWorkspace(
                                     stream, cudnn, input_nd, filter, conv,
                                     output_nd, *algo_desc, scratch_allocator));
@@ -2748,10 +2787,19 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
     const dnn::AlgorithmConfig& algorithm_config,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
-    const CudnnConvolutionDescriptor& conv,
+    dnn::DataType element_type,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
   absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  CudnnConvolutionDescriptor conv(
+      convolution_descriptor,
+      ToCudnnDataType(GetConvAccumulatorType(element_type)));
+  bool use_tensor_ops;
+  SE_ASSIGN_OR_RETURN(use_tensor_ops,
+                      UseTensorOps(stream, element_type, algo_desc));
+  conv.set_use_tensor_op_math(use_tensor_ops);
+
   if (!algo_desc.has_value()) {
     // Pick fastest algorithm within memory limit according to cuDNN's
     // heuristics.
@@ -2764,10 +2812,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
                         GetCudnnConvolutionBackwardDataAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
                             specify_workspace_limit, memory_limit_bytes));
-    int cc_major, cc_minor;
-    std::tie(cc_major, cc_minor) = GetCcMajorMinor(stream);
-    algo_desc = dnn::AlgorithmDesc(
-        algo, /*use_tensor_ops=*/TensorOpMathAvailable(cc_major));
+    algo_desc = dnn::AlgorithmDesc(algo, use_tensor_ops);
   }
 
   const auto scratch_or = AllocateCudnnConvolutionBackwardDataWorkspace(
@@ -2790,6 +2835,9 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
         "while a secondary algorithm is not provided.");
   }
 
+  SE_ASSIGN_OR_RETURN(use_tensor_ops,
+                      UseTensorOps(stream, element_type, algo_desc));
+  conv.set_use_tensor_op_math(use_tensor_ops);
   SE_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionBackwardDataWorkspace(
                                     stream, cudnn, input_nd, filter, conv,
                                     output_nd, *algo_desc, scratch_allocator));
@@ -2800,10 +2848,19 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
     const dnn::AlgorithmConfig& algorithm_config,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
-    const CudnnConvolutionDescriptor& conv,
+    dnn::DataType element_type,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
     const CudnnTensorDescriptor& output_nd, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8>* scratch) {
   absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+  CudnnConvolutionDescriptor conv(
+      convolution_descriptor,
+      ToCudnnDataType(GetConvAccumulatorType(element_type)));
+  bool use_tensor_ops;
+  SE_ASSIGN_OR_RETURN(use_tensor_ops,
+                      UseTensorOps(stream, element_type, algo_desc));
+  conv.set_use_tensor_op_math(use_tensor_ops);
+
   if (!algo_desc.has_value()) {
     // Pick fastest algorithm within memory limit according to cuDNN's
     // heuristics.
@@ -2816,10 +2873,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
                         GetCudnnConvolutionBackwardFilterAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
                             specify_workspace_limit, memory_limit_bytes));
-    int cc_major, cc_minor;
-    std::tie(cc_major, cc_minor) = GetCcMajorMinor(stream);
-    algo_desc = dnn::AlgorithmDesc(
-        algo, /*use_tensor_ops=*/TensorOpMathAvailable(cc_major));
+    algo_desc = dnn::AlgorithmDesc(algo, use_tensor_ops);
   }
 
   auto scratch_or = AllocateCudnnConvolutionBackwardFilterWorkspace(
@@ -2842,6 +2896,9 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
         "while a secondary algorithm is not provided.");
   }
 
+  SE_ASSIGN_OR_RETURN(use_tensor_ops,
+                      UseTensorOps(stream, element_type, algo_desc));
+  conv.set_use_tensor_op_math(use_tensor_ops);
   SE_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionBackwardFilterWorkspace(
                                     stream, cudnn, input_nd, filter, conv,
                                     output_nd, *algo_desc, scratch_allocator));
@@ -3006,35 +3063,32 @@ port::Status CudnnSupport::DoPrepareForConvolution(
   CudnnTensorDescriptor output_nd(
       output_descriptor,
       ToCudnnDataType(element_type, output_descriptor.layout()));
-  CudnnConvolutionDescriptor conv(
-      convolution_descriptor,
-      ToCudnnDataType(GetConvAccumulatorType(element_type)));
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   switch (kind) {
     case dnn::ConvolutionKind::FORWARD: {
-      SE_ASSIGN_OR_RETURN(
-          *algorithm_desc,
-          GetCudnnConvolutionForwardAlgorithm(
-              stream, cudnn, algorithm_config, input_nd, filter_nd, conv,
-              output_nd, scratch_allocator, scratch_memory));
+      SE_ASSIGN_OR_RETURN(*algorithm_desc,
+                          GetCudnnConvolutionForwardAlgorithm(
+                              stream, cudnn, algorithm_config, input_nd,
+                              filter_nd, element_type, convolution_descriptor,
+                              output_nd, scratch_allocator, scratch_memory));
       break;
     }
     case dnn::ConvolutionKind::BACKWARD_DATA: {
-      SE_ASSIGN_OR_RETURN(
-          *algorithm_desc,
-          GetCudnnConvolutionBackwardDataAlgorithm(
-              stream, cudnn, algorithm_config, input_nd, filter_nd, conv,
-              output_nd, scratch_allocator, scratch_memory));
+      SE_ASSIGN_OR_RETURN(*algorithm_desc,
+                          GetCudnnConvolutionBackwardDataAlgorithm(
+                              stream, cudnn, algorithm_config, input_nd,
+                              filter_nd, element_type, convolution_descriptor,
+                              output_nd, scratch_allocator, scratch_memory));
       break;
     }
     case dnn::ConvolutionKind::BACKWARD_FILTER: {
-      SE_ASSIGN_OR_RETURN(
-          *algorithm_desc,
-          GetCudnnConvolutionBackwardFilterAlgorithm(
-              stream, cudnn, algorithm_config, input_nd, filter_nd, conv,
-              output_nd, scratch_allocator, scratch_memory));
+      SE_ASSIGN_OR_RETURN(*algorithm_desc,
+                          GetCudnnConvolutionBackwardFilterAlgorithm(
+                              stream, cudnn, algorithm_config, input_nd,
+                              filter_nd, element_type, convolution_descriptor,
+                              output_nd, scratch_allocator, scratch_memory));
       break;
     }
     default:
@@ -3063,8 +3117,9 @@ port::Status CudnnSupport::DoConvolve(
   auto accumulator_type = GetConvAccumulatorType(element_type);
   CudnnConvolutionDescriptor conv(convolution_descriptor,
                                   ToCudnnDataType(accumulator_type));
-  // Set use_tensor_math param to correct value
-  conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
+  SE_ASSIGN_OR_RETURN(bool use_tensor_ops,
+                      UseTensorOps(stream, element_type, algorithm_desc));
+  conv.set_use_tensor_op_math(use_tensor_ops);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   // Alpha is the scaling factor for input.
@@ -3297,14 +3352,6 @@ port::Status CudnnSupport::DoConvolve(
   return port::Status::OK();
 }
 
-// A helper function to query if a CudnnConvolutionDescriptor has tensor_op_math
-// set
-static bool IsTensorMathOpSet(const CudnnConvolutionDescriptor& conv) {
-  cudnnMathType_t math_type;
-  CHECK_CUDNN_OK(cudnnGetConvolutionMathType(conv.handle(), &math_type));
-  return math_type == CUDNN_TENSOR_OP_MATH;
-}
-
 template <typename ElementType, typename BiasType, typename ScaleType,
           typename OutputType>
 port::Status CudnnSupport::DoFusedConvolveImpl(
@@ -3338,8 +3385,6 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
       filter_descriptor,
       GetCudnnDataType<ElementType>(conv_input_descriptor.layout()));
   CudnnTensorDescriptor bias_nd(bias_descriptor, GetCudnnDataType<BiasType>());
-  CudnnConvolutionDescriptor conv(convolution_descriptor,
-                                  ToCudnnDataType(accumulator_type));
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
@@ -3349,8 +3394,13 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
   SE_ASSIGN_OR_RETURN(
       dnn::AlgorithmDesc algo_desc,
       GetCudnnConvolutionForwardAlgorithm(
-          stream, cudnn, algorithm_config, conv_input_nd, filter, conv,
+          stream, cudnn, algorithm_config, conv_input_nd, filter,
+          dnn::ToDataType<ElementType>::value, convolution_descriptor,
           output_nd, scratch_allocator, &scratch));
+
+  CudnnConvolutionDescriptor conv(convolution_descriptor,
+                                  ToCudnnDataType(accumulator_type));
+  conv.set_use_tensor_op_math(algo_desc.tensor_ops_enabled());
 
   std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   if (is_profiling) {
@@ -3482,9 +3532,7 @@ bool CudnnSupport::GetRnnAlgorithms(
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
 #if CUDNN_VERSION >= 7100
-    if (RnnTensorOpMathEnabled()) {
-      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
-    }
+    out_algorithms->push_back({i, /*use_tensor_ops=*/true});
 #endif
   }
   return true;

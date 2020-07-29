@@ -291,31 +291,27 @@ class ResourceMgr {
 ResourceHandle MakeResourceHandle(
     const string& container, const string& name, const DeviceBase& device,
     const TypeIndex& type_index,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const std::vector<string>& allowed_devices = {}) TF_MUST_USE_RESULT;
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {})
+    TF_MUST_USE_RESULT;
 
 template <typename T>
 ResourceHandle MakeResourceHandle(
     OpKernelContext* ctx, const string& container, const string& name,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const std::vector<string>& allowed_devices = {}) {
-  return MakeResourceHandle(container.empty()
-                                ? ctx->resource_manager()->default_container()
-                                : container,
-                            name, *ctx->device(), MakeTypeIndex<T>(),
-                            dtypes_and_shapes, allowed_devices);
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {}) {
+  return MakeResourceHandle(
+      container.empty() ? ctx->resource_manager()->default_container()
+                        : container,
+      name, *ctx->device(), MakeTypeIndex<T>(), dtypes_and_shapes);
 }
 
 template <typename T>
 ResourceHandle MakeResourceHandle(
     OpKernelConstruction* ctx, const string& container, const string& name,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const std::vector<string>& allowed_devices = {}) {
-  return MakeResourceHandle(container.empty()
-                                ? ctx->resource_manager()->default_container()
-                                : container,
-                            name, *ctx->device(), MakeTypeIndex<T>(),
-                            dtypes_and_shapes, allowed_devices);
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {}) {
+  return MakeResourceHandle(
+      container.empty() ? ctx->resource_manager()->default_container()
+                        : container,
+      name, *ctx->device(), MakeTypeIndex<T>(), dtypes_and_shapes);
 }
 
 Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,

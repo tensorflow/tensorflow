@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -xla-hlo-sink-constants-to-control-flow | FileCheck %s --dump-input=fail
+// RUN: xla-opt %s -xla-hlo-sink-constants-to-control-flow | FileCheck %s
 
 // Tests sinking constants to a while loop.
 

@@ -40,6 +40,9 @@ using OpPtr = std::unique_ptr<TFE_Op, OpDeleter>;
 using MaybeParallelTensorOwned =
     absl::variant<std::unique_ptr<ParallelTensor>, TensorHandlePtr>;
 
+using MaybeParallelTensorUnowned =
+    absl::variant<ParallelTensor*, TFE_TensorHandle*>;
+
 // A ParallelDevice on its own is not registered with a TFE_Context, and so has
 // no device name (e.g. for `tf.device`). `NamedParallelDevice` associates a
 // name with it, which lets us pack its `ParallelTensor`s into TFE_TensorHandles
@@ -141,9 +144,32 @@ absl::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
     result.emplace(std::move(result_content));
     return result;
   }
+  std::vector<ParallelTensor*> parallel_inputs;
+  std::vector<std::unique_ptr<ParallelTensor>> implicitly_broadcast_tensors;
+  parallel_inputs.reserve(inputs.size());
+  implicitly_broadcast_tensors.reserve(inputs.size());  // not tight
+  for (const auto& input : inputs) {
+    if (absl::holds_alternative<TFE_TensorHandle*>(input)) {
+      // Non-parallel tensors are implicitly broadcast, i.e. set as the input
+      // to each parallel operation.
+      //
+      // TODO(allenl): There may be smarter ways to do this copy in some
+      // cases, i.e. with a collective broadcast. We'll need to be careful
+      // about things that are taken as inputs on the host or on their
+      // existing device (for multi-device functions).
+      std::unique_ptr<ParallelTensor> parallel_tensor(
+          parallel_device.CopyToParallelDevice(
+              context, absl::get<TFE_TensorHandle*>(input), status));
+      if (TF_GetCode(status) != TF_OK) return result;
+      parallel_inputs.push_back(parallel_tensor.get());
+      implicitly_broadcast_tensors.emplace_back(std::move(parallel_tensor));
+    } else {
+      parallel_inputs.push_back(absl::get<ParallelTensor*>(input));
+    }
+  }
   absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
       maybe_parallel_results(
-          parallel_device.Execute(context, std::move(inputs), operation_name,
+          parallel_device.Execute(context, parallel_inputs, operation_name,
                                   attributes, expected_max_outputs, status));
   if (!maybe_parallel_results.has_value()) return result;
   std::vector<std::unique_ptr<ParallelTensor>> parallel_results(

@@ -162,13 +162,18 @@ class TfFunctionExecutions {
   explicit TfFunctionExecutions(const XLineVisitor& line) {
     // Creates points_ and activations_ from line.
     line.ForEachEvent([&](const XEventVisitor& event) {
-      std::string mode = "";
+      absl::string_view mode;
       int64 tracing_count = 0;
       event.ForEachStat([&mode, &tracing_count](const XStatVisitor& stat) {
-        if (stat.Type() == StatType::kTfFunctionCall)
-          mode = std::string(stat.StrOrRefValue());
-        if (stat.Type() == StatType::kTfFunctionTracingCount)
-          tracing_count = stat.IntValue();
+        if (!stat.Type().has_value()) return;
+        switch (stat.Type().value()) {
+          case StatType::kTfFunctionCall:
+            mode = stat.StrOrRefValue();
+            break;
+          case StatType::kTfFunctionTracingCount:
+            tracing_count = stat.IntValue();
+            break;
+        }
       });
       if (mode.empty()) return;
 

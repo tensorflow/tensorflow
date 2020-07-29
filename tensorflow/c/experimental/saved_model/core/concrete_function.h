@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/c/eager/operation_interface.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/core/framework/function.pb.h"
 
@@ -38,15 +38,15 @@ class ConcreteFunction {
   virtual ~ConcreteFunction() = 0;
 
   // This method returns the "Call" Op used to execute the function.
-  virtual AbstractOperationInterface* GetCallOp() = 0;
+  virtual ImmediateExecutionOperation* GetCallOp() = 0;
 
-  const std::vector<tensorflow::AbstractTensorHandleInterface*>& GetCaptures()
+  const std::vector<tensorflow::ImmediateExecutionTensorHandle*>& GetCaptures()
       const;
   const FunctionMetadata& GetFunctionMetadata() const;
 
  private:
   FunctionMetadata metadata_;
-  std::vector<tensorflow::AbstractTensorHandleInterface*> captures_;
+  std::vector<tensorflow::ImmediateExecutionTensorHandle*> captures_;
   FunctionDef* function_;
 };
 

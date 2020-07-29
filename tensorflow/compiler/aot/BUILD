@@ -67,13 +67,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:powerpc_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "//tensorflow/core:regexp_internal",
     ] + if_llvm_aarch64_available([
-        "@llvm-project//llvm:aarch64_target",  # fixdeps: keep
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
 
@@ -94,8 +94,8 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",  # fixdeps: keep
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:Support",  # fixdeps: keep
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
 
@@ -109,12 +109,12 @@ cc_library(
     name = "llvm_targets",
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:powerpc_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ] + if_llvm_aarch64_available([
-        "@llvm-project//llvm:aarch64_target",  # fixdeps: keep
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
 
@@ -286,9 +286,9 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:ir",
-        "@llvm-project//llvm:support",
-        "@llvm-project//llvm:target_base",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
     ],
 )
 

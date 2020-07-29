@@ -24,6 +24,7 @@ import copy
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
@@ -334,9 +335,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         compute_devices, self._variable_device)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate(colocate_with_variable, self)
+    distribute_utils.validate_colocate(colocate_with_variable, self)
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
     return input_lib.get_distributed_dataset(
         dataset,
         self._input_workers,
@@ -375,7 +376,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._input_host_device, session)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
     if self._cluster_spec:
       input_pipeline_id = multi_worker_util.id_in_cluster(
           self._cluster_spec, self._task_type, self._task_id)

@@ -25,12 +25,13 @@ from absl import logging
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
-from tensorflow.python.distribute import values as tf_values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -131,12 +132,24 @@ class TPUEmbedding(tracking.AutoTrackable):
   First lets look at the `TPUStrategy` mode. Initial setup looks like:
 
   ```python
-  strategy = tf.distribute.experimental.TPUStrategy(...)
+  strategy = tf.distribute.TPUStrategy(...)
   with strategy.scope():
     embedding = tf.tpu.experimental.embedding.TPUEmbedding(
         feature_config=feature_config,
         batch_size=1024,
         optimizer=tf.tpu.experimental.embedding.SGD(0.1))
+  ```
+
+  When creating a distributed dataset that is to be passed to the enqueue
+  operation a special input option must be specified:
+
+  ```python
+  distributed_dataset = (
+      strategy.experimental_distribute_datasets_from_function(
+          dataset_fn=...,
+          options=tf.distribute.InputOptions(
+              experimental_prefetch_to_device=False))
+  dataset_iterator = iter(distributed_dataset)
   ```
 
   To use this API on TPU you should use a custom training loop. Below is an
@@ -221,7 +234,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     """Creates the TPUEmbedding mid level API object.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(
           feature_config=tf.tpu.experimental.embedding.FeatureConfig(
@@ -252,7 +265,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       Adam or Adagrad).
     """
     self._strategy = distribution_strategy_context.get_strategy()
-    self._using_tpu = isinstance(self._strategy, tpu_strategy.TPUStrategy)
+    self._using_tpu = isinstance(self._strategy, (tpu_strategy.TPUStrategy,
+                                                  tpu_strategy.TPUStrategyV2))
     self._pipeline_execution_with_tensor_core = (
         pipeline_execution_with_tensor_core)
 
@@ -308,10 +322,6 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       # We need to list of host devices for the load/retrieve operations.
       self._hosts = get_list_of_hosts(self._strategy)
-
-      # TODO(bfontain) Remove this once we have an official way of splitting
-      # prefetch between host and device.
-      self._strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
 
       # We generally use the per core batch size, but will have the user pass
       # in a global batch size.
@@ -503,11 +513,15 @@ class TPUEmbedding(tracking.AutoTrackable):
     ensure you understand the effect of applying a zero gradient.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -590,11 +604,15 @@ class TPUEmbedding(tracking.AutoTrackable):
     `(batch_size, max_sequence_length, dim)` instead.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -1004,6 +1022,32 @@ class TPUEmbedding(tracking.AutoTrackable):
                                                  input_tensor.op.name,
                                                  input_tensor.op.type))
 
+  def _raise_error_for_inputs_not_on_cpu(self, features):
+    """Checks all tensors in features to see are placed on the CPU."""
+
+    def check_device(path, device_string):
+      spec = tf_device.DeviceSpec.from_string(device_string)
+      if spec.device_type == "TPU":
+        raise ValueError(
+            "Received input tensor {} which is on a TPU input device {}. Input "
+            "tensors for TPU embeddings must be placed on the CPU. Please "
+            "ensure that your dataset is prefetching tensors to the host by "
+            "setting the 'experimental_prefetch_to_device' option of the "
+            "dataset distribution function. See the documentation of the "
+            "enqueue method for an example.".format(
+                path, device_string))
+
+    # expand_composites here is important, we need to check the device of each
+    # underlying tensor.
+    for path, input_tensor in nest.flatten_with_joined_string_paths(
+        features, expand_composites=True):
+      if (input_tensor.op.type == "Identity" and
+          input_tensor.op.inputs[0].op.type == "TPUReplicatedInput"):
+        for tensor in input_tensor.op.inputs[0].op.inputs:
+          check_device(path, tensor.device)
+      else:
+        check_device(path, input_tensor.device)
+
   def enqueue(self, features, weights=None, training=True, name=None):
     """Enqueues id tensors for embedding lookup.
 
@@ -1011,17 +1055,21 @@ class TPUEmbedding(tracking.AutoTrackable):
     embedding tables. We expect that the batch size of each of the tensors in
     features matches the per core batch size. This will automatically happen if
     your input dataset is batched to the global batch size and you use
-    `tf.distribute.experimental.TPUStrategy`'s `experimental_distribute_dataset`
+    `tf.distribute.TPUStrategy`'s `experimental_distribute_dataset`
     or if you use `experimental_distribute_datasets_from_function` and batch
     to the per core batch size computed by the context passed to your input
     function.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -1091,6 +1139,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       flat_weights = nest.flatten(weights)
     flat_features = nest.flatten_with_joined_string_paths(self._feature_config)
 
+    self._raise_error_for_inputs_not_on_cpu(features)
     in_tpu_context = self._raise_error_for_incorrect_control_flow_context()
     # If we are in a tpu_context, automatically apply outside compilation.
     if in_tpu_context:
@@ -1131,8 +1180,10 @@ class TPUEmbedding(tracking.AutoTrackable):
       # in the same (standard) order as self._strategy.extended.worker_devices.
       enqueue_ops = []
       for replica_id in range(self._strategy.num_replicas_in_sync):
-        replica_inputs = tf_values.select_replica(replica_id, flat_inputs)
-        replica_weights = tf_values.select_replica(replica_id, flat_weights)
+        replica_inputs = distribute_utils.select_replica(replica_id,
+                                                         flat_inputs)
+        replica_weights = distribute_utils.select_replica(replica_id,
+                                                          flat_weights)
         tpu_device = self._strategy.extended.worker_devices[replica_id]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number

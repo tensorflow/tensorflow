@@ -171,6 +171,7 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
 #if DYNAMIC_ANNOTATIONS_ENABLED == 1 || defined(MEMORY_SANITIZER)
     for (IndexType col = 0; col < cols; ++col) {
       ResScalar* row_base = &output(0, col);
+      EIGEN_UNUSED_VARIABLE(row_base);  // Suppress unused variable error.
       TF_ANNOTATE_MEMORY_IS_INITIALIZED(row_base, sizeof(ResScalar) * rows);
     }
 #endif
@@ -241,6 +242,7 @@ struct mkldnn_gemm_s8u8s32_kernel {
 #if DYNAMIC_ANNOTATIONS_ENABLED == 1 || defined(MEMORY_SANITIZER)
     for (IndexType col = 0; col < cols; ++col) {
       ResScalar* row_base = &output(0, col);
+      EIGEN_UNUSED_VARIABLE(row_base);  // Suppress unused variable error.
       TF_ANNOTATE_MEMORY_IS_INITIALIZED(row_base, sizeof(ResScalar) * rows);
     }
 #endif

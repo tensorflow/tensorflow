@@ -146,11 +146,6 @@ class XrtClientSession : public ClientSession {
 string* xla_test_device_ptr;  // initial value set in main()
 string* xla_platform_ptr;     // initial value set in main()
 
-bool SupportDynamicShapes() {
-  // TODO(jackcao): Support dynamic shapes on XLA GPU.
-  return *xla_test_device_ptr != "XLA_GPU";
-}
-
 string DeviceFromFlag() {
   string xla_test_device = *xla_test_device_ptr;
   return absl::StrCat("/device:", xla_test_device, ":0");
@@ -1126,10 +1121,6 @@ TEST(RawApiTest, CompileAndExecute) {
 }
 
 TEST(RawApiTest, DynamicR1Test) {
-  if (!SupportDynamicShapes()) {
-    GTEST_SKIP()
-        << "Skipping the test if backend doesn't support dynamic shapes";
-  }
   xrt::XLAAllocation p0;
   *p0.mutable_value() = FloatVector({1.0f, 2.0f, 0.5f, -1.0f});
   xrt::XLAAllocation p1;
@@ -1182,10 +1173,6 @@ TEST(RawApiTest, DynamicR1Test) {
 }
 
 TEST(RawApiTest, DynamicR2Test) {
-  if (!SupportDynamicShapes()) {
-    GTEST_SKIP()
-        << "Skipping the test if backend doesn't support dynamic shapes";
-  }
   xrt::XLAAllocation p0;
   *p0.mutable_value() = xla::LiteralUtil::CreateR2({{1.0f, 2.0f, 0.5f, -1.0f},
                                                     {1.5f, 2.5f, 3.0f, -2.0f}})
@@ -1243,10 +1230,6 @@ TEST(RawApiTest, DynamicR2Test) {
 }
 
 TEST(RawApiTest, DynamicR1TupleTest) {
-  if (!SupportDynamicShapes()) {
-    GTEST_SKIP()
-        << "Skipping the test if backend doesn't support dynamic shapes";
-  }
   xrt::XLAAllocation p0;
   *p0.mutable_value() = FloatVector({1.0f, 2.0f, 0.5f, -1.0f});
   xrt::XLAAllocation p1;
@@ -1307,10 +1290,6 @@ TEST(RawApiTest, DynamicR1TupleTest) {
 }
 
 TEST(RawApiTest, AcceptDynamicR1TupleTest) {
-  if (!SupportDynamicShapes()) {
-    GTEST_SKIP()
-        << "Skipping the test if backend doesn't support dynamic shapes";
-  }
   xrt::XLAAllocation p0;
   *p0.mutable_value() = FloatVector({1.0f, 2.0f, 0.5f});
   xrt::XLAAllocation p1;
@@ -1373,10 +1352,6 @@ TEST(RawApiTest, AcceptDynamicR1TupleTest) {
 }
 
 TEST(RawApiTest, AcceptDynamicR1Test) {
-  if (!SupportDynamicShapes()) {
-    GTEST_SKIP()
-        << "Skipping the test if backend doesn't support dynamic shapes";
-  }
   xrt::XLAAllocation p0;
   *p0.mutable_value() = FloatVector({1.0f, 2.0f, 0.5f});
   xrt::XLAAllocation p1;
@@ -1424,13 +1399,9 @@ TEST(RawApiTest, AcceptDynamicR1Test) {
 }
 
 TEST(RawApiTest, AcceptDynamicR2Test) {
-  if (!SupportDynamicShapes()) {
-    GTEST_SKIP()
-        << "Skipping the test if backend doesn't support dynamic shapes";
-  }
   xrt::XLAAllocation p0;
   *p0.mutable_value() =
-      xla::LiteralUtil::CreateR2({{-1.0f, 3.0f, 1.0f}, {-2.0f, -1.0f, 3.0f}})
+      xla::LiteralUtil::CreateR2({{-1.0f, 2.0f, 3.0f}, {-4.0f, -5.0f, 6.0f}})
           .ToProto();
 
   xrt::XLAComputation c;
@@ -1468,7 +1439,7 @@ TEST(RawApiTest, AcceptDynamicR2Test) {
   EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR2<float>(
-      {{1.0f, -3.0f, -1.0f}, {2.0f, 1.0f, -3.0f}});
+      {{1.0f, -2.0f, -3.0f}, {4.0f, 5.0f, -6.0f}});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 }
 

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -51,7 +52,7 @@ std::vector<ConcreteFunction*> TFSavedModelAPIImpl::ListFunctions() {
 Status TFSavedModelAPIImpl::Load(
     const std::string& directory,
     const absl::optional<std::unordered_set<std::string>>& tags,
-    TFSavedModelAPIImpl* out) {
+    EagerContext* context, std::unique_ptr<TFSavedModelAPIImpl>* out) {
   // TODO(bmzhao): Add support for loading a TFSavedModelImpl.
   return errors::Unimplemented(
       "TFSavedModelAPIImpl loading is unimplemented currently");

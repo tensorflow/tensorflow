@@ -871,12 +871,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     Status* status = &instantiate_status[i];
     string unique_name = name_generator.GetName();
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
-    runner([this, &pair, comp_data, unique_name, data_lib_def, &control_ret,
-            &options, status, &counter, &data] {
+    runner([this, &pair, dev_set, comp_data, unique_name, data_lib_def,
+            &control_ret, &options, status, &counter, &data] {
       const string& target = pair.first;
 
       const string& device_type =
-          device_set()->FindDeviceByName(target)->device_type();
+          dev_set->FindDeviceByName(target)->device_type();
       Graph* subgraph = pair.second.get();
 
       status->Update(UpdateArgAndRetvalMetadata(
@@ -1356,11 +1356,22 @@ void ProcessFunctionLibraryRuntime::Run(
       // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
       for (const auto& it : comp_data.arg_indices) {
         if (it.sub_index >= 0) {
-          return errors::InvalidArgument("Got unexpected sub_index ",
-                                         it.sub_index, " for argument ",
-                                         it.index);
+          const Tensor& t = args[it.index];
+          if (t.dtype() != DT_RESOURCE) {
+            return errors::InvalidArgument("Got unexpected sub_index ",
+                                           it.sub_index, " for argument ",
+                                           it.index);
+          }
+          const auto& handles = t.flat<ResourceHandle>();
+          if (it.sub_index >= handles.size()) {
+            return errors::InvalidArgument(
+                "Sub_index ", it.sub_index, "is out of range [0,",
+                handles.size(), ") for argument ", it.index);
+          }
+          comp_args->args.push_back(Tensor(handles(it.sub_index)));
+        } else {
+          comp_args->args.push_back(args[it.index]);
         }
-        comp_args->args.push_back(args[it.index]);
       }
       return Status::OK();
     };

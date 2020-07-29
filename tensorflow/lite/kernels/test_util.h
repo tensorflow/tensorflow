@@ -15,25 +15,39 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <algorithm>
 #include <cmath>
 #include <complex>
+#include <functional>
+#include <initializer_list>
+#include <limits>
+#include <map>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
+#include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 
@@ -461,7 +475,7 @@ class SingleOpModel {
   std::vector<T> ExtractVector(int index) const {
     const T* v = interpreter_->typed_tensor<T>(index);
     const auto* tensor = interpreter_->tensor(index);
-    CHECK(v);
+    CHECK(v) << "Could not extract vector at index: " << index;
     int tensor_size;
     if (tensor->sparsity) {
       // Getting the size of the sparse buffer this way is based on the

@@ -86,8 +86,9 @@ TfLiteQuantization GetQuantizationFromLegacy(
 }  // namespace
 
 Interpreter::Interpreter(ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
+    : error_reporter_(error_reporter ? error_reporter : DefaultErrorReporter()),
+      lazy_delegate_provider_(
+          TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {})) {
   // TODO(b/128420794): Include the TFLite runtime version in the log.
   // Prod logging is useful for mobile platforms where scraping console logs is
   // critical for debugging.
@@ -175,6 +176,16 @@ TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
 }
 
 TfLiteStatus Interpreter::AllocateTensors() {
+  // Apply the default delegate that TFLite will enable at this point to allow
+  // other user-level delegates to be applied first.
+  if (lazy_delegate_provider_) {
+    // The execution will fall back to default implementation if the XNNPACK
+    // delegate fails to be applied. Therefore, we ignore the return status
+    // here and let it fall through the rest of the code.
+    ModifyGraphWithDelegate(std::move(lazy_delegate_provider_));
+    lazy_delegate_provider_.reset();
+  }
+
   return primary_subgraph().AllocateTensors();
 }
 

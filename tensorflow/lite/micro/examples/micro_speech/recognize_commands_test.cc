@@ -82,7 +82,7 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestBasic) {
   auto result_dims = {2, 1, 4};
   TfLiteTensor results = tflite::testing::CreateQuantizedTensor(
       result_data, tflite::testing::IntArrayFromInitializer(result_dims),
-      "input_tensor", -128.0f, 127.0f);
+      -128.0f, 127.0f);
 
   const char* found_command;
   uint8_t score;
@@ -101,8 +101,8 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestFindCommands) {
   std::initializer_list<int8_t> yes_data = {-128, -128, 127, -128};
   auto yes_dims = {2, 1, 4};
   TfLiteTensor yes_results = tflite::testing::CreateQuantizedTensor(
-      yes_data, tflite::testing::IntArrayFromInitializer(yes_dims),
-      "input_tensor", -128.0f, 127.0f);
+      yes_data, tflite::testing::IntArrayFromInitializer(yes_dims), -128.0f,
+      127.0f);
 
   bool has_found_new_command = false;
   const char* new_command;
@@ -129,8 +129,8 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestFindCommands) {
   std::initializer_list<int8_t> no_data = {-128, -128, -128, 127};
   auto no_dims = {2, 1, 4};
   TfLiteTensor no_results = tflite::testing::CreateQuantizedTensor(
-      no_data, tflite::testing::IntArrayFromInitializer(no_dims),
-      "input_tensor", -128.0f, 127.0f);
+      no_data, tflite::testing::IntArrayFromInitializer(no_dims), -128.0f,
+      127.0f);
   has_found_new_command = false;
   new_command = "";
   uint8_t score;
@@ -164,8 +164,8 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestBadInputLength) {
   std::initializer_list<int8_t> bad_data = {-128, -128, 127};
   auto bad_dims = {2, 1, 3};
   TfLiteTensor bad_results = tflite::testing::CreateQuantizedTensor(
-      bad_data, tflite::testing::IntArrayFromInitializer(bad_dims),
-      "input_tensor", -128.0f, 127.0f);
+      bad_data, tflite::testing::IntArrayFromInitializer(bad_dims), -128.0f,
+      127.0f);
 
   const char* found_command;
   uint8_t score;
@@ -185,7 +185,7 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestBadInputTimes) {
   auto result_dims = {2, 1, 4};
   TfLiteTensor results = tflite::testing::CreateQuantizedTensor(
       result_data, tflite::testing::IntArrayFromInitializer(result_dims),
-      "input_tensor", -128.0f, 127.0f);
+      -128.0f, 127.0f);
 
   const char* found_command;
   uint8_t score;
@@ -208,7 +208,7 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestTooFewInputs) {
   auto result_dims = {2, 1, 4};
   TfLiteTensor results = tflite::testing::CreateQuantizedTensor(
       result_data, tflite::testing::IntArrayFromInitializer(result_dims),
-      "input_tensor", -128.0f, 127.0f);
+      -128.0f, 127.0f);
 
   const char* found_command;
   uint8_t score;

@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -255,7 +256,8 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         mlir::edsc::ScopedContext scope(*builder, function.getLoc());
         mlir::Value a = function.getArgument(0), b = function.getArgument(1),
                     c = function.getArgument(2);
-        mlir::edsc::intrinsics::linalg_matmul(b, c, a);
+        mlir::edsc::intrinsics::linalg_matmul(mlir::TypeRange{},
+                                              mlir::ValueRange{b, c, a});
         mlir::edsc::intrinsics::std_ret();
       });
 }

@@ -170,6 +170,7 @@ absl::Status SelectConvolution(const Convolution2DAttributes& attr,
       return SelectConvolutionAdreno(attr, dst_shape, creation_context, op_def,
                                      hints, ptr);
     case Vendor::POWERVR:
+    case Vendor::INTEL:
     case Vendor::AMD:
       return SelectConvolutionPowerVR(attr, creation_context, op_def, ptr);
     case Vendor::NVIDIA:
@@ -193,6 +194,7 @@ absl::Status SelectConvolutionForWinograd(
                                              op_def, hints, ptr);
     case Vendor::POWERVR:
     case Vendor::AMD:
+    case Vendor::INTEL:
     case Vendor::NVIDIA: {
       ConvPowerVR conv;
       RETURN_IF_ERROR(

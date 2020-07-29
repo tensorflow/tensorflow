@@ -89,16 +89,25 @@ XLAJIT_MAKE_UNARY(Sign,
                   xla::Select(xla::Ne(x, x), xla::ZerosLike(x), xla::Sign(x)));
 XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
 
-// softplus(x) = log(1 + exp(x))
-//
-// This is not numerically stable when x is large, it can easily overflow.
-// However, we can compute it as LogSumExp(x, 0):
-//   max(x, 0) + log(exp(x - max(x, 0)) + exp(0 - max(x, 0)))
-//
-// This is equivalent to:
-//   max(x, 0) + log1p(exp(-abs(x)))
-XLAJIT_MAKE_UNARY(Softplus, xla::Max(x, xla::ScalarLike(x, 0.0)) +
-                                xla::Log1p(xla::Exp(-xla::Abs(x))));
+static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {
+  return b->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(features));
+    xla::XlaOp threshold =
+        Log(xla::Epsilon(b, shape.element_type())) + ScalarLike(features, 2.0);
+    // Value above which exp(x) may overflow, but softplus(x) == x
+    // is within machine epsilon.
+    xla::XlaOp too_large = Gt(features, -threshold);
+    // Value below which exp(x) may underflow, but softplus(x) == exp(x)
+    // is within machine epsilon.
+    xla::XlaOp too_small = Lt(features, threshold);
+    xla::XlaOp features_exp = Exp(features);
+    xla::XlaOp output =
+        Select(too_large, features,
+               Select(too_small, features_exp, Log1p(features_exp)));
+    return output;
+  });
+}
+XLAJIT_MAKE_UNARY(Softplus, Softplus(b, x));
 
 // softsign(x) = x / (abs(x) + 1)
 XLAJIT_MAKE_UNARY(Softsign, x / (xla::Abs(x) + xla::ScalarLike(x, 1.0)));

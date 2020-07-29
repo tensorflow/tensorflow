@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-replicate-to-island | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-replicate-to-island | FileCheck %s
 
 // Tests per replica island has same control operands as island holding
 // replicate.

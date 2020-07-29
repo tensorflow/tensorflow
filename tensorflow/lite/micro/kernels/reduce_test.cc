@@ -117,9 +117,9 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
 
   constexpr int tensors_size = num_of_inputs + num_of_outputs;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateInt32Tensor(axis_data, axis_dims, "axis_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateInt32Tensor(axis_data, axis_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TF_LITE_MICRO_EXPECT_EQ(

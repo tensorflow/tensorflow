@@ -138,9 +138,9 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   }
 
   // Need to copy to keep static if permutated.
-  const string input_name = reshape_op->inputs[0];
-  const string intermediate_name = reshape_op->outputs[0];
-  const string output_name = transpose_op->outputs[0];
+  const std::string input_name = reshape_op->inputs[0];
+  const std::string intermediate_name = reshape_op->outputs[0];
+  const std::string output_name = transpose_op->outputs[0];
 
   // Intermediate should not be consumed by any other operators.
   if (CountOpsWithInput(*model, intermediate_name) != 1) {

@@ -159,8 +159,7 @@ llvm::SmallVector<FunctionAndArgumentInfo, 4> ExtractFunctionsConnectedToArg(
   while (!functions_to_parse.empty()) {
     llvm::SmallVector<FunctionAndArgumentInfo, 4> newly_discovered_functions;
     for (auto function_info : functions_to_parse) {
-      Block& func_entry_block =
-          function_info.func.getBody().getBlocks().front();
+      Block& func_entry_block = function_info.func.front();
       auto argument =
           func_entry_block.getArgument(function_info.argument_index);
 
@@ -186,8 +185,7 @@ void IdentifyXlaShardingForComputationInputs(
     StringRef logical_core_0_sharding, tf_device::ClusterFuncOp cluster_func_op,
     FuncOp cluster_function, Builder* builder) {
   // Look up function definition from module.
-  Block& cluster_function_block =
-      cluster_function.getBody().getBlocks().front();
+  Block& cluster_function_block = cluster_function.front();
   ModuleOp module = cluster_func_op.getParentOfType<ModuleOp>();
 
   llvm::SmallVector<llvm::StringRef, 8> sharding_for_args(
@@ -215,8 +213,7 @@ void IdentifyXlaShardingForComputationInputs(
 
         const int function_argument_index = function_arg_info.argument_index;
         auto& parsed_function = function_arg_info.func;
-        Block& parsed_function_block =
-            parsed_function.getBody().getBlocks().front();
+        Block& parsed_function_block = parsed_function.front();
         arg_sharding = ParseInputSharding(
             parsed_function_block.getArgument(function_argument_index));
       }
@@ -245,7 +242,7 @@ void IdentifyXlaShardingForComputationOutputs(
     tf_device::ClusterFuncOp cluster_func, Builder* builder) {
   // By default return values from logical core 0 is used if no sharding
   // configuration is defined.
-  Block& function_block = func.getBody().getBlocks().front();
+  Block& function_block = func.front();
   Operation* terminator = function_block.getTerminator();
   llvm::SmallVector<llvm::StringRef, 8> sharding_for_rets(
       terminator->getNumOperands(), logical_core_0_sharding);

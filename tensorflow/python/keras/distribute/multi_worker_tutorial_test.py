@@ -19,6 +19,7 @@ from __future__ import print_function
 import contextlib
 import os
 import re
+import zipfile
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
@@ -43,6 +44,8 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
   def skip_fetch_failure_exception(self):
     try:
       yield
+    except zipfile.BadZipfile as e:
+      self.skipTest('Data loading error: Bad magic number for file header.')
     except Exception as e:  # pylint: disable=broad-except
       if 'URL fetch failure' in str(e):
         self.skipTest('URL fetch error not considered failure of the test.')

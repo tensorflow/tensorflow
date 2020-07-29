@@ -89,6 +89,8 @@ cc_library(
     deps = [
         ":calibration_common",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

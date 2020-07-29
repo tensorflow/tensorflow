@@ -222,7 +222,6 @@ cc_test(
     deps = [
         ":quantization_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/micro/testing:micro_test",
         "@com_google_googletest//:gtest_main",
     ],
 )

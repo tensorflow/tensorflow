@@ -12,6 +12,17 @@ package(
 )
 
 tf_fuzz_target(
-    name = "demo_fuzz",
-    srcs = ["demo_fuzz.cc"],
+    name = "status_fuzz",
+    srcs = ["status_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+tf_fuzz_target(
+    name = "status_group_fuzz",
+    srcs = ["status_group_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
 )

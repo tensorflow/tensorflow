@@ -26,33 +26,32 @@ import numpy as np
 # pylint: disable=unused-import
 # pylint: disable=g-bad-import-order
 from numpy import bool_
+from numpy import complex_
+from numpy import complex128
+from numpy import complex64
+from numpy import float_
+from numpy import float16
+from numpy import float32
+from numpy import float64
+from numpy import inexact
 from numpy import int_
 from numpy import int16
 from numpy import int32
 from numpy import int64
 from numpy import int8
+from numpy import object_
+from numpy import string_
 from numpy import uint16
 from numpy import uint32
 from numpy import uint64
 from numpy import uint8
-from numpy import float_
-from numpy import float16
-from numpy import float32
-from numpy import float64
-from numpy import complex_
-from numpy import complex64
-from numpy import complex128
-
-from numpy import inexact
+from numpy import unicode_
 
 from numpy import iinfo
 from numpy import issubdtype
 
 from numpy import inf
 
-# TODO(wangpeng): Make bfloat16 a numpy dtype instead of using TF's
-from tensorflow.python.framework.dtypes import bfloat16
-# pylint: enable=g-bad-import-order
 # pylint: enable=unused-import
 
 _to_float32 = {

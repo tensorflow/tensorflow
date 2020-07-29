@@ -11,7 +11,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",

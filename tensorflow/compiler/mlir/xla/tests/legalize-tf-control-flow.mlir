@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-tf-control-flow %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -xla-legalize-tf-control-flow %s | FileCheck %s
 
 // CHECK-LABEL: @if
 func @if(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>)

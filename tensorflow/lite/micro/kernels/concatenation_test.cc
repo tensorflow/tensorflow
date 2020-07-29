@@ -40,9 +40,9 @@ void TestConcatenateTwoInputs(std::initializer_list<int> input1_dims_data,
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor")};
+      CreateFloatTensor(input1_data, input1_dims),
+      CreateFloatTensor(input2_data, input2_dims),
+      CreateFloatTensor(output_data, output_dims)};
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
@@ -99,12 +99,9 @@ void TestConcatenateQuantizedTwoInputs(
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input1_data, input1_dims, "input1_tensor",
-                            input_min, input_max),
-      CreateQuantizedTensor(input2_data, input2_dims, "input2_tensor",
-                            input_min, input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max)};
+      CreateQuantizedTensor(input1_data, input1_dims, input_min, input_max),
+      CreateQuantizedTensor(input2_data, input2_dims, input_min, input_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max)};
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);

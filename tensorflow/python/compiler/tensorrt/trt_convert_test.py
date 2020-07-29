@@ -439,6 +439,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self,
       input_saved_model_dir,
       input_saved_model_signature_key=_SAVED_MODEL_SIGNATURE_KEY,
+      max_workspace_size_bytes=10 << 20,  # Use a smaller workspace.
       precision_mode=trt_convert.TrtPrecisionMode.FP32,
       is_dynamic_op=True,
       maximum_cached_engines=2):
@@ -446,7 +447,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_signature_key=input_saved_model_signature_key,
         conversion_params=trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
-            max_workspace_size_bytes=10 << 20,  # Use a smaller workspace.
+            max_workspace_size_bytes=max_workspace_size_bytes,
             precision_mode=precision_mode,
             is_dynamic_op=is_dynamic_op,
             maximum_cached_engines=maximum_cached_engines))
@@ -923,6 +924,36 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         # Run with batch size 2, which exceed the max_batch_size, it should try
         # to fall back to TF function.
         self._TestRun(sess, 2)
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_AllowEngineNativeSegmentExecution(self):
+    if not is_tensorrt_enabled():
+      return
+
+    np_input1, np_input2 = self._RandomInput([4, 1, 1])
+
+    # Create a model and save it.
+    input_saved_model_dir = self.mkdtemp()
+    root = self._GetModelForV2()
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
+
+    def _InputFn():
+      yield np_input1, np_input2
+
+    # Run TRT conversion and request an unreasonably large workspace.
+    converter = self._CreateConverterV2(
+        input_saved_model_dir, max_workspace_size_bytes=10 << 40)
+    converter.convert()
+
+    os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "False"
+    with self.assertRaisesRegex(
+        errors.AbortedError,
+        r"User disallowed engine native segment execution"):
+      converter.build(input_fn=_InputFn)
+
+    os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
+    converter.build(input_fn=_InputFn)
 
   @test_util.run_v2_only
   def testBackwardCompatibility(self):

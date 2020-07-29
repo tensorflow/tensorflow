@@ -465,30 +465,32 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name, const void* ptr) {
 void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                               const void* chunk_ptr, int64 req_bytes,
                               int64 alloc_bytes) {
-  tensorflow::profiler::TraceMe trace_me(
-      [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
-        AllocatorStats stats = stats_;
+  tensorflow::profiler::TraceMe::InstantActivity(
+      [this, traceme_name, chunk_ptr, req_bytes,
+       alloc_bytes]() TF_NO_THREAD_SAFETY_ANALYSIS {
         int64 bytes_available =
-            memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;
+            memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
         const auto& annotation =
             ScopedMemoryDebugAnnotation::CurrentAnnotation();
-        std::string tensor_shape = annotation.pending_shape
-                                       ? annotation.pending_shape->DebugString()
-                                       : "";
-        return absl::StrCat(traceme_name, "#allocator_name=", name_,
-                            ",bytes_reserved=", stats.bytes_reserved,
-                            ",bytes_allocated=", stats.bytes_in_use,
-                            ",bytes_available=", bytes_available,
-                            ",fragmentation=", GetFragmentation(),
-                            ",peak_bytes_in_use=", stats.peak_bytes_in_use,
-                            ",requested_bytes=", req_bytes,
-                            ",allocation_bytes=", alloc_bytes,
-                            ",addr=", reinterpret_cast<uint64>(chunk_ptr),
-                            ",tf_op=", annotation.pending_op_name,
-                            ",id=", annotation.pending_step_id,
-                            ",region_type=", annotation.pending_region_type,
-                            ",data_type=", annotation.pending_data_type,
-                            ",shape=", tensor_shape, "#");
+        std::string tensor_shape;
+        if (annotation.pending_shape) {
+          tensor_shape = annotation.pending_shape->DebugString();
+        }
+        return tensorflow::profiler::TraceMeEncode(
+            traceme_name, {{"allocator_name", name_},
+                           {"bytes_reserved", stats_.bytes_reserved},
+                           {"bytes_allocated", stats_.bytes_in_use},
+                           {"bytes_available", bytes_available},
+                           {"fragmentation", GetFragmentation()},
+                           {"peak_bytes_in_use", stats_.peak_bytes_in_use},
+                           {"requested_bytes", req_bytes},
+                           {"allocation_bytes", alloc_bytes},
+                           {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                           {"tf_op", annotation.pending_op_name},
+                           {"id", annotation.pending_step_id},
+                           {"region_type", annotation.pending_region_type},
+                           {"data_type", annotation.pending_data_type},
+                           {"shape", tensor_shape}});
       },
       /*level=*/profiler::TraceMeLevel::kInfo);
 }

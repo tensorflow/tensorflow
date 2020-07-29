@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -inline="disable-simplify" | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -inline="disable-simplify" | FileCheck %s
 
 // Test that simple TF operations can be inlined.
 

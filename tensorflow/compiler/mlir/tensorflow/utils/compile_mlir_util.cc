@@ -267,9 +267,6 @@ Status ConvertMLIRToXlaComputation(
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
   mlir::PassManager tf2xla(module_op.getContext());
-  // Mark main function as public, and other functions as private.
-  tf2xla.addPass(
-      mlir::TF::CreateMarkOnlyMainFunctionWithPublicVisibilityPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   tf2xla.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   tf2xla.addPass(mlir::TF::CreateStackOpsDecompositionPass());

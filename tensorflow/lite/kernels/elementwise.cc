@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <cmath>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -41,7 +45,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   if (!IsSupportedType(input->type)) {
     context->ReportError(context, "Current data type %d is not supported.",
                          input->type);
@@ -56,7 +60,7 @@ inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
                              T func(T), TfLiteType expected_type) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, expected_type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, expected_type);
   const int64_t num_elements = NumElements(input);
   const T* in_data = GetTensorData<T>(input);
   T* out_data = GetTensorData<T>(output);

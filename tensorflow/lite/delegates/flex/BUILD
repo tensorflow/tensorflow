@@ -247,7 +247,6 @@ tflite_flex_jni_library(
     models = [
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
-    visibility = ["//tensorflow/lite/android:__subpackages__"],
 )
 
 java_library(
@@ -280,6 +279,7 @@ java_test(
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
         # TODO(b/121204962): Re-enable test after fixing memory leaks.
         "noasan",
+        "notsan",  # TODO(b/158651814) Re-enable after fixing racing condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],

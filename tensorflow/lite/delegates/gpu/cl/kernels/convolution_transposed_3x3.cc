@@ -269,7 +269,7 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
       work_group_launch_order_(2, 0, 1) {
   if (device.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (device.IsNvidia()) {
+  } else if (device.IsNvidia() || device.IsIntel()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
   } else if (device.IsAMD()) {
     weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;

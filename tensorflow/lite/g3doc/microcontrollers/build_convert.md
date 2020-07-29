@@ -109,4 +109,4 @@ to run. We are working on expanding operation support, both in terms of
 reference implementations and optimizations for specific architectures.
 
 The supported operations can be seen in the file
-[`all_ops_resolver.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.cc)
+[`all_ops_resolver.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.cc)

@@ -298,7 +298,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, name, vars_, is_mirrored=False):
+  def get_replicated_var_handle(self, name, vars_, is_mirrored=False,
+                                is_packed=False):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -309,6 +310,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       vars_: The replicated TPU variables.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
+      is_packed: Whether the replicated variables are packed into one variable.
 
     Returns:
       The handle of the TPU replicated input node.
@@ -320,7 +322,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if handle is not None:
       return handle
 
-    if device_assignment is not None:
+    if device_assignment is not None and not is_packed:
       # Find a variable copy for each replica in the device assignment.
       # Note that the order of devices for replicas for the variable and the
       # device assignment might not match.
@@ -356,7 +358,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
                                             name=name + "/handle",
-                                            is_mirrored_variable=is_mirrored)
+                                            is_mirrored_variable=is_mirrored,
+                                            is_packed=is_packed)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
@@ -638,6 +641,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def GetControlPivot(self):
     return self._pivot
+
+  def RequiresUniqueFunctionRetracing(self):
+    # More context: b/158152827. TPU stack uses the TPUReplicateContext to
+    # create replicated variable handles and cluster TPU computations, thus we
+    # always retrace a tf.function when the wrapped TPUReplicateContext changes.
+    return True
 
 
 class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):

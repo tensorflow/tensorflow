@@ -69,18 +69,13 @@ def guess_is_tensorflow_py_library(py_file_path):
     py_file_path: full path of the Python source file in question.
 
   Returns:
-    (`bool`) Whether the file is a part of the tensorflow library.
-
-  Raises:
-    ValueError: if the extension name of py_file_path does not indicate a Python
-      source file (compiled or uncompiled).
+    (`bool`) Whether the file is inferred to be a part of the tensorflow
+      library.
   """
   if (not is_extension_uncompiled_python_source(py_file_path) and
       not is_extension_compiled_python_source(py_file_path)):
-    raise ValueError(
-        "Input file path (%s) is not a Python source file." % py_file_path)
+    return False
   py_file_path = _norm_abs_path(py_file_path)
-
   return ((py_file_path.startswith(_TENSORFLOW_BASEDIR) or
            py_file_path.startswith(_ABSL_BASEDIR)) and
           not py_file_path.endswith("_test.py") and

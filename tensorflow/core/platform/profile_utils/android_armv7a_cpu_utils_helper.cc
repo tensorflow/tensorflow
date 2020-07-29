@@ -119,10 +119,14 @@ int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
   const int retval = fscanf(fp, "%" SCNd64, &freq_in_khz);
   if (retval < 0) {
     LOG(WARNING) << "Failed to \"" << file_path << "\"";
-    fclose(fp);
+    if (fclose(fp) != 0) {
+      LOG(WARNING) << "fclose() failed: " << strerror(errno);
+    }
     return INVALID_CPU_FREQUENCY;
   }
-  fclose(fp);
+  if (fclose(fp) != 0) {
+    LOG(WARNING) << "fclose() failed: " << strerror(errno);
+  }
   return freq_in_khz * 1000;  // The file contains cpu frequency in khz
 }
 

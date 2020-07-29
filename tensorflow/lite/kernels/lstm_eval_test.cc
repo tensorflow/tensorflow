@@ -14,17 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/lstm_eval.h"
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <algorithm>
-#include <cmath>
+#include <memory>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 namespace tflite {
 namespace {
@@ -113,10 +113,10 @@ class BaseLstmParam {
     TfLiteIntArrayFree(layer_norm_forget_tensor_.dims);
     TfLiteIntArrayFree(layer_norm_cell_tensor_.dims);
     TfLiteIntArrayFree(layer_norm_output_tensor_.dims);
-    TfLiteIntArrayFree(input_bias_tensor_.dims);
-    TfLiteIntArrayFree(forget_bias_tensor_.dims);
-    TfLiteIntArrayFree(cell_bias_tensor_.dims);
-    TfLiteIntArrayFree(output_bias_tensor_.dims);
+    TfLiteIntArrayFree(input_gate_bias_tensor_.dims);
+    TfLiteIntArrayFree(forget_gate_bias_tensor_.dims);
+    TfLiteIntArrayFree(cell_gate_bias_tensor_.dims);
+    TfLiteIntArrayFree(output_gate_bias_tensor_.dims);
     TfLiteIntArrayFree(projection_tensor_.dims);
     TfLiteIntArrayFree(projection_bias_tensor_.dims);
     TfLiteIntArrayFree(activation_tensor_.dims);
@@ -275,17 +275,17 @@ class BaseLstmParam {
   std::vector<int32_t> layer_norm_output_size_ = {n_cell_};
   TfLiteTensor layer_norm_output_tensor_;
 
-  std::vector<int32_t> input_bias_size_ = {n_cell_};
-  TfLiteTensor input_bias_tensor_;
+  std::vector<int32_t> input_gate_bias_size_ = {n_cell_};
+  TfLiteTensor input_gate_bias_tensor_;
 
-  std::vector<int32_t> forget_bias_size_ = {n_cell_};
-  TfLiteTensor forget_bias_tensor_;
+  std::vector<int32_t> forget_gate_bias_size_ = {n_cell_};
+  TfLiteTensor forget_gate_bias_tensor_;
 
-  std::vector<int32_t> cell_bias_size_ = {n_cell_};
-  TfLiteTensor cell_bias_tensor_;
+  std::vector<int32_t> cell_gate_bias_size_ = {n_cell_};
+  TfLiteTensor cell_gate_bias_tensor_;
 
-  std::vector<int32_t> output_bias_size_ = {n_cell_};
-  TfLiteTensor output_bias_tensor_;
+  std::vector<int32_t> output_gate_bias_size_ = {n_cell_};
+  TfLiteTensor output_gate_bias_tensor_;
 
   // projection_weights.
   std::vector<int8_t> projection_ = {
@@ -350,24 +350,28 @@ class QuantizedLstmParam : public BaseLstmParam {
     return &layer_norm_output_tensor_;
   }
   TfLiteTensor* GetInputBias() {
-    PackWeightToTensor(&input_bias_tensor_, input_bias_, input_bias_size_);
-    input_bias_tensor_.data.i32 = input_bias_.data();
-    return &input_bias_tensor_;
+    PackWeightToTensor(&input_gate_bias_tensor_, input_gate_bias_,
+                       input_gate_bias_size_);
+    input_gate_bias_tensor_.data.i32 = input_gate_bias_.data();
+    return &input_gate_bias_tensor_;
   }
   TfLiteTensor* GetForgetBias() {
-    PackWeightToTensor(&forget_bias_tensor_, forget_bias_, forget_bias_size_);
-    forget_bias_tensor_.data.i32 = forget_bias_.data();
-    return &forget_bias_tensor_;
+    PackWeightToTensor(&forget_gate_bias_tensor_, forget_gate_bias_,
+                       forget_gate_bias_size_);
+    forget_gate_bias_tensor_.data.i32 = forget_gate_bias_.data();
+    return &forget_gate_bias_tensor_;
   }
   TfLiteTensor* GetCellBias() {
-    PackWeightToTensor(&cell_bias_tensor_, cell_bias_, cell_bias_size_);
-    cell_bias_tensor_.data.i32 = cell_bias_.data();
-    return &cell_bias_tensor_;
+    PackWeightToTensor(&cell_gate_bias_tensor_, cell_gate_bias_,
+                       cell_gate_bias_size_);
+    cell_gate_bias_tensor_.data.i32 = cell_gate_bias_.data();
+    return &cell_gate_bias_tensor_;
   }
   TfLiteTensor* GetOutputBias() {
-    PackWeightToTensor(&output_bias_tensor_, output_bias_, output_bias_size_);
-    output_bias_tensor_.data.i32 = output_bias_.data();
-    return &output_bias_tensor_;
+    PackWeightToTensor(&output_gate_bias_tensor_, output_gate_bias_,
+                       output_gate_bias_size_);
+    output_gate_bias_tensor_.data.i32 = output_gate_bias_.data();
+    return &output_gate_bias_tensor_;
   }
   TfLiteTensor* GetProjectionBias() {
     PackWeightToTensor(&projection_bias_tensor_, projection_bias_,
@@ -539,22 +543,22 @@ class QuantizedLstmParam : public BaseLstmParam {
   };
 
   // input_gate_bias.
-  std::vector<int32_t> input_bias_ = {
+  std::vector<int32_t> input_gate_bias_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6,  //
   };
 
   // forget_gate_bias.
-  std::vector<int32_t> forget_bias_ = {
+  std::vector<int32_t> forget_gate_bias_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6,  //
   };
 
-  // cell_bias.
-  std::vector<int32_t> cell_bias_ = {
+  // cell_gate_bias.
+  std::vector<int32_t> cell_gate_bias_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6,  //
   };
 
   // output_gate_bias.
-  std::vector<int32_t> output_bias_ = {
+  std::vector<int32_t> output_gate_bias_ = {
       16, 4, 5, 6, 1, 1, 3, 4, -5, 6,  //
   };
 
@@ -711,27 +715,28 @@ class HybridLstmParam : public BaseLstmParam {
     return &accum_scratch_tensor_;
   }
   TfLiteTensor* GetInputBias() {
-    PackWeightToTensor(&input_bias_tensor_, input_float_bias_,
-                       input_bias_size_);
-    input_bias_tensor_.data.f = input_float_bias_.data();
-    return &input_bias_tensor_;
+    PackWeightToTensor(&input_gate_bias_tensor_, input_float_bias_,
+                       input_gate_bias_size_);
+    input_gate_bias_tensor_.data.f = input_float_bias_.data();
+    return &input_gate_bias_tensor_;
   }
   TfLiteTensor* GetForgetBias() {
-    PackWeightToTensor(&forget_bias_tensor_, forget_float_bias_,
-                       forget_bias_size_);
-    forget_bias_tensor_.data.f = forget_float_bias_.data();
-    return &forget_bias_tensor_;
+    PackWeightToTensor(&forget_gate_bias_tensor_, forget_float_bias_,
+                       forget_gate_bias_size_);
+    forget_gate_bias_tensor_.data.f = forget_float_bias_.data();
+    return &forget_gate_bias_tensor_;
   }
   TfLiteTensor* GetCellBias() {
-    PackWeightToTensor(&cell_bias_tensor_, cell_float_bias_, cell_bias_size_);
-    cell_bias_tensor_.data.f = cell_float_bias_.data();
-    return &cell_bias_tensor_;
+    PackWeightToTensor(&cell_gate_bias_tensor_, cell_float_bias_,
+                       cell_gate_bias_size_);
+    cell_gate_bias_tensor_.data.f = cell_float_bias_.data();
+    return &cell_gate_bias_tensor_;
   }
   TfLiteTensor* GetOutputBias() {
-    PackWeightToTensor(&output_bias_tensor_, output_float_bias_,
-                       output_bias_size_);
-    output_bias_tensor_.data.f = output_float_bias_.data();
-    return &output_bias_tensor_;
+    PackWeightToTensor(&output_gate_bias_tensor_, output_float_bias_,
+                       output_gate_bias_size_);
+    output_gate_bias_tensor_.data.f = output_float_bias_.data();
+    return &output_gate_bias_tensor_;
   }
   TfLiteTensor* GetProjectionBias() {
     PackWeightToTensor(&projection_bias_tensor_, projection_float_bias_,

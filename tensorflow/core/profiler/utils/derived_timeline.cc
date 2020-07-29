@@ -339,9 +339,10 @@ void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
                               XSpace* space, bool step_info_only) {
   for (XPlane& plane : *space->mutable_planes()) {
     // Derived timelines only generated for device traces.
-    if (plane.id() == kHostPlaneId) continue;
-    DeriveEventsFromAnnotations(DummySymbolResolver, event_group_name_map,
-                                &plane, step_info_only);
+    if (IsGpuPlaneName(plane.name())) {
+      DeriveEventsFromAnnotations(DummySymbolResolver, event_group_name_map,
+                                  &plane, step_info_only);
+    }
   }
 }
 
