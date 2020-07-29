@@ -244,8 +244,8 @@ void StateMap::ResetCondId(const Node* node, StateMap::CondId id) {
 }
 
 StateMap::AncestorId StateMap::LookupAncestorId(const Node* node) const {
-  const int64 node_to_map_size = node_to_ancestorid_map_.size();
-  if (node->id() < node_to_map_size)
+  const int64 map_size = node_to_ancestorid_map_.size();
+  if (node->id() < map_size)
     return node_to_ancestorid_map_[node->id()];
   return added_node_ancestorid_mapping_.at(node->id());
 }
