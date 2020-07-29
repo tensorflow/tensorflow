@@ -520,6 +520,8 @@ class Sequential(functional.Functional):
 def _get_shape_tuple(t):
   if hasattr(t, 'shape'):
     shape = t.shape
+    if isinstance(shape, tuple):
+      return shape
     if shape.rank is not None:
       return tuple(shape.as_list())
     return None
