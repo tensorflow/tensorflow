@@ -197,9 +197,10 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 DenseElementsAttr GetShape(Value output_val) {
   auto output_type = output_val.getType().cast<RankedTensorType>();
   auto shape_vector = output_type.getShape();
-  std::vector<int32_t> shape(shape_vector.size());
-  for (int i = 0, end = shape_vector.size(); i < end; ++i) {
-    shape[i] = shape_vector[i];
+  std::vector<int32_t> shape;
+  shape.reserve(shape_vector.size());
+  for (auto shape_object : shape_vector) {
+    shape.push_back(shape_object);
   }
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(

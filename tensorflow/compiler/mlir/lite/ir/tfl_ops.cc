@@ -147,10 +147,18 @@ bool IsI64Type(Type element_type) {
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
-  // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
+  // Allows F32, QI8, and QUI8 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
   if (element_type.isF32() || IsQI8Type(element_type) ||
-      IsQUI8Type(element_type) || IsI32Type(element_type)) {
+      IsQUI8Type(element_type)) {
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/5);
+  }
+
+  // Allows I32 output when the operands have valid shapes, which are
+  // broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -202,13 +210,20 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
     }
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/5);
   }
 
-  // Allows I32, QI16 and F32 outputs when the operands have valid shapes, which
-  // are broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsQI16Type(element_type) ||
-      element_type.isF32()) {
+  // Allows F32 output when the operands have valid shapes, which are
+  // broadcastable shapes up to five dimension or have same shapes.
+  if (element_type.isF32()) {
+    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
+        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
+        /*max_bcast_rank=*/5);
+  }
+
+  // Allows I32 and QI16 outputs when the operands have valid shapes, which are
+  // broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type) || IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -1178,8 +1193,8 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
       return failure();
 
     const int total_pack_inputs = pack_op.getNumOperands();
-    const int input_unpack_op_getNumResults = input_unpack_op.getNumResults();
-    if (total_pack_inputs != input_unpack_op_getNumResults) return failure();
+    const int num_results = input_unpack_op.getNumResults();
+    if (total_pack_inputs != num_results) return failure();
     for (auto input_output :
          llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
       Value pack_input = std::get<0>(input_output);
