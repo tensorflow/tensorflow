@@ -34,6 +34,7 @@ tf_kernel_library(
         "//tensorflow/c/kernels:tensor_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -89,7 +90,10 @@ cc_library(
     srcs = ["tensor_shape_utils.cc"],
     hdrs = ["tensor_shape_utils.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/c:tf_tensor"],
+    deps = [
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:lib",
+    ],
 )
 
 tf_cc_test(
