@@ -221,17 +221,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_compilation_cache_entry_impl",
-    srcs = [],
-    hdrs = ["tpu_compilation_cache_entry_impl.h"],
-    deps = [
-        ":compiled_subgraph",
-        ":tpu_compilation_cache_interface",
-        ":tpu_executable_info_proto_cc",
-    ],
-)
-
-cc_library(
     name = "tpu_compilation_cache_lookup",
     hdrs = [
         "tpu_compilation_cache_lookup.h",
@@ -337,6 +326,7 @@ cc_library(
     hdrs = ["tpu_compilation_cache_interface.h"],
     deps = [
         ":compiled_subgraph",
+        ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_key",
         ":tpu_compilation_cache_proto_cc",
         ":tpu_compilation_metrics_hdrs",
@@ -368,7 +358,6 @@ cc_library(
     deps = [
         ":compiled_subgraph",
         ":tpu_compilation_cache_entry",
-        ":tpu_compilation_cache_entry_impl",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_key",
         ":tpu_compilation_cache_proto_cc",
@@ -611,6 +600,7 @@ cc_library(
     deps = [
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_external",
+        ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_local_lookup",
         ":tpu_compilation_cache_lookup",
         ":tpu_executable_info_proto_cc",
