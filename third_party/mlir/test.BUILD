@@ -144,6 +144,7 @@ cc_library(
         "lib/IR/TestMatchers.cpp",
         "lib/IR/TestSideEffects.cpp",
         "lib/IR/TestSymbolUses.cpp",
+        "lib/IR/TestTypes.cpp",
     ],
     deps = [
         ":TestDialect",

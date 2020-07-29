@@ -26,7 +26,6 @@ package(default_visibility = ["//visibility:private"])
 transitive_hdrs(
     name = "included_headers",
     deps = [
-        "//tensorflow/c/experimental:network",
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/core:core_cpu",

@@ -16,7 +16,7 @@ limitations under the License.
 // Canonicalization patterns for the MHLO dialect.
 
 include "mlir/Dialect/Shape/IR/ShapeOps.td"
-include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 def EqualBinaryOperands : Constraint<CPred<"$0 == $1">>;
 

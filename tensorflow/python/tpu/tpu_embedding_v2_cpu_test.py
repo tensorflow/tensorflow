@@ -296,6 +296,18 @@ class CPUEmbeddingTest(test.TestCase):
           tables=mid_level.embedding_tables,
           feature_config=feature_config)
 
+  def test_cpu_no_optimizer(self):
+    feature_config = (
+        tpu_embedding_v2_utils.FeatureConfig(
+            table=self.table_video, name='watched', max_sequence_length=2),)
+    mid_level = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config,
+        batch_size=self.batch_size,
+        optimizer=None)
+    self.assertEqual(
+        list(mid_level._variables[self.table_video.name].keys()),
+        ['parameters'])
+
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()

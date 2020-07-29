@@ -1545,12 +1545,11 @@ static LogicalResult Verify(GatherV2Op op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(IfOp op) {
-  auto module = op.getParentOfType<ModuleOp>();
-  auto then_fn = module.lookupSymbol<FuncOp>(op.then_branch());
+  auto then_fn = op.then_func();
   if (!then_fn)
     return op.emitOpError("then_branch refers to an undefined function : ")
            << op.then_branch();
-  auto else_fn = module.lookupSymbol<FuncOp>(op.else_branch());
+  auto else_fn = op.else_func();
   if (!else_fn)
     return op.emitOpError("else_branch refers to an undefined function : ")
            << op.else_branch();

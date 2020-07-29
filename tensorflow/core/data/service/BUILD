@@ -78,6 +78,37 @@ cc_library(
 )
 
 cc_library(
+    name = "dispatcher_state",
+    srcs = ["dispatcher_state.cc"],
+    hdrs = [
+        "dispatcher_state.h",
+    ],
+    deps = [
+        ":common_proto_cc",
+        ":data_service",
+        ":journal_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "dispatcher_state_test",
+    srcs = ["dispatcher_state_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":dispatcher_state",
+        ":journal_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "worker_impl",
     srcs = ["worker_impl.cc"],
     hdrs = [
@@ -145,6 +176,7 @@ cc_library(
 tf_cc_test(
     name = "journal_test",
     srcs = ["journal_test.cc"],
+    tags = ["no_windows"],  # b/162268597
     deps = [
         ":common_proto_cc",
         ":journal",

@@ -33,6 +33,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
@@ -688,8 +689,8 @@ def transform(images,
                        'new_height, new_width, instead got '
                        '{}'.format(output_shape))
 
-    return image_ops.image_projective_transform_v2(
-        images,
+    return gen_image_ops.ImageProjectiveTransformV2(
+        images=images,
         output_shape=output_shape,
         transforms=transforms,
         fill_mode=fill_mode.upper(),

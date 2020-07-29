@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 namespace mlir {
 namespace mhlo {
@@ -29,8 +29,8 @@ namespace {
 
 // A pass that sinks constants implicitly captured in control flow regions. This
 // is necessary to export to XLA.
-class SinkConstantsToControlFlow
-    : public mlir::PassWrapper<SinkConstantsToControlFlow, FunctionPass> {
+class SinkConstantsToControlFlowPass
+    : public mlir::PassWrapper<SinkConstantsToControlFlowPass, FunctionPass> {
   void runOnFunction() override {
     getFunction().walk([](Operation* op) {
       if (auto while_op = llvm::dyn_cast<WhileOp>(op)) {
@@ -70,15 +70,10 @@ class SinkConstantsToControlFlow
   }
 };
 
-static mlir::PassRegistration<SinkConstantsToControlFlow> pass(
-    "mhlo-sink-constants-to-control-flow",
-    "Sink constants implicitly captured in control flow regions. This is "
-    "necessary to export to XLA.");
-
 }  // anonymous namespace
 
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass() {
-  return std::make_unique<SinkConstantsToControlFlow>();
+  return std::make_unique<SinkConstantsToControlFlowPass>();
 }
 
 }  // namespace mhlo

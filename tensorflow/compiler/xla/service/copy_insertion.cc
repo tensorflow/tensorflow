@@ -191,6 +191,30 @@ bool IndicesToCopyForWhile(const HloDataflowAnalysis& dataflow,
   return any_copies;
 }
 
+// Compute the indices of the conditional outputs which need copies. Umambiguous
+// buffers(buffer with only one value) don't need copies.
+bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
+                                 const HloInstruction* xla_conditional,
+                                 ShapeTree<bool>* indices_to_copy) {
+  DCHECK(ShapeUtil::Compatible(indices_to_copy->shape(),
+                               xla_conditional->shape()));
+
+  bool any_copies = false;
+  for (auto& pair : *indices_to_copy) {
+    const ShapeIndex& index = pair.first;
+    bool& should_copy = pair.second;
+
+    CHECK_EQ(dataflow.GetValueSet(xla_conditional, index).values().size(), 1);
+
+    auto value = dataflow.GetValueSet(xla_conditional, index).values()[0];
+    // The conditional must be copied if the value is a phi.
+    should_copy =
+        value->is_phi() && value->defining_instruction() == xla_conditional;
+    any_copies |= should_copy;
+  }
+  return any_copies;
+}
+
 // Add kCopy instructions around the given kWhile instruction to eliminate any
 // possible live range interference of HLO values assuming a dependency-based
 // ordering (HloDependencyOrdering). Copies are added conservatively. There
@@ -306,24 +330,30 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   }
 
   body->set_root_instruction(root_copy);
-
   return Status::OK();
 }
 
-// We add copies for all the indices of the true and false computation roots, in
-// order to resolve interference. We later rely on RemoveUnnecessaryCopies to
-// drop the unnecessary ones.
+// We add copies for all non-phi indices of the true and false computation
+// roots, in order to resolve interference. We later rely on
+// RemoveUnnecessaryCopies to drop the unnecessary ones.
 Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
                                HloInstruction* conditional) {
   VLOG(2) << "Adding copies for kConditional instruction "
           << conditional->name();
+  ShapeTree<bool> indices_to_copy(conditional->shape());
   TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
-
+  if (!IndicesToCopyForConditional(alias_analysis.dataflow_analysis(),
+                                   conditional, &indices_to_copy)) {
+    VLOG(2) << "No copies necessary for kWhile instruction "
+            << conditional->name();
+    return Status::OK();
+  }
   for (HloComputation* computation : conditional->branch_computations()) {
     HloInstruction* root = computation->root_instruction();
     std::vector<HloInstruction*> users = root->users();
-    TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
-                        computation->DeepCopyInstruction(root));
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * deep_copy,
+        computation->DeepCopyInstruction(root, &indices_to_copy));
     for (HloInstruction* user : users) {
       TF_RETURN_IF_ERROR(root->ReplaceUseWith(user, deep_copy));
     }
@@ -1128,6 +1158,7 @@ static int64 GetNumExistingCopies(const HloModule* module) {
 
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
+  XLA_LOG_LINES(4, module->ToString());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
 

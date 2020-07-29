@@ -1205,9 +1205,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
 
   # TODO(sourabhbajaj): Call for each replica should be updating this.
   # TODO(b/118385803): Always properly initialize replica_id.
-  def __init__(self, strategy, replica_id_in_sync_group=None):
-    if replica_id_in_sync_group is None:
-      replica_id_in_sync_group = constant_op.constant(0, dtypes.int32)
+  def __init__(self, strategy, replica_id_in_sync_group=0):
     distribute_lib.ReplicaContext.__init__(
         self, strategy, replica_id_in_sync_group=replica_id_in_sync_group)
 
@@ -1215,7 +1213,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   def devices(self):
     distribute_lib.require_replica_context(self)
     ds = self._strategy
-    replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
+    replica_id = tensor_util.constant_value(self.replica_id_in_sync_group)
 
     if replica_id is None:  # Non-constant `Tensor` inside `tpu.replicate`.
       # TODO(cjfj): Return other devices when model parallelism is supported.

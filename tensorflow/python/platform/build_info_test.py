@@ -31,8 +31,10 @@ class BuildInfoTest(test.TestCase):
                      test.is_built_with_cuda())
 
   def testDeterministicOrder(self):
-    self.assertEqual(['is_cuda_build', 'is_rocm_build'],
-                     list(build_info.build_info.keys()))
+    # The dict may contain other keys depending on the platform, but the ones
+    # it always contains should be in order.
+    self.assertContainsSubsequence(build_info.build_info.keys(),
+                                   ('is_cuda_build', 'is_rocm_build'))
 
 
 if __name__ == '__main__':

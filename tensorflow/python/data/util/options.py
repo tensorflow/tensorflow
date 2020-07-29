@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 
 def _internal_attr_name(name):
   return "_" + name
@@ -54,6 +56,12 @@ class OptionsBase(object):
     else:
       raise AttributeError(
           "Cannot set the property %s on %s." % (name, type(self).__name__))
+
+
+# Creates a namedtuple with three keys for optimization graph rewrites settings.
+def graph_rewrites():
+  return collections.namedtuple("GraphRewrites",
+                                ["enabled", "disabled", "default"])
 
 
 def create_option(name, ty, docstring, default_factory=lambda: None):

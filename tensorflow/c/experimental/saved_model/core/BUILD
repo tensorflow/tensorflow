@@ -26,6 +26,7 @@ cc_library(
         ":function_metadata",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -146,6 +147,7 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

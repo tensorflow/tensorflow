@@ -452,9 +452,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
     return;
 
-  auto module = while_op.getParentOfType<ModuleOp>();
-  auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
-  auto cond = llvm::cast<FuncOp>(module.lookupSymbol(while_op.cond()));
+  FuncOp body = while_op.body_func();
+  FuncOp cond = while_op.cond_func();
 
   // Analyze the formattable inputs.
   auto execute_arg_to_outer_args =

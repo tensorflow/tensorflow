@@ -94,6 +94,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
       {"Iterator", kIterator},
+      {"Iterator::Prefetch::Generator", kDeviceInputPipelineSecondIterator},
       {"PrefetchProduce", kPrefetchProduce},
       {"PrefetchConsume", kPrefetchConsume},
       {"ParallelInterleaveProduce", kParallelInterleaveProduce},

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace ApiConverter {
+
 xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
   xla::Shape xla_on_host_shape = ApiConverter::FromC(&c_buffer->on_host_shape);
   xla::Shape xla_on_device_shape =
@@ -114,6 +115,7 @@ SE_DeviceMemoryAllocator ToC(
   };
   return se_allocator;
 }
+
 SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem) {
   SE_MaybeOwningDeviceMemory se_mem;
   se_mem.device_ordinal = mem->device_ordinal();

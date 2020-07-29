@@ -85,6 +85,7 @@ enum HostEventType {
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
   kIterator,
+  kDeviceInputPipelineSecondIterator,
   kPrefetchProduce,
   kPrefetchConsume,
   kParallelInterleaveProduce,
