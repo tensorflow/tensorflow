@@ -187,7 +187,7 @@ void TF_JoinThread(TF_Thread* thread) {
   delete reinterpret_cast<::tensorflow::Thread*>(thread);
 }
 
-void* TF_LoadLibraryFromEnv(const char* library_filename, TF_Status* status) {
+void* TF_LoadSharedLibrary(const char* library_filename, TF_Status* status) {
   void* handle = nullptr;
   TF_SetStatus(status, TF_OK, "");
   ::tensorflow::Set_TF_Status_from_Status(
