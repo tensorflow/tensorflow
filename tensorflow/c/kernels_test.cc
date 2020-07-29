@@ -461,7 +461,11 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSizeOne) {
     int64_t dim = 1;
     TF_AllocatorAttributes alloc_attrs; 
     alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE; 
+#if GOOGLE_CUDA
+    alloc_attrs.on_host = 0;
+#else 
     alloc_attrs.on_host = 1; 
+#endif 
     TF_Tensor* output = TF_AllocateTemp(
         /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
         /*num_dims=*/1, /*allocator_attributes*/ alloc_attrs, s);
