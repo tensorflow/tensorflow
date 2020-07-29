@@ -58,6 +58,12 @@
       dataset when it is safe to do so. The optimization can be disabled via
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
+* `tf.image`:
+    * Added `tf.image.stateless_random_flip_left_right` and
+      `tf.image.stateless_random_flip_up_down` functions that are deterministic.
+      That is, given the same seed, they produce the same results independent of
+      how many times the function is called, and independent of global seed
+      settings.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:

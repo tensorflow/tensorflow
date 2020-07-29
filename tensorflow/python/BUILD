@@ -5066,7 +5066,7 @@ cuda_py_test(
     srcs = ["ops/image_ops_test.py"],
     data = ["//tensorflow/core:image_testdata"],
     python_version = "PY3",
-    shard_count = 5,
+    shard_count = 16,
     deps = [
         ":array_ops",
         ":client",
@@ -5083,6 +5083,7 @@ cuda_py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

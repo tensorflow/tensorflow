@@ -32,10 +32,15 @@ namespace grappler {
 
 constexpr int kOpsPerMac = 2;
 constexpr char kGuaranteeConst[] = "GuaranteeConst";
+constexpr char kAddN[] = "AddN";
+constexpr char kBitCast[] = "BitCast";
+constexpr char kConcatV2[] = "ConcatV2";
 constexpr char kConv2d[] = "Conv2D";
 constexpr char kConv2dBackpropFilter[] = "Conv2DBackpropFilter";
 constexpr char kConv2dBackpropInput[] = "Conv2DBackpropInput";
 constexpr char kFusedConv2dBiasActivation[] = "FusedConv2DBiasActivation";
+constexpr char kDataFormatVecPermute[] = "DataFormatVecPermute";
+constexpr char kDepthToSpace[] = "DepthToSpace";
 constexpr char kDepthwiseConv2dNative[] = "DepthwiseConv2dNative";
 constexpr char kDepthwiseConv2dNativeBackpropFilter[] =
     "DepthwiseConv2dNativeBackpropFilter";
@@ -44,6 +49,8 @@ constexpr char kDepthwiseConv2dNativeBackpropInput[] =
 constexpr char kMatMul[] = "MatMul";
 constexpr char kXlaEinsum[] = "XlaEinsum";
 constexpr char kEinsum[] = "Einsum";
+constexpr char kExpandDims[] = "ExpandDims";
+constexpr char kFill[] = "Fill";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kSparseTensorDenseMatMul[] = "SparseTensorDenseMatMul";
 constexpr char kPlaceholder[] = "Placeholder";
@@ -52,11 +59,13 @@ constexpr char kIdentityN[] = "IdentityN";
 constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
+constexpr char kSplit[] = "Split";
 constexpr char kSqueeze[] = "Squeeze";
 constexpr char kRecv[] = "_Recv";
 constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
 constexpr char kBatchMatMulV2[] = "BatchMatMulV2";
+constexpr char kPack[] = "Pack";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
 constexpr char kShapeN[] = "ShapeN";
@@ -73,6 +82,8 @@ constexpr char kScatterMul[] = "ScatterMul";
 constexpr char kScatterSub[] = "ScatterSub";
 constexpr char kScatterUpdate[] = "ScatterUpdate";
 constexpr char kSlice[] = "Slice";
+constexpr char kSpaceToDepth[] = "SpaceToDepth";
+constexpr char kTranspose[] = "Transpose";
 constexpr char kMaxPool[] = "MaxPool";
 constexpr char kMaxPoolGrad[] = "MaxPoolGrad";
 constexpr char kAvgPool[] = "AvgPool";
@@ -81,6 +92,7 @@ constexpr char kFusedBatchNorm[] = "FusedBatchNorm";
 constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
 constexpr char kQuantizedMatMul[] = "QuantizedMatMul";
 constexpr char kQuantizedMatMulV2[] = "QuantizedMatMulV2";
+constexpr char kUnpack[] = "Unpack";
 // Dynamic control flow ops.
 constexpr char kSwitch[] = "Switch";
 constexpr char kMerge[] = "Merge";
@@ -424,8 +436,6 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                             wrap(&OpLevelCostEstimator::PredictIdentity));
   device_cost_impl_.emplace(kReshape,
                             wrap(&OpLevelCostEstimator::PredictIdentity));
-  device_cost_impl_.emplace(kSqueeze,
-                            wrap(&OpLevelCostEstimator::PredictIdentity));
   device_cost_impl_.emplace(kRecv,
                             wrap(&OpLevelCostEstimator::PredictIdentity));
   device_cost_impl_.emplace(kSend,
@@ -440,6 +450,31 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                             wrap(&OpLevelCostEstimator::PredictIdentity));
   device_cost_impl_.emplace(kNextIteration,
                             wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kBitCast,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+
+  device_cost_impl_.emplace(kConcatV2,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kDataFormatVecPermute,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kDepthToSpace,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kExpandDims,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kFill,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kPack,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kSpaceToDepth,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kSplit,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kSqueeze,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kTranspose,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kUnpack,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
 
   device_cost_impl_.emplace(kRank,
                             wrap(&OpLevelCostEstimator::PredictMetadata));
@@ -470,6 +505,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(
       kAssignSubVariableOp,
       wrap(&OpLevelCostEstimator::PredictAssignVariableOps));
+  device_cost_impl_.emplace(kAddN, wrap(&OpLevelCostEstimator::PredictNaryOp));
 
   persistent_ops_ = {
       kConst,       kVariable,       kVariableV2,   kAutoReloadVariable,
@@ -652,7 +688,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   // use the count for the largest input here to be more robust in case that the
   // shape is unknown or partially known for other input.
   int64 op_count = CalculateLargestInputCount(op_info, &found_unknown_shapes);
-  // If output shape is available, try use the element count calculated from
+  // If output shape is available, try to use the element count calculated from
   // that.
   if (op_info.outputs_size() > 0) {
     op_count = std::max(
@@ -1674,6 +1710,13 @@ Costs OpLevelCostEstimator::PredictNoOp(const OpContext& op_context) const {
   return Costs::ZeroCosts();
 }
 
+Costs OpLevelCostEstimator::PredictPureMemoryOp(
+    const OpContext& op_context) const {
+  // Each output element is a copy of some element from input, with no required
+  // computation, so just compute memory costs.
+  return PredictOpCountBasedCost(0, op_context.op_info);
+}
+
 Costs OpLevelCostEstimator::PredictIdentity(const OpContext& op_context) const {
   const auto& op_info = op_context.op_info;
   VLOG(1) << "Op:" << op_info.op() << " Execution Time 0 (ns)";
@@ -2188,6 +2231,38 @@ Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
   costs.inaccurate = found_unknown_shapes;
   costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictNaryOp(const OpContext& op_context) const {
+  const auto& op_info = op_context.op_info;
+  bool found_unknown_shapes = false;
+  // Calculate the largest known tensor size across all inputs and output.
+  int64 op_count = CalculateLargestInputCount(op_info, &found_unknown_shapes);
+  // If output shape is available, try to use the element count calculated from
+  // that.
+  if (op_info.outputs_size() > 0) {
+    op_count = std::max(
+        op_count,
+        CalculateTensorElementCount(op_info.outputs(0), &found_unknown_shapes));
+  }
+  // Also calculate the output shape possibly resulting from broadcasting.
+  // Note that the some Nary ops (such as AddN) do not support broadcasting,
+  // but we're including this here for completeness.
+  if (op_info.inputs_size() >= 2) {
+    op_count = std::max(op_count, CwiseOutputElementCount(op_info));
+  }
+
+  // Nary ops perform one operation for every element in every input tensor.
+  op_count *= op_info.inputs_size() - 1;
+
+  const auto sum_cost = Eigen::internal::functor_traits<
+      Eigen::internal::scalar_sum_op<float>>::Cost;
+  Costs costs = PredictOpCountBasedCost(op_count * sum_cost, op_info);
+  if (found_unknown_shapes) {
+    costs.inaccurate = true;
+  }
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 }  // end namespace grappler

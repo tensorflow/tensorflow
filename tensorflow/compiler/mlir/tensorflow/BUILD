@@ -1459,6 +1459,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     ":mlir_roundtrip_flags",
     ":tensorflow",
     ":tensorflow_dialect_registration",
+    ":tensorflow_types",
     ":tensorflow_passes",
     ":translate_utils",
     "@com_google_absl//absl/types:optional",
@@ -1520,6 +1521,9 @@ tf_cc_test(
     srcs = ["utils/compile_mlir_util_test.cc"],
     deps = [
         ":compile_mlir_util",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",

@@ -117,47 +117,26 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   Status LogCompilationStats(const TpuCompilationCacheKey& key,
                              absl::Duration duration) override;
 
-  const std::vector<bool>& may_modify_variables() const override {
-    return may_modify_variables_;
-  }
-  void set_may_modify_variables(const std::vector<bool>& may_modify_variables) {
-    may_modify_variables_ = may_modify_variables;
-  }
+  const std::vector<bool>& may_modify_variables() const override;
+  void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
 
-  const tf2xla::HostComputeMetadata& host_compute_metadata() const {
-    return host_compute_metadata_;
-  }
+  const tf2xla::HostComputeMetadata& host_compute_metadata() const;
   void set_host_compute_metadata(
-      const tf2xla::HostComputeMetadata& host_compute_metadata) {
-    host_compute_metadata_ = host_compute_metadata;
-  }
+      const tf2xla::HostComputeMetadata& host_compute_metadata);
 
-  const std::vector<XLA_TpuProgram*>& tpu_programs() const {
-    return tpu_programs_;
-  }
-  void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs) {
-    tpu_programs_.resize(tpu_programs.size());
-    for (size_t i = 0; i < tpu_programs.size(); ++i) {
-      tpu_programs_[i] = tpu_programs[i];
-    }
-  }
+  const std::vector<XLA_TpuProgram*>& tpu_programs() const;
+  const XLA_TpuProgram* tpu_program(int index) const;
+  void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs);
 
-  const TPUExecutableInfoProto& executable_info() const {
-    return executable_info_;
-  }
-  void set_executable_info(const TPUExecutableInfoProto& executable_info) {
-    executable_info_ = executable_info;
-  }
+  const TPUExecutableInfoProto& executable_info() const;
+  void set_executable_info(const TPUExecutableInfoProto& executable_info);
 
-  const TPUHostTransferInfoProto& host_transfer_info() const {
-    return host_transfer_info_;
-  }
+  const TPUHostTransferInfoProto& host_transfer_info() const;
   void set_host_transfer_info(
-      const TPUHostTransferInfoProto& host_transfer_info) {
-    host_transfer_info_ = host_transfer_info;
-  }
+      const TPUHostTransferInfoProto& host_transfer_info);
 
   void set_hlo_metadata(const xla::HloProto& hlo_metadata);
+  const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
 
  private:

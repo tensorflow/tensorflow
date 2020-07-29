@@ -26,6 +26,7 @@ import contextlib
 
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops
@@ -162,6 +163,8 @@ class TPUVariableMixin(object):
 
   @property
   def op(self):
+    if values_util.is_saving_non_distributed():
+      return self._primary.op
     return values.DistributedVarOp(self._primary.op.name,
                                    self._primary.op.graph,
                                    self._primary.op.traceback,
@@ -289,24 +292,38 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
                   read_value=read_value)
 
   def scatter_sub(self, *args, **kwargs):
+    if values_util.is_saving_non_distributed():
+      return self._primary.scatter_sub(*args, **kwargs)
     raise NotImplementedError
 
   def scatter_add(self, *args, **kwargs):
+    if values_util.is_saving_non_distributed():
+      return self._primary.scatter_add(*args, **kwargs)
     raise NotImplementedError
 
   def scatter_max(self, *args, **kwargs):
+    if values_util.is_saving_non_distributed():
+      return self._primary.scatter_max(*args, **kwargs)
     raise NotImplementedError
 
   def scatter_min(self, *args, **kwargs):
+    if values_util.is_saving_non_distributed():
+      return self._primary.scatter_min(*args, **kwargs)
     raise NotImplementedError
 
   def scatter_mul(self, *args, **kwargs):
+    if values_util.is_saving_non_distributed():
+      return self._primary.scatter_mul(*args, **kwargs)
     raise NotImplementedError
 
   def scatter_div(self, *args, **kwargs):
+    if values_util.is_saving_non_distributed():
+      return self._primary.scatter_div(*args, **kwargs)
     raise NotImplementedError
 
   def scatter_update(self, *args, **kwargs):
+    if values_util.is_saving_non_distributed():
+      return self._primary.scatter_update(*args, **kwargs)
     raise NotImplementedError
 
   def _is_mirrored(self):

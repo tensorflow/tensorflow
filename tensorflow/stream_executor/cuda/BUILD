@@ -324,6 +324,7 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
+        ":cudnn_version",
     ]),
 )
 

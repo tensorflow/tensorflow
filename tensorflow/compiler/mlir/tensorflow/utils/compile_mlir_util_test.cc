@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -448,9 +451,6 @@ TEST(CompileGraphToXlaHlo, Basic) {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), {});
   Graph graph(OpRegistry::Global());
 
-  Tensor dummy_tensor(DT_FLOAT, TensorShape({1}));
-  test::FillValues<float>(&dummy_tensor, {-1.0});
-
   Node* arg = test::graph::Arg(&graph, 0, DT_FLOAT);
   test::graph::Retval(&graph, 0, arg);
 
@@ -475,6 +475,61 @@ TEST(CompileGraphToXlaHlo, Basic) {
 ENTRY %main.3 (Arg_0.1: f32[]) -> (f32[]) {
   %Arg_0.1 = f32[] parameter(0)
   ROOT %tuple.2 = (f32[]) tuple(f32[] %Arg_0.1)
+}
+
+)";
+
+  EXPECT_EQ(expected_hlo_module_string,
+            status_or_hlo_module.ValueOrDie()->ToString());
+}
+
+// Tests a conversion from Graph to MLIR with resource arguments.
+TEST(CompileGraphToXlaHlo, Resources) {
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), {});
+  Graph graph(OpRegistry::Global());
+
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto val = ops::_Arg(scope.WithOpName("arg0"), DT_FLOAT, 0);
+  auto var = ops::_Arg(scope.WithOpName("arg1"), DT_RESOURCE, 1);
+  auto assign =
+      ops::AssignVariableOp(scope.WithOpName("assign_variable"), var, val);
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+
+  XlaCompiler::CompilationResult result;
+  XlaCompiler::Argument arg0;
+  arg0.kind = XlaCompiler::Argument::kParameter;
+  arg0.shape = TensorShape({2});
+  XlaCompiler::Argument arg1;
+  arg1.kind = XlaCompiler::Argument::kResource;
+  arg1.shape = TensorShape({2});
+  arg1.type = DT_FLOAT;
+
+  TF_ASSERT_OK(
+      CompileGraphToXlaHlo(graph, /*args=*/{arg0, arg1}, "XLA_CPU_JIT",
+                           /*use_tuple_args=*/false, flib_def, GraphDebugInfo(),
+                           /*shape_representation_fn=*/nullptr, &result));
+
+  EXPECT_EQ(result.outputs.size(), 0);
+  ASSERT_EQ(result.resource_updates.size(), 1);
+  const auto& resource_update = result.resource_updates[0];
+  EXPECT_EQ(resource_update.input_index, 1);
+  EXPECT_EQ(resource_update.modified, true);
+  EXPECT_EQ(resource_update.shape, TensorShape({2}));
+  EXPECT_EQ(resource_update.type, DT_FLOAT);
+
+  const xla::HloModuleConfig module_config(
+      result.computation->GetProgramShape().ValueOrDie());
+  auto status_or_hlo_module = xla::HloModule::CreateFromProto(
+      result.computation->proto(), module_config);
+  ASSERT_TRUE(status_or_hlo_module.ok());
+
+  constexpr char expected_hlo_module_string[] =
+      R"(HloModule main.4, input_output_alias={ {0}: 1 }
+
+ENTRY %main.4 (Arg_0.1: f32[2], Arg_1.2: f32[2]) -> (f32[2]) {
+  %Arg_1.2 = f32[2]{0} parameter(1)
+  %Arg_0.1 = f32[2]{0} parameter(0)
+  ROOT %tuple.3 = (f32[2]{0}) tuple(f32[2]{0} %Arg_0.1)
 }
 
 )";

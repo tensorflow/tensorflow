@@ -49,20 +49,12 @@ struct MklPoolingParams {
   mkldnn::prop_kind prop_kind;
   MEMORY_FORMAT src_format;
   memory::desc src_md;
-#ifdef ENABLE_MKLDNN_V1
-  memory::desc diff_dst_md;
-#endif  // ENABLE_MKLDNN_V1
 
   MklPoolingParams(memory::dims src_dims, memory::dims dst_dims,
                    memory::dims filter_dims, memory::dims strides,
                    memory::dims padding_left, memory::dims padding_right,
                    mkldnn::algorithm alg_kind, mkldnn::prop_kind prop_kind,
-#ifdef ENABLE_MKLDNN_V1
-                   MEMORY_FORMAT src_format, memory::desc src_md,
-                   memory::desc diff_dst_md = memory::desc())
-#else
                    MEMORY_FORMAT src_format, memory::desc src_md)
-#endif  // ENABLE_MKLDNN_V1
       : src_dims(src_dims),
         dst_dims(dst_dims),
         filter_dims(filter_dims),
@@ -72,14 +64,7 @@ struct MklPoolingParams {
         alg_kind(alg_kind),
         prop_kind(prop_kind),
         src_format(src_format),
-#ifdef ENABLE_MKLDNN_V1
-        src_md(src_md),
-        diff_dst_md(diff_dst_md) {
-  }
-#else
-        src_md(src_md) {
-  }
-#endif  // ENABLE_MKLDNN_V1
+        src_md(src_md) {}
 };
 
 template <typename T>
@@ -280,8 +265,12 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::memory> diff_dst_mem;
 
     // Memory descriptors.
+    std::shared_ptr<mkldnn::memory::desc> src_md;
+    std::shared_ptr<mkldnn::memory::desc> dst_md;
+#ifndef ENABLE_MKLDNN_V1
     std::shared_ptr<mkldnn::memory::desc> diff_src_md;
     std::shared_ptr<mkldnn::memory::desc> diff_dst_md;
+#endif
 
     // Forward and backward pooling descriptors and primitive descriptors.
     std::shared_ptr<mkldnn::pooling_forward::desc> fwd_desc;
@@ -306,13 +295,18 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
           ws_mem(nullptr),
           diff_src_mem(nullptr),
           diff_dst_mem(nullptr),
+          src_md(nullptr),
+          dst_md(nullptr),
+#ifndef ENABLE_MKLDNN_V1
           diff_src_md(nullptr),
           diff_dst_md(nullptr),
+#endif
           fwd_desc(nullptr),
           bwd_desc(nullptr),
           fwd_pd(nullptr),
           bwd_pd(nullptr),
-          bwd(nullptr) {}
+          bwd(nullptr) {
+    }
   };
 
   struct PoolingBwdContext context_;

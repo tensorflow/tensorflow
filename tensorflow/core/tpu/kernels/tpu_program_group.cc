@@ -248,6 +248,12 @@ absl::Span<const xla::HloProto* const> TpuProgramGroup::hlo_metadatas() const {
   return hlo_metadatas_ptrs_;
 }
 
+const xla::HloProto* TpuProgramGroup::hlo_metadata(int index) const {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, hlo_metadatas_ptrs_.size());
+  return hlo_metadatas_ptrs_[index];
+}
+
 void TpuProgramGroup::RefreshHloMetadatasPtrs() {
   hlo_metadatas_ptrs_.reserve(hlo_metadatas_.size());
   for (const auto& hlo_metadata_internal_ : hlo_metadatas_) {
@@ -260,6 +266,61 @@ Status TpuProgramGroup::LogCompilationStats(const TpuCompilationCacheKey& key,
   // A placeholder for tracking compilation statistics for future work. The
   // implementation can be pushing into some external storage for analytics.
   return Status::OK();
+}
+
+const std::vector<bool>& TpuProgramGroup::may_modify_variables() const {
+  return may_modify_variables_;
+}
+
+void TpuProgramGroup::set_may_modify_variables(
+    const std::vector<bool>& may_modify_variables) {
+  may_modify_variables_ = may_modify_variables;
+}
+
+const tf2xla::HostComputeMetadata& TpuProgramGroup::host_compute_metadata()
+    const {
+  return host_compute_metadata_;
+}
+
+void TpuProgramGroup::set_host_compute_metadata(
+    const tf2xla::HostComputeMetadata& host_compute_metadata) {
+  host_compute_metadata_ = host_compute_metadata;
+}
+
+const std::vector<XLA_TpuProgram*>& TpuProgramGroup::tpu_programs() const {
+  return tpu_programs_;
+}
+
+const XLA_TpuProgram* TpuProgramGroup::tpu_program(int index) const {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, tpu_programs_.size());
+  return tpu_programs_[index];
+}
+
+void TpuProgramGroup::set_tpu_programs(
+    absl::Span<XLA_TpuProgram* const> tpu_programs) {
+  tpu_programs_.resize(tpu_programs.size());
+  for (size_t i = 0; i < tpu_programs.size(); ++i) {
+    tpu_programs_[i] = tpu_programs[i];
+  }
+}
+
+const TPUExecutableInfoProto& TpuProgramGroup::executable_info() const {
+  return executable_info_;
+}
+
+void TpuProgramGroup::set_executable_info(
+    const TPUExecutableInfoProto& executable_info) {
+  executable_info_ = executable_info;
+}
+
+const TPUHostTransferInfoProto& TpuProgramGroup::host_transfer_info() const {
+  return host_transfer_info_;
+}
+
+void TpuProgramGroup::set_host_transfer_info(
+    const TPUHostTransferInfoProto& host_transfer_info) {
+  host_transfer_info_ = host_transfer_info;
 }
 
 /*static*/

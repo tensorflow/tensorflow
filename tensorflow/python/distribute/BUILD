@@ -794,9 +794,13 @@ py_library(
     deps = [
         ":distribute_lib",
         ":reduce_util",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
     ],
 )
 
@@ -806,6 +810,7 @@ py_library(
     deps = [
         ":packed_distributed_variable",
         ":values",
+        ":values_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops_gen",
@@ -1165,6 +1170,7 @@ distribute_py_test(
         ":distribute_lib",
         ":distribute_utils",
         ":packed_distributed_variable",
+        ":parameter_server_strategy",
         ":strategy_combinations",
         ":test_util",
         ":tpu_strategy",
@@ -1172,6 +1178,7 @@ distribute_py_test(
         ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -1183,6 +1190,7 @@ distribute_py_test(
         "//tensorflow/python:saver",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf2",
         "//tensorflow/python:training",
@@ -1195,6 +1203,7 @@ distribute_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",
