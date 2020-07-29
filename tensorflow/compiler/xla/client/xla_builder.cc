@@ -3024,12 +3024,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
     instr.add_operand_ids(operand.handle());
   }
 
-  if (one_shot_metadata_.has_value()) {
-    *instr.mutable_metadata() = one_shot_metadata_.value();
-    one_shot_metadata_.reset();
-  } else {
-    *instr.mutable_metadata() = metadata_;
-  }
+  *instr.mutable_metadata() = metadata_;
   if (sharding_) {
     *instr.mutable_sharding() = *sharding_;
   }
