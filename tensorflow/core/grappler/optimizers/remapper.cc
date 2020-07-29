@@ -929,7 +929,7 @@ bool FindComparisonWithCast(const RemapperContext& ctx, int node_index,
   const auto* node_def = node_view->node();
 
   if (!IsCast(*node_def) || HasControlFaninOrFanout(*node_view)) return false;
-  if (NodeIsOnGpu(node_def)) return false;
+  if (!NodeIsOnCpu(node_def)) return false;
 
   if (node_view->NumRegularFanins() != 1) return false;
   const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
@@ -938,7 +938,7 @@ bool FindComparisonWithCast(const RemapperContext& ctx, int node_index,
   if (!IsComparison(*comparison_node_def) ||
       HasControlFaninOrFanout(*comparison))
     return false;
-  if (NodeIsOnGpu(comparison_node_def)) return false;
+  if (!NodeIsOnCpu(comparison_node_def)) return false;
 
   DataType comparator_dtype = GetDataTypeFromAttr(*comparison_node_def, "T");
   DataType src_dtype = GetDataTypeFromAttr(*node_def, "SrcT");
