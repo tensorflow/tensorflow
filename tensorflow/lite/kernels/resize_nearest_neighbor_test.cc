@@ -197,10 +197,10 @@ TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeInt16) {
   });
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray(ArrayFloatNear({
-                                         3, 3, -6,  //
-                                         3, 3, -6,  //
-                                         9, 9, 12,  //
-                                     })));
+                                          3, 3, -6,  //
+                                          3, 3, -6,  //
+                                          9, 9, 12,  //
+                                      })));
 }
 TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatches) {
   ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {3, 3},
@@ -325,13 +325,13 @@ TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesInt16) {
   });
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray(ArrayFloatNear({
-                                         3, 3, 6,     //
-                                         3, 3, 6,     //
-                                         9, 9, -12,   //
-                                         -4, -4, 10,  //
-                                         -4, -4, 10,  //
-                                         12, 12, 16,  //
-                                     })));
+                                          3, 3, 6,     //
+                                          3, 3, 6,     //
+                                          9, 9, -12,   //
+                                          -4, -4, 10,  //
+                                          -4, -4, 10,  //
+                                          12, 12, 16,  //
+                                      })));
 }
 TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeUInt8) {
   ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 2}}, {3, 3},
@@ -400,10 +400,10 @@ TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeInt16) {
   });
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray(ArrayFloatNear({
-                                         3, 4, 3, 4, -6, 10,       //
-                                         3, 4, 3, 4, -6, 10,       //
-                                         10, 12, 10, 12, -14, 16,  //
-                                     })));
+                                          3, 4, 3, 4, -6, 10,       //
+                                          3, 4, 3, 4, -6, 10,       //
+                                          10, 12, 10, 12, -14, 16,  //
+                                      })));
 }
 INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpTest,
                          ResizeNearestNeighborOpTest,

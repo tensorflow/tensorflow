@@ -701,7 +701,8 @@ TEST(OpVersionTest, VersioningResizeNearestNeighborTest) {
   // int16 input is version 4.
   fake_op_sig = {
       .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-      .input_types = std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
       .output_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);

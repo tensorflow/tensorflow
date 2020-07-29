@@ -127,9 +127,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetTensorShape(size), GetTensorData<int32>(size),
         GetTensorShape(output), GetTensorData<int16_t>(output));
   } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Output type is %s, requires float, uint8, int8 or int16.",
-                       TfLiteTypeGetName(output->type));
+    TF_LITE_KERNEL_LOG(
+        context, "Output type is %s, requires float, uint8, int8 or int16.",
+        TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 
