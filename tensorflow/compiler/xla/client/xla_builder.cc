@@ -773,7 +773,7 @@ XlaOp XlaBuilder::BroadcastInDim(
           "rank: %lld, size of broadcast_dimensions %u.",
           operand_shape->rank(), broadcast_dimensions.size());
     }
-    for (int i = 0, end = broadcast_dimensions.size(); i < end; i++) {
+    for (int i = 0; i < broadcast_rank; i++) {
       const tensorflow::int64 num_dims = out_dim_size.size();
       if (broadcast_dimensions[i] < 0 ||
           broadcast_dimensions[i] > num_dims) {
