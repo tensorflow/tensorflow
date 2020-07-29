@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/tensor_map.h"
-#include "tensorflow/core/kernels/tensor_list.h"
+//#include "tensorflow/core/kernels/tensor_list.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 
@@ -187,23 +187,25 @@ class TensorMapHasKey : public OpKernel {
 
 class TensorMapListKeys : public OpKernel {
  public:
-  explicit TensorMapListKeys(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit TensorMapListKeys(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("key_dtype", &key_dtype_));
+  }
   ~TensorMapListKeys() override {}
 
   void Compute(OpKernelContext* c) override {
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
     Tensor* result;
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result));
-    TensorList output_keys = TensorList();
     std::vector<Tensor> key_vector = m->keys();
-    for (Tensor k : key_vector) {
-      output_keys.tensors().push_back(k);
+    TensorShape shape = key_vector[0].shape();
+    shape.InsertDim(0, key_vector.size());
+    OP_REQUIRES_OK(c, c->allocate_output(0, shape, &result));
+    for (int i=0; i<key_vector.size(); i++) {
+      result[i] = key_vector[i];
     }
-    //= m->keys();
-    result->scalar<Variant>()() = std::move(&output_keys);
-    // c->set_output(0, std::move(keys));
   }
+ private:
+  DataType key_dtype_;
 };
 
 template <typename Device>

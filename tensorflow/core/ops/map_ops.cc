@@ -71,17 +71,17 @@ REGISTER_OP("TensorMapErase")
 
 REGISTER_OP("TensorMapHasKey")
     .Input("input_handle: variant")
-    .Input("key: element_dtype")
+    .Input("key: key_dtype")
     .Output("has_key: bool")
-    .Attr("element_dtype: type")
+    .Attr("key_dtype: type")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("TensorMapListKeys")
     .Input("input_handle: variant")
-    .Output("keys: variant")
-    //.Attr("element_dtype: type")
+    .Output("keys: key_dtype")
+    .Attr("key_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Scalar()); // output map
+      c->set_output(0, c->UnknownShape()); // output keys
       return Status::OK();
     });
 
