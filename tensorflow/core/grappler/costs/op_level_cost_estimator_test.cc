@@ -1838,5 +1838,31 @@ TEST_F(OpLevelCostEstimatorTest, PredictResourceVariableOps) {
   }
 }
 
+TEST_F(OpLevelCostEstimatorTest, IdentityOpExecutionTime) {
+  std::vector<std::string> identity_ops = {
+      "_Recv",         "_Send",        "BitCast",         "Identity",
+      "Enter",         "Exit",         "IdentityN",       "Merge",
+      "NextIteration", "Placeholder",  "PreventGradient", "RefIdentity",
+      "Reshape",       "StopGradient", "Switch"};
+
+  const int kTensorSize = 1000;
+  for (auto identity_op : identity_ops) {
+    OpContext op_context = DescribeUnaryOp(identity_op, kTensorSize);
+
+    const int kExpectedMemoryTime = 0;
+    const int kExpectedComputeTime = 1;
+
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(kExpectedMemoryTime), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(kExpectedComputeTime), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(kExpectedComputeTime + kExpectedMemoryTime),
+              cost.execution_time);
+    EXPECT_EQ(cost.max_memory, kTensorSize * 4);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

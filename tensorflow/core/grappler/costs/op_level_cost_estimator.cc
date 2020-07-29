@@ -32,6 +32,7 @@ namespace grappler {
 
 constexpr int kOpsPerMac = 2;
 constexpr char kGuaranteeConst[] = "GuaranteeConst";
+constexpr char kBitCast[] = "BitCast";
 constexpr char kConv2d[] = "Conv2D";
 constexpr char kConv2dBackpropFilter[] = "Conv2DBackpropFilter";
 constexpr char kConv2dBackpropInput[] = "Conv2DBackpropInput";
@@ -439,6 +440,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(kExit,
                             wrap(&OpLevelCostEstimator::PredictIdentity));
   device_cost_impl_.emplace(kNextIteration,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kBitCast,
                             wrap(&OpLevelCostEstimator::PredictIdentity));
 
   device_cost_impl_.emplace(kRank,
