@@ -27,9 +27,6 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 
 namespace mlir {
-
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_structs.h.inc"
-
 namespace kernel_gen {
 namespace tf_framework {
 
