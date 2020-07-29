@@ -103,6 +103,8 @@ cc_library(
         "//tensorflow/core/platform:retrying_utils",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/strings:str_format",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
