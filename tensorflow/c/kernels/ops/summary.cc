@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 
 static void scalar_summary_shape_inference_fn(TF_ShapeInferenceContext* ctx,
                                               TF_Status* status) {
