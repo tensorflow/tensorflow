@@ -334,6 +334,18 @@ TEST_F(S3FilesystemTest, DeleteDir) {
   EXPECT_EQ(TF_GetCode(status_), TF_NOT_FOUND) << TF_Message(status_);
 }
 
+TEST_F(S3FilesystemTest, StatFile) {
+  const std::string path = GetURIForPath("StatFile");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+
+  TF_FileStatistics stat;
+  tf_s3_filesystem::Stat(filesystem_, path.c_str(), &stat, status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(4, stat.length);
+  EXPECT_FALSE(stat.is_directory);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
