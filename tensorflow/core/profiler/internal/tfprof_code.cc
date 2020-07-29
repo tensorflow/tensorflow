@@ -452,8 +452,8 @@ void TFCode::Build() {
           GetTraceString(fn->call_stack()->traces().at(i)) + kGradientSuffix;
       pre_code_node = pre_code_node->AddChildren(
           trace, &fn->call_stack()->traces().at(i), kGradientSuffix);
-      const int64 max_stack_trace_allowed_size = fn->call_stack()->traces().size() - 1;
-      if (i == max_stack_trace_allowed_size) {
+      const int64 last_trace = fn->call_stack()->traces().size() - 1;
+      if (i == last_trace) {
         leaf = pre_code_node;
       }
     }
