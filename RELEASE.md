@@ -67,7 +67,8 @@
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
-    * <ADD RELEASE NOTES HERE>
+    * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
+      as an alternative to accepting a `callable` loss.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
