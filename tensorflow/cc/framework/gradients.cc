@@ -524,9 +524,8 @@ Status SymbolicGradientBuilder::AddGradients() {
     // make this association explicit.
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      int dx_index = e->dst_input();
-      const int dx_size = dx.size();
-      if (dx_index >= dx_size) {
+      size_t dx_index = e->dst_input();
+      if (dx_index >= dx.size()) {
         return errors::Internal(
             "Invalid gradient output index: ", dx_index, " size: ", dx.size());
       }
