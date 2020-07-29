@@ -1110,6 +1110,7 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   for (int i = 0; i < num_entries; i++)
     (*entries)[i] = strdup(result[i].c_str());
   TF_SetStatus(status, TF_OK, "");
+  return num_entries;
 }
 
 static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
