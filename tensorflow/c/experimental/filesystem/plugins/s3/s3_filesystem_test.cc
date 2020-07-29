@@ -249,6 +249,17 @@ TEST_F(S3FilesystemTest, NewReadOnlyMemoryRegionFromFile) {
   EXPECT_EQ(content, result);
 }
 
+TEST_F(S3FilesystemTest, PathExists) {
+  const std::string path = GetURIForPath("PathExists");
+  tf_s3_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_EQ(TF_NOT_FOUND, TF_GetCode(status_)) << TF_Message(status_);
+  TF_SetStatus(status_, TF_OK, "");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  tf_s3_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
