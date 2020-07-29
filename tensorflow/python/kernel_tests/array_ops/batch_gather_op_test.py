@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -104,6 +105,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       gather_t = array_ops.batch_gather(params, indices)
       self.assertEqual([1, None], gather_t.get_shape().as_list())
 
+  @test_util.disable_xla("Cannot force cpu placement for xla_gpu test")
   def testBadIndicesCPU(self):
     with ops.device_v2("cpu:0"):
       params = [[0, 1, 2], [3, 4, 5]]
