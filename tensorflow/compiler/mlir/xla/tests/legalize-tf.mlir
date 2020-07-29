@@ -3050,6 +3050,34 @@ func @linspace_invalid_num(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<?xf
 }
 
 //===----------------------------------------------------------------------===//
+// LegacyCall op legalizations.
+//===----------------------------------------------------------------------===//
+
+func @identity_func(%arg0: tensor<10x2xf32>) -> tensor<10x2xf32> {
+  return %arg0: tensor<10x2xf32>
+}
+
+// CHECK-LABEL: testSimpleLegacyCallOp
+func @testSimpleLegacyCallOp(%arg0: tensor<10x2xf32>) -> tensor<10x2xf32> {
+  // CHECK: %[[RESULT:.*]] = call @identity_func(%arg0) : (tensor<10x2xf32>) -> tensor<10x2xf32>
+  %0 = "tf.LegacyCall"(%arg0) {f = @identity_func} : (tensor<10x2xf32>) -> tensor<10x2xf32>
+  // CHECK: return %[[RESULT]]
+  return %0: tensor<10x2xf32>
+}
+
+func @select_first(%arg0: tensor<10x2xf32>, %arg1: tensor<10x2xf32>) -> tensor<10x2xf32> {
+  return %arg0: tensor<10x2xf32>
+}
+
+// CHECK-LABEL: testMultiInputLegacyCallOp
+func @testMultiInputLegacyCallOp(%arg0: tensor<10x2xf32>, %arg1: tensor<10x2xf32>) -> tensor<10x2xf32> {
+  // CHECK: %[[RESULT:.*]] = call @select_first(%arg0, %arg1) : (tensor<10x2xf32>, tensor<10x2xf32>) -> tensor<10x2xf32>
+  %0 = "tf.LegacyCall"(%arg0, %arg1) {_disable_call_shape_inference = true, _tpu_replicate = "cluster", device = "", f = @select_first} : (tensor<10x2xf32>, tensor<10x2xf32>) -> tensor<10x2xf32>
+  // CHECK: return %[[RESULT]]
+  return %0: tensor<10x2xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Conv op legalizations.
 //===----------------------------------------------------------------------===//
 
