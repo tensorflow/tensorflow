@@ -911,7 +911,8 @@ GcsFileSystem::GcsFileSystem(
     TimeoutConfig timeouts, const std::unordered_set<string>& allowed_locations,
     std::pair<const string, const string>* additional_header,
     bool compose_append)
-    : auth_provider_(std::move(auth_provider)),
+    : timeouts_(timeouts),
+      auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       zone_provider_(std::move(zone_provider)),
       block_size_(block_size),
@@ -924,7 +925,6 @@ GcsFileSystem::GcsFileSystem(
           kCacheNeverExpire, kBucketLocationCacheMaxEntries)),
       allowed_locations_(allowed_locations),
       compose_append_(compose_append),
-      timeouts_(timeouts),
       retry_config_(retry_config),
       additional_header_(additional_header) {}
 

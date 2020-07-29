@@ -331,6 +331,9 @@ class GcsFileSystem : public FileSystem {
 
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
 
+  // Used by a subclass.
+  TimeoutConfig timeouts_;
+
  private:
   // GCS file statistics.
   struct GcsFileStat {
@@ -426,8 +429,6 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<BucketLocationCache> bucket_location_cache_;
   std::unordered_set<string> allowed_locations_;
   bool compose_append_;
-
-  TimeoutConfig timeouts_;
 
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
 
