@@ -766,8 +766,8 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(auto output_shape,
                         ShapeUtil::MakeValidatedShape(
                             operand_shape->element_type(), out_dim_size));
-    tensorflow::int64 broadcast_dimensions_size = broadcast_dimensions.size();
-    if (operand_shape->rank() != broadcast_dimensions_size) {
+    tensorflow::int64 broadcast_rank = broadcast_dimensions.size();
+    if (operand_shape->rank() != broadcast_rank) {
       return InvalidArgument(
           "Size of broadcast_dimensions has to match operand's rank; operand "
           "rank: %lld, size of broadcast_dimensions %u.",
