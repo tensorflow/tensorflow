@@ -11,6 +11,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <sstream>
+#include <string>
 
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -22,7 +23,10 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // Wrappers to delete resources once the resource is out of scope. 
 struct TensorWrapper { 
@@ -42,16 +46,25 @@ struct StatusWrapper {
     TF_DeleteStatus(s);
   }
 };
+typedef struct HistogramSummaryOp {
+  std::string op_node_name; 
+};
 
-// dummy functions used for kernel registration 
 static void* HistogramSummaryOp_Create(TF_OpKernelConstruction* ctx) {
-  return nullptr;
+  HistogramSummaryOp* kernel = new HistogramSummaryOp; 
+  TF_StringView string_view_name = TF_OpKernelConstruction_GetName(ctx); 
+  kernel->op_node_name = std::string(string_view_name.data, 
+      string_view_name.len);
+  return kernel; 
 }
 
-static void HistogramSummaryOp_Delete(void* kernel) {}
+static void HistogramSummaryOp_Delete(void* kernel) {
+  delete static_cast<HistogramSummaryOp*>(kernel); 
+}
 
 template<typename T>
 static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+  HistogramSummaryOp* k = static_cast<HistogramSummaryOp*>(kernel);
   TensorWrapper tags_wrapper; 
   TensorWrapper values_wrapper; 
   StatusWrapper status_wrapper;
@@ -77,13 +90,13 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
     const double double_val = static_cast<double>(values_array[i]); 
     if (Eigen::numext::isnan(double_val)) { 
       std::ostringstream err; 
-      err << "Nan in summary histogram for: "; 
+      err << "Nan in summary histogram for: " << k->op_node_name; 
       TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
       break;
     }
     else if (Eigen::numext::isinf(double_val)) { 
       std::ostringstream err; 
-      err << "Infinity in Histogram for: "; 
+      err << "Infinity in Histogram for: " << k->op_node_name; 
       TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
       break; 
     }
@@ -138,14 +151,14 @@ void RegisterHistogramSummaryOpKernel() {
 // register the Histogram Summary kernel.                                                          
 TF_ATTRIBUTE_UNUSED static bool  IsHistogramSummaryOpKernelRegistered = []() {                  
   if (SHOULD_REGISTER_OP_KERNEL("HistogramSummary")) {
-    RegisterHistogramSummaryOpKernel<tensorflow::int64>();    
-    RegisterHistogramSummaryOpKernel<tensorflow::uint64>();       
-    RegisterHistogramSummaryOpKernel<tensorflow::int32>();   
-    RegisterHistogramSummaryOpKernel<tensorflow::uint32>(); 
-    RegisterHistogramSummaryOpKernel<tensorflow::uint16>();   
-    RegisterHistogramSummaryOpKernel<tensorflow::int16>();   
-    RegisterHistogramSummaryOpKernel<tensorflow::int8>();  
-    RegisterHistogramSummaryOpKernel<tensorflow::uint8>();   
+    // RegisterHistogramSummaryOpKernel<tensorflow::int64>();    
+    // RegisterHistogramSummaryOpKernel<tensorflow::uint64>();       
+    // RegisterHistogramSummaryOpKernel<tensorflow::int32>();   
+    // RegisterHistogramSummaryOpKernel<tensorflow::uint32>(); 
+    // RegisterHistogramSummaryOpKernel<tensorflow::uint16>();   
+    // RegisterHistogramSummaryOpKernel<tensorflow::int16>();   
+    // RegisterHistogramSummaryOpKernel<tensorflow::int8>();  
+    // RegisterHistogramSummaryOpKernel<tensorflow::uint8>();   
     RegisterHistogramSummaryOpKernel<Eigen::half>();   
     RegisterHistogramSummaryOpKernel<tensorflow::bfloat16>();   
     RegisterHistogramSummaryOpKernel<float>();   
