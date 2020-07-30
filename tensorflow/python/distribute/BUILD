@@ -435,44 +435,6 @@ py_library(
 )
 
 py_library(
-    name = "mirrored_function_strategy",
-    srcs = ["mirrored_function_strategy.py"],
-    deps = [
-        ":device_util",
-        ":distribute_lib",
-        ":mirrored_strategy",
-        ":numpy_dataset",
-        ":values",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:type_spec",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:def_function",
-    ],
-)
-
-tf_py_test(
-    name = "mirrored_function_strategy_test",
-    srcs = ["mirrored_function_strategy_test.py"],
-    python_version = "PY3",
-    tags = ["no_pip"],
-    deps = [
-        ":distribute_lib",
-        ":mirrored_function_strategy",
-        ":strategy_combinations",
-        ":values",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-py_library(
     name = "multi_worker_util",
     srcs = [
         "multi_worker_util.py",
