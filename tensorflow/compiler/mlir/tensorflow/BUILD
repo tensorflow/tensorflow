@@ -770,6 +770,7 @@ cc_library(
         "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
+        "transforms/attribute_utils.h",
         "transforms/batchmatmul_to_einsum.h",
         "transforms/bridge.h",
         "transforms/collection_ops_util.h",

@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-functional-cf-to-region"
@@ -83,6 +84,7 @@ LogicalResult ConvertIfOp(IfOp if_op) {
   auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
       if_op.getLoc(), if_op.getResultTypes(), if_op.cond(),
       if_op.is_stateless());
+  CopyUnderscoredAttributes(if_op, if_region);
 
   CreateCall(if_op, if_op.then_func(),
              /*caller_region=*/if_region.then_branch(), if_op.input(),
@@ -99,6 +101,7 @@ LogicalResult ConvertWhileOp(WhileOp while_op) {
   auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
       while_op.getLoc(), while_op.getResultTypes(), while_op.input(),
       while_op.is_stateless(), while_op.parallel_iterations());
+  CopyUnderscoredAttributes(while_op, while_region);
 
   CreateCall(while_op, while_op.cond_func(),
              /*caller_region=*/while_region.cond(), while_op.input(),
