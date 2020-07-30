@@ -1558,6 +1558,29 @@ Mutually reduces multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", []> {
+  let summary = [{
+Mutually reduces multiple tensors of identical type and shape.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, I32, I64]>:$input,
+    I32Tensor:$group_size,
+    I32Tensor:$group_key,
+    I32Tensor:$instance_key,
+
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
+    TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, I32, I64]>:$data
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ComplexOp : TF_Op<"Complex", [NoSideEffect, ResultsBroadcastableShape]> {
   let summary = "Converts two real numbers to a complex number.";
 

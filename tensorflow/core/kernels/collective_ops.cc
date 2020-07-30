@@ -441,6 +441,12 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_->instance.data_type));
     string merge_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
+    OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
+    if (merge_op_name == "Max") {
+      merge_op_name = "Maximum";
+    } else if (merge_op_name == "Min") {
+      merge_op_name = "Minimum";
+    }
     string final_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
     OP_REQUIRES_OK(
