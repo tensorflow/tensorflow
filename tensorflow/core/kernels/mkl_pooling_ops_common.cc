@@ -180,7 +180,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   context_.alg_kind = bwdParams.alg_kind;
 
   // Create memory descriptor.
-  context_.diff_src_md.reset(new memory::desc(
+  context_.src_md.reset(new memory::desc(
       {bwdParams.src_dims}, MklDnnType<T>(), MEMORY_FORMAT::any));
 #ifndef ENABLE_MKLDNN_V1
   context_.diff_dst_md.reset(new memory::desc(
