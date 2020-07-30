@@ -74,7 +74,7 @@ constexpr int kNumSupportedEquationVariables = 5;  // A - E for now.
 bool tokenizeEquation(const llvm::StringRef& equation,
                       std::vector<EquationToken>* tokens) {
   std::map<char, EquationToken> label_axis_mapping;
-  int index = 0;
+  size_t index = 0;
   int variable_count = 0;
   llvm::Regex r("[[:alpha:]]");
   while (index < equation.size()) {
@@ -177,7 +177,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
   auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
   std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
-  for (int i = 0; i < shape.size(); ++i) {
+  for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
   }
   auto transposed_type =
@@ -197,7 +197,7 @@ TF::SumOp createSumOp(Value value, Location loc,
   auto redux_op = rewriter->create<ConstantOp>(loc, redux_type, redux_attr);
   std::vector<int64_t> sum_shape(shape.size() - redux_axes.size());
   int count = 0;
-  for (int i = 0; i < shape.size(); ++i) {
+  for (int i = 0, end = shape.size(); i < end; ++i) {
     if (std::find(redux_axes.begin(), redux_axes.end(), i) ==
         redux_axes.end()) {
       sum_shape[count] = shape[i];

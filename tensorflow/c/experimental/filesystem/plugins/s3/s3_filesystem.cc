@@ -82,9 +82,8 @@ static inline void TF_SetStatusFromAWSError(
   }
 }
 
-static void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
-                        Aws::String* bucket, Aws::String* object,
-                        TF_Status* status) {
+void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
+                 Aws::String* bucket, Aws::String* object, TF_Status* status) {
   size_t scheme_end = fname.find("://") + 2;
   if (fname.substr(0, scheme_end + 1) != "s3://") {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -228,11 +227,13 @@ static void GetExecutor(tf_s3_filesystem::S3File* s3_file) {
 static void GetTransferManager(
     const Aws::Transfer::TransferDirection& direction,
     tf_s3_filesystem::S3File* s3_file) {
+  // These functions should be called before holding `initialization_lock`.
+  GetS3Client(s3_file);
+  GetExecutor(s3_file);
+
   absl::MutexLock l(&s3_file->initialization_lock);
 
   if (s3_file->transfer_managers[direction].get() == nullptr) {
-    GetS3Client(s3_file);
-    GetExecutor(s3_file);
     Aws::Transfer::TransferManagerConfiguration config(s3_file->executor.get());
     config.s3Client = s3_file->s3_client;
     config.bufferSize = s3_file->multi_part_chunk_sizes[direction];
@@ -645,7 +646,8 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
         head_object_outcome.GetResult().GetLastModified().Millis() * 1e6;
     found = true;
   } else {
-    return TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION) return;
   }
 
   auto prefix = object;
@@ -1109,6 +1111,7 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   for (int i = 0; i < num_entries; i++)
     (*entries)[i] = strdup(result[i].c_str());
   TF_SetStatus(status, TF_OK, "");
+  return num_entries;
 }
 
 static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {

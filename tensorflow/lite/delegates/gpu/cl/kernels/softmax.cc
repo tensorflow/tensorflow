@@ -24,21 +24,27 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetSoftmaxKernelCode(
-    const OperationDef& op_def,
-    Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+Softmax::Softmax(Softmax&& kernel) : GPUOperation(std::move(kernel)) {}
+
+Softmax& Softmax::operator=(Softmax&& kernel) {
+  if (this != &kernel) {
+    GPUOperation::operator=(std::move(kernel));
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  return *this;
+}
+
+std::string Softmax::GetSoftmaxKernelCode(const OperationDef& op_def) {
+  auto src_desc = op_def.src_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
+  AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -64,19 +70,9 @@ std::string GetSoftmaxKernelCode(
   c += "}\n";
   return c;
 }
-}  // namespace
-
-Softmax::Softmax(Softmax&& kernel) : GPUOperation(std::move(kernel)) {}
-
-Softmax& Softmax::operator=(Softmax&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
 
 absl::Status Softmax::Compile(const CreationContext& creation_context) {
-  std::string code = GetSoftmaxKernelCode(definition_, &args_);
+  std::string code = GetSoftmaxKernelCode(definition_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -86,12 +82,6 @@ absl::Status Softmax::Compile(const CreationContext& creation_context) {
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
-}
-
-absl::Status Softmax::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  return absl::OkStatus();
 }
 
 int3 Softmax::GetGridSize() const {

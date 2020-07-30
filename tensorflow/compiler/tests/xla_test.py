@@ -236,9 +236,7 @@ class XLATestCase(test.TestCase):
 
   @contextlib.contextmanager
   def test_scope(self):
-    """Test scope that runs tests on a Tensorflow/XLA device.
-
-    Uses a compilation_scope() to mark operators to compile.
+    """Test scope that runs tests on `self.device`.
 
     Yields:
       A scope to apply to the operators under test.

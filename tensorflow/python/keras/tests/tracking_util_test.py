@@ -408,7 +408,6 @@ class CheckpointingTests(keras_parameterized.TestCase):
 
   # pylint: disable=cell-var-from-loop
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
-  @test_util.run_v1_only("b/120545219")
   def testWithDefun(self):
     with self.test_session():
       num_training_steps = 2

@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -96,15 +97,17 @@ class GatherTest(test.TestCase, parameterized.TestCase):
           [[b"qwer", b"uiop"]],
           self.evaluate(array_ops.batch_gather(params, indices_tf)))
 
-  @test_util.run_deprecated_v1
   def testUnknownIndices(self):
-    params = constant_op.constant([[0, 1, 2]])
-    indices = array_ops.placeholder(dtypes.int32, shape=[None, None])
-    gather_t = array_ops.batch_gather(params, indices)
-    self.assertEqual([1, None], gather_t.get_shape().as_list())
+    # This test needs a placeholder which means we need to construct a graph.
+    with ops.Graph().as_default():
+      params = constant_op.constant([[0, 1, 2]])
+      indices = array_ops.placeholder(dtypes.int32, shape=[None, None])
+      gather_t = array_ops.batch_gather(params, indices)
+      self.assertEqual([1, None], gather_t.get_shape().as_list())
 
+  @test_util.disable_xla("Cannot force cpu placement for xla_gpu test")
   def testBadIndicesCPU(self):
-    with self.session(use_gpu=False):
+    with ops.device_v2("cpu:0"):
       params = [[0, 1, 2], [3, 4, 5]]
       with self.assertRaisesOpError(r"indices\[0\] = 7 is not in \[0, 2\)"):
         self.evaluate(array_ops.batch_gather(params, [7]))

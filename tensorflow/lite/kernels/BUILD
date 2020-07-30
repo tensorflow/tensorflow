@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
@@ -281,7 +281,6 @@ cc_test(
 
 cc_library(
     name = "tflite_with_ruy_enabled",
-    build_for_embedded = True,
     defines = ["TFLITE_WITH_RUY"],
     visibility = ["//visibility:private"],
 )
@@ -297,8 +296,8 @@ cc_library(
 
 cc_library(
     name = "tflite_with_ruy_default",
-    build_for_embedded = True,
-    select_deps = {
+    visibility = ["//visibility:private"],
+    deps = select({
         ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
         ":cpu_aarch64": [":tflite_with_ruy_enabled"],
         ":cpu_arm64": [":tflite_with_ruy_enabled"],
@@ -308,18 +307,16 @@ cc_library(
         ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
         "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
         "//conditions:default": [],
-    },
-    visibility = ["//visibility:private"],
+    }),
 )
 
 cc_library(
     name = "tflite_with_ruy",
-    build_for_embedded = True,
-    select_deps = {
+    deps = select({
         ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
         ":tflite_with_ruy_explicit_false": [],
         "//conditions:default": [":tflite_with_ruy_default"],
-    },
+    }),
 )
 
 cc_library(
@@ -432,7 +429,6 @@ cc_library(
     hdrs = [
         "op_macros.h",
     ],
-    build_for_embedded = True,
     copts = tflite_copts(),
     deps = ["//tensorflow/lite/micro:debug_log"],
 )
@@ -445,7 +441,6 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
-    build_for_embedded = True,
     copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -501,7 +496,6 @@ cc_library(
     name = "padding",
     srcs = [],
     hdrs = ["padding.h"],
-    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",

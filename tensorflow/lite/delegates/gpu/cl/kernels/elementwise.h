@@ -38,9 +38,6 @@ class ElementwiseOneInput : public ElementwiseOperation {
   ElementwiseOneInput& operator=(ElementwiseOneInput&& operation);
   ElementwiseOneInput(const ElementwiseOneInput&) = delete;
   ElementwiseOneInput& operator=(const ElementwiseOneInput&) = delete;
-
- private:
-  OperationType op_type_;
 };
 
 ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
@@ -64,10 +61,6 @@ class ElementwiseOneRuntimeOneScalar : public ElementwiseOperation {
       delete;
   ElementwiseOneRuntimeOneScalar& operator=(
       const ElementwiseOneRuntimeOneScalar&) = delete;
-
- private:
-  int link_index_;
-  OperationType op_type_;
 };
 
 ElementwiseOneRuntimeOneScalar CreateElementwiseOneRuntimeOneScalar(
@@ -101,12 +94,7 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   ElementwiseTwoInput(const ElementwiseTwoInput&) = delete;
   ElementwiseTwoInput& operator=(const ElementwiseTwoInput&) = delete;
 
-  absl::Status SetArgs(const std::string& unique_postfix,
-                       Arguments* args) override;
-
  private:
-  int link_index_;
-  OperationType op_type_;
   BroadcastSettings broadcast_;
 };
 

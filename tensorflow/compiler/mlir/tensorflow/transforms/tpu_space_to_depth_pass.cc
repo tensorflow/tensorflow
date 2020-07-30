@@ -604,8 +604,7 @@ void TPUSpaceToDepthPass::runOnOperation() {
   }
 
   // Get the function on device.
-  auto device_func =
-      getOperation().lookupSymbol<mlir::FuncOp>(cluster_func->getFunc());
+  auto device_func = cluster_func->getFunc();
   if (!device_func) return;
 
   TF::Conv2DOp first_conv;

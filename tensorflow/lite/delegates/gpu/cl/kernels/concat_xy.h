@@ -32,7 +32,6 @@ class ConcatXY : public GPUOperation {
            int tensors_count)
       : GPUOperation(definition), attr_(attr), tensors_count_(tensors_count) {}
   absl::Status Compile(const CreationContext& creation_context) override;
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -42,6 +41,9 @@ class ConcatXY : public GPUOperation {
   ConcatXY& operator=(const ConcatXY&) = delete;
 
  private:
+  std::string GetConcatKernelCode(const OperationDef& op_def,
+                                  const ConcatAttributes& attr);
+
   ConcatAttributes attr_;
   int tensors_count_;
 };

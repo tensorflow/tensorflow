@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -265,18 +266,20 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     DCHECK_EQ(nullptr, col_impl);
     return;
   }
+  core::ScopedUnref unref(col_impl);
   auto col_ctx = std::make_shared<CollectiveContext>(
       this, dev_mgr_, ctx, CtxParams(ctx), col_params, exec_key, step_id_,
       input, output);
   status = col_impl->InitializeCollectiveContext(col_ctx);
   if (!status.ok()) {
     done_safe(status);
-    delete col_impl;
     return;
   }
   // Run on an unbounded work queue that can handle blocking work so as to not
   // starve executor threads.
+  col_impl->Ref();
   remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
+    core::ScopedUnref unref(col_impl);
     profiler::TraceMe activity(
         [ctx] {
           string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
@@ -285,9 +288,10 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                          {{"id", ctx->step_id()}});
         },
         profiler::TraceMeLevel::kInfo);
+    col_impl->Ref();
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
+      core::ScopedUnref unref(col_impl);
       done_safe(s);
-      delete col_impl;
     });
   });
 }

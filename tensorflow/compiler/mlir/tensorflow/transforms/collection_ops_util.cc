@@ -181,14 +181,14 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
     llvm::function_ref<llvm::Optional<Type>(Operation*)> infer_from_op) {
   for (auto& use : collection.getUses()) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(use.getOwner())) {
-      auto body = module.lookupSymbol<FuncOp>(while_op.body());
+      auto body = while_op.body_func();
       assert(body);
       auto type_from_body = GetElementTypeFromAccess(
           body.getArgument(use.getOperandNumber()), module, infer_from_op);
       if (type_from_body.hasValue()) return type_from_body;
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(use.getOwner())) {
-      auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-      auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
+      auto then_branch = if_op.then_func();
+      auto else_branch = if_op.else_func();
       assert(then_branch && else_branch);
       auto type_from_then = GetElementTypeFromAccess(
           then_branch.getArgument(use.getOperandNumber() - 1), module,
@@ -198,18 +198,8 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
           else_branch.getArgument(use.getOperandNumber() - 1), module,
           infer_from_op);
       if (type_from_else.hasValue()) return type_from_else;
-    } else if (auto pcall =
-                   llvm::dyn_cast<TF::PartitionedCallOp>(use.getOwner())) {
-      if (!pcall.f().isa<FlatSymbolRefAttr>()) continue;
-      auto callee = module.lookupSymbol<FuncOp>(pcall.f().getRootReference());
-      assert(callee);
-      auto type_from_callee = GetElementTypeFromAccess(
-          callee.getArgument(use.getOperandNumber()), module, infer_from_op);
-      if (type_from_callee.hasValue()) return type_from_callee;
-    } else if (auto spcall = llvm::dyn_cast<TF::StatefulPartitionedCallOp>(
-                   use.getOwner())) {
-      auto callee = module.lookupSymbol<FuncOp>(spcall.f());
-      assert(callee);
+    } else if (auto call = llvm::dyn_cast<CallOpInterface>(use.getOwner())) {
+      auto callee = dyn_cast<FuncOp>(call.resolveCallable());
       auto type_from_callee = GetElementTypeFromAccess(
           callee.getArgument(use.getOperandNumber()), module, infer_from_op);
       if (type_from_callee.hasValue()) return type_from_callee;

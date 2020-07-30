@@ -17,15 +17,19 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
 namespace TFDevice {
 
 namespace {
+
+constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
 // This pass marks unsupported ops in a device cluster with
 // `_xla_outside_compilation` attribute so the operations will run on the host
@@ -37,10 +41,44 @@ struct MarkOpsForOutsideCompilation
   void runOnOperation() override;
 };
 
+bool HasStringOperand(Operation& op) {
+  for (auto operand : op.getOperands()) {
+    if (getElementTypeOrSelf(operand).isa<TF::StringType>()) return true;
+  }
+  return false;
+}
+
+bool HasStringResult(Operation& op) {
+  for (auto result : op.getResults()) {
+    if (getElementTypeOrSelf(result).isa<TF::StringType>()) return true;
+  }
+  return false;
+}
+
+// Checks if the op is supported inside of a device cluster.
+bool IsSupportedOp(Operation& op) {
+  if (HasStringOperand(op) || HasStringResult(op)) {
+    return false;
+  }
+  return true;
+}
+
+LogicalResult MarkUncompilableOps(Block* block) {
+  for (Operation& op : *block) {
+    if (!IsSupportedOp(op)) {
+      op.setAttr(kXlaOutsideCompilationAttr,
+                 StringAttr::get("auto", op.getContext()));
+    }
+  }
+  return success();
+}
+
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
 
-  module.walk([&](tf_device::ClusterOp cluster) {});
+  module.walk([&](tf_device::ClusterOp cluster) {
+    MarkUncompilableOps(&cluster.GetBody());
+  });
 }
 
 }  // namespace

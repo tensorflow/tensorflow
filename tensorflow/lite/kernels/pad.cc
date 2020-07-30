@@ -156,7 +156,7 @@ TfLiteStatus EvalInt(TfLiteContext* context, const PadContext& op_context,
   }
   const integer_type pad_value_copy = pad_value;
   if (op_context.resizing_category == ResizingCategory::kImageStyle) {
-    reference_ops::PadImageStyle(
+    optimized_ops::PadImageStyle(
         op_params, GetTensorShape(op_context.input),
         GetTensorData<integer_type>(op_context.input), &pad_value_copy,
         GetTensorShape(op_context.output),

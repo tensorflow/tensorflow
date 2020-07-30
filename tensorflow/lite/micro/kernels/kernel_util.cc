@@ -20,6 +20,11 @@ namespace micro {
 
 const TfLiteEvalTensor* GetEvalInput(const TfLiteContext* context,
                                      const TfLiteNode* node, int index) {
+  return GetMutableEvalInput(context, node, index);
+}
+
+TfLiteEvalTensor* GetMutableEvalInput(const TfLiteContext* context,
+                                      const TfLiteNode* node, int index) {
   TFLITE_DCHECK(context != nullptr);
   TFLITE_DCHECK(node != nullptr);
   return context->GetEvalTensor(context, node->inputs->data[index]);

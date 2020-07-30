@@ -25,18 +25,36 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
-                                              int src_depth, int dst_depth,
-                                              const CLDevice& device,
-                                              Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
+    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
+    : GPUOperation(definition),
+      src_channels_(attr.weights.shape.i),
+      dst_channels_(attr.weights.shape.o) {}
+
+ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
+    ConvolutionTransposed3x3Thin&& operation)
+    : GPUOperation(std::move(operation)),
+      src_channels_(operation.src_channels_),
+      dst_channels_(operation.dst_channels_) {}
+
+ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
+    ConvolutionTransposed3x3Thin&& operation) {
+  if (this != &operation) {
+    std::swap(src_channels_, operation.src_channels_);
+    std::swap(dst_channels_, operation.dst_channels_);
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
+    const OperationDef& op_def, int src_depth, int dst_depth,
+    const CLDevice& device) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  AddSrcTensor("src_tensor", src_desc);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
@@ -165,35 +183,12 @@ std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
 
   return c;
 }
-}  // namespace
-
-ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
-    : GPUOperation(definition),
-      src_channels_(attr.weights.shape.i),
-      dst_channels_(attr.weights.shape.o) {}
-
-ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    ConvolutionTransposed3x3Thin&& operation)
-    : GPUOperation(std::move(operation)),
-      src_channels_(operation.src_channels_),
-      dst_channels_(operation.dst_channels_) {}
-
-ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
-    ConvolutionTransposed3x3Thin&& operation) {
-  if (this != &operation) {
-    std::swap(src_channels_, operation.src_channels_);
-    std::swap(dst_channels_, operation.dst_channels_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
 
 absl::Status ConvolutionTransposed3x3Thin::Compile(
     const CreationContext& creation_context) {
   std::string code = GenerateConvolutionTransposedCode(
       definition_, DivideRoundUp(src_channels_, 4),
-      DivideRoundUp(dst_channels_, 4), *creation_context.device, &args_);
+      DivideRoundUp(dst_channels_, 4), *creation_context.device);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -203,11 +198,6 @@ absl::Status ConvolutionTransposed3x3Thin::Compile(
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
-}
-
-absl::Status ConvolutionTransposed3x3Thin::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 ConvolutionTransposed3x3Thin::GetGridSize() const {

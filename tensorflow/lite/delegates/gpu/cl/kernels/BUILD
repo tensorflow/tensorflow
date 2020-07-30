@@ -731,6 +731,7 @@ cc_library(
         ":util",
         ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:arguments",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:cl_context",
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl:precision",

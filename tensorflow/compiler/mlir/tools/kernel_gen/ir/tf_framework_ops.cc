@@ -21,8 +21,6 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 
 namespace mlir {
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_structs.cc.inc"
-
 namespace kernel_gen {
 namespace tf_framework {
 
@@ -61,12 +59,9 @@ void TFFrameworkDialect::printType(Type type, DialectAsmPrinter &os) const {
 }
 
 //===----------------------------------------------------------------------===//
-// AllocLikeOp
+// AllocRawOp
 //===----------------------------------------------------------------------===//
-template <typename AllocLikeOp>
-static LogicalResult Verify(AllocLikeOp op) {
-  static_assert(llvm::is_one_of<AllocLikeOp, AllocOutputOp, AllocTempOp>::value,
-                "applies to only alloc_output or alloc_temp");
+static LogicalResult Verify(AllocRawOp op) {
   // Check that the total number of operands matches the number of dynamic
   // dimensions specified in the memref type.
   unsigned result_dyn_dims = op.getType().getNumDynamicDims();
@@ -78,6 +73,11 @@ static LogicalResult Verify(AllocLikeOp op) {
            << op.getType();
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// DeallocRawOp
+//===----------------------------------------------------------------------===//
+static LogicalResult Verify(DeallocRawOp op) { return success(); }
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"

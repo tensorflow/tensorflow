@@ -51,8 +51,8 @@ extern const char* const kTPUReplicateAttr;
 extern const char* const kOutsideCompilationAttr;
 
 // Supported types for TPUs.
-static constexpr std::array<DataType, 15> kTpuAllTypes = {
-    {DT_INT32, DT_UINT32, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_BOOL,
+static constexpr std::array<DataType, 16> kTpuAllTypes = {
+    {DT_INT32, DT_UINT32, DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_BOOL,
      DT_COMPLEX64, DT_INT64, DT_UINT64, DT_QINT8, DT_QUINT8, DT_INT8, DT_UINT8,
      DT_INT16, DT_UINT16}};
 

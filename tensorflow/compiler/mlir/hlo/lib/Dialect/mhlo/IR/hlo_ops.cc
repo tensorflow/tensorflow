@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines the operations used in the MHLO dialect.
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -24,7 +24,6 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 
-#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -35,33 +34,33 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+#include "mlir-hlo/utils/convert_op_folder.h"
+#include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Matchers.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 namespace mlir {
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_patterns.cc.inc"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.cc.inc"
+#include "hlo_patterns.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.cc.inc"
 namespace mhlo {
 
 Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
@@ -106,7 +105,7 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
   return GetI64ElementsAttr(slice_limits, builder);
 }
 
-#include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_canonicalize.inc"
+#include "mhlo_canonicalize.inc"
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -375,8 +374,8 @@ static LogicalResult Verify(CollectivePermuteOp op) {
            << "expect source_target_pairs attribute of shape (N, 2), but got ("
            << type.getShape() << ")";
   // Check source target pairs for duplicate sources or targets
-  absl::flat_hash_set<int64_t> sources;
-  absl::flat_hash_set<int64_t> targets;
+  llvm::DenseSet<int64_t> sources;
+  llvm::DenseSet<int64_t> targets;
   for (auto i = op.source_target_pairs().begin(),
             e = op.source_target_pairs().end();
        i != e; ++i) {
@@ -2123,7 +2122,7 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
 }
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Interfaces
@@ -2154,7 +2153,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();

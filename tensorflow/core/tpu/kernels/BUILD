@@ -93,6 +93,8 @@ tf_kernel_library(
     deps = [
         ":tpu_compilation_cache_factory",
         ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_local_lookup",
+        ":tpu_compilation_cache_lookup",
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         "//tensorflow/c:tf_status",
@@ -209,30 +211,14 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_entry",
-    srcs = ["tpu_compilation_cache_entry.cc"],
     hdrs = [
         "tpu_compilation_cache_entry.h",
     ],
     deps = [
-        ":compiled_subgraph",
-        ":tpu_compilation_cache_proto_cc",
         ":tpu_executable_info_proto_cc",
-        ":tpu_program_group",
+        ":tpu_program_group_interface",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:refcount",
-        "//tensorflow/core/platform:casts",
-    ],
-)
-
-cc_library(
-    name = "tpu_compilation_cache_entry_impl",
-    srcs = [],
-    hdrs = ["tpu_compilation_cache_entry_impl.h"],
-    deps = [
-        ":compiled_subgraph",
-        ":tpu_compilation_cache_interface",
-        ":tpu_executable_info_proto_cc",
     ],
 )
 
@@ -303,6 +289,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -342,6 +330,7 @@ cc_library(
     hdrs = ["tpu_compilation_cache_interface.h"],
     deps = [
         ":compiled_subgraph",
+        ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_key",
         ":tpu_compilation_cache_proto_cc",
         ":tpu_compilation_metrics_hdrs",
@@ -373,7 +362,6 @@ cc_library(
     deps = [
         ":compiled_subgraph",
         ":tpu_compilation_cache_entry",
-        ":tpu_compilation_cache_entry_impl",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_key",
         ":tpu_compilation_cache_proto_cc",
@@ -616,6 +604,7 @@ cc_library(
     deps = [
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_external",
+        ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_local_lookup",
         ":tpu_compilation_cache_lookup",
         ":tpu_executable_info_proto_cc",
@@ -656,6 +645,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -673,6 +663,7 @@ cc_library(
     srcs = ["topk_ops.cc"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core/tpu:tpu_defs",

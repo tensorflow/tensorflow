@@ -229,6 +229,7 @@ cc_library(
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/core/tpu:tpu_api",
     ],
     alwayslink = True,
 )

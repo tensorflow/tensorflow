@@ -57,8 +57,8 @@
     dispatch to logical ops. This brings them more in line with Python and NumPy
     benavior.
   * Added `tf.SparseTensor.with_values`. This returns a new SparseTensor with
-    the same sparsity pattern, but with new provided values. It is similar to 
-    the `with_values` function of `RaggedTensor`.
+    the same sparsity pattern, but with new provided values. It is similar to
+  the `with_values` function of `RaggedTensor`.
 * `tf.data`:
     * Added new `tf.data.experimental.service.register_dataset` and
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
@@ -71,6 +71,11 @@
       dataset when it is safe to do so. The optimization can be disabled via
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
+* `tf.image`:
+    * Added deterministic `tf.image.stateless_random_*` functions for each
+      `tf.image.random_*` function. Given the same seed, the stateless functions
+      produce the same results independent of how many times the function is
+      called, and independent of global seed settings.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 * `tf.keras`:
@@ -80,14 +85,18 @@
       * Functional models can now contain non-symbolic values in their call inputs inside of the first positional argument.
       * Several classes of TF ops that were not reliably converted to Keras layers during functional API construction should now work, e.g. `tf.image.ssim_multiscale`
       * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
-    * <ADD RELEASE NOTES HERE>
+    * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
+      as an alternative to accepting a `callable` loss.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
     performance.
+  * Added support for `iter(DistributedDataset)` in AutoGraph `for` loops.
 *   `tf.lite`:
     * `DynamicBuffer::AddJoinedString()` will now add a separator if the first
       string to be joined is empty.
+    * `TFLiteConverter`:
+      * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
@@ -194,7 +203,7 @@ stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     * Update `tf.saved_model.SaveOptions` with [`experimental_io_device`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/saved_model/SaveOptions?hl=en) as arg with default value `None` to choose the I/O device for saving models and weights.
     * Mutable tables now restore checkpointed values when loaded from SavedModel.
   * GPU
-    * No longer includes PTX kernels for GPU except for sm_70 to reduce binary size. On systems with NVIDIA® Ampere GPUs (CUDA architecture 8.0) or newer, kernels are JIT-compiled from PTX and TensorFlow can take over 30 minutes to start up. This overhead can be limited to the first start up by increasing the default JIT cache size with: `export CUDA_CACHE_MAXSIZE=2147483648`.:
+    * TF 2.3 includes PTX kernels only for [compute capability](https://developer.nvidia.com/cuda-gpus) 7.0 to reduce the TF pip binary size.  Earlier releases included PTX for a variety of older compute capabilities.
   * Others
     * Retain parent namescope for ops added inside `tf.while_loop`/`tf.cond`/`tf.switch_case`.
     * Update `tf.vectorized_map` to support vectorizing `tf.while_loop` and TensorList operations.

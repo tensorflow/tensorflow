@@ -300,7 +300,7 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
   auto num_functions_shown = std::min(
       static_cast<decltype(candidates)::size_type>(3), candidates.size());
 
-  for (auto i = 0; i < num_functions_shown; i++) {
+  for (decltype(candidates)::size_type i = 0; i < num_functions_shown; i++) {
     if (i > 0) absl::StrAppend(&expensive_functions, ", ");
     absl::StrAppend(&expensive_functions, "\"", candidates[i].function_name,
                     "\"");

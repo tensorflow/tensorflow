@@ -242,7 +242,7 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
 
   AttrValue attr_tensor;
   Tensor tensor(DT_INT32, TensorShape({4}));
-  for (int i = 0, iter_limit = permutation.size(); i < iter_limit; i++) {
+  for (int i = 0, end = permutation.size(); i < end; i++) {
     tensor.flat<int>()(i) = permutation[i];
   }
   tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -1572,8 +1572,7 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
     return errors::InvalidArgument("invalid mask value: ", mask_i);
   }
   int result = 0;
-  for (int i = 0, iter_limit = context->src_to_dst.size(); i < iter_limit;
-       i++) {
+  for (int i = 0, end = context->src_to_dst.size(); i < end; i++) {
     const int final_pos = context->src_to_dst[i];
     const int position_mask = 1 << final_pos;
     const int bit_i = (mask_i & position_mask) >> final_pos;

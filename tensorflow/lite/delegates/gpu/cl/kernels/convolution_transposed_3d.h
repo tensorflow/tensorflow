@@ -65,6 +65,11 @@ class ConvolutionTransposed3D : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
+  std::string GenerateConvolutionTransposed3DCode(const OperationDef& op_def,
+                                                  const CLDevice& device,
+                                                  bool weights_are_buffer,
+                                                  const int4& block_size);
+
   bool weights_are_buffer_;
 
   int3 kernel_size_;
