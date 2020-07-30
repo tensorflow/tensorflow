@@ -29,11 +29,11 @@ namespace {
 using ::testing::HasSubstr;
 
 bool NewJournalDir(std::string* journal_dir) {
-  std::string filename;
-  if (!Env::Default()->LocalTempFilename(&filename)) {
+  std::string filename = testing::TmpDir();
+  if (!Env::Default()->CreateUniqueFileName(&filename, "journal_dir")) {
     return false;
   }
-  *journal_dir = io::JoinPath(testing::TmpDir(), filename);
+  *journal_dir = filename;
   return true;
 }
 
