@@ -543,7 +543,6 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
     validate_tensor(output, dim, 2, TF_FLOAT);
 
     // Set TF_Tensor values to [1 2 3 4 5 6]
-    void* data = TF_TensorData(output);
     float values[6] = {1, 2, 3, 4, 5, 6};
     set_tensor_data<float>(output, values, tensor_size_bytes, ctx); 
     TF_SetOutput(ctx, 0, output, s); 
