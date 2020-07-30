@@ -393,7 +393,7 @@ bool SetOpAttrList(
   }
 
   if (type == TF_ATTR_STRING) {
-    std::unique_ptr<const void* []> values(new const void*[num_values]);
+    std::unique_ptr<const void*[]> values(new const void*[num_values]);
     std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
     for (int i = 0; i < num_values; ++i) {
       tensorflow::StringPiece value;
@@ -443,7 +443,7 @@ bool SetOpAttrList(
     std::unique_ptr<int64_t[]> buffer(new int64_t[total_dims]);
     // Copy the input dims into the buffer and set dims to point to
     // the start of each list's dims.
-    std::unique_ptr<const int64_t* []> dims(new const int64_t*[num_values]);
+    std::unique_ptr<const int64_t*[]> dims(new const int64_t*[num_values]);
     std::unique_ptr<int[]> num_dims(new int[num_values]);
     int64_t* offset = buffer.get();
     for (int i = 0; i < num_values; ++i) {
@@ -477,7 +477,7 @@ bool SetOpAttrList(
                            status);
     if (!status->status.ok()) return false;
   } else if (type == TF_ATTR_FUNC) {
-    std::unique_ptr<const TFE_Op* []> funcs(new const TFE_Op*[num_values]);
+    std::unique_ptr<const TFE_Op*[]> funcs(new const TFE_Op*[num_values]);
     for (int i = 0; i < num_values; ++i) {
       tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
       // Allow:
@@ -539,7 +539,7 @@ void SetOpAttrListDefault(
     TF_Status* status) {
   if (type == TF_ATTR_STRING) {
     int num_values = attr.default_value().list().s_size();
-    std::unique_ptr<const void* []> values(new const void*[num_values]);
+    std::unique_ptr<const void*[]> values(new const void*[num_values]);
     std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
     (*attr_list_sizes)[key] = num_values;
     for (int i = 0; i < num_values; i++) {
@@ -595,7 +595,7 @@ void SetOpAttrListDefault(
     std::unique_ptr<int64_t[]> buffer(new int64_t[total_dims]);
     // Copy the input dims into the buffer and set dims to point to
     // the start of each list's dims.
-    std::unique_ptr<const int64_t* []> dims(new const int64_t*[num_values]);
+    std::unique_ptr<const int64_t*[]> dims(new const int64_t*[num_values]);
     std::unique_ptr<int[]> num_dims(new int[num_values]);
     int64_t* offset = buffer.get();
     for (int i = 0; i < num_values; ++i) {
@@ -615,7 +615,7 @@ void SetOpAttrListDefault(
   } else if (type == TF_ATTR_FUNC) {
     int num_values = attr.default_value().list().func_size();
     (*attr_list_sizes)[key] = num_values;
-    std::unique_ptr<const TFE_Op* []> funcs(new const TFE_Op*[num_values]);
+    std::unique_ptr<const TFE_Op*[]> funcs(new const TFE_Op*[num_values]);
     for (int i = 0; i < num_values; i++) {
       funcs[i] = GetFunc(ctx, attr.default_value().list().func(i), status);
     }
@@ -1534,10 +1534,6 @@ class GradientTape
 typedef tensorflow::eager::ForwardAccumulator<PyObject, PyBackwardFunction,
                                               PyTapeTensor>
     ForwardAccumulator;
-
-typedef tensorflow::eager::ForwardAccumulator<PyObject, PyBackwardFunction,
-                                              PyTapeTensor>
-    ForwardBatchAccumulator;
 
 // Incremented when a GradientTape or accumulator is newly added to a set, and
 // used to enforce an ordering between them.
@@ -2559,8 +2555,7 @@ PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
   } else {
     tensorflow::eager::ForwardFunction<PyObject> wrapped_forward_function(
         [forward_function](const std::vector<PyObject*>& input_tangents,
-                           std::vector<PyObject*>* output_tangents,
-                           bool use_batch = false) {
+                           std::vector<PyObject*>* output_tangents) {
           return CallOpSpecificJVPFunction(forward_function, input_tangents,
                                            output_tangents);
         });
@@ -2802,7 +2797,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   return PyList_New(0);
 }
 
-PyObject* TFE_Py_ForwardAccumulatorNew(PyObject* use_batch) {
+PyObject* TFE_Py_ForwardAccumulatorNew() {
   TFE_Py_ForwardAccumulator_Type.tp_new = PyType_GenericNew;
   if (PyType_Ready(&TFE_Py_ForwardAccumulator_Type) < 0) return nullptr;
   TFE_Py_ForwardAccumulator* accumulator =
@@ -2813,11 +2808,7 @@ PyObject* TFE_Py_ForwardAccumulatorNew(PyObject* use_batch) {
             "ForwardAccumulator requires a PyVSpace to be registered."),
         nullptr);
   }
-  if (PyObject_IsTrue(use_batch)) {
-    accumulator->accumulator = new ForwardBatchAccumulator(*py_vspace);
-  } else {
-    accumulator->accumulator = new ForwardAccumulator(*py_vspace);
-  }
+  accumulator->accumulator = new ForwardAccumulator(*py_vspace);
   return reinterpret_cast<PyObject*>(accumulator);
 }
 
@@ -3175,7 +3166,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   tensorflow::eager::ForwardFunction<PyObject> py_forward_function(
       [op_name, attrs, inputs, results](
           const std::vector<PyObject*>& input_tangents,
-          std::vector<PyObject*>* output_tangents, bool use_batch = false) {
+          std::vector<PyObject*>* output_tangents) {
         return CallJVPFunction(op_name, attrs, inputs, results, input_tangents,
                                output_tangents);
       });
@@ -3739,9 +3730,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
       for (Py_ssize_t j = 0; j < len; j++) {
         PyObject* py_input = fast_input_array[j];
         tensorflow::Safe_PyObjectPtr py_eager_tensor;
-        if (!ConvertToTensor(op_exec_info, py_input, &py_eager_tensor,
-                             []() { return tensorflow::DT_INVALID; },
-                             [](const tensorflow::DataType dtype) {}, status)) {
+        if (!ConvertToTensor(
+                op_exec_info, py_input, &py_eager_tensor,
+                []() { return tensorflow::DT_INVALID; },
+                [](const tensorflow::DataType dtype) {}, status)) {
           return nullptr;
         }
 

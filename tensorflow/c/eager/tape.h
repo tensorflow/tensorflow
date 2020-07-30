@@ -177,12 +177,12 @@ class GradientTape {
 template <typename Gradient>
 class ForwardFunction
     : public std::function<Status(const std::vector<Gradient*>&,
-                                  std::vector<Gradient*>*, bool)> {
+                                  std::vector<Gradient*>*)> {
  public:
   template <typename lambda_type>
   explicit ForwardFunction(lambda_type lambda)
       : std::function<Status(const std::vector<Gradient*>&,
-                             std::vector<Gradient*>*, bool)>(lambda) {}
+                             std::vector<Gradient*>*)>(lambda) {}
 };
 
 // Computes Jacobian-vector products using forward-mode automatic
@@ -252,7 +252,7 @@ class ForwardAccumulator {
   //
   // This method is not thread-safe (and in general ForwardAccumulator is not
   // thread-safe).
-  virtual Status Accumulate(
+  Status Accumulate(
       const string& op_type, const std::vector<TapeTensor>& input_tensors,
       const std::vector<TapeTensor>& output_tensors,
       gtl::ArraySlice<int64> input_tensor_id,
@@ -332,49 +332,6 @@ class ForwardAccumulator {
   };
   // A deque-backed stack, whose element references are not invalidated by
   // pushes and pops at the back.
-  std::stack<AccumulatorCallState> call_state_;
-};
-
-template <typename Gradient, typename BackwardFunction, typename TapeTensor>
-class ForwardBatchAccumulator
-    : public ForwardAccumulator<Gradient, BackwardFunction, TapeTensor> {
- public:
-  bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids,
-                    gtl::ArraySlice<tensorflow::DataType> dtypes);
-
-  Status Accumulate(
-      const string& op_type, const std::vector<TapeTensor>& input_tensors,
-      const std::vector<TapeTensor>& output_tensors,
-      gtl::ArraySlice<int64> input_tensor_id,
-      gtl::ArraySlice<tensorflow::DataType> input_dtypes,
-      const ForwardFunction<Gradient>* forward_function,
-      const std::function<BackwardFunction*()>& backward_function_getter,
-      const std::function<void(BackwardFunction*)>& backward_function_deleter)
-      override;
-
- private:
-  Status ForwardpropFromTape(
-      const std::vector<TapeTensor>& output_tensors,
-      const std::function<BackwardFunction*()>& backward_function_getter,
-      const std::function<void(BackwardFunction*)>& backward_function_deleter,
-      const std::vector<Gradient*>& in_grads,
-      std::vector<Gradient*>* out_grads);
-
-  std::unordered_map<int64, Gradient*> accumulated_gradients_;
-
-  const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace_;
-
-  struct AccumulatorCallState {
-    AccumulatorCallState(
-        GradientTape<Gradient, BackwardFunction, TapeTensor>* backward_tape,
-        bool accumulating)
-        : backward_tape(backward_tape), accumulating(accumulating) {}
-
-    GradientTape<Gradient, BackwardFunction, TapeTensor>* backward_tape;
-
-    bool accumulating;
-  };
-
   std::stack<AccumulatorCallState> call_state_;
 };
 
@@ -1105,73 +1062,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
         output_tensors, backward_function_getter, backward_function_deleter,
         in_grads, &forward_grads));
   } else {
-    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads, false));
-  }
-  for (int i = 0; i < forward_grads.size(); ++i) {
-    if (forward_grads[i] != nullptr) {
-      int64 tensor_id = output_tensors[i].GetID();
-      auto existing = accumulated_gradients_.find(tensor_id);
-      if (existing != accumulated_gradients_.end()) {
-        // This is a somewhat odd case to be in, since it means we have two
-        // operations which supposedly both created the same Tensor. It comes up
-        // in recompute_grad, where the gradients have the same value. However,
-        // only the original gradient is connected to everything else, so we
-        // should still use that.
-        vspace_.DeleteGradient(forward_grads[i]);
-      } else {
-        accumulated_gradients_[output_tensors[i].GetID()] = forward_grads[i];
-      }
-    }
-  }
-  return Status::OK();
-}
-
-template <typename Gradient, typename BackwardFunction, typename TapeTensor>
-Status
-ForwardBatchAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
-    const string& op_type, const std::vector<TapeTensor>& input_tensors,
-    const std::vector<TapeTensor>& output_tensors,
-    gtl::ArraySlice<int64> input_tensor_id,
-    gtl::ArraySlice<tensorflow::DataType> input_dtypes,
-    const ForwardFunction<Gradient>* forward_function,
-    const std::function<BackwardFunction*()>& backward_function_getter,
-    const std::function<void(BackwardFunction*)>& backward_function_deleter) {
-  if (!ShouldRecord(input_tensor_id, input_dtypes)) {
-    return Status::OK();
-  }
-  std::vector<Gradient*> new_zeros;
-  auto delete_new_zeros = gtl::MakeCleanup([&new_zeros, this] {
-    for (Gradient* tensor : new_zeros) {
-      this->vspace_.DeleteGradient(tensor);
-    }
-  });
-  std::vector<Gradient*> in_grads;
-  in_grads.reserve(input_tensors.size());
-  // is the shape of zero tensors fine here?
-  for (int target_index = 0; target_index < input_tensors.size();
-       ++target_index) {
-    const auto current_grad =
-        accumulated_gradients_.find(input_tensors[target_index].GetID());
-    if (current_grad == accumulated_gradients_.end()) {
-      if (IsDtypeTrainable(input_tensors[target_index].GetDType())) {
-        // ForwardAccumulator defaults to zeros for unwatched Tensors, unlike
-        // GradientTape which uses ones.
-        Gradient* zero = input_tensors[target_index].ZerosLike();
-        new_zeros.push_back(zero);
-        in_grads.push_back(zero);
-      } else {
-        in_grads.push_back(nullptr);
-      }
-    } else {
-      in_grads.push_back(current_grad->second);
-    }
-  }
-
-  std::vector<Gradient*> forward_grads;
-  if (forward_function == nullptr) {
-    // Raise apt error
-  } else {
-    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads, true));
+    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads));
   }
   for (int i = 0; i < forward_grads.size(); ++i) {
     if (forward_grads[i] != nullptr) {

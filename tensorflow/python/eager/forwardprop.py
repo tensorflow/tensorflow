@@ -218,7 +218,7 @@ pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
 
 
 @tf_export("autodiff.ForwardAccumulator", v1=[])
-class ForwardAccumulator():
+class ForwardAccumulator(object):
   """Computes Jacobian-vector products ("JVP"s) using forward-mode autodiff.
 
   Compare to `tf.GradientTape` which computes vector-Jacobian products ("VJP"s)
@@ -326,7 +326,7 @@ class ForwardAccumulator():
   <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 0.], dtype=float32)>
   """
 
-  def __init__(self, primals, tangents, use_batch=False):
+  def __init__(self, primals, tangents):
     """Specify tensors to watch and their Jacobian-vector products.
 
     Mathematically, `tangents` is a vector right-multiplying the Jacobian matrix
@@ -348,7 +348,7 @@ class ForwardAccumulator():
       ValueError: If the same tensor or variable is specified multiple times in
         `primals`.
     """
-    self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew(use_batch)
+    self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew()
     self._recording = False
     primal_ids = set()
     for primal in nest.flatten(primals):
