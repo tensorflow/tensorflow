@@ -480,7 +480,7 @@ def recursive_create_dir_v2(path):
     errors.OpError: If the operation fails.
   """
   try:
-    pywrap_tensorflow.RecursivelyCreateDir(compat.as_bytes(path))
+    _pywrap_file_io.RecursivelyCreateDir(compat.path_to_bytes(path))
   except:
     if not os.path.exists(path):
       os.makedirs(path)
