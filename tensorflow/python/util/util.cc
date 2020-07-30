@@ -361,6 +361,16 @@ int IsSequenceHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o`'s class has a `__tf_dispatch__` attribute.
+// Returns 0 otherwise.
+int IsDispatchableHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return PyObject_HasAttrString(
+        reinterpret_cast<PyObject*>(to_check->ob_type), "__tf_dispatch__");
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // ValueIterator interface
 class ValueIterator {
  public:
@@ -917,6 +927,7 @@ bool IsResourceVariable(PyObject* o) {
 }
 bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
+bool IsDispatchable(PyObject* o) { return IsDispatchableHelper(o) == 1; }
 
 bool IsTuple(PyObject* o) {
   tensorflow::Safe_PyObjectPtr wrapped;
