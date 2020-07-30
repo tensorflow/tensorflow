@@ -23,7 +23,6 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops.gen_map_ops import *
 
