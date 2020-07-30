@@ -207,7 +207,7 @@ class ForwardAccumulator {
   explicit ForwardAccumulator(
       const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace,
       bool use_batch)
-      : vspace_(vspace), use_batch(use_batch) {
+      : vspace_(vspace), use_batch_(use_batch) {
     call_state_.emplace(nullptr, false);
   }
 
@@ -316,7 +316,7 @@ class ForwardAccumulator {
   const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace_;
 
   //Decides if tangents are vectorized or not
-  bool use_batch;
+  bool use_batch_;
 
   struct AccumulatorCallState {
     AccumulatorCallState(
@@ -1066,7 +1066,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
         output_tensors, backward_function_getter, backward_function_deleter,
         in_grads, &forward_grads));
   } else {
-    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads, use_batch));
+    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads, use_batch_));
   }
   for (int i = 0; i < forward_grads.size(); ++i) {
     if (forward_grads[i] != nullptr) {
