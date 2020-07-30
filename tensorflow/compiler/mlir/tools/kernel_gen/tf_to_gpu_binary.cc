@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//===- tf_to_cubin.cc -------------------------------------------*- C++ -*-===//
+//===- tf_to_gpu_binary.cc --------------------------------------*- C++ -*-===//
 //
-// This file implements the entry point to compile a tf op to a cubin file.
+// This file implements the entry point to compile a tf op to a gpu binary
 //
 //===----------------------------------------------------------------------===//
 #include <string>
@@ -24,7 +24,7 @@
 #include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/cubin_creator.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/gpu_binary_creator.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -53,8 +53,12 @@ int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
+#if TENSORFLOW_USE_ROCM
+  std::pair<int32_t, int32_t> compute_capability(architecture, 0);
+#else
   std::pair<int32_t, int32_t> compute_capability(architecture / 10,
                                                  architecture % 10);
+#endif
 
   std::string tf_code;
   auto read_status = tensorflow::ReadFileToString(tensorflow::Env::Default(),
@@ -64,7 +68,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto cubin = tensorflow::kernel_gen::GenerateCubinForTfCode(
+  auto cubin = tensorflow::kernel_gen::GenerateGpuBinaryForTfCode(
       tf_code, compute_capability, tile_sizes, same_shape, unroll_factors);
 
   if (!cubin.ok()) {

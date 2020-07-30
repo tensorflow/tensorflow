@@ -150,4 +150,12 @@ cc_library(
     data = ["rocm/lib/%{roctracer_lib}"],
 )
 
+filegroup(
+    name = "rocm_root",
+    srcs = [
+        "rocm/bin/clang-offload-bundler",
+        "rocm/bin/bin2c.py",
+    ],
+)
+
 %{copy_rules}
