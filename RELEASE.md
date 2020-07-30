@@ -59,11 +59,10 @@
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
 * `tf.image`:
-    * Added `tf.image.stateless_random_flip_left_right` and
-      `tf.image.stateless_random_flip_up_down` functions that are deterministic.
-      That is, given the same seed, they produce the same results independent of
-      how many times the function is called, and independent of global seed
-      settings.
+    * Added deterministic `tf.image.stateless_random_*` functions for each
+      `tf.image.random_*` function. Given the same seed, the stateless functions
+      produce the same results independent of how many times the function is
+      called, and independent of global seed settings.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
