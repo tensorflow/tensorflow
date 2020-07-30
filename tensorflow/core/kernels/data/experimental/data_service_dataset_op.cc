@@ -185,20 +185,28 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     ~Iterator() override {
-      mutex_lock l(mu_);
       VLOG(1) << "Destroying data service dataset iterator for job id "
               << job_id_;
+      CancelThreads();
+      if (deregister_fn_) deregister_fn_();
+      // Thread destructors will block until the threads finish, no need to wait
+      // here.
+    }
+
+    void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
       cancelled_ = true;
       worker_thread_cv_.notify_all();
       manager_thread_cv_.notify_all();
       get_next_cv_.notify_all();
-      // Thread destructors will block until the threads finish, no need to wait
-      // here.
     }
 
     Status Initialize(IteratorContext* ctx) override {
       VLOG(3) << "Connecting to " << dataset()->address_
               << " in data service dataset op";
+      TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+          ctx->cancellation_manager(), [this]() { CancelThreads(); },
+          &deregister_fn_));
       DataServiceDispatcherClient dispatcher(dataset()->address_,
                                              dataset()->protocol_);
       if (dataset()->job_name_.empty()) {
@@ -531,6 +539,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     condition_variable worker_thread_cv_ TF_GUARDED_BY(mu_);
     condition_variable manager_thread_cv_ TF_GUARDED_BY(mu_);
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
 
     int64 outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
     // max_outstanding_requests controls how many elements may be held in memory
