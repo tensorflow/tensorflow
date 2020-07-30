@@ -105,6 +105,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ParallelMapConsume", kParallelMapConsume},
       {"MapAndBatchProduce", kMapAndBatchProduce},
       {"MapAndBatchConsume", kMapAndBatchConsume},
+      {"ParseExampleProduce", kParseExampleProduce},
+      {"ParseExampleConsume", kParseExampleConsume},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
@@ -250,6 +252,8 @@ bool IsInternalEvent(absl::optional<int64> event_type) {
     case HostEventType::kParallelMapConsume:
     case HostEventType::kMapAndBatchProduce:
     case HostEventType::kMapAndBatchConsume:
+    case HostEventType::kParseExampleProduce:
+    case HostEventType::kParseExampleConsume:
       return true;
     default:
       return false;
