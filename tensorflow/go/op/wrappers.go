@@ -18416,6 +18416,37 @@ func SparseSegmentSum(scope *Scope, data tf.Output, indices tf.Output, segment_i
 	return op.Output(0)
 }
 
+// CollectiveReduceV2Attr is an optional argument to CollectiveReduceV2.
+type CollectiveReduceV2Attr func(optionalAttr)
+
+// CollectiveReduceV2CommunicationHint sets the optional communication_hint attribute to value.
+// If not specified, defaults to "auto"
+func CollectiveReduceV2CommunicationHint(value string) CollectiveReduceV2Attr {
+	return func(m optionalAttr) {
+		m["communication_hint"] = value
+	}
+}
+
+// Mutually reduces multiple tensors of identical type and shape.
+func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, merge_op string, final_op string, optional ...CollectiveReduceV2Attr) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"merge_op": merge_op, "final_op": final_op}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveReduceV2",
+		Input: []tf.Input{
+			input, group_size, group_key, instance_key,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the sum along segments of a tensor.
 //
 // Read
