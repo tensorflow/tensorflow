@@ -126,7 +126,9 @@ class ReshapeTest(test.TestCase):
       return array_ops.reshape(x, [1, 8, 3])
 
     with self.cached_session():
-      gradient_checker_v2.compute_gradient(reshape, [input_tensor], 1e-3)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(reshape, [input_tensor]))
+      self.assertLess(err, 1e-3)
 
   def testFloatEmpty(self):
     x = np.empty((0, 0, 0, 0), dtype=np.float32)
