@@ -36,6 +36,10 @@ public class BenchmarkModelActivity extends Activity {
     Intent intent = getIntent();
     Bundle bundle = intent.getExtras();
     String args = bundle.getString(ARGS_INTENT_KEY_0, bundle.getString(ARGS_INTENT_KEY_1));
+    if (args.contains("--use_hexagon=true") || args.contains("--use_hexagon=1")) {
+      // Users should not specify this argument.
+      args = args + " --hexagon_lib_path=" + getApplicationInfo().nativeLibraryDir;
+    }
     Log.i(TAG, "Running TensorFlow Lite benchmark with args: " + args);
 
     Trace.beginSection("TFLite Benchmark Model");
