@@ -165,6 +165,52 @@ static const LibHDFS* libhdfs(TF_Status* status) {
   return libhdfs;
 }
 
+// We rely on HDFS connection caching here. The HDFS client calls
+// org.apache.hadoop.fs.FileSystem.get(), which caches the connection
+// internally.
+hdfsFS Connect(const std::string& path, TF_Status* status) {
+  auto hdfs_file = libhdfs(status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+
+  std::string scheme, namenode, nodepath;
+  ParseHadoopPath(path, &scheme, &namenode, &nodepath);
+
+  hdfsBuilder* builder = hdfs_file->hdfsNewBuilder();
+  if (scheme == "file") {
+    hdfs_file->hdfsBuilderSetNameNode(builder, nullptr);
+  } else if (scheme == "viewfs") {
+    char* defaultFS = nullptr;
+    hdfs_file->hdfsConfGetStr("fs.defaultFS", &defaultFS);
+    std::string defaultScheme, defaultCluster, defaultPath;
+    ParseHadoopPath(defaultFS, &defaultScheme, &defaultCluster, &defaultPath);
+
+    if (scheme != defaultScheme ||
+        (namenode != "" && namenode != defaultCluster)) {
+      TF_SetStatus(status, TF_UNIMPLEMENTED,
+                   "viewfs is only supported as a fs.defaultFS.");
+      return nullptr;
+    }
+    // The default NameNode configuration will be used (from the XML
+    // configuration files). See:
+    // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
+    hdfs_file->hdfsBuilderSetNameNode(builder, "default");
+  } else if (scheme == "har") {
+    std::string path_har = path;
+    SplitArchiveNameAndPath(&path_har, &namenode, status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    hdfs_file->hdfsBuilderSetNameNode(builder, namenode.c_str());
+  } else {
+    hdfs_file->hdfsBuilderSetNameNode(
+        builder, namenode.empty() ? "default" : namenode.c_str());
+  }
+  auto fs = hdfs_file->hdfsBuilderConnect(builder);
+  if (fs == nullptr)
+    TF_SetStatusFromIOError(status, TF_NOT_FOUND, strerror(errno));
+  else
+    TF_SetStatus(status, TF_OK, "");
+  return fs;
+}
+
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
