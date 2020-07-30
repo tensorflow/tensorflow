@@ -133,6 +133,16 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
     return ShapeUtil::MakeTupleShape(subshapes);
   }
 
+  if (sharding.IsReplicated()) {
+    return shape;
+  }
+  if (sharding.IsTileMaximal()) {
+    if (partition_id == *sharding.UniqueDevice()) {
+      return shape;
+    }
+    return ShapeUtil::MakeTupleShape({});
+  }
+
   auto partition_shape = shape;
   std::vector<int64> tile_offset =
       sharding.TileOffsetForDevice(shape, partition_id);

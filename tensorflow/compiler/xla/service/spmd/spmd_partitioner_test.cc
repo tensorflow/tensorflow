@@ -380,6 +380,43 @@ ENTRY entry {
                       op::GetTupleElement(second_infeed))));
 }
 
+TEST_F(SpmdPartitioningTest, MixedTupleInfeed) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token0 = token[] after-all(), sharding={maximal device=0}
+  infeed = ((f32[9,2]{1,0}, f32[2]{0}), token[]) infeed(token0),
+    sharding={{maximal device=0}, {maximal device=1}, {maximal device=0}}
+  ROOT infeed.data = (f32[9,2]{1,0}, f32[2]{0}) get-tuple-element(infeed),
+    index=0, sharding={{maximal device=0}, {maximal device=1}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("(f32[9,2], f32[2])"),
+                          op::GetTupleElement(op::Conditional(
+                              op::Convert(op::PartitionId()), op::AfterAll(),
+                              op::AfterAll()))));
+  auto first_infeed = AllOf(op::Shape("((f32[9,2], ()), token[])"),
+                            op::Infeed(op::Parameter()));
+  EXPECT_THAT(root->operand(0)->called_computations()[0]->root_instruction(),
+              AllOf(op::Shape("((f32[9,2], f32[2]), token[])"),
+                    op::Tuple(op::Tuple(op::GetTupleElement(
+                                            op::GetTupleElement(first_infeed)),
+                                        op::Broadcast(op::Constant())),
+                              op::GetTupleElement(first_infeed))));
+  auto second_infeed =
+      AllOf(op::Shape("(((), f32[2]), token[])"), op::Infeed(op::Parameter()));
+  EXPECT_THAT(root->operand(0)->called_computations()[1]->root_instruction(),
+              AllOf(op::Shape("((f32[9,2], f32[2]), token[])"),
+                    op::Tuple(op::Tuple(op::Broadcast(op::Constant()),
+                                        op::GetTupleElement(op::GetTupleElement(
+                                            second_infeed))),
+                              op::GetTupleElement(second_infeed))));
+}
+
 TEST_F(SpmdPartitioningTest, TiledToReplicatedReduce) {
   const char* const hlo_string = R"(
 HloModule module
