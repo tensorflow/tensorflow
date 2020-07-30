@@ -32,6 +32,16 @@ limitations under the License.
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
+void ParseHadoopPath(const std::string& fname, std::string* scheme,
+                     std::string* namenode, std::string* path) {
+  size_t scheme_end = fname.find("://") + 2;
+  *scheme = fname.substr(0, scheme_end + 1);
+  size_t nn_end = fname.find("/", scheme_end + 1);
+  if (nn_end == std::string::npos) return;
+  *namenode = fname.substr(scheme_end + 1, nn_end - scheme_end - 1);
+  *path = fname.substr(nn_end + 1);
+}
+
 template <typename R, typename... Args>
 void BindFunc(void* handle, const char* name, std::function<R(Args...)>* func,
               TF_Status* status) {
