@@ -2947,7 +2947,7 @@ class ReplicaContext(object):
     Returns:
       a `Tensor`.
     """
-    # It's important to prefer making the Tensor at call time whenver possible.
+    # It's important to prefer making the Tensor at call time whenever possible.
     # Keeping Tensors in global states doesn't work well with nested
     # tf.function, since it's possible that the tensor is generated in one func
     # graph, and gets captured by another, which will result in a subtle "An op
