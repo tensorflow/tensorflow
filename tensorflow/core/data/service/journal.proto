@@ -21,7 +21,7 @@ message RegisterDatasetUpdate {
   uint64 fingerprint = 3;
 }
 
-message NamedJobKey {
+message NamedJobKeyDef {
   string name = 1;
   int64 index = 2;
 }
@@ -31,7 +31,7 @@ message CreateJobUpdate {
   int64 dataset_id = 2;
   ProcessingModeDef processing_mode = 3;
   // Only some jobs have names, so this may be unset.
-  NamedJobKey named_job_key = 4;
+  NamedJobKeyDef named_job_key = 4;
 }
 
 message FinishJobUpdate {

@@ -59,6 +59,7 @@ cc_library(
         ":credentials_factory",
         ":data_service",
         ":dispatcher_proto_cc",
+        ":dispatcher_state",
         ":grpc_util",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
