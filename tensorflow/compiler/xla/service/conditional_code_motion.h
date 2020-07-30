@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 namespace conditional_opt {
-// At the conceptural level, a boundary can be thought of as representing a
+// At the conceptual level, a boundary can be thought of as representing a
 // single virtual operation, except this virtual operation is conditionally
 // instantiated into different concrete operations at each conditional branch.
 // So a boundary is mapped to a single concrete operation if it is outside of
@@ -36,10 +36,11 @@ namespace conditional_opt {
 // inside branches.
 class Boundary {
  public:
-  enum class Position { kInsideBranch, kOutsideBranch };
+  enum class Position { kInsideBranch, kOutsideBranch, kUndefined };
+  Boundary() : position_(Position::kUndefined) {}
   explicit Boundary(Position p) : position_(p) {}
-  std::vector<HloInstruction*>& Operands() { return operands_; }
-  const std::vector<HloInstruction*>& Operands() const { return operands_; }
+  std::vector<HloInstruction*>& mutable_operands() { return operands_; }
+  const std::vector<HloInstruction*>& operands() const { return operands_; }
   bool IsInsideBranch() const { return position_ == Position::kInsideBranch; }
   bool IsOutsideBranch() const { return position_ == Position::kOutsideBranch; }
   Position GetPosition() const { return position_; }
@@ -54,7 +55,7 @@ class Boundary {
 
  private:
   // Boundary instructions in the conditional branches, one from each branch
-  // of the conditional.
+  // of the conditional; or a single operand from outside the conditional.
   std::vector<HloInstruction*> operands_;
   Position position_;
 };
