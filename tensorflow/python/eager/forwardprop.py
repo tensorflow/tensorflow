@@ -460,7 +460,7 @@ class ForwardAccumulator():
     primal_ids = set()
     for primal, tangent in zip(nest.flatten(primals), nest.flatten(tangents)):
       tangent.shape.assert_is_compatible_with(
-          tensor_shape.TensorShape([None] + primal.shape))
+          tensor_shape.TensorShape([None]) + primal.shape)
       if id(primal) in primal_ids:
         raise ValueError(
             "Tensor {} was specified as a primal multiple times. This may "
