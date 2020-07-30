@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace {
 

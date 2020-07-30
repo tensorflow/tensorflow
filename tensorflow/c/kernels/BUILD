@@ -35,6 +35,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
 )
 
