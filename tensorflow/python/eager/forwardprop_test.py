@@ -1027,10 +1027,10 @@ class BatchTests(test.TestCase, parameterized.TestCase):
       constant_op.constant([1., 0., 1.]),
       constant_op.constant([0., 1., 1.]),
     )
-    with forwardprop.ForwardAccumulator((x, y), tangents, True) as acc:
+    with forwardprop.ForwardAccumulator._batch_accumulator((x, y), tangents) as acc:
       z = x * y
     self.assertAllClose(
-      forwardprop.ForwardAccumulator._batch_accumulator(acc, z),
+      acc.jvp(z),
       constant_op.constant([5.0, 2.0, 7.0]
     ))
 

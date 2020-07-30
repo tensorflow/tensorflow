@@ -326,7 +326,7 @@ class ForwardAccumulator(object):
   <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 0.], dtype=float32)>
   """
 
-  def __init__(self, primals, tangents, use_batch=False):
+  def __init__(self, primals, tangents):
     """Specify tensors to watch and their Jacobian-vector products.
 
     Mathematically, `tangents` is a vector right-multiplying the Jacobian matrix
@@ -348,7 +348,7 @@ class ForwardAccumulator(object):
       ValueError: If the same tensor or variable is specified multiple times in
         `primals`.
     """
-    self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew(use_batch)
+    self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew(False)
     self._recording = False
     primal_ids = set()
     for primal in nest.flatten(primals):
@@ -441,6 +441,17 @@ class ForwardAccumulator(object):
     return nest.map_structure(_fetch_jvp, primals)
 
   @classmethod
-  def _batch_accumulator(cls, primals, unconnected_gradients=UnconnectedGradients.NONE):
-    return cls.jvp(primals, unconnected_gradients)
-    
+  def _batch_accumulator(cls, primals, tangents):
+    acc = super(ForwardAccumulator, cls).__new__(cls, primals, tangents)
+    acc._recording = False
+    acc._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew(True)
+    primal_ids = set()
+    for primal in nest.flatten(primals):
+      if id(primal) in primal_ids:
+        raise ValueError(
+            "Tensor {} was specified as a primal multiple times. This may "
+            "indicate an error. If it was intended, please sum the "
+            "corresponding tangents.")
+      primal_ids.add(id(primal))
+    acc._watch(primals, tangents)
+    return acc

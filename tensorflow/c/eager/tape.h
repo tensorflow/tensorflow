@@ -315,7 +315,7 @@ class ForwardAccumulator {
   // available in language bindings (e.g. Python).
   const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace_;
 
-  //Decides if tangents are vector rised or not
+  //Decides if tangents are vectorized or not
   bool use_batch;
 
   struct AccumulatorCallState {
