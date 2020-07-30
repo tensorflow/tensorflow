@@ -41,7 +41,8 @@ struct OpData {
   int effective_scale_2_b;
   int scratch_tensor_index;
   int scratch_output_tensor_index;
-  bool bias_provided;
+
+  // Cached tensor zero point values for quantized operations.
   int input_zero_point;
   int output_zero_point;
 };
@@ -421,7 +422,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
-  data->bias_provided = (bias != nullptr);
 
   if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteInt8);
@@ -498,7 +498,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteEvalTensor* weights_time =
       tflite::micro::GetEvalInput(context, node, kWeightsTimeTensor);
   const TfLiteEvalTensor* bias =
-      data.bias_provided
+      (NumInputs(node) == 5)
           ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
           : nullptr;
   TfLiteEvalTensor* activation_state = tflite::micro::GetMutableEvalInput(

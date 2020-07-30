@@ -501,7 +501,13 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
   micro::KernelRunner runner(registration, tensors, tensor_count, inputs_array,
                              outputs_array, &params, micro_test::reporter);
 
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TfLiteStatus init_and_prepare_status = runner.InitAndPrepare();
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, init_and_prepare_status);
+
+  // Abort early to make it clear init and prepare failed.
+  if (init_and_prepare_status != kTfLiteOk) {
+    return;
+  }
 
   int num_inputs = input_sequences_len / (input_size * batch_size);
 

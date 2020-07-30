@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -181,13 +182,14 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   auto* op_data = static_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
-    return Softmax(*op_data, GetTensorShape(input),
-                   GetTensorData<int8_t>(input), GetTensorShape(output),
-                   GetTensorData<int16_t>(output));
+    return Softmax(*op_data, tflite::micro::GetTensorShape(input),
+                   tflite::micro::GetTensorData<int8_t>(input),
+                   tflite::micro::GetTensorShape(output),
+                   tflite::micro::GetTensorData<int16_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                        TfLiteTypeGetName(input->type), input->type);
