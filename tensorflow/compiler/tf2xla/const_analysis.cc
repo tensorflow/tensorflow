@@ -140,7 +140,7 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
         GetFunctionBody(flib_runtime, node, "else_branch", &felse));
     return CondConstInputIndices({fthen, felse}, const_input_idxs,
                                  flib_runtime);
-  } else if (node.op() == "Case") {
+  } else if (node.op() == "Case" || node.op() == "StatelessCase") {
     std::vector<const FunctionBody*> branch_bodies;
     TF_RETURN_IF_ERROR(
         GetFunctionBodies(flib_runtime, node, "branches", &branch_bodies));

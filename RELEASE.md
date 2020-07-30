@@ -58,7 +58,8 @@
     benavior.
   * Added `tf.SparseTensor.with_values`. This returns a new SparseTensor with
     the same sparsity pattern, but with new provided values. It is similar to
-  the `with_values` function of `RaggedTensor`.
+    the `with_values` function of `RaggedTensor`.
+  * Added `StatelessCase` op, and uses it if none of case branches has stateful ops.
 * `tf.data`:
     * Added new `tf.data.experimental.service.register_dataset` and
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process

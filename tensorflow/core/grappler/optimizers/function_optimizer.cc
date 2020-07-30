@@ -1252,7 +1252,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), false));
-      } else if (n->type_string() == "Case") {
+      } else if (n->IsCaseNode()) {
         TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
       } else if (n->IsWhileNode()) {
         TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));
