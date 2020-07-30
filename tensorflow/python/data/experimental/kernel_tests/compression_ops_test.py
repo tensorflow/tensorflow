@@ -79,10 +79,12 @@ def _test_eager_only_objects():
 class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(element=_test_objects())) +
-      combinations.times(test_base.eager_only_combinations(),
-                         combinations.combine(element=_test_eager_only_objects())))
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(element=_test_objects())) +
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(element=_test_eager_only_objects())))
   def testCompression(self, element):
     element = element._obj
 
@@ -92,10 +94,12 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertValuesEqual(element, self.evaluate(uncompressed))
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(element=_test_objects())) +
-      combinations.times(test_base.eager_only_combinations(),
-                         combinations.combine(element=_test_eager_only_objects())))
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(element=_test_objects())) +
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(element=_test_eager_only_objects())))
   def testDatasetCompression(self, element):
     element = element._obj
 
