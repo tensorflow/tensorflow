@@ -327,7 +327,8 @@ def build_collective_reduce(input_tensors,
                             unary_op='Id',
                             communication_hint='AUTO',
                             control_inputs=None,
-                            executors=None):
+                            executors=None,
+                            timeout=None):
   """Build a subgraph that does one full all-reduce, using the collective Op.
 
   If called in eager mode, it's required to supply a list of async executors for
@@ -348,6 +349,7 @@ def build_collective_reduce(input_tensors,
     control_inputs: if not None, add control edges between control_inputs and
       (index-wise) corresponding collective_reduce tensors
     executors: a list of async executor. Required for eager execution.
+    timeout: a float or None. The timeout in seconds.
 
   Returns:
     An array of final tensors, one per device, computed by the full reduction.
@@ -381,10 +383,16 @@ def build_collective_reduce(input_tensors,
          ops.device(devices[idx]), \
          ops.control_dependencies(
              _control_input(devices, control_inputs, idx)):
-      out_tensor = collective_ops.all_reduce(input_tensor, group_size,
-                                             group_key, instance_key,
-                                             reduction_op, unary_op,
-                                             subdiv_offsets, communication_hint)
+      out_tensor = collective_ops.all_reduce(
+          input_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          reduction_op,
+          unary_op,
+          subdiv_offsets,
+          communication_hint,
+          timeout=timeout)
     out_tensors.append(out_tensor)
   return out_tensors
 
@@ -394,7 +402,8 @@ def build_collective_gather(input_tensors,
                             group_size,
                             collective_keys,
                             communication_hint='AUTO',
-                            control_inputs=None):
+                            control_inputs=None,
+                            timeout=None):
   """Build a subgraph that does one full all-gather, using the collective Op.
 
   This method must be called in graph mode or inside a tf.function.
@@ -411,6 +420,7 @@ def build_collective_gather(input_tensors,
       implementation.
     control_inputs: if not None, add control edges between control_inputs and
       (index-wise) corresponding collective_gather tensors
+    timeout: a float or None. The timeout in seconds.
 
   Returns:
     An array of final tensors, one per device, computed by the full gather.
@@ -433,9 +443,13 @@ def build_collective_gather(input_tensors,
     with ops.device(devices[idx]):
       with ops.control_dependencies(
           _control_input(devices, control_inputs, idx)):
-        out_tensor = collective_ops.all_gather(input_tensor, group_size,
-                                               group_key, instance_key,
-                                               communication_hint)
+        out_tensor = collective_ops.all_gather(
+            input_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint,
+            timeout=timeout)
       out_tensors.append(out_tensor)
   return out_tensors
 
@@ -445,7 +459,8 @@ def build_collective_gather_indexed_slices(input_slices_list,
                                            group_size,
                                            collective_keys,
                                            communication_hint='AUTO',
-                                           control_inputs=None):
+                                           control_inputs=None,
+                                           timeout=None):
   """Build a subgraph that all-gathers IndexedSlices using the collective Op.
 
   This method must be called in graph mode or inside a tf.function.
@@ -462,6 +477,7 @@ def build_collective_gather_indexed_slices(input_slices_list,
       implementation.
     control_inputs: if not None, add control edges between control_inputs and
       (index-wise) corresponding collective_reduce tensors
+    timeout: a float or None. The timeout in seconds.
 
   Returns:
     An array of final IndexedSlices, one per device, computed by the full
@@ -502,16 +518,23 @@ def build_collective_gather_indexed_slices(input_slices_list,
 
       def all_gather():
         """Use all_gather to aggregate `IndexedSlices`."""
-        all_values = collective_ops.all_gather(input_slices.values, group_size,
-                                               group_key, gather_values_key,
-                                               communication_hint)
+        all_values = collective_ops.all_gather(
+            input_slices.values,
+            group_size,
+            group_key,
+            gather_values_key,
+            communication_hint,
+            timeout=timeout)
         # Add control dependency to order the all-gather.
         control = [all_values] if communication_hint == 'NCCL' else []
         with ops.control_dependencies(control):
-          all_indices = collective_ops.all_gather(input_slices.indices,
-                                                  group_size, group_key,
-                                                  gather_indices_key,
-                                                  communication_hint)
+          all_indices = collective_ops.all_gather(
+              input_slices.indices,
+              group_size,
+              group_key,
+              gather_indices_key,
+              communication_hint,
+              timeout=timeout)
         return ops.IndexedSlices(
             values=all_values,
             indices=all_indices,
@@ -520,9 +543,15 @@ def build_collective_gather_indexed_slices(input_slices_list,
       def densify_and_all_reduce():
         """Use all_reduce to aggregate `IndexedSlices`."""
         densified = ops.convert_to_tensor(input_slices)
-        reduced = collective_ops.all_reduce(densified, group_size, group_key,
-                                            reduce_densified_key, 'Add', 'Id',
-                                            [0], communication_hint)
+        reduced = collective_ops.all_reduce(
+            densified,
+            group_size,
+            group_key,
+            reduce_densified_key,
+            'Add',
+            'Id', [0],
+            communication_hint,
+            timeout=timeout)
         # We have to convert dense grad to IndexedSlice because all_reduce()
         # and all_gather() must have the same return type as required by
         # control_flow_ops.cond.
@@ -534,9 +563,13 @@ def build_collective_gather_indexed_slices(input_slices_list,
       length = array_ops.shape(input_slices.indices)
       with ops.control_dependencies(
           _control_input(input_slices, control_inputs, idx)):
-        all_lengths = collective_ops.all_gather(length, group_size, group_key,
-                                                gather_length_key,
-                                                communication_hint)
+        all_lengths = collective_ops.all_gather(
+            length,
+            group_size,
+            group_key,
+            gather_length_key,
+            communication_hint,
+            timeout=timeout)
       out_slices = control_flow_ops.cond(
           math_ops.equal(
               math_ops.reduce_max(all_lengths),

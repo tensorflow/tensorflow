@@ -1027,6 +1027,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
