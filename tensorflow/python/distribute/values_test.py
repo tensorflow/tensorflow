@@ -610,12 +610,6 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       self.skipTest("b/148689177: AggregatingVariable doesn't "
                     "conform to Variable interface well")
 
-    # TODO(crccw): Unskip this in cl/323875091.
-    if (isinstance(
-        distribution,
-        collective_all_reduce_strategy.CollectiveAllReduceStrategy)):
-      self.skipTest("Being fixed in cl/323875091")
-
     # tf.function requires the return value to be Tensors, which is not always
     # case for properties and methods of Variable, so we simply discard the
     # return values.
