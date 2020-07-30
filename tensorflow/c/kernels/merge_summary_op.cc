@@ -26,10 +26,10 @@ limitations under the License.
 
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
 // Used to delete tensor and status in its destructor upon kernel return. 
-struct Tensor_Wrapper { 
+struct TensorWrapper { 
   TF_Tensor* t; 
-  Tensor_Wrapper() : t(nullptr) {}
-  ~Tensor_Wrapper() { 
+  TensorWrapper() : t(nullptr) {}
+  ~TensorWrapper() { 
     TF_DeleteTensor(t);
   }
 };
@@ -45,9 +45,7 @@ struct Status_Wrapper {
 };
 
 // dummy functions used for kernel registration 
-static void* MergeSummaryOp_Create(TF_OpKernelConstruction* ctx) {
-  return nullptr;
-}
+static void* MergeSummaryOp_Create(TF_OpKernelConstruction* ctx) {}
 
 static void MergeSummaryOp_Delete(void* kernel) {
   return;
@@ -58,14 +56,15 @@ static void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   std::unordered_set<tensorflow::string> tags; 
   Status_Wrapper status_wrapper;; 
   for (int input_num = 0; input_num < TF_NumInputs(ctx); ++input_num) { 
-    Tensor_Wrapper input_wrapper; 
+    TensorWrapper input_wrapper; 
     TF_GetInput(ctx, input_num, &input_wrapper.t, status_wrapper.s); 
     if (TF_GetCode(status_wrapper.s) != TF_OK) {  
       TF_OpKernelContext_Failure(ctx, status_wrapper.s); 
       return;
     }
 
-    auto tags_array = static_cast<tensorflow::tstring*>(TF_TensorData(input_wrapper.t)); 
+    auto tags_array = static_cast<tensorflow::tstring*>(
+    		TF_TensorData(input_wrapper.t));
     for (int i = 0; i < TF_TensorElementCount(input_wrapper.t); ++i) { 
       const tensorflow::tstring& s_in = tags_array[i]; 
       tensorflow::Summary summary_in; 
@@ -90,11 +89,11 @@ static void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       }
     }
   }
-  Tensor_Wrapper summary_tensor_wrapped; 
+  TensorWrapper summary_tensor_wrapper; 
   TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0,
       TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
       sizeof(tensorflow::tstring), status_wrapper.s);
-  summary_tensor_wrapped.t = summary_tensor; 
+  summary_tensor_wrapper.t = summary_tensor; 
   if (TF_GetCode(status_wrapper.s) != TF_OK){ 
     TF_OpKernelContext_Failure(ctx, status_wrapper.s);
     return; 
