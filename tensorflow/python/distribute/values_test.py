@@ -1019,25 +1019,6 @@ def _make_replica_local(method, strategy=None):
   return v, replica_local
 
 
-# TODO(b/144432582): Add variable aggregation type to combinations to simplify
-# tests.
-def strategy_and_run_tf_function_combinations():
-  # Test the combination of different strategies and whether a tf.function
-  # is passed into strategy.run."""
-  return combinations.combine(
-      distribution=[
-          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-      ],
-      mode=["graph", "eager"],
-      experimental_run_tf_function=[True, False]) + combinations.combine(
-          distribution=[
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["graph", "eager"],
-          experimental_run_tf_function=[True])
-
-
 class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, v, new):
