@@ -439,3 +439,7 @@ class ForwardAccumulator(object):
         return array_ops.zeros_like(tensor)
       return result
     return nest.map_structure(_fetch_jvp, primals)
+
+  @classmethod
+  def _batch_accumulator(cls, primals, unconnected_gradients=UnconnectedGradients.NONE):
+    return cls.jvp(primals, unconnected_gradients)

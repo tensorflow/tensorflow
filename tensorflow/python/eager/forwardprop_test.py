@@ -1,4 +1,7 @@
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -1027,7 +1030,7 @@ class BatchTests(test.TestCase, parameterized.TestCase):
     with forwardprop.ForwardAccumulator((x, y), tangents, True) as acc:
       z = x * y
     self.assertAllClose(
-      acc.jvp(z),
+      forwardprop.ForwardAccumulator._batch_accumulator(acc, z),
       constant_op.constant([5.0, 2.0, 7.0]
     ))
 
