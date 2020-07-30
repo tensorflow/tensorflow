@@ -774,12 +774,12 @@ cc_library(
 )
 
 cc_library(
-    name = "all_passes_for_testing",
+    name = "all_passes",
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h",
     ],
     visibility = [
-        "//tensorflow/compiler/mlir:__subpackages__",
+        ":friends",
     ],
     deps = [
         ":LmhloPassIncGen",
@@ -812,7 +812,7 @@ cc_binary(
         "tools/mlir-hlo-opt/mlir-hlo-opt.cpp",
     ],
     deps = [
-        ":all_passes_for_testing",
+        ":all_passes",
         ":hlo_dialect_registration",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
