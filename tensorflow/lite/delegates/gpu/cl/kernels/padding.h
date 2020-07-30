@@ -40,6 +40,9 @@ class Padding : public GPUOperation {
   Padding& operator=(const Padding&) = delete;
 
  private:
+  std::string GetPaddingCode(const OperationDef& op_def,
+                             const PadAttributes& attr);
+
   PadAttributes attributes_;
 };
 

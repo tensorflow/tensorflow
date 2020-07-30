@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/arguments.h"
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
@@ -60,9 +61,6 @@ struct OperationDef {
 
 class ElementwiseOperation;
 
-absl::Status SetArguments(const std::vector<ElementwiseOperation*>& linked_ops,
-                          Arguments* args);
-
 // GPUOperation represents some implementation of neural network operation on
 // GPU. GPUOperation can contain ElementwiseOperation operations, in this case,
 // ElementwiseOperation still hold necessary data and should be alive.
@@ -91,12 +89,7 @@ class GPUOperation {
   void SetDst(Tensor* ptr, int index = 0);
 
   // should be called after changes of inputs/outputs.
-  absl::Status UpdateParams() {
-    RETURN_IF_ERROR(BindArguments());
-    RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-    grid_size_ = GetGridSize();
-    return absl::OkStatus();
-  }
+  absl::Status UpdateParams();
 
   absl::Status AddToQueue(CLCommandQueue* queue) {
     RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
@@ -114,8 +107,15 @@ class GPUOperation {
 
   const OperationDef& GetDefinition() const { return definition_; }
 
+  void AddSrcTensor(const std::string& tensor_name,
+                    const TensorDescriptor& desc);
+  void AddSrcBuffer(const std::string& buffer_name,
+                    const BufferDescriptor& desc);
+  void AddDstTensor(const std::string& tensor_name,
+                    const TensorDescriptor& desc);
+
  protected:
-  virtual absl::Status BindArguments() = 0;
+  virtual absl::Status BindArguments() { return absl::OkStatus(); }
   virtual int3 GetGridSize() const = 0;
 
   // Defines operation calculation precision and format of src/dst tensors.
@@ -126,6 +126,8 @@ class GPUOperation {
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
   int3 grid_size_ = int3(0, 0, 0);
+  std::vector<std::string> src_tensors_names_;
+  std::vector<std::string> dst_tensors_names_;
   std::vector<ElementwiseOperation*> linked_operations_;
 };
 
@@ -145,7 +147,6 @@ class ElementwiseOperation : public GPUOperation {
   virtual ~ElementwiseOperation() {}
 
   absl::Status Compile(const CreationContext& creation_context) override;
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -154,20 +155,16 @@ class ElementwiseOperation : public GPUOperation {
   ElementwiseOperation(const ElementwiseOperation&) = delete;
   ElementwiseOperation& operator=(const ElementwiseOperation&) = delete;
 
-  virtual absl::Status SetArgs(const std::string& unique_postfix,
-                               Arguments* args) {
-    return absl::OkStatus();
-  }
-
   Arguments&& MoveArgs() { return std::move(args_); }
   std::string GetCode() const { return code_; }
+  void AddUniquePostfix(const std::string& unique_postfix);
 
-  // ovveride to return false if for any reason operation can not be linked.
-  virtual bool IsLinkable() const { return true; }
+  bool IsLinkable() const { return linkable_; }
 
  protected:
   bool check_src_channels_size_ = false;
   std::string code_;
+  bool linkable_ = true;
 };
 
 absl::Status MergeOperations(

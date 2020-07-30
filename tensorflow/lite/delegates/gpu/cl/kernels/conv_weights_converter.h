@@ -43,6 +43,10 @@ class ConverterToConvWeights : public GPUOperation {
   ConverterToConvWeights& operator=(const ConverterToConvWeights&) = delete;
 
  private:
+  std::string GetConverterToConvWeightsCode(
+      const OperationDef& op_def,
+      const ConvWeightsDescription& conv_weights_desc);
+
   ConvWeightsDescription conv_weights_desc_;
 };
 

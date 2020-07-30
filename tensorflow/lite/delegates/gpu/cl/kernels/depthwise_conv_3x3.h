@@ -66,6 +66,11 @@ class DepthwiseConv3x3 : public GPUOperation {
       const tflite::gpu::Tensor<OHWI, S>& weights,
       const tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst);
 
+  std::string GenerateDepthwiseConvCode(const OperationDef& op_def,
+                                        const CLDevice& device,
+                                        bool weights_are_buffer,
+                                        bool local_mem_uploads);
+
   bool weights_are_buffer_;
   bool local_mem_uploads_;
 };

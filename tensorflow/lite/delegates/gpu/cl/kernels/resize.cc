@@ -23,25 +23,35 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetResizeCode(const OperationDef& op_def,
-                          SamplingType sampling_type, bool half_pixel_centers,
-                          Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+Resize::Resize(Resize&& operation)
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
+
+Resize& Resize::operator=(Resize&& operation) {
+  if (this != &operation) {
+    attr_ = operation.attr_;
+    GPUOperation::operator=(std::move(operation));
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  return *this;
+}
+
+std::string Resize::GetResizeCode(const OperationDef& op_def,
+                                  SamplingType sampling_type,
+                                  bool half_pixel_centers) {
+  auto src_desc = op_def.src_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  args->AddInt("border_x");
-  args->AddInt("border_y");
-  args->AddFloat("scale_factor_x");
-  args->AddFloat("scale_factor_y");
+  AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
+  args_.AddInt("border_x");
+  args_.AddInt("border_y");
+  args_.AddFloat("scale_factor_x");
+  args_.AddFloat("scale_factor_y");
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -100,24 +110,73 @@ std::string GetResizeCode(const OperationDef& op_def,
   return c;
 }
 
-std::string GetResize3DCode(const OperationDef& op_def,
-                            SamplingType sampling_type, Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+absl::Status Resize::Compile(const CreationContext& creation_context) {
+  std::string code =
+      GetResizeCode(definition_, attr_.type, attr_.half_pixel_centers);
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
+  return creation_context.cache->GetOrCreateCLKernel(
+      code, "main_function", *creation_context.context,
+      *creation_context.device, &kernel_);
+}
+
+absl::Status Resize::BindArguments() {
+  RETURN_IF_ERROR(args_.SetInt("border_x", src_[0]->Width() - 1));
+  RETURN_IF_ERROR(args_.SetInt("border_y", src_[0]->Height() - 1));
+  RETURN_IF_ERROR(args_.SetFloat(
+      "scale_factor_x",
+      CalculateResizeScale(src_[0]->Width(), dst_[0]->Width(), attr_)));
+  RETURN_IF_ERROR(args_.SetFloat(
+      "scale_factor_y",
+      CalculateResizeScale(src_[0]->Height(), dst_[0]->Height(), attr_)));
+  return absl::OkStatus();
+}
+
+int3 Resize::GetGridSize() const {
+  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
+  const int grid_y = dst_[0]->Height();
+  const int grid_z = dst_[0]->Slices();
+  return int3(grid_x, grid_y, grid_z);
+}
+
+Resize CreateResize(const OperationDef& definition,
+                    const Resize2DAttributes& attr) {
+  return Resize(definition, attr);
+}
+
+Resize3D::Resize3D(Resize3D&& operation)
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
+
+Resize3D& Resize3D::operator=(Resize3D&& operation) {
+  if (this != &operation) {
+    attr_ = operation.attr_;
+    GPUOperation::operator=(std::move(operation));
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  return *this;
+}
+
+std::string Resize3D::GetResize3DCode(const OperationDef& op_def,
+                                      SamplingType sampling_type) {
+  auto src_desc = op_def.src_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  args->AddInt("border_x");
-  args->AddInt("border_y");
-  args->AddInt("border_z");
-  args->AddFloat("scale_factor_x");
-  args->AddFloat("scale_factor_y");
-  args->AddFloat("scale_factor_z");
+  AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
+  args_.AddInt("border_x");
+  args_.AddInt("border_y");
+  args_.AddInt("border_z");
+  args_.AddFloat("scale_factor_x");
+  args_.AddFloat("scale_factor_y");
+  args_.AddFloat("scale_factor_z");
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -189,72 +248,8 @@ std::string GetResize3DCode(const OperationDef& op_def,
   return c;
 }
 
-}  // namespace
-
-Resize::Resize(Resize&& operation)
-    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
-
-Resize& Resize::operator=(Resize&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status Resize::Compile(const CreationContext& creation_context) {
-  std::string code =
-      GetResizeCode(definition_, attr_.type, attr_.half_pixel_centers, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status Resize::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(args_.SetInt("border_x", src_[0]->Width() - 1));
-  RETURN_IF_ERROR(args_.SetInt("border_y", src_[0]->Height() - 1));
-  RETURN_IF_ERROR(args_.SetFloat(
-      "scale_factor_x",
-      CalculateResizeScale(src_[0]->Width(), dst_[0]->Width(), attr_)));
-  RETURN_IF_ERROR(args_.SetFloat(
-      "scale_factor_y",
-      CalculateResizeScale(src_[0]->Height(), dst_[0]->Height(), attr_)));
-  return absl::OkStatus();
-}
-
-int3 Resize::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Slices();
-  return int3(grid_x, grid_y, grid_z);
-}
-
-Resize CreateResize(const OperationDef& definition,
-                    const Resize2DAttributes& attr) {
-  return Resize(definition, attr);
-}
-
-Resize3D::Resize3D(Resize3D&& operation)
-    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
-
-Resize3D& Resize3D::operator=(Resize3D&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
 absl::Status Resize3D::Compile(const CreationContext& creation_context) {
-  std::string code = GetResize3DCode(definition_, attr_.type, &args_);
+  std::string code = GetResize3DCode(definition_, attr_.type);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -267,8 +262,6 @@ absl::Status Resize3D::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status Resize3D::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(args_.SetInt("border_x", src_[0]->Width() - 1));
   RETURN_IF_ERROR(args_.SetInt("border_y", src_[0]->Height() - 1));
   RETURN_IF_ERROR(args_.SetInt("border_z", src_[0]->Depth() - 1));

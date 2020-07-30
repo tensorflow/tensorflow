@@ -25,16 +25,22 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetSpaceToDepthCode(const OperationDef& op_def, Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-  args->AddInt("block_size");
+SpaceToDepth::SpaceToDepth(SpaceToDepth&& operation)
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
+
+SpaceToDepth& SpaceToDepth::operator=(SpaceToDepth&& operation) {
+  if (this != &operation) {
+    attr_ = operation.attr_;
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string SpaceToDepth::GetSpaceToDepthCode(const OperationDef& op_def) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  args_.AddInt("block_size");
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -76,21 +82,8 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def, Arguments* args) {
   return c;
 }
 
-}  // namespace
-
-SpaceToDepth::SpaceToDepth(SpaceToDepth&& operation)
-    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
-
-SpaceToDepth& SpaceToDepth::operator=(SpaceToDepth&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
 absl::Status SpaceToDepth::Compile(const CreationContext& creation_context) {
-  std::string code = GetSpaceToDepthCode(definition_, &args_);
+  std::string code = GetSpaceToDepthCode(definition_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -103,8 +96,6 @@ absl::Status SpaceToDepth::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status SpaceToDepth::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(args_.SetInt("block_size", attr_.block_size));
   return absl::OkStatus();
 }

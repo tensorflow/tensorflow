@@ -27,26 +27,61 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
+ConvolutionTransposed3x3::ConvolutionTransposed3x3(
+    const OperationDef& definition, const CLDevice& device, int2 padding)
+    : GPUOperation(definition),
+      padding_(padding),
+      work_group_launch_order_(2, 0, 1) {
+  work_group_size_ = int3(8, 4, 1);
+  if (device.IsPowerVR()) {
+    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
+  } else if (device.IsNvidia() || device.IsIntel()) {
+    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  } else if (device.IsAMD()) {
+    weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;
+  } else {
+    weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
+  }
+}
 
-std::string GenerateConvolutionTransposedCode(
+ConvolutionTransposed3x3::ConvolutionTransposed3x3(
+    ConvolutionTransposed3x3&& operation)
+    : GPUOperation(std::move(operation)),
+      padding_(operation.padding_),
+      work_group_launch_order_(operation.work_group_launch_order_),
+      weights_upload_type_(operation.weights_upload_type_) {}
+
+ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
+    ConvolutionTransposed3x3&& operation) {
+  if (this != &operation) {
+    std::swap(padding_, operation.padding_);
+    std::swap(work_group_launch_order_, operation.work_group_launch_order_);
+    std::swap(weights_upload_type_, operation.weights_upload_type_);
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     const OperationDef& op_def,
     ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
-    int2 padding, int3 work_group_launch_order, Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(TextureAddressMode::ZERO);
+    int2 padding, int3 work_group_launch_order) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  AddSrcTensor("src_tensor", src_desc);
+
+  auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    dst_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  args->AddInt("filter_offset");
-  args->AddInt("padding_x");
-  args->AddInt("padding_y");
+  AddDstTensor("dst_tensor", dst_desc);
+
+  args_.AddInt("filter_offset");
+  args_.AddInt("padding_x");
+  args_.AddInt("padding_y");
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
@@ -264,48 +299,10 @@ std::string GenerateConvolutionTransposedCode(
   return c;
 }
 
-}  // namespace
-
-ConvolutionTransposed3x3::ConvolutionTransposed3x3(
-    const OperationDef& definition, const CLDevice& device, int2 padding)
-    : GPUOperation(definition),
-      padding_(padding),
-      work_group_launch_order_(2, 0, 1) {
-  work_group_size_ = int3(8, 4, 1);
-  if (device.IsPowerVR()) {
-    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (device.IsNvidia() || device.IsIntel()) {
-    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-  } else if (device.IsAMD()) {
-    weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;
-  } else {
-    weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
-  }
-}
-
-ConvolutionTransposed3x3::ConvolutionTransposed3x3(
-    ConvolutionTransposed3x3&& operation)
-    : GPUOperation(std::move(operation)),
-      padding_(operation.padding_),
-      work_group_launch_order_(operation.work_group_launch_order_),
-      weights_upload_type_(operation.weights_upload_type_) {}
-
-ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
-    ConvolutionTransposed3x3&& operation) {
-  if (this != &operation) {
-    std::swap(padding_, operation.padding_);
-    std::swap(work_group_launch_order_, operation.work_group_launch_order_);
-    std::swap(weights_upload_type_, operation.weights_upload_type_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
 absl::Status ConvolutionTransposed3x3::Compile(
     const CreationContext& creation_context) {
   std::string code = GenerateConvolutionTransposedCode(
-      definition_, weights_upload_type_, padding_, work_group_launch_order_,
-      &args_);
+      definition_, weights_upload_type_, padding_, work_group_launch_order_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -325,8 +322,6 @@ absl::Status ConvolutionTransposed3x3::Compile(
 }
 
 absl::Status ConvolutionTransposed3x3::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(args_.SetInt("filter_offset", 4 * 9 * src_[0]->Slices()));
   const int padding_x =
       padding_.x >= 1 ? (padding_.x - 1) / 2 : (padding_.x - 2) / 2;
