@@ -29,7 +29,7 @@ namespace {
 // once out of scope. 
 struct TF_TensorWrapper { 
   TF_Tensor* tf_tensor; 
-  TF_TensorWrapper(TF_Tensor* tensor) { 
+  explicit TF_TensorWrapper(TF_Tensor* tensor) { 
     tf_tensor = tensor; 
   }
   ~TF_TensorWrapper() { 

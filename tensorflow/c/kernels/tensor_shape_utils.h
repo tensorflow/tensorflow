@@ -35,4 +35,3 @@ std::string ShapeDebugString(TF_Tensor* tensor);
 } // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TENSOR_SHAPE_UTILS_H_
-

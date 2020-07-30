@@ -38,15 +38,15 @@ struct Params {
   TF_Tensor* tags; 
   TF_Tensor* values; 
   TF_Status* status; 
-  Params(TF_OpKernelContext* ctx) : tags(nullptr), 
-                                    values(nullptr), 
-                                    status(nullptr) {
+  explicit Params(TF_OpKernelContext* ctx) : tags(nullptr), 
+                                             values(nullptr), 
+                                             status(nullptr) {
     status = TF_NewStatus();
     TF_GetInput(ctx, 0, &tags, status);
     if (TF_GetCode(status) == TF_OK) { 
       TF_GetInput(ctx, 1, &values, status);
     }
-  }; 
+  }
   ~Params() { 
     TF_DeleteStatus(status); 
     TF_DeleteTensor(tags); 
@@ -59,9 +59,7 @@ void* ScalarSummaryOp_Create(TF_OpKernelConstruction* ctx) {
   return nullptr; 
 }
 
-void ScalarSummaryOp_Delete(void* kernel) {
-  return;
-}
+void ScalarSummaryOp_Delete(void* kernel) {}
 
 // Helper functions for compute method 
 bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2);
@@ -96,7 +94,7 @@ void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
     tensorflow::Summary::Value* v = s.add_value();
     const tensorflow::tstring& Ttags_i = tags_array[i];  
     v->set_tag(Ttags_i.data(), Ttags_i.size());
-    v->set_simple_value(float(values_array[i]));
+    v->set_simple_value(static_cast<float>(values_array[i]));
   }
   TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0,
       TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
