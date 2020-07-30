@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -74,28 +75,35 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
 }  // namespace
 
 // Takes a tensor and performs softmax along the last dimension.
-void SoftmaxFloat(const TfLiteTensor* input, TfLiteTensor* output,
+void SoftmaxFloat(const TfLiteEvalTensor* input, TfLiteEvalTensor* output,
                   const SoftmaxParams& op_data) {
-  tflite::reference_ops::Softmax(
-      op_data, GetTensorShape(input), GetTensorData<float>(input),
-      GetTensorShape(output), GetTensorData<float>(output));
+  tflite::reference_ops::Softmax(op_data, tflite::micro::GetTensorShape(input),
+                                 tflite::micro::GetTensorData<float>(input),
+                                 tflite::micro::GetTensorShape(output),
+                                 tflite::micro::GetTensorData<float>(output));
 }
 
-void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
+void SoftmaxQuantized(const TfLiteEvalTensor* input, TfLiteEvalTensor* output,
                       const SoftmaxParams& op_data) {
   if (input->type == kTfLiteUInt8) {
     tflite::reference_ops::Softmax(
-        op_data, GetTensorShape(input), GetTensorData<uint8_t>(input),
-        GetTensorShape(output), GetTensorData<uint8_t>(output));
+        op_data, tflite::micro::GetTensorShape(input),
+        tflite::micro::GetTensorData<uint8_t>(input),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<uint8_t>(output));
   } else {
     if (output->type == kTfLiteInt16) {
       tflite::reference_ops::Softmax(
-          op_data, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int16_t>(output));
+          op_data, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int16_t>(output));
     } else {
       tflite::reference_ops::Softmax(
-          op_data, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
+          op_data, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int8_t>(output));
     }
   }
 }
@@ -121,8 +129,8 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   TFLITE_DCHECK(node->user_data != nullptr);
   SoftmaxParams* data = static_cast<SoftmaxParams*>(node->user_data);
