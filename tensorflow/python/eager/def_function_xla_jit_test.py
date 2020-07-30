@@ -39,6 +39,8 @@ from tensorflow.python.platform import test
 
 class DefFunctionTest(xla_test.XLATestCase):
 
+  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
+                                 ' functions')
   def testAutoclusteringWithTfFunction(self):
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -117,6 +119,8 @@ class DefFunctionTest(xla_test.XLATestCase):
 
   # Calling function with experimental_compile=True from
   # experimental_compile=False should compile the inner func.
+  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
+                                 ' functions')
   def testNestedCall(self):
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -262,6 +266,8 @@ class DefFunctionTest(xla_test.XLATestCase):
                                   'not compilable'):
         c.f1(inputs)
 
+  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
+                                 ' functions')
   def testMustBeConstantPropagation(self):
     with ops.device('device:{}:0'.format(self.device)):
       if test.is_built_with_rocm():
@@ -430,6 +436,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       f64_input = constant_op.constant([1.1, 2.2, 3.3], dtype=dtypes.float64)
       self.assertAllClose([1.1, 3.3, 6.6], f(f64_input))
 
+  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
+                                 ' functions')
   def testNoExcessiveRetracing(self):
     with ops.device('device:{}:0'.format(self.device)):
       inner_retracings = 0
@@ -472,6 +480,8 @@ class DefFunctionTest(xla_test.XLATestCase):
           constant_op.constant([0.7, 0.7]), constant_op.constant([0.6, 0.6]))
       self.assertAllClose(v, [3.52, 3.52])
 
+  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
+                                 ' functions')
   def testUpdateVariableInClass(self):
     with ops.device('device:{}:0'.format(self.device)):
 
