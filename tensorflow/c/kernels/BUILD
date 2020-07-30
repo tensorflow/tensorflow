@@ -79,6 +79,7 @@ tf_cc_test(
         "//tensorflow/c:kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -101,6 +102,7 @@ tf_cc_test(
     srcs = ["tensor_shape_utils_test.cc"],
     deps = [
         ":tensor_shape_utils",
+        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -120,6 +122,8 @@ filegroup(
     srcs = [
         "bitcast_op.cc",
         "summary_op.cc",
+        "tensor_shape_utils.cc",
+        "tensor_shape_utils.h",
     ],
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
