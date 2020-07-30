@@ -57,6 +57,7 @@ tf_kernel_library(
         "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

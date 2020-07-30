@@ -25,20 +25,20 @@ limitations under the License.
 #include "tensorflow/core/lib/histogram/histogram.h"
 
 // Wrappers to delete resources once the resource is out of scope. 
-struct Tensor_Wrapper { 
+struct TensorWrapper { 
   TF_Tensor* t; 
-  Tensor_Wrapper() : t(nullptr) {}
-  ~Tensor_Wrapper() { 
+  TensorWrapper() : t(nullptr) {}
+  ~TensorWrapper() { 
     TF_DeleteTensor(t);
   }
 };
 
-struct Status_Wrapper { 
+struct StatusWrapper { 
   TF_Status* s; 
-  Status_Wrapper() { 
+  StatusWrapper() { 
     s = TF_NewStatus(); 
   }
-  ~Status_Wrapper() { 
+  ~StatusWrapper() { 
     TF_DeleteStatus(s);
   }
 };
@@ -48,15 +48,13 @@ static void* HistogramSummaryOp_Create(TF_OpKernelConstruction* ctx) {
   return nullptr;
 }
 
-static void HistogramSummaryOp_Delete(void* kernel) {
-  return;
-}
+static void HistogramSummaryOp_Delete(void* kernel) {}
 
 template<typename T>
 static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
-  Tensor_Wrapper tags_wrapper; 
-  Tensor_Wrapper values_wrapper; 
-  Status_Wrapper status_wrapper;
+  TensorWrapper tags_wrapper; 
+  TensorWrapper values_wrapper; 
+  StatusWrapper status_wrapper;
   TF_GetInput(ctx, 0, &tags_wrapper.t, status_wrapper.s);
   if (TF_GetCode(status_wrapper.s) != TF_OK) { 
     TF_OpKernelContext_Failure(ctx, status_wrapper.s);
@@ -94,14 +92,14 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   tensorflow::Summary s; 
   tensorflow::Summary::Value* v = s.add_value(); 
   const tensorflow::tstring& tag = *(static_cast<tensorflow::tstring*>(
-  		TF_TensorData(tags_wrapper.t))); 
+      TF_TensorData(tags_wrapper.t))); 
   v->set_tag(tag.data(), tag.size()); 
   histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */); 
 
   // Must use new status for TF_AllocateOutput if previous status is set 
   // because of an invalid values argument.  
-  Status_Wrapper allocation_status_wrapper;
-  Tensor_Wrapper summary_tensor_wrapper; 
+  StatusWrapper allocation_status_wrapper;
+  TensorWrapper summary_tensor_wrapper; 
   TF_Tensor* summary_tensor= TF_AllocateOutput(ctx, 0,
       TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
       sizeof(tensorflow::tstring), allocation_status_wrapper.s);
