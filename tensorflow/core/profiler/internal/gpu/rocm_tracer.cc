@@ -31,68 +31,9 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/profiler/internal/annotation_stack.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
 
 namespace tensorflow {
 namespace profiler {
-
-namespace wrap {
-
-namespace CachedDsoLoader = stream_executor::internal::CachedDsoLoader;
-
-#ifdef PLATFORM_GOOGLE
-
-#define PROFILER_ROCTRACER_WRAP(__name)                      \
-  template <typename... Args>                                \
-  auto __name()(Args... args)->decltype(::__name(args...)) { \
-    return ::__name(args...);                                \
-  }
-
-#else
-
-#define PROFILER_ROCTRACER_WRAP(__name)                                      \
-  template <typename... Args>                                                \
-  auto __name(Args... args)->decltype(::__name(args...)) {                   \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;             \
-    static FuncPtrT loaded = []() -> FuncPtrT {                              \
-      static const char* kName = #__name;                                    \
-      void* f;                                                               \
-      auto s = Env::Default()->GetSymbolFromLibrary(                         \
-          CachedDsoLoader::GetRoctracerDsoHandle().ValueOrDie(), kName, &f); \
-      CHECK(s.ok()) << "could not find " << kName                            \
-                    << " in roctracer DSO; dlerror: " << s.error_message();  \
-      return reinterpret_cast<FuncPtrT>(f);                                  \
-    }();                                                                     \
-    return loaded(args...);                                                  \
-  }
-
-#endif
-
-// clang-format off
-#define WRAP_EACH_ROCTRACER_API(__macro)		\
-  __macro(roctracer_default_pool_expl)			\
-  __macro(roctracer_disable_domain_activity)		\
-  __macro(roctracer_disable_domain_callback)		\
-  __macro(roctracer_disable_op_activity)		\
-  __macro(roctracer_disable_op_callback)		\
-  __macro(roctracer_enable_domain_activity_expl)	\
-  __macro(roctracer_enable_domain_callback)		\
-  __macro(roctracer_enable_op_activity)			\
-  __macro(roctracer_enable_op_callback)			\
-  __macro(roctracer_error_string)			\
-  __macro(roctracer_flush_activity_expl)		\
-  __macro(roctracer_get_timestamp)			\
-  __macro(roctracer_op_string)				\
-  __macro(roctracer_open_pool_expl)			\
-  __macro(roctracer_set_properties)
-
-// clang-format on
-
-WRAP_EACH_ROCTRACER_API(PROFILER_ROCTRACER_WRAP)
-
-#undef WRAP_EACH_ROCTRACER_API
-
-}  // namespace wrap
 
 constexpr uint32 RocmTracerEvent::kInvalidDeviceId;
 
