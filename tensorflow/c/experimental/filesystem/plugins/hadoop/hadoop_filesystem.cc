@@ -160,6 +160,11 @@ class LibHDFS {
   void* handle_;
 };
 
+static const LibHDFS* libhdfs(TF_Status* status) {
+  static const LibHDFS* libhdfs = new LibHDFS(status);
+  return libhdfs;
+}
+
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
