@@ -17,14 +17,117 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <functional>
+#include <iostream>
+#include <string>
+
+#include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
+#include "third_party/hadoop/hdfs.h"
 
 // Implementation of a filesystem for HADOOP environments.
 // This filesystem will support `hdfs://`, `viewfs://` and `har://` URI schemes.
 
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
+
+template <typename R, typename... Args>
+void BindFunc(void* handle, const char* name, std::function<R(Args...)>* func,
+              TF_Status* status) {
+  *func = reinterpret_cast<R (*)(Args...)>(
+      TF_GetSymbolFromLibrary(handle, name, status));
+}
+
+class LibHDFS {
+ public:
+  LibHDFS(TF_Status* status) { LoadAndBind(status); }
+
+  std::function<hdfsFS(hdfsBuilder*)> hdfsBuilderConnect;
+  std::function<hdfsBuilder*()> hdfsNewBuilder;
+  std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
+  std::function<int(const char*, char**)> hdfsConfGetStr;
+  std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
+  std::function<tSize(hdfsFS, hdfsFile, tOffset, void*, tSize)> hdfsPread;
+  std::function<tSize(hdfsFS, hdfsFile, const void*, tSize)> hdfsWrite;
+  std::function<int(hdfsFS, hdfsFile)> hdfsHFlush;
+  std::function<int(hdfsFS, hdfsFile)> hdfsHSync;
+  std::function<tOffset(hdfsFS, hdfsFile)> hdfsTell;
+  std::function<hdfsFile(hdfsFS, const char*, int, int, short, tSize)>
+      hdfsOpenFile;
+  std::function<int(hdfsFS, const char*)> hdfsExists;
+  std::function<hdfsFileInfo*(hdfsFS, const char*, int*)> hdfsListDirectory;
+  std::function<void(hdfsFileInfo*, int)> hdfsFreeFileInfo;
+  std::function<int(hdfsFS, const char*, int recursive)> hdfsDelete;
+  std::function<int(hdfsFS, const char*)> hdfsCreateDirectory;
+  std::function<hdfsFileInfo*(hdfsFS, const char*)> hdfsGetPathInfo;
+  std::function<int(hdfsFS, const char*, const char*)> hdfsRename;
+
+ private:
+  void LoadAndBind(TF_Status* status) {
+    auto TryLoadAndBind = [this](const char* name, void** handle,
+                                 TF_Status* status) {
+      *handle = TF_LoadSharedLibrary(name, status);
+      if (TF_GetCode(status) != TF_OK) return;
+
+#define BIND_HDFS_FUNC(function)                   \
+  BindFunc(*handle, #function, &function, status); \
+  if (TF_GetCode(status) != TF_OK) return
+
+      BIND_HDFS_FUNC(hdfsBuilderConnect);
+      BIND_HDFS_FUNC(hdfsNewBuilder);
+      BIND_HDFS_FUNC(hdfsBuilderSetNameNode);
+      BIND_HDFS_FUNC(hdfsConfGetStr);
+      BIND_HDFS_FUNC(hdfsCloseFile);
+      BIND_HDFS_FUNC(hdfsPread);
+      BIND_HDFS_FUNC(hdfsWrite);
+      BIND_HDFS_FUNC(hdfsHFlush);
+      BIND_HDFS_FUNC(hdfsTell);
+      BIND_HDFS_FUNC(hdfsHSync);
+      BIND_HDFS_FUNC(hdfsOpenFile);
+      BIND_HDFS_FUNC(hdfsExists);
+      BIND_HDFS_FUNC(hdfsListDirectory);
+      BIND_HDFS_FUNC(hdfsFreeFileInfo);
+      BIND_HDFS_FUNC(hdfsDelete);
+      BIND_HDFS_FUNC(hdfsCreateDirectory);
+      BIND_HDFS_FUNC(hdfsGetPathInfo);
+      BIND_HDFS_FUNC(hdfsRename);
+
+#undef BIND_HDFS_FUNC
+    };
+
+    // libhdfs.so won't be in the standard locations. Use the path as specified
+    // in the libhdfs documentation.
+#if defined(_WIN32)
+    constexpr char kLibHdfsDso[] = "hdfs.dll";
+#elif defined(__GNUC__) && (defined(__APPLE_CPP__) || defined(__APPLE_CC__) || \
+                            defined(__MACOS_CLASSIC__))
+    constexpr char kLibHdfsDso[] = "libhdfs.dylib";
+#else
+    constexpr char kLibHdfsDso[] = "libhdfs.so";
+#endif
+    char* hdfs_home = getenv("HADOOP_HDFS_HOME");
+    if (hdfs_home != nullptr) {
+      auto JoinPath = [](std::string home, std::string lib) {
+        if (home.back() != '/') home.push_back('/');
+        return home + "lib/native/" + lib;
+      };
+      std::string path = JoinPath(hdfs_home, kLibHdfsDso);
+      TryLoadAndBind(path.c_str(), &handle_, status);
+      if (TF_GetCode(status) == TF_OK) {
+        return;
+      } else {
+        std::cerr << "HadoopFileSystem load error: " << TF_Message(status);
+      }
+    }
+
+    // Try to load the library dynamically in case it has been installed
+    // to a in non-standard location.
+    TryLoadAndBind(kLibHdfsDso, &handle_, status);
+  }
+
+  void* handle_;
+};
 
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
