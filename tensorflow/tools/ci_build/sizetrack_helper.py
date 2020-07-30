@@ -271,15 +271,16 @@ def get_all_tested_commits():
 def get_upload_path():
   """Generate URL for 'gsutil cp'."""
   if FLAGS.upload and FLAGS.artifact:
-    head_info = git_pretty("HEAD", PRETTY_HEAD_INFO, n=1)
-    _, current_cl, _, _, _, _, _ = head_info[0].split("\t")
     artifact_filename = os.path.basename(FLAGS.artifact.name)
+    ts = datetime.datetime.now(
+        datetime.timezone.utc).isoformat(timespec="seconds")
     # note: not os.path.join here, because gsutil is always linux-style
-    path = "{bucket}/{team}/{artifact_id}/{cl}.{artifact_filename}".format(
+    # Using a timestamp prevents duplicate entries
+    path = "{bucket}/{team}/{artifact_id}/{now}.{artifact_filename}".format(
         bucket=FLAGS.bucket,
         team=FLAGS.team,
         artifact_id=FLAGS.artifact_id,
-        cl=current_cl,
+        now=ts,
         artifact_filename=artifact_filename)
     return path
   else:
