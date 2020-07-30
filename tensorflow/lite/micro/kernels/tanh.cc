@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
@@ -39,6 +40,11 @@ struct OpData {
   int32_t input_multiplier;
   int input_left_shift;
 };
+
+void* TanhInit(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
+}
 
 TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
                                        OpData* data) {
@@ -63,45 +69,64 @@ TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
   }
   return kTfLiteOk;
 }
+
+TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+
+  OpData* data = static_cast<OpData*>(node->user_data);
+
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  data->input_zero_point = input->params.zero_point;
+  return CalculateArithmeticOpData(context, node, data);
+}
+
 }  // namespace
 
 TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  OpData data;
-  CalculateArithmeticOpData(context, node, &data);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const OpData& data = *(static_cast<const OpData*>(node->user_data));
+
   switch (input->type) {
     case kTfLiteFloat32: {
-      reference_ops::Tanh(GetTensorShape(input), GetTensorData<float>(input),
-                          GetTensorShape(output), GetTensorData<float>(output));
+      reference_ops::Tanh(tflite::micro::GetTensorShape(input),
+                          tflite::micro::GetTensorData<float>(input),
+                          tflite::micro::GetTensorShape(output),
+                          tflite::micro::GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteInt16: {
       TanhParams params;
       params.input_left_shift = data.input_left_shift;
-      reference_ops::Tanh(params, GetTensorShape(input),
-                          GetTensorData<int16_t>(input), GetTensorShape(output),
-                          GetTensorData<int16_t>(output));
+      reference_ops::Tanh(params, tflite::micro::GetTensorShape(input),
+                          tflite::micro::GetTensorData<int16_t>(input),
+                          tflite::micro::GetTensorShape(output),
+                          tflite::micro::GetTensorData<int16_t>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
       TanhParams params;
-      params.input_zero_point = input->params.zero_point;
+      params.input_zero_point = data.input_zero_point;
       params.input_range_radius = data.input_range_radius;
       params.input_multiplier = data.input_multiplier;
       params.input_left_shift = data.input_left_shift;
-      reference_ops::Tanh(params, GetTensorShape(input),
-                          GetTensorData<uint8_t>(input), GetTensorShape(output),
-                          GetTensorData<uint8_t>(output));
+      reference_ops::Tanh(params, tflite::micro::GetTensorShape(input),
+                          tflite::micro::GetTensorData<uint8_t>(input),
+                          tflite::micro::GetTensorShape(output),
+                          tflite::micro::GetTensorData<uint8_t>(output));
 
       return kTfLiteOk;
     } break;
     case kTfLiteInt8: {
       reference_integer_ops::Tanh(
-          input->params.zero_point, data.input_range_radius,
-          data.input_multiplier, data.input_left_shift,
-          NumElements(input->dims), GetTensorData<int8_t>(input),
-          GetTensorData<int8_t>(output));
+          data.input_zero_point, data.input_range_radius, data.input_multiplier,
+          data.input_left_shift, NumElements(input->dims),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorData<int8_t>(output));
       return kTfLiteOk;
     } break;
     default:
@@ -115,9 +140,9 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration Register_TANH() {
-  return {/*init=*/nullptr,
+  return {/*init=*/activations::TanhInit,
           /*free=*/nullptr,
-          /*prepare=*/nullptr,
+          /*prepare=*/activations::TanhPrepare,
           /*invoke=*/activations::TanhEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,

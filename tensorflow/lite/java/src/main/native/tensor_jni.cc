@@ -142,13 +142,20 @@ size_t WriteOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
       env->GetByteArrayRegion(byte_array, 0, num_elements, byte_dst);
       return to_copy;
     }
+    case kTfLiteBool: {
+      jbooleanArray bool_array = static_cast<jbooleanArray>(array);
+      jboolean* bool_dst = static_cast<jboolean*>(dst);
+      env->GetBooleanArrayRegion(bool_array, 0, num_elements, bool_dst);
+      return to_copy;
+    }
     default: {
-      ThrowException(env, kUnsupportedOperationException,
-                     "DataType error: TensorFlowLite currently supports float "
-                     "(32 bits), int (32 bits), byte (8 bits), and long "
-                     "(64 bits), support for other types (DataType %d in this "
-                     "case) will be added in the future",
-                     kTfLiteFloat32, type);
+      ThrowException(
+          env, kUnsupportedOperationException,
+          "DataType error: TensorFlowLite currently supports float "
+          "(32 bits), int (32 bits), byte (8 bits), bool (8 bits), and long "
+          "(64 bits), support for other types (DataType %d in this "
+          "case) will be added in the future",
+          kTfLiteFloat32, type);
       return 0;
     }
   }
@@ -189,6 +196,12 @@ size_t ReadOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
       jbyteArray byte_array = static_cast<jbyteArray>(dst);
       env->SetByteArrayRegion(byte_array, 0, len,
                               static_cast<const jbyte*>(src));
+      return size;
+    }
+    case kTfLiteBool: {
+      jbooleanArray bool_array = static_cast<jbooleanArray>(dst);
+      env->SetBooleanArrayRegion(bool_array, 0, len,
+                                 static_cast<const jboolean*>(src));
       return size;
     }
     default: {

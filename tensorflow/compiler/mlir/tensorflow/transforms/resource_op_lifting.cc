@@ -627,8 +627,6 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
                                  });
   // Recreate the while op.
   OpBuilder builder(while_op);
-  auto new_output_shapes = FilterRange<Attribute, ArrayRef<Attribute>>(
-      while_op.output_shapes().getValue(), resource_arg_uses);
   // Now use the filtered original operands, which will be replaced by
   // AddLoadsStoresOutsideControlFlowOp().
   auto new_while = builder.create<TF::WhileOp>(
@@ -636,8 +634,7 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
       FilterRange<Value, OperandRange>(while_op.getOperands(),
                                        resource_arg_uses),
       while_op.getAttrs());
-  // Prepare for AddLoadsStoresOutsideControlFlowOp() and update
-  // new_output_shapes.
+  // Prepare for AddLoadsStoresOutsideControlFlowOp().
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
   for (const auto& entry : remaining_resource_data_types) {
@@ -647,16 +644,11 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
                                : entry.getFirst();
     arg_data_type_and_updated_output_index[entry.getFirst()] = {
         entry.getSecond(), update_index};
-    if (!new_output_shapes.empty()) {
-      new_output_shapes[entry.getFirst()] =
-          tensorflow::ConvertTypeToTensorShapeAttr(entry.getSecond());
-    }
   }
   AddLoadsStoresOutsideControlFlowOp(new_while,
                                      arg_data_type_and_updated_output_index);
-  new_while.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   // Replace uses.
-  for (int64_t i = 0; i < old_to_new_indices.size(); ++i) {
+  for (int64_t i = 0, end = old_to_new_indices.size(); i < end; ++i) {
     if (old_to_new_indices[i] >= 0) {
       while_op.getResult(i).replaceAllUsesWith(
           new_while.getResult(old_to_new_indices[i]));
@@ -802,7 +794,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   AddLoadsStoresOutsideControlFlowOp(new_op,
                                      arg_data_type_and_updated_output_index);
   // Replace uses.
-  for (int64_t i = 0; i < old_to_new_output_indices.size(); ++i) {
+  for (int64_t i = 0, end = old_to_new_output_indices.size(); i < end; ++i) {
     if (old_to_new_output_indices[i] >= 0) {
       op.getResult(i).replaceAllUsesWith(
           new_op.getResult(old_to_new_output_indices[i]));
@@ -946,7 +938,8 @@ void UpdatePartitionedCallOpWithNewCallee(
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);
   // Replace uses.
-  for (int64_t i = 0; i < lifting_info.old_to_new_output_indices.size(); ++i) {
+  for (int64_t i = 0, end = lifting_info.old_to_new_output_indices.size();
+       i < end; ++i) {
     if (lifting_info.old_to_new_output_indices[i] >= 0) {
       call_op.getResult(i).replaceAllUsesWith(
           new_call.getResult(lifting_info.old_to_new_output_indices[i]));
@@ -990,8 +983,8 @@ LogicalResult HoistForFunctionalControlFlow(
   RemoveIdentity(block);
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
-      auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
-      auto cond = llvm::cast<FuncOp>(module.lookupSymbol(while_op.cond()));
+      auto body = while_op.body_func();
+      auto cond = while_op.cond_func();
       // Recursively handle the nested control flow.
       HoistForFunctionalControlFlow(&body.front(), module,
                                     lifted_partitioned_call_callees);
@@ -999,10 +992,8 @@ LogicalResult HoistForFunctionalControlFlow(
                                     lifted_partitioned_call_callees);
       if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      auto then_branch =
-          llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));
-      auto else_branch =
-          llvm::cast<FuncOp>(module.lookupSymbol(if_op.else_branch()));
+      auto then_branch = if_op.then_func();
+      auto else_branch = if_op.else_func();
       // Recursively handle the nested control flow.
       HoistForFunctionalControlFlow(&then_branch.front(), module,
                                     lifted_partitioned_call_callees);
@@ -1023,12 +1014,10 @@ LogicalResult HoistForFunctionalControlFlow(
       }
       if (failed(HandleCaseOrIfOp(case_op, branch_functions))) return failure();
     } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
-      if (!call_op.f().isa<FlatSymbolRefAttr>()) {
+      auto callee = call_op.func();
+      if (!callee)
         return call_op.emitOpError(
             "resource lifting does not support call with nested references.");
-      }
-      auto callee = llvm::cast<FuncOp>(
-          module.lookupSymbol(call_op.f().getRootReference()));
       if (failed(HandlePartitionedCallOp(call_op, callee, module,
                                          lifted_partitioned_call_callees))) {
         // Nested control flow handling is done in HandlePartitionedCallOp().
@@ -1036,8 +1025,7 @@ LogicalResult HoistForFunctionalControlFlow(
       }
     } else if (auto call_op =
                    llvm::dyn_cast<TF::StatefulPartitionedCallOp>(&op)) {
-      auto callee = llvm::cast<FuncOp>(module.lookupSymbol(call_op.f()));
-      if (failed(HandlePartitionedCallOp(call_op, callee, module,
+      if (failed(HandlePartitionedCallOp(call_op, call_op.func(), module,
                                          lifted_partitioned_call_callees))) {
         return failure();
       }

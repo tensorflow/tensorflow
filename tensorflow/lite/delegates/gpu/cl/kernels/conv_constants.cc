@@ -26,30 +26,71 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+// Adreno can provide up to ~3-4KB of constant memory, but in some cases even
+// 3KB can have very bad performance.
+int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
+  if (gpu_version < 600) {
+    return 256 * 10;  // 2.5KB
+  } else {
+    return 256 * 14;  // 3.5KB
+  }
+}
 
-std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
-                                            const int2& kernel_size,
-                                            int src_channels, int dst_channels,
-                                            bool stride_correction,
-                                            const CLDevice& device,
-                                            Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
-  if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+int GetOptimalMaxConstantSize(const DeviceInfo& info) {
+  if (info.vendor != Vendor::QUALCOMM) {
+    // In general we do not expect that this kernel will be used with non Adreno
+    // so as it tuned for __constant memory that have big profit on Adreno
+    return 1024;  // 1KB
+  } else {
+    return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
-  if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+}
+}  // namespace
+
+ConvConstants::ConvConstants(ConvConstants&& kernel)
+    : GPUOperation(std::move(kernel)),
+      kernel_size_(kernel.kernel_size_),
+      stride_(kernel.stride_),
+      padding_(kernel.padding_),
+      dilation_(kernel.dilation_),
+      src_channels_(kernel.src_channels_),
+      dst_channels_(kernel.dst_channels_) {}
+
+ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
+  if (this != &kernel) {
+    std::swap(kernel_size_, kernel.kernel_size_);
+    std::swap(stride_, kernel.stride_);
+    std::swap(padding_, kernel.padding_);
+    std::swap(dilation_, kernel.dilation_);
+    std::swap(src_channels_, kernel.src_channels_);
+    std::swap(dst_channels_, kernel.dst_channels_);
+    GPUOperation::operator=(std::move(kernel));
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  args->AddInt("stride_x");
-  args->AddInt("stride_y");
-  args->AddInt("padding_x");
-  args->AddInt("padding_y");
-  args->AddInt("dilation_x");
-  args->AddInt("dilation_y");
+  return *this;
+}
+
+std::string ConvConstants::GenerateConvolutionConstantCode(
+    const OperationDef& op_def, const int2& kernel_size, int src_channels,
+    int dst_channels, bool stride_correction, const CLDevice& device) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  if (op_def.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddSrcTensor("src_tensor", src_desc);
+
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
+
+  args_.AddInt("stride_x");
+  args_.AddInt("stride_y");
+  args_.AddInt("padding_x");
+  args_.AddInt("padding_y");
+  args_.AddInt("dilation_x");
+  args_.AddInt("dilation_y");
 
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -173,55 +214,12 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
   return c;
 }
 
-// Adreno can provide up to ~3-4KB of constant memory, but in some cases even
-// 3KB can have very bad performance.
-int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
-  if (gpu_version < 600) {
-    return 256 * 10;  // 2.5KB
-  } else {
-    return 256 * 14;  // 3.5KB
-  }
-}
-
-int GetOptimalMaxConstantSize(const DeviceInfo& info) {
-  if (info.vendor != Vendor::QUALCOMM) {
-    // In general we do not expect that this kernel will be used with non Adreno
-    // so as it tuned for __constant memory that have big profit on Adreno
-    return 1024;  // 1KB
-  } else {
-    return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
-  }
-}
-}  // namespace
-
-ConvConstants::ConvConstants(ConvConstants&& kernel)
-    : GPUOperation(std::move(kernel)),
-      kernel_size_(kernel.kernel_size_),
-      stride_(kernel.stride_),
-      padding_(kernel.padding_),
-      dilation_(kernel.dilation_),
-      src_channels_(kernel.src_channels_),
-      dst_channels_(kernel.dst_channels_) {}
-
-ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
-  if (this != &kernel) {
-    std::swap(kernel_size_, kernel.kernel_size_);
-    std::swap(stride_, kernel.stride_);
-    std::swap(padding_, kernel.padding_);
-    std::swap(dilation_, kernel.dilation_);
-    std::swap(src_channels_, kernel.src_channels_);
-    std::swap(dst_channels_, kernel.dst_channels_);
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
 absl::Status ConvConstants::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   std::string code = GenerateConvolutionConstantCode(
       definition_, kernel_size_, src_channels_, dst_channels_,
-      stride_correction, *creation_context.device, &args_);
+      stride_correction, *creation_context.device);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -244,8 +242,6 @@ absl::Status ConvConstants::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status ConvConstants::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
   RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/meta/type_traits.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -1076,13 +1077,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleConvolution(HloInstruction* conv) override {
-    auto lhs = conv->operand(0);
-    auto rhs = conv->operand(1);
+  Status HandleConvolutionWithLiterals(HloInstruction* conv,
+                                       const Literal& lhs_literal,
+                                       const Literal& rhs_literal) {
     const auto& window = conv->window();
     const Shape& result_shape = conv->shape();
-    const Shape& lhs_shape = lhs->shape();
-    const Shape& rhs_shape = rhs->shape();
+    const Shape& lhs_shape = lhs_literal.shape();
+    const Shape& rhs_shape = rhs_literal.shape();
 
     TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
     TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
@@ -1097,24 +1098,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
     CHECK_GE(num_spatial_dims, 0);
     CHECK_EQ(window.dimensions_size(), num_spatial_dims);
-
-    const auto lhs_rank = lhs_shape.rank();
-    const auto rhs_rank = rhs_shape.rank();
-
-    CHECK_EQ(num_spatial_dims + 2, lhs_rank);
-    CHECK_EQ(num_spatial_dims + 2, rhs_rank);
-
-    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
-                        ShapeInference::InferConvolveShape(
-                            lhs_shape, rhs_shape, conv->feature_group_count(),
-                            conv->batch_group_count(), window, dnums));
-    CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
-        << "return shape set to: " << ShapeUtil::HumanString(result_shape)
-        << " but is inferred to be: "
-        << ShapeUtil::HumanString(inferred_return_shape);
-
-    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
     std::vector<int64> window_dimension_sizes;
     for (auto i : dnums.kernel_spatial_dimensions()) {
@@ -1271,9 +1254,68 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  Status HandleConvolution(HloInstruction* conv) override {
+    auto lhs = conv->operand(0);
+    auto rhs = conv->operand(1);
+    const auto& window = conv->window();
+    const Shape& result_shape = conv->shape();
+    const Shape& lhs_shape = lhs->shape();
+    const Shape& rhs_shape = rhs->shape();
+
+    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
+    CHECK(lhs_shape.IsArray());
+    CHECK(rhs_shape.IsArray());
+
+    const auto& dnums = conv->convolution_dimension_numbers();
+    const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
+    CHECK_EQ(num_spatial_dims, dnums.input_spatial_dimensions_size());
+    CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
+    CHECK_GE(num_spatial_dims, 0);
+    CHECK_EQ(window.dimensions_size(), num_spatial_dims);
+
+    const auto lhs_rank = lhs_shape.rank();
+    const auto rhs_rank = rhs_shape.rank();
+
+    CHECK_EQ(num_spatial_dims + 2, lhs_rank);
+    CHECK_EQ(num_spatial_dims + 2, rhs_rank);
+
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferConvolveShape(
+                            lhs_shape, rhs_shape, conv->feature_group_count(),
+                            conv->batch_group_count(), window, dnums));
+    CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+        << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+        << " but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+
+    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
+    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+    const bool lhs_same = ShapeUtil::SameElementType(lhs_shape, result_shape);
+    const bool rhs_same = ShapeUtil::SameElementType(rhs_shape, result_shape);
+    if (rhs_same && lhs_same) {
+      return HandleConvolutionWithLiterals(conv, lhs_literal, rhs_literal);
+    }
+    if (rhs_same) {
+      return HandleConvolutionWithLiterals(
+          conv, lhs_literal.Convert(result_shape.element_type()).ValueOrDie(),
+          rhs_literal);
+    }
+    if (lhs_same) {
+      return HandleConvolutionWithLiterals(
+          conv, lhs_literal,
+          rhs_literal.Convert(result_shape.element_type()).ValueOrDie());
+    }
+    return HandleConvolutionWithLiterals(
+        conv, lhs_literal.Convert(result_shape.element_type()).ValueOrDie(),
+        rhs_literal.Convert(result_shape.element_type()).ValueOrDie());
+  }
+
   Status HandleDot(HloInstruction* dot) override {
     if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
-        parent_->use_fast_path_) {
+        parent_->use_fast_path_ &&
+        ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
+        ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) {
       return HandleDot<ReturnT>(dot);
     }
     return HandleDotSlowPath(dot);
@@ -1342,23 +1384,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleDotSlowPath(dot);
   }
 
-  Status HandleDotSlowPath(HloInstruction* dot) {
-    auto lhs = dot->operand(0);
-    auto rhs = dot->operand(1);
-    CHECK(dot->shape().IsArray());
-    CHECK(lhs->shape().IsArray());
-    CHECK(rhs->shape().IsArray());
-
+  Status HandleDotSlowPathWithLiterals(HloInstruction* dot,
+                                       const Literal& lhs_literal,
+                                       const Literal& rhs_literal) {
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const auto lhs_rank = lhs->shape().rank();
-    const auto rhs_rank = rhs->shape().rank();
+    const auto lhs_rank = lhs_literal.shape().rank();
+    const auto rhs_rank = rhs_literal.shape().rank();
 
-    CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
-    CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
-
-    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+    CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), rhs_literal.shape()));
+    CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), dot->shape()));
 
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
@@ -1406,7 +1441,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       const int64 rhs_dnum = dnums.rhs_contracting_dimensions(i);
       accumulate_index_locations.push_back(
           {&lhs_index[lhs_dnum], &rhs_index[rhs_dnum]});
-      const int64 dim_size = lhs->shape().dimensions(lhs_dnum);
+      const int64 dim_size = lhs_literal.shape().dimensions(lhs_dnum);
       accumulate_index_sizes.push_back(dim_size);
     }
     const int64 total_contraction_size = Product(accumulate_index_sizes);
@@ -1455,6 +1490,36 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     parent_->evaluated_[dot] = std::move(result);
     return Status::OK();
+  }
+
+  Status HandleDotSlowPath(HloInstruction* dot) {
+    auto lhs = dot->operand(0);
+    auto rhs = dot->operand(1);
+    CHECK(dot->shape().IsArray());
+    CHECK(lhs->shape().IsArray());
+    CHECK(rhs->shape().IsArray());
+    const bool lhs_same =
+        ShapeUtil::SameElementType(lhs->shape(), dot->shape());
+    const bool rhs_same =
+        ShapeUtil::SameElementType(rhs->shape(), dot->shape());
+    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
+    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+    if (lhs_same && rhs_same) {
+      return HandleDotSlowPathWithLiterals(dot, lhs_literal, rhs_literal);
+    }
+    if (lhs_same) {
+      return HandleDotSlowPathWithLiterals(
+          dot, lhs_literal,
+          rhs_literal.Convert(dot->shape().element_type()).ValueOrDie());
+    }
+    if (rhs_same) {
+      return HandleDotSlowPathWithLiterals(
+          dot, lhs_literal.Convert(dot->shape().element_type()).ValueOrDie(),
+          rhs_literal);
+    }
+    return HandleDotSlowPathWithLiterals(
+        dot, lhs_literal.Convert(dot->shape().element_type()).ValueOrDie(),
+        rhs_literal.Convert(dot->shape().element_type()).ValueOrDie());
   }
 
   Status HandlePad(HloInstruction* pad) override {

@@ -31,7 +31,7 @@ SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
     : error_reporter_(error_reporter),
       buffer_head_(buffer_head),
       buffer_tail_(buffer_tail),
-      head_(buffer_head),
+      head_watermark_(buffer_head),
       tail_(buffer_tail),
       temp_(buffer_head_) {}
 
@@ -59,30 +59,44 @@ SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
 
 SimpleMemoryAllocator::~SimpleMemoryAllocator() {}
 
-uint8_t* SimpleMemoryAllocator::AllocateFromHead(size_t size,
-                                                 size_t alignment) {
-  if (head_ != temp_) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter_,
-        "Called AllocateFromHead() after AllocateTemp() without resetting temp "
-        "allocations with ResetTempAllocations()");
+uint8_t* SimpleMemoryAllocator::AdjustHead(size_t size, size_t alignment) {
+  if (head_watermark_ != temp_) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Internal error: AdjustHead() needs to be called after"
+                         "ResetTempAllocations().");
     return nullptr;
   }
 
-  uint8_t* ret = AllocateTemp(size, alignment);
-  head_ = temp_;
-  return ret;
+  uint8_t* const aligned_result = AlignPointerUp(buffer_head_, alignment);
+  if (aligned_result + size < head_watermark_) {
+    return aligned_result;
+  }
+
+  const size_t available_memory = tail_ - aligned_result;
+  if (available_memory < size) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Failed to allocate memory. Requested: %u, available %u, missing: %u",
+        size, available_memory, size - available_memory);
+    return nullptr;
+  }
+  head_watermark_ = aligned_result + size;
+  temp_ = head_watermark_;
+
+  return aligned_result;
 }
 
 uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
                                                  size_t alignment) {
   uint8_t* const aligned_result = AlignPointerDown(tail_ - size, alignment);
-  if (aligned_result < head_) {
-    const size_t missing_memory = head_ - aligned_result;
+  if (aligned_result < head_watermark_) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+    const size_t missing_memory = head_watermark_ - aligned_result;
     TF_LITE_REPORT_ERROR(
         error_reporter_,
         "Failed to allocate memory. Requested: %u, available %u, missing: %u",
         size, size - missing_memory, missing_memory);
+#endif
     return nullptr;
   }
   tail_ = aligned_result;
@@ -103,14 +117,16 @@ uint8_t* SimpleMemoryAllocator::AllocateTemp(size_t size, size_t alignment) {
   return aligned_result;
 }
 
-void SimpleMemoryAllocator::ResetTempAllocations() { temp_ = head_; }
+void SimpleMemoryAllocator::ResetTempAllocations() { temp_ = head_watermark_; }
 
-uint8_t* SimpleMemoryAllocator::GetHead() const { return head_; }
+uint8_t* SimpleMemoryAllocator::GetHead() const { return head_watermark_; }
+
+uint8_t* SimpleMemoryAllocator::GetBufferHead() const { return buffer_head_; }
 
 uint8_t* SimpleMemoryAllocator::GetTail() const { return tail_; }
 
 size_t SimpleMemoryAllocator::GetHeadUsedBytes() const {
-  return head_ - buffer_head_;
+  return head_watermark_ - buffer_head_;
 }
 
 size_t SimpleMemoryAllocator::GetTailUsedBytes() const {
@@ -118,7 +134,7 @@ size_t SimpleMemoryAllocator::GetTailUsedBytes() const {
 }
 
 size_t SimpleMemoryAllocator::GetAvailableMemory() const {
-  return tail_ - head_;
+  return tail_ - buffer_head_;
 }
 
 size_t SimpleMemoryAllocator::GetUsedBytes() const {

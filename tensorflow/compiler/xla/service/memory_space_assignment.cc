@@ -237,7 +237,7 @@ int64 InstructionCountPrefetchIntervalPicker::PreferredEvictionEndTime(
 
 int64 InstructionCountPrefetchIntervalPicker::LatestPrefetchStartTime(
     const HloUse& use, int64 start_time, int64 end_time) const {
-  return end_time_ - min_overlap_count_;
+  return end_time - min_overlap_count_;
 }
 
 void InstructionCountPrefetchIntervalPicker::Begin(const HloUse& use,
@@ -291,12 +291,6 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     // To avoid double counting, don't include the elapsed time of while and
     // conditional HLOs.
     const HloInstruction* instruction = instruction_and_logical_time.first;
-    if (instruction->opcode() == HloOpcode::kWhile ||
-        instruction->opcode() == HloOpcode::kConditional) {
-      continue;
-    }
-    float elapsed_time = cost_analysis_.GetInstructionElapsed(
-        *instruction_and_logical_time.first);
     int64 logical_time = instruction_and_logical_time.second;
     if (logical_time >= instructions_elapsed_time.size()) {
       instructions_elapsed_time.resize(logical_time + 1, 0.0);
@@ -305,6 +299,12 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     int nest_level = cost_analysis_.CalculateWhileLoopNestLevel(
         instruction_and_logical_time.first);
     while_nest_level_[logical_time] = nest_level;
+    if (instruction->opcode() == HloOpcode::kWhile ||
+        instruction->opcode() == HloOpcode::kConditional) {
+      continue;
+    }
+    float elapsed_time = cost_analysis_.GetInstructionElapsed(
+        *instruction_and_logical_time.first);
     instructions_elapsed_time[logical_time] =
         elapsed_time *
         tensorflow::MathUtil::IPow<float>(kWhileExecutionCount, nest_level);
@@ -572,6 +572,24 @@ absl::optional<float>
 CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
   return cost_analysis_.GetMemoryBoundedness(interval);
+}
+
+bool MemorySpaceAssignment::Allocation::operator==(
+    const MemorySpaceAssignment::Allocation& other) const {
+  return defining_position() == other.defining_position() &&
+         uses() == other.uses() && memory_space() == other.memory_space() &&
+         chunk() == other.chunk() && start_time() == other.start_time() &&
+         end_time() == other.end_time() &&
+         is_copy_allocation() == other.is_copy_allocation();
+}
+
+bool MemorySpaceAssignment::CopyAllocation::operator==(
+    const MemorySpaceAssignment::CopyAllocation& other) const {
+  return static_cast<const Allocation&>(*this) ==
+             static_cast<const Allocation&>(other) &&
+         copy_done_schedule_before() == other.copy_done_schedule_before() &&
+         copy_start_schedule_after() == other.copy_start_schedule_after() &&
+         copy_start() == other.copy_start() && copy_done() == other.copy_done();
 }
 
 std::string MemorySpaceAssignment::AllocationValue::ToString() const {
@@ -2003,6 +2021,9 @@ int64 AlternateMemoryBestFitHeap::FindPrefetchEndTime(
     int64 latest_prefetch_time =
         options_.prefetch_interval_picker->LatestPrefetchStartTime(
             request.use->hlo_use, earliest_prefetch_time, prefetch_end_time);
+    VLOG(4) << "Latest prefetch start time = " << latest_prefetch_time
+            << ", earliest prefetch start time = " << earliest_prefetch_time
+            << ", prefetch end time = " << prefetch_end_time;
     // Return if we couldn't find a suitable prefetch start time.
     if (latest_prefetch_time < earliest_prefetch_time) {
       break;
@@ -2542,6 +2563,8 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
       HloOpcode::kCopyStart, producing_instruction));
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+  VLOG(4) << "Created " << copy_start_->name()
+          << " for position: " << defining_position().ToString();
   // Update the allocation position with the copy done instruction so that if
   // there are further copies from it, it can find the correct position.
   defining_position_ = HloPosition{copy_done_, {}};
@@ -3001,18 +3024,23 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
         }
       }
 
-      if (last_use_instruction &&
-          last_use_instruction->opcode() == HloOpcode::kConditional) {
+      std::function<Status(const HloInstruction*, int64, int64,
+                           absl::string_view)>
+          split_conditional_buffer;
+      split_conditional_buffer = [&](const HloInstruction* use_instruction,
+                                     int64 start_time, int64 end_time,
+                                     absl::string_view indent_string) {
         // Special case when verifying conditional: we internally split the use
         // of alternate memory in conditionals, so fish them out from the
         // conditionals.
-        VLOG(3) << " Splitting conditional buffer: " << buffer.ToString()
-                << " value: " << value->ToShortString() << ": ("
-                << time_bound.start << ", " << time_bound.end
-                << ") off: " << chunk.offset << ", size: " << chunk.size;
-        int64 earliest_computation_start_time = time_bound.end;
+        VLOG(3) << indent_string
+                << "Splitting conditional buffer: " << buffer.ToString()
+                << " value: " << value->ToShortString() << ": (" << start_time
+                << ", " << end_time << ") off: " << chunk.offset
+                << ", size: " << chunk.size;
+        int64 earliest_computation_start_time = end_time;
         for (const HloComputation* called_computation :
-             last_use_instruction->called_computations()) {
+             use_instruction->called_computations()) {
           earliest_computation_start_time =
               std::min(earliest_computation_start_time,
                        hlo_live_range->computation_span_times()
@@ -3020,6 +3048,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                            .start);
           int64 parameter_time = -1;
           int64 last_use_time = -1;
+          const HloInstruction* last_use_instruction = nullptr;
           for (const HloPosition& position : value->positions()) {
             if (position.instruction->opcode() == HloOpcode::kParameter &&
                 position.instruction->parent() == called_computation) {
@@ -3029,27 +3058,45 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
             }
           }
           for (const HloUse& use : value->uses()) {
-            if (use.instruction->parent() == called_computation) {
-              last_use_time = std::max(
-                  last_use_time,
-                  hlo_live_range->instruction_schedule().at(use.instruction));
+            int64 use_time =
+                hlo_live_range->instruction_schedule().at(use.instruction);
+            if (use.instruction->parent() == called_computation &&
+                use_time > last_use_time) {
+              last_use_time = use_time;
+              last_use_instruction = use.instruction;
             }
           }
           if (last_use_time != -1) {
             CHECK_NE(parameter_time, -1);
-            VLOG(3) << "  computation: " << called_computation->name() << ": ("
+            VLOG(3) << indent_string
+                    << " computation: " << called_computation->name() << ": ("
                     << parameter_time << ", " << last_use_time << ")";
-            TF_RETURN_IF_ERROR(add_allocation_and_verify(
-                parameter_time, last_use_time, chunk, value));
+            CHECK(last_use_instruction);
+            if (last_use_instruction->opcode() == HloOpcode::kConditional) {
+              // The last use is another (nested) conditional. Call this
+              // function recursively.
+              TF_RETURN_IF_ERROR(split_conditional_buffer(
+                  last_use_instruction, parameter_time, last_use_time,
+                  absl::StrCat(indent_string, "  ")));
+            } else {
+              TF_RETURN_IF_ERROR(add_allocation_and_verify(
+                  parameter_time, last_use_time, chunk, value));
+            }
           }
         }
-        VLOG(3) << "  from beginning until first computation: ("
-                << time_bound.start << ", "
-                << (earliest_computation_start_time - 1) << ")";
+        VLOG(3) << indent_string << " from beginning until first computation: ("
+                << start_time << ", " << (earliest_computation_start_time - 1)
+                << ")";
         TF_RETURN_IF_ERROR(add_allocation_and_verify(
-            time_bound.start, earliest_computation_start_time - 1, chunk,
-            value));
-      } else {
+            start_time, earliest_computation_start_time - 1, chunk, value));
+        return Status::OK();
+      };
+
+      if (last_use_instruction &&
+          last_use_instruction->opcode() == HloOpcode::kConditional) {
+        TF_RETURN_IF_ERROR(split_conditional_buffer(
+            last_use_instruction, time_bound.start, time_bound.end, " "));
+      } else if (!value->uses().empty()) {
         VLOG(3) << " buffer: " << buffer.ToString()
                 << " value: " << value->ToShortString() << ": ("
                 << time_bound.start << ", " << time_bound.end

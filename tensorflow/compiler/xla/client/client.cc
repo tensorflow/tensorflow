@@ -312,7 +312,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   // device 0.
   //
   // TODO(b/118493728): Allow Execute to return one result per computation.
-  for (int64 i = 0; i < results.size(); i++) {
+  for (int64 i = 0, end = results.size(); i < end; i++) {
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(*results[i]));
     if (!ShapeUtil::IsEmptyTuple(shape)) {
       VLOG(3) << "Fetching result from device " << i << ": "
@@ -350,7 +350,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   }
 
   std::vector<std::unique_ptr<GlobalData>> outputs;
-  for (size_t i = 0; i < response.responses_size(); ++i) {
+  for (size_t i = 0, end = response.responses_size(); i < end; ++i) {
     outputs.push_back(
         absl::make_unique<GlobalData>(stub_, response.responses(i).output()));
     if (i < computations.size() &&

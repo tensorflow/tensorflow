@@ -50,3 +50,15 @@ tf_cc_binary(
         "@llvm-project//llvm:Support",
     ],
 )
+
+tf_cc_binary(
+    name = "kernel-gen-opt",
+    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_dialect_registration",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:MlirOptMain",
+    ],
+)

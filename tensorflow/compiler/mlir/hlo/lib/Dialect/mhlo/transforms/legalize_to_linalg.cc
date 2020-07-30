@@ -15,26 +15,25 @@ limitations under the License.
 
 // This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
-#include "absl/memory/memory.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 namespace {
@@ -826,8 +825,8 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //     indexing_maps = [#map0, #map0, #map0],
 //     iterator_types = ["parallel", "parallel"],
 // } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-struct LhloLegalizeToLinalg
-    : public PassWrapper<LhloLegalizeToLinalg, FunctionPass> {
+struct LhloLegalizeToLinalgPass
+    : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -842,8 +841,8 @@ struct LhloLegalizeToLinalg
   }
 };
 
-struct HloLegalizeToLinalg
-    : public PassWrapper<HloLegalizeToLinalg, FunctionPass> {
+struct HloLegalizeToLinalgPass
+    : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -861,11 +860,8 @@ struct HloLegalizeToLinalg
 
 namespace lmhlo {
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass() {
-  return absl::make_unique<LhloLegalizeToLinalg>();
+  return std::make_unique<LhloLegalizeToLinalgPass>();
 }
-
-static PassRegistration<LhloLegalizeToLinalg> legalize_lhlo_pass(
-    "lhlo-legalize-to-linalg", "Legalize from LHLO dialect to Linalg dialect");
 }  // namespace lmhlo
 
 namespace mhlo {
@@ -906,10 +902,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {
-  return absl::make_unique<HloLegalizeToLinalg>();
+  return std::make_unique<HloLegalizeToLinalgPass>();
 }
-
-static PassRegistration<HloLegalizeToLinalg> legalize_hlo_pass(
-    "hlo-legalize-to-linalg", "Legalize from HLO dialect to Linalg dialect");
 }  // namespace mhlo
 }  // namespace mlir

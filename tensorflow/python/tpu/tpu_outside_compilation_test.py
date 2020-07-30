@@ -28,11 +28,15 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
@@ -59,6 +63,11 @@ def get_tpu_strategy():
   remote.connect_to_cluster(resolver)
   tpu_strategy_util.initialize_tpu_system(resolver)
   return tpu_lib.TPUStrategyV2(resolver)
+
+
+def computation_with_string_ops(x):
+  output = string_ops.string_format("1{}", x)
+  return string_ops.string_to_number(output)
 
 
 class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
@@ -416,7 +425,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
         strategy.experimental_local_results(train_step()),
         constant_op.constant(8748., shape=(strategy.num_replicas_in_sync)))
 
-  def testiGradientOfGradientAcrossOutsideCompilation(self):
+  def testGradientOfGradientAcrossOutsideCompilation(self):
     """Tests compiled gradients of gradients can contain host computations."""
     strategy = get_tpu_strategy()
 
@@ -441,6 +450,78 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         strategy.experimental_local_results(train_step()),
         constant_op.constant(2916., shape=(strategy.num_replicas_in_sync)))
+
+
+class OutsideCompilationOnUnsupportedOpTest(test.TestCase):
+
+  def setUp(self):
+    super(OutsideCompilationOnUnsupportedOpTest, self).setUp()
+    config.set_soft_device_placement(True)
+
+  def testStringOpWithManualOutsideCompilation(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def train_step(x):
+
+      def computation(x):
+        return tpu.outside_compilation(computation_with_string_ops, x)
+
+      return strategy.run(computation, args=(x,))
+
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step(0)),
+        constant_op.constant(10, shape=(strategy.num_replicas_in_sync)))
+
+  def testStringOpWithAutoOutsideCompilation(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def train_step(x):
+
+      def computation(x):
+        return computation_with_string_ops(x)
+
+      return strategy.run(computation, args=(x,))
+
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step(0)),
+        constant_op.constant(10, shape=(strategy.num_replicas_in_sync)))
+
+  def testAutoOutsideCompilationWithFunctionalNodes(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def train_step(a, b):
+
+      def fn(a, b):
+        fn1 = lambda: computation_with_string_ops(a * 100)
+        fn2 = lambda: computation_with_string_ops(a)
+        pred = math_ops.greater_equal(a, b)
+        result = array_ops.identity(
+            control_flow_ops.cond(pred, fn1, fn2),
+            name="uncompilable_control_flow")
+        return result
+
+      return strategy.run(fn, args=(a, b))
+
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step(0.0, -1.0)),
+        constant_op.constant(10, shape=(strategy.num_replicas_in_sync)))
+
+  def testRandomOpsWithAutoOutsideCompilation(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def train_step():
+
+      def computation():
+        return random_ops.random_normal(shape=[1, 2, 3])
+
+      return strategy.run(computation, args=())
+
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step())[0].shape, [1, 2, 3])
 
 
 if __name__ == "__main__":

@@ -109,9 +109,6 @@ def LegalizeArgMax : Pat<(TF_ArgMaxOp $input, $dim),
 def LegalizeArgMin : Pat<(TF_ArgMinOp $input, $dim),
                          (TFL_ArgMinOp $input, $dim)>;
 
-def LegalizeBroadcastTo : Pat<(TF_BroadcastToOp $input, $dim),
-                              (TFL_BroadcastToOp $input, $dim)>;
-
 def LegalizeCeil : Pat<(TF_CeilOp $arg), (TFL_CeilOp $arg)>;
 
 def LegalizeCos : Pat<(TF_CosOp $arg), (TFL_CosOp $arg)>;
@@ -256,7 +253,7 @@ def LegalizeAddv2 : Pat<(TF_AddV2Op $lhs, $rhs),
                         (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
 def LegalizeBiasAdd : Pat<
   (TF_BiasAddOp F32Tensor:$l, F32Tensor:$r, IsDataFormatNHWC:$data_format),
-  (TF_AddV2Op $l, $r)>;
+  (TFL_AddOp $l, $r, TFL_AF_None)>;
 def LegalizeSub : Pat<(TF_SubOp $lhs, $rhs),
                       (TFL_SubOp $lhs, $rhs, TFL_AF_None)>;
 def LegalizeMul : Pat<(TF_MulOp $lhs, $rhs),

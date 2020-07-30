@@ -4,6 +4,7 @@ load(
     "gen_zipped_test_file",
     "generated_test_models_all",
     "merged_test_models",
+    "tflite_custom_android_library",
     "tflite_custom_cc_library",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
@@ -58,12 +59,14 @@ exports_files([
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",
+        ":tflite_driver_delegate_providers",
         ":util",
         "@com_google_googletest//:gtest",
         "@com_googlesource_code_re2//:re2",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:test_delegate_providers_lib",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",
@@ -228,13 +231,30 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
-        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/lite/kernels:reference_ops",
+        "//tensorflow/lite/kernels:test_delegate_providers_lib",
+        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:ios": [],
         "//conditions:default": ["//tensorflow/lite/delegates/flex:delegate"],
     }),
+)
+
+# A convenient library of tflite delegate execution providers for tests based
+# on the `tflite_driver` library.
+cc_library(
+    name = "tflite_driver_delegate_providers",
+    deps = [
+        "//tensorflow/lite/tools/delegates:coreml_delegate_provider",
+        "//tensorflow/lite/tools/delegates:default_execution_provider",
+        "//tensorflow/lite/tools/delegates:external_delegate_provider",
+        "//tensorflow/lite/tools/delegates:gpu_delegate_provider",
+        "//tensorflow/lite/tools/delegates:hexagon_delegate_provider",
+        "//tensorflow/lite/tools/delegates:nnapi_delegate_provider",
+        "//tensorflow/lite/tools/delegates:xnnpack_delegate_provider",
+    ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -533,7 +553,10 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/lstm.bin",
     ],
-    tags = ["no_mac"],  # b/161990368
+    tags = [
+        "no_mac",  # b/161990368
+        "tflite_not_portable",
+    ],
     deps = [
         ":test_tflite_lib",
         "//tensorflow/core:tflite_portable_logging",
@@ -560,6 +583,12 @@ pybind_extension(
 )
 
 tflite_portable_test_suite()
+
+tflite_custom_android_library(
+    name = "customtized_tflite_for_add_ops",
+    models = ["//tensorflow/lite:testdata/add.bin"],
+    visibility = ["//visibility:public"],
+)
 
 edgetpu_ops = [
     "add",

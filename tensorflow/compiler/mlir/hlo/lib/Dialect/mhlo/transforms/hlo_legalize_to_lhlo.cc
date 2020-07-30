@@ -15,26 +15,25 @@ limitations under the License.
 
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
-#include "absl/memory/memory.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/BufferPlacement.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 namespace mhlo {
@@ -511,11 +510,8 @@ void populateHLOToLHLOConversionPattern(
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
     bool results_escape_function) {
-  return absl::make_unique<HloLegalizeToLhlo>(results_escape_function);
+  return std::make_unique<HloLegalizeToLhlo>(results_escape_function);
 }
-
-static PassRegistration<HloLegalizeToLhlo> legalize_pass(
-    "hlo-legalize-to-lhlo", "Legalize from HLO dialect to LHLO dialect");
 
 }  // namespace mhlo
 }  // namespace mlir

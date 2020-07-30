@@ -43,6 +43,9 @@ class MaxUnpooling : public GPUOperation {
   MaxUnpooling& operator=(const MaxUnpooling&) = delete;
 
  private:
+  std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
+                                        const CLDevice& device);
+
   int4 stride_;
   int4 padding_;
   int4 kernel_size_;

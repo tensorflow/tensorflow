@@ -626,12 +626,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     auto input2_offset = -input2->params.zero_point;
     const int kLeftShift = 8;
 
-    int32 input1_multiplier;
+    int32_t input1_multiplier;
     int input1_shift;
     QuantizeMultiplierSmallerThanOneExp(
         static_cast<double>(input1->params.scale), &input1_multiplier,
         &input1_shift);
-    int32 input2_multiplier;
+    int32_t input2_multiplier;
     int input2_shift;
     QuantizeMultiplierSmallerThanOneExp(
         static_cast<double>(input2->params.scale), &input2_multiplier,

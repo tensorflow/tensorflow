@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 #include "tensorflow/core/profiler/profiler_analysis.pb.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
@@ -35,6 +36,7 @@ namespace profiler {
 namespace {
 
 constexpr uint64 kMaxEvents = 1000000;
+const absl::string_view kXPlanePb = "xplane.pb";
 
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
                                       bool timestamp) {
@@ -72,6 +74,19 @@ inline bool ShouldRetryTracing(Status status) {
           status.error_message() == "Stream removed");
 }
 
+// If the ProfileResponse has single 'xplane.pb' tool, convert the xplane to
+// other tools and add in ProfileResponse. Otherwise, the ProfileResponse is
+// already converted, simply return.
+Status ConvertXSpaceToToolsInProfileResponse(const ProfileRequest& request,
+                                             ProfileResponse* response) {
+  if (response->tool_data_size() != 1) return Status::OK();
+  if (response->tool_data(0).name() != kXPlanePb) return Status::OK();
+  XSpace xspace;
+  xspace.ParseFromString(response->tool_data(0).data());
+  TF_RETURN_IF_ERROR(ConvertXSpaceToProfileResponse(xspace, request, response));
+  return Status::OK();
+}
+
 Status Profile(const std::string& service_addr, const std::string& logdir,
                int duration_ms, const std::string& session_id,
                const ProfileOptions& opts) {
@@ -82,6 +97,8 @@ Status Profile(const std::string& service_addr, const std::string& logdir,
   TF_RETURN_IF_ERROR(ProfileGrpc(service_addr, request, &response));
 
   if (!response.empty_trace()) {
+    TF_RETURN_IF_ERROR(
+        ConvertXSpaceToToolsInProfileResponse(request, &response));
     TF_RETURN_IF_ERROR(SaveTensorboardProfile(
         logdir, session_id, request.host_name(), response, &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.

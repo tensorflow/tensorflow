@@ -23,15 +23,19 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetReshapeCode(const OperationDef& op_def, Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+Reshape::Reshape(Reshape&& operation) : GPUOperation(std::move(operation)) {}
+
+Reshape& Reshape::operator=(Reshape&& operation) {
+  if (this != &operation) {
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string Reshape::GetReshapeCode(const OperationDef& op_def) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -87,19 +91,9 @@ std::string GetReshapeCode(const OperationDef& op_def, Arguments* args) {
   c += "}\n";
   return c;
 }
-}  // namespace
-
-Reshape::Reshape(Reshape&& operation) : GPUOperation(std::move(operation)) {}
-
-Reshape& Reshape::operator=(Reshape&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
 
 absl::Status Reshape::Compile(const CreationContext& creation_context) {
-  std::string code = GetReshapeCode(definition_, &args_);
+  std::string code = GetReshapeCode(definition_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -109,12 +103,6 @@ absl::Status Reshape::Compile(const CreationContext& creation_context) {
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
-}
-
-absl::Status Reshape::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  return absl::OkStatus();
 }
 
 int3 Reshape::GetGridSize() const {

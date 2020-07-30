@@ -132,6 +132,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
 
   TFTPU_SET_FN(executor_fn, TpuStatus_New);
   TFTPU_SET_FN(executor_fn, TpuStatus_Create);
+  TFTPU_SET_FN(executor_fn, TpuStatus_Set);
   TFTPU_SET_FN(executor_fn, TpuStatus_Free);
   TFTPU_SET_FN(executor_fn, TpuStatus_Message);
   TFTPU_SET_FN(executor_fn, TpuStatus_Code);
@@ -173,6 +174,9 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuCoreLocation_ChipCoordinates_Z);
   TFTPU_SET_FN(executor_fn, TpuCoreLocation_Index);
   TFTPU_SET_FN(executor_fn, TpuCoreLocation_Id);
+
+  TFTPU_SET_FN(executor_fn, TpuCompiler_New);
+  TFTPU_SET_FN(executor_fn, TpuCompiler_Free);
 
   TFTPU_SET_FN(executor_fn, TpuCompiler_RunHloPasses);
   TFTPU_SET_FN(executor_fn, TpuCompiler_RunBackend);

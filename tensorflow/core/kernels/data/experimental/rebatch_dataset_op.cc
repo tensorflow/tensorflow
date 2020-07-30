@@ -27,7 +27,8 @@ inline int64 CeilDiv(int64 dividend, int64 divisor) {
   return (dividend - 1 + divisor) / divisor;
 }
 
-constexpr const char* const kDatasetType = "Rebatch";
+constexpr const char* const kDatasetTypeV1 = "Rebatch";
+constexpr const char* const kDatasetTypeV2 = "RebatchV2";
 
 class RebatchDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -73,7 +74,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       return absl::make_unique<Iterator>(Iterator::Params{
-          this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
+          this, name_utils::IteratorPrefix(kDatasetTypeV1, prefix, params)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -87,7 +88,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       name_utils::DatasetDebugStringParams params;
       params.set_args(num_replicas_);
-      return name_utils::DatasetDebugString(kDatasetType, params);
+      return name_utils::DatasetDebugString(kDatasetTypeV1, params);
     }
 
     Status CheckExternalState() const override {
@@ -330,7 +331,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       return absl::make_unique<Iterator>(Iterator::Params{
-          this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
+          this, name_utils::IteratorPrefix(kDatasetTypeV2, prefix, params)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -342,7 +343,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override {
-      return name_utils::DatasetDebugString(kDatasetType);
+      return name_utils::DatasetDebugString(kDatasetTypeV2);
     }
 
     Status CheckExternalState() const override {

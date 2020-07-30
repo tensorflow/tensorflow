@@ -214,6 +214,7 @@ TypesGatherOpTest/Float32Int32,29
 TypesGatherOpTest/Int32Int32,29
 TypesGatherOpTest/Uint8Int32,29
 TypesGatherOpTest/Int8Int32,29
+-TypesGatherOpTest/.*Int16.*
 
 # hashtable_lookup_test
 # All test excepted the string one should be accelerated

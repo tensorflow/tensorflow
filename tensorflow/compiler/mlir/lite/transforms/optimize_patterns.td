@@ -341,8 +341,8 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
   // make sure $rhs is the tail shape of $lhs.
   def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
     (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
-      (ConstantOp:$rhs $a), TFL_AF_None),
-    (TFL_ReshapeOp (BinaryOp $input, $rhs, TFL_AF_None), $shape),
+      (ConstantOp:$rhs $a), $act_fn),
+    (TFL_ReshapeOp (BinaryOp $input, $rhs, $act_fn), $shape),
     // The broadcasting of "BinaryOp" only happens in the lower
     // dimensions, and the higher dimensions are same, so we know the
     // result and input of the "BinaryOp" in the source pattern have
@@ -404,11 +404,14 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
-// Convert squeeze to reshape if possible.
+// Returns True if the operand type is RankedTensorType.
+def HasRankedTensor : Constraint<
+    CPred<"$0.getType().isa<RankedTensorType>()">>;
+
 def ConvertSqueezeToReshape : Pat<
   (TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
   (TFL_ReshapeOp $input, (ConstantOp (GetShape $squeeze_op))),
-  [(AnyStaticShapeTensor $squeeze_op)]>;
+  [(HasRankedTensor $squeeze_op)]>;
 
 // Convert expand_dims to reshape if possible.
 def ConvertExpandDimsToReshape : Pat<

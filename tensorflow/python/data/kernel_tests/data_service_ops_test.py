@@ -87,6 +87,25 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(list(range(num_elements)), results)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherPreemption(self):
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
+    self._worker = server_lib.WorkerServer(
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = _make_distributed_dataset(
+        ds, "{}://{}".format(PROTOCOL, self._dispatcher._address))
+    iterator = iter(ds)
+    results = []
+    results.append(next(iterator).numpy())
+    self._dispatcher._stop()
+    # After the dispatcher dies, the worker should continue providing the rest
+    # of the dataset's elements.
+    for _ in range(num_elements - 1):
+      results.append(next(iterator).numpy())
+    self.assertEqual(results, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDistributeSparse(self):
     service = self.create_cluster(1)
     element = sparse_tensor.SparseTensor(
@@ -525,6 +544,28 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
         "parallel_epochs", service, dataset_id, element_spec)
     with self.assertRaisesRegex(errors.NotFoundError, "Dataset id"):
       self.evaluate(self.getNext(from_dataset_id_ds)())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCancellation(self):
+    self.skipTest("b/162521601")
+    sleep_microseconds = int(1e6) * 1000
+
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
+    self._worker = server_lib.WorkerServer(
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
+    # Create a dataset which produces the first element quickly, and the second
+    # element slowly. Fetching the first element triggers prefetching of the
+    # second element, which we should be able to cancel.
+    slow = dataset_ops.Dataset.range(1)
+    slow = slow.apply(testing.sleep(sleep_microseconds))
+    ds = dataset_ops.Dataset.range(1).concatenate(slow)
+    ds = _make_distributed_dataset(
+        ds, "{}://{}".format(PROTOCOL, self._dispatcher._address))
+    ds = ds.prefetch(1)
+    get_next = self.getNext(ds, requires_initialization=True)
+    self.assertEqual(0, self.evaluate(get_next()))
+    # Without properly implemented cancellation, we will hang here while trying
+    # to garbage collect the dataset iterator.
 
   @combinations.generate(test_base.eager_only_combinations())
   def testRegisterEquivalentDatasets(self):

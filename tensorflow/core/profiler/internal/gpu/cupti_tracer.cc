@@ -1564,8 +1564,18 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
     // Set up the map from correlation id to annotation string.
     const auto &annotation = AnnotationStack::Get();
     if (!annotation.empty()) {
-      collector_->annotation_map()->Add(device_id, cbdata->correlationId,
-                                        annotation);
+      if (cbid ==
+          CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice) {
+        // Kernels are launched on different devices by this API call, therefore
+        // we need to populate per device annotation map respectively.
+        for (int i = 0; i < num_gpus_; ++i) {
+          collector_->annotation_map()->Add(i, cbdata->correlationId,
+                                            annotation);
+        }
+      } else {
+        collector_->annotation_map()->Add(device_id, cbdata->correlationId,
+                                          annotation);
+      }
     }
 
     TF_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiExit(

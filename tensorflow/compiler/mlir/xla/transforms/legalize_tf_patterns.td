@@ -489,7 +489,7 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
             $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
-// PartitionedCall op patterns.
+// PartitionedCall and LegacyCall op patterns.
 //===----------------------------------------------------------------------===//
 
 def ArgTypesMatchCallee : Constraint<
@@ -501,6 +501,12 @@ foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
             (CallOp $f, $args),
           [(ArgTypesMatchCallee $op, $args, $f)]>;
 }
+
+// The extra attr on this op is _disable_call_shape_inference, which we ignore
+// in the bridge.
+def : Pat<(TF_LegacyCallOp:$op $args, FlatSymbolRefAttr:$f, $attr),
+          (CallOp $f, $args),
+        [(ArgTypesMatchCallee $op, $args, $f)]>;
 
 //===----------------------------------------------------------------------===//
 // Reverse op patterns.
@@ -518,6 +524,7 @@ def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (TF_ConstOp $axis)),
 
 foreach Mapping = [
                    [TF_AbsOp, HLO_AbsOp],
+                   [TF_AcosOp, HLOClient_AcosOp],
                    [TF_CeilOp, HLO_CeilOp],
                    [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_CosOp, HLO_CosOp],
@@ -539,6 +546,19 @@ foreach Mapping = [
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
+
+// Expand acos to MHLO dialect as follows:
+//   acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
+//           = pi                                if x == -1
+def : Pat<(HLOClient_AcosOp $input), (HLO_SelectOp
+  (HLO_CompareOp $input, (HLO_ConstOp (ConstantSplat<"0"> $input)),
+    HLO_COMPARISON_DIRECTION_NE),
+  (HLO_MulOp (HLO_ConstOp (ConstantSplat<"2"> $input)),
+    (HLO_Atan2Op (HLO_SqrtOp (HLO_SubOp
+                               (HLO_ConstOp (ConstantSplat<"1"> $input)),
+                               (HLO_MulOp $input, $input))),
+      (HLO_AddOp (HLO_ConstOp (ConstantSplat<"1"> $input)), $input))),
+  (HLO_ConstOp (ConstantSplat<"M_PI"> $input)))>;
 
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.

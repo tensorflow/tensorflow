@@ -92,7 +92,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  // The circular buffer custom operator currently only supports int8.
+  // The circular buffer custom operator currently only supports int8_t.
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a

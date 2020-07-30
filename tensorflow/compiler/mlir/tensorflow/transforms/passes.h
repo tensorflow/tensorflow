@@ -26,7 +26,7 @@ namespace mlir {
 
 // Creates a pass that breaks up an island with multiple ops into multiple
 // islands, each with a single op.
-std::unique_ptr<OperationPass<FuncOp>> CreateBreakUpIslandsPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass();
 
 // Creates a pass that converts mlir functions consisting of mlir ops into a
 // tf_executor dialect as a single island.
@@ -161,6 +161,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 
 // Creates function pass to select device index/fold tf.DeviceIndex.
 std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
+
+// Creates function pass to replace InitializeTableFromTextFileV2Ops with
+// LookupTableImportV2Op ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 }  // namespace TF
 
 namespace tf_executor {
@@ -238,10 +242,20 @@ std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass();
 // `tf_device.parallel_execute` island.
 std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass();
 
+// Create a pass to parallelize TPU embedding params assigned to different
+// shards using the parallel_execte op.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateParallelizeEmbeddingParamsOpsPass();
+
 // Creates a pass that annotates whether a LaunchFuncOp's parameters have the
 // same data across replicas.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateAnnotateParameterReplicationPass();
+
+// Creates a pass that marks unsupported ops in device cluster for outside
+// compilation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMarkOpsForOutsideCompilationPass();
 
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`
@@ -256,7 +270,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUClusterFormationPass();
 
 // Creates a pass that allows TPU program inputs to have layouts determined at
 // run time.
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUDynamicLayoutPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass();
 
 // Creates a pass that remaps and assigns padding map from a
 // `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
@@ -297,11 +311,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass();
 // correct ops are invoked during training and evaluation.
 std::unique_ptr<OperationPass<FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
-
-// Creates a pass that marks unsupported ops in device cluster for outside
-// compilation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateMarkOpsForOutsideCompilationPass();
 
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.

@@ -62,7 +62,8 @@ Status TpuNodeContext::CloseTpuHost() {
 /* static */
 Status TpuNodeContext::Initialize(int device_ordinal) {
   StatusHelper status;
-  TpuNodeContext_Initialize(device_ordinal, status.c_status);
+  tpu::NodeContextApiFn()->TpuNodeContext_InitializeFn(device_ordinal,
+                                                       status.c_status);
   return status.status();
 }
 

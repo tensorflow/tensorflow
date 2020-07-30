@@ -40,12 +40,12 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
@@ -234,8 +234,12 @@ void SingleOpModel::BuildInterpreter(
 
 // static
 bool SingleOpModel::GetForceUseNnapi() {
-  return tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
-      "use_nnapi");
+  const auto& delegate_params =
+      tflite::KernelTestDelegateProviders::Get()->ConstParams();
+  // It's possible this library isn't linked with the nnapi delegate provider
+  // lib.
+  return delegate_params.HasParam("use_nnapi") &&
+         delegate_params.Get<bool>("use_nnapi");
 }
 
 int32_t SingleOpModel::GetTensorSize(int index) const {
@@ -373,42 +377,5 @@ void MultiOpModel::AddCustomOp(
       builder_.CreateVector<int32_t>(outputs), BuiltinOptions_NONE, 0,
       builder_.CreateVector<uint8_t>(custom_option),
       CustomOptionsFormat_FLEXBUFFERS));
-}
-
-/*static*/ KernelTestDelegateProviders* KernelTestDelegateProviders::Get() {
-  static KernelTestDelegateProviders* const providers =
-      new KernelTestDelegateProviders();
-  return providers;
-}
-
-KernelTestDelegateProviders::KernelTestDelegateProviders() {
-  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
-    params_.Merge(one->DefaultParams());
-  }
-}
-
-bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
-                                                      const char** argv) {
-  std::vector<tflite::Flag> flags;
-  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
-    auto one_flags = one->CreateFlags(&params_);
-    flags.insert(flags.end(), one_flags.begin(), one_flags.end());
-  }
-  return tflite::Flags::Parse(argc, argv, flags);
-}
-
-std::vector<tools::TfLiteDelegatePtr>
-KernelTestDelegateProviders::CreateAllDelegates(
-    const tools::ToolParams& params) const {
-  std::vector<tools::TfLiteDelegatePtr> delegates;
-  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
-    auto ptr = one->CreateTfLiteDelegate(params);
-    // It's possible that a delegate of certain type won't be created as
-    // user-specified benchmark params tells not to.
-    if (ptr == nullptr) continue;
-    delegates.emplace_back(std::move(ptr));
-    TFLITE_LOG(INFO) << one->GetName() << " delegate is created.";
-  }
-  return delegates;
 }
 }  // namespace tflite

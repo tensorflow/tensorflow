@@ -106,7 +106,7 @@ int8_t F2QS(float value, float min, float max) {
 }
 
 int32_t F2Q32(float value, float scale) {
-  double quantized = value / scale;
+  double quantized = static_cast<double>(value / scale);
   if (quantized > std::numeric_limits<int32_t>::max()) {
     quantized = std::numeric_limits<int32_t>::max();
   } else if (quantized < std::numeric_limits<int32_t>::min()) {
@@ -248,8 +248,8 @@ TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
   result.type = kTfLiteInt32;
   result.data.i32 = const_cast<int32_t*>(data);
   result.dims = dims;
-  // Quantized int32 tensors always have a zero point of 0, since the range of
-  // int32 values is large, and because zero point costs extra cycles during
+  // Quantized int32_t tensors always have a zero point of 0, since the range of
+  // int32_t values is large, and because zero point costs extra cycles during
   // processing.
   result.params = {scale, 0};
   result.allocation_type = kTfLiteMemNone;

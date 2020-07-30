@@ -27,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -127,10 +127,8 @@ class BaseDenseAttention(Layer):
     def dropped_weights():
       return nn.dropout(weights, rate=self.dropout)
 
-    weights = tf_utils.smart_cond(
-        training,
-        dropped_weights,
-        lambda: array_ops.identity(weights))
+    weights = control_flow_util.smart_cond(training, dropped_weights,
+                                           lambda: array_ops.identity(weights))
     return math_ops.matmul(weights, value)
 
   # TODO(b/125916026): Consider exposing a __call__ method with named args.

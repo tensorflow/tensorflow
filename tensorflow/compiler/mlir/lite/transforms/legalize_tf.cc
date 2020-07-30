@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -138,6 +137,7 @@ DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(Reciprocal);
 DECL_CONVERT_OP(RandomUniform);
+DECL_CONVERT_OP(BroadcastTo);
 
 #undef DECL_CONVERT_OP
 
@@ -158,7 +158,7 @@ LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
       random_uniform_op.seed().getSExtValue(),
       random_uniform_op.seed2().getSExtValue());
   Distribution dist;
-  int num_elements = 0;
+  size_t num_elements = 0;
   if (auto output_type =
           random_uniform_op.output().getType().dyn_cast_or_null<ShapedType>()) {
     if (auto ranked_output = output_type.dyn_cast_or_null<RankedTensorType>()) {
@@ -483,6 +483,89 @@ LogicalResult ConvertTFAssertOp::matchAndRewrite(
   return success();
 }
 
+StatusOr<ConstantOp> CreateConstOpWithSingleValue(PatternRewriter* rewriter,
+                                                  Location loc,
+                                                  ShapedType shaped_type,
+                                                  int value) {
+  Type element_type = shaped_type.getElementType();
+  ShapedType scalar_type = RankedTensorType::get({}, element_type);
+  Attribute attr;
+  switch (element_type.getKind()) {
+    case mlir::StandardTypes::F16: {
+      auto floatType = mlir::FloatType::getF16(element_type.getContext());
+      auto floatAttr =
+          mlir::FloatAttr::get(floatType, static_cast<float>(value));
+      std::vector<Attribute> floatValues({floatAttr});
+      attr = DenseElementsAttr::get(scalar_type, floatValues);
+      break;
+    }
+    case mlir::StandardTypes::BF16: {
+      auto floatType = mlir::FloatType::getBF16(element_type.getContext());
+      auto floatAttr =
+          mlir::FloatAttr::get(floatType, static_cast<float>(value));
+      std::vector<Attribute> floatValues({floatAttr});
+      attr = DenseElementsAttr::get(scalar_type, floatValues);
+      break;
+    }
+    case mlir::StandardTypes::F32: {
+      attr =
+          DenseElementsAttr::get<float>(scalar_type, static_cast<float>(value));
+      break;
+    }
+    case mlir::StandardTypes::Complex: {
+      auto etype = element_type.cast<mlir::ComplexType>().getElementType();
+      if (etype.isF32()) {
+        auto dialect = etype.getContext()->getRegisteredDialect("tf");
+        tensorflow::TensorProto repr;
+        repr.set_dtype(tensorflow::DT_COMPLEX64);
+
+        tensorflow::TensorShapeProto* shape = repr.mutable_tensor_shape();
+        shape->set_unknown_rank(false);
+        shape->add_dim()->set_size(int64_t{1});
+        std::string content;
+        auto complex_value =
+            std::complex<float>(static_cast<float>(value), 0.0f);
+        content.assign(reinterpret_cast<const char*>(&complex_value),
+                       sizeof(complex_value));
+        repr.set_tensor_content(content);
+        std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
+
+        attr = mlir::OpaqueElementsAttr::get(dialect, scalar_type, mangled);
+        break;
+      }
+      return Status(tensorflow::error::INVALID_ARGUMENT, "Unsupported type");
+    }
+    case mlir::StandardTypes::Integer: {
+      const auto& itype = element_type.cast<mlir::IntegerType>();
+      switch (itype.getWidth()) {
+        case 8:
+          attr = DenseElementsAttr::get<int8_t>(scalar_type,
+                                                static_cast<int8_t>(value));
+          break;
+        case 16:
+          attr = DenseElementsAttr::get<int16_t>(scalar_type,
+                                                 static_cast<int16_t>(value));
+          break;
+        case 32:
+          attr = DenseElementsAttr::get<int32_t>(scalar_type,
+                                                 static_cast<int32_t>(value));
+          break;
+        case 64:
+          attr = DenseElementsAttr::get<int64_t>(scalar_type,
+                                                 static_cast<int64_t>(value));
+          break;
+        default:
+          return Status(tensorflow::error::INVALID_ARGUMENT,
+                        "Unsupported type");
+      }
+      break;
+    }
+    default:
+      return Status(tensorflow::error::INVALID_ARGUMENT, "Unsupported type");
+  }
+  return rewriter->create<ConstantOp>(loc, scalar_type, attr);
+}
+
 LogicalResult ConvertTFReciprocalOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_reciprocal_op = cast<TF::ReciprocalOp>(op);
@@ -500,6 +583,31 @@ LogicalResult ConvertTFReciprocalOp::matchAndRewrite(
   rewriter.replaceOpWithNewOp<TFL::DivOp>(op, status_or_const_op.ValueOrDie(),
                                           tf_reciprocal_op.x(),
                                           fused_activation_function);
+  return success();
+}
+
+LogicalResult ConvertTFBroadcastToOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
+  auto element_type = tf_broadcast_to_op.input().getType().cast<ShapedType>();
+  auto output_type = tf_broadcast_to_op.output().getType();
+
+  auto status_or_const_op =
+      CreateConstOpWithSingleValue(&rewriter, op->getLoc(), element_type, 1);
+  if (!status_or_const_op.ok()) {
+    return failure();
+  }
+
+  auto tfl_fill_op = rewriter.create<TFL::FillOp>(
+      op->getLoc(), output_type, tf_broadcast_to_op.shape(),
+      status_or_const_op.ValueOrDie());
+
+  StringAttr fused_activation_function =
+      StringAttr::get("NONE", rewriter.getContext());
+
+  rewriter.replaceOpWithNewOp<TFL::MulOp>(
+      op, output_type, tf_broadcast_to_op.input(), tfl_fill_op,
+      fused_activation_function);
   return success();
 }
 
@@ -631,156 +739,6 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
   }
 };
 
-// Put two TFL BroadcastTo ops in front of the given TF binary broadcast op to
-// to make binary broadcast-able op conversion always successful and does not
-// require flex delegate.
-template <typename SourceOp>
-class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
- public:
-  using OpRewritePattern<SourceOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(SourceOp src_op,
-                                PatternRewriter& rewriter) const override {
-    Operation* op = static_cast<Operation*>(src_op);
-    auto lhs = op->getOperand(0);
-    auto rhs = op->getOperand(1);
-
-    // Should have static shapes to calculate the broadcasted shape.
-    if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
-        !rhs.getType().cast<ShapedType>().hasStaticShape()) {
-      return failure();
-    }
-
-    // Calculate the broadcasted shape.
-    SmallVector<int64_t, 4> result_shape;
-    if (!OpTrait::util::getBroadcastedShape(
-            lhs.getType().cast<ShapedType>().getShape(),
-            rhs.getType().cast<ShapedType>().getShape(), result_shape)) {
-      return failure();
-    }
-
-    RankedTensorType result_type = RankedTensorType::get(
-        result_shape, getElementTypeOrSelf(op->getResult(0).getType()));
-
-    // Create a const op, that stores the above broadcasted shape.
-    auto new_shape_attr = mlir::DenseIntElementsAttr::get(
-        RankedTensorType::get(result_shape.size(), rewriter.getIntegerType(64)),
-        result_shape);
-    auto new_shape = rewriter.create<TF::ConstOp>(op->getLoc(), new_shape_attr);
-
-    // Apply BroadcastTo ops to each input.
-    auto broadcast_type = RankedTensorType::get(
-        result_shape, getElementTypeOrSelf(lhs.getType()));
-
-    if (result_type.getShape() != lhs.getType().cast<ShapedType>().getShape()) {
-      lhs = rewriter
-                .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
-                                           new_shape)
-                .output();
-    }
-    if (result_type.getShape() != rhs.getType().cast<ShapedType>().getShape()) {
-      rhs = rewriter
-                .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
-                                           new_shape)
-                .output();
-    }
-
-    // Recreate an op with the above Broadcast op results.
-    rewriter.replaceOpWithNewOp<SourceOp>(op, result_type, lhs, rhs);
-    return success();
-  }
-};
-
-// This specialization is for TF SelectV2 op. SelectV2 op have three inputs and
-// they should have broadcastable shapes.
-template <>
-class ApplyExplicitBroadcasting<TF::SelectV2Op>
-    : public OpRewritePattern<TF::SelectV2Op> {
- public:
-  using OpRewritePattern<TF::SelectV2Op>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::SelectV2Op src_op,
-                                PatternRewriter& rewriter) const override {
-    Operation* op = static_cast<Operation*>(src_op);
-    auto cond = op->getOperand(0);
-    auto lhs = op->getOperand(1);
-    auto rhs = op->getOperand(2);
-
-    // Should have static shapes to calculate the broadcasted shape.
-    if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
-        !rhs.getType().cast<ShapedType>().hasStaticShape() ||
-        !cond.getType().cast<ShapedType>().hasStaticShape()) {
-      return failure();
-    }
-
-    // Calculate the broadcasted shape.
-    SmallVector<int64_t, 4> broadcasted_shape;
-    if (!OpTrait::util::getBroadcastedShape(
-            lhs.getType().cast<ShapedType>().getShape(),
-            rhs.getType().cast<ShapedType>().getShape(), broadcasted_shape)) {
-      return failure();
-    }
-
-    SmallVector<int64_t, 4> result_shape;
-    if (!OpTrait::util::getBroadcastedShape(
-            broadcasted_shape, cond.getType().cast<ShapedType>().getShape(),
-            result_shape)) {
-      return failure();
-    }
-
-    // Create a const op, that stores the above broadcasted shape.
-    auto shape_type =
-        RankedTensorType::get(result_shape.size(), rewriter.getIntegerType(64));
-    auto new_shape_attr =
-        mlir::DenseIntElementsAttr::get(shape_type, result_shape);
-    auto new_shape = rewriter.create<TF::ConstOp>(op->getLoc(), new_shape_attr);
-
-    // Apply BroadcastTo ops to each input.
-    auto cond_result_type =
-        RankedTensorType::get(result_shape, rewriter.getIntegerType(1));
-    auto result_type = RankedTensorType::get(
-        result_shape, getElementTypeOrSelf(lhs.getType()));
-
-    if (result_shape != cond.getType().cast<ShapedType>().getShape()) {
-      cond = rewriter
-                 .create<TF::BroadcastToOp>(op->getLoc(), cond_result_type,
-                                            cond, new_shape)
-                 .output();
-    }
-    if (result_shape != lhs.getType().cast<ShapedType>().getShape()) {
-      lhs = rewriter
-                .create<TF::BroadcastToOp>(op->getLoc(), result_type, lhs,
-                                           new_shape)
-                .output();
-    }
-    if (result_shape != rhs.getType().cast<ShapedType>().getShape()) {
-      rhs = rewriter
-                .create<TF::BroadcastToOp>(op->getLoc(), result_type, rhs,
-                                           new_shape)
-                .output();
-    }
-
-    // Recreate an op with the above Broadcast op results.
-    rewriter.replaceOpWithNewOp<TF::SelectV2Op>(op, result_type, cond, lhs,
-                                                rhs);
-    return success();
-  }
-};
-
-void applyPatterns(FuncOp func, ConversionTarget& target,
-                   const OwningRewritePatternList& patterns) {
-  // Keep trying to convert.
-  // TODO(karimnosseir): This is similar to what apply greedy patterns does.
-  // Look if there is a function that tries until it converge.
-  // Currently unit-test doesn't do multiple tries, so we need this.
-  const int max_iterations = 15;
-  for (int i = 0; i < max_iterations; ++i) {
-    if (failed(applyPartialConversion(func, target, patterns))) {
-      return;
-    }
-  }
-}
-
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
   auto* context = &getContext();
@@ -793,7 +751,7 @@ void LegalizeTF::runOnFunction() {
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,
               ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFStridedSliceOp,
               ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFReciprocalOp,
-              ConvertTFRandomUniformOp>(context);
+              ConvertTFRandomUniformOp, ConvertTFBroadcastToOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
@@ -831,32 +789,16 @@ void LegalizeTF::runOnFunction() {
         return success(current_thread_id == llvm::get_threadid());
       });
 
-  applyPatterns(func, target, patterns);
-
-  // Explict BroadcastTo addition for left-over broadcast-able ops.
-  // The following pattern matchings should be done after the other legalization
-  // rules in order not to add unnecessary BroadcastTo ops.
-  patterns.insert<ApplyExplicitBroadcasting<TF::LessEqualOp>,
-                  ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
-                  ApplyExplicitBroadcasting<TF::NotEqualOp>,
-                  ApplyExplicitBroadcasting<TF::GreaterOp>,
-                  ApplyExplicitBroadcasting<TF::LessOp>,
-                  ApplyExplicitBroadcasting<TF::EqualOp>,
-                  ApplyExplicitBroadcasting<TF::AddOp>,
-                  ApplyExplicitBroadcasting<TF::AddV2Op>,
-                  ApplyExplicitBroadcasting<TF::MulOp>,
-                  ApplyExplicitBroadcasting<TF::DivOp>,
-                  ApplyExplicitBroadcasting<TF::RealDivOp>,
-                  ApplyExplicitBroadcasting<TF::SubOp>,
-                  ApplyExplicitBroadcasting<TF::FloorDivOp>,
-                  ApplyExplicitBroadcasting<TF::FloorModOp>,
-                  ApplyExplicitBroadcasting<TF::PowOp>,
-                  ApplyExplicitBroadcasting<TF::MaximumOp>,
-                  ApplyExplicitBroadcasting<TF::MinimumOp>,
-                  ApplyExplicitBroadcasting<TF::SquaredDifferenceOp>,
-                  ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
-
-  applyPatterns(func, target, patterns);
+  // Keep trying to convert.
+  // TODO(karimnosseir): This is similar to what apply greedy patterns does.
+  // Look if there is a function that tries until it converge.
+  // Currently unit-test doesn't do multiple tries, so we need this.
+  const int max_iterations = 15;
+  for (int i = 0; i < max_iterations; ++i) {
+    if (failed(applyPartialConversion(func, target, patterns))) {
+      return;
+    }
+  }
 }
 
 }  // namespace

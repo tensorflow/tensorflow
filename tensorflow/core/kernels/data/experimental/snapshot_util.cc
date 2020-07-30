@@ -215,7 +215,7 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   tensor_protos.reserve(num_complex_);
   experimental::SnapshotTensorMetadata metadata;
   int64 total_size = 0;
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (int i = 0, end = tensors.size(); i < end; ++i) {
     const Tensor& tensor = tensors[i];
     experimental::TensorMetadata* tensor_metadata =
         metadata.add_tensor_metadata();
@@ -239,7 +239,7 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   char* position = uncompressed.data();
   int buffer_index = 0;
   int proto_index = 0;
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (int i = 0, end = tensors.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata.tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
       memcpy(position, tensor_buffers[buffer_index]->data(),
@@ -514,7 +514,8 @@ class Reader::NestedDataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      *end_of_sequence = dataset()->datasets_.size() == index_;
+      const int64 num_datasets = dataset()->datasets_.size();
+      *end_of_sequence = num_datasets == index_;
       if (!*end_of_sequence) {
         Tensor tensor(DT_VARIANT, TensorShape({}));
 
@@ -704,7 +705,7 @@ Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
 
   int simple_index = 0;
   int complex_index = 0;
-  for (int i = 0; i < simple_tensor_mask_.size(); ++i) {
+  for (int i = 0, end = simple_tensor_mask_.size(); i < end; ++i) {
     if (simple_tensor_mask_[i]) {
       read_tensors->push_back(std::move(simple_tensors[simple_index]));
       simple_index++;
@@ -774,7 +775,7 @@ Status CustomReader::SnappyUncompress(
   std::vector<struct iovec> iov(num_tensors);
   int index = 0;
   int64 total_size = 0;
-  for (int i = 0; i < simple_tensor_mask_.size(); ++i) {
+  for (int i = 0, end = simple_tensor_mask_.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata->tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
       TensorShape shape(tensor_metadata.tensor_shape());
@@ -794,7 +795,8 @@ Status CustomReader::SnappyUncompress(
     total_size += iov[index].iov_len;
     index++;
   }
-  if (size != total_size) {
+  const int64 size_int = size;
+  if (size_int != total_size) {
     return errors::Internal("Uncompressed size mismatch. Snappy expects ", size,
                             " whereas the tensor metadata suggests ",
                             total_size);
@@ -904,9 +906,10 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
     return Status::OK();
   }
 
-  if (metadata->creation_timestamp() >=
-      (static_cast<int64>(EnvTime::NowMicros()) -
-       pending_snapshot_expiry_seconds * 1000000)) {
+  int64 expiration_timer = static_cast<int64>(EnvTime::NowMicros()) -
+                           pending_snapshot_expiry_seconds * 1000000;
+
+  if (metadata->creation_timestamp() >= expiration_timer) {
     // Someone else is already writing and time has not expired.
     *mode = PASSTHROUGH;
     return Status::OK();

@@ -43,7 +43,7 @@ enum MliPoolingType { AveragePooling = 0, MaxPooling = 1 };
 
 bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLitePoolParams* params) {
-  // MLI optimized version only supports int8 dataype and no fused Relu
+  // MLI optimized version only supports int8_t dataype and no fused Relu
   return (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone);
 }
 

@@ -41,6 +41,7 @@ limitations under the License.
 #include "am_util.h"        // NOLINT
 
 extern "C" void DebugLog(const char* s) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   static bool is_initialized = false;
   if (!is_initialized) {
     am_bsp_itm_printf_enable();
@@ -48,4 +49,5 @@ extern "C" void DebugLog(const char* s) {
   }
 
   am_util_stdio_printf("%s", s);
+#endif
 }

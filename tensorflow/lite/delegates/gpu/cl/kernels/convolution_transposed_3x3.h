@@ -72,6 +72,11 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
+  std::string GenerateConvolutionTransposedCode(
+      const OperationDef& op_def,
+      ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
+      int2 padding, int3 work_group_launch_order);
+
   int2 padding_;
   int3 work_group_launch_order_;
   WeightsUploadType weights_upload_type_;

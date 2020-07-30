@@ -1118,7 +1118,7 @@ static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
   }
   PyObject* enum_field = PyObject_GetAttrString(dtype_field, "_type_enum");
   Py_DECREF(dtype_field);
-  if (dtype_field == nullptr) {
+  if (enum_field == nullptr) {
     return tensorflow::DT_INVALID;
   }
   tensorflow::int64 id = MakeInt(enum_field);
