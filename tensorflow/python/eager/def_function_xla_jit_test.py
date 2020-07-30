@@ -200,6 +200,8 @@ class DefFunctionTest(xla_test.XLATestCase):
         # XLA support is not yet enabled for TF ROCm
         run_and_check(xla_func)
 
+  @test_util.disable_mlir_bridge('TODO(b/162521846): MLIR bridge fails'
+                                 ' msan, function library not found')
   def testControlFlow(self):
 
     with ops.device('device:{}:0'.format(self.device)):
