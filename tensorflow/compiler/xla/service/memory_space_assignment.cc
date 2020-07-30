@@ -291,12 +291,6 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     // To avoid double counting, don't include the elapsed time of while and
     // conditional HLOs.
     const HloInstruction* instruction = instruction_and_logical_time.first;
-    if (instruction->opcode() == HloOpcode::kWhile ||
-        instruction->opcode() == HloOpcode::kConditional) {
-      continue;
-    }
-    float elapsed_time = cost_analysis_.GetInstructionElapsed(
-        *instruction_and_logical_time.first);
     int64 logical_time = instruction_and_logical_time.second;
     if (logical_time >= instructions_elapsed_time.size()) {
       instructions_elapsed_time.resize(logical_time + 1, 0.0);
@@ -305,6 +299,12 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     int nest_level = cost_analysis_.CalculateWhileLoopNestLevel(
         instruction_and_logical_time.first);
     while_nest_level_[logical_time] = nest_level;
+    if (instruction->opcode() == HloOpcode::kWhile ||
+        instruction->opcode() == HloOpcode::kConditional) {
+      continue;
+    }
+    float elapsed_time = cost_analysis_.GetInstructionElapsed(
+        *instruction_and_logical_time.first);
     instructions_elapsed_time[logical_time] =
         elapsed_time *
         tensorflow::MathUtil::IPow<float>(kWhileExecutionCount, nest_level);
@@ -2021,6 +2021,9 @@ int64 AlternateMemoryBestFitHeap::FindPrefetchEndTime(
     int64 latest_prefetch_time =
         options_.prefetch_interval_picker->LatestPrefetchStartTime(
             request.use->hlo_use, earliest_prefetch_time, prefetch_end_time);
+    VLOG(4) << "Latest prefetch start time = " << latest_prefetch_time
+            << ", earliest prefetch start time = " << earliest_prefetch_time
+            << ", prefetch end time = " << prefetch_end_time;
     // Return if we couldn't find a suitable prefetch start time.
     if (latest_prefetch_time < earliest_prefetch_time) {
       break;
@@ -2560,6 +2563,8 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
       HloOpcode::kCopyStart, producing_instruction));
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+  VLOG(4) << "Created " << copy_start_->name()
+          << " for position: " << defining_position().ToString();
   // Update the allocation position with the copy done instruction so that if
   // there are further copies from it, it can find the correct position.
   defining_position_ = HloPosition{copy_done_, {}};
