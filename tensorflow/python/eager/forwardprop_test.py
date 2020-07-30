@@ -1024,15 +1024,16 @@ class BatchTests(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(2.0)
     y = constant_op.constant(5.0)
     tangents = (
-      constant_op.constant([1., 0., 1.]),
-      constant_op.constant([0., 1., 1.]),
+        constant_op.constant([1., 0., 1.]),
+        constant_op.constant([0., 1., 1.]),
     )
-    with forwardprop.ForwardAccumulator._batch_accumulator((x, y), tangents) as acc:
+    with forwardprop.ForwardAccumulator._batch_accumulator(
+        (x, y), tangents) as acc:
       z = x * y
     self.assertAllClose(
-      acc.jvp(z),
-      constant_op.constant([5.0, 2.0, 7.0]
-    ))
+        acc.jvp(z),
+        constant_op.constant([5.0, 2.0, 7.0])
+    )
 
 if __name__ == "__main__":
   # TODO(allenl): Also test with 1.x-style graph mode.
