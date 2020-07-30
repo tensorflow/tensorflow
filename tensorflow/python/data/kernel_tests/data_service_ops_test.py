@@ -87,6 +87,25 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(list(range(num_elements)), results)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherPreemption(self):
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
+    self._worker = server_lib.WorkerServer(
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = _make_distributed_dataset(
+        ds, "{}://{}".format(PROTOCOL, self._dispatcher._address))
+    iterator = iter(ds)
+    results = []
+    results.append(next(iterator).numpy())
+    self._dispatcher._stop()
+    # After the dispatcher dies, the worker should continue providing the rest
+    # of the dataset's elements.
+    for _ in range(num_elements - 1):
+      results.append(next(iterator).numpy())
+    self.assertEqual(results, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDistributeSparse(self):
     service = self.create_cluster(1)
     element = sparse_tensor.SparseTensor(
