@@ -574,6 +574,24 @@ CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
   return cost_analysis_.GetMemoryBoundedness(interval);
 }
 
+bool MemorySpaceAssignment::Allocation::operator==(
+    const MemorySpaceAssignment::Allocation& other) const {
+  return defining_position() == other.defining_position() &&
+         uses() == other.uses() && memory_space() == other.memory_space() &&
+         chunk() == other.chunk() && start_time() == other.start_time() &&
+         end_time() == other.end_time() &&
+         is_copy_allocation() == other.is_copy_allocation();
+}
+
+bool MemorySpaceAssignment::CopyAllocation::operator==(
+    const MemorySpaceAssignment::CopyAllocation& other) const {
+  return static_cast<const Allocation&>(*this) ==
+             static_cast<const Allocation&>(other) &&
+         copy_done_schedule_before() == other.copy_done_schedule_before() &&
+         copy_start_schedule_after() == other.copy_start_schedule_after() &&
+         copy_start() == other.copy_start() && copy_done() == other.copy_done();
+}
+
 std::string MemorySpaceAssignment::AllocationValue::ToString() const {
   std::string out = absl::StrCat("computation = ", computation()->name());
   absl::StrAppend(&out, "\n position:\n");
