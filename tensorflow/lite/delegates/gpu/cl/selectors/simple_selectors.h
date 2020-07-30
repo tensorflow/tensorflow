@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -55,6 +56,7 @@ absl::Status SelectResize(const Resize2DAttributes& attr,
 absl::Status SelectConcat(const ConcatAttributes& attr,
                           const std::vector<int>& channels,
                           const OperationDef& op_def,
+                          const DeviceInfo& device_info,
                           std::unique_ptr<GPUOperation>* ptr);
 
 void SelectReshape(int src_channels, int dst_channels,

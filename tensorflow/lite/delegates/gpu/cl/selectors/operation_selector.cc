@@ -196,7 +196,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       for (int i = 0; i < inputs.size(); ++i) {
         channels[i] = inputs[i]->tensor.shape.c;
       }
-      return SelectConcat(attr, channels, op_def, gpu_op);
+      return SelectConcat(attr, channels, op_def,
+                          creation_context.device->GetInfo(), gpu_op);
     }
     case OperationType::CONVOLUTION_2D: {
       auto attr =

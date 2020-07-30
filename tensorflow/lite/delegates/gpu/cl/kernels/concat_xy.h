@@ -28,10 +28,7 @@ namespace cl {
 
 class ConcatXY : public GPUOperation {
  public:
-  ConcatXY(const OperationDef& definition, const ConcatAttributes& attr,
-           int tensors_count)
-      : GPUOperation(definition), attr_(attr), tensors_count_(tensors_count) {}
-  absl::Status Compile(const CreationContext& creation_context) override;
+  ConcatXY(const OperationDef& definition, const ConcatAttributes& attr);
   int3 GetGridSize() const override;
 
   // Move only
@@ -43,13 +40,10 @@ class ConcatXY : public GPUOperation {
  private:
   std::string GetConcatKernelCode(const OperationDef& op_def,
                                   const ConcatAttributes& attr);
-
-  ConcatAttributes attr_;
-  int tensors_count_;
 };
 
 ConcatXY CreateConcatXY(const OperationDef& definition,
-                        const ConcatAttributes& attr, int tensors_count);
+                        const ConcatAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

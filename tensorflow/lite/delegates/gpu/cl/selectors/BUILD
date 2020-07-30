@@ -124,6 +124,7 @@ cc_library(
     srcs = ["simple_selectors.cc"],
     hdrs = ["simple_selectors.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl/kernels:add",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_xy",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_z",

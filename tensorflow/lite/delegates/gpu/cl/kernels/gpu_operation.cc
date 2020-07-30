@@ -115,8 +115,10 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_),
       grid_size_(operation.grid_size_),
+      code_(std::move(operation.code_)),
       src_tensors_names_(std::move(operation.src_tensors_names_)),
       dst_tensors_names_(std::move(operation.dst_tensors_names_)),
+      compiler_options_(std::move(operation.compiler_options_)),
       linked_operations_(std::move(operation.linked_operations_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
@@ -128,8 +130,10 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
     std::swap(grid_size_, operation.grid_size_);
+    code_ = std::move(operation.code_);
     src_tensors_names_ = std::move(operation.src_tensors_names_);
     dst_tensors_names_ = std::move(operation.dst_tensors_names_);
+    compiler_options_ = std::move(operation.compiler_options_);
     linked_operations_ = std::move(operation.linked_operations_);
   }
   return *this;
@@ -178,17 +182,28 @@ absl::Status GPUOperation::UpdateParams() {
   return absl::OkStatus();
 }
 
+absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(
+      creation_context.device->GetInfo(),
+      {{dst_tensors_names_[0], element_wise_code}}, &code_));
+  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
+      code_, "main_function", *creation_context.context,
+      *creation_context.device, &kernel_));
+  return PostCompileCheck();
+}
+
 ElementwiseOperation::ElementwiseOperation(ElementwiseOperation&& operation)
     : GPUOperation(std::move(operation)),
       check_src_channels_size_(operation.check_src_channels_size_),
-      code_(std::move(operation.code_)),
       linkable_(operation.linkable_) {}
 
 ElementwiseOperation& ElementwiseOperation::operator=(
     ElementwiseOperation&& operation) {
   if (this != &operation) {
     check_src_channels_size_ = operation.check_src_channels_size_;
-    code_ = std::move(operation.code_);
     linkable_ = operation.linkable_;
     GPUOperation::operator=(std::move(operation));
   }

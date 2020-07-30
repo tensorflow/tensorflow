@@ -96,6 +96,7 @@ cc_library(
         ":gpu_operation",
         ":util",
         ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:status",

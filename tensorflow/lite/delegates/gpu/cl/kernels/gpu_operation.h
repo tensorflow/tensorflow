@@ -101,9 +101,9 @@ class GPUOperation {
     return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
   }
 
-  virtual absl::Status Compile(const CreationContext& creation_context) {
-    return absl::OkStatus();
-  }
+  virtual absl::Status Compile(const CreationContext& creation_context);
+
+  virtual absl::Status PostCompileCheck() { return absl::OkStatus(); }
 
   const OperationDef& GetDefinition() const { return definition_; }
 
@@ -126,8 +126,10 @@ class GPUOperation {
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
   int3 grid_size_ = int3(0, 0, 0);
+  std::string code_;
   std::vector<std::string> src_tensors_names_;
   std::vector<std::string> dst_tensors_names_;
+  std::vector<CompilerOptions> compiler_options_;
   std::vector<ElementwiseOperation*> linked_operations_;
 };
 
@@ -163,7 +165,6 @@ class ElementwiseOperation : public GPUOperation {
 
  protected:
   bool check_src_channels_size_ = false;
-  std::string code_;
   bool linkable_ = true;
 };
 
