@@ -275,7 +275,6 @@ class FileSystem {
 
   virtual tensorflow::Status DeleteDir(const string& dirname,
                                        TransactionToken* token) {
-    ;
     return Status::OK();
   }
 
