@@ -320,6 +320,14 @@ PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
     const PartitionedHlo::PartitioningState& state,
     const std::vector<std::vector<int64>>& device_groups, SpmdBuilder* b);
 
+// Partially shards a replicated HLO into groups along the group dimensions, and
+// within each group data is still replicated.
+HloInstruction* PerGroupSliceFromReplicated(
+    HloInstruction* replicated, HloInstruction* partition_id,
+    const std::vector<std::vector<int64>>& device_groups,
+    absl::Span<const int64> group_dims, absl::Span<const int64> group_dim_sizes,
+    SpmdBuilder* b);
+
 }  // namespace spmd
 }  // namespace xla
 

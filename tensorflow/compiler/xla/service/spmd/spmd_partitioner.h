@@ -370,9 +370,6 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleIota(HloInstruction* hlo) override;
   Status HandlePartitionId(HloInstruction* hlo) override;
 
-  // Handles convolution where both LHS and RHS operands are tiled.
-  Status HandleConvolutionTiledLhsAndRhs(HloInstruction* hlo);
-
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   Status HandleDotHelper(
       HloInstruction* hlo, const DotGeneralDimsMapping& dims_mapping,

@@ -41,13 +41,6 @@ message GetOrRegisterDatasetResponse {
   int64 dataset_id = 1;
 }
 
-enum ProcessingModeDef {
-  // Each tf.data worker processes an entire epoch.
-  PARALLEL_EPOCHS = 0;
-  // Processing of an epoch is distributed across all tf.data workers.
-  ONE_EPOCH = 1;
-}
-
 message CreateJobRequest {
   // The id of the dataset to create a job for.
   int64 dataset_id = 1;

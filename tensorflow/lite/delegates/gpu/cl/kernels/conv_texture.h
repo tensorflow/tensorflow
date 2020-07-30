@@ -89,6 +89,13 @@ class ConvTexture : public GPUOperation {
                             absl::Span<T> dst_0, absl::Span<T> dst_1,
                             absl::Span<T> dst_2, absl::Span<T> dst_3);
 
+  std::string GenerateConvCode(const OperationDef& op_def,
+                               const int3& block_size, bool is1x1,
+                               bool adreno4xx_optimization,
+                               bool stride_correction,
+                               bool different_weights_for_height,
+                               const CLDevice& device);
+
   int2 kernel_size_;
   int2 stride_;
   int2 padding_;

@@ -32,11 +32,19 @@ namespace {
 
 void FillInputTensor(tflite::Interpreter* interpreter) {
   for (int k = 0; k < interpreter->inputs().size(); ++k) {
-    float* p = interpreter->typed_input_tensor<float>(k);
-    const auto n =
-        tflite::NumElements(interpreter->tensor(interpreter->inputs()[k]));
-    for (int i = 0; i < n; ++i) {
-      p[i] = std::sin(i);
+    TfLiteTensor* tensor_ptr = interpreter->tensor(interpreter->inputs()[k]);
+    const auto tensor_elements_count = tflite::NumElements(tensor_ptr);
+    if (tensor_ptr->type == kTfLiteFloat32) {
+      float* p = interpreter->typed_input_tensor<float>(k);
+      for (int i = 0; i < tensor_elements_count; ++i) {
+        p[i] = std::sin(i);
+      }
+    }
+    if (tensor_ptr->type == kTfLiteInt32) {
+      int* p = interpreter->typed_input_tensor<int>(k);
+      for (int i = 0; i < tensor_elements_count; ++i) {
+        p[i] = i % 2;
+      }
     }
   }
 }
@@ -124,6 +132,7 @@ int main(int argc, char** argv) {
   options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
   options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
   options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+  options.max_delegated_partitions = 1;
   auto* gpu_delegate = TfLiteGpuDelegateV2Create(&options);
   status = gpu_inference->ModifyGraphWithDelegate(gpu_delegate);
   if (status != kTfLiteOk) {

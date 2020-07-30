@@ -456,6 +456,26 @@ class ZerosTest(test.TestCase):
         self.assertFalse(np.any(z_value))
         self.assertEqual((2, 3), z_value.shape)
 
+  def testQint8Dtype(self):
+    dtype = dtypes_lib.qint8
+    z = array_ops.zeros([2, 3], dtype=dtype)
+    self.assertEqual(z.dtype, dtype)
+    self.assertEqual([2, 3], z.get_shape())
+    # cast to int32 so that it can be compred with numpy
+    # where [qint|quint][8|16] are not available.
+    z_value = self.evaluate(math_ops.cast(z, dtypes_lib.int32))
+    self.assertFalse(np.any(z_value))
+
+  def testQint16Dtype(self):
+    dtype = dtypes_lib.qint16
+    z = array_ops.zeros([2, 3], dtype=dtype)
+    self.assertEqual(z.dtype, dtype)
+    self.assertEqual([2, 3], z.get_shape())
+    # cast to int32 so that it can be compred with numpy
+    # where [qint|quint][8|16] are not available.
+    z_value = self.evaluate(math_ops.cast(z, dtypes_lib.int32))
+    self.assertFalse(np.any(z_value))
+
 
 class ZerosLikeTest(test.TestCase):
 

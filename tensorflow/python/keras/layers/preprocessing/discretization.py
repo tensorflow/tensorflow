@@ -21,10 +21,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -83,7 +83,7 @@ class Discretization(base_preprocessing_layer.PreprocessingLayer):
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def call(self, inputs):
-    if ragged_tensor.is_ragged(inputs):
+    if tf_utils.is_ragged(inputs):
       integer_buckets = ragged_functional_ops.map_flat_values(
           gen_math_ops.Bucketize, input=inputs, boundaries=self.bins)
       # Ragged map_flat_values doesn't touch the non-values tensors in the

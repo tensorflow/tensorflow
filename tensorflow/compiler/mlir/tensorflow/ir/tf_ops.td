@@ -236,12 +236,12 @@ else_branch: A function that takes 'inputs' and returns a list of
   let extraClassDeclaration = [{
     // Get the then branch function.
     FuncOp then_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(then_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, then_branch());
     }
 
     // Get the else branch function.
     FuncOp else_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(else_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, else_branch());
     }
   }];
 }
@@ -346,8 +346,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     within the same symbol scope as the call and is mapped to a GraphDef node
     with the function name as the op name. Unlike a PartitionedCall which
     represents asynchronously executing a function across multiple devices, a
-    LegacyCall represents a function call with the only attribute
-    _diable_call_shape_inference.
+    LegacyCall ignores specification for ops in the attached function and
+    instead executes it on the device assigned to this op.
   }];
 
   let arguments = (ins
@@ -366,8 +366,11 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     operand_range getArgOperands() { return args(); }
 
     // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() {
-      return getAttrOfType<SymbolRefAttr>("f");
+    CallInterfaceCallable getCallableForCallee() { return fAttr(); }
+
+    // returns the callee of this operation.
+    FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
     }
   }];
 }
@@ -484,8 +487,11 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     operand_range getArgOperands() { return args(); }
 
     // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() {
-      return getAttrOfType<SymbolRefAttr>("f");
+    CallInterfaceCallable getCallableForCallee() { return fAttr(); }
+
+    // returns the callee of this operation.
+    FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
     }
   }];
 
@@ -590,8 +596,11 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     operand_range getArgOperands() { return args(); }
 
     // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() {
-      return getAttrOfType<SymbolRefAttr>("f");
+    CallInterfaceCallable getCallableForCallee() { return fAttr(); }
+
+    // returns the callee of this operation.
+    FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
     }
   }];
 
@@ -647,12 +656,12 @@ body: A function that takes a list of tensors and returns another
   let extraClassDeclaration = [{
     // Get the condition function.
     FuncOp cond_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(cond());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, cond());
     }
 
     // Get the body function.
     FuncOp body_func() {
-      return getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(body());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, body());
     }
   }];
 }
@@ -1191,8 +1200,11 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
     operand_range getArgOperands() { return args(); }
 
     // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() {
-      return getAttrOfType<SymbolRefAttr>("f");
+    CallInterfaceCallable getCallableForCallee() { return fAttr(); }
+
+    // returns the callee of this operation.
+    FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
     }
   }];
 

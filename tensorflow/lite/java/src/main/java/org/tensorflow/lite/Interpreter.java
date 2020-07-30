@@ -281,6 +281,8 @@ public final class Interpreter implements AutoCloseable {
    *   <li>{@link LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
+   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
+   *
    * @param input an array or multidimensional array, or a {@link Buffer} of primitive types
    *     including int, float, long, and byte. {@link Buffer} is the preferred way to pass large
    *     input data for primitive types, whereas string types require using the (multi-dimensional)
@@ -318,6 +320,8 @@ public final class Interpreter implements AutoCloseable {
    *   <li>{@link IntBuffer} - compatible with int32 Tensors.
    *   <li>{@link LongBuffer} - compatible with int64 Tensors.
    * </ul>
+   *
+   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
    *
    * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
    * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and

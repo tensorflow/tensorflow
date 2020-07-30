@@ -43,6 +43,13 @@ class Pooling : public GPUOperation {
   Pooling& operator=(const Pooling&) = delete;
 
  private:
+  std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
+                                          bool stride_correction,
+                                          const CLDevice& device);
+  std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
+                                      bool stride_correction,
+                                      bool output_indices);
+
   int4 stride_;
   int4 padding_;
   int4 kernel_size_;

@@ -58,10 +58,8 @@ class TFConcreteFunction : public ConcreteFunction {
                        std::unique_ptr<TFConcreteFunction>* out);
 
   // This method returns the "Call" Op used to execute the function.
-  Status GetCallOp(ImmediateOpPtr* out) override;
-
-  const std::vector<ImmediateExecutionTensorHandle*>& GetCaptures()
-      const override;
+  Status GetCallOp(absl::Span<AbstractTensorHandle* const> inputs,
+                   ImmediateOpPtr* out) override;
 
   const FunctionMetadata& GetFunctionMetadata() const override;
 

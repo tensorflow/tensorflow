@@ -23,16 +23,23 @@ limitations under the License.
 namespace tflite {
 namespace reference_integer_ops {
 
+inline void CheckArithmeticParams(const ArithmeticParams& params) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  // Input offset is negative input zero point. Activation tensors are
+  // asymmetric quantized so they span the full int8 range.
+  TFLITE_DCHECK_GE(-params.input1_offset, std::numeric_limits<int8_t>::min());
+  TFLITE_DCHECK_GE(-params.input2_offset, std::numeric_limits<int8_t>::min());
+  TFLITE_DCHECK_LE(-params.input1_offset, std::numeric_limits<int8_t>::max());
+  TFLITE_DCHECK_LE(-params.input2_offset, std::numeric_limits<int8_t>::max());
+}
+
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
 inline void AddElementwise(int size, const ArithmeticParams& params,
                            const int8_t* input1_data, const int8_t* input2_data,
                            int8_t* output_data) {
-  const int32_t int8_max_value = std::numeric_limits<int8_t>::max();
-  TFLITE_DCHECK_GE(params.input1_offset, -1 * int8_max_value);
-  TFLITE_DCHECK_GE(params.input2_offset, -1 * int8_max_value);
-  TFLITE_DCHECK_LE(params.input1_offset, int8_max_value);
-  TFLITE_DCHECK_LE(params.input2_offset, int8_max_value);
+  CheckArithmeticParams(params);
 
   for (int i = 0; i < size; ++i) {
     const int32_t input1_val = params.input1_offset + input1_data[i];
@@ -61,16 +68,11 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int8_t* input1_data,
                 const RuntimeShape& input2_shape, const int8_t* input2_data,
                 const RuntimeShape& output_shape, int8_t* output_data) {
-  TFLITE_DCHECK_LE(params.quantized_activation_min,
-                   params.quantized_activation_max);
+  CheckArithmeticParams(params);
+
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
-  const int32_t int8_max_value = std::numeric_limits<int8_t>::max();
-  TFLITE_DCHECK_GE(params.input1_offset, -1 * int8_max_value);
-  TFLITE_DCHECK_GE(params.input2_offset, -1 * int8_max_value);
-  TFLITE_DCHECK_LE(params.input1_offset, int8_max_value);
-  TFLITE_DCHECK_LE(params.input2_offset, int8_max_value);
   AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 

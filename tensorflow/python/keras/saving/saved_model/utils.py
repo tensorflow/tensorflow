@@ -23,7 +23,7 @@ import types
 from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import tf_decorator
@@ -164,9 +164,8 @@ def maybe_add_training_arg(
       set_training_arg(training, training_arg_index, args, kwargs)
       return wrapped_call(*args, **kwargs)
 
-    return tf_utils.smart_cond(
-        training,
-        lambda: replace_training_and_call(True),
+    return control_flow_util.smart_cond(
+        training, lambda: replace_training_and_call(True),
         lambda: replace_training_and_call(False))
 
   # Create arg spec for decorated function. If 'training' is not defined in the

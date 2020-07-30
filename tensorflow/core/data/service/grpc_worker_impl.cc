@@ -26,9 +26,8 @@ using ::grpc::ServerContext;
 using ::grpc::Status;
 
 GrpcWorkerImpl::GrpcWorkerImpl(ServerBuilder* server_builder,
-                               const std::string& dispatcher_address,
-                               const std::string& protocol)
-    : impl_(dispatcher_address, protocol) {
+                               const experimental::WorkerConfig& config)
+    : impl_(config) {
   server_builder->RegisterService(this);
   VLOG(1) << "Registered data service worker";
 }

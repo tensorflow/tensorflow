@@ -949,18 +949,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(ExpectArray(
       rhs, absl::StrCat("rhs of binary operation ", HloOpcodeString(opcode))));
   switch (opcode) {
+    case HloOpcode::kAdd:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 
     case HloOpcode::kSubtract:
-    case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
     case HloOpcode::kPower:
     case HloOpcode::kDivide:
     case HloOpcode::kRemainder:
-    case HloOpcode::kMultiply:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:

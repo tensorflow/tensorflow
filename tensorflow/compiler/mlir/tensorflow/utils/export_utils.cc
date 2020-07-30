@@ -82,7 +82,7 @@ Status ConvertLocation(mlir::Location inst_loc,
     if (locations.size() <= 1)
       return errors::InvalidArgument("expected experimental debuf info.");
     // skip the first one, which is the name of the node_def.
-    for (int i = 0; i < locations.size() - 1; ++i) {
+    for (int i = 0, end = locations.size() - 1; i < end; ++i) {
       TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
     }
   }
@@ -518,7 +518,7 @@ Status SetSizeAttribute(absl::string_view name, size_t size,
     // This should be extremely rare as it means we are adding the same
     // attribute multiple times/have some redundancy in representing this
     // attribute.
-    int64 actual_size = result.first->second.i();
+    size_t actual_size = result.first->second.i();
     // Just check via string output as we shouldn't get here and if we do they
     // should be trivially the same, else fail.
     if (actual_size != size)

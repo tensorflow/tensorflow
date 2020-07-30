@@ -1989,9 +1989,8 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(WhileOp op) {
-  auto module = op.getParentOfType<ModuleOp>();
-  auto cond_fn = module.lookupSymbol<FuncOp>(op.cond());
-  auto body_fn = module.lookupSymbol<FuncOp>(op.body());
+  auto cond_fn = op.cond_func();
+  auto body_fn = op.body_func();
   if (!cond_fn) {
     return op.emitOpError("cond refers to an undefined function : ")
            << op.cond();

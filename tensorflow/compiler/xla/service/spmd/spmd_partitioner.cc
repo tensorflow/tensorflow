@@ -2291,31 +2291,47 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
         /*parameter_number=*/0, token->shape(), "infeed_token_param"));
     auto infeed = branch_b.AddInstruction(HloInstruction::CreateInfeed(
         per_branch_partitioned_shapes[i], param, hlo->infeed_config()));
-    branches[i] = module_->AddEmbeddedComputation(branch_b.Build(infeed));
     if (!ShapeUtil::Compatible(per_branch_partitioned_shapes[i], shard_shape)) {
-      TF_ASSIGN_OR_RETURN(
-          auto padded,
-          branches[i]->DeepCopyInstructionWithCustomCopier(
-              infeed, [&](HloInstruction* leaf, const ShapeIndex& leaf_index,
-                          HloComputation* comp) {
-                // Index {1} corresponds to the token.
-                if (leaf_index.empty() || leaf_index[0] != 0) {
-                  return leaf;
-                }
-                ShapeIndexView subindex(leaf_index, 1);
-                if (ShapeUtil::Compatible(
-                        ShapeUtil::GetSubshape(per_branch_partitioned_shapes[i],
-                                               subindex),
-                        ShapeUtil::GetSubshape(shard_shape, subindex))) {
-                  return leaf;
-                }
-                return PadToShape(leaf,
-                                  ShapeUtil::GetSubshape(shard_shape, subindex),
-                                  nullptr, comp);
-              }));
-      branches[i]->set_root_instruction(padded,
-                                        /*accept_different_shape=*/true);
+      std::function<HloInstruction*(const ShapeIndex&, HloInstruction*)>
+          pad_infeed = [&](const ShapeIndex& index,
+                           HloInstruction* infeed_element) -> HloInstruction* {
+        if (index == ShapeIndex({1})) {
+          // Token.
+          return infeed_element;
+        }
+        const Shape& element_shape =
+            ShapeUtil::GetSubshape(infeed->shape(), index);
+        if (element_shape.IsTuple() && element_shape.tuple_shapes_size() > 0) {
+          std::vector<HloInstruction*> padded_elements(
+              element_shape.tuple_shapes_size());
+          for (int64 i = 0; i < padded_elements.size(); ++i) {
+            auto sub_index = index;
+            sub_index.push_back(i);
+            padded_elements[i] = pad_infeed(
+                sub_index,
+                branch_b.AddInstruction(HloInstruction::CreateGetTupleElement(
+                    ShapeUtil::GetSubshape(element_shape, {i}), infeed_element,
+                    i)));
+          }
+          return branch_b.AddInstruction(
+              HloInstruction::CreateTuple(padded_elements));
+        }
+        const Shape& pad_shape =
+            ShapeUtil::GetSubshape(shard_shape, ShapeIndexView(index, 1));
+        if (ShapeUtil::Compatible(element_shape, pad_shape)) {
+          return infeed_element;
+        }
+        if (element_shape.IsArray()) {
+          CHECK(pad_shape.IsArray());
+          return PadToShape(infeed_element, pad_shape, &branch_b);
+        }
+        CHECK(element_shape.IsTuple());
+        CHECK(element_shape.tuple_shapes().empty());
+        return CreateZero(pad_shape, &branch_b);
+      };
+      pad_infeed({}, infeed);
     }
+    branches[i] = module_->AddEmbeddedComputation(branch_b.Build());
   }
   SetPartitionedHlo(hlo, [&]() {
     return b_.AddInstruction(HloInstruction::CreateConditional(

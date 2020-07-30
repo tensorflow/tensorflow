@@ -186,7 +186,9 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   context_.diff_dst_md.reset(new memory::desc(
       {bwdParams.dst_dims}, MklDnnType<T>(), bwdParams.src_format));
 #else
-  context_.diff_dst_md.reset(new memory::desc(bwdParams.diff_dst_md.data));
+  context_.src_md.reset(new memory::desc(bwdParams.src_md.data));
+  context_.dst_md.reset(new memory::desc({bwdParams.dst_dims}, MklDnnType<T>(),
+                                         MEMORY_FORMAT::any));
 #endif  // !ENABLE_MKLDNN_V1
 
 #ifndef ENABLE_MKLDNN_V1
@@ -202,15 +204,17 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
       *context_.diff_dst_md, bwdParams.strides, bwdParams.filter_dims,
       bwdParams.padding_left, bwdParams.padding_right, padding_kind::zero));
 #else
+  // Create a backward primitive. The implementation for backward must comply to
+  // the workspace format it gets from forward pass, so we directly use src_md
+  // and dst_md here.
   context_.bwd_desc.reset(new pooling_backward::desc(
-      bwdParams.alg_kind, *context_.diff_src_md, *context_.diff_dst_md,
-      bwdParams.strides, bwdParams.filter_dims, bwdParams.padding_left,
-      bwdParams.padding_right));
+      bwdParams.alg_kind, *context_.src_md, *context_.dst_md, bwdParams.strides,
+      bwdParams.filter_dims, bwdParams.padding_left, bwdParams.padding_right));
   // Create a forward primitive,
   // which will be used as a hint for creating backward primitive.
   context_.fwd_desc.reset(new pooling_forward::desc(
-      bwdParams.prop_kind, bwdParams.alg_kind, *context_.diff_src_md,
-      *context_.diff_dst_md, bwdParams.strides, bwdParams.filter_dims,
+      bwdParams.prop_kind, bwdParams.alg_kind, *context_.src_md,
+      *context_.dst_md, bwdParams.strides, bwdParams.filter_dims,
       bwdParams.padding_left, bwdParams.padding_right));
 #endif  // !ENABLE_MKLDNN_V1
   context_.fwd_pd.reset(

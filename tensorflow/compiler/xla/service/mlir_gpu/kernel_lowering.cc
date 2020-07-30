@@ -467,8 +467,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Transform LHLO operations to LinAlg.
   pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
-  pm.addPass(::mlir::lmhlo::createLhloFuseLinalg(/*use_parallel_loops=*/true,
-                                                 tiling_for_unrolling));
+  pm.addPass(::mlir::lmhlo::createLhloFuseLinalgPass(
+      /*use_parallel_loops=*/true, tiling_for_unrolling));
   // Legalize reduce operations directly to GPU dialect.
   pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform the Linalg operations inside of the loop nest into parallel
@@ -512,7 +512,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Approximate of requested.
   if (options.use_approximations) {
     pm.addNestedPass<::mlir::FuncOp>(
-        ::mlir::hlo::createLegalizeTanhToApproximationPass());
+        ::mlir::mhlo::createLegalizeTanhToApproximationPass());
   }
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(absl::make_unique<MoveScalarComputationsIntoGpuLaunch>());

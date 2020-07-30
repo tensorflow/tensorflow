@@ -73,6 +73,12 @@ static void* MyCreateFunc(TF_OpKernelConstruction* ctx) {
   EXPECT_EQ(TF_FLOAT, type);
   TF_DeleteStatus(status);
 
+  // Exercise kernel NodeDef name read
+  TF_StringView name_string_view = TF_OpKernelConstruction_GetName(ctx);
+  std::string node_name = "SomeNodeName";
+  std::string candidate_node_name =
+      std::string(name_string_view.data, name_string_view.len);
+  EXPECT_EQ(node_name, candidate_node_name);
   return s;
 }
 
@@ -96,9 +102,11 @@ namespace tensorflow {
 
 static std::unique_ptr<OpKernel> GetFakeKernel(const char* device_name,
                                                const char* op_name,
+                                               const char* node_name,
                                                Status* status) {
   NodeDef def;
   def.set_op(op_name);
+  def.set_name(node_name);
   def.set_device(device_name);
   def.add_input("input1");
   def.add_input("input2");
@@ -114,7 +122,7 @@ static std::unique_ptr<OpKernel> GetFakeKernel(const char* device_name,
 // Tests registration of a single C kernel and checks that calls through the
 // C/C++ boundary are being made.
 TEST(TestKernel, TestRegisterKernelBuilder) {
-  const char* kernel_name = "SomeKernelName";
+  const char* node_name = "SomeNodeName";
   const char* op_name = "FooOp";
   const char* device_name = "FakeDeviceName1";
 
@@ -129,7 +137,7 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
 
   {
     TF_Status* status = TF_NewStatus();
-    TF_RegisterKernelBuilder(kernel_name, builder, status);
+    TF_RegisterKernelBuilder(node_name, builder, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status));
     TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status));
@@ -144,7 +152,7 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
   {
     Status status;
     std::unique_ptr<OpKernel> kernel =
-        GetFakeKernel(device_name, op_name, &status);
+        GetFakeKernel(device_name, op_name, node_name, &status);
     TF_EXPECT_OK(status);
     ASSERT_NE(nullptr, kernel.get());
     kernel->Compute(nullptr);
@@ -162,7 +170,7 @@ class DummyDevice : public DeviceBase {
 };
 
 TEST(TestKernel, TestInputAndOutputCount) {
-  const char* kernel_name = "InputOutputCounterKernel";
+  const char* node_name = "InputOutputCounterKernel";
   const char* op_name = "BarOp";
   const char* device_name = "FakeDeviceName2";
 
@@ -212,7 +220,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
   {
     TF_Status* status = TF_NewStatus();
-    TF_RegisterKernelBuilder(kernel_name, builder, status);
+    TF_RegisterKernelBuilder(node_name, builder, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status));
     TF_DeleteStatus(status);
   }
@@ -233,7 +241,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     Status status;
     std::unique_ptr<OpKernel> kernel =
-        GetFakeKernel(device_name, op_name, &status);
+        GetFakeKernel(device_name, op_name, node_name, &status);
     TF_EXPECT_OK(status);
     ASSERT_NE(nullptr, kernel.get());
 
@@ -252,7 +260,7 @@ TEST(TestKernel, DeleteKernelBuilderIsOkOnNull) {
 }
 
 TEST(TestKernel, TestTypeConstraint) {
-  const char* kernel_name = "SomeKernelName";
+  const char* node_name = "SomeNodeName";
   const char* op_name = "TypeOp";
   const char* device_name = "FakeDeviceName1";
 
@@ -267,7 +275,7 @@ TEST(TestKernel, TestTypeConstraint) {
   TF_Status* status = TF_NewStatus();
   TF_KernelBuilder_TypeConstraint(builder, "T", TF_DataType::TF_INT32, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status));
-  TF_RegisterKernelBuilder(kernel_name, builder, status);
+  TF_RegisterKernelBuilder(node_name, builder, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status));
 
   TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
@@ -296,7 +304,7 @@ TEST(TestKernel, TestTypeConstraint) {
 }
 
 TEST(TestKernel, TestHostMemory) {
-  const char* kernel_name = "SomeKernelName";
+  const char* node_name = "SomeNodeName";
   const char* op_name = "HostMemoryOp";
   const char* device_name = "FakeDeviceName1";
 
@@ -311,7 +319,7 @@ TEST(TestKernel, TestHostMemory) {
   TF_KernelBuilder_HostMemory(builder, "input2");
   TF_KernelBuilder_HostMemory(builder, "output1");
   TF_Status* status = TF_NewStatus();
-  TF_RegisterKernelBuilder(kernel_name, builder, status);
+  TF_RegisterKernelBuilder(node_name, builder, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status));
 
   TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
@@ -335,12 +343,12 @@ TEST(TestKernel, TestHostMemory) {
 
 class DeviceKernelOpTest : public OpsTestBase {
  protected:
-  void SetupOp(const char* op_name, const char* kernel_name,
+  void SetupOp(const char* op_name, const char* node_name,
                void (*compute_func)(void*, TF_OpKernelContext*)) {
     TF_KernelBuilder* builder = TF_NewKernelBuilder(
         op_name, device_name_, nullptr, compute_func, nullptr);
     TF_Status* status = TF_NewStatus();
-    TF_RegisterKernelBuilder(kernel_name, builder, status);
+    TF_RegisterKernelBuilder(node_name, builder, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status));
     TF_DeleteStatus(status);
 

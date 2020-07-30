@@ -349,7 +349,6 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Free);
-
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunHloPasses);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunBackend);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);

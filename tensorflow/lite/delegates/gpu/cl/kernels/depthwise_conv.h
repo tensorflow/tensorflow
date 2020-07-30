@@ -80,6 +80,12 @@ class DepthwiseConvolution : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
+  std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
+                                               bool stride_correction,
+                                               int channel_multiplier,
+                                               bool weights_are_buffer,
+                                               const CLDevice& device);
+
   bool weights_are_buffer_;
 
   int4 kernel_size_;

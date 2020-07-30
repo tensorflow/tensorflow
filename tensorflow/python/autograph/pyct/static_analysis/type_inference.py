@@ -20,6 +20,10 @@ extracted from static sources:
  * global and local symbols visible to the function at analysis time
  * literals
 
+Important: This analysis is static, and does not detect dynamic type changes.
+The analysis attempts to use the values of external symbols, if available. These
+values are also considered static for the purpose of analysis.
+
 Requires reaching function definitions analysis.
 """
 
@@ -27,7 +31,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from typing import Any, Tuple
+from typing import Tuple
 
 import gast
 
@@ -41,42 +45,68 @@ from tensorflow.python.autograph.pyct.static_analysis import annos
 class Resolver(object):
   """Resolver objects handle the process of looking up actual names and types.
 
-  All resolve_* methods:
+  Unless noted otherwise, all resolve_* methods:
     * have a first namespace argument, mapping string to actual values
+    * have a second types_namespace argument, mapping string to actual inferred
+      types
     * specify names as QN objects
     * specify types as a Set of inferred types
 
-  All resolve_* methods must return either:
+  Unless noted otherwise, all resolve_* methods must return either:
     * a set of `type` objects
     * None
   """
 
-  def res_name(self, ns, name):
-    """Resolves the type an external (e.g. closure, global) variable."""
+  def res_name(self, ns, types_ns, name):
+    """Resolves the type/value an external (e.g. closure, global) variable.
+
+    Args:
+      ns: namespace
+      types_ns: types namespace
+      name: symbol name
+    Returns:
+      Tuple (type, static_value). The first element is the type to use for
+      inferrence. The second is the static value to use. Return None to treat it
+      as unknown.
+    """
     raise NotImplementedError('subclasses must implement')
 
   def res_value(self, ns, value):
-    """Resolves the type a literal value."""
+    """Resolves the type a literal or static value."""
     raise NotImplementedError('subclasses must implement')
 
-  # TODO(mdan): Allow caller to model side effects.
-  def res_call(self, ns, name, target, args, keywords, starargs, kwargs):
+  def res_arg(self, ns, types_ns, f_name, name, type_anno):
+    """Resolves the type of a (possibly annotated) function argument."""
+    raise NotImplementedError('subclasses must implement')
+
+  def res_call(self, ns, types_ns, node, args, keywords):
     """Resolves the return type an external function or method call.
 
     Args:
       ns: namespace
-      name: str, the function name
-      target: if this is a method call, the types of the method target, None
-          otherwise
-      args: list or argument types
-      keywords: dict of name to argument types
-      starargs: list of types of the *args arguments (should be at most one)
-      kwargs: list of types of the **kwargs arguments (in order of appearance)
+      types_ns: types namespace
+      node: str, the function name
+      args: types of each respective argument in node.args
+      keywords: types of each respective argument in node.keywords
+
+    Returns:
+      Tuple (return_type, side_effect_types). The first element is just the
+      return types of the function. The second element is a map from
+      argument names to sets of types, and allow modelling side effects of
+      functions (for example via global or nonlocal).
     """
     raise NotImplementedError('subclasses must implement')
 
-  def res_arg(self, ns, f_name, arg_name, type_anno):
-    """Resolves the type of a (possibly annotated) function argument."""
+  def res_subscript(self, ns, types_ns, node, value, slice_):
+    """Resolves the return type of a unary operation."""
+    raise NotImplementedError('subclasses must implement')
+
+  def res_compare(self, ns, types_ns, node, left, right):
+    """Resolves the return type of a unary operation."""
+    raise NotImplementedError('subclasses must implement')
+
+  def res_binop(self, ns, types_ns, node, left, right):
+    """Resolves the return type of a unary operation."""
     raise NotImplementedError('subclasses must implement')
 
 
@@ -86,23 +116,23 @@ class _SymbolTable(object):
   This is a value type. Only implements the strictly necessary operators.
 
   Attributes:
-    value: Dict[qual_names.QN, Set[Type]], mapping symbols to the set of
+    types: Dict[qual_names.QN, Set[Type]], mapping symbols to the set of
       possible types.
   """
 
   def __init__(self, init_from=None):
     if init_from:
       assert isinstance(init_from, _SymbolTable)
-      self.value = {
-          s: set(other_types) for s, other_types in init_from.value.items()
+      self.types = {
+          s: set(other_types) for s, other_types in init_from.types.items()
       }
     else:
-      self.value = {}
+      self.types = {}
 
   def __eq__(self, other):
-    if frozenset(self.value.keys()) != frozenset(other.value.keys()):
+    if frozenset(self.types.keys()) != frozenset(other.types.keys()):
       return False
-    ret = all(self.value[s] == other.value[s] for s in self.value)
+    ret = all(self.types[s] == other.types[s] for s in self.types)
     return ret
 
   def __ne__(self, other):
@@ -111,52 +141,17 @@ class _SymbolTable(object):
   def __or__(self, other):
     assert isinstance(other, _SymbolTable)
     result = _SymbolTable(self)
-    for s, other_types in other.value.items():
-      if s not in result.value:
+    for s, other_types in other.types.items():
+      if s not in result.types:
         self_types = set()
-        result.value[s] = self_types
+        result.types[s] = self_types
       else:
-        self_types = result.value[s]
+        self_types = result.types[s]
       self_types.update(other_types)
     return result
 
   def __repr__(self):
-    return 'SymbolTable {}'.format(self.value)
-
-
-_GETITEM = qual_names.QN('__getitem__')
-
-_HANDLERS = {
-    gast.Eq: qual_names.QN('__eq__'),
-    gast.NotEq: qual_names.QN('__ne__'),
-    gast.Lt: qual_names.QN('__lt__'),
-    gast.LtE: qual_names.QN('__le__'),
-    gast.Gt: qual_names.QN('__gt__'),
-    gast.GtE: qual_names.QN('__ge__'),
-    gast.In: qual_names.QN('__contains__'),
-    # TODO(mdan): Is this actually correct?
-    # NotIn(*) = Not(In(*))
-    gast.NotIn: qual_names.QN('__not__'),
-
-    gast.Add: qual_names.QN('__add__'),
-    gast.Sub: qual_names.QN('__sub__'),
-    gast.Mult: qual_names.QN('__mul__'),
-    gast.Div: qual_names.QN('__div__'),
-    gast.FloorDiv: qual_names.QN('__floordiv__'),
-    gast.Mod: qual_names.QN('__mod__'),
-    gast.Pow: qual_names.QN('__pow__'),
-    gast.LShift: qual_names.QN('__lshift__'),
-    gast.RShift: qual_names.QN('__rshift__'),
-    gast.BitOr: qual_names.QN('__or__'),
-    gast.BitXor: qual_names.QN('__xor__'),
-    gast.BitAnd: qual_names.QN('__and__'),
-    gast.MatMult: qual_names.QN('__matmul__'),
-}
-
-_FIXED_RETTYPES = {
-    gast.Is: bool,
-    gast.IsNot: bool,
-}
+    return 'SymbolTable {}'.format(self.types)
 
 
 class StmtInferrer(gast.NodeVisitor):
@@ -164,6 +159,21 @@ class StmtInferrer(gast.NodeVisitor):
 
   This visitor annotates most nodes with type information. It also sets types
   for the symbols modified by this statement in its types_out property.
+
+  Note: this inferrer is able to capture side effects of functions, however,
+  these side effects will not be applied to the current expression. Doing so
+  would create too much of a dependence on the runtime's internal rules about
+  execution order.
+  Example:
+
+    def f():
+      nonlocal a
+      a = 1
+      return a
+
+    a = 0.0
+    b = f() + a  # a = float; side effect of f() ignored
+    print(a)  # a = int; side effect of f() accounted for
   """
 
   def __init__(self, resolver, scope, namespace, closure_types, types_in):
@@ -173,7 +183,7 @@ class StmtInferrer(gast.NodeVisitor):
     self.closure_types = closure_types
     self.types_in = types_in
     self.new_symbols = {}
-    self.rvalue = None
+    self.rtype = None
 
   def visit(self, node):
     types = super().visit(node)
@@ -184,10 +194,19 @@ class StmtInferrer(gast.NodeVisitor):
 
   def visit_FunctionDef(self, node):
     # Skip local function definitions. They are analyzed separately.
+    # TODO(mdan): Don't skip. Analyze side effects instead.
     return None
 
+  def _check_set(self, value):
+    if value is not None and not isinstance(value, set):
+      raise ValueError('{} method expected to return set, got {}'.format(
+          self.resolver, value))
+
   def visit_Constant(self, node):
-    return self.resolver.res_value(self.namespace, node.value)
+    types = self.resolver.res_value(self.namespace, node.value)
+    if __debug__:
+      self._check_set(types)
+    return types
 
   def visit_Tuple(self, node):
     if isinstance(node.ctx, gast.Load):
@@ -214,116 +233,156 @@ class StmtInferrer(gast.NodeVisitor):
 
   def visit_Name(self, node):
     name = anno.getanno(node, anno.Basic.QN)
+
     if isinstance(node.ctx, gast.Load):
-      types = self.types_in.value.get(name, None)
+      types = self.types_in.types.get(name, None)
       if (types is None) and (name not in self.scope.bound):
         if name in self.closure_types:
           types = self.closure_types[name]
         else:
-          types = self.resolver.res_name(self.namespace, name)
-      return types
+          types, value = self.resolver.res_name(
+              self.namespace, self.types_in.types, name)
+          if value is not None:
+            anno.setanno(node, anno.Static.VALUE, value)
 
     elif isinstance(node.ctx, gast.Param):
       type_name = anno.getanno(node.annotation, anno.Basic.QN, None)
-      types = self.resolver.res_arg(self.namespace, self.scope.function_name,
-                                    name, type_name)
+      types = self.resolver.res_arg(self.namespace, self.types_in.types,
+                                    self.scope.function_name, name, type_name)
       if types is not None:
         self.new_symbols[name] = types
-      return types
 
     elif isinstance(node.ctx, gast.Store):
-      if self.rvalue is not None:
-        self.new_symbols[name] = self.rvalue
-      else:
-        # No type information, assume Any.
-        self.new_symbols[name] = {Any}
-      return self.rvalue
+      if self.rtype is not None:
+        self.new_symbols[name] = self.rtype
+      types = self.rtype
 
-    assert False, 'unknown ctx'
+    else:
+      assert False, 'unknown ctx'
+
+    if __debug__:
+      self._check_set(types)
+
+    return types
+
+  def visit_Attribute(self, node):
+    parent_types = self.visit(node.value)
+
+    # Attempt to use the static value if known.
+    parent_value = anno.Static.VALUE.of(node.value, None)
+    if parent_value is not None:
+      static_value = getattr(parent_value, node.attr, None)
+
+    else:
+      # Fall back to the type if that is known.
+      if parent_types is None:
+        return None
+
+      inferred_values = [getattr(t, node.attr, None) for t in parent_types]
+      if not inferred_values:
+        return None
+
+      static_value = inferred_values[0]
+      if static_value is None:
+        return None
+
+      if any(v is not static_value for v in inferred_values[1:]):
+        # Static value not stable, assume it's dynamic.
+        return None
+
+    types = self.resolver.res_value(self.namespace, static_value)
+    anno.setanno(node, anno.Static.VALUE, static_value)
+
+    if __debug__:
+      self._check_set(types)
+
+    return types
 
   def visit_Call(self, node):
+    self.visit(node.func)
+
     f_name = anno.getanno(node.func, anno.Basic.QN)
-
-    kwargs = [self.visit(kw.value) for kw in node.keywords if kw.arg is None]
-    keywords = {
-        kw.arg: self.visit(kw.value)
-        for kw in node.keywords
-        if kw.arg is not None
-    }
-    is_starred = [isinstance(a, gast.Starred) for a in node.args]
-    args = [
-        self.visit(a)
-        for a, starred in zip(node.args, is_starred)
-        if not starred
-    ]
-    starargs = [
-        self.visit(a.value)
-        for a, starred in zip(node.args, is_starred)
-        if starred
-    ]
-
     if f_name in self.scope.bound:
       # Don't attempt external resolution of local functions.
       # TODO(mdan): Use type annotations of the local definition.
       return None
 
-    return self.resolver.res_call(
-        self.namespace, f_name, None, args, keywords, starargs, kwargs)
+    arg_types = [self.visit(a) for a in node.args]
+    keyword_types = [self.visit(kw.value) for kw in node.keywords]
+
+    ret_type, side_effects = self.resolver.res_call(self.namespace,
+                                                    self.types_in.types, node,
+                                                    arg_types, keyword_types)
+    if __debug__:
+      self._check_set(ret_type)
+      if side_effects:
+        if not isinstance(side_effects, dict):
+          raise ValueError(
+              'side effects must be dict, got {}'.format(side_effects))
+        for k, v in side_effects.items():
+          if not isinstance(k, qual_names.QN):
+            raise ValueError('side effect keys must be QNs, got {}'.format(k))
+          self._check_set(v)
+
+    if side_effects:
+      self.new_symbols.update(side_effects)
+    return ret_type
 
   def visit_Index(self, node):
     return self.visit(node.value)
 
   def visit_Assign(self, node):
-    self.rvalue = self.visit(node.value)
+    self.rtype = self.visit(node.value)
 
     for t in node.targets:
       self.visit(t)
 
-    self.rvalue = None
+    self.rtype = None
 
   def visit_Subscript(self, node):
-    val_type = self.visit(node.value)
-    slice_type = self.visit(node.slice)
+    val_types = self.visit(node.value)
+    slice_types = self.visit(node.slice)
 
-    if val_type is None or slice_type is None:
+    if val_types is None or slice_types is None:
       return None
 
-    return self.resolver.res_call(self.namespace, _GETITEM, val_type,
-                                  (slice_type,), {}, (), ())
+    types = self.resolver.res_subscript(
+        self.namespace, self.types_in.types, node, val_types, slice_types)
+
+    if __debug__:
+      self._check_set(types)
+
+    return types
 
   def visit_Compare(self, node):
+    left_types = self.visit(node.left)
     right_types = [self.visit(c) for c in node.comparators]
-    op_types = [type(o) for o in node.ops]
-    if len(op_types) > 1:
-      raise NotImplementedError('chained comparisons')
-    assert len(right_types) == 1
 
-    left_type = self.visit(node.left)
-    right_type, = right_types
-    op_type, = op_types
-
-    if left_type is None or right_type is None:
+    if left_types is None or any(t is None for t in right_types):
       return None
 
-    f_name = _HANDLERS.get(op_type, None)
-    if f_name is None:
-      # Python doesn't allow overriding these operators. Their return types are
-      # fixed.
-      return {_FIXED_RETTYPES[op_type]}
-    return self.resolver.res_call(self.namespace, _HANDLERS[op_type],
-                                  left_type, (right_type,), {}, (), ())
+    types = self.resolver.res_compare(
+        self.namespace, self.types_in.types, node, left_types, right_types)
+
+    if __debug__:
+      self._check_set(types)
+
+    return types
 
   def visit_BinOp(self, node):
-    left_type = self.visit(node.left)
-    right_type = self.visit(node.right)
+    left_types = self.visit(node.left)
+    right_types = self.visit(node.right)
 
-    if left_type is None or right_type is None:
+    if left_types is None or right_types is None:
       return None
 
-    # TODO(mdan): This does not fully follow Python operator semantics.
-    # For example, in `a + b` Python will try `a.__add__`, but also `b.__radd__`
-    return self.resolver.res_call(self.namespace, _HANDLERS[type(node.op)],
-                                  left_type, (right_type,), {}, (), ())
+    types = self.resolver.res_binop(
+        self.namespace, self.types_in.types, node, left_types, right_types)
+
+    if __debug__:
+      self._check_set(types)
+
+    return types
 
 
 class Analyzer(cfg.GraphVisitor):
@@ -355,7 +414,7 @@ class Analyzer(cfg.GraphVisitor):
       existing_types = {}
       anno.setanno(ast_node, anno.Static.CLOSURE_TYPES, existing_types)
 
-    for k, v in types.value.items():
+    for k, v in types.types.items():
       if k in existing_types:
         existing_types[k].update(v)
       else:
@@ -371,10 +430,10 @@ class Analyzer(cfg.GraphVisitor):
     types_out = _SymbolTable(types_in)
     ast_node = node.ast_node
 
-    inferrer = StmtInferrer(
-        self.resolver, self.scope, self.namespace, self.closure_types, types_in)
+    inferrer = StmtInferrer(self.resolver, self.scope, self.namespace,
+                            self.closure_types, types_in)
     inferrer.visit(ast_node)
-    types_out.value.update(inferrer.new_symbols)
+    types_out.types.update(inferrer.new_symbols)
 
     reaching_fndefs = anno.getanno(ast_node, anno.Static.DEFINED_FNS_IN)
     node_scope = anno.getanno(ast_node, anno.Static.SCOPE, None)
@@ -404,8 +463,8 @@ class FunctionVisitor(transformer.Base):
     scope = anno.getanno(node, annos.NodeAnno.ARGS_AND_BODY_SCOPE)
     closure_types = anno.getanno(node, anno.Static.CLOSURE_TYPES, {})
 
-    analyzer = Analyzer(
-        subgraph, self.resolver, self.ctx.info.namespace, scope, closure_types)
+    analyzer = Analyzer(subgraph, self.resolver, self.ctx.info.namespace, scope,
+                        closure_types)
     analyzer.visit_forward()
 
     # Recursively process any remaining subfunctions.

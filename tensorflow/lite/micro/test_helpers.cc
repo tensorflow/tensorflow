@@ -812,11 +812,13 @@ int TestStrcmp(const char* a, const char* b) {
 
 // Wrapper to forward kernel errors to the interpreter's error reporter.
 void ReportOpError(struct TfLiteContext* context, const char* format, ...) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   ErrorReporter* error_reporter = static_cast<ErrorReporter*>(context->impl_);
   va_list args;
   va_start(args, format);
   TF_LITE_REPORT_ERROR(error_reporter, format, args);
   va_end(args);
+#endif
 }
 
 // Create a TfLiteIntArray from an array of ints.  The first element in the

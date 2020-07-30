@@ -29,13 +29,13 @@ from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 LOWER_AND_STRIP_PUNCTUATION = "lower_and_strip_punctuation"
@@ -516,7 +516,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def _preprocess(self, inputs):
     if self._standardize == LOWER_AND_STRIP_PUNCTUATION:
-      if ragged_tensor.is_ragged(inputs):
+      if tf_utils.is_ragged(inputs):
         lowercase_inputs = ragged_functional_ops.map_flat_values(
             gen_string_ops.string_lower, inputs)
         # Depending on configuration, we may never touch the non-data tensor
@@ -581,7 +581,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       # choose whether to pad or trim it based on each tensor.
 
       # We need to convert to dense if we have a ragged tensor.
-      if ragged_tensor.is_ragged(indexed_data):
+      if tf_utils.is_ragged(indexed_data):
         dense_data = indexed_data.to_tensor(default_value=0)
       else:
         dense_data = indexed_data

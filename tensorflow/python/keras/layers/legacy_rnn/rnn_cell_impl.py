@@ -51,7 +51,6 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 _BIAS_VARIABLE_NAME = "bias"
@@ -410,8 +409,6 @@ class BasicRNNCell(LayerRNNCell):
       `trainable` etc when constructing the cell from configs of get_config().
   """
 
-  @deprecated(None, "This class is equivalent as tf.keras.layers.SimpleRNNCell,"
-              " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                activation=None,
@@ -419,6 +416,9 @@ class BasicRNNCell(LayerRNNCell):
                name=None,
                dtype=None,
                **kwargs):
+    logging.warning("`tf.nn.rnn_cell.BasicRNNCell` is deprecated. This class "
+                    "is equivalent as `tf.keras.layers.SimpleRNNCell`, "
+                    "and will be replaced by that in Tensorflow 2.0.")
     super(BasicRNNCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
@@ -514,8 +514,6 @@ class GRUCell(LayerRNNCell):
       ([pdf](http://emnlp2014.org/papers/pdf/EMNLP2014179.pdf))
   """
 
-  @deprecated(None, "This class is equivalent as tf.keras.layers.GRUCell,"
-              " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                activation=None,
@@ -525,6 +523,9 @@ class GRUCell(LayerRNNCell):
                name=None,
                dtype=None,
                **kwargs):
+    logging.warning("`tf.nn.rnn_cell.GRUCell` is deprecated. This class "
+                    "is equivalent as `tf.keras.layers.GRUCell`, "
+                    "and will be replaced by that in Tensorflow 2.0.")
     super(GRUCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
@@ -662,8 +663,6 @@ class BasicLSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
-  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
-              " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                forget_bias=1.0,
@@ -696,6 +695,9 @@ class BasicLSTMCell(LayerRNNCell):
         When restoring from CudnnLSTM-trained checkpoints, must use
         `CudnnCompatibleLSTMCell` instead.
     """
+    logging.warning("`tf.nn.rnn_cell.BasicLSTMCell` is deprecated. This class "
+                    "is equivalent as `tf.keras.layers.LSTMCell`, "
+                    "and will be replaced by that in Tensorflow 2.0.")
     super(BasicLSTMCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
@@ -838,8 +840,6 @@ class LSTMCell(LayerRNNCell):
       ([pdf](http://ml.jku.at/publications/older/3504.pdf))
   """
 
-  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
-              " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                use_peepholes=False,
@@ -895,6 +895,9 @@ class LSTMCell(LayerRNNCell):
         When restoring from CudnnLSTM-trained checkpoints, use
         `CudnnCompatibleLSTMCell` instead.
     """
+    logging.warning("`tf.nn.rnn_cell.LSTMCell` is deprecated. This class "
+                    "is equivalent as `tf.keras.layers.LSTMCell`, "
+                    "and will be replaced by that in Tensorflow 2.0.")
     super(LSTMCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
@@ -1217,9 +1220,6 @@ class MultiRNNCell(RNNCell):
   ```
   """
 
-  @deprecated(None, "This class is equivalent as "
-              "tf.keras.layers.StackedRNNCells, and will be replaced by "
-              "that in Tensorflow 2.0.")
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.
 
@@ -1233,6 +1233,9 @@ class MultiRNNCell(RNNCell):
       ValueError: if cells is empty (not allowed), or at least one of the cells
         returns a state tuple but the flag `state_is_tuple` is `False`.
     """
+    logging.warning("`tf.nn.rnn_cell.MultiRNNCell` is deprecated. This class "
+                    "is equivalent as `tf.keras.layers.StackedRNNCells`, "
+                    "and will be replaced by that in Tensorflow 2.0.")
     super(MultiRNNCell, self).__init__()
     if not cells:
       raise ValueError("Must specify at least one cell for MultiRNNCell.")

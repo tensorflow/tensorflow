@@ -24,11 +24,11 @@ from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale as keras_loss_scale_module
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training.experimental import mixed_precision
@@ -348,7 +348,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         for g in grads
     ]
 
-  def _compute_gradients(self, loss, var_list, grad_loss=None):
+  def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
     loss = self.get_scaled_loss(loss)
     grads_and_vars = self._optimizer._compute_gradients(loss, var_list,  # pylint: disable=protected-access
                                                         grad_loss)
@@ -406,9 +406,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # DistributionStrategy does not support having a cond in a replica context
     # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
     # calls `merge_call`.
-    maybe_apply_op = smart_cond.smart_cond(should_apply_grads,
-                                           apply_fn,
-                                           do_not_apply_fn)
+    maybe_apply_op = control_flow_util.smart_cond(should_apply_grads, apply_fn,
+                                                  do_not_apply_fn)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
   def _apply_gradients(self, grads, wrapped_vars, name,

@@ -72,6 +72,10 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
+  std::string GenerateConvolutionTransposedCode(
+      const OperationDef& op_def,
+      ConvolutionTransposed4x4::WeightsUploadType weights_upload_type);
+
   WeightsUploadType weights_upload_type_;
 };
 

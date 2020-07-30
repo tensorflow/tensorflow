@@ -44,6 +44,9 @@ class Softmax1x1 : public GPUOperation {
   Softmax1x1& operator=(const Softmax1x1&) = delete;
 
   friend Softmax1x1 CreateSoftmax1x1();
+
+ private:
+  std::string GetSoftmaxKernelCode(const OperationDef& op_def);
 };
 
 Softmax1x1 CreateSoftmax1x1(const OperationDef& definition);

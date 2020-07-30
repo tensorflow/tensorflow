@@ -21,9 +21,9 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
-include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
-include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
+include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLO_Dialect : Dialect {
   let name = "mhlo";
@@ -1324,7 +1324,7 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
     HLO_PredIntOrFpTensor:$a,
     HLO_PredIntOrFpTensor:$b,
-    I64Tensor:$shape
+    HLO_DimensionTensor:$shape
   );
 
   let results = (outs HLO_PredIntOrFpTensor);
@@ -1336,7 +1336,7 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   let arguments = (ins
     HLO_FpTensor:$mu,
     HLO_FpTensor:$sigma,
-    I64Tensor:$shape
+    HLO_DimensionTensor:$shape
   );
 
   let results = (outs HLO_FpTensor);

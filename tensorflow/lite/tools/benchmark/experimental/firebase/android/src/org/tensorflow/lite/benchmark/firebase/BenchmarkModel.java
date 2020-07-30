@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.firebase;
 
+import android.content.Context;
+
 /** Helper class for running a native TensorFlow Lite benchmark. */
 class BenchmarkModel {
   static {
@@ -23,9 +25,10 @@ class BenchmarkModel {
 
   // Executes a standard TensorFlow Lite benchmark with predefined args for each scenario.
   // Result and status will be reported to the file with reportFd file descriptor.
-  public static void run(int scenario, int reportFd) {
-    nativeRun(scenario, reportFd);
+  public static void run(Context context, int scenario, int reportFd) {
+    String libraryDir = context.getApplicationInfo().nativeLibraryDir;
+    nativeRun(libraryDir, scenario, reportFd);
   }
 
-  private static native void nativeRun(int scenario, int reportFd);
+  private static native void nativeRun(String libraryDir, int scenario, int reportFd);
 }

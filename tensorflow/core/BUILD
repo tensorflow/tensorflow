@@ -458,7 +458,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:common_shape_fns.h",
         "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
         "//tensorflow/core/framework:dataset.h",
-        "//tensorflow/core/framework:dataset_stateful_op_whitelist.h",
+        "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
         "//tensorflow/core/framework:device_base.h",
         "//tensorflow/core/framework:function.h",
         "//tensorflow/core/framework:function_handle_cache.h",
@@ -880,6 +880,7 @@ cc_library(
             ":tpu_outfeed_ops_op_lib",
             ":tpu_ordinal_selector_ops_op_lib",
             ":tpu_replication_ops_op_lib",
+            "//tensorflow/core/tpu/ops",
         ],
     ) + if_mkl([
         ":mkl_array_ops_op_lib",
