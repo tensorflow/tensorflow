@@ -66,13 +66,13 @@ class AllowlistedStatefulOpRegistry {
 // If possible, try to remove the stateful flag on the op first.
 // Example usage:
 //
-//   WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LegacyStatefulReader");
+//   ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LegacyStatefulReader");
 //
-#define WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS(name) \
-  WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ_HELPER(__COUNTER__, name)
-#define WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ_HELPER(ctr, name) \
-  WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)
-#define WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)   \
+#define ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS(name) \
+  ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ_HELPER(__COUNTER__, name)
+#define ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ_HELPER(ctr, name) \
+  ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)
+#define ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)       \
   static ::tensorflow::Status allowlist_op##ctr TF_ATTRIBUTE_UNUSED = \
       ::tensorflow::data::AllowlistedStatefulOpRegistry::Global()->Add(name)
 
