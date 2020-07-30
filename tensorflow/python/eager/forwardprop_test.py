@@ -1,7 +1,4 @@
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -1009,7 +1006,7 @@ class HessianTests(test.TestCase, parameterized.TestCase):
     self.assertAllClose(hess_value, hessian_pfor)
 
 
-class JacobianTests(test.TestCase, parameterized.TestCase):
+class BatchTests(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([(math_ops.sin, (2, 3), 5),
                              (math_ops.sin, (2, 3, 4), 10)])
@@ -1020,6 +1017,19 @@ class JacobianTests(test.TestCase, parameterized.TestCase):
         _jvp_batch(f, primals, tangent_batch)[1],
         _jvp_batch_matmul(f, primals, *tangent_batch))
 
+  def testBatchCorrectness(self):
+    x = constant_op.constant(2.0)
+    y = constant_op.constant(5.0)
+    tangents = (
+      constant_op.constant([1., 0., 1.]),
+      constant_op.constant([0., 1., 1.]),
+    )
+    with forwardprop.ForwardAccumulator((x, y), tangents, True) as acc:
+      z = x * y
+    self.assertAllClose(
+      acc.jvp(z),
+      constant_op.constant([5.0, 2.0, 7.0]
+    ))
 
 if __name__ == "__main__":
   # TODO(allenl): Also test with 1.x-style graph mode.
