@@ -964,13 +964,14 @@ class CollectiveAllReduce(CrossDeviceOps):
     #
     # In a multi threaded eager program we need to ensure different groups of
     # collectives don't interleave each other, otherwise there couuld be
-    # deadlocks. E.g.
+    # deadlocks. E.g. if two user threads both are launching collectives:
     #   user-thread-0  device0                 device1
     #   user-thread-1          device0 device1
-    # Note that thanks to protection in the runtime, this is only an issue when
-    # the instance key is re-used. The instance key is reused if the user builds
-    # a tf.function and runs it in multiple threads, since the instance key is
-    # an attribute of the collective ops.
+    # In eager mode, we use one executor per device. Executors use single FIFO
+    # queues, so the above launch sequences end up with the following queues:
+    #   device-0  collective-0  collective-1
+    #   device-1  collective-1  collective-0
+    # This deadlocks since neither collective is able to finish.
     self._lock = threading.Lock()
 
     # Collective ops requires all devices to participate and is blocking. In
