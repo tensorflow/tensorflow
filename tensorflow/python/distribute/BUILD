@@ -848,9 +848,6 @@ py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
-    tags = [
-        "notsan",  # TODO(b/160006974)
-    ],
     deps = [
         ":combinations",
         "//tensorflow/python:client_testlib",
