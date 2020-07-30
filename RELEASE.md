@@ -91,6 +91,7 @@
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
     performance.
+  * Added support for `iter(DistributedDataset)` in AutoGraph `for` loops.
 *   `tf.lite`:
     * `DynamicBuffer::AddJoinedString()` will now add a separator if the first
       string to be joined is empty.
