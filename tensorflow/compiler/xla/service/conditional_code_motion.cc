@@ -720,13 +720,15 @@ class GroupConnectedBoundaries {
       if (op == conditional_->branch_computation(0)->root_instruction()) {
         int64 index = op->operand_index(user);
         for (auto op2 : conditional_->users()) {
-          CHECK(op2->opcode() == HloOpcode::kGetTupleElement);
-          auto tuple_opd = static_cast<HloGetTupleElementInstruction*>(op2);
-          if (index == tuple_opd->tuple_index()) {
-            all_users = op2->users();
-            if (!all_users.empty()) {
-              reuses += ReusesCarriedBy(user, all_users[0]);
-              break;
+          // If the use is not get tuple, right now do not consider it.
+          if (op2->opcode() == HloOpcode::kGetTupleElement) {
+            auto tuple_opd = static_cast<HloGetTupleElementInstruction*>(op2);
+            if (index == tuple_opd->tuple_index()) {
+              all_users = op2->users();
+              if (!all_users.empty()) {
+                reuses += ReusesCarriedBy(user, all_users[0]);
+                break;
+              }
             }
           }
         }
