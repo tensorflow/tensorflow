@@ -443,3 +443,4 @@ class ForwardAccumulator(object):
   @classmethod
   def _batch_accumulator(cls, primals, unconnected_gradients=UnconnectedGradients.NONE):
     return cls.jvp(primals, unconnected_gradients)
+    
