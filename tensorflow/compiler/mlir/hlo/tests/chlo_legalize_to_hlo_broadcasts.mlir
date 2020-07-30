@@ -311,3 +311,141 @@ func @addUnrankedScalar(%arg0: tensor<*xf32>, %arg1: tensor<f32>) -> tensor<*xf3
 // CHECK:           %[[RESHAPED_RESULT:.*]] = "mhlo.dynamic_reshape"(%[[ASSUMING_RESULT:.*]], %[[SHAPE_2]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 // CHECK:           return %[[RESHAPED_RESULT]] : tensor<*xf32>
 // CHECK:         }
+
+// -----
+func @addUnrankedUnranked(
+      %arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<*xf32>, tensor<*xf32>)
+                                         -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL:   func @addUnrankedUnranked(
+// CHECK-SAME:          %[[LHS:.*]]: tensor<*xf32>,
+// CHECK-SAME:          %[[RHS:.*]]: tensor<*xf32>) -> tensor<*xf32> {
+// CHECK:           %[[LHS_SHAPE:.*]] = shape.shape_of %[[LHS]] : tensor<*xf32>
+// CHECK:           %[[LHS_EXTENT_TENSOR:.*]] = shape.to_extent_tensor %[[LHS_SHAPE]] : tensor<?xindex>
+// CHECK:           %[[RANK_LHS:.*]] = shape.rank %[[LHS_EXTENT_TENSOR]]
+// CHECK:           %[[C0:.*]] = constant 0 : index
+// CHECK:           %[[LHS_IS_SCALAR:.*]] = cmpi "eq", %[[RANK_LHS]], %[[C0]] : index
+//                  Handle scalar LHS case
+// CHECK:           %[[VAL_8:.*]] = scf.if %[[LHS_IS_SCALAR]] -> (tensor<*xf32>) {
+// CHECK:             %[[SCALAR_LHS:.*]] = "mhlo.reshape"(%[[LHS]]) : (tensor<*xf32>) -> tensor<f32>
+// CHECK:             %[[VAL_10:.*]] = chlo.broadcast_add %[[SCALAR_LHS]], %[[RHS]] : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK:             scf.yield %[[VAL_10]] : tensor<*xf32>
+// CHECK:           } else {
+// CHECK:             %[[RHS_SHAPE:.*]] = shape.shape_of %[[RHS]] : tensor<*xf32>
+// CHECK:             %[[RHS_EXTENT_TENSOR:.*]] = shape.to_extent_tensor %[[RHS_SHAPE]] : tensor<?xindex>
+// CHECK:             %[[RANK_RHS:.*]] = shape.rank %[[RHS_EXTENT_TENSOR]]
+// CHECK:             %[[RHS_IS_SCALAR:.*]] = cmpi "eq", %[[RANK_RHS]], %[[C0]] : index
+  //                  Handle scalar RHS case
+// CHECK:             %[[VAL_14:.*]] = scf.if %[[RHS_IS_SCALAR]] -> (tensor<*xf32>) {
+// CHECK:               %[[SCALAR_RHS:.*]] = "mhlo.reshape"(%[[RHS]]) : (tensor<*xf32>) -> tensor<f32>
+// CHECK:               %[[VAL_16:.*]] = chlo.broadcast_add %[[LHS]], %[[SCALAR_RHS]] : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+// CHECK:               scf.yield %[[VAL_16]] : tensor<*xf32>
+// CHECK:             } else {
+// CHECK:               %[[SHAPES_EQ:.*]] = shape.shape_eq %[[LHS_EXTENT_TENSOR]], %[[RHS_EXTENT_TENSOR]] : tensor<?xindex>, tensor<?xindex>
+  //                    Handle scalar RHS case
+// CHECK:               %[[VAL_18:.*]] = scf.if %[[SHAPES_EQ]] -> (tensor<*xf32>) {
+// CHECK:                 %[[VAL_19:.*]] = mhlo.add %[[LHS]], %[[RHS]] : tensor<*xf32>
+// CHECK:                 scf.yield %[[VAL_19]] : tensor<*xf32>
+// CHECK:               } else {
+// CHECK:                 %[[LHS_RANK:.*]] = rank %[[LHS_SHAPE]] : tensor<?xindex>
+// CHECK:                 %[[RHS_RANK:.*]] = rank %[[RHS_SHAPE]] : tensor<?xindex>
+// CHECK:                 %[[LHS_RANK_GREATER:.*]] = cmpi "sgt", %[[LHS_RANK]], %[[RHS_RANK]] : index
+// CHECK:                 %[[GREATEST_RANK:.*]] = select %[[LHS_RANK_GREATER]], %[[LHS_RANK]], %[[RHS_RANK]] : index
+// CHECK:                 %[[C2:.*]] = constant 2 : index
+// CHECK:                 %[[GREATEST_RANK_IS_2:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C2]] : index
+//                        Handle rank 2 specialization
+// CHECK:                 %[[VAL_26:.*]] = scf.if %[[GREATEST_RANK_IS_2]] -> (tensor<*xf32>) {
+// CHECK:                   %[[CONST_SHAPE_2:.*]] = shape.const_shape [1, 1]
+// CHECK:                   %[[BROADCASTED_LHS_2:.*]] = shape.broadcast %[[LHS_SHAPE]], %[[CONST_SHAPE_2]]
+// CHECK:                   %[[BROADCASTED_RHS_2:.*]] = shape.broadcast %[[RHS_SHAPE]], %[[CONST_SHAPE_2]]
+// CHECK:                   %[[EXTENT_LHS_2:.*]] = shape.to_extent_tensor %[[BROADCASTED_LHS_2]] : !shape.shape -> tensor<2xindex>
+// CHECK:                   %[[EXTENT_RHS_2:.*]] = shape.to_extent_tensor %[[BROADCASTED_RHS_2]] : !shape.shape -> tensor<2xindex>
+// CHECK:                   %[[RESHAPED_LHS_2:.*]] = "mhlo.dynamic_reshape"(%[[LHS]], %[[EXTENT_LHS_2]]) : (tensor<*xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+// CHECK:                   %[[RESHAPED_RHS_2:.*]] = "mhlo.dynamic_reshape"(%[[RHS]], %[[EXTENT_RHS_2]]) : (tensor<*xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+// CHECK:                   %[[RESULT_RANK_2:.*]] = chlo.broadcast_add %[[RESHAPED_LHS_2]], %[[RESHAPED_RHS_2]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+// CHECK:                   %[[RESULT_2:.*]] = tensor_cast %[[RESULT_RANK_2]] : tensor<?x?xf32> to tensor<*xf32>
+// CHECK:                   scf.yield %[[RESULT_2]] : tensor<*xf32>
+// CHECK:                 } else {
+// CHECK:                   %[[C3:.*]] = constant 3 : index
+// CHECK:                   %[[GREATEST_RANK_IS_3:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C3]] : index
+//                          Handle rank 3 specialization
+// CHECK:                   %[[VAL_34:.*]] = scf.if %[[GREATEST_RANK_IS_3]] -> (tensor<*xf32>) {
+// CHECK:                     %[[CONST_SHAPE_3:.*]] = shape.const_shape [1, 1, 1]
+// CHECK:                     %[[BROADCASTED_LHS_3:.*]] = shape.broadcast %[[LHS_SHAPE]], %[[CONST_SHAPE_3]]
+// CHECK:                     %[[BROADCASTED_RHS_3:.*]] = shape.broadcast %[[RHS_SHAPE]], %[[CONST_SHAPE_3]]
+// CHECK:                     %[[EXTENT_LHS_3:.*]] = shape.to_extent_tensor %[[BROADCASTED_LHS_3]] : !shape.shape -> tensor<3xindex>
+// CHECK:                     %[[EXTENT_RHS_3:.*]] = shape.to_extent_tensor %[[BROADCASTED_RHS_3]] : !shape.shape -> tensor<3xindex>
+// CHECK:                     %[[RESHAPED_LHS_3:.*]] = "mhlo.dynamic_reshape"(%[[LHS]], %[[EXTENT_LHS_3]]) : (tensor<*xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
+// CHECK:                     %[[RESHAPED_RHS_3:.*]] = "mhlo.dynamic_reshape"(%[[RHS]], %[[EXTENT_RHS_3]]) : (tensor<*xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
+// CHECK:                     %[[RESULT_RANK_3:.*]] = chlo.broadcast_add %[[RESHAPED_LHS_3]], %[[RESHAPED_RHS_3]] : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+// CHECK:                     %[[RESULT_3:.*]] = tensor_cast %[[RESULT_RANK_3]] : tensor<?x?x?xf32> to tensor<*xf32>
+// CHECK:                     scf.yield %[[RESULT_3]] : tensor<*xf32>
+// CHECK:                   } else {
+// CHECK:                     %[[C4:.*]] = constant 4 : index
+// CHECK:                     %[[GREATEST_RANK_IS_4:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C4]] : index
+//                            Handle rank 4 specialization
+// CHECK:                     %[[VAL_42:.*]] = scf.if %[[GREATEST_RANK_IS_4]] -> (tensor<*xf32>) {
+// CHECK:                       %[[CONST_SHAPE_4:.*]] = shape.const_shape [1, 1, 1, 1]
+// CHECK:                       %[[BROADCASTED_LHS_4:.*]] = shape.broadcast %[[LHS_SHAPE]], %[[CONST_SHAPE_4]]
+// CHECK:                       %[[BROADCASTED_RHS_4:.*]] = shape.broadcast %[[RHS_SHAPE]], %[[CONST_SHAPE_4]]
+// CHECK:                       %[[EXTENT_LHS_4:.*]] = shape.to_extent_tensor %[[BROADCASTED_LHS_4]] : !shape.shape -> tensor<4xindex>
+// CHECK:                       %[[EXTENT_RHS_4:.*]] = shape.to_extent_tensor %[[BROADCASTED_RHS_4]] : !shape.shape -> tensor<4xindex>
+// CHECK:                       %[[RESHAPED_LHS_4:.*]] = "mhlo.dynamic_reshape"(%[[LHS]], %[[EXTENT_LHS_4]]) : (tensor<*xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+// CHECK:                       %[[RESHAPED_RHS_4:.*]] = "mhlo.dynamic_reshape"(%[[RHS]], %[[EXTENT_RHS_4]]) : (tensor<*xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+// CHECK:                       %[[RESULT_RANK_4:.*]] = chlo.broadcast_add %[[RESHAPED_LHS_4]], %[[RESHAPED_RHS_4]] : (tensor<?x?x?x?xf32>, tensor<?x?x?x?xf32>) -> tensor<?x?x?x?xf32>
+// CHECK:                       %[[RESULT_4:.*]] = tensor_cast %[[RESULT_RANK_4]] : tensor<?x?x?x?xf32> to tensor<*xf32>
+// CHECK:                       scf.yield %[[RESULT_4]] : tensor<*xf32>
+// CHECK:                     } else {
+// CHECK:                       %[[C5:.*]] = constant 5 : index
+// CHECK:                       %[[GREATEST_RANK_IS_5:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C5]] : index
+//                              Handle rank 5 specialization
+// CHECK:                       %[[VAL_50:.*]] = scf.if %[[GREATEST_RANK_IS_5]] -> (tensor<*xf32>) {
+// CHECK:                         %[[CONST_SHAPE_5:.*]] = shape.const_shape [1, 1, 1, 1, 1]
+// CHECK:                         %[[BROADCASTED_LHS_5:.*]] = shape.broadcast %[[LHS_SHAPE]], %[[CONST_SHAPE_5]]
+// CHECK:                         %[[BROADCASTED_RHS_5:.*]] = shape.broadcast %[[RHS_SHAPE]], %[[CONST_SHAPE_5]]
+// CHECK:                         %[[EXTENT_LHS_5:.*]] = shape.to_extent_tensor %[[BROADCASTED_LHS_5]] : !shape.shape -> tensor<5xindex>
+// CHECK:                         %[[EXTENT_RHS_5:.*]] = shape.to_extent_tensor %[[BROADCASTED_RHS_5]] : !shape.shape -> tensor<5xindex>
+// CHECK:                         %[[RESHAPED_LHS_5:.*]] = "mhlo.dynamic_reshape"(%[[LHS]], %[[EXTENT_LHS_5]]) : (tensor<*xf32>, tensor<5xindex>) -> tensor<?x?x?x?x?xf32>
+// CHECK:                         %[[RESHAPED_RHS_5:.*]] = "mhlo.dynamic_reshape"(%[[RHS]], %[[EXTENT_RHS_5]]) : (tensor<*xf32>, tensor<5xindex>) -> tensor<?x?x?x?x?xf32>
+// CHECK:                         %[[RESULT_RANK_5:.*]] = chlo.broadcast_add %[[RESHAPED_LHS_5]], %[[RESHAPED_RHS_5]] : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+// CHECK:                         %[[RESULT_5:.*]] = tensor_cast %[[RESULT_RANK_5]] : tensor<?x?x?x?x?xf32> to tensor<*xf32>
+// CHECK:                         scf.yield %[[RESULT_5]] : tensor<*xf32>
+// CHECK:                       } else {
+// CHECK:                         %[[C6:.*]] = constant 6 : index
+// CHECK:                         %[[GREATEST_RANK_IS_6:.*]] = cmpi "eq", %[[GREATEST_RANK]], %[[C6]] : index
+//                                Handle rank 6 specialization
+// CHECK:                         %[[VAL_58:.*]] = scf.if %[[GREATEST_RANK_IS_6]] -> (tensor<*xf32>) {
+// CHECK:                           %[[CONST_SHAPE_6:.*]] = shape.const_shape [1, 1, 1, 1, 1, 1]
+// CHECK:                           %[[BROADCASTED_LHS_6:.*]] = shape.broadcast %[[LHS_SHAPE]], %[[CONST_SHAPE_6]]
+// CHECK:                           %[[BROADCASTED_RHS_6:.*]] = shape.broadcast %[[RHS_SHAPE]], %[[CONST_SHAPE_6]]
+// CHECK:                           %[[EXTENT_LHS_6:.*]] = shape.to_extent_tensor %[[BROADCASTED_LHS_6]] : !shape.shape -> tensor<6xindex>
+// CHECK:                           %[[EXTENT_RHS_6:.*]] = shape.to_extent_tensor %[[BROADCASTED_RHS_6]] : !shape.shape -> tensor<6xindex>
+// CHECK:                           %[[RESHAPED_LHS_6:.*]] = "mhlo.dynamic_reshape"(%[[LHS]], %[[EXTENT_LHS_6]]) : (tensor<*xf32>, tensor<6xindex>) -> tensor<?x?x?x?x?x?xf32>
+// CHECK:                           %[[RESHAPED_RHS_6:.*]] = "mhlo.dynamic_reshape"(%[[RHS]], %[[EXTENT_RHS_6]]) : (tensor<*xf32>, tensor<6xindex>) -> tensor<?x?x?x?x?x?xf32>
+// CHECK:                           %[[RESULT_RANK_6:.*]] = chlo.broadcast_add %[[RESHAPED_LHS_6]], %[[RESHAPED_RHS_6]] : (tensor<?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?xf32>) -> tensor<?x?x?x?x?x?xf32>
+// CHECK:                           %[[RESULT_6:.*]] = tensor_cast %[[RESULT_RANK_6]] : tensor<?x?x?x?x?x?xf32> to tensor<*xf32>
+// CHECK:                           scf.yield %[[RESULT_6]] : tensor<*xf32>
+// CHECK:                         } else {
+// CHECK:                           %false = constant false
+// CHECK:                           assert %false
+// CHECK:                           scf.yield %[[LHS]] : tensor<*xf32>
+// CHECK:                         }
+// CHECK:                         scf.yield %[[VAL_64:.*]] : tensor<*xf32>
+// CHECK:                       }
+// CHECK:                       scf.yield %[[VAL_65:.*]] : tensor<*xf32>
+// CHECK:                     }
+// CHECK:                     scf.yield %[[VAL_66:.*]] : tensor<*xf32>
+// CHECK:                   }
+// CHECK:                   scf.yield %[[VAL_67:.*]] : tensor<*xf32>
+// CHECK:                 }
+// CHECK:                 scf.yield %[[VAL_68:.*]] : tensor<*xf32>
+// CHECK:               }
+// CHECK:               scf.yield %[[VAL_69:.*]] : tensor<*xf32>
+// CHECK:             }
+// CHECK:             scf.yield %[[VAL_70:.*]] : tensor<*xf32>
+// CHECK:           }
+// CHECK:           return %[[VAL_71:.*]] : tensor<*xf32>
+// CHECK:         }
