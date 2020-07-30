@@ -169,8 +169,8 @@ static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     mlir::DenseIntElementsAttr groups) {
-  int64_t num_groups = groups.getType().getDimSize(0);
-  int64_t group_size = groups.getType().getDimSize(1);
+  uint64_t num_groups = groups.getType().getDimSize(0);
+  uint64_t group_size = groups.getType().getDimSize(1);
 
   std::vector<xla::ReplicaGroup> result;
   result.reserve(num_groups);
@@ -434,14 +434,14 @@ static void ExtractShardingsFromFunction(
     llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* ret_shardings) {
   arg_shardings->resize(function.getNumArguments(),
                         absl::optional<xla::OpSharding>());
-  for (int i = 0; i < function.getNumArguments(); ++i)
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i)
     if (auto sharding =
             function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr))
       (*arg_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
 
   ret_shardings->resize(function.getNumResults(),
                         absl::optional<xla::OpSharding>());
-  for (int i = 0; i < function.getNumResults(); ++i)
+  for (int i = 0, end = function.getNumResults(); i < end; ++i)
     if (auto sharding =
             function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr))
       (*ret_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
@@ -757,7 +757,7 @@ LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
   auto edge_padding_low = ConvertDenseIntAttr(op.edge_padding_low());
   auto edge_padding_high = ConvertDenseIntAttr(op.edge_padding_high());
   auto interior_padding = ConvertDenseIntAttr(op.interior_padding());
-  for (xla::int64 i = 0; i < edge_padding_low.size(); ++i) {
+  for (xla::int64 i = 0, end = edge_padding_low.size(); i < end; ++i) {
     auto* dims = padding_config.add_dimensions();
     dims->set_edge_padding_low(edge_padding_low[i]);
     dims->set_edge_padding_high(edge_padding_high[i]);
