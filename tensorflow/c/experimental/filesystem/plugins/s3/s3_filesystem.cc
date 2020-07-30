@@ -646,7 +646,8 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
         head_object_outcome.GetResult().GetLastModified().Millis() * 1e6;
     found = true;
   } else {
-    return TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION) return;
   }
 
   auto prefix = object;
@@ -1110,6 +1111,7 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   for (int i = 0; i < num_entries; i++)
     (*entries)[i] = strdup(result[i].c_str());
   TF_SetStatus(status, TF_OK, "");
+  return num_entries;
 }
 
 static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
