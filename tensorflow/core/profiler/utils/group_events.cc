@@ -664,7 +664,8 @@ void EventForest::ProcessTfDataEvents() {
           produce_event->GetEventVisitor().GetStat(StatType::kElementId);
       if (!element_id.has_value()) continue;
       for (EventNode* produce_iterator : produce_event->GetChildren()) {
-        if (IsIteratorEventName(produce_iterator->GetEventVisitor().Name())) {
+        if (IsDatasetOp(ParseTfOpFullname(
+                produce_iterator->GetEventVisitor().Name()))) {
           absl::optional<XStatVisitor> iterator_id =
               produce_iterator->GetEventVisitor().GetStat(StatType::kParentId);
           if (!iterator_id.has_value()) break;
@@ -691,7 +692,8 @@ void EventForest::ProcessTfDataEvents() {
       if (!element_id.has_value()) continue;
       EventNode* consume_iterator = consume_event->GetParent();
       if (!consume_iterator ||
-          !IsIteratorEventName(consume_iterator->GetEventVisitor().Name())) {
+          !IsDatasetOp(
+              ParseTfOpFullname(consume_iterator->GetEventVisitor().Name()))) {
         continue;
       }
       absl::optional<XStatVisitor> iterator_id =
