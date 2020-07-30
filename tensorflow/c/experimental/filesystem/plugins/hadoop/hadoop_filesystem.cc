@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 #include "tensorflow/c/env.h"
@@ -40,6 +41,26 @@ void ParseHadoopPath(const std::string& fname, std::string* scheme,
   if (nn_end == std::string::npos) return;
   *namenode = fname.substr(scheme_end + 1, nn_end - scheme_end - 1);
   *path = fname.substr(nn_end + 1);
+}
+
+void SplitArchiveNameAndPath(std::string* path, std::string* nn,
+                             TF_Status* status) {
+  size_t index_end_archive_name = path->find(".har");
+  if (index_end_archive_name == path->npos) {
+    return TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        "Hadoop archive path does not contain a .har extension");
+  }
+  // Case of hadoop archive. Namenode is the path to the archive.
+  std::ostringstream namenodestream;
+  namenodestream << "har://" << nn
+                 << path->substr(0, index_end_archive_name + 4);
+  *nn = namenodestream.str();
+  path->erase(0, index_end_archive_name + 4);
+  if (path->empty())
+    // Root of the archive
+    *path = "/";
+  return TF_SetStatus(status, TF_OK, "");
 }
 
 template <typename R, typename... Args>
