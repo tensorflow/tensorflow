@@ -197,8 +197,8 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
     Value shape =
         rewriter.create<shape::ShapeOfOp>(loc, lhs_is_scalar ? rhs : lhs);
     Value num_elements = rewriter.create<shape::NumElementsOp>(loc, shape);
-    Value size = rewriter.create<shape::SizeToIndexOp>(loc, num_elements);
-    Value size_tensor = rewriter.create<TensorFromElementsOp>(loc, size);
+    Value size_tensor =
+        rewriter.create<TensorFromElementsOp>(loc, num_elements);
     Value reshaped = rewriter.create<mhlo::DynamicReshapeOp>(
         loc, RankedTensorType::get({-1}, result_type.getElementType()),
         lhs_is_scalar ? rhs : lhs, size_tensor);
@@ -211,10 +211,8 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
         loc, SmallVector<Type, 1>{reshaped.getType()}, operands, op.getAttrs());
 
     // Reshape the result back into an unranked tensor.
-    Value shape_tensor = rewriter.create<shape::ToExtentTensorOp>(
-        loc, RankedTensorType::get({-1}, rewriter.getIndexType()), shape);
     rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_type,
-                                                        computed, shape_tensor);
+                                                        computed, shape);
 
     return success();
   }
@@ -278,18 +276,10 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     //
     // See if shapes are equal.
     OpBuilder else_no_scalars_builder = if_rhs_scalar_op.getElseBodyBuilder();
-    auto extent_tensor_type = RankedTensorType::get({ShapedType::kDynamicSize},
-                                                    rewriter.getIndexType());
     Value shape_of_lhs =
-        else_no_scalars_builder.create<shape::ToExtentTensorOp>(
-            loc, extent_tensor_type,
-            else_no_scalars_builder.create<shape::ShapeOfOp>(loc, lhs)
-                .getResult());
+        else_no_scalars_builder.create<shape::ShapeOfOp>(loc, lhs);
     Value shape_of_rhs =
-        else_no_scalars_builder.create<shape::ToExtentTensorOp>(
-            loc, extent_tensor_type,
-            else_no_scalars_builder.create<shape::ShapeOfOp>(loc, rhs)
-                .getResult());
+        else_no_scalars_builder.create<shape::ShapeOfOp>(loc, rhs);
     Value equal_shapes = else_no_scalars_builder.create<shape::ShapeEqOp>(
         loc, shape_of_lhs, shape_of_rhs);
 
@@ -319,12 +309,8 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
   // tensor.
   Value IsScalarTensor(OpBuilder &rewriter, ChloOpTy op, Value tensor) const {
     auto loc = op.getLoc();
-    auto extent_tensor_type = RankedTensorType::get({ShapedType::kDynamicSize},
-                                                    rewriter.getIndexType());
 
-    Value shape_of_tensor = rewriter.create<shape::ToExtentTensorOp>(
-        loc, extent_tensor_type,
-        rewriter.create<shape::ShapeOfOp>(loc, tensor).getResult());
+    Value shape_of_tensor = rewriter.create<shape::ShapeOfOp>(loc, tensor);
     Value rank_tensor = rewriter.create<shape::RankOp>(
         loc, rewriter.getIndexType(), shape_of_tensor);
     return rewriter.create<CmpIOp>(loc, rewriter.getI1Type(), CmpIPredicate::eq,
