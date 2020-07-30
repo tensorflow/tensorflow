@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import compression_ops
@@ -25,14 +26,23 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
 def _test_objects():
+
+  Item = namedtuple('Item', 'id name')
+
   return [
       combinations.NamedObject("int", 1),
       combinations.NamedObject("string", "dog"),
       combinations.NamedObject("tuple", (1, 1)),
+      combinations.NamedObject("nested_tuple", ((1, 1), (2, 2))),
+      combinations.NamedObject("named_tuple", Item(id=1, name="item1")),
+      combinations.NamedObject("unicode", "アヒル"),
+      combinations.NamedObject("nested_named_tuple", (Item(
+          id=1, name="item1"), Item(id=2, name="item2"))),
       combinations.NamedObject("int_string_tuple", (1, "dog")),
       combinations.NamedObject(
           "sparse",
@@ -46,6 +56,22 @@ def _test_objects():
                       values=[1, 2],
                       dense_shape=[3, 4]),
               "b": (1, 2, "dog")
+          })
+  ]
+
+
+def _test_eager_objects():
+  return [
+      combinations.NamedObject(
+          "ragged",
+          ragged_factory_ops.constant([[0, 1, 2, 3], [4, 5], [6, 7, 8], [9]])
+      ),
+      combinations.NamedObject(
+          "sparse_ragged_structured",
+          {
+              "sparse": sparse_tensor.SparseTensorValue(
+                  indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4]),
+              "ragged": ragged_factory_ops.constant([[0, 1, 2, 3], [9]])
           })
   ]
 
@@ -67,6 +93,30 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(element=_test_objects())))
   def testDatasetCompression(self, element):
+    element = element._obj
+
+    dataset = dataset_ops.Dataset.from_tensors(element)
+    element_spec = dataset.element_spec
+
+    dataset = dataset.map(lambda *x: compression_ops.compress(x))
+    dataset = dataset.map(lambda x: compression_ops.uncompress(x, element_spec))
+    self.assertDatasetProduces(dataset, [element])
+
+  @combinations.generate(combinations.times(
+      test_base.eager_only_combinations(),
+      combinations.combine(element=_test_objects() + _test_eager_objects())))
+  def testCompressionEager(self, element):
+    element = element._obj
+
+    compressed = compression_ops.compress(element)
+    uncompressed = compression_ops.uncompress(
+        compressed, structure.type_spec_from_value(element))
+    self.assertValuesEqual(element, self.evaluate(uncompressed))
+
+  @combinations.generate(combinations.times(
+      test_base.eager_only_combinations(),
+      combinations.combine(element=_test_objects() + _test_eager_objects())))
+  def testDatasetCompressionEager(self, element):
     element = element._obj
 
     dataset = dataset_ops.Dataset.from_tensors(element)
