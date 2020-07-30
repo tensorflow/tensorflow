@@ -153,6 +153,7 @@ class TensorMapErase : public OpKernel {
   explicit TensorMapErase(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
+    std::cout << "Erase - hello world" << std::endl;
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
     const TensorKey& key = c->input(1);
@@ -176,6 +177,7 @@ class TensorMapHasKey : public OpKernel {
   ~TensorMapHasKey() override {}
 
   void Compute(OpKernelContext* c) override {
+    std::cout << "HasKey - hello world" << std::endl;
     const TensorKey& key = c->input(1);
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
@@ -188,21 +190,43 @@ class TensorMapHasKey : public OpKernel {
 class TensorMapListKeys : public OpKernel {
  public:
   explicit TensorMapListKeys(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("key_dtype", &key_dtype_));
+    //OP_REQUIRES_OK(c, c->GetAttr("key_dtype", &key_dtype_));
   }
   ~TensorMapListKeys() override {}
 
   void Compute(OpKernelContext* c) override {
+    std::cout << "ListKeys - hello world" << std::endl;
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
     Tensor* result;
     std::vector<Tensor> key_vector = m->keys();
+    std::cout << "ListKeys - vector size: " << key_vector.size() << std::endl;
     TensorShape shape = key_vector[0].shape();
     shape.InsertDim(0, key_vector.size());
+    std::cout << "ListKeys - shape" << shape << std::endl;
     OP_REQUIRES_OK(c, c->allocate_output(0, shape, &result));
-    for (int i=0; i<key_vector.size(); i++) {
+    for (int i=0; i<1; i++) {
       result[i] = key_vector[i];
     }
+    //absl::flat_hash_map<TensorKey,Tensor>::iterator it = m->tensors().begin();
+    //OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result));
+    //result->scalar<int32>()() = m->tensors().size();
+    //c->set_output(0, m->tensors().find(key)->second);
+    //c->set_output(0, key_vector[0]);
+
+    /*Tensor result;
+    c->set_output(0, result);*/
+    //OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result));
+    /*std::vector<Tensor> key_vector = m->keys();
+    TensorShape shape = key_vector[0].shape();
+    std::cout << "ListKeys - vector size: " << key_vector.size() << std::endl;
+    std::cout << "ListKeys - shape" << shape << std::endl;
+    shape.InsertDim(0, key_vector.size());
+    std::cout << "ListKeys - shape after" << shape << std::endl;
+    OP_REQUIRES_OK(c, c->allocate_output(0, shape, &result));
+    for (int i=0; i<1; i++) {
+      result[i] = key_vector[i];
+    }*/
   }
  private:
   DataType key_dtype_;

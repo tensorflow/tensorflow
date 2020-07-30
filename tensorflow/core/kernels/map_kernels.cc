@@ -42,7 +42,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorMapHasKey").Device(DEVICE_CPU),
                         TensorMapHasKey);
 
 REGISTER_KERNEL_BUILDER(Name("TensorMapListKeys").Device(DEVICE_CPU),
-                        TensorMapHasKey);
+                        TensorMapListKeys);
 
 #undef REGISTER_TENSOR_LIST_OPS_CPU
 
