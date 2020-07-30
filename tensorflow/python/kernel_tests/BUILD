@@ -245,6 +245,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "collective_ops_test",
+    size = "small",
+    srcs = ["collective_ops_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:collective_ops_gen",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
     name = "conditional_accumulator_test",
     size = "small",
     srcs = ["conditional_accumulator_test.py"],
