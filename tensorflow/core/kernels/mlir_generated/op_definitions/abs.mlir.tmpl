@@ -1,4 +1,4 @@
-func @Abs(%arg0: tensor<?xelem_type>) -> tensor<?xelem_type> {
+func @abs(%arg0: tensor<?xelem_type>) -> tensor<?xelem_type> {
   %0 = "tf.Abs"(%arg0) { }
     : (tensor<?xelem_type>) -> tensor<?xelem_type>
   return %0 : tensor<?xelem_type>
