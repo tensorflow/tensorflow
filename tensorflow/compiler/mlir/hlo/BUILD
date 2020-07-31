@@ -806,6 +806,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "register_all_passes",
+    srcs = ["lib/Dialect/mhlo/transforms/register_all_passes.cc"],
+    deps = [":all_passes"],
+    alwayslink = 1,
+)
+
 cc_binary(
     name = "mlir-hlo-opt",
     srcs = [
