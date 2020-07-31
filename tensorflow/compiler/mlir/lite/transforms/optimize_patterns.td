@@ -425,6 +425,11 @@ class FloatValueEquals<string val> : Constraint<CPred<
   "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
 
 // ReLU patterns
+def MatchReluPattern : Pat<
+  (TFL_MaximumOp $input, (ConstantOp $Zero)),
+  (TFL_ReluOp $input),
+  [(FloatValueEquals<"0"> $Zero)]>;
+
 def MatchRelu1Pattern1 : Pat<
   (TFL_MinimumOp (TFL_MaximumOp $input, (ConstantOp $NegOne)),
     (ConstantOp $One)),
