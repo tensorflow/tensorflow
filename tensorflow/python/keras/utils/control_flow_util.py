@@ -25,6 +25,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import variables
 
 
 def InXlaContext(graph):
@@ -110,7 +111,6 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):  # pylint: disable
     raise TypeError("`true_fn` must be callable.")
   if not callable(false_fn):
     raise TypeError("`false_fn` must be callable.")
-
   pred_value = smart_constant_value(pred)
   if pred_value is not None:
     if pred_value:
@@ -136,6 +136,8 @@ def smart_constant_value(pred):  # pylint: disable=invalid-name
   """
   if isinstance(pred, ops.Tensor):
     pred_value = tensor_util.constant_value(pred)
+  elif isinstance(pred, variables.Variable):
+    pred_value = None
   elif pred in {0, 1}:  # Accept 1/0 as valid boolean values
     pred_value = bool(pred)
   elif isinstance(pred, bool):
