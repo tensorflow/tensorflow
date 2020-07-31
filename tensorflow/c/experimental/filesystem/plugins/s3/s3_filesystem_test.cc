@@ -452,6 +452,38 @@ TEST_F(S3FilesystemTest, SimpleCopyFile) {
   EXPECT_EQ(result, "test");
 }
 
+TEST_F(S3FilesystemTest, RenameFile) {
+  const std::string src = GetURIForPath("RenameFileSrc");
+  const std::string dst = GetURIForPath("RenameFileDst");
+  WriteString(src, "test");
+  ASSERT_TF_OK(status_);
+
+  tf_s3_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test", result);
+}
+
+TEST_F(S3FilesystemTest, RenameFileOverwrite) {
+  const std::string src = GetURIForPath("RenameFileOverwriteSrc");
+  const std::string dst = GetURIForPath("RenameFileOverwriteDst");
+
+  WriteString(src, "test_old");
+  ASSERT_TF_OK(status_);
+  WriteString(dst, "test_new");
+  ASSERT_TF_OK(status_);
+
+  tf_s3_filesystem::PathExists(filesystem_, dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_s3_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test_old", result);
+}
+
 // Test against large file.
 TEST_F(S3FilesystemTest, ReadLargeFile) {
   auto local_path = GetLocalLargeFile();
