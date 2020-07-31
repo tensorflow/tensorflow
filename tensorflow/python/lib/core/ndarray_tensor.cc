@@ -271,7 +271,7 @@ Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   auto iter = make_safe(PyArray_IterNew(reinterpret_cast<PyObject*>(dst)));
-  for (int64 i = 0; i < nelems; ++i) {
+  for (int64 i = 0; i < static_cast<int64>(nelems); ++i) {
     const tstring& tstr_i = tstr[i];
     auto py_string =
         make_safe(PyBytes_FromStringAndSize(tstr_i.data(), tstr_i.size()));

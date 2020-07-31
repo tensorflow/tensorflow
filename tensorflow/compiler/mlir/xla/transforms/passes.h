@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
@@ -40,6 +43,15 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
 /// specified device type.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
     llvm::StringRef device_type);
+
+/// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
+void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
+                                          OwningRewritePatternList& patterns);
+
+/// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
+/// list.
+void PopulateLegalizeTfPatterns(MLIRContext* context,
+                                OwningRewritePatternList* patterns);
 
 /// Lowers from TF dialect's control flow to HLO dialect's control flow.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();

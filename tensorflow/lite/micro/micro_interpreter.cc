@@ -31,6 +31,7 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
 const char* OpNameFromRegistration(const TfLiteRegistration* registration) {
   if (registration->builtin_code == BuiltinOperator_CUSTOM) {
     return registration->custom_name;
@@ -38,6 +39,7 @@ const char* OpNameFromRegistration(const TfLiteRegistration* registration) {
     return EnumNameBuiltinOperator(BuiltinOperator(registration->builtin_code));
   }
 }
+#endif  // !defined(TF_LITE_STRIP_ERROR_STRINGS)
 
 }  // namespace
 
@@ -47,10 +49,10 @@ ContextHelper::ContextHelper(ErrorReporter* error_reporter,
                              MicroAllocator* allocator, const Model* model)
     : allocator_(allocator), error_reporter_(error_reporter), model_(model) {}
 
-TfLiteStatus ContextHelper::AllocatePersistentBuffer(TfLiteContext* ctx,
-                                                     size_t bytes, void** ptr) {
+void* ContextHelper::AllocatePersistentBuffer(TfLiteContext* ctx,
+                                              size_t bytes) {
   return reinterpret_cast<ContextHelper*>(ctx->impl_)
-      ->allocator_->AllocatePersistentBuffer(bytes, ptr);
+      ->allocator_->AllocatePersistentBuffer(bytes);
 }
 
 TfLiteStatus ContextHelper::RequestScratchBufferInArena(TfLiteContext* ctx,
@@ -68,11 +70,13 @@ void* ContextHelper::GetScratchBuffer(TfLiteContext* ctx, int buffer_idx) {
 
 void ContextHelper::ReportOpError(struct TfLiteContext* context,
                                   const char* format, ...) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   ContextHelper* helper = static_cast<ContextHelper*>(context->impl_);
   va_list args;
   va_start(args, format);
   TF_LITE_REPORT_ERROR(helper->error_reporter_, format, args);
   va_end(args);
+#endif
 }
 
 TfLiteTensor* ContextHelper::GetTensor(const struct TfLiteContext* context,

@@ -43,6 +43,10 @@ class Mean : public GPUOperation {
   Mean& operator=(Mean&& operation);
   Mean(const Mean&) = delete;
   Mean& operator=(const Mean&) = delete;
+
+ private:
+  std::string GetMeanKernelCode(const OperationDef& op_def,
+                                const int3& work_group_size);
 };
 
 Mean CreateMean(const OperationDef& definition);

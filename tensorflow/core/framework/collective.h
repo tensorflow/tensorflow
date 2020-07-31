@@ -188,6 +188,9 @@ class ParamResolverInterface {
                                      CompleteInstanceResponse* response,
                                      CancellationManager* cancel_mgr,
                                      const StatusCallback& done) = 0;
+
+  // Aborts the resolver. After abortion the resolver can no longer be used.
+  virtual void StartAbort(const Status& s) = 0;
 };
 
 // Graphs which utilize Collective Ops in a common instance must
@@ -381,7 +384,7 @@ class CollectiveContext {
 // implement this interface and register the implementation via the
 // CollectiveRegistry detailed below.  See common_runtime/ring_reducer and
 // common_runtime/hierarchical_tree_broadcaster for examples.
-class CollectiveImplementationInterface {
+class CollectiveImplementationInterface : public core::RefCounted {
  public:
   virtual ~CollectiveImplementationInterface() = default;
 

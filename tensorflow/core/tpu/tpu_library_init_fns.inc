@@ -132,6 +132,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
 
   TFTPU_SET_FN(executor_fn, TpuStatus_New);
   TFTPU_SET_FN(executor_fn, TpuStatus_Create);
+  TFTPU_SET_FN(executor_fn, TpuStatus_Set);
   TFTPU_SET_FN(executor_fn, TpuStatus_Free);
   TFTPU_SET_FN(executor_fn, TpuStatus_Message);
   TFTPU_SET_FN(executor_fn, TpuStatus_Code);
@@ -174,12 +175,18 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuCoreLocation_Index);
   TFTPU_SET_FN(executor_fn, TpuCoreLocation_Id);
 
+  TFTPU_SET_FN(executor_fn, TpuCompiler_New);
+  TFTPU_SET_FN(executor_fn, TpuCompiler_Free);
+
   TFTPU_SET_FN(executor_fn, TpuCompiler_RunHloPasses);
   TFTPU_SET_FN(executor_fn, TpuCompiler_RunBackend);
   TFTPU_SET_FN(executor_fn, TpuCompiler_Compile);
   TFTPU_SET_FN(executor_fn, TpuCompiler_ShapeSize);
   TFTPU_SET_FN(executor_fn, TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Free);
+
+  TFTPU_SET_FN(executor_fn, XlaShapeToTpuShapeRepresentation);
+  TFTPU_SET_FN(executor_fn, XlaShapeToTpuPaddedShape);
 
   return tensorflow::Status::OK();
 }
@@ -202,7 +209,6 @@ tensorflow::Status SetTpuUtilStructFns(void* library_handle) {
   TFTPU_SET_FN(util_fn, TpuTopology_AvailableCoreCount);
   TFTPU_SET_FN(util_fn, TpuCompile_IsTpuCompilationEnabled);
   TFTPU_SET_FN(util_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
-  TFTPU_SET_FN(util_fn, TpuCompile_ToTpuShapeRepresentation);
   TFTPU_SET_FN(util_fn, TpuCompile_CreateCompilationCacheKey);
   TFTPU_SET_FN(util_fn, TpuCompile_DestroyCompilationCacheKey);
   TFTPU_SET_FN(util_fn, TpuCompile_CreateGuaranteedConstFingerprint);

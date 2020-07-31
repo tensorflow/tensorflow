@@ -19,13 +19,9 @@ limitations under the License.
 #include <cstddef>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
 extern "C" {
-
-typedef struct TpuSerializedProto {
-  const char* bytes;
-  size_t size;
-} TpuSerializedProto;
 
 void StreamExecutor_Tpu_FreeSerializedProto(const TpuSerializedProto* proto);
 

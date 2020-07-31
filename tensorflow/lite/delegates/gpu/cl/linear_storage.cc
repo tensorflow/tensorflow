@@ -111,23 +111,6 @@ LinearStorage& LinearStorage::operator=(LinearStorage&& storage) {
   return *this;
 }
 
-std::string LinearStorage::ReadLinearFLT4(const std::string& z_coord) const {
-  if (storage_type_ == LinearStorageType::BUFFER) {
-    return absl::StrCat(name_, "[", z_coord, "]");
-  } else {
-    return absl::StrCat("READ_IMAGE(", name_, ", smp_none, (int2)(", z_coord,
-                        ", 0))");
-  }
-}
-
-std::string LinearStorage::GetDeclaration() const {
-  if (storage_type_ == LinearStorageType::BUFFER) {
-    return absl::StrCat("__global FLT4* ", name_);
-  } else {
-    return absl::StrCat("__read_only image2d_t ", name_);
-  }
-}
-
 absl::Status LinearStorage::GetGPUResources(
     const GPUObjectDescriptor* obj_ptr,
     GPUResourcesWithValue* resources) const {

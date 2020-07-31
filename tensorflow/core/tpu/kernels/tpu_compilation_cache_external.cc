@@ -51,20 +51,6 @@ void PopulateEntry(const std::string& key, CompiledSubgraph* entry,
 }
 }  // namespace
 
-TpuCompilationCacheExternal::EntryRefImpl::EntryRefImpl(
-    TpuCompilationCacheInterface* parent, CompiledSubgraph* entry, int index)
-    : CompilationCacheEntryRefImpl<TpuCompilationCacheEntry>(parent, entry,
-                                                             index) {}
-
-TpuCompilationCacheEntry TpuCompilationCacheExternal::EntryRefImpl::get() {
-  if (entry_ == nullptr) {
-    // Create an empty entry if the entry is nullptr. This corresponds to
-    // non-existing sharding/unsharding entries.
-    return TpuCompilationCacheEntry();
-  }
-  return TpuCompilationCacheEntry(entry_->tpu_program_group.get(), index_);
-}
-
 CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
     const string& key,
     const std::function<Status(TpuProgramGroupInterface*)>& initialize_program,
@@ -73,7 +59,6 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
   main_entry->parent = this;
   main_entry->subgraph_key = key;
   main_entry->uid = get_uid();
-  // TODO(henrytan): implement TpuCompilationCacheKey.debug_string.
   main_entry->cache_entry_debug_string = subgraph_key.prefix;
   VLOG(1) << "Cache Initializing Entry Session Debug "
           << main_entry->cache_entry_debug_string;

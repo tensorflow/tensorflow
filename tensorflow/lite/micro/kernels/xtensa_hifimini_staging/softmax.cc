@@ -72,7 +72,8 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
       if (output->type == kTfLiteInt16) {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point,
                           std::numeric_limits<int16_t>::min());
-        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // NOTE: Current int16_t softmax output does not require symmetric
+        // scaling
         // - so no need to verify scale here.
       } else {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point,
@@ -98,12 +99,7 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
 
 void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -129,7 +125,7 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
       context, scratch_size, &(op_data->scratch_tensor_index));
   TF_LITE_ENSURE_OK(context, scratch_status);
-  // Allocate an array to precompute exponents over all int8 inputs, applying
+  // Allocate an array to precompute exponents over all int8_t inputs, applying
   // the scale and beta before calculating exp. It is mandatory to apply beta
   // and scale here, since each softmax op may have different beta and scale
   // values. Beta and scale will remain constant for a given softmax op.
@@ -150,7 +146,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     const RuntimeShape& input_shape = GetTensorShape(input);
     const int8_t* input_data = GetTensorData<int8_t>(input);
     const RuntimeShape& output_shape = GetTensorShape(output);
-    int16* output_data = GetTensorData<int16>(output);
+    int16_t* output_data = GetTensorData<int16_t>(output);
     const int trailing_dim = input_shape.DimensionsCount() - 1;
     const int outer_size =
         MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);

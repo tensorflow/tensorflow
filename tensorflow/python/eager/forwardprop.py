@@ -31,6 +31,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
@@ -395,18 +396,21 @@ class ForwardAccumulator(object):
       primals: A Tensor or list of Tensors.
       tangents: A Tensor or list of Tensors matching `primals`.
     """
-    nest.assert_same_structure(primals, tangents)
-    for t, g in zip(nest.flatten(primals), nest.flatten(tangents)):
-      if not t.dtype.is_floating:
+
+    def _watch(primal, tangent):
+      if not primal.dtype.is_floating:
         logging.log_first_n(
             logging.WARN, "The dtype of the watched primal must be "
-            "floating (e.g. tf.float32), got %r", 5, t.dtype)
-      g = ops.convert_to_tensor(g, dtype=t.dtype)
-      if hasattr(t, "handle"):
+            "floating (e.g. tf.float32), got %r", 5, primal.dtype)
+      tangent = ops.convert_to_tensor(tangent, dtype=primal.dtype)
+      if hasattr(primal, "handle"):
         # Run convert_to_tensor to get the captured handle from whichever
         # function we're running if necessary.
-        t = ops.convert_to_tensor(t.handle)
-      pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
+        primal = ops.convert_to_tensor(primal.handle)
+      pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(self._accumulator, primal,
+                                                tangent)
+
+    nest.map_structure(_watch, primals, tangents, expand_composites=True)
 
   def jvp(self, primals, unconnected_gradients=UnconnectedGradients.NONE):
     """Fetches the Jacobian-vector product computed for `primals`.
@@ -432,10 +436,18 @@ class ForwardAccumulator(object):
 
     def _fetch_jvp(tensor):
       if hasattr(tensor, "handle"):
-        tensor = ops.convert_to_tensor(tensor.handle)
+        unwrapped_tensor = ops.convert_to_tensor(tensor.handle)
+      else:
+        if isinstance(tensor, np_arrays.ndarray):
+          unwrapped_tensor = tensor.data
+        else:
+          unwrapped_tensor = tensor
       result = pywrap_tfe.TFE_Py_ForwardAccumulatorJVP(self._accumulator,
-                                                       tensor)
+                                                       unwrapped_tensor)
       if result is None and unconnected_gradients == UnconnectedGradients.ZERO:
-        return array_ops.zeros_like(tensor)
+        result = array_ops.zeros_like(tensor)
+      if result is not None and isinstance(tensor, np_arrays.ndarray):
+        return np_arrays.tensor_to_ndarray(result)
       return result
+
     return nest.map_structure(_fetch_jvp, primals)

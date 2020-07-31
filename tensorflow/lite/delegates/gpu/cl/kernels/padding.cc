@@ -24,20 +24,29 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetPaddingCode(const OperationDef& op_def,
-                           const PadAttributes& attr, Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-  args->AddInt("prepended_x");
-  args->AddInt("prepended_y");
-  args->AddInt("prepended_z");
-  args->AddInt("prepended_w");
+Padding::Padding(const OperationDef& definition, const PadAttributes& attr)
+    : GPUOperation(definition), attributes_(attr) {}
+
+Padding::Padding(Padding&& kernel)
+    : GPUOperation(std::move(kernel)), attributes_(kernel.attributes_) {}
+
+Padding& Padding::operator=(Padding&& kernel) {
+  if (this != &kernel) {
+    std::swap(attributes_, kernel.attributes_);
+    GPUOperation::operator=(std::move(kernel));
+  }
+  return *this;
+}
+
+std::string Padding::GetPaddingCode(const OperationDef& op_def,
+                                    const PadAttributes& attr) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  args_.AddInt("prepended_x");
+  args_.AddInt("prepended_y");
+  args_.AddInt("prepended_z");
+  args_.AddInt("prepended_w");
 
   const std::string dst_batch =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
@@ -139,24 +148,9 @@ std::string GetPaddingCode(const OperationDef& op_def,
 
   return c;
 }
-}  // namespace
-
-Padding::Padding(const OperationDef& definition, const PadAttributes& attr)
-    : GPUOperation(definition), attributes_(attr) {}
-
-Padding::Padding(Padding&& kernel)
-    : GPUOperation(std::move(kernel)), attributes_(kernel.attributes_) {}
-
-Padding& Padding::operator=(Padding&& kernel) {
-  if (this != &kernel) {
-    std::swap(attributes_, kernel.attributes_);
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
 
 absl::Status Padding::Compile(const CreationContext& creation_context) {
-  std::string code = GetPaddingCode(definition_, attributes_, &args_);
+  std::string code = GetPaddingCode(definition_, attributes_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -169,8 +163,6 @@ absl::Status Padding::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status Padding::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(args_.SetInt("prepended_x", attributes_.prepended.w));
   RETURN_IF_ERROR(args_.SetInt("prepended_y", attributes_.prepended.h));
   RETURN_IF_ERROR(args_.SetInt("prepended_z", attributes_.prepended.c));

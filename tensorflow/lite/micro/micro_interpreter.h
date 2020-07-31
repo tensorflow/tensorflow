@@ -42,8 +42,7 @@ class ContextHelper {
                          MicroAllocator* allocator, const Model* model);
 
   // Functions that will be assigned to function pointers on TfLiteContext:
-  static TfLiteStatus AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes,
-                                               void** ptr);
+  static void* AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes);
   static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
                                                   size_t bytes,
                                                   int* buffer_idx);

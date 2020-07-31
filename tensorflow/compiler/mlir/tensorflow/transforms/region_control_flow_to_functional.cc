@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-region-cf-to-functional"
@@ -299,6 +300,7 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
   auto if_op = builder.create<IfOp>(
       if_region.getLoc(), if_region.getResultTypes(), if_region.cond(),
       extern_values, then_name, else_name, if_region.is_stateless());
+  CopyUnderscoredAttributes(if_region, if_op);
   if_region.replaceAllUsesWith(if_op.getResults());
   if_region.erase();
   return success();
@@ -373,8 +375,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   OpBuilder builder(while_region);
   auto while_op = builder.create<WhileOp>(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
-      builder.getArrayAttr({}), while_region.parallel_iterations(),
-      while_region.is_stateless());
+      while_region.parallel_iterations(), while_region.is_stateless());
+  CopyUnderscoredAttributes(while_region, while_op);
 
   // Redirect old results to new results.
   for (auto it : llvm::zip(

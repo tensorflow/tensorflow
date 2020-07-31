@@ -233,6 +233,22 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                      \
   } while (0)
 
+// Define TFL_CAPI_EXPORT macro to export a function properly with a shared
+// library.
+#ifdef SWIG
+#define TFL_CAPI_EXPORT
+#else
+#if defined(_WIN32)
+#ifdef TFL_COMPILE_LIBRARY
+#define TFL_CAPI_EXPORT __declspec(dllexport)
+#else
+#define TFL_CAPI_EXPORT __declspec(dllimport)
+#endif  // TFL_COMPILE_LIBRARY
+#else
+#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
+#endif  // _WIN32
+#endif  // SWIG
+
 // Single-precision complex data type compatible with the C99 definition.
 typedef struct TfLiteComplex64 {
   float re, im;  // real and imaginary parts, respectively.
@@ -267,9 +283,6 @@ typedef enum {
 
 // Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
-
-// Return the size of given type in bytes. Return 0 in in case of string.
-int TfLiteTypeGetSize(TfLiteType type);
 
 // SupportedQuantizationTypes.
 typedef enum TfLiteQuantizationType {
@@ -703,12 +716,11 @@ typedef struct TfLiteContext {
   void* profiler;
 
   // Allocate persistent buffer which has the same life time as the interpreter.
+  // Returns nullptr on failure.
   // The memory is allocated from heap for TFL, and from tail in TFLM.
-  // If *ptr is not nullptr, the pointer will be reallocated.
-  // This method is only available in Prepare stage.
+  // This method is only available in Init or Prepare stage.
   // WARNING: This is an experimental interface that is subject to change.
-  TfLiteStatus (*AllocatePersistentBuffer)(struct TfLiteContext* ctx,
-                                           size_t bytes, void** ptr);
+  void* (*AllocatePersistentBuffer)(struct TfLiteContext* ctx, size_t bytes);
 
   // Allocate a buffer which will be deallocated right after invoke phase.
   // The memory is allocated from heap in TFL, and from volatile arena in TFLM.

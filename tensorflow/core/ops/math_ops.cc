@@ -131,7 +131,7 @@ REGISTER_OP("BatchMatMulV2")
     .Input("y: T")
     .Output("output: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "T: {bfloat16, half, float, double, int16, int32, int64, complex64, "
         "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
@@ -494,6 +494,7 @@ REGISTER_OP("TruncateDiv")
 REGISTER_OP("RealDiv").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+// Note SquaredDifference implements conj(x - y)*(x - y).
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()
@@ -951,11 +952,7 @@ REGISTER_OP("_FusedMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
     .Attr("T: {bfloat16, float}")
-#else
-    .Attr("T: {float}")
-#endif
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //

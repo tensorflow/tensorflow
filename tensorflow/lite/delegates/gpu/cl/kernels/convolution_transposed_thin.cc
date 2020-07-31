@@ -26,18 +26,37 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
-                                              int src_depth, int dst_channels,
-                                              const int2& kernel_size,
-                                              Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+ConvolutionTransposedThin::ConvolutionTransposedThin(
+    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
+    : GPUOperation(definition),
+      kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
+      src_channels_(attr.weights.shape.i),
+      dst_channels_(attr.weights.shape.o) {}
+
+ConvolutionTransposedThin::ConvolutionTransposedThin(
+    ConvolutionTransposedThin&& operation)
+    : GPUOperation(std::move(operation)),
+      kernel_size_(operation.kernel_size_),
+      src_channels_(operation.src_channels_),
+      dst_channels_(operation.dst_channels_) {}
+
+ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
+    ConvolutionTransposedThin&& operation) {
+  if (this != &operation) {
+    std::swap(kernel_size_, operation.kernel_size_);
+    std::swap(src_channels_, operation.src_channels_);
+    std::swap(dst_channels_, operation.dst_channels_);
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string ConvolutionTransposedThin::GenerateConvolutionTransposedCode(
+    const OperationDef& op_def, int src_depth, int dst_channels,
+    const int2& kernel_size) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   const std::string channel_x = dst_channels == 1 ? "" : ".x";
   const std::vector<std::string> postfix = {channel_x, ".y", ".z", ".w"};
@@ -131,38 +150,12 @@ std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
 
   return c;
 }
-}  // namespace
-
-ConvolutionTransposedThin::ConvolutionTransposedThin(
-    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
-    : GPUOperation(definition),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
-      src_channels_(attr.weights.shape.i),
-      dst_channels_(attr.weights.shape.o) {}
-
-ConvolutionTransposedThin::ConvolutionTransposedThin(
-    ConvolutionTransposedThin&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_size_(operation.kernel_size_),
-      src_channels_(operation.src_channels_),
-      dst_channels_(operation.dst_channels_) {}
-
-ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
-    ConvolutionTransposedThin&& operation) {
-  if (this != &operation) {
-    std::swap(kernel_size_, operation.kernel_size_);
-    std::swap(src_channels_, operation.src_channels_);
-    std::swap(dst_channels_, operation.dst_channels_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
 
 absl::Status ConvolutionTransposedThin::Compile(
     const CreationContext& creation_context) {
   std::string code = GenerateConvolutionTransposedCode(
-      definition_, DivideRoundUp(src_channels_, 4), dst_channels_, kernel_size_,
-      &args_);
+      definition_, DivideRoundUp(src_channels_, 4), dst_channels_,
+      kernel_size_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -179,11 +172,6 @@ absl::Status ConvolutionTransposedThin::Compile(
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
-}
-
-absl::Status ConvolutionTransposedThin::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 ConvolutionTransposedThin::GetGridSize() const {

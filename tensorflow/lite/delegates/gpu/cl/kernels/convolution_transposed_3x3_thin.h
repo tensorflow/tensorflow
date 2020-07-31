@@ -38,7 +38,6 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
  public:
   ConvolutionTransposed3x3Thin() = default;
   absl::Status Compile(const CreationContext& creation_context) override;
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -65,6 +64,10 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
+
+  std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
+                                                int src_depth, int dst_depth,
+                                                const CLDevice& device);
 
   int src_channels_;
   int dst_channels_;

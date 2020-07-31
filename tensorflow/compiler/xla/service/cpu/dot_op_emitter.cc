@@ -270,11 +270,48 @@ Status DotOpEmitter::EmitLinalgMatmul() {
   return EmitMlirFuncAndCall(
       mlir_context_, b_, dot_info_.result_shape, operand_shapes, target_ptr,
       operand_ptrs, name, [&](mlir::OpBuilder* builder, mlir::FuncOp function) {
+        CHECK_EQ(dot_info_.dim_nums.lhs_contracting_dimensions_size(), 1);
+        CHECK_EQ(dot_info_.dim_nums.rhs_contracting_dimensions_size(), 1);
+        mlir::MLIRContext* context = builder->getContext();
         mlir::edsc::ScopedContext scope(*builder, function.getLoc());
         mlir::Value a = function.getArgument(0), b = function.getArgument(1),
                     c = function.getArgument(2);
-        mlir::edsc::intrinsics::linalg_matmul(mlir::TypeRange{},
-                                              mlir::ValueRange{b, c, a});
+
+        llvm::SmallVector<mlir::AffineExpr, 2> b_exprs(
+            dot_info_.lhs_shape.rank());
+        llvm::SmallVector<mlir::AffineExpr, 2> c_exprs(
+            dot_info_.rhs_shape.rank());
+
+        llvm::SmallVector<mlir::AffineExpr, 2> parallel_exprs;
+        mlir::AffineExpr reduce_expr;
+        for (int i = 0; i != dot_info_.result_shape.rank(); ++i) {
+          parallel_exprs.push_back(mlir::getAffineDimExpr(i, context));
+        }
+        reduce_expr =
+            mlir::getAffineDimExpr(dot_info_.result_shape.rank(), context);
+
+        // The reduction expr is shared for both inputs.
+        b_exprs[dot_info_.dim_nums.lhs_contracting_dimensions(0)] = reduce_expr;
+        c_exprs[dot_info_.dim_nums.rhs_contracting_dimensions(0)] = reduce_expr;
+
+        // Fill in the remaining parallel exprs.
+        int par_expr_num = 0;
+        for (auto* v : {&b_exprs, &c_exprs}) {
+          for (auto& e : *v) {
+            if (!e) {
+              e = parallel_exprs[par_expr_num++];
+            }
+          }
+        }
+
+        llvm::SmallVector<mlir::IteratorType, 4> types(
+            parallel_exprs.size(), mlir::IteratorType::Parallel);
+        types.push_back(mlir::IteratorType::Reduction);
+
+        mlir::edsc::StructuredIndexed s_a(a), s_b(b), s_c(c);
+        mlir::edsc::makeGenericLinalgOp(types, {s_b(b_exprs), s_c(c_exprs)},
+                                        {s_a(parallel_exprs)},
+                                        mlir::edsc::ops::macRegionBuilder);
         mlir::edsc::intrinsics::std_ret();
 
         mlir::linalg::LinalgTilingOptions tilingOptions;
@@ -283,13 +320,13 @@ Status DotOpEmitter::EmitLinalgMatmul() {
             target_machine_features_.minimum_alignment_for_allocation(
                 ShapeUtil::ByteSizeOf(dot_info_.result_shape));
         mlir_strategy::MatmulCodegenStrategy strategy;
-        strategy.tile<mlir::linalg::MatmulOp>(tilingOptions)
-            .promote<mlir::linalg::MatmulOp>(
+        strategy.tile<mlir::linalg::GenericOp>(tilingOptions)
+            .promote<mlir::linalg::GenericOp>(
                 mlir::linalg::LinalgPromotionOptions()
                     .setAlignment(alignment)
                     .setUseFullTileBuffersByDefault(true)
                     .setUseAlloca(true))
-            .vectorize<mlir::linalg::MatmulOp>()
+            .vectorize<mlir::linalg::GenericOp>()
             .setVectorTransformsOptions(
                 mlir::vector::VectorTransformsOptions()
                     .setVectorTransformsOptions(

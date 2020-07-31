@@ -180,6 +180,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // control flow ops (IfOp, CaseOp).
     pass_manager->addPass(mlir::createInlinerPass());
 
+    // This pass removes the asset file dependencies in hash table use cases.
+    pass_manager->addPass(mlir::TF::CreateInitTextFileToImportPass());
+
     pass_manager->addPass(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
@@ -187,6 +190,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.
     pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
+    pass_manager->addPass(mlir::TFL::CreateRaiseCustomOpsPass());
     pass_manager->addPass(mlir::createSymbolDCEPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());

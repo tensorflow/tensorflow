@@ -25,70 +25,18 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
-
-
-def smart_cond(pred, true_fn=None, false_fn=None, name=None):
-  """Return either `true_fn()` if predicate `pred` is true else `false_fn()`.
-
-  If `pred` is a bool or has a constant value, we return either `true_fn()`
-  or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
-
-  Arguments:
-    pred: A scalar determining whether to return the result of `true_fn` or
-      `false_fn`.
-    true_fn: The callable to be performed if pred is true.
-    false_fn: The callable to be performed if pred is false.
-    name: Optional name prefix when using `tf.cond`.
-
-  Returns:
-    Tensors returned by the call to either `true_fn` or `false_fn`.
-
-  Raises:
-    TypeError: If `true_fn` or `false_fn` is not callable.
-  """
-  if isinstance(pred, variables.Variable):
-    return control_flow_ops.cond(
-        pred, true_fn=true_fn, false_fn=false_fn, name=name)
-  return smart_module.smart_cond(
-      pred, true_fn=true_fn, false_fn=false_fn, name=name)
-
-
-def constant_value(pred):
-  """Return the bool value for `pred`, or None if `pred` had a dynamic value.
-
-  Arguments:
-    pred: A scalar, either a Python bool or a TensorFlow boolean variable
-      or tensor, or the Python integer 1 or 0.
-
-  Returns:
-    True or False if `pred` has a constant boolean value, None otherwise.
-
-  Raises:
-    TypeError: If `pred` is not a Variable, Tensor or bool, or Python
-      integer 1 or 0.
-  """
-  # Allow integer booleans.
-  if isinstance(pred, int):
-    if pred == 1:
-      pred = True
-    elif pred == 0:
-      pred = False
-
-  if isinstance(pred, variables.Variable):
-    return None
-  return smart_module.smart_constant_value(pred)
 
 
 def is_tensor_or_tensor_list(v):
@@ -411,6 +359,13 @@ def type_spec_from_value(value):
     return tensor_spec.TensorSpec(value.shape, value.dtype)
   else:
     return type_spec.type_spec_from_value(value)
+
+
+def is_ragged(tensor):
+  """Returns true if `tensor` is a ragged tensor or ragged tensor value."""
+  return isinstance(
+      tensor,
+      (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue))
 
 
 def is_tensor_or_variable(x):

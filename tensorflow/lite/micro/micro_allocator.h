@@ -154,7 +154,7 @@ class MicroAllocator {
   // Allocates persistent buffer which has the same life time as the allocator.
   // The memory is immediately available and is allocated from the tail of the
   // arena.
-  TfLiteStatus AllocatePersistentBuffer(size_t bytes, void** ptr);
+  void* AllocatePersistentBuffer(size_t bytes);
 
   // Register a scratch buffer of size `bytes` for Node with `node_id`.
   // This method only allocates a BufferHandle holding information for memory

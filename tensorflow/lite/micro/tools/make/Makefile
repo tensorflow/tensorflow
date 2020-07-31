@@ -368,11 +368,9 @@ build: $(MICROLITE_BUILD_TARGETS)
 
 generate_projects: $(ALL_PROJECT_TARGETS)
 
-generate_non_kernel_projects: $(filter-out generate_kernel%,$(ALL_PROJECT_TARGETS))
+ARDUINO_PROJECT_TARGETS := $(foreach TARGET,$(ALL_PROJECT_TARGETS),$(if $(findstring _arduino,$(TARGET)),$(TARGET),))
 
-generate_non_test_projects: $(filter-out %_test%,$(ALL_PROJECT_TARGETS))
-
-generate_arduino_zip: generate_non_kernel_projects $(ARDUINO_LIBRARY_ZIPS)
+generate_arduino_zip: $(ARDUINO_PROJECT_TARGETS) $(ARDUINO_LIBRARY_ZIPS)
 	python tensorflow/lite/micro/tools/make/merge_arduino_zips.py $(PRJDIR)/tensorflow_lite.zip $(ARDUINO_LIBRARY_ZIPS)
 
 # Gets rid of all generated files.

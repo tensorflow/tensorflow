@@ -296,6 +296,26 @@ class DummyResourceOp : public OpKernel {
   }
 };
 
+// Given an op prefix and an op to match, returns whether the op to match
+// is a regex match for any version of the op prefix. For example,
+// MatchesAnyVersionRE("BatchDataset", "BatchDataset") == true
+// MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2") == true
+// MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3") == true
+// MatchesAnyVersionRE("PaddedBatchDataset", "BatchDataset") == false
+bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match);
+
+// Based on `optimizations_enabled`, `optimizations_disabled`, and
+// `optimizations_disabled`, returns the list of optimizations that will be
+// applied.
+std::vector<tstring> SelectOptimizations(
+    const string& job_name, const string& opt_ins_raw,
+    const string& opt_outs_raw,
+    const absl::flat_hash_map<string, uint64>& live_experiments,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    std::function<uint64(const string&)> hash_func);
+
 }  // namespace data
 }  // namespace tensorflow
 

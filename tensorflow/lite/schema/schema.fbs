@@ -349,8 +349,7 @@ enum BuiltinOperator : byte {
   SELECT_V2 = 123,
   DENSIFY = 124,
   SEGMENT_SUM = 125,
-  BATCH_MATMUL = 126,
-  BROADCAST_TO = 127
+  BATCH_MATMUL = 126
 }
 
 
@@ -456,8 +455,7 @@ union BuiltinOptions {
   SelectV2Options,
   DensifyOptions,
   SegmentSumOptions,
-  BatchMatMulOptions,
-  BroadcastToOptions
+  BatchMatMulOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -975,9 +973,6 @@ table SegmentSumOptions {
 table BatchMatMulOptions {
   adj_x:bool;
   adj_y:bool;
-}
-
-table BroadcastToOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

@@ -70,6 +70,14 @@ class FileSystem {
   virtual tensorflow::Status NewRandomAccessFile(
       const string& fname, std::unique_ptr<RandomAccessFile>* result) = 0;
 
+  virtual tensorflow::Status NewRandomAccessFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) {
+    // We duplicate these methods due to Google internal coding style prevents
+    // virtual functions with default arguments. See PR #41615.
+    return Status::OK();
+  }
+
   /// \brief Creates an object that writes to a new file with the specified
   /// name.
   ///
@@ -85,6 +93,12 @@ class FileSystem {
   virtual tensorflow::Status NewWritableFile(
       const string& fname, std::unique_ptr<WritableFile>* result) = 0;
 
+  virtual tensorflow::Status NewWritableFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) {
+    return Status::OK();
+  }
+
   /// \brief Creates an object that either appends to an existing file, or
   /// writes to a new file (if the file does not exist to begin with).
   ///
@@ -99,6 +113,12 @@ class FileSystem {
   virtual tensorflow::Status NewAppendableFile(
       const string& fname, std::unique_ptr<WritableFile>* result) = 0;
 
+  virtual tensorflow::Status NewAppendableFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) {
+    return Status::OK();
+  }
+
   /// \brief Creates a readonly region of memory with the file context.
   ///
   /// On success, it returns a pointer to read-only memory region
@@ -112,8 +132,19 @@ class FileSystem {
   virtual tensorflow::Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
+  virtual tensorflow::Status NewReadOnlyMemoryRegionFromFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    return Status::OK();
+  }
+
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   virtual tensorflow::Status FileExists(const string& fname) = 0;
+
+  virtual tensorflow::Status FileExists(const string& fname,
+                                        TransactionToken* token) {
+    return Status::OK();
+  }
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
@@ -121,11 +152,23 @@ class FileSystem {
   virtual bool FilesExist(const std::vector<string>& files,
                           std::vector<Status>* status);
 
+  virtual bool FilesExist(const std::vector<string>& files,
+                          TransactionToken* token,
+                          std::vector<Status>* status) {
+    return true;
+  }
+
   /// \brief Returns the immediate children in the given directory.
   ///
   /// The returned paths are relative to 'dir'.
   virtual tensorflow::Status GetChildren(const string& dir,
                                          std::vector<string>* result) = 0;
+
+  virtual tensorflow::Status GetChildren(const string& dir,
+                                         TransactionToken* token,
+                                         std::vector<string>* result) {
+    return Status::OK();
+  }
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
@@ -152,6 +195,12 @@ class FileSystem {
   virtual tensorflow::Status GetMatchingPaths(const string& pattern,
                                               std::vector<string>* results) = 0;
 
+  virtual tensorflow::Status GetMatchingPaths(const string& pattern,
+                                              TransactionToken* token,
+                                              std::vector<string>* results) {
+    return Status::OK();
+  }
+
   /// \brief Checks if the given filename matches the pattern.
   ///
   /// This function provides the equivalent of posix fnmatch, however it is
@@ -163,8 +212,18 @@ class FileSystem {
   virtual tensorflow::Status Stat(const string& fname,
                                   FileStatistics* stat) = 0;
 
+  virtual tensorflow::Status Stat(const string& fname, TransactionToken* token,
+                                  FileStatistics* stat) {
+    return Status::OK();
+  }
+
   /// \brief Deletes the named file.
   virtual tensorflow::Status DeleteFile(const string& fname) = 0;
+
+  virtual tensorflow::Status DeleteFile(const string& fname,
+                                        TransactionToken* token) {
+    return Status::OK();
+  }
 
   /// \brief Creates the specified directory.
   /// Typical return codes:
@@ -172,6 +231,11 @@ class FileSystem {
   ///  * ALREADY_EXISTS - directory with name dirname already exists.
   ///  * PERMISSION_DENIED - dirname is not writable.
   virtual tensorflow::Status CreateDir(const string& dirname) = 0;
+
+  virtual tensorflow::Status CreateDir(const string& dirname,
+                                       TransactionToken* token) {
+    return Status::OK();
+  }
 
   /// \brief Creates the specified directory and all the necessary
   /// subdirectories.
@@ -181,8 +245,18 @@ class FileSystem {
   ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
   virtual tensorflow::Status RecursivelyCreateDir(const string& dirname);
 
+  virtual tensorflow::Status RecursivelyCreateDir(const string& dirname,
+                                                  TransactionToken* token) {
+    return Status::OK();
+  }
+
   /// \brief Deletes the specified directory.
   virtual tensorflow::Status DeleteDir(const string& dirname) = 0;
+
+  virtual tensorflow::Status DeleteDir(const string& dirname,
+                                       TransactionToken* token) {
+    return Status::OK();
+  }
 
   /// \brief Deletes the specified directory and all subdirectories and files
   /// underneath it. This is accomplished by traversing the directory tree
@@ -212,16 +286,39 @@ class FileSystem {
                                                int64* undeleted_files,
                                                int64* undeleted_dirs);
 
+  virtual tensorflow::Status DeleteRecursively(const string& dirname,
+                                               int64* undeleted_files,
+                                               int64* undeleted_dirs,
+                                               TransactionToken* token) {
+    return Status::OK();
+  }
+
   /// \brief Stores the size of `fname` in `*file_size`.
   virtual tensorflow::Status GetFileSize(const string& fname,
                                          uint64* file_size) = 0;
+
+  virtual tensorflow::Status GetFileSize(const string& fname,
+                                         TransactionToken* token,
+                                         uint64* file_size) {
+    return Status::OK();
+  }
 
   /// \brief Overwrites the target if it exists.
   virtual tensorflow::Status RenameFile(const string& src,
                                         const string& target) = 0;
 
+  virtual tensorflow::Status RenameFile(const string& src, const string& target,
+                                        TransactionToken* token) {
+    return Status::OK();
+  }
+
   /// \brief Copy the src to target.
   virtual tensorflow::Status CopyFile(const string& src, const string& target);
+
+  virtual tensorflow::Status CopyFile(const string& src, const string& target,
+                                      TransactionToken* token) {
+    return Status::OK();
+  }
 
   /// \brief Translate an URI to a filename for the FileSystem implementation.
   ///
@@ -243,6 +340,11 @@ class FileSystem {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual tensorflow::Status IsDirectory(const string& fname);
 
+  virtual tensorflow::Status IsDirectory(const string& fname,
+                                         TransactionToken* token) {
+    return Status::OK();
+  }
+
   /// \brief Returns whether the given path is on a file system
   /// that has atomic move capabilities. This can be used
   /// to determine if there needs to be a temp location to safely write objects.
@@ -257,6 +359,8 @@ class FileSystem {
 
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches();
+
+  virtual void FlushCaches(TransactionToken* token) {}
 
   /// \brief The separator this filesystem uses.
   ///
@@ -346,6 +450,43 @@ class FileSystem {
   void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
                 StringPiece* path) const;
 
+  // Transaction related API
+
+  /// \brief Starts a new transaction
+  virtual tensorflow::Status StartTransaction(TransactionToken** token) {
+    token = nullptr;
+    return Status::OK();
+  }
+
+  /// \brief Adds `path` to transaction in `token`
+  virtual tensorflow::Status AddToTransaction(const string& path,
+                                              TransactionToken* token) {
+    return Status::OK();
+  }
+
+  /// \brief Ends transaction
+  virtual tensorflow::Status EndTransaction(TransactionToken* token) {
+    return Status::OK();
+  }
+
+  /// \brief Get token for `path` or start a new transaction and add `path` to
+  /// it.
+  virtual tensorflow::Status GetTokenOrStartTransaction(
+      const string& path, TransactionToken** token) {
+    token = nullptr;
+    return Status::OK();
+  }
+
+  /// \brief Return transaction for `path` or nullptr in `token`
+  virtual tensorflow::Status GetTransactionForPath(const string& path,
+                                                   TransactionToken** token) {
+    token = nullptr;
+    return Status::OK();
+  }
+
+  /// \brief Decode transaction to human readable string.
+  virtual std::string DecodeTransaction(const TransactionToken* token);
+
   FileSystem() {}
 
   virtual ~FileSystem() = default;
@@ -359,190 +500,161 @@ class FileSystem {
 /// This class simply forwards all calls to wrapped filesystem either with given
 /// transaction token or with token used in its construction. This allows doing
 /// transactional filesystem access with minimal code change.
-/// TODO(sami): remove override and extra argument comments when PR changing
-/// FileSystem signatures are in.
 class WrappedFileSystem : public FileSystem {
  public:
-  virtual tensorflow::Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->NewRandomAccessFile(fname,
-                                    result /* , (token ? token : token_) */);
+  tensorflow::Status NewRandomAccessFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override {
+    return fs_->NewRandomAccessFile(fname, (token ? token : token_), result);
   }
 
-  virtual tensorflow::Status NewWritableFile(
-      const string& fname, std::unique_ptr<WritableFile>* result
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->NewWritableFile(fname, result /* , (token ? token : token_) */);
+  tensorflow::Status NewWritableFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) override {
+    return fs_->NewWritableFile(fname, (token ? token : token_), result);
   }
 
-  virtual tensorflow::Status NewAppendableFile(
-      const string& fname, std::unique_ptr<WritableFile>* result
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->NewAppendableFile(fname,
-                                  result /* , (token ? token : token_) */);
+  tensorflow::Status NewAppendableFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) override {
+    return fs_->NewAppendableFile(fname, (token ? token : token_), result);
   }
 
-  virtual tensorflow::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->NewReadOnlyMemoryRegionFromFile(
-        fname, result /* , (token ? token : token_) */);
+  tensorflow::Status NewReadOnlyMemoryRegionFromFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
+    return fs_->NewReadOnlyMemoryRegionFromFile(fname, (token ? token : token_),
+                                                result);
   }
 
-  virtual tensorflow::Status FileExists(
-      const string&
-          fname /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->FileExists(fname /* , (token ? token : token_) */);
+  tensorflow::Status FileExists(const string& fname,
+                                TransactionToken* token) override {
+    return fs_->FileExists(fname, (token ? token : token_));
   }
 
-  virtual bool FilesExist(
-      const std::vector<string>& files, std::vector<Status>* status
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->FilesExist(files, status /* , (token ? token : token_) */);
+  bool FilesExist(const std::vector<string>& files, TransactionToken* token,
+                  std::vector<Status>* status) override {
+    return fs_->FilesExist(files, (token ? token : token_), status);
   }
 
-  virtual tensorflow::Status GetChildren(
-      const string& dir, std::vector<string>* result
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->GetChildren(dir, result /* , (token ? token : token_) */);
+  tensorflow::Status GetChildren(const string& dir, TransactionToken* token,
+                                 std::vector<string>* result) override {
+    return fs_->GetChildren(dir, (token ? token : token_), result);
   }
 
-  virtual tensorflow::Status GetMatchingPaths(
-      const string& pattern, std::vector<string>* results
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->GetMatchingPaths(pattern,
-                                 results /* , (token ? token : token_) */);
+  tensorflow::Status GetMatchingPaths(const string& pattern,
+                                      TransactionToken* token,
+                                      std::vector<string>* results) override {
+    return fs_->GetMatchingPaths(pattern, (token ? token : token_), results);
   }
 
-  virtual bool Match(const std::string& filename, const std::string& pattern
-                     /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->Match(filename, pattern /* , (token ? token : token_) */);
+  bool Match(const std::string& filename, const std::string& pattern) override {
+    return fs_->Match(filename, pattern);
   }
 
-  virtual tensorflow::Status Stat(
-      const string& fname, FileStatistics* stat
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->Stat(fname, stat /* , (token ? token : token_) */);
+  tensorflow::Status Stat(const string& fname, TransactionToken* token,
+                          FileStatistics* stat) override {
+    return fs_->Stat(fname, (token ? token : token_), stat);
   }
 
-  virtual tensorflow::Status DeleteFile(
-      const string&
-          fname /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->DeleteFile(fname /* , (token ? token : token_) */);
+  tensorflow::Status DeleteFile(const string& fname,
+                                TransactionToken* token) override {
+    return fs_->DeleteFile(fname, (token ? token : token_));
   }
 
-  virtual tensorflow::Status CreateDir(
-      const string&
-          dirname /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->CreateDir(dirname /* , (token ? token : token_) */);
+  tensorflow::Status CreateDir(const string& dirname,
+                               TransactionToken* token) override {
+    return fs_->CreateDir(dirname, (token ? token : token_));
   }
 
-  virtual tensorflow::Status RecursivelyCreateDir(
-      const string&
-          dirname /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->RecursivelyCreateDir(dirname /* , (token ? token : token_) */);
+  tensorflow::Status RecursivelyCreateDir(const string& dirname,
+                                          TransactionToken* token) override {
+    return fs_->RecursivelyCreateDir(dirname, (token ? token : token_));
   }
 
-  virtual tensorflow::Status DeleteDir(
-      const string&
-          dirname /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->DeleteDir(dirname /* , (token ? token : token_) */);
+  tensorflow::Status DeleteDir(const string& dirname,
+                               TransactionToken* token) override {
+    return fs_->DeleteDir(dirname, (token ? token : token_));
   }
 
-  virtual tensorflow::Status DeleteRecursively(
-      const string& dirname, int64* undeleted_files, int64* undeleted_dirs
-      /*, TransactionToken* token = nullptr */) /* override */ {
+  tensorflow::Status DeleteRecursively(const string& dirname,
+                                       int64* undeleted_files,
+                                       int64* undeleted_dirs,
+                                       TransactionToken* token) override {
     return fs_->DeleteRecursively(
         dirname, undeleted_files,
         undeleted_dirs /*, (token ? token : token_) */);
   }
 
-  virtual tensorflow::Status GetFileSize(
-      const string& fname, uint64* file_size
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->GetFileSize(fname, file_size /* , (token ? token : token_) */);
+  tensorflow::Status GetFileSize(const string& fname, TransactionToken* token,
+                                 uint64* file_size) override {
+    return fs_->GetFileSize(fname, (token ? token : token_), file_size);
   }
 
-  virtual tensorflow::Status RenameFile(
-      const string& src, const string& target
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->RenameFile(src, target /* , (token ? token : token_) */);
+  tensorflow::Status RenameFile(const string& src, const string& target,
+                                TransactionToken* token) override {
+    return fs_->RenameFile(src, target, (token ? token : token_));
   }
 
-  virtual tensorflow::Status CopyFile(
-      const string& src, const string& target
-      /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->CopyFile(src, target /* , (token ? token : token_) */);
+  tensorflow::Status CopyFile(const string& src, const string& target,
+                              TransactionToken* token) override {
+    return fs_->CopyFile(src, target, (token ? token : token_));
   }
 
-  virtual std::string TranslateName(const std::string& name) const
-  /* override */ {
+  std::string TranslateName(const std::string& name) const override {
     return fs_->TranslateName(name);
   }
 
-  virtual tensorflow::Status IsDirectory(
-      const string&
-          fname /*, TransactionToken* token = nullptr */) /* override */ {
-    return fs_->IsDirectory(fname /* , (token ? token : token_) */);
+  tensorflow::Status IsDirectory(const string& fname,
+                                 TransactionToken* token) override {
+    return fs_->IsDirectory(fname, (token ? token : token_));
   }
 
-  virtual Status HasAtomicMove(const string& path,
-                               bool* has_atomic_move) /* override */ {
+  Status HasAtomicMove(const string& path, bool* has_atomic_move) override {
     return fs_->HasAtomicMove(path, has_atomic_move);
   }
 
-  virtual void FlushCaches(
-      /*TransactionToken* token = nullptr */) /* override */ {
-    return fs_->FlushCaches(/* (token ? token : token_) */);
+  void FlushCaches(TransactionToken* token) override {
+    return fs_->FlushCaches((token ? token : token_));
   }
 
-  virtual char Separator() const /* override */ { return fs_->Separator(); }
+  char Separator() const override { return fs_->Separator(); }
 
-  virtual StringPiece Basename(StringPiece path) const /* override */ {
+  StringPiece Basename(StringPiece path) const override {
     return fs_->Basename(path);
   }
 
-  virtual tensorflow::Status StartTransaction(
-      TransactionToken** token) /* override */ {
-    /* return fs_->StartTransaction(token); */
-    return Status::OK();
+  tensorflow::Status StartTransaction(TransactionToken** token) override {
+    return fs_->StartTransaction(token);
   }
 
-  virtual tensorflow::Status AddToTransaction(
-      const string& path, TransactionToken* token) /* override */ {
-    /* return fs_->AddToTransaction(path, (token ? token : token_) ); */
-    return Status::OK();
+  tensorflow::Status AddToTransaction(const string& path,
+                                      TransactionToken* token) override {
+    return fs_->AddToTransaction(path, (token ? token : token_));
   }
 
-  virtual tensorflow::Status EndTransaction(
-      TransactionToken* token) /* override */ {
-    /* return fs_->EndTransaction(token); */
-    return Status::OK();
+  tensorflow::Status EndTransaction(TransactionToken* token) override {
+    return fs_->EndTransaction(token);
   }
 
-  virtual tensorflow::Status GetTransactionForPath(
-      const string& path, TransactionToken** token) /* override */ {
-    /* return fs_->GetTransactionForPath(path, token); */
-    return Status::OK();
+  tensorflow::Status GetTransactionForPath(const string& path,
+                                           TransactionToken** token) override {
+    return fs_->GetTransactionForPath(path, token);
   }
 
-  virtual tensorflow::Status GetTokenOrStartTransaction(
-      const string& path, TransactionToken** token) /* override */ {
-    /* return fs_->GetTokenOrStartTransaction(path, token); */
-    return Status::OK();
+  tensorflow::Status GetTokenOrStartTransaction(
+      const string& path, TransactionToken** token) override {
+    return fs_->GetTokenOrStartTransaction(path, token);
   }
 
-  virtual string DecodeTransaction(
-      const TransactionToken* token) /* override */ {
-    return "";
-    /*return fs_->DecodeTransaction((token ? token : token_)); */
+  std::string DecodeTransaction(const TransactionToken* token) override {
+    return fs_->DecodeTransaction((token ? token : token_));
   }
 
   WrappedFileSystem(FileSystem* file_system, TransactionToken* token)
       : fs_(file_system), token_(token) {}
 
-  virtual ~WrappedFileSystem() = default;
+  ~WrappedFileSystem() override = default;
 
  private:
   FileSystem* fs_;

@@ -3064,6 +3064,7 @@ def _convert_multinomial(pfor_input):
 
 
 @RegisterPFor("StatelessMultinomial")
+@RegisterPFor("StatelessParameterizedTruncatedNormal")
 @RegisterPFor("StatelessRandomBinomial")
 @RegisterPFor("StatelessRandomGammaV2")
 @RegisterPFor("StatelessRandomNormal")

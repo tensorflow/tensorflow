@@ -1260,6 +1260,12 @@ class GradientTape(object):
       ValueError: If vectorization of jacobian computation fails or if first
         dimension of `target` and `source` do not match.
     """
+    rewrap_as_ndarray = False
+    if isinstance(target, np_arrays.ndarray):
+      target = target.data
+      rewrap_as_ndarray = True
+    if isinstance(source, np_arrays.ndarray):
+      source = source.data
     target_shape = target.shape
     if target_shape.rank is None:
       dim = tensor_shape.Dimension(None)
@@ -1317,9 +1323,16 @@ class GradientTape(object):
                                  parallel_iterations=parallel_iterations)
     new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
     if output is None:
-      return array_ops.zeros(new_shape)
+      output = array_ops.zeros(new_shape)
+      if rewrap_as_ndarray:
+        output = np_arrays.tensor_to_ndarray(output)
+      return output
     else:
       output = array_ops.reshape(output,
                                  [target_row_size, batch_size, -1])
       output = array_ops.transpose(output, [1, 0, 2])
-      return array_ops.reshape(output, new_shape)
+
+      output = array_ops.reshape(output, new_shape)
+      if rewrap_as_ndarray:
+        output = np_arrays.tensor_to_ndarray(output)
+      return output

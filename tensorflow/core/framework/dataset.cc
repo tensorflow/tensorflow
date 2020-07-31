@@ -449,6 +449,46 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
   return status;
 }
 
+Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
+    SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.dtype() == DT_VARIANT) {
+    // If the input tensor is a variant, it may represent a multi-dimensional
+    // array of datasets. We attempt to decode each dataset so that we can use
+    // their custom serialization logic and combine the result of their
+    // individual serializations using the `Pack` operation.
+    //
+    // If this fails, we fallback to using its Variant::Encode() based
+    // serialization.
+    Status s = AddDatasetOrTensorHelper(ctx, t, output);
+    if (s.ok()) {
+      return s;
+    }
+  }
+  return AddTensor(t, output);
+}
+
+Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
+    SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.dims() == 0) {
+    DatasetBase* dataset;
+    TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(t, &dataset));
+    return AddInputDataset(ctx, dataset, output);
+  }
+  std::vector<NodeBuilder::NodeOut> nodes;
+  for (int i = 0; i < t.dim_size(0); ++i) {
+    Node* node;
+    TF_RETURN_IF_ERROR(AddDatasetOrTensorHelper(ctx, t.SubSlice(i), &node));
+    nodes.emplace_back(node);
+  }
+  auto op_name = "Pack";
+  auto opts = builder()->opts();
+  NodeBuilder node_builder(opts.GetNameForOp(op_name), op_name,
+                           opts.op_registry());
+  node_builder.Input(std::move(nodes));
+  *output = opts.FinalizeBuilder(&node_builder);
+  return Status::OK();
+}
+
 DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
     : params_(params) {
   params_.dataset->Ref();
@@ -524,8 +564,9 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   }
 }
 
-string DatasetOpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
-  return strings::StrCat(name_view(), ":", type_string_view());
+string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
+                                    bool verbose) const {
+  return profiler::TraceMeOp(name_view(), type_string_view());
 }
 
 // static

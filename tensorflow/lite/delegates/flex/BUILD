@@ -92,6 +92,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
@@ -238,6 +239,17 @@ cc_library(
         "allowlisted_flex_ops.h",
         "allowlisted_flex_ops_internal.h",
     ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
 )
 
 tf_cc_test(

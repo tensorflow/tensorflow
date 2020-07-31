@@ -389,7 +389,7 @@ class SaverTest(test.TestCase):
             ValueError, "The passed save_path is not a valid checkpoint:"):
           save.restore(sess, "invalid path")
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.Saver is V1 only API.")
   def testInt64(self):
     save_path = os.path.join(self.get_temp_dir(), "int64")
 
@@ -465,7 +465,7 @@ class SaverTest(test.TestCase):
       # Verify non-duplicate names work.
       saver_module.Saver({"v0": v0, "v2": v2.saveable})
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.Saver and VariableV1 are V1 only APIs.")
   def testBasicsWithListOfVariables(self):
     save_path = os.path.join(self.get_temp_dir(), "basics_with_list")
 
@@ -666,7 +666,7 @@ class SaverTest(test.TestCase):
       self.assertAllClose(1.0, self.evaluate(one))
       self.assertAllClose([2.0, 2.0, 2.0], self.evaluate(twos))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.Saver is V1 only API.")
   def testReshape(self):
     save_path = os.path.join(self.get_temp_dir(), "variables_reshape")
     with session.Session("", graph=ops_lib.Graph()) as sess:
@@ -1807,7 +1807,9 @@ class MetaGraphTest(test.TestCase):
     gfile.MakeDirs(test_dir)
     return test_dir
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "Queue-based input pipelines have been replaced by `tf.data` "
+      "and not supported in V2.")
   def testAddCollectionDef(self):
     test_dir = self._get_test_dir("good_collection")
     filename = os.path.join(test_dir, "metafile")
@@ -1958,13 +1960,15 @@ class MetaGraphTest(test.TestCase):
       v1 = sess.graph.get_tensor_by_name("v1:0")
       self.assertEqual(11.0, self.evaluate(v1))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "Exporting/importing meta graphs is only supported in V1.")
   def testMultiSaverCollection(self):
     test_dir = self._get_test_dir("saver_collection")
     self._testMultiSaverCollectionSave(test_dir)
     self._testMultiSaverCollectionRestore(test_dir)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "Exporting/importing meta graphs is only supported in V1.")
   def testClearExtraneousSavers(self):
     test_dir = self._get_test_dir("clear_extraneous_savers")
     filename = os.path.join(test_dir, "metafile")
@@ -2052,7 +2056,8 @@ class MetaGraphTest(test.TestCase):
                                                lambda e: "does not exist"):
         saver_module.import_meta_graph(filename)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "Exporting/importing meta graphs is only supported in V1.")
   def testSliceVariable(self):
     test_dir = self._get_test_dir("slice_saver")
     filename = os.path.join(test_dir, "metafile")
@@ -2308,7 +2313,7 @@ class MetaGraphTest(test.TestCase):
                                       lambda: math_ops.multiply(x, -1.0))))
     # pylint: enable=g-long-lambda
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("This exercises Tensor.op which is meaningless in V2.")
   def testStrippedOpListDef(self):
     with self.cached_session():
       # Creates a graph.
@@ -3115,7 +3120,7 @@ class TrackableCompatibilityTests(test.TestCase):
       # exception" block in Python 3.
       self.assertNotIn("NewCheckpointReader", cs.exception.message)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.Saver is V1 only API.")
   def testGraphChangedForRestoreErrorRaised(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")

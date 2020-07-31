@@ -78,7 +78,7 @@ bool IsFunction(StringPiece op_name) {
 
 bool IsCustomDevice(StringPiece device_name, const EagerContext& ctx) {
   CustomDevice* custom_device;
-  return ctx.FindCustomDeviceFromName(string(device_name), &custom_device).ok();
+  return ctx.FindCustomDeviceFromName(string(device_name), &custom_device);
 }
 
 Status MaybePinSmallOpsToCpu(bool* result, StringPiece op_name,

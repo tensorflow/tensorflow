@@ -102,8 +102,6 @@ class MlirTensor : public TracingTensorHandle {
     return type;
   }
 
-  void Release() override { delete this; }
-
   Value getValue() { return value_; }
 
   // For LLVM style RTTI.
@@ -564,7 +562,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   }
   PassManager pm(func_.getContext());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
+  pm.addPass(CreateBreakUpIslandsPass());
 
   // In case of failure, the `diag_handler` converts MLIR errors emitted to
   // the MLIRContext into a tensorflow::Status.

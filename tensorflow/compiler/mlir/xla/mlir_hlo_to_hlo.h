@@ -18,9 +18,10 @@ limitations under the License.
 
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace mlir {
 
@@ -33,7 +34,7 @@ namespace mlir {
 // single value.
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
                            bool use_tuple_args, bool return_tuple,
-                           const tensorflow::XlaCompiler::ShapeRepresentationFn
+                           const tensorflow::XlaHelpers::ShapeRepresentationFn
                                shape_representation_fn = nullptr);
 
 // Creates XlaOp equivalent of a given MLIR operation using the operand info

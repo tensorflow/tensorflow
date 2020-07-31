@@ -126,12 +126,14 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
   *status = this->FindDeviceFromName(device_name, &device);
   if (!status->ok()) {
     tensorflow::CustomDevice* dev;
-    *status = this->FindCustomDeviceFromName(device_name, &dev);
-    if (status->ok()) {
+    if (this->FindCustomDeviceFromName(device_name, &dev)) {
       *status = dev->CopyTensorToDevice(input, &result);
       if (status->ok()) {
         return result;
       }
+    } else {
+      *status =
+          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
     }
     return nullptr;
   }
@@ -141,8 +143,7 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
     return nullptr;
   }
   tensorflow::CustomDevice* dev;
-  *status = this->FindCustomDeviceFromName(handle_device_name, &dev);
-  if (status->ok()) {
+  if (this->FindCustomDeviceFromName(handle_device_name, &dev)) {
     *status = dev->CopyTensorFromDevice(input, device_name, &result);
     if (status->ok()) {
       return result;

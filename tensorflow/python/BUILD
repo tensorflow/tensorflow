@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_tpu", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_enable_mlir_bridge", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_enable_mlir_bridge", "tf_gen_op_wrapper_py")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
@@ -58,8 +58,6 @@ visibility = [
     "//third_party/py/tensorflow_examples:__subpackages__",
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
-    # TODO(aselle): to pass open source test.
-    "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
     "//third_party/py/tensorflow_docs:__subpackages__",
 ]
 
@@ -2757,11 +2755,10 @@ tf_py_test(
 tf_gen_op_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/v1_compat_tests:__pkg__",
     ],
     deps = [
         "//tensorflow/c/kernels:bitcast_op_lib",
@@ -2772,8 +2769,6 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "bitwise_ops_gen",
     visibility = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
@@ -2969,8 +2964,6 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
     visibility = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -2981,8 +2974,6 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "nn_ops_gen",
     visibility = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -3145,6 +3136,7 @@ py_library(
         "ops/inplace_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = visibility,
     deps = [
         ":array_ops_gen",
         ":common_shapes",
@@ -3355,11 +3347,9 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "guitar",
-        "manual",
         "multi_gpu",
-        "no_oss",
         "no_rocm",
-        "notap",
+        "no_windows",
     ],
     deps = [
         ":client_testlib",
@@ -4129,6 +4119,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":bitwise_ops_gen",
         ":common_shapes",
         ":constant_op",
         ":control_flow_ops_gen",
@@ -4956,23 +4947,6 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "gradient_checker_test",
-    size = "medium",
-    srcs = ["ops/gradient_checker_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":nn_grad",
-        ":nn_ops",
-        ":platform",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_test(
     name = "op_selector_test",
     srcs = ["ops/op_selector_test.py"],
@@ -5076,7 +5050,7 @@ cuda_py_test(
     srcs = ["ops/image_ops_test.py"],
     data = ["//tensorflow/core:image_testdata"],
     python_version = "PY3",
-    shard_count = 5,
+    shard_count = 16,
     deps = [
         ":array_ops",
         ":client",
@@ -5093,6 +5067,7 @@ cuda_py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -6086,6 +6061,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
+        "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
@@ -6101,8 +6078,6 @@ pywrap_tensorflow_macro(
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + if_tpu([
-        "//tensorflow/core/tpu:tpu_api_dlsym_initializer",
     ]) + if_static(extra_deps = ["//tensorflow/core/platform:tf32_utils"]),
 )
 
@@ -6161,6 +6136,8 @@ filegroup(
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
+        "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
         "//tensorflow/lite/toco/python:toco_python_api",  # toco

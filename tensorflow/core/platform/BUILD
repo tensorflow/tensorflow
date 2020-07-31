@@ -85,6 +85,8 @@ exports_files(
         "mutex.h",
         "net.h",
         "numa.h",
+        "profile_utils/cpu_utils.h",
+        "profile_utils/i_cpu_utils_helper.h",
         "ram_file_system.h",
         "resource_loader.h",
         "resource.h",
@@ -357,6 +359,8 @@ filegroup(
 cc_library(
     name = "mutex",
     textual_hdrs = ["mutex.h"],
+    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
+    visibility = ["//tensorflow:__subpackages__"],
     deps = tf_platform_deps("mutex"),
 )
 
@@ -773,6 +777,8 @@ filegroup(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
+    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":platform",
         ":tstring",
@@ -1540,6 +1546,7 @@ filegroup(
         "raw_coding.h",
         "refcount.h",
         "resource.h",
+        "regexp.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",

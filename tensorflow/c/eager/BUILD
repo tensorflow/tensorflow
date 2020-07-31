@@ -240,6 +240,8 @@ tf_cuda_cc_test(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
@@ -260,6 +262,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:refcount",
     ],
 )
 
@@ -547,6 +550,7 @@ tf_cuda_cc_test(
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
     tags = [
+        "no_oss",  # b/162361408
         "no_windows",
         "noasan",  # leaks gRPC server instances
     ],

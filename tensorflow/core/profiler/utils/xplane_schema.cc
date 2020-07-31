@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -94,6 +93,20 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
+      {"Iterator", kIterator},
+      {"Iterator::Prefetch::Generator", kDeviceInputPipelineSecondIterator},
+      {"PrefetchProduce", kPrefetchProduce},
+      {"PrefetchConsume", kPrefetchConsume},
+      {"ParallelInterleaveProduce", kParallelInterleaveProduce},
+      {"ParallelInterleaveConsume", kParallelInterleaveConsume},
+      {"ParallelInterleaveInitializeInput",
+       kParallelInterleaveInitializedInput},
+      {"ParallelMapProduce", kParallelMapProduce},
+      {"ParallelMapConsume", kParallelMapConsume},
+      {"MapAndBatchProduce", kMapAndBatchProduce},
+      {"MapAndBatchConsume", kMapAndBatchConsume},
+      {"ParseExampleProduce", kParseExampleProduce},
+      {"ParseExampleConsume", kParseExampleConsume},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
@@ -136,6 +149,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"shape", kTensorShapes},
       {"kpi_name", kKpiName},
       {"kpi_value", kKpiValue},
+      {"element_id", kElementId},
+      {"parent_id", kParentId},
       // XPlane semantics related.
       {"_pt", kProducerType},
       {"_ct", kConsumerType},
@@ -222,14 +237,47 @@ absl::optional<int64> FindStatType(absl::string_view stat_name) {
   return absl::nullopt;
 }
 
+bool IsInternalEvent(absl::optional<int64> event_type) {
+  // TODO(b/162102421): Introduce a prefix for internal event names.
+  if (!event_type.has_value()) return false;
+  switch (*event_type) {
+    case HostEventType::kMemoryAllocation:
+    case HostEventType::kMemoryDeallocation:
+    case HostEventType::kPrefetchProduce:
+    case HostEventType::kPrefetchConsume:
+    case HostEventType::kParallelInterleaveProduce:
+    case HostEventType::kParallelInterleaveConsume:
+    case HostEventType::kParallelInterleaveInitializedInput:
+    case HostEventType::kParallelMapProduce:
+    case HostEventType::kParallelMapConsume:
+    case HostEventType::kMapAndBatchProduce:
+    case HostEventType::kMapAndBatchConsume:
+    case HostEventType::kParseExampleProduce:
+    case HostEventType::kParseExampleConsume:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool IsInternalStat(absl::optional<int64> stat_type) {
-  static const auto* const kInternalStats = new absl::flat_hash_set<int64>{
-      StatType::kKernelDetails, StatType::kLevel0,
-      StatType::kProducerType,  StatType::kProducerId,
-      StatType::kConsumerType,  StatType::kConsumerId,
-      StatType::kIsRoot,        StatType::kIsAsync,
-      StatType::kFlops,         StatType::kBytesAccessed};
-  return stat_type.has_value() && kInternalStats->contains(*stat_type);
+  // TODO(b/162102421): Introduce a prefix for internal stat names.
+  if (!stat_type.has_value()) return false;
+  switch (*stat_type) {
+    case StatType::kKernelDetails:
+    case StatType::kLevel0:
+    case StatType::kProducerType:
+    case StatType::kProducerId:
+    case StatType::kConsumerType:
+    case StatType::kConsumerId:
+    case StatType::kIsRoot:
+    case StatType::kIsAsync:
+    case StatType::kFlops:
+    case StatType::kBytesAccessed:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace profiler

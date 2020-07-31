@@ -548,7 +548,7 @@ class Model(training_lib.Model):
       if self._run_eagerly is None:
         # Respect `tf.config.run_functions_eagerly` unless
         # `run_eagerly` was explicitly passed to `compile`.
-        return def_function.RUN_FUNCTIONS_EAGERLY
+        return def_function.functions_run_eagerly()
       else:
         return self._run_eagerly
     else:

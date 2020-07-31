@@ -35,7 +35,6 @@ class MinMaxOpBuilder : public OpBuilder {
 
  private:
   TensorID node_output_;
-  float a_input_min_, a_input_max_, b_input_min_, b_input_max_;
 };
 
 }  // namespace hexagon

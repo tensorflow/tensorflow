@@ -40,6 +40,8 @@ class SpaceToDepth : public GPUOperation {
   SpaceToDepth& operator=(const SpaceToDepth&) = delete;
 
  private:
+  std::string GetSpaceToDepthCode(const OperationDef& op_def);
+
   SpaceToDepthAttributes attr_;
 };
 

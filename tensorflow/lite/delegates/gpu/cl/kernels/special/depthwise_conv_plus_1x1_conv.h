@@ -36,7 +36,6 @@ namespace cl {
 class DepthwiseConvPlus1x1Conv : public GPUOperation {
  public:
   DepthwiseConvPlus1x1Conv() = default;
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
@@ -59,6 +58,10 @@ class DepthwiseConvPlus1x1Conv : public GPUOperation {
   absl::Status UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
                              const Convolution2DAttributes& conv_attr,
                              CLContext* context);
+
+  std::string GenerateCode(const OperationDef& op_def,
+                           const DepthwiseConvolution2DAttributes& dw_attr,
+                           int result_depth, const CLDevice& device);
 
   DepthwiseConvolution2DAttributes dw_attr_;
   int result_depth_;

@@ -2256,11 +2256,12 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
   strides = _get_sequence(strides, 2, channel_index, "strides")
   dilations = _get_sequence(dilations, 2, channel_index, "dilations")
 
-  # Try really hard to avoid modifying the legacy name scopes - return early.
-  shape = getattr(input, "shape", None)
-  if shape is not None:
-    ndims = getattr(shape, "ndims", -1)
-    if ndims == -1: ndims = len(shape)
+  shape = input.shape
+  # shape object may lack ndims, e.g., if input is an np.ndarray.  In that case,
+  # we fall back to len(shape).
+  ndims = getattr(shape, "ndims", -1)
+  if ndims == -1:
+    ndims = len(shape)
   if ndims in (4, 3, 2, 1, 0, None):
     # We avoid calling squeeze_batch_dims to reduce extra python function
     # call slowdown in eager mode.  This branch doesn't require reshapes.
@@ -2989,12 +2990,12 @@ def _conv3d_expanded_batch(
     dilations=None,
     name=None):
   """Helper function for `conv3d`; handles expanded batches."""
-  # Try really hard to avoid modifying the legacy name sceops - return early.
-  shape = getattr(input, "shape", None)
-  if shape is not None:
-    ndims = getattr(shape, "ndims", -1)
-    if ndims == -1:
-      ndims = len(shape)
+  shape = input.shape
+  # shape object may lack ndims, e.g., if input is an np.ndarray.  In that case,
+  # we fall back to len(shape).
+  ndims = getattr(shape, "ndims", -1)
+  if ndims == -1:
+    ndims = len(shape)
   if ndims in (5, 4, 3, 2, 1, 0, None):
     # We avoid calling squeeze_batch_dims to reduce extra python function
     # call slowdown in eager mode.  This branch doesn't require reshapes.
@@ -3490,6 +3491,52 @@ def leaky_relu(features, alpha=0.2, name=None):
     if isinstance(alpha, np.ndarray):
       alpha = alpha.item()
     return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
+
+
+@tf_export("nn.gelu", v1=[])
+@dispatch.add_dispatch_support
+def gelu(features, approximate=False, name=None):
+  """Compute the Gaussian Error Linear Unit (GELU) activation function.
+
+  Gaussian error linear unit (GELU) computes
+  `x * P(X <= x)`, where `P(X) ~ N(0, 1)`.
+  The (GELU) nonlinearity weights inputs by their value, rather than gates
+  inputs by their sign as in ReLU.
+
+  For example:
+
+  >>> x = tf.constant([-3.0, -1.0, 0.0, 1.0, 3.0], dtype=tf.float32)
+  >>> y = tf.nn.gelu(x)
+  >>> y.numpy()
+  array([-0.00404951, -0.15865529,  0.        ,  0.8413447 ,  2.9959507 ],
+      dtype=float32)
+  >>> y = tf.nn.gelu(x, approximate=True)
+  >>> y.numpy()
+  array([-0.00363752, -0.15880796,  0.        ,  0.841192  ,  2.9963627 ],
+      dtype=float32)
+
+  Args:
+    features: A `Tensor` representing preactivation values.
+    approximate: An optional `bool`. Defaults to `False`. Whether to enable
+      approximation.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `features`.
+
+  References:
+    [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415).
+  """
+  with ops.name_scope(name, "Gelu", [features]):
+    features = ops.convert_to_tensor(features, name="features")
+    if approximate:
+      coeff = math_ops.cast(0.044715, features.dtype)
+      return 0.5 * features * (
+          1.0 + math_ops.tanh(0.7978845608028654 *
+                              (features + coeff * math_ops.pow(features, 3))))
+    else:
+      return 0.5 * features * (1.0 + math_ops.erf(
+          features / math_ops.cast(1.4142135623730951, features.dtype)))
 
 
 def _flatten_outer_dims(logits):

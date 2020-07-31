@@ -13,23 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 using mlir::FunctionPass;
 using mlir::PassRegistration;
 using mlir::PassWrapper;
 
 namespace {
-class OptimizeMhlo : public PassWrapper<OptimizeMhlo, FunctionPass> {
+class OptimizeMhloPass : public PassWrapper<OptimizeMhloPass, FunctionPass> {
  public:
-  explicit OptimizeMhlo() : PassWrapper<OptimizeMhlo, FunctionPass>() {}
+  explicit OptimizeMhloPass() : PassWrapper<OptimizeMhloPass, FunctionPass>() {}
 
   /// Performs the lowering to MHLO dialect.
   void runOnFunction() override;
@@ -37,7 +38,7 @@ class OptimizeMhlo : public PassWrapper<OptimizeMhlo, FunctionPass> {
 }  // end anonymous namespace
 
 // Lowers the complex operations that can be represented using other operations.
-void OptimizeMhlo::runOnFunction() {
+void OptimizeMhloPass::runOnFunction() {
   // Add lowering patterns to the list.
   mlir::OwningRewritePatternList patterns;
   mlir::mhlo::PopulateOptimizeMHLOPatterns(&getContext(), &patterns);
@@ -45,5 +46,6 @@ void OptimizeMhlo::runOnFunction() {
   applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
-static PassRegistration<OptimizeMhlo> pass("mhlo-test-optimize",
-                                           "Run optional HLO optimizations.");
+std::unique_ptr<mlir::FunctionPass> mlir::mhlo::createOptimizeMhloPass() {
+  return std::make_unique<OptimizeMhloPass>();
+}

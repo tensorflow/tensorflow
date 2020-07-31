@@ -500,6 +500,7 @@ cc_library(
     deps = [
         ":Affine",
         ":IR",
+        ":Support",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -739,6 +740,7 @@ cc_library(
         ":MLIRShapeCanonicalizationIncGen",
         ":ShapeOpsIncGen",
         ":SideEffectInterfaces",
+        ":StandardOps",
         ":Support",
         "@llvm-project//llvm:Support",
     ],
@@ -757,29 +759,9 @@ cc_library(
         ":Pass",
         ":SCFDialect",
         ":Shape",
-        ":ShapeToStandardPatternsIncGen",
         ":StandardOps",
         ":Support",
         ":Transforms",
-    ],
-)
-
-gentbl(
-    name = "ShapeToStandardPatternsIncGen",
-    strip_include_prefix = "include/mlir/Conversion/ShapeToStandard",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "include/mlir/Conversion/ShapeToStandard/ShapeToStandardPatterns.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "lib/Conversion/ShapeToStandard/ShapeToStandardPatterns.td",
-    td_srcs = [
-        ":StdOpsTdFiles",
-        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
-        "include/mlir/Interfaces/InferTypeOpInterface.td",
     ],
 )
 
@@ -827,7 +809,7 @@ cc_library(
         ":Pass",
         ":Shape",
         ":ShapeTransformsPassIncGen",
-        ":Support",
+        ":StandardOps",
         ":Transforms",
     ],
 )
@@ -920,7 +902,6 @@ cc_library(
         ":Support",
         ":VectorInterfaces",
         ":VectorOpsIncGen",
-        ":VectorTransformPatternsIncGen",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -3618,34 +3599,6 @@ gentbl(
     td_file = "include/mlir/Dialect/Vector/VectorOps.td",
     td_srcs = [
         ":VectorOpsTdFiles",
-    ],
-)
-
-filegroup(
-    name = "VectorTransformPatternsTdFiles",
-    srcs = [
-        "include/mlir/Dialect/Vector/VectorTransformPatterns.td",
-        ":AffineOpsTdFiles",
-        ":LinalgOpsTdFiles",
-        ":LinalgStructuredOpsTdFiles",
-        ":OpBaseTdFiles",
-        ":StdOpsTdFiles",
-        ":VectorOpsTdFiles",
-    ],
-)
-
-gentbl(
-    name = "VectorTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "include/mlir/Dialect/Vector/VectorTransformPatterns.h.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Vector/VectorTransformPatterns.td",
-    td_srcs = [
-        ":VectorTransformPatternsTdFiles",
     ],
 )
 

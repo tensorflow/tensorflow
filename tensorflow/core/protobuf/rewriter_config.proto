@@ -9,7 +9,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 message AutoParallelOptions {
   bool enable = 1;
@@ -106,6 +106,10 @@ message RewriterConfig {
   // 0 means the system picks an appropriate number.
   // < 0 means do not skip optimization.
   int32 min_graph_nodes = 17;
+
+  // Disable optimizations that assume compressed tensors. Note that this flag
+  // is experimental and may be removed in the future.
+  bool experimental_disable_compressed_tensor_optimization = 26;
 
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)

@@ -655,17 +655,13 @@ cc_library(
     name = "batch_kernels",
     srcs = ["batch_kernels.cc"],
     deps = [
-        ":concat_lib_hdrs",
         ":ops_util_hdrs",
-        ":split_lib_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/batching_util:batch_resource_base",
+        "//tensorflow/core/kernels/batching_util:concat_split_util",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
-        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
-        "//tensorflow/core/kernels/batching_util:threadsafe_status",
-        "//tensorflow/core/util:incremental_barrier",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -3828,6 +3824,7 @@ tf_kernel_library(
         ":transpose_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -5345,7 +5342,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sendrecv_ops",
     prefix = "sendrecv_ops",
-    deps = REQUIRED_DEPS,
+    deps = REQUIRED_DEPS + [
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
 )
 
 tf_cc_test(

@@ -22,6 +22,33 @@ limitations under the License.
 
 TF_LITE_MICRO_TESTS_BEGIN
 
+TF_LITE_MICRO_TEST(TestAdjustHead) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  // First allocation from head.
+  {
+    uint8_t* result = allocator.AdjustHead(100, 1);
+    TF_LITE_MICRO_EXPECT(arena == result);
+    TF_LITE_MICRO_EXPECT(arena + 100 == allocator.GetHead());
+  }
+  // Second allocation doesn't require as much space so head pointer didn't
+  // move.
+  {
+    uint8_t* result = allocator.AdjustHead(10, 1);
+    TF_LITE_MICRO_EXPECT(arena == result);
+    TF_LITE_MICRO_EXPECT(arena + 100 == allocator.GetHead());
+  }
+  // Third allocation increase head memory usage.
+  {
+    uint8_t* result = allocator.AdjustHead(1000, 1);
+    TF_LITE_MICRO_EXPECT(arena == result);
+    TF_LITE_MICRO_EXPECT(arena + 1000 == allocator.GetHead());
+  }
+}
+
 TF_LITE_MICRO_TEST(TestJustFits) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
@@ -105,12 +132,12 @@ TF_LITE_MICRO_TEST(TestAllocateHeadWithoutResettingTemp) {
 
   // Allocation should be null since temp allocation was not followed by a call
   // to ResetTempAllocations().
-  uint8_t* head = allocator.AllocateFromHead(100, 1);
+  uint8_t* head = allocator.AdjustHead(100, 1);
   TF_LITE_MICRO_EXPECT(nullptr == head);
 
   allocator.ResetTempAllocations();
 
-  head = allocator.AllocateFromHead(100, 1);
+  head = allocator.AdjustHead(100, 1);
   TF_LITE_MICRO_EXPECT(nullptr != head);
 
   // The most recent head allocation should be in the same location as the

@@ -616,7 +616,12 @@ TfLiteStatus InterpreterBuilder::operator()(
   auto* buffers = model_->buffers();
 
   if (subgraphs->size() == 0) {
-    error_reporter_->Report("No subgraph in the model.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
+    return cleanup_and_error();
+  }
+
+  if (!buffers) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "No buffers in the model.\n");
     return cleanup_and_error();
   }
 
@@ -637,10 +642,10 @@ TfLiteStatus InterpreterBuilder::operator()(
         (*interpreter)->subgraph(subgraph_index);
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
-    if (!operators || !tensors || !buffers) {
-      error_reporter_->Report(
-          "Did not get operators, tensors, or buffers in subgraph %d.\n",
-          subgraph_index);
+    if (!operators || !tensors) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Did not get operators or tensors in subgraph %d.\n",
+                           subgraph_index);
       return cleanup_and_error();
     }
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {

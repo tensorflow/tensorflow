@@ -17,5 +17,5 @@ SET PYTHON_DIRECTORY=Python38
 
 CALL tensorflow\tools\ci_build\release\common_win.bat
 
-call tensorflow\tools\ci_build\windows\cpu\pip\run.bat --release_build --extra_build_flags "--config=v2 --define=no_tensorflow_py_deps=true" --extra_test_flags "--test_env=TF2_BEHAVIOR=1" --project_name "tensorflow_cpu"
+call tensorflow\tools\ci_build\windows\cpu\pip\run.bat --release_build --extra_test_flags "--test_env=TF2_BEHAVIOR=1" --project_name "tensorflow_cpu"
 

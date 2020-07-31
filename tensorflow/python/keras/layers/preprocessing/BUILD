@@ -473,6 +473,7 @@ cuda_py_test(
     deps = [
         ":image_preprocessing",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras:testing_utils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -56,6 +56,8 @@ class Winograd4x4To36 : public GPUOperation {
 
   absl::Status UploadBt(CLContext* context);
 
+  std::string GetWinograd4x4To36Code(const OperationDef& op_def);
+
   // Must be called after kernel compilation
   int3 SelectBestWorkGroup();
 
@@ -92,6 +94,8 @@ class Winograd36To4x4 : public GPUOperation {
       Winograd36To4x4* result);
 
   absl::Status UploadAt(CLContext* context);
+
+  std::string GetWinograd36To4x4Code(const OperationDef& op_def);
 
   // Must be called after kernel compilation
   int3 SelectBestWorkGroup();

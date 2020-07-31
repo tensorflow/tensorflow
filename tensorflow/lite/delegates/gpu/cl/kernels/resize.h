@@ -44,6 +44,9 @@ class Resize : public GPUOperation {
   Resize(const OperationDef& definition, const Resize2DAttributes& attr)
       : GPUOperation(definition), attr_(attr) {}
 
+  std::string GetResizeCode(const OperationDef& op_def,
+                            const Resize2DAttributes& attr);
+
   Resize2DAttributes attr_;
 };
 
@@ -68,6 +71,9 @@ class Resize3D : public GPUOperation {
  private:
   Resize3D(const OperationDef& definition, const Resize3DAttributes& attr)
       : GPUOperation(definition), attr_(attr) {}
+
+  std::string GetResize3DCode(const OperationDef& op_def,
+                              const Resize3DAttributes& attr);
 
   Resize3DAttributes attr_;
 };

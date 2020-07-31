@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
+from tensorflow.core.protobuf.data.experimental import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.util.tf_export import tf_export
@@ -68,7 +69,9 @@ class DispatchServer(object):
     if protocol is None:
       protocol = "grpc"
     self._protocol = protocol
-    self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(port, protocol)
+    config = service_config_pb2.DispatcherConfig(port=port, protocol=protocol)
+    self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
+        config.SerializeToString())
     if start:
       self._server.start()
 
@@ -202,8 +205,13 @@ class WorkerServer(object):
       protocol = "grpc"
 
     self._protocol = protocol
+    config = service_config_pb2.WorkerConfig(
+        port=port,
+        protocol=protocol,
+        dispatcher_address=dispatcher_address,
+        worker_address=worker_address)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
-        port, protocol, dispatcher_address, worker_address)
+        config.SerializeToString())
     if start:
       self._server.start()
 
