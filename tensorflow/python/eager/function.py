@@ -1747,12 +1747,12 @@ class ConcreteFunction(object):
       TypeError: if `args` and `kwargs` do not match the structured signature
         of this `ConcreteFunction`.
     """
-    args, kwargs = self._function_spec.canonicalize_function_inputs(
-        *args, **kwargs)
+    args, kwargs, flat_args, flat_kwargs = \
+        self._function_spec.canonicalize_function_inputs(*args, **kwargs)
     self._structured_signature_check_missing_args(args, kwargs)
     self._structured_signature_check_unexpected_args(args, kwargs)
     self._structured_signature_check_arg_types(args, kwargs)
-    return self._filtered_call(args, kwargs, cancellation_manager)
+    return self._filtered_call(flat_args, flat_kwargs, cancellation_manager)
 
   def _structured_signature_check_missing_args(self, args, kwargs):
     """Raises a TypeError if any args are missing."""
@@ -1834,24 +1834,27 @@ class ConcreteFunction(object):
                             type(spec_piece).__name__, spec_piece, name,
                             type(arg_piece).__name__, arg_piece))
 
-  def _filtered_call(self, args, kwargs, cancellation_manager=None):
+  def _filtered_call(self, flat_args, flat_kwargs, cancellation_manager=None):
     """Executes the function, filtering arguments from the Python function.
 
     Objects aside from Tensors, CompositeTensors, and Variables are ignored.
-    CompositeTensors are expanded into their components.
+    CompositeTensors have been expanded into their components on input.
 
     Args:
-      args: Canonicalized positional arguments of the Python function.
-      kwargs: Canonicalized keyword arguments of the Python function.
+      flat_args: Flattened canonicalized positional arguments of the Python
+        function.
+      flat_kwargs: Flattened canonicalized keyword arguments of the Python
+        function.
       cancellation_manager: (Optional.) A `CancellationManager` that can be
         used to cancel function invocation.
 
     Returns:
       The result of applying the function on the Tensors/Variables contained in
-      `args` and `kwargs`.
+      `flat_args` and `flat_kwargs`.
     """
     return self._call_flat(
-        [t for t in nest.flatten((args, kwargs), expand_composites=True)
+        [t for t in flat_args + flat_kwargs \
+        # TODO(jlchu): delete when final [t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
                            resource_variable_ops.BaseResourceVariable))],
         captured_inputs=self.captured_inputs,
@@ -2590,7 +2593,7 @@ class FunctionSpec(object):
     """Canonicalizes `args` and `kwargs`.
 
     Canonicalize the inputs to the Python function using a `FunctionSpec`
-    instance. In particular, we parse the varags and kwargs that the
+    instance. In particular, we parse the varargs and kwargs that the
     original function was called with into a tuple corresponding to the
     Python function's positional (named) arguments and a dictionary
     corresponding to its kwargs.  Missing default arguments are added.
@@ -2607,8 +2610,9 @@ class FunctionSpec(object):
 
     Returns:
       A canonicalized ordering of the inputs representened by a tuple in the
-      form (args, kwargs). Here: `args` is a full list of bound arguments, and
-      `kwargs` contains only true keyword arguments, as opposed to named
+      form (args, kwargs), followed by their flattened versions in the form
+      (flat_args, flat_kwargs). Here: `args` is a full list of bound arguments,
+      and `kwargs` contains only true keyword arguments, as opposed to named
       arguments called in a keyword-like fashion.
 
     Raises:
@@ -2689,16 +2693,16 @@ class FunctionSpec(object):
           kwargs.setdefault(kwarg, default)
 
     if self._input_signature is None:
-      inputs = _convert_numpy_inputs(inputs)
-      kwargs = _convert_numpy_inputs(kwargs)
-      return inputs, kwargs
+      inputs, flat_inputs = _convert_numpy_inputs(inputs)
+      kwargs, flat_kwargs = _convert_numpy_inputs(kwargs)
+      return inputs, kwargs, flat_inputs, flat_kwargs
     else:
       assert not kwargs
       inputs = _convert_inputs_to_signature(
           inputs,
           self._input_signature,
           self._flat_input_signature)
-      return inputs, {}
+      return inputs, {}, flat_inputs, {} ## TODO(jlchu): Check if last should be a dict
 
 
 def _as_ndarray(value):
@@ -2723,9 +2727,10 @@ def _is_ndarray(value):
 
 def _convert_numpy_inputs(inputs):
   """Convert numpy array inputs to tensors."""
+  ## TODO(jlchu): Modify/delete comment when change is final!!!
   # We assume that any CompositeTensors have already converted their components
   # from numpy arrays to Tensors, so we don't need to expand composites here.
-  flat_inputs = nest.flatten(inputs, expand_composites=False)
+  flat_inputs = nest.flatten(inputs, expand_composites=True)
 
   # Check for NumPy arrays in arguments and convert them to Tensors.
   # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
@@ -2741,10 +2746,11 @@ def _convert_numpy_inputs(inputs):
       flat_inputs[index] = constant_op.constant(a)
       need_packing = True
   if need_packing:
-    return nest.pack_sequence_as(
-        structure=inputs, flat_sequence=flat_inputs, expand_composites=False)
+    return (nest.pack_sequence_as(
+        structure=inputs, flat_sequence=flat_inputs, expand_composites=True),
+            flat_inputs)
   else:
-    return inputs
+    return inputs, flat_inputs
 
 
 def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
@@ -2921,8 +2927,9 @@ class Function(object):
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
     with self._lock:
-      graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-    return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
+      graph_function, flat_args, flat_kwargs = \
+          self._maybe_define_function(args, kwargs)
+    return graph_function._filtered_call(flat_args, flat_kwargs)  # pylint: disable=protected-access
 
   @property
   def python_function(self):
@@ -2998,7 +3005,7 @@ class Function(object):
                            (str(args), str(self.input_signature)))
       args, kwargs = None, None
     with self._lock:
-      graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
+      graph_function, _, _ = self._maybe_define_function(args, kwargs)
       seen_names = set()
       captured = object_identity.ObjectIdentitySet(
           graph_function.graph.internal_captures)
@@ -3267,7 +3274,7 @@ class Function(object):
 
     Returns:
       A graph function corresponding to the input signature implied by args and
-      kwargs, as well as the inputs that the object should be called with.
+      kwargs, as well as flattened inputs that the object should be called with.
 
     Raises:
       ValueError: If inputs are incompatible with the input signature.
@@ -3276,8 +3283,8 @@ class Function(object):
         shape relaxation retracing.
     """
     if self.input_signature is None or args is not None or kwargs is not None:
-      args, kwargs = self._function_spec.canonicalize_function_inputs(
-          *args, **kwargs)
+      args, kwargs, flat_args, flat_kwargs = \
+          self._function_spec.canonicalize_function_inputs(*args, **kwargs)
 
     cache_key = self._cache_key(args, kwargs)
 
@@ -3290,7 +3297,7 @@ class Function(object):
 
     graph_function = self._function_cache.primary.get(cache_key, None)
     if graph_function is not None:
-      return graph_function, args, kwargs
+      return graph_function, flat_args, flat_kwargs
 
     logging.vlog(1,
                  "Creating new FuncGraph for Python function %r (key: %r)",
@@ -3316,7 +3323,10 @@ class Function(object):
       if (self._experimental_relax_shapes
           and self.input_signature is None
           and call_context_key in self._function_cache.missed):
-        return self._define_function_with_shape_relaxation(args, kwargs)
+        return_function, _, _ = \
+            self.define_function_with_shape_relaxation(args, kwargs)
+        #TODO(jlchu): Investigate modifying above function sig directly
+        return return_function, flat_args, flat_kwargs
 
       self._function_cache.missed.add(call_context_key)
       graph_function = self._create_graph_function(args, kwargs)
@@ -3325,7 +3335,7 @@ class Function(object):
       if ops.get_default_graph()._distribution_strategy_stack:
         self._traced_with_distribution_strategy = True
 
-      return graph_function, args, kwargs
+      return graph_function, flat_args, flat_kwargs
 
 
 def register(func, *args, **kwargs):
