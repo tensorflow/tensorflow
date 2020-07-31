@@ -37,6 +37,7 @@ tflite_jni_binary(
         "jni/**/*.h",
     ]),
     deps = [
+        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
     ],
