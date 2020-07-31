@@ -111,6 +111,20 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
 
 }  // namespace
 
+void LIFOManager::AddNode(const NodeDef* node) {
+  // Merge nodes are scheduled with the lowest priority in LIFO manager; virtual
+  // scheduler may run multiple input nodes of Merge (when we don't have
+  // annotation, which is quite common); simply scheduling Merge after one of
+  // its input may break scheduling constraints; some inputs of Merge may be
+  // scheduled after the Merge. So, we place Merge at the beginning of the queue
+  // to guarantee all the inputs of Merge are scheduled before the Merge.
+  if (IsMerge(*node)) {
+    nodes_.push_front(node);
+  } else {
+    nodes_.push_back(node);
+  }
+}
+
 const NodeDef* LIFOManager::GetCurrNode() {
   CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
   if (curr_pos_ == nodes_.end()) {
