@@ -41,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import worker_training_state
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
@@ -2254,6 +2255,12 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     profiler.stop()
     self._is_tracing = False
 
+  def _collect_learning_rate(self, logs):
+    lr_schedule = getattr(self.model.optimizer, 'lr', None)
+    if isinstance(lr_schedule, learning_rate_schedule.LearningRateSchedule):
+      logs['learning_rate'] = lr_schedule(self.model.optimizer.iterations)
+    return logs
+
   def _log_epoch_metrics(self, epoch, logs):
     """Writes epoch metrics out as scalar summaries.
 
@@ -2266,6 +2273,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
     train_logs = {k: v for k, v in logs.items() if not k.startswith('val_')}
     val_logs = {k: v for k, v in logs.items() if k.startswith('val_')}
+    train_logs = self._collect_learning_rate(train_logs)
 
     with summary_ops_v2.always_record_summaries():
       if train_logs:
