@@ -291,20 +291,21 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     // To avoid double counting, don't include the elapsed time of while and
     // conditional HLOs.
     const HloInstruction* instruction = instruction_and_logical_time.first;
-    int64 logical_time = instruction_and_logical_time.second;
-    if (logical_time >= instructions_elapsed_time.size()) {
-      instructions_elapsed_time.resize(logical_time + 1, 0.0);
-      while_nest_level_.resize(logical_time + 1, 0);
-    }
-    int nest_level = cost_analysis_.CalculateWhileLoopNestLevel(
-        instruction_and_logical_time.first);
-    while_nest_level_[logical_time] = nest_level;
     if (instruction->opcode() == HloOpcode::kWhile ||
         instruction->opcode() == HloOpcode::kConditional) {
       continue;
     }
     float elapsed_time = cost_analysis_.GetInstructionElapsed(
         *instruction_and_logical_time.first);
+    int64 logical_time = instruction_and_logical_time.second;
+    const int64 actual_time = instructions_elapsed_time.size();
+    if (logical_time >= actual_time) {
+      instructions_elapsed_time.resize(logical_time + 1, 0.0);
+      while_nest_level_.resize(logical_time + 1, 0);
+    }
+    int nest_level = cost_analysis_.CalculateWhileLoopNestLevel(
+        instruction_and_logical_time.first);
+    while_nest_level_[logical_time] = nest_level;
     instructions_elapsed_time[logical_time] =
         elapsed_time *
         tensorflow::MathUtil::IPow<float>(kWhileExecutionCount, nest_level);
@@ -574,24 +575,6 @@ CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
   return cost_analysis_.GetMemoryBoundedness(interval);
 }
 
-bool MemorySpaceAssignment::Allocation::operator==(
-    const MemorySpaceAssignment::Allocation& other) const {
-  return defining_position() == other.defining_position() &&
-         uses() == other.uses() && memory_space() == other.memory_space() &&
-         chunk() == other.chunk() && start_time() == other.start_time() &&
-         end_time() == other.end_time() &&
-         is_copy_allocation() == other.is_copy_allocation();
-}
-
-bool MemorySpaceAssignment::CopyAllocation::operator==(
-    const MemorySpaceAssignment::CopyAllocation& other) const {
-  return static_cast<const Allocation&>(*this) ==
-             static_cast<const Allocation&>(other) &&
-         copy_done_schedule_before() == other.copy_done_schedule_before() &&
-         copy_start_schedule_after() == other.copy_start_schedule_after() &&
-         copy_start() == other.copy_start() && copy_done() == other.copy_done();
-}
-
 std::string MemorySpaceAssignment::AllocationValue::ToString() const {
   std::string out = absl::StrCat("computation = ", computation()->name());
   absl::StrAppend(&out, "\n position:\n");
@@ -639,7 +622,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
   // Create an AllocationValue for each non-trivial position.
   absl::flat_hash_set<const HloComputation*> computations;
   int beginning_idx = allocation_values->size();
-  for (int i = 0; i < positions.size(); ++i) {
+  for (int i = 0, end = positions.size(); i < end; ++i) {
     const HloPosition& position = positions.at(i);
     allocation_values->emplace_back(value, position);
   }
@@ -662,7 +645,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
     HloComputation* use_computation = use.instruction->parent();
 
     AllocationValue* last_allocation_value = nullptr;
-    for (int i = beginning_idx; i < allocation_values->size(); ++i) {
+    for (int i = beginning_idx, end = allocation_values->size(); i < end; ++i) {
       AllocationValue* allocation_value = &allocation_values->at(i);
       if (allocation_value->computation() == use_computation &&
           instruction_schedule.at(
@@ -674,7 +657,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
     last_allocation_value->AddUse(use, use_time);
   }
 
-  for (int i = beginning_idx; i < allocation_values->size(); ++i) {
+  for (int i = beginning_idx, end = allocation_values->size(); i < end; ++i) {
     VLOG(3) << "Created allocation value: "
             << allocation_values->at(i).ToString();
   }
@@ -965,7 +948,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     VLOG(3) << "Flattened instruction sequence:";
     const auto& instruction_sequence =
         hlo_live_range_.flattened_instruction_sequence().instructions();
-    for (int i = 0; i < instruction_sequence.size(); ++i) {
+    for (int i = 0, end = instruction_sequence.size(); i < end; ++i) {
       VLOG(3) << " " << i << ": " << instruction_sequence[i]->parent()->name()
               << " " << instruction_sequence[i]->name();
     }
@@ -2021,9 +2004,6 @@ int64 AlternateMemoryBestFitHeap::FindPrefetchEndTime(
     int64 latest_prefetch_time =
         options_.prefetch_interval_picker->LatestPrefetchStartTime(
             request.use->hlo_use, earliest_prefetch_time, prefetch_end_time);
-    VLOG(4) << "Latest prefetch start time = " << latest_prefetch_time
-            << ", earliest prefetch start time = " << earliest_prefetch_time
-            << ", prefetch end time = " << prefetch_end_time;
     // Return if we couldn't find a suitable prefetch start time.
     if (latest_prefetch_time < earliest_prefetch_time) {
       break;
@@ -2563,8 +2543,6 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
       HloOpcode::kCopyStart, producing_instruction));
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
-  VLOG(4) << "Created " << copy_start_->name()
-          << " for position: " << defining_position().ToString();
   // Update the allocation position with the copy done instruction so that if
   // there are further copies from it, it can find the correct position.
   defining_position_ = HloPosition{copy_done_, {}};
@@ -2879,9 +2857,8 @@ Status MemorySpaceAssignment::FixSchedule() {
 
     VLOG(4) << "Scheduling: " << computation->ToString();
 
-    for (int64 instruction_index = 0;
-         instruction_index < flattened_instructions_.size();
-         ++instruction_index) {
+    for (int64 instruction_index = 0, end = flattened_instructions_.size();
+         instruction_index < end; ++instruction_index) {
       auto insts_before_iter = schedule_before_.find(instruction_index);
       if (insts_before_iter != schedule_before_.end()) {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
