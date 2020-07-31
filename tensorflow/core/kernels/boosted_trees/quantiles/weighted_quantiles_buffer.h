@@ -23,7 +23,7 @@
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-namespace boosted_trees {
+namespace core_boosted_trees {
 namespace quantiles {
 
 // Buffering container ideally suited for scenarios where we need
@@ -126,7 +126,7 @@ constexpr decltype(CompareFn())
     WeightedQuantilesBuffer<ValueType, WeightType, CompareFn>::kCompFn;
 
 }  // namespace quantiles
-}  // namespace boosted_trees
+}  // namespace core_boosted_trees
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_BOOSTED_TREES_QUANTILES_WEIGHTED_QUANTILES_BUFFER_H_

@@ -24,7 +24,7 @@
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-namespace boosted_trees {
+namespace core_boosted_trees {
 namespace quantiles {
 
 // Class to compute approximate quantiles with error bound guarantees for
@@ -326,7 +326,7 @@ WeightedQuantilesStream<ValueType, WeightType, CompareFn>::GetQuantileSpecs(
 }
 
 }  // namespace quantiles
-}  // namespace boosted_trees
+}  // namespace core_boosted_trees
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_BOOSTED_TREES_QUANTILES_WEIGHTED_QUANTILES_STREAM_H_

@@ -21,15 +21,15 @@
 namespace tensorflow {
 namespace {
 
-using Buffer = boosted_trees::quantiles::WeightedQuantilesBuffer<float, float>;
+using Buffer =
+    core_boosted_trees::quantiles::WeightedQuantilesBuffer<float, float>;
 using BufferEntry =
-    boosted_trees::quantiles::WeightedQuantilesBuffer<float,
-                                                      float>::BufferEntry;
+    core_boosted_trees::quantiles::WeightedQuantilesBuffer<float,
+                                                           float>::BufferEntry;
 using Summary =
-    boosted_trees::quantiles::WeightedQuantilesSummary<float, float>;
-using SummaryEntry =
-    boosted_trees::quantiles::WeightedQuantilesSummary<float,
-                                                       float>::SummaryEntry;
+    core_boosted_trees::quantiles::WeightedQuantilesSummary<float, float>;
+using SummaryEntry = core_boosted_trees::quantiles::WeightedQuantilesSummary<
+    float, float>::SummaryEntry;
 
 class WeightedQuantilesSummaryTest : public ::testing::Test {
  protected:

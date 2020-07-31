@@ -23,12 +23,11 @@ namespace {
 using Tuple = std::tuple<int64, int64>;
 
 using Summary =
-    boosted_trees::quantiles::WeightedQuantilesSummary<double, double>;
-using SummaryEntry =
-    boosted_trees::quantiles::WeightedQuantilesSummary<double,
-                                                       double>::SummaryEntry;
+    core_boosted_trees::quantiles::WeightedQuantilesSummary<double, double>;
+using SummaryEntry = core_boosted_trees::quantiles::WeightedQuantilesSummary<
+    double, double>::SummaryEntry;
 using Stream =
-    boosted_trees::quantiles::WeightedQuantilesStream<double, double>;
+    core_boosted_trees::quantiles::WeightedQuantilesStream<double, double>;
 
 TEST(GetQuantileSpecs, InvalidEps) {
   EXPECT_DEATH({ Stream::GetQuantileSpecs(-0.01, 0L); }, "eps >= 0");
