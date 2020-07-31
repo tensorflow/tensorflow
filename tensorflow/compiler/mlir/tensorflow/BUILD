@@ -703,6 +703,30 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_analysis",
+    srcs = [
+        "analysis/per_function_aggregate_analysis.h",
+        "analysis/resource_alias_analysis.cc",
+        "analysis/side_effect_analysis.cc",
+    ],
+    hdrs = [
+        "analysis/resource_alias_analysis.h",
+        "analysis/side_effect_analysis.h",
+    ],
+    deps = [
+        ":tensorflow",
+        ":tensorflow_types",
+        "//tensorflow/compiler/tf2xla:resource_operation_table",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_passes",
     srcs = [
         "transforms/annotate_parameter_replication.cc",
@@ -789,8 +813,8 @@ cc_library(
         ":error_util",
         ":export_tf_dialect_op",
         ":mangling_util",
-        ":side_effect_analysis",
         ":tensorflow",
+        ":tensorflow_analysis",
         ":tensorflow_optimize_inc_gen",
         ":tensorflow_types",
         ":tf_data_optimization",
@@ -1751,23 +1775,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-    ],
-)
-
-cc_library(
-    name = "side_effect_analysis",
-    srcs = ["analysis/side_effect_analysis.cc"],
-    hdrs = ["analysis/side_effect_analysis.h"],
-    deps = [
-        ":tensorflow",
-        ":tensorflow_types",
-        "//tensorflow/compiler/tf2xla:resource_operation_table",
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 
