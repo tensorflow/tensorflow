@@ -22,10 +22,10 @@ namespace tensorflow {
 namespace {
 
 using Buffer =
-    core_boosted_trees::quantiles::WeightedQuantilesBuffer<double, double>;
+    boosted_trees::quantiles::WeightedQuantilesBuffer<double, double>;
 using BufferEntry =
-    core_boosted_trees::quantiles::WeightedQuantilesBuffer<double,
-                                                           double>::BufferEntry;
+    boosted_trees::quantiles::WeightedQuantilesBuffer<double,
+                                                      double>::BufferEntry;
 
 class WeightedQuantilesBufferTest : public ::testing::Test {};
 

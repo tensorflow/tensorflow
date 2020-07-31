@@ -24,7 +24,7 @@
 namespace tensorflow {
 
 using QuantileStream =
-    core_boosted_trees::quantiles::WeightedQuantilesStream<float, float>;
+    boosted_trees::quantiles::WeightedQuantilesStream<float, float>;
 
 // Quantile Stream Resource for a list of streams sharing the same number of
 // quantiles, maximum elements, and epsilon.

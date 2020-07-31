@@ -22,7 +22,7 @@
 #include "tensorflow/core/kernels/boosted_trees/quantiles/weighted_quantiles_buffer.h"
 
 namespace tensorflow {
-namespace core_boosted_trees {
+namespace boosted_trees {
 namespace quantiles {
 
 // Summary holding a sorted block of entries with upper bound guarantees
@@ -366,7 +366,7 @@ constexpr decltype(CompareFn())
     WeightedQuantilesSummary<ValueType, WeightType, CompareFn>::kCompFn;
 
 }  // namespace quantiles
-}  // namespace core_boosted_trees
+}  // namespace boosted_trees
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_BOOSTED_TREES_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_

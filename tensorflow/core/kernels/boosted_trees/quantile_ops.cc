@@ -51,12 +51,12 @@ const char* const kResourceHandleName = "quantile_stream_resource_handle";
 
 using QuantileStreamResource = BoostedTreesQuantileStreamResource;
 using QuantileStream =
-    core_boosted_trees::quantiles::WeightedQuantilesStream<float, float>;
+    boosted_trees::quantiles::WeightedQuantilesStream<float, float>;
 using QuantileSummary =
-    core_boosted_trees::quantiles::WeightedQuantilesSummary<float, float>;
+    boosted_trees::quantiles::WeightedQuantilesSummary<float, float>;
 using QuantileSummaryEntry =
-    core_boosted_trees::quantiles::WeightedQuantilesSummary<
-        float, float>::SummaryEntry;
+    boosted_trees::quantiles::WeightedQuantilesSummary<float,
+                                                       float>::SummaryEntry;
 
 // Generates quantiles on a finalized QuantileStream.
 std::vector<float> GenerateBoundaries(const QuantileStream& stream,
@@ -421,10 +421,6 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
             generate_quantiles_ ? GenerateQuantiles(*stream, num_buckets)
                                 : GenerateBoundaries(*stream, num_buckets),
             stream_idx);
-        VLOG(1) << "Generated "
-                << stream_resource->boundaries(stream_idx).size()
-                << " boundaries. Num buckets: " << num_buckets
-                << " Generate quantiles: " << generate_quantiles_;
       }
     };
 
