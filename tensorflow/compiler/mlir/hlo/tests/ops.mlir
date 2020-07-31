@@ -939,7 +939,23 @@ func @constants() -> () {
 
 func @constant_invalid() -> () {
   // expected-error@+1 {{op failed to verify that all of {value, output} have same type}}
-  %0 = "mhlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<*xi32>)
+  %0 = "mhlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<3xi32>)
+  return
+}
+
+// -----
+
+func @constant_invalid() -> () {
+  // expected-error@+1 {{op result #0 must be statically shaped tensor}}
+  %0 = "mhlo.constant"() {value = dense<1> : tensor<i32>} : () -> tensor<?xi32>
+  return
+}
+
+// -----
+
+func @constant_invalid() -> () {
+  // expected-error@+1 {{elements literal type must have static shape}}
+  %0 = "mhlo.constant"() {value = dense<1> : tensor<?xi32>} : () -> tensor<?xi32>
   return
 }
 

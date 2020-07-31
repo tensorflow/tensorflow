@@ -52,7 +52,7 @@ def HLO_ConstOp : HLO_Op<"constant",
   );
 
   let results = (outs
-    HLO_Tensor:$output
+    HLO_StaticShapeTensor:$output
   );
 
   let builders = [OpBuilder<
