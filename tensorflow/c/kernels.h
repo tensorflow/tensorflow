@@ -199,6 +199,11 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
 
+TF_CAPI_EXPORT void TF_ForwardInputOrAllocateOutput(TF_OpKernelContext* context,
+    int* candidate_input_indices, int num_input_indices, int output_index, 
+    int64_t* output_dims, int output_num_dims, TF_Tensor** output, 
+    int* forwarded_input, TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
