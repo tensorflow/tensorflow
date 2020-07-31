@@ -1075,7 +1075,10 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
     HLO_Tensor:$operand,
     I32Attr:$dimension
   );
-  let results = (outs HLO_IntTensor);
+  // TODO(hinsu): Allow 64-bit result types once XLA HLO dialect based on the
+  // XLA semantics is available. This limitation is because of the current XLA
+  // implementation.
+  let results = (outs I32Tensor);
 }
 
 def HLO_MapOp: HLO_Op<"map",
