@@ -84,7 +84,7 @@ def _convert(converter, **kwargs):
     converter: TFLiteConverter object.
     **kwargs: Additional arguments to be passed into the converter. Supported
       flags are {"target_ops", "post_training_quantize",
-       "quantize_to_float16", "quant_16x8", "model_input_size"}.
+       "quantize_to_float16", "post_training_quantize_16x8", "model_input_size"}.
 
   Returns:
     The converted TFLite model in serialized format.
@@ -98,7 +98,7 @@ def _convert(converter, **kwargs):
     converter.optimizations = [_lite.Optimize.DEFAULT]
   if kwargs.get("quantize_to_float16", False):
     converter.target_spec.supported_types = [constants.FLOAT16]
-  if kwargs.get("quant_16x8", False):
+  if kwargs.get("post_training_quantize_16x8", False):
     input_size = kwargs.get("model_input_size")
     def _get_calib_data_func():
       def representative_data_gen():
@@ -490,7 +490,7 @@ def test_frozen_graph_quant(filename,
   # unless we are quantizing to float16.
   if ("target_ops" in kwargs and
       not kwargs.get("quantize_to_float16", False) and
-      not kwargs.get("quant_16x8", False) and
+      not kwargs.get("post_training_quantize_16x8", False) and
       set(kwargs["target_ops"]) == set([_lite.OpsSet.SELECT_TF_OPS])):
     if has_quant_tensor:
       raise ValueError("--post_training_quantize flag unexpectedly altered the "
@@ -583,7 +583,7 @@ def test_saved_model(directory,
 
   # 5 decimal places by default
   tolerance = 5
-  if kwargs.get("quant_16x8", False):
+  if kwargs.get("post_training_quantize_16x8", False):
     _check_model_quantized_to_16x8(tflite_model)
     # only 2 decimal places for full quantization
     tolerance = 2

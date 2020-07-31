@@ -185,7 +185,7 @@ class EvaluateSavedModel(test.TestCase):
     saved_model.save(model, saved_model_dir)
 
     model_coverage.test_saved_model(saved_model_dir,
-                                    quant_16x8=True,
+                                    post_training_quantize_16x8=True,
                                     model_input_size=input_size)
 
 
