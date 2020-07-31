@@ -2698,11 +2698,11 @@ class FunctionSpec(object):
       return inputs, kwargs, flat_inputs, flat_kwargs
     else:
       assert not kwargs
-      inputs = _convert_inputs_to_signature(
+      inputs, flat_inputs = _convert_inputs_to_signature(
           inputs,
           self._input_signature,
           self._flat_input_signature)
-      return inputs, {}, flat_inputs, {} ## TODO(jlchu): Check if last should be a dict
+      return inputs, {}, flat_inputs, []
 
 
 def _as_ndarray(value):
@@ -2802,7 +2802,7 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         flat_sequence=flatten_inputs,
         expand_composites=True)
 
-  return inputs
+  return inputs, flatten_inputs
 
 
 class FunctionCache(object):
