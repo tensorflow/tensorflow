@@ -1790,6 +1790,13 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(
   return clone;
 }
 
+std::unique_ptr<HloInstruction> HloInstruction::Clone(
+    const string& suffix, HloCloneContext* context) const {
+  std::unique_ptr<HloInstruction> clone =
+      CloneWithNewShape(shape_, suffix, context);
+  return clone;
+}
+
 std::pair<const HloInstruction*, ShapeIndex>
 HloInstruction::LatestNonGteAncestorAndIndex() const {
   const HloInstruction* hlo = this;
