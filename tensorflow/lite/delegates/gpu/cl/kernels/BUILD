@@ -780,6 +780,39 @@ cc_test(
 )
 
 cc_library(
+    name = "mean_stddev_normalization",
+    srcs = ["mean_stddev_normalization.cc"],
+    hdrs = ["mean_stddev_normalization.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_test(
+    name = "mean_stddev_normalization_test",
+    srcs = ["mean_stddev_normalization_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":mean_stddev_normalization",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "max_unpooling",
     srcs = ["max_unpooling.cc"],
     hdrs = ["max_unpooling.h"],

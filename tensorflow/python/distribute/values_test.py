@@ -432,12 +432,6 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(v, variables_lib.Variable)
 
   def testCheckpointing(self, distribution, synchronization, aggregation, mode):
-    # TODO(anjs): Remove this when b/162147051 is fixed.
-    if (isinstance(distribution,
-                   collective_all_reduce_strategy.CollectiveAllReduceStrategy)
-        and aggregation == variables_lib.VariableAggregation.SUM
-        and synchronization == variables_lib.VariableSynchronization.ON_READ):
-      self.skipTest("b/162147051")
 
     if (isinstance(distribution,
                    collective_all_reduce_strategy.CollectiveAllReduceStrategy)

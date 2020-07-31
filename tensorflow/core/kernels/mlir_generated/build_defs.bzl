@@ -4,8 +4,8 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures", "if_cu
 
 def if_mlir_generated_gpu_kernels_enabled(if_true, if_false = []):
     return select({
-        "//tensorflow/core/kernels/mlir_generated:mlir_generated_gpu_kernels_disabled": if_false,
-        "//conditions:default": if_true,
+        "//tensorflow/core/kernels/mlir_generated:mlir_generated_gpu_kernels_enabled": if_true,
+        "//conditions:default": if_false,
     })
 
 def _lookup_file(filegroup, path):

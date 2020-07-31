@@ -37,8 +37,8 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cuda_solvers.h"
-#include "tensorflow/core/kernels/cuda_sparse.h"
+#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/cuda_sparse.h"
 #endif
 
 namespace tensorflow {

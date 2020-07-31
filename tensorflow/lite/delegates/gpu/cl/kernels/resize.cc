@@ -36,8 +36,7 @@ Resize& Resize::operator=(Resize&& operation) {
 }
 
 std::string Resize::GetResizeCode(const OperationDef& op_def,
-                                  SamplingType sampling_type,
-                                  bool half_pixel_centers) {
+                                  const Resize2DAttributes& attr) {
   auto src_desc = op_def.src_tensors[0];
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
@@ -69,16 +68,34 @@ std::string Resize::GetResizeCode(const OperationDef& op_def,
     c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() "
          "|| Z >= args.dst_tensor.Slices()) return;\n";
   }
-  if (sampling_type == SamplingType::NEAREST) {
-    c += "  int2 coord = (int2)(X * args.scale_factor_x, Y * "
-         "args.scale_factor_y);\n";
+  if (attr.type == SamplingType::NEAREST) {
+    std::string fxc;
+    std::string fyc;
+    if (attr.half_pixel_centers) {
+      fxc = "(X + 0.5f) * args.scale_factor_x";
+      fyc = "(Y + 0.5f) * args.scale_factor_y";
+    } else {
+      fxc = "X * args.scale_factor_x";
+      fyc = "Y * args.scale_factor_y";
+    }
+    if (attr.align_corners) {
+      fxc += " + 0.5f";
+      fyc += " + 0.5f";
+    }
+    c += "  int2 coord;\n";
+    c += "  coord.x = (int)(" + fxc + ");\n";
+    c += "  coord.y = (int)(" + fyc + ");\n";
+    c += "  coord.x = max(0, coord.x);\n";
+    c += "  coord.y = max(0, coord.y);\n";
+    c += "  coord.x = min(coord.x, args.border_x);\n";
+    c += "  coord.y = min(coord.y, args.border_y);\n";
     if (op_def.IsBatchSupported()) {
       c += "  coord.x = coord.x * args.src_tensor.Batch() + B;\n";
       c += "  X = X * args.src_tensor.Batch() + B;\n";
     }
     c += "  FLT4 r0 = args.src_tensor.Read(coord.x, coord.y, Z);\n";
   } else {
-    if (half_pixel_centers) {
+    if (attr.half_pixel_centers) {
       c += "  float2 f_coords = ((float2)(X, Y) + 0.5f) * "
            "(float2)(args.scale_factor_x, args.scale_factor_y) - "
            "0.5f;\n";
@@ -111,8 +128,7 @@ std::string Resize::GetResizeCode(const OperationDef& op_def,
 }
 
 absl::Status Resize::Compile(const CreationContext& creation_context) {
-  std::string code =
-      GetResizeCode(definition_, attr_.type, attr_.half_pixel_centers);
+  std::string code = GetResizeCode(definition_, attr_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -160,7 +176,7 @@ Resize3D& Resize3D::operator=(Resize3D&& operation) {
 }
 
 std::string Resize3D::GetResize3DCode(const OperationDef& op_def,
-                                      SamplingType sampling_type) {
+                                      const Resize3DAttributes& attr) {
   auto src_desc = op_def.src_tensors[0];
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
@@ -196,10 +212,34 @@ std::string Resize3D::GetResize3DCode(const OperationDef& op_def,
     c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() "
          "|| Z >= args.dst_tensor.Depth()) return;\n";
   }
-  if (sampling_type == SamplingType::NEAREST) {
-    c += "  int4 coord = (int4)(X * args.scale_factor_x, Y * "
-         "args.scale_factor_y, Z * "
-         "args.scale_factor_z, 0);\n";
+  if (attr.type == SamplingType::NEAREST) {
+    std::string fxc;
+    std::string fyc;
+    std::string fzc;
+    if (attr.half_pixel_centers) {
+      fxc = "(X + 0.5f) * args.scale_factor_x";
+      fyc = "(Y + 0.5f) * args.scale_factor_y";
+      fzc = "(Z + 0.5f) * args.scale_factor_z";
+    } else {
+      fxc = "X * args.scale_factor_x";
+      fyc = "Y * args.scale_factor_y";
+      fzc = "Z * args.scale_factor_z";
+    }
+    if (attr.align_corners) {
+      fxc += " + 0.5f";
+      fyc += " + 0.5f";
+      fzc += " + 0.5f";
+    }
+    c += "  int4 coord;\n";
+    c += "  coord.x = (int)(" + fxc + ");\n";
+    c += "  coord.y = (int)(" + fyc + ");\n";
+    c += "  coord.z = (int)(" + fzc + ");\n";
+    c += "  coord.x = max(0, coord.x);\n";
+    c += "  coord.y = max(0, coord.y);\n";
+    c += "  coord.z = max(0, coord.z);\n";
+    c += "  coord.x = min(coord.x, args.border_x);\n";
+    c += "  coord.y = min(coord.y, args.border_y);\n";
+    c += "  coord.z = min(coord.z, args.border_z);\n";
     if (op_def.IsBatchSupported()) {
       c += "  coord.x = coord.x * args.src_tensor.Batch() + B;\n";
       c += "  X = X * args.src_tensor.Batch() + B;\n";
@@ -249,7 +289,7 @@ std::string Resize3D::GetResize3DCode(const OperationDef& op_def,
 }
 
 absl::Status Resize3D::Compile(const CreationContext& creation_context) {
-  std::string code = GetResize3DCode(definition_, attr_.type);
+  std::string code = GetResize3DCode(definition_, attr_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));

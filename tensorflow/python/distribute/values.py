@@ -1060,8 +1060,11 @@ class _SyncOnReadSaveable(saveable_object.SaveableObject):
     # when saving.
     tensor, = restored_tensors
     if self._sync_on_read_variable.aggregation == vs.VariableAggregation.SUM:
-      tensor = math_ops.cast(tensor / len(self._sync_on_read_variable._devices),  # pylint: disable=protected-access
+      # pylint: disable=protected-access
+      strategy = self._sync_on_read_variable._distribute_strategy
+      tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
                              self._sync_on_read_variable.dtype)
+      # pylint: enable=protected-access
     return control_flow_ops.group(
         tuple(
             values_util.assign_on_device(v.device, v, tensor)
@@ -1404,8 +1407,9 @@ class OnReadPolicy(VariablePolicy):
     # total across all devices when restoring a variable that was summed
     # when saving.
     if self._aggregation == vs.VariableAggregation.SUM:
-      tensor = math_ops.cast(tensor / len(var._devices),  # pylint: disable=protected-access
-                             var.dtype)
+      strategy = var._distribute_strategy  # pylint: disable=protected-access
+      num_replicas_in_sync = strategy.num_replicas_in_sync
+      tensor = math_ops.cast(tensor / num_replicas_in_sync, var.dtype)
     return control_flow_ops.group(
         tuple(
             values_util.assign_on_device(v.device, v, tensor)

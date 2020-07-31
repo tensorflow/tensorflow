@@ -114,6 +114,12 @@ std::string DatasetOpEventName(absl::string_view full_name) {
   return absl::StrCat(kIterator, kSeparator, split_result.back());
 }
 
+std::string IteratorName(absl::string_view full_name) {
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(full_name, kSeparator);
+  return std::string(split_result.back());
+}
+
 std::vector<absl::string_view> ParseTensorShapes(
     absl::string_view tensor_shapes) {
   absl::ConsumePrefix(&tensor_shapes, "(");

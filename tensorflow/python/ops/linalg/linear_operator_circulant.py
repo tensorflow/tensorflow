@@ -378,7 +378,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _broadcast_batch_dims(self, x, spectrum):
     """Broadcast batch dims of batch matrix `x` and spectrum."""
-    spectrum = ops.convert_to_tensor_v2_with_dispatch(spectrum, name="spectrum")
+    spectrum = ops.convert_to_tensor(spectrum, name="spectrum")
     # spectrum.shape = batch_shape + block_shape
     # First make spectrum a batch matrix with
     #   spectrum.shape = batch_shape + [prod(block_shape), 1]
@@ -755,7 +755,7 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         name=name)
 
   def _eigvals(self):
-    return ops.convert_to_tensor_v2_with_dispatch(self.spectrum)
+    return ops.convert_to_tensor(self.spectrum)
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")

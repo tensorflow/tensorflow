@@ -63,6 +63,10 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
 LogicalResult legalizeTF(Operation* op, bool allow_partial_conversion = false,
                          bool legalize_chlo = true);
 
+// Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
+// ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
+
 }  // namespace mhlo
 }  // namespace mlir
 

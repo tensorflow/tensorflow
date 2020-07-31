@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/plugins/s3/s3_filesystem.h"
 
+#include <fstream>
 #include <random>
 
 #include "tensorflow/core/platform/path.h"
@@ -46,6 +47,40 @@ static std::string InitializeTmpDir() {
   } else {
     return "";
   }
+}
+
+static std::string GetLocalLargeFile() {
+  // This env is used when we want to test against a large file ( ~  50MB ).
+  // `S3_TEST_LOCAL_LARGE_FILE` and `S3_TEST_SERVER_LARGE_FILE` must be the same
+  // file.
+  static std::string path;
+  if (path.empty()) {
+    const char* env = getenv("S3_TEST_LOCAL_LARGE_FILE");
+    if (env == nullptr) return "";
+    path = env;
+  }
+  return path;
+}
+
+static std::string GetServerLargeFile() {
+  // This env is used when we want to test against a large file ( ~  50MB ).
+  // `S3_TEST_LOCAL_LARGE_FILE` and `S3_TEST_SERVER_LARGE_FILE` must be the same
+  // file.
+  static std::string path;
+  if (path.empty()) {
+    const char* env = getenv("S3_TEST_SERVER_LARGE_FILE");
+    if (env == nullptr) return "";
+    Aws::String bucket, object;
+    TF_Status* status = TF_NewStatus();
+    ParseS3Path(env, false, &bucket, &object, status);
+    if (TF_GetCode(status) != TF_OK) {
+      TF_DeleteStatus(status);
+      return "";
+    }
+    TF_DeleteStatus(status);
+    path = env;
+  }
+  return path;
 }
 
 static std::string* GetTmpDir() {
@@ -145,6 +180,64 @@ class S3FilesystemTest : public ::testing::Test {
                       std::to_string(content.size()) + " bytes")
               .c_str());
     return content;
+  }
+
+  std::string ReadAllInChunks(const string& path, size_t buffer_size,
+                              bool use_multi_part_download) {
+    auto reader = GetReader();
+    auto s3_file =
+        static_cast<tf_s3_filesystem::S3File*>(filesystem_->plugin_filesystem);
+    s3_file->use_multi_part_download = use_multi_part_download;
+    s3_file
+        ->multi_part_chunk_sizes[Aws::Transfer::TransferDirection::DOWNLOAD] =
+        buffer_size;
+    tf_s3_filesystem::NewRandomAccessFile(filesystem_, path.c_str(),
+                                          reader.get(), status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+    auto file_size =
+        tf_s3_filesystem::GetFileSize(filesystem_, path.c_str(), status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+
+    std::size_t part_count = (std::max)(
+        static_cast<size_t>((file_size + buffer_size - 1) / buffer_size),
+        static_cast<size_t>(1));
+    std::unique_ptr<char[]> buffer{new char[buffer_size]};
+    std::stringstream ss;
+
+    uint64_t offset = 0;
+    uint64_t server_size = 0;
+    for (size_t i = 0; i < part_count; i++) {
+      offset = i * buffer_size;
+      buffer_size =
+          (i == part_count - 1) ? file_size - server_size : buffer_size;
+      auto read = tf_random_access_file::Read(reader.get(), offset, buffer_size,
+                                              buffer.get(), status_);
+      if (TF_GetCode(status_) != TF_OK) return "";
+      if (read > 0) {
+        ss.write(buffer.get(), read);
+        server_size += static_cast<uint64_t>(read);
+      }
+      if (server_size == file_size) break;
+      if (read != buffer_size) {
+        if (read == 0)
+          TF_SetStatus(status_, TF_OUT_OF_RANGE, "eof");
+        else
+          TF_SetStatus(
+              status_, TF_DATA_LOSS,
+              ("truncated record at " + std::to_string(offset)).c_str());
+        return "";
+      }
+    }
+
+    if (file_size != server_size) {
+      TF_SetStatus(status_, TF_DATA_LOSS,
+                   std::string("expected " + std::to_string(file_size) +
+                               " got " + std::to_string(server_size) + " bytes")
+                       .c_str());
+      return "";
+    }
+    TF_SetStatus(status_, TF_OK, "");
+    return ss.str();
   }
 
  protected:
@@ -344,6 +437,93 @@ TEST_F(S3FilesystemTest, StatFile) {
   EXPECT_TF_OK(status_);
   EXPECT_EQ(4, stat.length);
   EXPECT_FALSE(stat.is_directory);
+}
+
+TEST_F(S3FilesystemTest, SimpleCopyFile) {
+  const std::string src = GetURIForPath("SimpleCopySrc");
+  const std::string dst = GetURIForPath("SimpleCopyDst");
+  WriteString(src, "test");
+  ASSERT_TF_OK(status_);
+
+  tf_s3_filesystem::CopyFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(result, "test");
+}
+
+TEST_F(S3FilesystemTest, RenameFile) {
+  const std::string src = GetURIForPath("RenameFileSrc");
+  const std::string dst = GetURIForPath("RenameFileDst");
+  WriteString(src, "test");
+  ASSERT_TF_OK(status_);
+
+  tf_s3_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test", result);
+}
+
+TEST_F(S3FilesystemTest, RenameFileOverwrite) {
+  const std::string src = GetURIForPath("RenameFileOverwriteSrc");
+  const std::string dst = GetURIForPath("RenameFileOverwriteDst");
+
+  WriteString(src, "test_old");
+  ASSERT_TF_OK(status_);
+  WriteString(dst, "test_new");
+  ASSERT_TF_OK(status_);
+
+  tf_s3_filesystem::PathExists(filesystem_, dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_s3_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test_old", result);
+}
+
+// Test against large file.
+TEST_F(S3FilesystemTest, ReadLargeFile) {
+  auto local_path = GetLocalLargeFile();
+  auto server_path = GetServerLargeFile();
+  if (local_path.empty() || server_path.empty()) GTEST_SKIP();
+  std::ifstream in(local_path, std::ios::binary);
+  std::string local_content((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+
+  constexpr size_t buffer_size = 50 * 1024 * 1024;
+  auto server_content = ReadAllInChunks(server_path, buffer_size, true);
+  ASSERT_TF_OK(status_);
+  EXPECT_EQ(local_content, server_content);
+
+  server_content = ReadAllInChunks(server_path, buffer_size, false);
+  ASSERT_TF_OK(status_);
+  EXPECT_EQ(local_content, server_content);
+}
+
+TEST_F(S3FilesystemTest, CopyLargeFile) {
+  auto server_path = GetServerLargeFile();
+  if (server_path.empty()) GTEST_SKIP();
+
+  auto path = GetURIForPath("CopyLargeFile");
+  constexpr size_t buffer_size = 5 * 1024 * 1024;
+  auto s3_file =
+      static_cast<tf_s3_filesystem::S3File*>(filesystem_->plugin_filesystem);
+  s3_file->multi_part_chunk_sizes[Aws::Transfer::TransferDirection::UPLOAD] =
+      buffer_size;
+  tf_s3_filesystem::CopyFile(filesystem_, server_path.c_str(), path.c_str(),
+                             status_);
+  EXPECT_TF_OK(status_);
+
+  auto server_size =
+      tf_s3_filesystem::GetFileSize(filesystem_, server_path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  auto actual_size =
+      tf_s3_filesystem::GetFileSize(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(server_size, actual_size);
 }
 
 }  // namespace

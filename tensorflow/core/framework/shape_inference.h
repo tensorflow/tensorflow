@@ -344,13 +344,13 @@ class InferenceContext {
   // incomplete shape.
   DimensionHandle NumElements(ShapeHandle s);
 
-  string DebugString(ShapeHandle s);
-  string DebugString(DimensionHandle d);
-  string DebugString(const ShapeAndType& shape_and_type);
-  string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
+  std::string DebugString(ShapeHandle s);
+  std::string DebugString(DimensionHandle d);
+  std::string DebugString(const ShapeAndType& shape_and_type);
+  std::string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
 
   // Describes the whole context, for debugging purposes.
-  string DebugString() const;
+  std::string DebugString() const;
 
   // If <shape> has rank <rank>, or its rank is unknown, return OK and return
   // the shape with asserted rank in <*out>. Otherwise return an error.

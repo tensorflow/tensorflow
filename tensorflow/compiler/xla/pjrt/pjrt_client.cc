@@ -1610,6 +1610,10 @@ StatusOr<ScopedShapedBuffer> PjRtExecutable::EnqueueExecution(
   run_options.set_run_id(run_id);
   run_options.set_rng_seed(device_state->GetNewPrngSeed());
   run_options.set_gpu_executable_run_options(client_->gpu_run_options());
+  run_options.set_launch_id(options.launch_id);
+  if (run_options.launch_id() != 0) {
+    VLOG(1) << "launch id for " << name() << ": " << run_options.launch_id();
+  }
 
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead
@@ -2138,13 +2142,13 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
       client->client()->Compile(computation, argument_layout_pointers,
                                 build_options));
 
-  auto py_executable = absl::make_unique<PjRtExecutable>(
+  auto executable = absl::make_unique<PjRtExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(local_logical_device_ids),
       std::move(local_devices), client);
-  TF_RETURN_IF_ERROR(py_executable->SetUpDonation(
-      client, options.parameter_is_tupled_arguments));
-  return py_executable;
+  TF_RETURN_IF_ERROR(
+      executable->SetUpDonation(client, options.parameter_is_tupled_arguments));
+  return executable;
 }
 
 }  // namespace xla

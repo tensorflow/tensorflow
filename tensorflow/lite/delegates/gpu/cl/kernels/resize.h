@@ -45,8 +45,7 @@ class Resize : public GPUOperation {
       : GPUOperation(definition), attr_(attr) {}
 
   std::string GetResizeCode(const OperationDef& op_def,
-                            SamplingType sampling_type,
-                            bool half_pixel_centers);
+                            const Resize2DAttributes& attr);
 
   Resize2DAttributes attr_;
 };
@@ -74,7 +73,7 @@ class Resize3D : public GPUOperation {
       : GPUOperation(definition), attr_(attr) {}
 
   std::string GetResize3DCode(const OperationDef& op_def,
-                              SamplingType sampling_type);
+                              const Resize3DAttributes& attr);
 
   Resize3DAttributes attr_;
 };

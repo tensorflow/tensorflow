@@ -1638,7 +1638,9 @@ class Resize2DOperationParser : public TFLiteOperationParser {
       }
       *half_pixel_centers = tf_options->half_pixel_centers;
     } else {
-      *half_pixel_centers = false;
+      const TfLiteResizeNearestNeighborParams* tf_options;
+      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+      *half_pixel_centers = tf_options->half_pixel_centers;
     }
     return absl::OkStatus();
   }

@@ -156,8 +156,11 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr.start()
     time.sleep(5)
     mpr.terminate('worker', 0)
+    with self.assertRaises(
+        multi_process_runner.UnexpectedSubprocessExitError) as cm:
+      mpr.join()
 
-    std_stream_results = mpr.join().stdout
+    std_stream_results = cm.exception.mpr_result.stdout
 
     # Worker 0 is terminated in the middle, so it should not have iteration 9
     # printed.
@@ -384,99 +387,6 @@ class MultiProcessRunnerTest(test.TestCase):
         multi_process_runner.UnexpectedSubprocessExitError,
         'Subprocess worker-0 exited with exit code 10'):
       mpr.join()
-
-  def test_auto_restart(self):
-
-    def proc_func(counter):
-      counter.value += 1
-      if counter.value == 1:
-        raise ValueError
-
-    manager = multi_process_runner.manager()
-    counter = manager.Value(int, 0)
-    mpr = multi_process_runner.MultiProcessRunner(
-        proc_func,
-        multi_worker_test_base.create_cluster_spec(num_workers=1),
-        args=(counter,),
-        auto_restart=True)
-    mpr.start()
-    mpr.join()
-    self.assertEqual(counter.value, 2)
-
-  def test_auto_restart_and_timeout(self):
-
-    def proc_func():
-      time.sleep(1)
-      raise ValueError
-
-    mpr = multi_process_runner.MultiProcessRunner(
-        proc_func,
-        multi_worker_test_base.create_cluster_spec(num_workers=1),
-        auto_restart=True)
-    mpr.start()
-    with self.assertRaises(multi_process_runner.SubprocessTimeoutError):
-      mpr.join(timeout=10)
-
-  def test_auto_restart_and_chief(self):
-    # If the chief has exited with zero exit code, auto restart should stop
-    # restarting other tasks even if they fail.
-
-    def proc_func():
-      time.sleep(1)
-      if multi_worker_test_base.get_task_type() != 'chief':
-        raise ValueError
-
-    manager = multi_process_runner.manager()
-    mpr = multi_process_runner.MultiProcessRunner(
-        proc_func,
-        multi_worker_test_base.create_cluster_spec(
-            has_chief=True, num_workers=1),
-        auto_restart=True)
-    mpr.start()
-    with self.assertRaises(ValueError):
-      mpr.join(timeout=10)
-
-  def test_auto_restart_failure_immediate_after_restart(self):
-    # Test the case when worker-0 fails immediately after worker-1 restarts.
-
-    def proc_func():
-      time.sleep(5)
-
-    mpr = multi_process_runner.MultiProcessRunner(
-        proc_func,
-        multi_worker_test_base.create_cluster_spec(
-            has_chief=False, num_workers=2),
-        auto_restart=True)
-    mpr.start()
-    pid = mpr.get_process_id('worker', 1)
-    mpr.terminate('worker', 1)
-    while mpr.get_process_id('worker', 1) == pid:
-      time.sleep(0.1)
-    mpr.terminate('worker', 0)
-    mpr.join(timeout=20)
-
-  def test_auto_restart_terminate(self):
-    # Tasks terminated by the user should also be restarted.
-
-    def proc_func(counter):
-      counter.value += 1
-      if counter.value == 1:
-        time.sleep(100)
-
-    manager = multi_process_runner.manager()
-    counter = manager.Value(int, 0)
-
-    mpr = multi_process_runner.MultiProcessRunner(
-        proc_func,
-        multi_worker_test_base.create_cluster_spec(
-            has_chief=False, num_workers=1),
-        args=(counter,),
-        auto_restart=True)
-    mpr.start()
-    time.sleep(3)
-    mpr.terminate('worker', 0)
-    mpr.join(timeout=20)
-    self.assertEqual(counter.value, 2)
 
 
 class MultiProcessPoolRunnerTest(test.TestCase):

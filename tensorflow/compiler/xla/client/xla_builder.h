@@ -45,6 +45,16 @@ limitations under the License.
 namespace xla {
 
 class XlaBuilder;
+class XlaOp;
+
+namespace internal {
+
+XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
+                            absl::Span<const XlaOp> operands,
+                            absl::string_view fusion_kind,
+                            const XlaComputation& fused_computation);
+
+}  // namespace internal
 
 // This represents an instruction that has been enqueued using the XlaBuilder.
 // This is used to pass to subsequent computations that depends upon the
@@ -1213,6 +1223,10 @@ class XlaBuilder {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
+
+  friend XlaOp internal::XlaBuilderBuildFusion(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      absl::string_view fusion_kind, const XlaComputation& fused_computation);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
