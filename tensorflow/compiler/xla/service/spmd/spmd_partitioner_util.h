@@ -36,6 +36,9 @@ bool HasReplicatedSharding(const HloSharding& sharding);
 // Creates zero value instructions of the given shape.
 HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b);
 
+// Creates one value instructions of the given shape.
+HloInstruction* CreateOne(const Shape& shape, SpmdBuilder* b);
+
 template <typename NativeT>
 HloInstruction* CreateR0WithType(PrimitiveType type, NativeT value,
                                  SpmdBuilder* b) {
@@ -327,6 +330,18 @@ HloInstruction* PerGroupSliceFromReplicated(
     const std::vector<std::vector<int64>>& device_groups,
     absl::Span<const int64> group_dims, absl::Span<const int64> group_dim_sizes,
     SpmdBuilder* b);
+
+// Similar to hlo_sharding_util::TransposeSharding(), but allows removing/adding
+// non-partitioned dimensions. In src_to_tgt and tgt_to_src, -1 represents a
+// non-existing dimension.
+absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
+    absl::Span<int64 const> tgt_to_src);
+
+// Returns the opcode if `reduction_comp` represents a simple binary elementwise
+// computation on the two operands.
+absl::optional<HloOpcode> ParseReductionComputation(
+    const HloComputation* reduction_comp);
 
 }  // namespace spmd
 }  // namespace xla
