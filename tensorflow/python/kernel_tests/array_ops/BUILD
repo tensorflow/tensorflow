@@ -37,7 +37,6 @@ cuda_py_test(
     name = "slice_op_test",
     size = "medium",
     srcs = ["slice_op_test.py"],
-    tags = ["no_windows"],  # b/126916429
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
