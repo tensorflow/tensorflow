@@ -59,6 +59,9 @@ std::string TfOpEventName(absl::string_view tf_op_fullname);
 // Trace event name for dataset ops.
 std::string DatasetOpEventName(absl::string_view full_name);
 
+// Returns the iterator name without prefix and parent iterator names.
+std::string IteratorName(absl::string_view full_name);
+
 // Returns true if the given name is a TensorFlow Dataset Op.
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
   return tf_op_type == kDatasetOp;
