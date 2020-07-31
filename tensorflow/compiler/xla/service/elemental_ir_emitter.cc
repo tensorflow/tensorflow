@@ -2462,10 +2462,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                               operand_to_generator.at(hlo->operand(i))(index));
           operands.push_back(operand_value);
         }
-        std::vector<llvm_ir::ElementGenerator> input_generators;
-        for (const HloInstruction* instr : hlo->operands()) {
-          input_generators.push_back(operand_to_generator.at(instr));
-        }
         return EmitElementalMap(Cast<HloMapInstruction>(hlo), operands);
       };
     case HloOpcode::kReduceWindow:
