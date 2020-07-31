@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -28,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class GradientCorrectnessTest(test.TestCase):
+class GradientCorrectnessTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testMultipleOutputChainedGradients(self):
@@ -42,12 +44,13 @@ class GradientCorrectnessTest(test.TestCase):
       # [dexp(x)/dx + d(log(exp(x)))/dx] @ x=1 == exp(1) + 1
       self.assertAllClose(grad_vals[0], exp1_plus_one)
 
-  @test_util.run_deprecated_v1
-  def testIdentityGradient(self):
+  @parameterized.parameters(set((True, context.executing_eagerly())))
+  def testIdentityGradient(self, use_tape):
     x = constant_op.constant(3.)
-    dx_dx, = gradients_impl.gradients(x, x)
-    with self.cached_session() as sess:
-      self.assertAllClose(1., self.evaluate(dx_dx))
+    with test_util.AbstractGradientTape(use_tape=use_tape) as tape:
+      tape.watch(x)
+      dx_dx = tape.gradient(x, x)
+    self.assertAllClose(1., self.evaluate(dx_dx))
 
   @test_util.run_deprecated_v1
   def testIntegerIdentityGradient(self):

@@ -50,6 +50,7 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.client import session
 from tensorflow.python.compat.compat import forward_compatibility_horizon
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
@@ -68,6 +69,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
@@ -3276,3 +3278,56 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
+
+
+@contextlib.contextmanager
+def _fake_gradient_tape_context_manager():
+  """tf.gradients(...) implemented as tf.GradientTape context manager interface.
+
+  This is useful to test tf.gradients() in tests that uses tf.GradientTape().
+
+  Yields:
+    gradient tape instance that's implemented by tf.gradients() underneath.
+  """
+  try:
+    class FakeGradientTape:
+
+      def watch(self, x):
+        pass
+
+      def gradient(self, y, x):
+        result = gradients_impl.gradients(y, x)
+
+        # Unlike `tape.gradient()`, `tf.gradients()` returns a list for a single
+        # element. So unpack if needed to match `tape.gradient()` behavior.
+        if not isinstance(x, (list, tuple)):
+          assert len(result) == 1
+          return result[0]
+
+        return result
+
+    yield FakeGradientTape()
+  finally:
+    pass
+
+
+class AbstractGradientTape:
+  """Abstract GradientTape context manager that has multiple implementations.
+
+  This is useful to test both tf.GradientTape() and tf.gradients() without
+  duplicating tests.
+  """
+
+  def __init__(self, use_tape):
+    self._use_tape = use_tape
+
+  def __enter__(self):
+    if self._use_tape:
+      self._tape_impl = backprop.GradientTape()
+    else:
+      self._tape_impl = _fake_gradient_tape_context_manager()
+    return self._tape_impl.__enter__()
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    self._tape_impl.__exit__(exc_type, exc_val, exc_tb)
+
