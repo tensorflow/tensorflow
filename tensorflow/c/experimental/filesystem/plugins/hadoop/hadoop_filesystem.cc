@@ -294,8 +294,91 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
 // SECTION 2. Implementation for `TF_WritableFile`
 // ----------------------------------------------------------------------------
 namespace tf_writable_file {
+typedef struct HDFSFile {
+  std::string hdfs_path;
+  hdfsFS fs;
+  LibHDFS* libhdfs;
+  hdfsFile handle;
+  HDFSFile(std::string hdfs_path, hdfsFS fs, LibHDFS* libhdfs, hdfsFile handle)
+      : hdfs_path(std::move(hdfs_path)),
+        fs(fs),
+        libhdfs(libhdfs),
+        handle(handle) {}
+} HDFSFile;
 
-// TODO(vnvo2409): Implement later
+static void Cleanup(TF_WritableFile* file) {
+  auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
+  hdfs_file->libhdfs->hdfsCloseFile(hdfs_file->fs, hdfs_file->handle);
+  hdfs_file->fs = nullptr;
+  hdfs_file->handle = nullptr;
+  delete hdfs_file;
+}
+
+void Append(const TF_WritableFile* file, const char* buffer, size_t n,
+            TF_Status* status) {
+  auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
+  auto libhdfs = hdfs_file->libhdfs;
+  auto fs = hdfs_file->fs;
+  auto handle = hdfs_file->handle;
+
+  size_t cur_pos = 0, write_len = 0;
+  bool retry = false;
+  // max() - 2 can avoid OutOfMemoryError in JVM .
+  static const size_t max_len_once =
+      static_cast<size_t>(std::numeric_limits<tSize>::max() - 2);
+  while (cur_pos < n) {
+    write_len = (std::min)(n - cur_pos, max_len_once);
+    tSize w = libhdfs->hdfsWrite(fs, handle, buffer + cur_pos,
+                                 static_cast<tSize>(write_len));
+    if (w == -1) {
+      if (!retry && (errno == EINTR || errno == EAGAIN)) {
+        retry = true;
+      } else {
+        return TF_SetStatusFromIOError(status, errno,
+                                       hdfs_file->hdfs_path.c_str());
+      }
+    } else {
+      cur_pos += w;
+    }
+  }
+  TF_SetStatus(status, TF_OK, "");
+}
+
+int64_t Tell(const TF_WritableFile* file, TF_Status* status) {
+  auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
+  int64_t position =
+      hdfs_file->libhdfs->hdfsTell(hdfs_file->fs, hdfs_file->handle);
+  if (position == -1)
+    TF_SetStatusFromIOError(status, errno, hdfs_file->hdfs_path.c_str());
+  else
+    TF_SetStatus(status, TF_OK, "");
+  return position;
+}
+
+void Flush(const TF_WritableFile* file, TF_Status* status) {
+  auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
+  if (hdfs_file->libhdfs->hdfsHFlush(hdfs_file->fs, hdfs_file->handle) != 0)
+    TF_SetStatusFromIOError(status, errno, hdfs_file->hdfs_path.c_str());
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+void Sync(const TF_WritableFile* file, TF_Status* status) {
+  auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
+  if (hdfs_file->libhdfs->hdfsHSync(hdfs_file->fs, hdfs_file->handle) != 0)
+    TF_SetStatusFromIOError(status, errno, hdfs_file->hdfs_path.c_str());
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+void Close(const TF_WritableFile* file, TF_Status* status) {
+  auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
+  TF_SetStatus(status, TF_OK, "");
+  if (hdfs_file->libhdfs->hdfsCloseFile(hdfs_file->fs, hdfs_file->handle) != 0)
+    TF_SetStatusFromIOError(status, errno, hdfs_file->hdfs_path.c_str());
+  hdfs_file->fs = nullptr;
+  hdfs_file->handle = nullptr;
+}
 
 }  // namespace tf_writable_file
 
