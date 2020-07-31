@@ -22,6 +22,9 @@ import os
 
 import numpy as np
 
+from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
+from tensorboard.plugins.image import summary_v2 as image_summary_v2
+from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import tpu_strategy as tpu_strategy_lib
@@ -74,7 +77,8 @@ class LayerForScalarSummary(base_layer.Layer):
   """A pass-through layer that only records scalar values to summary."""
 
   def call(self, x):
-    summary_ops_v2.scalar('custom_scalar_summary', math_ops.reduce_sum(x))
+    # Add summary scalar using compat v2 implementation.
+    scalar_summary_v2.scalar('custom_scalar_summary_v2', math_ops.reduce_sum(x))
     return x
 
 
@@ -82,7 +86,9 @@ class LayerForImageSummary(base_layer.Layer):
   """A pass-through layer that only records image values to summary."""
 
   def call(self, x):
-    summary_ops_v2.image('custom_image_summary', x)
+    # Add summary image using compat v2 implementation.
+    image_summary_v2.image('custom_image_summary_v2', x)
+
     return x
 
 
@@ -90,7 +96,9 @@ class LayerForHistogramSummary(base_layer.Layer):
   """A pass-through layer that records histogram values to summary."""
 
   def call(self, x):
-    summary_ops_v2.histogram('custom_histogram_summary', x)
+    # Add summary histogram using compat v2 implementation.
+    histogram_summary_v2.histogram('custom_histogram_summary_v2', x)
+
     return x
 
 
@@ -161,7 +169,18 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
     context.context().soft_device_placement = True
     self.summary_dir = self.get_temp_dir()
 
-  def testV2SummaryWithImageModel(self):
+  def validate_recorded_sumary_file(self, event_files, summary_dict,
+                                    expected_count):
+    for event_file in event_files:
+      for e in summary_iterator.summary_iterator(event_file):
+        for v in e.summary.value:
+          if v.tag in summary_dict:
+            summary_dict[v.tag] += 1
+
+    for key in summary_dict:
+      self.assertEqual(summary_dict[key], expected_count)
+
+  def testV2SummaryWithKerasSequentialModel(self):
     strategy = get_tpu_strategy()
 
     with strategy.scope():
@@ -177,34 +196,21 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
           epochs=1,
           callbacks=[tensorboard_callback])
 
-      event_files = file_io.get_matching_files_v2(
-          os.path.join(self.summary_dir, 'train', 'event*'))
       events_count_dictionary = {
-          ('sequential/layer_for_histogram_summary'
-           '/custom_histogram_summary'): 0,
-          'sequential/layer_for_image_summary/custom_image_summary/image/0': 0
+          'sequential/layer_for_histogram_summary/custom_histogram_summary_v2':
+              0,
+          'sequential/layer_for_image_summary/custom_image_summary_v2':
+              0,
       }
 
-      for event_file in event_files:
-        for e in summary_iterator.summary_iterator(event_file):
-          for v in e.summary.value:
-            if v.tag in events_count_dictionary:
-              events_count_dictionary[v.tag] += 1
-
+      event_files = file_io.get_matching_files_v2(
+          os.path.join(self.summary_dir, 'train', 'event*'))
       # Since total of 10 steps are ran and summary ops should be invoked
       # every 2 batches, we should see total of 5 event logs.
-      self.assertEqual(
-          events_count_dictionary[
-              ('sequential/layer_for_histogram_summary/'
-               'custom_histogram_summary')],
-          5)
-      self.assertEqual(
-          events_count_dictionary[
-              ('sequential/layer_for_image_summary/'
-               'custom_image_summary/image/0')],
-          5)
+      self.validate_recorded_sumary_file(event_files, events_count_dictionary,
+                                         5)
 
-  def testV2SummaryWithKerasFit(self):
+  def testV2SummaryWithKerasSubclassedModel(self):
     strategy = get_tpu_strategy()
 
     with strategy.scope():
@@ -223,25 +229,18 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
       event_files = file_io.get_matching_files_v2(
           os.path.join(self.summary_dir, 'train', 'event*'))
       events_count_dictionary = {
-          'custom_model/layer_for_scalar_summary/custom_scalar_summary': 0,
-          'custom_model/layer_for_histogram_summary/custom_histogram_summary': 0
+          ('custom_model/layer_for_scalar_summary/'
+           'custom_scalar_summary_v2'):
+              0,
+          ('custom_model/layer_for_histogram_summary/'
+           'custom_histogram_summary_v2'):
+              0
       }
-
-      for event_file in event_files:
-        for e in summary_iterator.summary_iterator(event_file):
-          for v in e.summary.value:
-            if v.tag in events_count_dictionary:
-              events_count_dictionary[v.tag] += 1
 
       # Since total of 10 steps are ran and summary ops should be invoked
       # every 2 batches, we should see total of 5 event logs.
-      self.assertEqual(
-          events_count_dictionary[('custom_model/layer_for_histogram_summary/'
-                                   'custom_histogram_summary')],
-          5)
-      self.assertEqual(
-          events_count_dictionary[
-              'custom_model/layer_for_scalar_summary/custom_scalar_summary'], 5)
+      self.validate_recorded_sumary_file(event_files, events_count_dictionary,
+                                         5)
 
   def testSummaryWithCustomTrainingLoop(self):
     strategy = get_tpu_strategy()
@@ -258,8 +257,10 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
           del labels
           logits = model(features)
           with summary_ops_v2.always_record_summaries(), writer.as_default():
-            summary_ops_v2.scalar(
-                'logits', logits, step=model.optimizer.iterations)
+            scalar_summary_v2.scalar(
+                'logits',
+                math_ops.reduce_sum(logits),
+                step=model.optimizer.iterations)
           return logits
 
         iterator = iter(dataset)
