@@ -209,6 +209,143 @@ TEST_F(S3FilesystemTest, NewWritableFile) {
   EXPECT_EQ("content1,content2", content);
 }
 
+TEST_F(S3FilesystemTest, NewAppendableFile) {
+  const std::string path = GetURIForPath("AppendableFile");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+
+  auto writer = GetWriter();
+  tf_s3_filesystem::NewAppendableFile(filesystem_, path.c_str(), writer.get(),
+                                      status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Append(writer.get(), "content", strlen("content"), status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Close(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+}
+
+TEST_F(S3FilesystemTest, NewReadOnlyMemoryRegionFromFile) {
+  const std::string path = GetURIForPath("MemoryFile");
+  const std::string content = "content";
+  WriteString(path, content);
+  ASSERT_TF_OK(status_);
+
+  std::unique_ptr<TF_ReadOnlyMemoryRegion,
+                  void (*)(TF_ReadOnlyMemoryRegion * file)>
+      region(new TF_ReadOnlyMemoryRegion, [](TF_ReadOnlyMemoryRegion* file) {
+        if (file != nullptr) {
+          if (file->plugin_memory_region != nullptr)
+            tf_read_only_memory_region::Cleanup(file);
+          delete file;
+        }
+      });
+  region->plugin_memory_region = nullptr;
+  tf_s3_filesystem::NewReadOnlyMemoryRegionFromFile(filesystem_, path.c_str(),
+                                                    region.get(), status_);
+  EXPECT_TF_OK(status_);
+  std::string result(reinterpret_cast<const char*>(
+                         tf_read_only_memory_region::Data(region.get())),
+                     tf_read_only_memory_region::Length(region.get()));
+  EXPECT_EQ(content, result);
+}
+
+TEST_F(S3FilesystemTest, PathExists) {
+  const std::string path = GetURIForPath("PathExists");
+  tf_s3_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_EQ(TF_NOT_FOUND, TF_GetCode(status_)) << TF_Message(status_);
+  TF_SetStatus(status_, TF_OK, "");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  tf_s3_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+}
+
+TEST_F(S3FilesystemTest, GetChildren) {
+  const std::string base = GetURIForPath("GetChildren");
+  tf_s3_filesystem::CreateDir(filesystem_, base.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  const std::string file = io::JoinPath(base, "TestFile.csv");
+  WriteString(file, "test");
+  EXPECT_TF_OK(status_);
+
+  const std::string subdir = io::JoinPath(base, "SubDir");
+  tf_s3_filesystem::CreateDir(filesystem_, subdir.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  const std::string subfile = io::JoinPath(subdir, "TestSubFile.csv");
+  WriteString(subfile, "test");
+  EXPECT_TF_OK(status_);
+
+  char** entries;
+  auto num_entries = tf_s3_filesystem::GetChildren(filesystem_, base.c_str(),
+                                                   &entries, status_);
+  EXPECT_TF_OK(status_);
+
+  std::vector<std::string> childrens;
+  for (int i = 0; i < num_entries; ++i) {
+    childrens.push_back(entries[i]);
+  }
+  std::sort(childrens.begin(), childrens.end());
+  EXPECT_EQ(std::vector<string>({"SubDir", "TestFile.csv"}), childrens);
+}
+
+TEST_F(S3FilesystemTest, DeleteFile) {
+  const std::string path = GetURIForPath("DeleteFile");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  tf_s3_filesystem::DeleteFile(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+}
+
+TEST_F(S3FilesystemTest, CreateDir) {
+  // s3 object storage doesn't support empty directory, we create file in the
+  // directory
+  const std::string dir = GetURIForPath("CreateDir");
+  tf_s3_filesystem::CreateDir(filesystem_, dir.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  const std::string file = io::JoinPath(dir, "CreateDirFile.csv");
+  WriteString(file, "test");
+  ASSERT_TF_OK(status_);
+
+  TF_FileStatistics stat;
+  tf_s3_filesystem::Stat(filesystem_, dir.c_str(), &stat, status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_TRUE(stat.is_directory);
+}
+
+TEST_F(S3FilesystemTest, DeleteDir) {
+  // s3 object storage doesn't support empty directory, we create file in the
+  // directory
+  const std::string dir = GetURIForPath("DeleteDir");
+  const std::string file = io::JoinPath(dir, "DeleteDirFile.csv");
+  WriteString(file, "test");
+  ASSERT_TF_OK(status_);
+  tf_s3_filesystem::DeleteDir(filesystem_, dir.c_str(), status_);
+  EXPECT_NE(TF_GetCode(status_), TF_OK);
+
+  TF_SetStatus(status_, TF_OK, "");
+  tf_s3_filesystem::DeleteFile(filesystem_, file.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_s3_filesystem::DeleteDir(filesystem_, dir.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  TF_FileStatistics stat;
+  tf_s3_filesystem::Stat(filesystem_, dir.c_str(), &stat, status_);
+  EXPECT_EQ(TF_GetCode(status_), TF_NOT_FOUND) << TF_Message(status_);
+}
+
+TEST_F(S3FilesystemTest, StatFile) {
+  const std::string path = GetURIForPath("StatFile");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+
+  TF_FileStatistics stat;
+  tf_s3_filesystem::Stat(filesystem_, path.c_str(), &stat, status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(4, stat.length);
+  EXPECT_FALSE(stat.is_directory);
+}
+
 }  // namespace
 }  // namespace tensorflow
 

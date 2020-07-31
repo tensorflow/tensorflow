@@ -136,10 +136,12 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,
 )
@@ -322,7 +324,10 @@ cc_library(
     hdrs = ["xla_mlir_translate.h"],
     deps = [
         ":hlo_to_mlir_hlo",
+        ":mhlo_to_lhlo_with_xla",
         ":mlir_hlo_to_hlo",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",

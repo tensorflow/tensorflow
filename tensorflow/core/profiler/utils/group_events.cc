@@ -651,10 +651,11 @@ void EventForest::ProcessTfDataEvents() {
   absl::flat_hash_map<std::pair<int64 /*iterator_id*/, int64 /*element_id*/>,
                       EventNode*>
       produce_iterators;
-  for (HostEventType event_type : {HostEventType::kPrefetchProduce,
-                                   HostEventType::kParallelInterleaveProduce,
-                                   HostEventType::kParallelMapProduce,
-                                   HostEventType::kMapAndBatchProduce}) {
+  for (HostEventType event_type :
+       {HostEventType::kPrefetchProduce,
+        HostEventType::kParallelInterleaveProduce,
+        HostEventType::kParallelMapProduce, HostEventType::kMapAndBatchProduce,
+        HostEventType::kParseExampleProduce}) {
     auto produce_event_list = gtl::FindOrNull(event_node_map_, event_type);
     if (!produce_event_list) continue;
     VLOG(1) << produce_event_list->size() << " "
@@ -664,7 +665,8 @@ void EventForest::ProcessTfDataEvents() {
           produce_event->GetEventVisitor().GetStat(StatType::kElementId);
       if (!element_id.has_value()) continue;
       for (EventNode* produce_iterator : produce_event->GetChildren()) {
-        if (IsIteratorEventName(produce_iterator->GetEventVisitor().Name())) {
+        if (IsDatasetOp(ParseTfOpFullname(
+                produce_iterator->GetEventVisitor().Name()))) {
           absl::optional<XStatVisitor> iterator_id =
               produce_iterator->GetEventVisitor().GetStat(StatType::kParentId);
           if (!iterator_id.has_value()) break;
@@ -677,10 +679,11 @@ void EventForest::ProcessTfDataEvents() {
   }
   VLOG(1) << produce_iterators.size() << " producer iterators found.";
   uint64 num_matched = 0;
-  for (HostEventType event_type : {HostEventType::kPrefetchConsume,
-                                   HostEventType::kParallelInterleaveConsume,
-                                   HostEventType::kParallelMapConsume,
-                                   HostEventType::kMapAndBatchConsume}) {
+  for (HostEventType event_type :
+       {HostEventType::kPrefetchConsume,
+        HostEventType::kParallelInterleaveConsume,
+        HostEventType::kParallelMapConsume, HostEventType::kMapAndBatchConsume,
+        HostEventType::kParseExampleConsume}) {
     auto consume_event_list = gtl::FindOrNull(event_node_map_, event_type);
     if (!consume_event_list) continue;
     VLOG(1) << consume_event_list->size() << " "
@@ -691,7 +694,8 @@ void EventForest::ProcessTfDataEvents() {
       if (!element_id.has_value()) continue;
       EventNode* consume_iterator = consume_event->GetParent();
       if (!consume_iterator ||
-          !IsIteratorEventName(consume_iterator->GetEventVisitor().Name())) {
+          !IsDatasetOp(
+              ParseTfOpFullname(consume_iterator->GetEventVisitor().Name()))) {
         continue;
       }
       absl::optional<XStatVisitor> iterator_id =

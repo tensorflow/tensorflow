@@ -102,11 +102,14 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
       TpuProgramGroupInterface* tpu_program_group_interface);
 
+  // Initializes `TpuProgramGroup` object with `xla_tpu_programs`.
+  void Initialize(absl::Span<XLA_TpuProgram* const> xla_tpu_programs);
+
   TpuProgramGroup() = default;
   TpuProgramGroup(TpuProgramGroup&& other);
   TpuProgramGroup& operator=(TpuProgramGroup&&) = delete;
 
-  size_t program_count() const override { return tpu_programs_.size(); }
+  size_t program_count() const override;
 
   int64_t program_size() const override;
 
@@ -120,21 +123,13 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   const std::vector<bool>& may_modify_variables() const override;
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
 
-  const tf2xla::HostComputeMetadata& host_compute_metadata() const;
-  void set_host_compute_metadata(
-      const tf2xla::HostComputeMetadata& host_compute_metadata);
-
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
   const XLA_TpuProgram* tpu_program(int index) const;
   void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs);
 
-  const TPUExecutableInfoProto& executable_info() const;
-  void set_executable_info(const TPUExecutableInfoProto& executable_info);
+  const TPUExecutableInfoProto& executable_info(int index) const;
 
-  const TPUHostTransferInfoProto& host_transfer_info() const;
-  void set_host_transfer_info(
-      const TPUHostTransferInfoProto& host_transfer_info);
-
+  const TPUHostTransferInfoProto& host_transfer_info(int index) const;
   void set_hlo_metadata(const xla::HloProto& hlo_metadata);
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
@@ -143,11 +138,10 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   void RefreshHloMetadatasPtrs();
 
   std::vector<bool> may_modify_variables_;
-  tf2xla::HostComputeMetadata host_compute_metadata_;
 
   std::vector<XLA_TpuProgram*> tpu_programs_;  // Not owned.
-  TPUExecutableInfoProto executable_info_;
-  TPUHostTransferInfoProto host_transfer_info_;
+  std::vector<TPUExecutableInfoProto> executable_infos_;
+  std::vector<TPUHostTransferInfoProto> host_transfer_infos_;
 
   // To be consistent with the TpuProgramGroupInterface::hlo_metadatas()
   // signature, we store HloProto values in hlo_metadatas_ when

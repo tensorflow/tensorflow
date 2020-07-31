@@ -313,7 +313,8 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
     return errors::InvalidArgument("Input node is not a constant: ",
                                    SummarizeNodeDef(input_const));
   }
-  if (input_index < 0 || input_index >= item->input_size()) {
+  const int item_input_size = item->input_size();
+  if (input_index < 0 || input_index >= item_input_size) {
     return errors::InvalidArgument(
         "Function input index is out of bound: index=", input_index,
         " input_size=", item->input_size());
@@ -354,7 +355,8 @@ Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
 
   // Do some sanity checking of the removed outputs positions.
   for (int remove_output : remove_outputs) {
-    if (remove_output < 0 || remove_output >= item->output_size()) {
+    const int item_output_size = item->output_size();
+    if (remove_output < 0 || remove_output >= item_output_size) {
       return errors::InvalidArgument(
           "Function output index is out of bound: index=", remove_output,
           " output_size=", item->output_size());
@@ -366,7 +368,7 @@ Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
     return remove_output_args.find(&output) != remove_output_args.end();
   };
 
-  for (int i = 0; i < item->output_size(); ++i) {
+  for (int i = 0, end = item->output_size(); i < end; ++i) {
     const OutputArgInstantiation& output = item->output(i);
     if (remove_outputs.contains(i)) {
       VLOG(3) << "Remove functions output: name=" << output.node_name
@@ -580,7 +582,7 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
   }
 
   // Copy function arg attributes.
-  for (int i = 0; i < item.arg_attr().size(); ++i) {
+  for (int i = 0, end = item.arg_attr().size(); i < end; ++i) {
     const auto* attr = item.arg_attr().at(i);
     if (attr != nullptr) {
       (*func->mutable_arg_attr())[i] = *attr;

@@ -20,18 +20,32 @@ the ideas above. For more sophisticated examples, refer to [Flex delegate](https
 
 ## Testing & Tooling
 
-We recommend levaraging the
-[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates)
-to plug in the newly created TFLite delegate to reuse existing TFLite kernel
-tests and utility tools including the model benchmark tool and the task
-evaluation tools. In short, create a delegate provider like the
-[`dummy_delegate_provider`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/dummy_delegate/dummy_delegate_provider.cc)
+There are currently **two optionss** to plug in a newly created TFLite delegate
+to reuse existing TFLite kernel tests and and tooling:
+
+- Utilize the **[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates)**
+mechansim
+- Utilize the
+**[external delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/external)**
+mechanism.
+
+The former approach requires few changes as detailed below. The latter one
+requires even fewer changes and works with pre-built Tensorflow Lite tooling
+binaries. However, it is less explicit and it might be more complicated to set
+up in automated integration tests. Therefore, for better clarity, the
+delegate-registrar approach is slightly preferred here.
+
+We now describe each option above in more details in the following sections.
+
+### Option 1: Utilize Delegate Registrar
+In this approach, create a delegate provider like the
+[`dummy_delegate_provider.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/dummy_delegate/dummy_delegate_provider.cc)
 here, and then add it as an extra dependency when building the binary. Refer
 [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates)
-for more delegate provider examples. The following details the above in the
-context of this dummy delegate.
+for more delegate provider examples. Now we look at using this provider for
+testing and evaluation.
 
-###Kernel Tests
+#### Kernel Tests
 Tests referred here are defined in [tensorflow/lite/kernels](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/kernels).
 They are based on the
  [test_util library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/kernels/test_util.h)
@@ -64,12 +78,12 @@ bazel build -c opt tensorflow/lite/kernels:add_test
 bazel-bin/tensorflow/lite/kernels/add_test --use_dummy_delegate=true
 ```
 
-### Benchmark and Task Evaluation Tools
+#### Benchmark and Task Evaluation Tools
 
 In TFLite, we have developed
 [model benchmark tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
 and
-[task evaluation tools](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks)
+[evaluation tools](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks)
 that already have integrated existing various TFLite delegates. To reuse these
 tools for the new delegate, similar to the kernel testing above, we simply add
 the created delegate provider as an additional dependency when building the
@@ -106,5 +120,45 @@ bazel build -c opt tensorflow/lite/delegates/utils/dummy_delegate:benchmark_mode
 bazel-bin/tensorflow/lite/delegates/utils/dummy_delegate/benchmark_model_plus_dummy_delegate --graph=/tmp/mobilenet-v2.tflite --use_dummy_delegate=true
 
 ```
+
+### Option 2: Utilize Tensorflow Lite External Delegate
+In this **alternative approach to reuse existing Tensorflow Lite kernel testing
+and tooling**, we first create an external delegate adaptor like the [`external_delegate_adaptor.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/dummy_delegate/external_delegate_adaptor.cc) here, and create the corresponding BUILD target
+to build a dynamic library.
+
+Afterwards, one could build binaries or use pre-built ones that are linked with
+the
+[`external_delegate_provider`](https://github.com/tensorflow/tensorflow/blob/8c6f2d55762f3fc94f98fdd8b3c5d59ee1276dba/tensorflow/lite/tools/delegates/BUILD#L145-L159)
+library which supports command-line flags as described
+[here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates#external-delegate-provider).
+Note this delegate provider has already been linked to existing testing and
+tooling binaries.
+
+For example, the following illustrates how to benchmark the dummy delegate here
+via this external-delegate approach. We could use similar commands for testing
+and evaluation tools.
+
+```
+bazel build -c opt tensorflow/lite/delegates/utils/dummy_delegate:dummy_external_delegate.so
+
+# Copy the .so file to the directory that the external delegate will be loaded
+# from at your choice.
+cp bazel-bin/tensorflow/lite/delegates/utils/dummy_delegate/dummy_external_delegate.so /tmp
+
+bazel build -c opt tensorflow/lite/tools/benchmark:benchmark_model
+
+# Setting a non-empty --external_delegate_path value will trigger applying
+# the external delegate during runtime.
+bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model \
+  --graph=/tmp/mobilenet-v2.tflite \
+  --external_delegate_path=/tmp/dummy_external_delegate.so \
+  --external_delegate_options='error_during_init:true;error_during_prepare:true'
+```
+
+It is worth noting the *external delegate* is the corresponding C++
+implementation of the *delegate* in Tensorflow Lite Python binding as shown
+[here](https://github.com/tensorflow/tensorflow/blob/7145fc0e49be01ef6943f4df386ce38567e37797/tensorflow/lite/python/interpreter.py#L42).
+Therefore, the dynamic external delegate adaptor library created here could be
+directly used with Tensorflow Lite Python APIs.
 
 More detailed guide on TFLite delegate is coming soon.

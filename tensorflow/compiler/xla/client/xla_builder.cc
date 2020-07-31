@@ -766,15 +766,16 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(auto output_shape,
                         ShapeUtil::MakeValidatedShape(
                             operand_shape->element_type(), out_dim_size));
-    if (operand_shape->rank() != broadcast_dimensions.size()) {
+    tensorflow::int64 broadcast_rank = broadcast_dimensions.size();
+    if (operand_shape->rank() != broadcast_rank) {
       return InvalidArgument(
           "Size of broadcast_dimensions has to match operand's rank; operand "
           "rank: %lld, size of broadcast_dimensions %u.",
           operand_shape->rank(), broadcast_dimensions.size());
     }
-    for (int i = 0; i < broadcast_dimensions.size(); i++) {
-      if (broadcast_dimensions[i] < 0 ||
-          broadcast_dimensions[i] > out_dim_size.size()) {
+    for (int i = 0; i < broadcast_rank; i++) {
+      const tensorflow::int64 num_dims = out_dim_size.size();
+      if (broadcast_dimensions[i] < 0 || broadcast_dimensions[i] > num_dims) {
         return InvalidArgument("Broadcast dimension %lld is out of bound",
                                broadcast_dimensions[i]);
       }
@@ -786,7 +787,7 @@ XlaOp XlaBuilder::BroadcastInDim(
                            *operand_shape, output_shape, broadcast_dimensions)
                            .status());
     std::vector<int64> in_dim_size(out_dim_size.begin(), out_dim_size.end());
-    for (int i = 0; i < broadcast_dimensions.size(); i++) {
+    for (int i = 0; i < broadcast_rank; i++) {
       in_dim_size[broadcast_dimensions[i]] = operand_shape->dimensions(i);
     }
     const auto& in_dim_shape =
@@ -835,7 +836,7 @@ StatusOr<XlaOp> XlaBuilder::SliceInternal(const Shape& shape, XlaOp operand,
                                           absl::Span<const int64> strides) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
-  for (int i = 0; i < start_indices.size(); i++) {
+  for (int i = 0, end = start_indices.size(); i < end; i++) {
     auto* slice_config = instr.add_slice_dimensions();
     slice_config->set_start(start_indices[i]);
     slice_config->set_limit(limit_indices[i]);
@@ -1543,7 +1544,7 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
     if (tokens.empty()) {
       return InvalidArgument("AfterAll requires at least one operand");
     }
-    for (int i = 0; i < tokens.size(); ++i) {
+    for (int i = 0, end = tokens.size(); i < end; ++i) {
       XlaOp operand = tokens[i];
       TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
       if (!operand_shape->IsToken()) {
@@ -2007,7 +2008,7 @@ XlaOp XlaBuilder::ConditionalImpl(
     std::vector<Shape> branch_operand_shapes(branch_operands.size());
     std::vector<ProgramShape> branch_computation_shapes(
         branch_computations.size());
-    for (int j = 0; j < branch_operands.size(); ++j) {
+    for (int j = 0, end = branch_operands.size(); j < end; ++j) {
       TF_ASSIGN_OR_RETURN(branch_operand_shapes[j],
                           GetShape(branch_operands[j]));
       TF_ASSIGN_OR_RETURN(branch_computation_shapes[j],
@@ -2416,7 +2417,9 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
     if (layout) {
       TF_RET_CHECK(shape.IsTuple() && !ShapeUtil::IsNestedTuple(shape));
       for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-        if (layout->minor_to_major().size() != shape.tuple_shapes(i).rank()) {
+        const int64 layout_minor_to_major_size =
+            layout->minor_to_major().size();
+        if (layout_minor_to_major_size != shape.tuple_shapes(i).rank()) {
           return InvalidArgument(
               "Provided layout must be compatible with the operand shape: %s "
               "vs %s",

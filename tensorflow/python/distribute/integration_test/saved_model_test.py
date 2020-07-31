@@ -205,16 +205,14 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(op.device, "")
     self.assertEqual(loaded().numpy(), 1.)
 
-  def test_model_with_loaded_layer_broken(self, strategy):
-    # If a model contains a layer loaded from SavedModel, including tf.hub
-    # layers, and if the model is created under tf.distribute.Strategy, it
-    # cannot be saved again. The saving won't error but the saved model cannot
-    # be used.
+  def test_model_with_loaded_layer(self, strategy):
+    # When a model is loaded under strategy, we wrap it so that when it's passed
+    # to strategy.run(), the captured variables resolve to the ones of the
+    # current replica. Since the saved tf.function may contain updates to the
+    # variables, we don't allow using the model outside of strategy.run().
     #
-    # The reason is that if a saved model is loaded under
-    # tf.distribute.Strategy, the tf.functions are wrapped by
-    # saved_model._WrapperFunction, which generates an assertion node in the
-    # cross-replica context.
+    # That is to say, a loaded model is different from the original Python one.
+    # We need to test save-load-save-load to make sure things work correctly.
 
     class Layer(tf.Module):
 
@@ -240,28 +238,13 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       m = Model(tf.saved_model.load(layer_export_dir))
       export_dir = self.get_temp_dir()
-      # It happens to work if we save the model outside of strategy.scope(),
-      # because DistributedVariable.handle and _WrapperFunction behaved
-      # differently under the cross-replica context and the default strategy's
-      # replica context.
       tf.saved_model.save(m, export_dir)
 
     loaded = tf.saved_model.load(export_dir)
-    # got error, want [1., 1.]
-    if isinstance(strategy, tf.distribute.MirroredStrategy):
-      with self.assertRaisesRegex(
-          tf.errors.InvalidArgumentError,
-          "from the cross-replica context in an in-replica context"):
-        strategy.run(loaded)
-    else:
-      with self.assertRaisesRegex(tf.errors.InvalidArgumentError,
-                                  "No registered 'Placeholder'"):
-        strategy.run(loaded)
-    # TODO(b/160646235): Uncomment after fix.
-    #  self.assertAllEqual(
-    #      self.evaluate(
-    #          strategy.experimental_local_results(strategy.run(loaded)),
-    #          [1., 1.]))
+    self.assertAllEqual(
+        self.evaluate(
+            strategy.experimental_local_results(strategy.run(loaded))),
+        [1., 1.])
 
 
 @combinations.generate(

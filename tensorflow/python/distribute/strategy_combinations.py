@@ -204,6 +204,7 @@ multi_worker_mirrored_2x1_cpu = combinations.NamedDistribution(
     _get_multi_worker_mirrored_creator(required_gpus=0),
     has_chief=True,
     num_workers=1,
+    use_pool_runner=True,
 )
 # chief + 1 worker, with 1 GPU each.
 multi_worker_mirrored_2x1_gpu = combinations.NamedDistribution(
@@ -212,6 +213,7 @@ multi_worker_mirrored_2x1_gpu = combinations.NamedDistribution(
     has_chief=True,
     num_workers=1,
     required_gpus=1,
+    use_pool_runner=True,
 )
 # chief + 1 worker, with 2 GPU each.
 multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
@@ -220,6 +222,7 @@ multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
     has_chief=True,
     num_workers=1,
     required_gpus=2,
+    use_pool_runner=True,
 )
 # chief + 3 workers, with CPU.
 multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
@@ -227,6 +230,7 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     _get_multi_worker_mirrored_creator(required_gpus=0),
     has_chief=True,
     num_workers=3,
+    use_pool_runner=True,
 )
 
 

@@ -648,12 +648,12 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
   // These extra dims could be equal to 1, in which case there is no
   // broadcasting. It could also be greater than 1, in which case there would
   // be broadcasting. Since we don't know, we'll just punt.
-  for (int i = common_dims, iter_limit = shape1.size(); i < iter_limit; ++i) {
+  for (int i = common_dims, end = shape1.size(); i < end; ++i) {
     if (shape1[i] < 0) {
       return Status::OK();
     }
   }
-  for (int i = common_dims, iter_limit = shape2.size(); i < iter_limit; ++i) {
+  for (int i = common_dims, end = shape2.size(); i < end; ++i) {
     if (shape2[i] < 0) {
       return Status::OK();
     }
@@ -1475,7 +1475,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
   VLOG(2) << "Folded node: " << SummarizeNodeDef(*node);
 
   NodeDef* constant_output = nullptr;
-  for (int i = 0, iter_limit = const_nodes.size(); i < iter_limit; i++) {
+  for (int i = 0, end = const_nodes.size(); i < end; i++) {
     NodeDef* const_node = &const_nodes[i];
     VLOG(3) << "Generated constant node: " << SummarizeNodeDef(*const_node);
     if (const_node->name().empty()) {

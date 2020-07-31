@@ -261,10 +261,14 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   }
 
   const int block_rank = total_dims - original_rank;
-  const int sparsity_block_map_size = sparsity->block_map()->size();
-  if (block_rank > 0 && (sparsity->block_map() == nullptr ||
-                         sparsity_block_map_size != block_rank)) {
-    return absl::nullopt;
+  if (block_rank > 0) {
+    if (sparsity->block_map() == nullptr) {
+      return absl::nullopt;
+    }
+    const int sparse_rank = sparsity->block_map()->size();
+    if (sparse_rank != block_rank) {
+      return absl::nullopt;
+    }
   }
 
   // For a n-dimensional tensor (d0, ..., dn-1) with k-dimensional block (dn,

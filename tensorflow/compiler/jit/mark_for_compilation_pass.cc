@@ -2015,6 +2015,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "StatefulUniform",
                                      "StatefulUniformFullInt",
                                      "StatefulUniformInt",
+                                     "StatelessCase",
                                      "StatelessIf",
                                      "StatelessMultinomial",
                                      "StatelessRandomNormal",

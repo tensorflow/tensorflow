@@ -354,6 +354,10 @@ REGISTER_KERNEL_BUILDER(Name("If").Device(DEVICE_GPU).HostMemory("cond"), IfOp);
 REGISTER_KERNEL_BUILDER(Name("Case").Device(DEVICE_CPU), CaseOp);
 REGISTER_KERNEL_BUILDER(
     Name("Case").Device(DEVICE_GPU).HostMemory("branch_index"), CaseOp);
+REGISTER_KERNEL_BUILDER(Name("StatelessCase").Device(DEVICE_CPU), CaseOp);
+REGISTER_KERNEL_BUILDER(
+    Name("StatelessCase").Device(DEVICE_GPU).HostMemory("branch_index"),
+    CaseOp);
 
 REGISTER_KERNEL_BUILDER(Name("StatelessIf").Device(DEVICE_CPU), IfOp);
 REGISTER_KERNEL_BUILDER(

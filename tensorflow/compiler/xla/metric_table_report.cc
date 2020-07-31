@@ -80,9 +80,11 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
 
   int64 pos = 0;
   const string report = MakeReport(expected_metric_sum);
-  while (pos < report.size()) {
+  const int report_size = report.size();
+  while (pos < report_size) {
     int64 end_of_line = report.find('\n', pos);
-    if (end_of_line == string::npos) {
+    const int64 _npos = string::npos;
+    if (end_of_line == _npos) {
       end_of_line = report.size();
     }
     absl::string_view line(report.data() + pos, end_of_line - pos);
@@ -161,7 +163,8 @@ void MetricTableReport::AppendCategoryTable() {
     const char* const kIndentPrefix = "                              * ";
     int64 entries_to_show = std::min<int64>(max_entries_per_category_to_show_,
                                             category.entries.size());
-    if (category.entries.size() == entries_to_show + 1) {
+    const int64 category_entries_size = category.entries.size();
+    if (category_entries_size == entries_to_show + 1) {
       // May as well show the last entry on the line that would otherwise say
       // that there is a single entry not shown.
       ++entries_to_show;
@@ -224,7 +227,8 @@ void MetricTableReport::AppendTableRow(const string& text, const double metric,
   // Don't try to make a gigantic string and crash if expected_metric_sum_ is
   // wrong somehow.
   int64 padding_len = 1;
-  if (max_metric_string_size >= metric_string.size()) {
+  const int64 metric_string_size = metric_string.size();
+  if (max_metric_string_size >= metric_string_size) {
     padding_len += max_metric_string_size - metric_string.size();
   }
   string padding(padding_len, ' ');
@@ -254,7 +258,7 @@ string MetricTableReport::MetricString(double metric) {
     sp1.remove_prefix(1);
   }
   // Copy rest of input characters.
-  for (int64 i = 0; i < sp1.size(); ++i) {
+  for (int64 i = 0, end = sp1.size(); i < end; ++i) {
     if (i > 0 && (sp1.size() - i) % 3 == 0) {
       output.push_back(',');
     }

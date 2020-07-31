@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #ifdef _WIN32
 #ifdef DeleteFile
@@ -910,7 +911,8 @@ GcsFileSystem::GcsFileSystem(
     TimeoutConfig timeouts, const std::unordered_set<string>& allowed_locations,
     std::pair<const string, const string>* additional_header,
     bool compose_append)
-    : auth_provider_(std::move(auth_provider)),
+    : timeouts_(timeouts),
+      auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       zone_provider_(std::move(zone_provider)),
       block_size_(block_size),
@@ -923,7 +925,6 @@ GcsFileSystem::GcsFileSystem(
           kCacheNeverExpire, kBucketLocationCacheMaxEntries)),
       allowed_locations_(allowed_locations),
       compose_append_(compose_append),
-      timeouts_(timeouts),
       retry_config_(retry_config),
       additional_header_(additional_header) {}
 
@@ -1023,6 +1024,9 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
+  profiler::TraceMe activity(
+      [fname]() { return absl::StrCat("LoadBufferFromGCS ", fname); });
+
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(CreateHttpRequest(&request),
                                   "when reading gs://", bucket, "/", object);
@@ -1044,6 +1048,9 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
   *bytes_transferred = bytes_read;
   VLOG(1) << "Successful read of gs://" << bucket << "/" << object << " @ "
           << offset << " of size: " << bytes_read;
+  activity.AppendMetadata([bytes_read]() {
+    return profiler::TraceMeEncode({{"block_size", bytes_read}});
+  });
 
   if (stats_ != nullptr) {
     stats_->RecordBlockRetrieved(fname, offset, bytes_read);

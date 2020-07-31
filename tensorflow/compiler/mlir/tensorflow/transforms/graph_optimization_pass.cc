@@ -51,7 +51,7 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
   CreateLayoutOptimizationPipeline(pm, layout_optimization_options);
 
   // Prepare IR for exporting.
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
+  pm.addPass(CreateBreakUpIslandsPass());
 
   // In case of failure, the `diag_handler` converts MLIR errors emitted to the
   // MLIRContext into a tensorflow::Status.

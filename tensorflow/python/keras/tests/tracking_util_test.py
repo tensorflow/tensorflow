@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
@@ -360,7 +361,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
         gradients = tape.gradient(loss, variables)
         return optimizer.apply_gradients(zip(gradients, variables))
       for training_continuation in range(3):
-        with test_util.device(use_gpu=True):
+        with testing_utils.device(should_use_gpu=True):
           model = MyModel()
           optimizer = adam.Adam(0.001)
           root = trackable_utils.Checkpoint(
@@ -414,7 +415,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       for training_continuation in range(3):
-        with test_util.device(use_gpu=True):
+        with testing_utils.device(should_use_gpu=True):
           model = MyModel()
           # Don't actually train so we can test variable values
           optimizer = adam.Adam(0.)
@@ -622,7 +623,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       optimizer_only_prefix = os.path.join(checkpoint_directory, "opt")
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.Adam(0.001)
         root = trackable_utils.Checkpoint(
@@ -658,7 +659,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       del train_fn
 
       # Restore into a graph with the optimizer
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.Adam(0.001)
         root = trackable_utils.Checkpoint(
@@ -682,7 +683,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       del train_fn1
 
       # Make sure initialization doesn't clobber later restores
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.Adam(0.001, beta_1=1.0)
         root = trackable_utils.Checkpoint(
@@ -836,7 +837,7 @@ class CheckpointCompatibilityTests(keras_parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testLoadFromNameBasedSaver(self):
     """Save a name-based checkpoint, load it using the object-based API."""
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       with self.test_session():
         save_path = self._write_name_based_checkpoint()
         root = self._initialized_model()

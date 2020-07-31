@@ -40,7 +40,6 @@ class FullyConnected : public GPUOperation {
   absl::Status Tune(const TuningParameters& params) override {
     return absl::OkStatus();
   }
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
@@ -63,6 +62,9 @@ class FullyConnected : public GPUOperation {
   template <DataType T, typename S>
   void RearrangeWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                         absl::Span<S> dst);
+
+  std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
+                                          const int3& work_group_size);
 };
 
 template <DataType T>

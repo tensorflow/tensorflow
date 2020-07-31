@@ -30,7 +30,7 @@ from tensorflow.python.util import object_identity
 
 # pylint: disable=g-classes-have-attributes
 
-_KERAS_TENSORS_ENABLED = False
+_KERAS_TENSORS_ENABLED = True
 
 
 def enable_keras_tensors():

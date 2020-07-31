@@ -515,6 +515,7 @@ class MemorySpaceAssignment {
     int64 start_time() const { return start_time_; }
     int64 end_time() const { return end_time_; }
 
+    bool operator==(const Allocation& other) const;
     virtual std::string ToString() const;
 
    protected:
@@ -589,6 +590,7 @@ class MemorySpaceAssignment {
       copy_start_schedule_after_ = copy_start_schedule_after;
     }
 
+    bool operator==(const CopyAllocation& other) const;
     std::string ToString() const override;
 
    private:
