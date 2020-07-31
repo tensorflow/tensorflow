@@ -68,9 +68,9 @@ bool SingleOpModel::PopulateTensor(int index, std::vector<float>&& data) {
   return true;
 }
 
-Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
-                             const RuntimeOptions& runtime_options,
-                             const NodeShader& shader) {
+absl::Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
+                                   const RuntimeOptions& runtime_options,
+                                   const NodeShader& shader) {
   std::unique_ptr<EglEnvironment> env;
   RETURN_IF_ERROR(EglEnvironment::NewEglEnvironment(&env));
 
@@ -125,10 +125,10 @@ Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
         CopyFromPHWC4Buffer(*objects.FindBuffer(output->id), &tensor));
     outputs_.push_back(std::move(tensor));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SingleOpModel::Invoke(const NodeShader& shader) {
+absl::Status SingleOpModel::Invoke(const NodeShader& shader) {
   return Invoke(CompilationOptions(), RuntimeOptions(), shader);
 }
 

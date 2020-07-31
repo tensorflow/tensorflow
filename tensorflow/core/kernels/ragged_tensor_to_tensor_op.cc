@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/ops/ragged_to_dense_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/ragged_to_dense_util.h"
 
 namespace tensorflow {
 
@@ -561,8 +561,6 @@ TF_CALL_string(REGISTER_CPU_KERNEL);
 TF_CALL_QUANTIZED_TYPES(REGISTER_CPU_KERNEL);
 TF_CALL_quint16(REGISTER_CPU_KERNEL);
 TF_CALL_qint16(REGISTER_CPU_KERNEL);
-TF_CALL_uint32(REGISTER_CPU_KERNEL);
-TF_CALL_uint64(REGISTER_CPU_KERNEL);
 
 #undef REGISTER_CPU_KERNEL
 

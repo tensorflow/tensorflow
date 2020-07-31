@@ -130,9 +130,10 @@ class MklRequantizePerChannelOp : public OpKernel {
               GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(input_mem_prim),
               GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(output_mem_prim),
               cpu_engine_, reorder_attr);
-      mkldnn::stream reorder_stream = CPU_STREAM(cpu_engine_);
+      std::shared_ptr<stream> reorder_stream;
+      reorder_stream.reset(CreateStream(ctx, cpu_engine_));
 #ifndef ENABLE_MKLDNN_V1
-      reorder_stream.submit(
+      reorder_stream->submit(
           {mkldnn::reorder(reorder_pd, *input_mem_prim, *output_mem_prim)});
 #else
       std::unordered_map<int, mkldnn::memory> reorder_args = {
@@ -140,7 +141,7 @@ class MklRequantizePerChannelOp : public OpKernel {
           {MKLDNN_ARG_TO, *output_mem_prim}};
       std::unique_ptr<mkldnn::primitive> reorder_prim(
           new mkldnn::reorder(reorder_pd));
-      reorder_prim->execute(reorder_stream, reorder_args);
+      reorder_prim->execute(*reorder_stream, reorder_args);
 #endif  // !ENABLE_MKLDNN_V1
 
       Tensor* output_min = nullptr;

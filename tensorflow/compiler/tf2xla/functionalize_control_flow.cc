@@ -30,13 +30,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -46,20 +46,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Transformation that converts TensorFlow's graph control flow constructs into
-// functional equivalents.
 Status FunctionalizeControlFlow(Graph* graph,
-                                FunctionLibraryDefinition* library) {
+                                FunctionLibraryDefinition* library,
+                                const NodeFilter& node_filter) {
   VLOG(2) << "FunctionalizeControlFlow (initial): "
           << DumpGraphToFile("functionalize_initial", *graph, library);
 
   // Functionalize and remove while loops from graph.
-  TF_RETURN_IF_ERROR(FunctionalizeWhileLoop(graph, library));
+  TF_RETURN_IF_ERROR(FunctionalizeWhileLoop(graph, library, node_filter));
 
   // FunctionalizeControlFlow is invoked for every function, so the loops's
   // bodies and conditionals that were extracted into functions will be handled
   // in successive invocations.
-  TF_RETURN_IF_ERROR(FunctionalizeCond(graph, library));
+  TF_RETURN_IF_ERROR(FunctionalizeCond(graph, library, node_filter));
 
   VLOG(2) << "FunctionalizeControlFlow (final): "
           << DumpGraphToFile("functionalize_final", *graph, library);
@@ -68,12 +67,13 @@ Status FunctionalizeControlFlow(Graph* graph,
 }
 
 Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
-    FunctionLibraryDefinition* library) {
+                                           FunctionLibraryDefinition* library,
+                                           const NodeFilter& node_filter) {
   FunctionDefLibrary function_lib = graph_def->library();
   Graph graph(OpRegistry::Global());
 
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *graph_def, &graph));
-  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(&graph, library));
+  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(&graph, library, node_filter));
   graph.ToGraphDef(graph_def);
   std::swap(*graph_def->mutable_library(), function_lib);
   return Status::OK();
@@ -125,7 +125,7 @@ Status FunctionalizeControlFlowForFunction(
       nodes_to_associated_functions.push_back({n, associated_functions});
     }
   }
-  for (auto iter : nodes_to_associated_functions) {
+  for (const auto& iter : nodes_to_associated_functions) {
     Node* n = iter.first;
     auto associated_functions = iter.second;
     for (auto& associated_function : associated_functions) {

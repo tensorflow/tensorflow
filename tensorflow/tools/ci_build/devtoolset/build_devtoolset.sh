@@ -132,4 +132,8 @@ cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared44.a" \
 # TODO(klimek): Automate linking in all non-gcc / non-kernel include
 # directories.
 mkdir -p "/${TARGET}/usr/include/x86_64-linux-gnu"
-ln -s "/usr/include/x86_64-linux-gnu/python3.5m" "/${TARGET}/usr/include/x86_64-linux-gnu/python3.5m"
+PYTHON_VERSIONS=("python2.7" "python3.5m" "python3.6m" "python3.7m" "python3.8")
+for v in "${PYTHON_VERSIONS[@]}"; do
+  ln -s "/usr/local/include/${v}" "/${TARGET}/usr/include/x86_64-linux-gnu/${v}"
+done
+

@@ -330,9 +330,10 @@ class ConvRNN2D(RNN):
                                          mask=mask,
                                          input_length=timesteps)
     if self.stateful:
-      updates = []
-      for i in range(len(states)):
-        updates.append(K.update(self.states[i], states[i]))
+      updates = [
+          K.update(self_state, state)
+          for self_state, state in zip(self.states, states)
+      ]
       self.add_update(updates)
 
     if self.return_sequences:
@@ -433,6 +434,9 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       It defaults to the `image_data_format` value found in your
@@ -457,8 +461,8 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Use in combination with `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et al.]
-      (http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to
@@ -568,7 +572,7 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
         def bias_initializer(_, *args, **kwargs):
           return K.concatenate([
               self.bias_initializer((self.filters,), *args, **kwargs),
-              initializers.Ones()((self.filters,), *args, **kwargs),
+              initializers.get('ones')((self.filters,), *args, **kwargs),
               self.bias_initializer((self.filters * 2,), *args, **kwargs),
           ])
       else:
@@ -709,6 +713,9 @@ class ConvLSTM2D(ConvRNN2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -738,8 +745,8 @@ class ConvLSTM2D(ConvRNN2D):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Use in combination with `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et al.]
-      (http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to
@@ -752,7 +759,9 @@ class ConvLSTM2D(ConvRNN2D):
       the `recurrent_kernel` weights matrix.
     bias_constraint: Constraint function applied to the bias vector.
     return_sequences: Boolean. Whether to return the last output
-      in the output sequence, or the full sequence.
+      in the output sequence, or the full sequence. (default False)
+    return_state: Boolean Whether to return the last state
+      in addition to the output. (default False)
     go_backwards: Boolean (default False).
       If True, process the input sequence backwards.
     stateful: Boolean (default False). If True, the last state
@@ -785,31 +794,35 @@ class ConvLSTM2D(ConvRNN2D):
         `(samples, time, rows, cols, channels)`
 
   Output shape:
-    - If `return_sequences`
-       - If data_format='channels_first'
-          5D tensor with shape:
-          `(samples, time, filters, output_row, output_col)`
-       - If data_format='channels_last'
-          5D tensor with shape:
-          `(samples, time, output_row, output_col, filters)`
-    - Else
-      - If data_format ='channels_first'
-          4D tensor with shape:
-          `(samples, filters, output_row, output_col)`
-      - If data_format='channels_last'
-          4D tensor with shape:
-          `(samples, output_row, output_col, filters)`
-      where `o_row` and `o_col` depend on the shape of the filter and
-      the padding
+    - If `return_state`: a list of tensors. The first tensor is
+      the output. The remaining tensors are the last states,
+      each 4D tensor with shape:
+      `(samples, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 4D tensor with shape:
+      `(samples, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
+      `rows` and `cols` values might have changed due to padding.
+    - If `return_sequences`: 5D tensor with shape:
+      `(samples, timesteps, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 5D tensor with shape:
+      `(samples, timesteps, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
+    - Else, 4D tensor with shape:
+      `(samples, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 4D tensor with shape:
+      `(samples, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
 
   Raises:
     ValueError: in case of invalid constructor arguments.
 
   References:
-    - [Convolutional LSTM Network: A Machine Learning Approach for
-    Precipitation Nowcasting](http://arxiv.org/abs/1506.04214v1)
-    The current implementation does not include the feedback loop on the
-    cells output.
+    - [Shi et al., 2015](http://arxiv.org/abs/1506.04214v1)
+    (the current implementation does not include the feedback loop on the
+    cells output).
   """
 
   def __init__(self,
@@ -834,6 +847,7 @@ class ConvLSTM2D(ConvRNN2D):
                recurrent_constraint=None,
                bias_constraint=None,
                return_sequences=False,
+               return_state=False,
                go_backwards=False,
                stateful=False,
                dropout=0.,
@@ -863,6 +877,7 @@ class ConvLSTM2D(ConvRNN2D):
                           dtype=kwargs.get('dtype'))
     super(ConvLSTM2D, self).__init__(cell,
                                      return_sequences=return_sequences,
+                                     return_state=return_state,
                                      go_backwards=go_backwards,
                                      stateful=stateful,
                                      **kwargs)

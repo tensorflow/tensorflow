@@ -30,6 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -38,6 +39,7 @@ from tensorflow.python.util.tf_export import tf_export
 #===============================================================================
 # pylint: disable=redefined-builtin
 @tf_export('ragged.range')
+@dispatch.add_dispatch_support
 def range(starts, limits=None, deltas=1, dtype=None,
           name=None, row_splits_dtype=dtypes.int64):
   """Returns a `RaggedTensor` containing the specified sequences of numbers.

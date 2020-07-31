@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
 
 #include <array>
-#include <cfloat>
 #include <string>
 #include <utility>
 
@@ -82,14 +81,26 @@ std::string GetComputationPart(const int3& block_size, int element_size,
   return c;
 }
 
-std::string GenerateConvBuffer1x1(
-    const OperationDef& op_def, const ConvBuffer1x1::ConvParams& conv_params,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator dst_tensor(
-      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
-      op_def.dst_tensors[0]);
+std::string GenerateConvBuffer1x1(const OperationDef& op_def,
+                                  const ConvBuffer1x1::ConvParams& conv_params,
+                                  Arguments* args) {
+  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
+  if (op_def.IsBatchSupported()) {
+    src_desc->SetStateVar("BatchedWidth", "true");
+  }
+  if (conv_params.element_size == 8) {
+    src_desc->SetStateVar("ElementsX2", "true");
+  } else if (conv_params.element_size == 16) {
+    src_desc->SetStateVar("ElementsX4", "true");
+  }
+  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
+  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  if (op_def.IsBatchSupported()) {
+    dst_desc->SetStateVar("BatchedWidth", "true");
+  }
+  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
 
+  std::string c = GetCommonDefines(op_def.precision);
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define FLT8 float8\n";
@@ -106,34 +117,30 @@ std::string GenerateConvBuffer1x1(
   const int element_size = conv_params.element_size / 4;
 
   c += "__kernel void main_function(\n";
-  c += "    __global FLT" + std::to_string(element_size * 4) + "* src_data,\n";
-  c += "    __global FLT16* filters_buffer,   \n";
-  c += "    __global FLT4* biases             \n";
-  c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size,                   \n";
-  c += "    int4 dst_size                    \n";
-  c += ") {\n";
+  c += "$0) {\n";
   c += "  int X = get_global_id(0) * " +
        std::to_string(block_size.x * element_size) + ";\n";
   c += "  int X_SRC = get_global_id(0) * " + std::to_string(block_size.x) +
        ";\n";
   c += "  int Y = get_global_id(1) * " + std::to_string(block_size.y) + ";\n";
   c += "  int Z = get_global_id(2) * " + std::to_string(block_size.z) + ";\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
+       "Z >= args.dst_tensor.Slices()) return;\n";
   if (conv_params.different_weights_for_height) {
-    c += "  __global FLT16* weights_cache = filters_buffer + (Z * src_size.y + "
+    c += "  __global FLT16* weights_cache = args.weights.GetPtr() + (Z * "
+         "args.src_tensor.Height() + "
          "Y * " +
          std::to_string(block_size.z) +
          ") * "
-         "src_size.z;\n";
+         "args.src_tensor.Slices();\n";
   } else {
-    c += "  __global FLT16* weights_cache = filters_buffer + Z * src_size.z;\n";
+    c += "  __global FLT16* weights_cache = args.weights.GetPtr() + Z * "
+         "args.src_tensor.Slices();\n";
   }
   for (int z = 0; z < block_size.z; ++z) {
     const std::string z_s = std::to_string(z);
-    c += "  ACCUM_FLT4 bias_val_" + z_s + " = TO_ACCUM_TYPE(biases[Z + " + z_s +
-         "]);\n";
+    c += "  ACCUM_FLT4 bias_val_" + z_s +
+         " = TO_ACCUM_TYPE(args.biases.Read(Z + " + z_s + "));\n";
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x * element_size; ++x) {
         c += "  ACCUM_FLT4 r" + z_s + std::to_string(y) + std::to_string(x) +
@@ -144,130 +151,60 @@ std::string GenerateConvBuffer1x1(
   for (int x = 0; x < block_size.x; ++x) {
     std::string x_s = std::to_string(x);
     c += "  int xc" + x_s + " = min(X_SRC + " + std::to_string(x) +
-         ", src_size.x - 1);\n";
+         ", args.src_tensor.Width() - 1);\n";
   }
   for (int y = 0; y < block_size.y; ++y) {
     std::string y_s = std::to_string(y);
-    c += "  int yc" + y_s + " = min(Y + " + y_s + ", src_size.y - 1);\n";
+    c += "  int yc" + y_s + " = min(Y + " + y_s +
+         ", args.src_tensor.Height() - 1);\n";
   }
   for (int y = 0; y < block_size.y; ++y) {
     std::string y_s = std::to_string(y);
     for (int x = 0; x < block_size.x; ++x) {
       std::string x_s = std::to_string(x);
       std::string i_s = std::to_string(y * block_size.x + x);
-      c += "  int src_addr_" + i_s + " = (yc" + y_s + ") * src_size.x + (xc" +
-           x_s + ");\n";
+      c += "  int src_addr_" + i_s + " = (yc" + y_s +
+           ") * args.src_tensor.Width() + (xc" + x_s + ");\n";
     }
   }
-  c += "  for (int s = 0; s < src_size.z; ++s) {\n";
+  c += "  for (int s = 0; s < args.src_tensor.Slices(); ++s) {\n";
   for (int y = 0; y < block_size.y; ++y) {
     std::string y_s = std::to_string(y);
     for (int x = 0; x < block_size.x; ++x) {
       std::string x_s = std::to_string(x);
       std::string i_s = std::to_string(y * block_size.x + x);
       c += "    FLT" + std::to_string(element_size * 4) + " s" + i_s +
-           " = src_data[src_addr_" + i_s + "];\n";
+           " = args.src_tensor.Read(src_addr_" + i_s + ");\n";
     }
   }
   c += GetComputationPart(block_size, element_size, op_def.precision);
   for (int i = 0; i < block_size.x * block_size.y; ++i) {
     std::string i_s = std::to_string(i);
-    c += "    src_addr_" + i_s + " += src_size.w;\n";
+    c += "    src_addr_" + i_s + " += args.src_tensor.SliceStride();\n";
   }
   c += "    weights_cache += " + std::to_string(block_size.z) + ";\n";
-  c += "  }\n";  // src_size.z = SRC_DEPTH
+  c += "  }\n";  // SRC_SLICES
 
   for (int z = 0; z < block_size.z; ++z) {
     const std::string z_s = std::to_string(z);
     if (z != 0) {
-      c += "  if (Z + " + z_s + " >= dst_size.z) return;\n";
+      c += "  if (Z + " + z_s + " >= args.dst_tensor.Slices()) return;\n";
     }
     for (int y = 0; y < block_size.y; ++y) {
       const std::string y_s = std::to_string(y);
       for (int x = 0; x < block_size.x * element_size; ++x) {
         const std::string x_s = std::to_string(x);
-        c += "  if (X + " + x_s + " < dst_size.x && Y + " + y_s +
-             " < dst_size.y) {\n";
+        c += "  if (X + " + x_s + " < args.dst_tensor.Width() && Y + " + y_s +
+             " < args.dst_tensor.Height()) {\n";
         c += "    FLT4 res = TO_FLT4(r" + z_s + y_s + x_s + ");\n";
-        const LinkingContext context{"res", "X + " + x_s, "Y + " + y_s,
-                                     "Z + " + z_s};
-        c += PostProcess(linked_operations, context);
-        c += "    " + dst_tensor.WriteWHS("res", "X + " + x_s, "Y + " + y_s,
-                                          "Z + " + z_s);
+        c += "    args.dst_tensor.Write(res, X + " + x_s + ", Y + " + y_s +
+             ", Z + " + z_s + ");\n";
         c += "  }\n";
       }
     }
   }
   c += "}\n";
   return c;
-}
-
-// task_size as amount of FLT4 processed elements.
-int GetRecommendedBlockSizeForConv(const CLDevice& device,
-                                   const OperationDef& definition,
-                                   int task_size) {
-  const float task_size_per_cu =
-      task_size / static_cast<float>(device.GetInfo().compute_units_count);
-  int block_size = 1;
-  float threshold_1 = FLT_MAX;
-  float threshold_2 = FLT_MAX;
-  float threshold_4 = FLT_MAX;
-  if (!device.IsMali()) {
-    return 1;
-  }
-  MaliInfo mali_info = device.GetInfo().mali_info;
-  switch (definition.precision) {
-    case CalculationsPrecision::F16:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 4.0f;
-        threshold_4 = 256.0f * 8.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 256.0f * 2.0f;
-        threshold_2 = 256.0f * 8.0f;
-        threshold_4 = 256.0f * 16.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 6.0f;
-        threshold_4 = 256.0f * 16.0f;
-      }
-      break;
-    case CalculationsPrecision::F32_F16:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 3.0f;
-        threshold_4 = 256.0f * 32.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 256.0f * 2.0f;
-        threshold_2 = 256.0f * 8.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 8.0f;
-      }
-      break;
-    case CalculationsPrecision::F32:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 4.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 128.0f;
-        threshold_2 = 256.0f * 4.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 12.0f;
-      }
-      break;
-  }
-  if (task_size_per_cu <= threshold_1) {
-    block_size = 1;
-  } else if (task_size_per_cu <= threshold_2) {
-    block_size = 2;
-  } else if (task_size_per_cu <= threshold_4) {
-    block_size = 4;
-  } else {
-    block_size = 8;
-  }
-  return block_size;
 }
 
 ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
@@ -295,7 +232,7 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
 
   int task_size = shape.w * shape.b * shape.h * dst_depth;
   int block_size =
-      GetRecommendedBlockSizeForConv(device, definition, task_size);
+      GetRecommendedBlockSizeForConv(device, definition.precision, task_size);
 
   if (!can_use_flt8 && block_size > 4) {
     block_size = 4;
@@ -344,69 +281,57 @@ ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
 
 ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
     : GPUOperation(std::move(operation)),
-      weights_(std::move(operation.weights_)),
-      biases_(std::move(operation.biases_)),
-      conv_params_(std::move(operation.conv_params_)),
-      kernel_(std::move(operation.kernel_)) {}
+      conv_params_(std::move(operation.conv_params_)) {}
 
 ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
   if (this != &operation) {
-    weights_ = std::move(operation.weights_);
-    biases_ = std::move(operation.biases_);
     std::swap(conv_params_, operation.conv_params_);
-    kernel_ = std::move(operation.kernel_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
-Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
-  std::string code =
-      GenerateConvBuffer1x1(definition_, conv_params_, linked_operations_);
+absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
+  std::string code = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
+  work_group_size_ = conv_params_.work_group_size;
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvBuffer1x1::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  const int src_width_elements = IntegralDivideRoundUp(
-      src_[0]->Width() * src_[0]->Batch(), (conv_params_.element_size / 4));
-  int4 src_size = int4(src_width_elements, src_[0]->Height(), src_[0]->Slices(),
-                       src_width_elements * src_[0]->Height());
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_size));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return OkStatus();
+absl::Status ConvBuffer1x1::BindArguments() {
+  if (definition_.src_tensors.size() == 2) {
+    RETURN_IF_ERROR(args_.SetObjectRef("weights", src_[1]));
+  }
+  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
+  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 ConvBuffer1x1::GetGridSize() const {
-  const int dst_width_elements = IntegralDivideRoundUp(
+  const int dst_width_elements = DivideRoundUp(
       dst_[0]->Width() * dst_[0]->Batch(), (conv_params_.element_size / 4));
   const int grid_x =
-      IntegralDivideRoundUp(dst_width_elements, conv_params_.block_size.x);
+      DivideRoundUp(dst_width_elements, conv_params_.block_size.x);
   const int grid_y =
-      IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
+      DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
-      IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
+      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvBuffer1x1::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &conv_params_.work_group_size);
-}
-
-Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(),
-                                 conv_params_.work_group_size);
+absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+  RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
+                                       &conv_params_.work_group_size));
+  work_group_size_ = conv_params_.work_group_size;
+  return absl::OkStatus();
 }
 
 bool IsConvBuffer1x1Supported(const OperationDef& definition,
@@ -420,15 +345,27 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
 }
 
-Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const Convolution2DAttributes& attr,
-                           ConvBuffer1x1* result, const BHWC* shape) {
+bool IsConvBuffer1x1Supported(const OperationDef& definition,
+                              const BHWC& weights_shape,
+                              const Convolution2DAttributes& attr) {
+  auto src_storage_type = definition.src_tensors[0].storage_type;
+  return src_storage_type == TensorStorageType::BUFFER &&
+         weights_shape.w == 1 && weights_shape.h == 1 &&
+         attr.dilations.w == 1 && attr.dilations.h == 1 &&
+         attr.strides.w == 1 && attr.strides.h == 1 &&
+         attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
+         attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
+}
+
+absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const Convolution2DAttributes& attr,
+                                 ConvBuffer1x1* result, const BHWC* shape) {
   if (!IsConvBuffer1x1Supported(definition, attr)) {
-    return InvalidArgumentError("ConvBuffer1x1 doesn't supported");
+    return absl::InvalidArgumentError("ConvBuffer1x1 doesn't supported");
   }
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,
@@ -441,12 +378,12 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const FullyConnectedAttributes& attr,
-                           ConvBuffer1x1* result, const BHWC* shape) {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const FullyConnectedAttributes& attr,
+                                 ConvBuffer1x1* result, const BHWC* shape) {
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,
@@ -461,13 +398,12 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvBuffer1x1Wino4x4To6x6(const CreationContext& creation_context,
-                                       const OperationDef& definition,
-                                       const Convolution2DAttributes& attr,
-                                       ConvBuffer1x1* result,
-                                       const BHWC* shape) {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+absl::Status CreateConvBuffer1x1Wino4x4To6x6(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, ConvBuffer1x1* result,
+    const BHWC* shape) {
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,
@@ -482,6 +418,30 @@ Status CreateConvBuffer1x1Wino4x4To6x6(const CreationContext& creation_context,
   *result = ConvBuffer1x1(definition, conv_params);
   return result->UploadDataForWinograd4x4To6x6(
       attr.weights, *creation_context.device, creation_context.context);
+}
+
+absl::Status CreateConvBuffer1x1DynamicWeights(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    ConvBuffer1x1* result, const BHWC* dst_shape) {
+  const int dst_depth = DivideRoundUp(weights_shape.b, 4);
+  const int src_depth = DivideRoundUp(weights_shape.c, 4);
+  ConvBuffer1x1::ConvParams conv_params;
+  if (dst_shape) {
+    conv_params = GetBestParams(*creation_context.device, definition,
+                                *dst_shape, src_depth, dst_depth);
+  } else {
+    conv_params = GetBestParams(*creation_context.device, definition, src_depth,
+                                dst_depth);
+  }
+  *result = ConvBuffer1x1(definition, conv_params);
+  BufferDescriptor desc;
+  desc.element_type = definition.src_tensors[1].data_type;
+  desc.element_size = 16;
+  desc.memory_type = MemoryType::GLOBAL;
+  result->args_.AddObjectRef("weights", AccessType::READ,
+                             absl::make_unique<BufferDescriptor>(desc));
+  return result->UploadBiases(attr.bias, creation_context.context);
 }
 
 }  // namespace cl

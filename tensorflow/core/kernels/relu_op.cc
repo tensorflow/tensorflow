@@ -105,9 +105,7 @@ namespace functor {
   extern template struct Relu6Grad<GPUDevice, T>;                              \
                                                                                \
   template <>                                                                  \
-  void LeakyRelu<GPUDevice, T>::operator()(                                    \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor features, T alpha,   \
-      typename TTypes<T>::Tensor activations);                                 \
+  void LeakyRelu<GPUDevice, T>::operator()(LeakyReluArgs args);                \
   extern template struct LeakyRelu<GPUDevice, T>;                              \
                                                                                \
   template <>                                                                  \
@@ -144,13 +142,12 @@ namespace functor {
   extern template struct SeluGrad<GPUDevice, T>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-// TODO(rocm) : qint8 datatype currently not supported on the ROCm platform
 template <>
 void Relu<GPUDevice, qint8>::operator()(
     const GPUDevice& d, typename TTypes<qint8>::ConstTensor features,
     typename TTypes<qint8>::Tensor activations);
 extern template struct Relu<GPUDevice, qint8>;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
@@ -191,7 +188,6 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename Device>
 class ReluOp<Device, qint8>
     : public UnaryElementWiseOp<qint8, ReluOp<Device, qint8>> {
@@ -213,7 +209,6 @@ REGISTER_KERNEL_BUILDER(
     Name("Relu").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     ReluOp<GPUDevice, qint8>);
 
-#endif  // GOOGLE_CUDA
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL

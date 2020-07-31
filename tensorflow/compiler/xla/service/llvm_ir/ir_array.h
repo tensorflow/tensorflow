@@ -66,6 +66,11 @@ class IrArray {
     // Precondition: "shape" has a layout.
     Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
+    // Similar to the above constructor except using "dynamic_dims" instead of
+    // shape's static dimension to constructs the index.
+    Index(llvm::Value* linear, const Shape& shape,
+          absl::Span<llvm::Value*> dynamic_dims, llvm::IRBuilder<>* b);
+
     // Constructs an index from a multi-dimensional index. 'shape' is the shape
     // for which the multi-dimensional index is used. 'index_type' is the type
     // of the index.
@@ -135,9 +140,9 @@ class IrArray {
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfTranspose(const Shape& shape, const Shape& operand_shape,
-                                 absl::Span<const int64> dimension_mapping,
-                                 llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfTranspose(
+        const Shape& shape, const Shape& operand_shape,
+        absl::Span<const int64> dimension_mapping) const;
 
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.
@@ -153,6 +158,10 @@ class IrArray {
     // Linearizes the index into the given shape, i.e. reshapes it to rank-1 and
     // returns the index into the sole dimension 0 of the new shape.
     llvm::Value* Linearize(absl::Span<const int64> dimensions,
+                           llvm::IRBuilder<>* builder) const;
+
+    // Linearizes the index into the given dynamic dimensions.
+    llvm::Value* Linearize(const std::vector<llvm::Value*>& dynamic_dims,
                            llvm::IRBuilder<>* builder) const;
 
     llvm::Type* GetType() const { return index_type_; }
@@ -175,6 +184,11 @@ class IrArray {
 
     void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
                      const Shape& shape, llvm::IRBuilder<>* b) const;
+
+    // Delinearize the linear index with the dynamic dimensions.
+    void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
+                     const Shape& shape, absl::Span<llvm::Value*> dynamic_dims,
+                     llvm::IRBuilder<>* b) const;
 
     std::vector<llvm::Value*> multidim_;
 

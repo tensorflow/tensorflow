@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 
+#include <string>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 
@@ -31,13 +31,21 @@ ABSL_CONST_INIT extern const absl::string_view kDatasetOp;
 ABSL_CONST_INIT extern const absl::string_view kMemcpyHToDOp;
 ABSL_CONST_INIT extern const absl::string_view kMemcpyDToHOp;
 
-// Breaks a TensorFlow op fullname into name and type.
-struct TfOp {
-  absl::string_view name;
-  absl::string_view type;
-  bool is_tf_op;
+enum class Category {
+  kTensorFlow,
+  kJax,
+  kTfData,
+  kMemcpyHToD,
+  kMemcpyDToH,
+  kUnknown,
 };
 
+// Breaks a TensorFlow op fullname into name and type.
+struct TfOp {
+  Category category;
+  absl::string_view name;
+  absl::string_view type;
+};
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname);
 
 // Returns a vector of TF name scopes extracted from tf_op_full_name.
@@ -47,11 +55,6 @@ std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op);
 // trace viewer.
 std::string TfOpEventName(const TfOp& tf_op);
 std::string TfOpEventName(absl::string_view tf_op_fullname);
-
-// Returns true if the given name is not a TensorFlow op.
-inline bool IsUnknownOp(absl::string_view tf_op_type) {
-  return tf_op_type == kUnknownOp;
-}
 
 // Returns true if the given name is a TensorFlow Dataset Op.
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
@@ -77,6 +80,24 @@ inline bool IsMemcpyHToDOp(absl::string_view tf_op_type) {
 inline bool IsMemcpyDToHOp(absl::string_view tf_op_type) {
   return tf_op_type == kMemcpyDToHOp;
 }
+
+// Splits a string of tensor shapes in "(shape1;shape2;...)" format, i.e.,
+// delimited by '(' and ')' and separated by ';', into the individual shapes.
+std::vector<absl::string_view> ParseTensorShapes(
+    absl::string_view tensor_shapes);
+
+// Returns true if the given string matches OpDef.name pattern.
+bool IsTfOpName(absl::string_view op_name);
+
+// Returns true if the given string matches NodeDef.name pattern.
+bool IsTfOpType(absl::string_view op_type);
+
+// Returns true if the given string matches JAX pattern.
+bool IsJaxOpType(absl::string_view op_type);
+
+// Returns true if the given string matches tf.data iterator pattern.
+bool IsIteratorEventName(absl::string_view event_name);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

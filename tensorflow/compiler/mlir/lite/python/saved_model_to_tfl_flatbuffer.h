@@ -28,8 +28,6 @@ namespace tensorflow {
 // status if it fails to convert the input.
 Status ConvertSavedModelToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    const string& saved_model_dir, bool saved_model_v1,
-    const string& saved_model_tags, const string& saved_model_exported_names,
     string* result);
 
 }  // namespace tensorflow

@@ -106,8 +106,9 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 

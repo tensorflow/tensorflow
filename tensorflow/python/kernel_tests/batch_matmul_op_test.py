@@ -235,7 +235,7 @@ class BatchMatMulBenchmark(test.Benchmark):
             GetRandomNormalInput(a_shape, np.float32))
         matrix_b = variables.Variable(
             GetRandomNormalInput(b_shape, np.float32))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Use batch matmul op's internal broadcasting.
         self.run_op_benchmark(
@@ -262,10 +262,9 @@ class BatchMatMulBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  dtypes_to_test = [np.float16, np.float32, np.float64, np.int32]
-  if not test.is_built_with_rocm():
-    # ROCm does not support BLAS operations for complex types
-    dtypes_to_test += [np.complex64, np.complex128]
+  dtypes_to_test = [
+      np.float16, np.float32, np.float64, np.int32, np.complex64, np.complex128
+  ]
   for dtype_ in dtypes_to_test:
     for adjoint_a_ in False, True:
       for adjoint_b_ in False, True:

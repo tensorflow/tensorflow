@@ -21,7 +21,7 @@
 
 #if defined(USE_TFLITE_BENCHMARK_HEADERS)
 #include "tensorflow/lite/tools/benchmark/experimental/c/benchmark_c_api.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/logging.h"
 #else
 #import <TensorFlowLiteBenchmarkC/TensorFlowLiteBenchmarkC.h>
 #endif

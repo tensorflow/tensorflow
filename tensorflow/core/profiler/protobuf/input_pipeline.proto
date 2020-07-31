@@ -3,9 +3,18 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "google/protobuf/any.proto";
+import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 
 // Generic hardware bottleneck.
 message BottleneckAnalysis {
+  // Percentage of step time that is spent on input.
+  double input_percent = 7;
+  // Percentage of step time that is spent on output.
+  double output_percent = 8;
+  // Percentage of step time that is idle for non-I/O-related reason.
+  double idle_percent = 9;
+  // Percentage of step time that is spent on compute.
+  double compute_percent = 10;
   // Indicates if input is a bottleneck. Possible values:  "host", "device",
   // "both", or "unknown"
   string input_classification = 1;
@@ -101,7 +110,7 @@ message InputPipelineAnalysisRecommendation {
   // An analysis of different types of bottlenecks. Can be unpacked into a
   // BottleneckAnalysis.
   google.protobuf.Any bottleneck_analysis = 2;
-  // A suggested of step to take next.
+  // A suggested step to take next.
   string summary_next_step = 3;
 }
 
@@ -136,6 +145,14 @@ message InputPipelineAnalysisResult {
   StepSummary step_time_summary = 2;
   // Summary of all input-related stall as percentage of step duration.
   StepSummary input_percent_summary = 3;
+  // Percentage of step time that is waiting for input.
+  double input_percent = 11;
+  // Percentage of step time that is doing output.
+  double output_percent = 13;
+  // Percentage of step time that is idle for non-I/O-related reason.
+  double idle_percent = 14;
+  // Percentage of step time that is doing compute.
+  double compute_percent = 15;
   // Details of each step. Can be unpacked into a PerGenericStepDetails.
   repeated google.protobuf.Any step_details = 4;
   // The breakdown of the input processing time.
@@ -147,5 +164,7 @@ message InputPipelineAnalysisResult {
   // Breakdown of the step time. Can be unpacked into a
   // GenericStepTimeBreakdown.
   google.protobuf.Any step_time_breakdown = 8;
-  reserved 1;
+  // Error and warning messages for diagnosing profiling issues.
+  Diagnostics diagnostics = 12;
+  reserved 1, 10;
 }

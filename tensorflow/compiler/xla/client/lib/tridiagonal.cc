@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -33,13 +34,6 @@ namespace tridiagonal {
 
 namespace {
 
-struct TridiagonalSystemShape {
-  const int64 rank;
-  const int64 num_equations;
-  TridiagonalSystemShape(int64 rk, int64 num_eqs)
-      : rank(rk), num_equations(num_eqs) {}
-};
-
 Status CheckSecondToLastDimension(const Shape& op_shape, int64 rank,
                                   int64 expected, const std::string& op_name) {
   const auto actual_num_dims = ShapeUtil::GetDimension(op_shape, rank - 2);
@@ -53,10 +47,10 @@ Status CheckSecondToLastDimension(const Shape& op_shape, int64 rank,
   return Status::OK();
 }
 
-StatusOr<TridiagonalSystemShape> CheckSystemAndReturnShape(XlaOp lower_diagonal,
-                                                           XlaOp main_diagonal,
-                                                           XlaOp upper_diagonal,
-                                                           XlaOp rhs) {
+StatusOr<int64> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
+                                                 XlaOp main_diagonal,
+                                                 XlaOp upper_diagonal,
+                                                 XlaOp rhs) {
   XlaBuilder* builder = lower_diagonal.builder();
 
   TF_ASSIGN_OR_RETURN(Shape lower_diagonal_shape,
@@ -111,11 +105,27 @@ StatusOr<TridiagonalSystemShape> CheckSystemAndReturnShape(XlaOp lower_diagonal,
   TF_RETURN_IF_ERROR(CheckSecondToLastDimension(upper_diagonal_shape, rank, 1,
                                                 "upper diagonal"));
 
-  return TridiagonalSystemShape(rank, num_equations);
+  return num_equations;
 }
 
-XlaOp Coefficient(XlaOp operand, int64 i) {
-  return SliceInMinorDims(operand, /*start=*/{i}, /*end=*/{i + 1});
+XlaOp Coefficient(XlaOp operand, int32 i) {
+  return DynamicSliceInMinorDims(operand,
+                                 /*starts=*/{ConstantR0(operand.builder(), i)},
+                                 /*sizes=*/{1});
+}
+
+XlaOp Coefficient(XlaOp operand, XlaOp i) {
+  return DynamicSliceInMinorDims(operand,
+                                 /*starts=*/{i}, /*sizes=*/{1});
+}
+
+XlaOp UpdateEq(XlaOp updated, int32 i, XlaOp update) {
+  return DynamicUpdateSliceInMinorDims(
+      updated, update, /*starts=*/{ConstantR0(updated.builder(), i)});
+}
+
+XlaOp UpdateEq(XlaOp updated, XlaOp i, XlaOp update) {
+  return DynamicUpdateSliceInMinorDims(updated, update, /*starts=*/{i});
 }
 
 }  // namespace
@@ -134,48 +144,133 @@ XlaOp Coefficient(XlaOp operand, int64 i) {
 // solution will have the shape [..., num_rhs, num_equations].
 StatusOr<XlaOp> ThomasSolver(XlaOp lower_diagonal, XlaOp main_diagonal,
                              XlaOp upper_diagonal, XlaOp rhs) {
-  TF_ASSIGN_OR_RETURN(TridiagonalSystemShape system_shape,
-                      CheckSystemAndReturnShape(lower_diagonal, main_diagonal,
-                                                upper_diagonal, rhs));
+  XlaBuilder* builder = lower_diagonal.builder();
 
-  auto rank = system_shape.rank;
-  auto num_eqs = system_shape.num_equations;
+  TF_ASSIGN_OR_RETURN(int64 num_eqs,
+                      CheckSystemAndReturnNumEquations(
+                          lower_diagonal, main_diagonal, upper_diagonal, rhs));
 
-  std::vector<XlaOp> main_diag_after_elimination(num_eqs);
-  std::vector<XlaOp> rhs_after_elimination(num_eqs);
-  std::vector<XlaOp> upper_diagonal_coeffs(num_eqs);
+  XlaOp main_diag_after_elimination = ZerosLike(main_diagonal);
+  XlaOp rhs_after_elimination = ZerosLike(rhs);
+  XlaOp upper_diagonal_coeffs = ZerosLike(upper_diagonal);
+  XlaOp x_coeffs = ZerosLike(rhs);
 
-  main_diag_after_elimination[0] = Coefficient(main_diagonal, 0);
-  rhs_after_elimination[0] = Coefficient(rhs, 0);
-  for (int64 i = 0; i < num_eqs - 1; i++) {
-    upper_diagonal_coeffs[i] = Coefficient(upper_diagonal, i);
-  }
+  // main_diag_after_elimination[:, 0] = main_diagonal[:, 0];
+  main_diag_after_elimination =
+      UpdateEq(main_diag_after_elimination, 0, Coefficient(main_diagonal, 0));
+
+  // rhs_after_elimination[:, 0] = rhs[:, 0];
+  rhs_after_elimination =
+      UpdateEq(rhs_after_elimination, 0, Coefficient(rhs, 0));
+
+  auto preparation_body_fn =
+      [](XlaOp i, absl::Span<const XlaOp> values,
+         XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    auto upper_diagonal_coeffs = values[0];
+    auto upper_diagonal = values[1];
+    // upper_diagonal_coeffs[:, i] = upper_diagonal[:, i];
+    upper_diagonal_coeffs =
+        UpdateEq(upper_diagonal_coeffs, i, Coefficient(upper_diagonal, i));
+    return std::vector<XlaOp>{upper_diagonal_coeffs, upper_diagonal};
+  };
+  TF_ASSIGN_OR_RETURN(auto values_after_preparation,
+                      ForEachIndex(num_eqs - 1, S32, preparation_body_fn,
+                                   {upper_diagonal_coeffs, upper_diagonal},
+                                   "preparation", builder));
+  upper_diagonal_coeffs = values_after_preparation[0];
 
   // Forward transformation.
-  for (int64 i = 1; i < num_eqs; i++) {
+  auto forward_transformation_fn =
+      [](XlaOp i_minus_one, absl::Span<const XlaOp> values,
+         XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    auto lower_diagonal = values[0];
+    auto main_diagonal = values[1];
+    auto rhs = values[2];
+    auto main_diag_after_elimination = values[3];
+    auto upper_diagonal_coeffs = values[4];
+    auto rhs_after_elimination = values[5];
+
+    auto one = ScalarLike(i_minus_one, 1);
+    auto i = i_minus_one + one;
     auto lower_diagonal_i = Coefficient(lower_diagonal, i);
     auto main_diagonal_i = Coefficient(main_diagonal, i);
     auto rhs_i = Coefficient(rhs, i);
 
-    auto w_i = lower_diagonal_i / main_diag_after_elimination[i - 1];
+    auto w_i =
+        lower_diagonal_i / Coefficient(main_diag_after_elimination, i - one);
 
-    main_diag_after_elimination[i] =
-        main_diagonal_i - w_i * upper_diagonal_coeffs[i - 1];
-    rhs_after_elimination[i] = rhs_i - w_i * rhs_after_elimination[i - 1];
-  }
+    // main_diag_after_elimination[:, i] =
+    //     main_diagonal_i - w_i * upper_diagonal_coeffs[:, i - 1];
+    main_diag_after_elimination = UpdateEq(
+        main_diag_after_elimination, i,
+        main_diagonal_i - w_i * Coefficient(upper_diagonal_coeffs, i - one));
+    // rhs_after_elimination[:, i] =
+    //     rhs_i - w_i * rhs_after_elimination[:, i - 1];
+    rhs_after_elimination =
+        UpdateEq(rhs_after_elimination, i,
+                 rhs_i - w_i * Coefficient(rhs_after_elimination, i - one));
 
-  std::vector<XlaOp> x_coeffs(num_eqs);
+    return std::vector<XlaOp>{lower_diagonal,
+                              main_diagonal,
+                              rhs,
+                              main_diag_after_elimination,
+                              upper_diagonal_coeffs,
+                              rhs_after_elimination};
+  };
+  TF_ASSIGN_OR_RETURN(
+      auto values_after_fwd_transformation,
+      ForEachIndex(
+          num_eqs - 1, S32, forward_transformation_fn,
+          {lower_diagonal, main_diagonal, rhs, main_diag_after_elimination,
+           upper_diagonal_coeffs, rhs_after_elimination},
+          "forward_transformation", builder));
+  lower_diagonal = values_after_fwd_transformation[0];
+  main_diagonal = values_after_fwd_transformation[1];
+  rhs = values_after_fwd_transformation[2];
+  main_diag_after_elimination = values_after_fwd_transformation[3];
+  upper_diagonal_coeffs = values_after_fwd_transformation[4];
+  rhs_after_elimination = values_after_fwd_transformation[5];
 
   // Backward reduction.
-  x_coeffs[num_eqs - 1] = rhs_after_elimination[num_eqs - 1] /
-                          main_diag_after_elimination[num_eqs - 1];
-  for (int i = num_eqs - 2; i >= 0; i--) {
-    x_coeffs[i] = (rhs_after_elimination[i] -
-                   upper_diagonal_coeffs[i] * x_coeffs[i + 1]) /
-                  main_diag_after_elimination[i];
-  }
+  // x_coeffs[:, num_eqs - 1] = rhs_after_elimination[:, num_eqs - 1] /
+  //                              main_diag_after_elimination[:, num_eqs - 1];
+  x_coeffs =
+      UpdateEq(x_coeffs, num_eqs - 1,
+               Coefficient(rhs_after_elimination, num_eqs - 1) /
+                   Coefficient(main_diag_after_elimination, num_eqs - 1));
+  auto bwd_reduction_fn =
+      [num_eqs](XlaOp j, absl::Span<const XlaOp> values,
+                XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    auto x_coeffs = values[0];
+    auto rhs_after_elimination = values[1];
+    auto upper_diagonal_coeffs = values[2];
+    auto main_diag_after_elimination = values[3];
+    auto n = ScalarLike(j, num_eqs - 2);
+    auto one = ScalarLike(j, 1);
+    auto i = n - j;
+    // for (int i = num_eqs - 2; i >= 0; i--)
+    //   x_coeffs[:, i] = (rhs_after_elimination[:, i] -
+    //     upper_diagonal_coeffs[:, i] * x_coeffs[:, i + 1]) /
+    //       main_diag_after_elimination[:, i];
+    x_coeffs = UpdateEq(x_coeffs, i,
+                        (Coefficient(rhs_after_elimination, i) -
+                         Coefficient(upper_diagonal_coeffs, i) *
+                             Coefficient(x_coeffs, i + one)) /
+                            Coefficient(main_diag_after_elimination, i));
+    return std::vector<XlaOp>{x_coeffs, rhs_after_elimination,
+                              upper_diagonal_coeffs,
+                              main_diag_after_elimination};
+  };
 
-  return ConcatInDim(lower_diagonal.builder(), x_coeffs, rank - 1);
+  TF_ASSIGN_OR_RETURN(
+      auto values_after_bwd_reduction,
+      ForEachIndex(num_eqs - 1, S32, bwd_reduction_fn,
+                   {x_coeffs, rhs_after_elimination, upper_diagonal_coeffs,
+                    main_diag_after_elimination},
+                   "backward_reduction", builder));
+  x_coeffs = values_after_bwd_reduction[0];
+
+  return x_coeffs;
 }
 
 // Applies Thomas algorithm to solve a linear system where the linear operand

@@ -205,15 +205,10 @@ class NcclTestBase : public ::testing::Test {
       VLOG(2) << "rank " << rank << " output " << output << " buf "
               << DMAHelper::base(output);
       Tensor actual(DT_FLOAT, TensorShape({output_length}));
-      Notification note;
       Device* dev = instances_[rank]->device_;
       auto* dev_info = dev->tensorflow_gpu_device_info();
-      dev_info->default_context->CopyDeviceTensorToCPU(
-          output, /*tensor_name=*/"", dev, &actual, [&note](const Status& s) {
-            TF_CHECK_OK(s);
-            note.Notify();
-          });
-      note.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
+          output, /*tensor_name=*/"", dev, &actual));
       VLOG(3) << "rank " << rank << " got output tensor "
               << actual.DebugString(output_length);
       for (int i = 0; i < output_length; ++i) {
@@ -270,13 +265,8 @@ class NcclTestBase : public ::testing::Test {
         VLOG(2) << "input tensor " << cpu_tensor.DebugString();
       }
       auto* dev_info = device_->tensorflow_gpu_device_info();
-      Notification note;
-      dev_info->default_context->CopyCPUTensorToDevice(
-          &cpu_tensor, device_, &input_, [&note](const Status& s) {
-            TF_CHECK_OK(s);
-            note.Notify();
-          });
-      note.WaitForNotification();
+      TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
+          &cpu_tensor, device_, &input_));
     }
 
     void PrepareDeviceContext(OpKernelContext::Params* params) {
@@ -324,11 +314,11 @@ class NcclTestBase : public ::testing::Test {
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       NcclReducer reducer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                /*OpKernelContext=*/&ctx, &op_params,
-                                col_params_, exec_key, kStepId,
-                                /*input=*/&input_, /*output=*/&input_);
-      TF_CHECK_OK(reducer.InitializeCollectiveContext(&col_ctx));
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(),
+          /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
+          /*input=*/&input_, /*output=*/&input_);
+      TF_CHECK_OK(reducer.InitializeCollectiveContext(col_ctx));
       Notification note;
       reducer.Run([this, &note](Status s) {
         status_ = s;
@@ -354,12 +344,12 @@ class NcclTestBase : public ::testing::Test {
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       NcclBroadcaster broadcaster;
-      CollectiveContext col_ctx(
+      auto col_ctx = std::make_shared<CollectiveContext>(
           parent_->col_exec_, parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/col_params_.is_source ? &input_ : nullptr,
           /*output=*/&input_);
-      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(&col_ctx));
+      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(col_ctx));
       Notification note;
       broadcaster.Run([this, &note](Status s) {
         status_ = s;
@@ -393,12 +383,12 @@ class NcclTestBase : public ::testing::Test {
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       NcclGatherer gatherer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                /*OpKernelContext=*/&ctx, &op_params,
-                                col_params_, exec_key, kStepId,
-                                /*input=*/&input_,
-                                /*output=*/&output_);
-      TF_CHECK_OK(gatherer.InitializeCollectiveContext(&col_ctx));
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(),
+          /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
+          /*input=*/&input_,
+          /*output=*/&output_);
+      TF_CHECK_OK(gatherer.InitializeCollectiveContext(col_ctx));
       Notification note;
       gatherer.Run([this, &note](Status s) {
         status_ = s;

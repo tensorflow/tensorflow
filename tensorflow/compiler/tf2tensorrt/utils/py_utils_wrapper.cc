@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <tuple>
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
 
 std::tuple<int, int, int> get_linked_tensorrt_version() {

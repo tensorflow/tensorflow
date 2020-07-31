@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -342,6 +343,7 @@ Status AddBranch(gtl::ArraySlice<const NodeDef*> branch,
                  FunctionDefLibrary* library) {
   FunctionDef* branch_func = library->add_function();
   auto* signature = branch_func->mutable_signature();
+  (*branch_func->mutable_attr())[data::kTFDataFunction].set_b(true);
   graph_utils::SetUniqueGraphFunctionName("branch", library, branch_func);
 
   // Input dataset.

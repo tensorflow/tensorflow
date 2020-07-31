@@ -25,6 +25,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import math_ops as _math_ops
 from tensorflow.python.ops.signal import fft_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -50,6 +51,7 @@ def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
 
 # TODO(rjryan): Implement `axis` parameter.
 @tf_export("signal.dct", v1=["signal.dct", "spectral.dct"])
+@dispatch.add_dispatch_support
 def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
   """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
 
@@ -181,6 +183,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
 
 # TODO(rjryan): Implement `n` and `axis` parameters.
 @tf_export("signal.idct", v1=["signal.idct", "spectral.idct"])
+@dispatch.add_dispatch_support
 def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
   """Computes the 1D [Inverse Discrete Cosine Transform (DCT)][idct] of `input`.
 

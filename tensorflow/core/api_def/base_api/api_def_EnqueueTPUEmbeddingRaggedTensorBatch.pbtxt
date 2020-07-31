@@ -1,0 +1,77 @@
+op {
+  graph_op_name: "EnqueueTPUEmbeddingRaggedTensorBatch"
+  visibility: HIDDEN
+  in_arg {
+    name: "sample_splits"
+    description: <<END
+A list of rank 1 Tensors specifying the break points for splitting
+embedding_indices and aggregation_weights into rows.
+It corresponds to ids.row_splits in embedding_lookup(), when ids is a
+RaggedTensor.
+END
+  }
+  in_arg {
+    name: "embedding_indices"
+    description: <<END
+A list of rank 1 Tensors, indices into the embedding tables.
+It corresponds to ids.values in embedding_lookup(), when ids is a RaggedTensor.
+END
+  }
+  in_arg {
+    name: "aggregation_weights"
+    description: <<END
+A list of rank 1 Tensors containing per training example
+aggregation weights. It corresponds to the values field of a RaggedTensor
+with the same row_splits as ids in embedding_lookup(), when ids is a
+RaggedTensor.
+END
+  }
+  in_arg {
+    name: "mode_override"
+    description: <<END
+A string input that overrides the mode specified in the
+TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
+END
+  }
+  attr {
+    name: "device_ordinal"
+    description: <<END
+The TPU device to use. Should be >= 0 and less than the number
+of TPU cores in the task on which the node is placed.
+END
+  }
+  attr {
+    name: "combiners"
+    description: <<END
+A list of string scalars, one for each embedding table that specify
+how to normalize the embedding activations after weighted summation.
+Supported combiners are 'mean', 'sum', or 'sqrtn'. It is invalid to have
+the sum of the weights be 0 for 'mean' or the sum of the squared weights be
+0 for 'sqrtn'. If combiners isn't passed, the default is to use 'sum' for
+all tables.
+END
+  }
+  attr {
+    name: "table_ids"
+    description: <<END
+A list of integers specifying the identifier of the embedding table
+(offset of TableDescriptor in the TPUEmbeddingConfiguration) to lookup the
+corresponding input. The ith input is looked up using table_ids[i]. The size
+of the table_ids list must be equal to that of sample_indices,
+embedding_indices and aggregation_weights.
+END
+  }
+  summary: "Eases the porting of code that uses tf.nn.embedding_lookup()."
+  description: <<END
+sample_splits[i], embedding_indices[i] and aggregation_weights[i] correspond
+to the ith feature. table_ids[i] indicates which embedding table to look up ith
+feature.
+
+The tensors at corresponding positions in two of the input lists,
+embedding_indices and aggregation_weights, must have the same shape, i.e. rank 1
+with dim_size() equal to the total number of lookups into the table described by
+the corresponding feature.
+END
+}

@@ -48,12 +48,15 @@ namespace tensorflow {
 namespace {
 
 NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
-#ifndef TENSORFLOW_LITE_PROTOS
-  DCHECK_EQ(NodeDef::descriptor()->field_count(), 6)
-      << "The NodeDef format has changed, and the attr-stripping code may need "
-      << "to be updated.";
-#endif
   const NodeDef& original = ctx->def();
+  if (std::is_base_of<protobuf::Message, NodeDef>()) {
+    DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&original)
+                  ->GetDescriptor()
+                  ->field_count(),
+              6)
+        << "The NodeDef format has changed, and the attr-stripping code may "
+           "need to be updated.";
+  }
   NodeDef ret;
   ret.set_name(original.name());
   ret.set_op(original.op());
@@ -73,7 +76,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx), false),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
-  MEMDEBUG_CACHE_OP(ctx->def().name().c_str());
+  ScopedMemoryDebugAnnotation op_annotation(name_view().data());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));
@@ -94,6 +97,7 @@ void ConstantOp::Compute(OpKernelContext* ctx) {
 ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
+REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_TPU_SYSTEM), ConstantOp);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -208,7 +212,8 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 // the conversion from uint8 to quint8.
 REGISTER_KERNEL(CPU, quint8);
 REGISTER_KERNEL(CPU, quint16);
-REGISTER_KERNEL(CPU, uint32);
+REGISTER_KERNEL(CPU, qint8);
+REGISTER_KERNEL(CPU, qint16);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL

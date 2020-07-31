@@ -74,25 +74,19 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
     && echo "/usr/local/cuda/lib64/stubs" > /etc/ld.so.conf.d/z-cuda-stubs.conf \
     && ldconfig
 
-ARG USE_PYTHON_3_NOT_2
-# TODO(angerson) Completely remove Python 2 support
-ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
-ARG PYTHON=python${_PY_SUFFIX}
-ARG PIP=pip${_PY_SUFFIX}
-
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 
 RUN apt-get update && apt-get install -y \
-    ${PYTHON} \
-    ${PYTHON}-pip
+    python3 \
+    python3-pip
 
-RUN ${PIP} --no-cache-dir install --upgrade \
+RUN python3 -m pip --no-cache-dir install --upgrade \
     pip \
     setuptools
 
 # Some TF tools expect a "python" binary
-RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
+RUN ln -s $(which python3) /usr/local/bin/python
 
 # Options:
 #   tensorflow
@@ -101,7 +95,7 @@ RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 #   tf-nightly-gpu
 ARG TF_PACKAGE=tensorflow
 RUN apt-get update && apt-get install -y curl libhdf5-dev wget
-RUN ${PIP} install --global-option=build_ext \
+RUN python3 -m pip install --no-cache-dir --global-option=build_ext \
             --global-option=-I/usr/include/hdf5/serial/ \
             --global-option=-L/usr/lib/powerpc64le-linux-gnu/hdf5/serial \
             h5py
@@ -117,11 +111,11 @@ RUN if [ ${TF_PACKAGE} = tensorflow-gpu ]; then \
     elif [ ${TF_PACKAGE} = tf-nightly ]; then \
         BASE=https://powerci.osuosl.org/job/TensorFlow_PPC64LE_CPU_Nightly_Artifact/lastSuccessfulBuild/; \
     fi; \
-    MAJOR=`${PYTHON} -c 'import sys; print(sys.version_info[0])'`; \
-    MINOR=`${PYTHON} -c 'import sys; print(sys.version_info[1])'`; \
+    MAJOR=`python3 -c 'import sys; print(sys.version_info[0])'`; \
+    MINOR=`python3 -c 'import sys; print(sys.version_info[1])'`; \
     PACKAGE=$(wget -qO- ${BASE}"api/xml?xpath=//fileName&wrapper=artifacts" | grep -o "[^<>]*cp${MAJOR}${MINOR}[^<>]*.whl"); \
     wget ${BASE}"artifact/tensorflow_pkg/"${PACKAGE}; \
-    ${PIP} install ${PACKAGE}
+    python3 -m pip install --no-cache-dir ${PACKAGE}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

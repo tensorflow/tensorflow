@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
@@ -39,7 +40,8 @@ class InferenceProfilerStage : public EvaluationStage {
   explicit InferenceProfilerStage(const EvaluationStageConfig& config)
       : EvaluationStage(config) {}
 
-  TfLiteStatus Init() override;
+  TfLiteStatus Init() override { return Init(nullptr); }
+  TfLiteStatus Init(const DelegateProviders* delegate_providers);
 
   // New Gaussian random data is used as input for each Run.
   TfLiteStatus Run() override;

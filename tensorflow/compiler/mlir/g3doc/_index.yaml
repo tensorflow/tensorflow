@@ -1,6 +1,7 @@
 book_path: /mlir/_book.yaml
 project_path: /mlir/_project.yaml
-description: <!--no description-->
+description: An intermediate representation and compiler framework, MLIR unifies the
+ infrastructure for high-performance ML models in TensorFlow.
 landing_page:
   custom_css_path: /site-assets/css/style.css
   rows:

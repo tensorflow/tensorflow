@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -27,9 +28,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-Status CreateImageBufferFromBuffer(const CLContext& context, cl_mem memory,
-                                   enum DataType data_type, int width,
-                                   cl_mem* result) {
+
+absl::Status CreateImageBufferFromBuffer(const CLContext& context,
+                                         cl_mem memory, DataType data_type,
+                                         int width, cl_mem* result) {
   cl_image_format format;
   cl_image_desc desc;
   std::memset(&desc, 0, sizeof(desc));
@@ -40,20 +42,21 @@ Status CreateImageBufferFromBuffer(const CLContext& context, cl_mem memory,
   format.image_channel_data_type = ToImageChannelType(data_type);
   format.image_channel_order = CL_RGBA;
 
-  cl_int error;
+  cl_int error_code;
   *result = clCreateImage(context.context(), CL_MEM_READ_WRITE, &format, &desc,
-                          nullptr, &error);
-  if (error != CL_SUCCESS) {
-    return UnknownError(
-        absl::StrCat("Failed to create Texture2D (clCreateImage)",
-                     CLErrorCodeToString(error)));
+                          nullptr, &error_code);
+  if (error_code != CL_SUCCESS) {
+    return absl::UnknownError(
+        absl::StrCat("Failed to create Image from Buffer (clCreateImage): ",
+                     CLErrorCodeToString(error_code)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateTensor(const CLContext& context, const CLDevice& device,
-                    const BHWDC& shape, const TensorDescriptor& descriptor,
-                    cl_mem memory, Tensor* result) {
+absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
+                          const BHWDC& shape,
+                          const TensorDescriptor& descriptor, cl_mem memory,
+                          Tensor* result) {
   const bool memory_owner = memory == nullptr;
   if (memory_owner) {
     CLMemory mem;
@@ -63,17 +66,34 @@ Status CreateTensor(const CLContext& context, const CLDevice& device,
   }
   if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
     cl_mem image_memory;
-    RETURN_IF_ERROR(
-        CreateImageBufferFromBuffer(context, memory, descriptor.data_type,
-                                    shape.b * shape.w * shape.h * shape.d *
-                                        IntegralDivideRoundUp(shape.c, 4),
-                                    &image_memory));
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.data_type,
+        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
+        &image_memory));
     *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
   } else {
     *result = Tensor(memory, memory_owner, shape, descriptor);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
+
+absl::Status CreateTensorShared(const CLContext& context, const BHWDC& shape,
+                                const TensorDescriptor& descriptor,
+                                cl_mem memory, Tensor* result) {
+  const bool memory_owner = false;
+  if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.data_type,
+        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
+        &image_memory));
+    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
+  } else {
+    *result = Tensor(memory, memory_owner, shape, descriptor);
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 Tensor::Tensor(cl_mem memory, bool memory_owner, const BHWC& shape,
@@ -115,6 +135,7 @@ Tensor::Tensor(Tensor&& tensor)
       shape_(tensor.shape_),
       descriptor_(tensor.descriptor_) {
   tensor.memory_ = nullptr;
+  tensor.image_buffer_memory_ = nullptr;
 }
 
 Tensor& Tensor::operator=(Tensor&& tensor) {
@@ -130,14 +151,74 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
 }
 
 void Tensor::Release() {
+  // image_buffer_memory_ always owned by object
   if (image_buffer_memory_) {
     clReleaseMemObject(image_buffer_memory_);
-    memory_ = nullptr;
+    image_buffer_memory_ = nullptr;
   }
   if (memory_owner_ && memory_) {
     clReleaseMemObject(memory_);
     memory_ = nullptr;
   }
+}
+
+absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                                     GPUResourcesWithValue* resources) const {
+  const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
+  if (buffer_desc) {
+    if (descriptor_.storage_type != TensorStorageType::BUFFER) {
+      return absl::InvalidArgumentError(
+          "Tensor can be used with BufferDescriptor only wtih "
+          "TensorStorageType::BUFFER.");
+    }
+    resources->buffers.push_back({"buffer", memory_});
+    return absl::OkStatus();
+  }
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(obj_ptr);
+  if (!tensor_desc) {
+    return absl::InvalidArgumentError("Expected TensorDescriptor on input.");
+  }
+  if (descriptor_.HasAxis(Axis::WIDTH)) {
+    resources->ints.push_back({"width", Width()});
+    resources->ints.push_back({"width_div2", Width() / 2});
+    resources->ints.push_back({"width_div4", Width() / 4});
+    resources->ints.push_back({"width_batched", Width() * Batch()});
+    resources->ints.push_back({"width_batched_div2", Width() * Batch() / 2});
+    resources->ints.push_back({"width_batched_div4", Width() * Batch() / 4});
+  }
+  if (descriptor_.HasAxis(Axis::HEIGHT)) {
+    resources->ints.push_back({"height", Height()});
+  }
+  if (descriptor_.HasAxis(Axis::CHANNELS)) {
+    resources->ints.push_back({"slices", Slices()});
+    resources->ints.push_back({"channels", Channels()});
+  }
+  if (descriptor_.HasAxis(Axis::BATCH)) {
+    resources->ints.push_back({"batch", Batch()});
+  }
+  if (descriptor_.HasAxis(Axis::DEPTH)) {
+    resources->ints.push_back({"depth", Depth()});
+  }
+
+  if (descriptor_.storage_type == TensorStorageType::BUFFER) {
+    resources->buffers.push_back({"buffer", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D ||
+             descriptor_.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+    resources->images2d.push_back({"image2d", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
+    resources->image2d_arrays.push_back({"image2d_array", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
+    resources->images3d.push_back({"image3d", memory_});
+  } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    if (obj_ptr->GetAccess() == AccessType::READ) {
+      resources->image_buffers.push_back(
+          {"image_buffer", image_buffer_memory_});
+    } else {
+      resources->buffers.push_back({"buffer", memory_});
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 int3 Tensor::GetFullTensorRegion() const {
@@ -156,41 +237,48 @@ int3 Tensor::GetFullTensorRegion() const {
   }
 }
 
-Status Tensor::IsValid(const BHWC& shape) const {
+absl::Status Tensor::IsValid(const BHWC& shape) const {
   if (shape.b != shape_.b) {
-    return InvalidArgumentError("Shape batch does not match tensor batch");
+    return absl::InvalidArgumentError(
+        "Shape batch does not match tensor batch");
   }
   if (shape.w != shape_.w) {
-    return InvalidArgumentError("Shape width does not match tensor width");
+    return absl::InvalidArgumentError(
+        "Shape width does not match tensor width");
   }
   if (shape.h != shape_.h) {
-    return InvalidArgumentError("Shape height does not match tensor height");
+    return absl::InvalidArgumentError(
+        "Shape height does not match tensor height");
   }
   if (shape.c != shape_.c) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Shape channels does not match tensor channels");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Tensor::IsValid(const BHWDC& shape) const {
+absl::Status Tensor::IsValid(const BHWDC& shape) const {
   if (shape.b != shape_.b) {
-    return InvalidArgumentError("Shape batch does not match tensor batch");
+    return absl::InvalidArgumentError(
+        "Shape batch does not match tensor batch");
   }
   if (shape.w != shape_.w) {
-    return InvalidArgumentError("Shape width does not match tensor width");
+    return absl::InvalidArgumentError(
+        "Shape width does not match tensor width");
   }
   if (shape.h != shape_.h) {
-    return InvalidArgumentError("Shape height does not match tensor height");
+    return absl::InvalidArgumentError(
+        "Shape height does not match tensor height");
   }
   if (shape.d != shape_.d) {
-    return InvalidArgumentError("Shape depth does not match tensor depth");
+    return absl::InvalidArgumentError(
+        "Shape depth does not match tensor depth");
   }
   if (shape.c != shape_.c) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Shape channels does not match tensor channels");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int Tensor::GetChannelsAlignment() const {
@@ -230,8 +318,8 @@ cl_mem Tensor::GetMemoryPtr() const {
 
 cl_mem Tensor::GetMemoryPtrForWriting() const { return memory_; }
 
-Status Tensor::WriteDataBHWDC(absl::Span<const float> in,
-                              CLCommandQueue* queue) {
+absl::Status Tensor::WriteDataBHWDC(absl::Span<const float> in,
+                                    CLCommandQueue* queue) {
   void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
@@ -263,24 +351,38 @@ Status Tensor::WriteDataBHWDC(absl::Span<const float> in,
           queue->EnqueueWriteImage(memory_, GetFullTensorRegion(), data_ptr));
       break;
     default:
-      return InternalError("Unsupported tensor storage type");
+      return absl::InternalError("Unsupported tensor storage type");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Tensor::WriteData(CLCommandQueue* queue, const TensorFloat32& src) {
+absl::Status Tensor::WriteData(CLCommandQueue* queue,
+                               const TensorFloat32& src) {
   RETURN_IF_ERROR(IsValid(src.shape));
   return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
 }
 
-Status Tensor::WriteData(CLCommandQueue* queue, const Tensor5DFloat32& src) {
+absl::Status Tensor::WriteData(
+    CLCommandQueue* queue,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
+  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+}
+
+absl::Status Tensor::WriteData(
+    CLCommandQueue* queue,
+    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
+  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+}
+
+absl::Status Tensor::WriteData(CLCommandQueue* queue,
+                               const Tensor5DFloat32& src) {
   RETURN_IF_ERROR(IsValid(src.shape));
   return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
 }
 
-Status Tensor::ReadDataBHWDC(absl::Span<float> out,
-                             CLCommandQueue* queue) const {
+absl::Status Tensor::ReadDataBHWDC(absl::Span<float> out,
+                                   CLCommandQueue* queue) const {
   void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
@@ -309,7 +411,7 @@ Status Tensor::ReadDataBHWDC(absl::Span<float> out,
           queue->EnqueueReadImage(memory_, GetFullTensorRegion(), data_ptr));
       break;
     default:
-      return InternalError("Unsupported tensor storage type");
+      return absl::InternalError("Unsupported tensor storage type");
   }
 
   if (descriptor_.data_type == DataType::FLOAT32) {
@@ -318,58 +420,61 @@ Status Tensor::ReadDataBHWDC(absl::Span<float> out,
     DataToBHWDC(absl::MakeConstSpan(data_h.data(), data_h.size()), out);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Tensor::ReadData(CLCommandQueue* queue, TensorFloat32* dst) const {
+absl::Status Tensor::ReadData(CLCommandQueue* queue, TensorFloat32* dst) const {
   RETURN_IF_ERROR(IsValid(dst->shape));
   return ReadDataBHWDC(absl::MakeSpan(dst->data), queue);
 }
 
-Status Tensor::ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const {
+absl::Status Tensor::ReadData(CLCommandQueue* queue,
+                              Tensor5DFloat32* dst) const {
   RETURN_IF_ERROR(IsValid(dst->shape));
   return ReadDataBHWDC(absl::MakeSpan(dst->data), queue);
 }
 
-Status CreateTensor(const CLContext& context, const CLDevice& device,
-                    const BHWC& shape, const TensorDescriptor& descriptor,
-                    Tensor* result) {
+absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
+                          const BHWC& shape, const TensorDescriptor& descriptor,
+                          Tensor* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
   return CreateTensor(context, device, shape5D, descriptor, nullptr, result);
 }
 
-Status CreateTensor(const CLContext& context, const CLDevice& device,
-                    const BHWDC& shape, const TensorDescriptor& descriptor,
-                    Tensor* result) {
+absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
+                          const BHWDC& shape,
+                          const TensorDescriptor& descriptor, Tensor* result) {
   return CreateTensor(context, device, shape, descriptor, nullptr, result);
 }
 
-Status CreateSharedTensor(const CLContext& context, const CLDevice& device,
-                          cl_mem memory, const BHWC& shape,
-                          const TensorDescriptor& descriptor, Tensor* result) {
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
+                                const BHWC& shape,
+                                const TensorDescriptor& descriptor,
+                                Tensor* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return CreateTensor(context, device, shape5D, descriptor, memory, result);
+  return CreateTensorShared(context, shape5D, descriptor, memory, result);
 }
 
-Status CreateSharedTensor(const CLContext& context, const CLDevice& device,
-                          cl_mem memory, const BHWDC& shape,
-                          const TensorDescriptor& descriptor, Tensor* result) {
-  return CreateTensor(context, device, shape, descriptor, memory, result);
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
+                                const BHWDC& shape,
+                                const TensorDescriptor& descriptor,
+                                Tensor* result) {
+  return CreateTensorShared(context, shape, descriptor, memory, result);
 }
 
-Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
-                            const BHWC& shape,
-                            const TensorDescriptor& descriptor,
-                            CLMemory* result) {
+absl::Status AllocateTensorMemory(const CLContext& context,
+                                  const CLDevice& device, const BHWC& shape,
+                                  const TensorDescriptor& descriptor,
+                                  CLMemory* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
   return AllocateTensorMemory(context, device, shape5D, descriptor, result);
 }
 
-Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
-                            const BHWDC& shape,
-                            const TensorDescriptor& descriptor,
-                            CLMemory* result) {
-  const int slices = IntegralDivideRoundUp(shape.c, 4);
+absl::Status AllocateTensorMemory(const CLContext& context,
+                                  const CLDevice& device, const BHWDC& shape,
+                                  const TensorDescriptor& descriptor,
+                                  CLMemory* result) {
+  const int slices = DivideRoundUp(shape.c, 4);
   switch (descriptor.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {
@@ -379,12 +484,12 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       cl_mem memory = clCreateBuffer(context.context(), CL_MEM_READ_WRITE,
                                      data_size, nullptr, &error_code);
       if (!memory) {
-        return UnknownError(
-            absl::StrCat("Failed to allocate device memory with clCreateBuffer",
+        return absl::UnknownError(
+            absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
                          CLErrorCodeToString(error_code)));
       }
       *result = CLMemory(memory, true);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case TensorStorageType::TEXTURE_2D: {
       cl_image_desc desc;
@@ -406,13 +511,13 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       cl_mem memory = CreateImage2DLegacy(context.context(), CL_MEM_READ_WRITE,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
-        return UnknownError(
-            absl::StrCat("Failed to create Texture2D (clCreateImage)",
+        return absl::UnknownError(
+            absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
       *result = CLMemory(memory, true);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case TensorStorageType::TEXTURE_3D: {
       cl_image_desc desc;
@@ -434,13 +539,13 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       cl_mem memory = CreateImage3DLegacy(context.context(), CL_MEM_READ_WRITE,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
-        return UnknownError(
-            absl::StrCat("Failed to create Texture3D (clCreateImage)",
+        return absl::UnknownError(
+            absl::StrCat("Failed to create 3D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
       *result = CLMemory(memory, true);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case TensorStorageType::TEXTURE_ARRAY: {
       cl_image_desc desc;
@@ -463,19 +568,19 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       cl_mem memory = clCreateImage(context.context(), CL_MEM_READ_WRITE,
                                     &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
-        return UnknownError(
-            absl::StrCat("Failed to create TextureArray (clCreateImage)",
+        return absl::UnknownError(
+            absl::StrCat("Failed to create 2D texture array (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
       *result = CLMemory(memory, true);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     case TensorStorageType::SINGLE_TEXTURE_2D: {
       if (slices != 1) {
-        return InvalidArgumentError(absl::StrCat(
-            "SINGLE_TEXTURE_2D support only cnannels in range [1-4], but ",
+        return absl::InvalidArgumentError(absl::StrCat(
+            "SINGLE_TEXTURE_2D support only channels in range [1-4], but ",
             shape.c, "was provided"));
       }
       cl_image_desc desc;
@@ -495,7 +600,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
         format.image_channel_data_type =
             ToImageChannelType(descriptor.data_type);
       } else {
-        return InvalidArgumentError(absl::StrCat(
+        return absl::InvalidArgumentError(absl::StrCat(
             "This device doesn't support ", shape.c, "-channel textures."));
       }
 
@@ -503,17 +608,17 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       cl_mem memory = CreateImage2DLegacy(context.context(), CL_MEM_READ_WRITE,
                                           &format, &desc, nullptr, &error_code);
       if (error_code != CL_SUCCESS) {
-        return UnknownError(
-            absl::StrCat("Failed to create Texture2D (clCreateImage)",
+        return absl::UnknownError(
+            absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                          CLErrorCodeToString(error_code)));
       }
 
       *result = CLMemory(memory, true);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     default:
-      return InternalError("Unsupported tensor storage type");
+      return absl::InternalError("Unsupported tensor storage type");
   }
 }
 

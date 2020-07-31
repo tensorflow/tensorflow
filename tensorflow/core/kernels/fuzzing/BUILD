@@ -17,8 +17,6 @@ cc_library(
     ],
 )
 
-tf_ops_fuzz_target_lib("identity")
-
 tf_ops_fuzz_target_lib("string_to_number")
 
 tf_oss_fuzz_corpus("string_to_number")

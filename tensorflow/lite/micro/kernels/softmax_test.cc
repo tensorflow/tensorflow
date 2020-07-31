@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -36,16 +36,16 @@ void TestSoftmaxFloat(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX, 1);
+      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSoftmaxParams builtin_data = {1.0f};
@@ -59,18 +59,14 @@ void TestSoftmaxFloat(std::initializer_list<int> input_dims_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -100,18 +96,16 @@ void TestSoftmaxQuantized(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_dims, input_min, input_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX, 1);
+      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSoftmaxParams builtin_data = {1.0f};
@@ -126,18 +120,14 @@ void TestSoftmaxQuantized(std::initializer_list<int> input_dims_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -166,18 +156,16 @@ void TestSoftmaxQuantizedSigned(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_dims, input_min, input_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX, 1);
+      resolver.FindOp(tflite::BuiltinOperator_SOFTMAX);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteSoftmaxParams builtin_data = {1.0f};
@@ -192,18 +180,14 @@ void TestSoftmaxQuantizedSigned(
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -390,6 +374,156 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedSigned2D) {
           F2QS(0.636408647, output_min, output_max),
       },
       {2, 2, 5},               // Output shape.
+      output_min, output_max,  // Output quantized range.
+      output_data);
+}
+
+TF_LITE_MICRO_TEST(SimpleTestQuantizedSigned3D) {
+  using tflite::testing::F2QS;
+
+  const float input_min = -63.5f;
+  const float input_max = 64.0f;
+  const float output_min = 0.0f;
+  const float output_max = (255.0f / 256.0f);
+  const int output_dims_count = 60;
+  int8_t output_data[output_dims_count];
+  tflite::testing::TestSoftmaxQuantizedSigned(  //
+      {3, 3, 4, 5},                             // Input shape.
+      {                                         // n = 0
+       // c = 0
+       // h = 0
+       F2QS(3.00, input_min, input_max), F2QS(6.00, input_min, input_max),
+       F2QS(-5.00, input_min, input_max), F2QS(4.00, input_min, input_max),
+       F2QS(-9.00, input_min, input_max),
+       // h = 1
+       F2QS(-10.00, input_min, input_max), F2QS(-10.00, input_min, input_max),
+       F2QS(-8.00, input_min, input_max), F2QS(2.00, input_min, input_max),
+       F2QS(2.00, input_min, input_max),
+       // h = 2
+       F2QS(8.00, input_min, input_max), F2QS(-5.00, input_min, input_max),
+       F2QS(-8.00, input_min, input_max), F2QS(5.00, input_min, input_max),
+       F2QS(-6.00, input_min, input_max),
+       // h = 3
+       F2QS(-8.00, input_min, input_max), F2QS(6.00, input_min, input_max),
+       F2QS(1.00, input_min, input_max), F2QS(-10.00, input_min, input_max),
+       F2QS(-8.00, input_min, input_max),
+
+       // c = 1
+       // h = 0
+       F2QS(7.00, input_min, input_max), F2QS(6.00, input_min, input_max),
+       F2QS(-10.00, input_min, input_max), F2QS(-4.00, input_min, input_max),
+       F2QS(-5.00, input_min, input_max),
+       // h = 1
+       F2QS(2.00, input_min, input_max), F2QS(7.00, input_min, input_max),
+       F2QS(9.00, input_min, input_max), F2QS(-9.00, input_min, input_max),
+       F2QS(7.00, input_min, input_max),
+       // h = 2
+       F2QS(-4.00, input_min, input_max), F2QS(-2.00, input_min, input_max),
+       F2QS(8.00, input_min, input_max), F2QS(2.00, input_min, input_max),
+       F2QS(2.00, input_min, input_max),
+       // h = 3
+       F2QS(3.00, input_min, input_max), F2QS(6.00, input_min, input_max),
+       F2QS(6.00, input_min, input_max), F2QS(2.00, input_min, input_max),
+       F2QS(4.00, input_min, input_max),
+
+       // c = 2
+       // h = 0
+       F2QS(9.00, input_min, input_max), F2QS(7.00, input_min, input_max),
+       F2QS(-7.00, input_min, input_max), F2QS(0.00, input_min, input_max),
+       F2QS(4.00, input_min, input_max),
+       // h = 1
+       F2QS(-3.00, input_min, input_max), F2QS(8.00, input_min, input_max),
+       F2QS(8.00, input_min, input_max), F2QS(-3.00, input_min, input_max),
+       F2QS(-4.00, input_min, input_max),
+       // h = 2
+       F2QS(-9.00, input_min, input_max), F2QS(-9.00, input_min, input_max),
+       F2QS(4.00, input_min, input_max), F2QS(-8.00, input_min, input_max),
+       F2QS(-1.00, input_min, input_max),
+       // h = 3
+       F2QS(-10.00, input_min, input_max), F2QS(-2.00, input_min, input_max),
+       F2QS(6.00, input_min, input_max), F2QS(-7.00, input_min, input_max),
+       F2QS(0.00, input_min, input_max)},
+      input_min, input_max,  // Input quantized range.
+      {                      // Expected results.
+       // n = 0
+       // c = 0
+       // h = 0
+       F2QS(0.042009463, output_min, output_max),
+       F2QS(0.843782625, output_min, output_max),
+       F2QS(0.000014093, output_min, output_max),
+       F2QS(0.114193561, output_min, output_max),
+       F2QS(0.000000258, output_min, output_max),
+       // h = 1
+       F2QS(0.000003072, output_min, output_max),
+       F2QS(0.000003072, output_min, output_max),
+       F2QS(0.000022699, output_min, output_max),
+       F2QS(0.499985578, output_min, output_max),
+       F2QS(0.499985578, output_min, output_max),
+       // h = 2
+       F2QS(0.952571219, output_min, output_max),
+       F2QS(0.000002153, output_min, output_max),
+       F2QS(0.000000107, output_min, output_max),
+       F2QS(0.047425728, output_min, output_max),
+       F2QS(0.000000792, output_min, output_max),
+       // h = 3
+       F2QS(0.000000826, output_min, output_max),
+       F2QS(0.993305397, output_min, output_max),
+       F2QS(0.006692839, output_min, output_max),
+       F2QS(0.000000112, output_min, output_max),
+       F2QS(0.000000826, output_min, output_max),
+
+       // c = 1
+       // h = 0
+       F2QS(0.731046347, output_min, output_max),
+       F2QS(0.268936922, output_min, output_max),
+       F2QS(0.000000030, output_min, output_max),
+       F2QS(0.000012210, output_min, output_max),
+       F2QS(0.000004492, output_min, output_max),
+       // h = 1
+       F2QS(0.000717124, output_min, output_max),
+       F2QS(0.106430599, output_min, output_max),
+       F2QS(0.786421666, output_min, output_max),
+       F2QS(0.000000012, output_min, output_max),
+       F2QS(0.106430599, output_min, output_max),
+       // h = 2
+       F2QS(0.000006114, output_min, output_max),
+       F2QS(0.000045174, output_min, output_max),
+       F2QS(0.995015917, output_min, output_max),
+       F2QS(0.002466398, output_min, output_max),
+       F2QS(0.002466398, output_min, output_max),
+       // h = 3
+       F2QS(0.022595176, output_min, output_max),
+       F2QS(0.453836234, output_min, output_max),
+       F2QS(0.453836234, output_min, output_max),
+       F2QS(0.008312301, output_min, output_max),
+       F2QS(0.061420055, output_min, output_max),
+
+       // c = 2
+       // h = 0
+       F2QS(0.875505904, output_min, output_max),
+       F2QS(0.118486839, output_min, output_max),
+       F2QS(0.000000099, output_min, output_max),
+       F2QS(0.000108046, output_min, output_max),
+       F2QS(0.005899112, output_min, output_max),
+       // h = 1
+       F2QS(0.000008351, output_min, output_max),
+       F2QS(0.499990113, output_min, output_max),
+       F2QS(0.499990113, output_min, output_max),
+       F2QS(0.000008351, output_min, output_max),
+       F2QS(0.000003072, output_min, output_max),
+       // h = 2
+       F2QS(0.000002245, output_min, output_max),
+       F2QS(0.000002245, output_min, output_max),
+       F2QS(0.993296627, output_min, output_max),
+       F2QS(0.000006103, output_min, output_max),
+       F2QS(0.006692780, output_min, output_max),
+       // h = 3
+       F2QS(0.000000112, output_min, output_max),
+       F2QS(0.000334520, output_min, output_max),
+       F2QS(0.997191323, output_min, output_max),
+       F2QS(0.000002254, output_min, output_max),
+       F2QS(0.002471790, output_min, output_max)},
+      {3, 3, 4, 5},            // Output shape.
       output_min, output_max,  // Output quantized range.
       output_data);
 }

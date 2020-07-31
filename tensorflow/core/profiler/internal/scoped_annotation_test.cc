@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/annotation_stack.h"
 
 namespace tensorflow {
@@ -48,11 +49,13 @@ TEST(ScopedAnnotation, Simple) {
   EXPECT_EQ(AnnotationStack::Get(), "");  // not enabled
 }
 
-string GenerateRandomString(int length) { return string(length, 'a'); }
+std::string GenerateRandomString(int length) {
+  return std::string(length, 'a');
+}
 
 void BM_ScopedAnnotationDisabled(int iters, int annotation_size) {
   testing::StopTiming();
-  string annotation = GenerateRandomString(annotation_size);
+  std::string annotation = GenerateRandomString(annotation_size);
   testing::StartTiming();
   for (int i = 0; i < iters; i++) {
     ScopedAnnotation trace(annotation);
@@ -64,7 +67,7 @@ BENCHMARK(BM_ScopedAnnotationDisabled)->Arg(8)->Arg(32)->Arg(128);
 
 void BM_ScopedAnnotationEnabled(int iters, int annotation_size) {
   testing::StopTiming();
-  string annotation = GenerateRandomString(annotation_size);
+  std::string annotation = GenerateRandomString(annotation_size);
   AnnotationStack::Enable(true);
   testing::StartTiming();
   for (int i = 0; i < iters; i++) {
@@ -78,7 +81,7 @@ BENCHMARK(BM_ScopedAnnotationEnabled)->Arg(8)->Arg(32)->Arg(128);
 
 void BM_ScopedAnnotationEnabled_Nested(int iters, int annotation_size) {
   testing::StopTiming();
-  string annotation = GenerateRandomString(annotation_size);
+  std::string annotation = GenerateRandomString(annotation_size);
   AnnotationStack::Enable(true);
   testing::StartTiming();
   for (int i = 0; i < iters; i++) {

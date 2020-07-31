@@ -31,8 +31,8 @@ namespace toco {
 namespace {
 
 bool IsTrivialMinMax(GraphTransformation* transformation, const Model& model,
-                     OperatorType op_type, const string& input_array_name,
-                     const string& clamp_value_array_name) {
+                     OperatorType op_type, const std::string& input_array_name,
+                     const std::string& clamp_value_array_name) {
   const auto& clamp_value_array = model.GetArray(clamp_value_array_name);
   if (!IsConstantParameterArray(model, clamp_value_array_name)) {
     transformation->AddMessageF("Clip value array %s is non-constant",

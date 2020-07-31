@@ -20,19 +20,19 @@ limitations under the License.
 #include <set>
 
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Interfaces/CallInterfaces.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -41,8 +41,8 @@ namespace mlir {
 namespace tf_saved_model {
 namespace {
 struct OptimizeGlobalTensorsPass
-    : public ModulePass<OptimizeGlobalTensorsPass> {
-  void runOnModule() override;
+    : public PassWrapper<OptimizeGlobalTensorsPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // A global tensor is bound to arguments of multiple funcs.
@@ -56,21 +56,20 @@ struct GlobalTensorUse {
 using GlobalTensorUsesMap =
     std::map<GlobalTensorOp, std::vector<GlobalTensorUse>>;
 
-static bool IsResourceType(Type type) {
+bool IsResourceType(Type type) {
   if (auto tensor_type = type.dyn_cast<TensorType>()) {
     return tensor_type.getElementType().isa<TF::ResourceType>();
   }
   return false;
 }
 
-static bool IsResource(Value value) { return IsResourceType(value.getType()); }
+bool IsResource(Value value) { return IsResourceType(value.getType()); }
 
 class ResourceAnalyzer {
  public:
   explicit ResourceAnalyzer(ModuleOp module) {
-    SymbolTable symbol_table(module);
     for (auto func : module.getOps<FuncOp>()) {
-      AnalyzeFunc(func, symbol_table);
+      AnalyzeFunc(func);
     }
   }
 
@@ -89,14 +88,14 @@ class ResourceAnalyzer {
   // written". Do this recursively across the chain of funcs via call or control
   // flow ops.
   // TODO(ashwinm): Move to iterative traversal.
-  LogicalResult AnalyzeFunc(FuncOp func, const SymbolTable& symbol_table) {
+  LogicalResult AnalyzeFunc(FuncOp func) {
     // Avoid infinite recursion.
     if (!discovered_.insert(func).second) {
       return success();
     }
 
     func.walk([&](Operation* op) {
-      if (isa<TF::ReadVariableOp>(op) || isa<ReturnOp>(op)) {
+      if (isa<TF::ReadVariableOp, ReturnOp>(op)) {
         return;
       }
       if (auto assign_variable = dyn_cast<TF::AssignVariableOp>(op)) {
@@ -104,24 +103,20 @@ class ResourceAnalyzer {
         return;
       }
       if (auto call = dyn_cast<CallOpInterface>(op)) {
-        if (auto sym = op->getAttrOfType<SymbolRefAttr>("f")) {
-          PropagatePotentiallyWrittenUpFromCallee(
-              sym.cast<FlatSymbolRefAttr>().getValue(), call.getArgOperands(),
-              symbol_table);
+        if (auto func = dyn_cast<FuncOp>(call.resolveCallable())) {
+          PropagatePotentiallyWrittenUpFromCallee(func, call.getArgOperands());
         }
         return;
       }
       if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-        for (auto callee : {if_op.then_branch(), if_op.else_branch()}) {
-          PropagatePotentiallyWrittenUpFromCallee(callee, if_op.input(),
-                                                  symbol_table);
+        for (auto callee : {if_op.then_func(), if_op.else_func()}) {
+          PropagatePotentiallyWrittenUpFromCallee(callee, if_op.input());
         }
         return;
       }
       if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-        for (auto callee : {while_op.cond(), while_op.body()}) {
-          PropagatePotentiallyWrittenUpFromCallee(callee, while_op.input(),
-                                                  symbol_table);
+        for (auto callee : {while_op.cond_func(), while_op.body_func()}) {
+          PropagatePotentiallyWrittenUpFromCallee(callee, while_op.input());
         }
         return;
       }
@@ -129,41 +124,33 @@ class ResourceAnalyzer {
       // this errs on the side of being conservative. We should improve
       // this by using either a property or a trait that clearly
       // identifies ops with resource mutating behavior.
-      if (PropagatePotentiallyWrittenWithinUnhandledOp(op)) {
-        return;
-      }
+      PropagatePotentiallyWrittenWithinUnhandledOp(op);
     });
     return success();
   }
 
   // If an op is not one of the handled ones, we assume all resource usages
   // within its purview are mutating in nature.
-  bool PropagatePotentiallyWrittenWithinUnhandledOp(Operation* op) {
+  void PropagatePotentiallyWrittenWithinUnhandledOp(Operation* op) {
     for (auto operand : op->getOperands()) {
       if (IsResource(operand)) {
         SetPotentiallyWritten(operand);
-        return true;
       }
     }
-    bool uses_resources = false;
     visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
       if (IsResource(operand->get())) {
         SetPotentiallyWritten(operand->get());
-        uses_resources = true;
       }
     });
-    return uses_resources;
   }
 
-  // Given a funcOp associated with the callee and operands from the
+  // Given a FuncOp associated with the callee and operands from the
   // corresponding callOp, propagate the potentially written decision to the
   // callOp's operands, if the corresponding func's arguments are potentially
   // written resources.
   void PropagatePotentiallyWrittenUpFromCallee(
-      StringRef callee, Operation::operand_range propagate_to,
-      const SymbolTable& symbol_table) {
-    auto func = symbol_table.lookup<FuncOp>(callee);
-    AnalyzeFunc(func, symbol_table);
+      FuncOp func, Operation::operand_range propagate_to) {
+    AnalyzeFunc(func);
     for (auto t : llvm::zip(func.getArguments(), propagate_to)) {
       if (!IsResource(std::get<0>(t))) {
         continue;
@@ -212,7 +199,7 @@ bool IsImmutable(GlobalTensorOp global_tensor,
   return true;
 }
 
-static GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
+GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
   GlobalTensorUsesMap global_tensor_uses;
 
   SymbolTable symbol_table(module);
@@ -276,8 +263,12 @@ void EraseUnusedBoundInputs(ModuleOp module) {
   }
 }
 
-void OptimizeGlobalTensorsPass::runOnModule() {
-  auto module = getModule();
+void OptimizeGlobalTensorsPass::runOnOperation() {
+  auto module = getOperation();
+  if (!tf_saved_model::HasTfSavedModelSemantics(module)) {
+    return;
+  }
+
   EraseUnusedBoundInputs(module);
 
   ResourceAnalyzer resource_analyzer(module);
@@ -289,14 +280,14 @@ void OptimizeGlobalTensorsPass::runOnModule() {
   EraseUnusedGlobalTensors(module, global_tensor_uses);
 }
 
-}  // namespace
-
 // For "opt" to pick up this pass.
-static PassRegistration<OptimizeGlobalTensorsPass> pass(
+PassRegistration<OptimizeGlobalTensorsPass> pass(
     "tf-saved-model-optimize-global-tensors",
     "Optimize tf_saved_model.global_tensor's.");
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass() {
+}  // namespace
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass() {
   return std::make_unique<OptimizeGlobalTensorsPass>();
 }
 

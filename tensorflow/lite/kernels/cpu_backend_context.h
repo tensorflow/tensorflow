@@ -19,7 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "public/gemmlowp.h"
-#include "tensorflow/lite/experimental/ruy/context.h"
+#include "ruy/context.h"  // from @ruy
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 
 namespace tflite {
@@ -43,6 +44,10 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
 
   int max_num_threads() const { return max_num_threads_; }
 
+  void SetUseCaching(bool flag);
+
+  bool use_caching() const { return use_caching_; }
+
   void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
 
  private:
@@ -55,7 +60,7 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   const std::unique_ptr<ruy::Context> ruy_context_;
   const std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context_;
 
-  // The maxinum of threads used for parallelizing TfLite ops. However,
+  // The maximum of threads used for parallelizing TfLite ops. However,
   // cpu_backend_threadpool::Execute creates as many threads as it's
   // asked to, regardless of this. Typically a call site would query
   // cpu_backend_context->max_num_threads() and used that to determine
@@ -65,6 +70,12 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   // This value also gets propagated to back-ends, where it plays the same
   // information-only role.
   int max_num_threads_;
+  // For matrix muliplications with constants parameters (i.e. weights), we can
+  // sometimes provide speedups by caching the "prepacked" data, for some
+  // additional memory cost. This flag permits the user to route all
+  // CpuBackendGem operations to a library that permits such an optimization
+  // (currently the Ruy library only).
+  bool use_caching_;
 
   CpuBackendContext(const CpuBackendContext&) = delete;
 };

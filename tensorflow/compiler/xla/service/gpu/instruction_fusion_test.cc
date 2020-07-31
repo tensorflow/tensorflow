@@ -109,21 +109,23 @@ TEST_F(InstructionFusionTest,
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
-TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotUnfused) {
+TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotFused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
+      0, ShapeUtil::MakeShape(F32, {1, 1}), "0"));
   auto dot1 = builder.AddInstruction(
-      CreateCanonicalDot(ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
+      CreateCanonicalDot(ShapeUtil::MakeShape(F32, {1, 1}), param0, param0));
   auto reshape2 = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(S32, {1, 1, 1}), dot1));
+      ShapeUtil::MakeShape(F32, {1, 1, 1}), dot1));
+  auto log = builder.AddInstruction(HloInstruction::CreateUnary(
+      reshape2->shape(), xla::HloOpcode::kLog, reshape2));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  EXPECT_EQ(reshape2, computation->root_instruction());
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
+  EXPECT_EQ(log, computation->root_instruction());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
 }
 
 TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {

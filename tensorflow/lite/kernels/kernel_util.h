@@ -15,52 +15,55 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_
 
-#include <algorithm>
+#include <stdint.h>
+
 #include <limits>
 
-#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
+// A fair number of functions in this header have historically been inline.
+// It is ok to change functions to not be inline if the latency with
+// benchmark_model for MobileNet + MobileBERT is unaffected. If such a change is
+// made, move the newly non-inlined function declarations to the top of this
+// header file.
+const TfLiteTensor* GetInput(const TfLiteContext* context,
+                             const TfLiteNode* node, int index);
+
+// Note: You must check if result is not null:
+// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
+// TF_LITE_ENSURE(context, my_tensor != nullptr);
+TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
+                               int index);
+
+TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
+                        int index);
+
+const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
+                                           const TfLiteNode* node, int index);
+
 inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
-inline const TfLiteTensor* GetInput(TfLiteContext* context,
-                                    const TfLiteNode* node, int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
-}
-// Note: You must check if result is not null:
-// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
-// TF_LITE_ENSURE(context, my_tensor != nullptr);
-inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
-                                      const TfLiteNode* node, int index) {
-  TfLiteTensor* tensor =
-      &context->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
-  return (tensor->is_variable) ? tensor : nullptr;
-}
-inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
-                               int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->outputs->data[index])];
-}
+
+#ifndef TF_LITE_STATIC_MEMORY
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
                                   const TfLiteNode* node, int index) {
-  return &context->tensors[flatbuffers::EndianScalar(
-      node->temporaries->data[index])];
+  return &context->tensors[node->temporaries->data[index]];
 }
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             const TfLiteNode* node, int index) {
   return &context->tensors[node->intermediates->data[index]];
 }
-inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
-inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 inline int NumIntermediates(const TfLiteNode* node) {
   return node->intermediates->size;
 }
+#endif  // TF_LITE_STATIC_MEMORY
+inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
+inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 
 inline int64_t NumElements(const TfLiteIntArray* dims) {
   int64_t count = 1;
@@ -74,19 +77,11 @@ inline int64_t NumElements(const TfLiteTensor* t) {
   return NumElements(t->dims);
 }
 
-inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
-                                                  const TfLiteNode* node,
-                                                  int index) {
-  const bool use_tensor = index < node->inputs->size &&
-                          node->inputs->data[index] != kTfLiteOptionalTensor;
-  if (use_tensor) {
-    return &context
-                ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
-  }
-  return nullptr;
-}
-
 // Determines whether tensor is constant.
+// TODO(b/138199592): Introduce new query which checks for constant OR
+// persistent-read-only, which would be useful for most tensor kernels that
+// are potentially dynamic based on the input tensor value availability at the
+// time of prepare.
 inline bool IsConstantTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteMmapRo;
 }
@@ -101,6 +96,14 @@ inline bool IsDynamicTensor(const TfLiteTensor* tensor) {
 inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
     tensor->allocation_type = kTfLiteDynamic;
+    tensor->data.raw = nullptr;
+  }
+}
+
+// Sets tensor to persistent and read-only.
+inline void SetTensorToPersistentRo(TfLiteTensor* tensor) {
+  if (tensor->allocation_type != kTfLitePersistentRo) {
+    tensor->allocation_type = kTfLitePersistentRo;
     tensor->data.raw = nullptr;
   }
 }
@@ -162,7 +165,7 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *activation_min = 0;
     *activation_max = 6;
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *activation_min = -1;
     *activation_max = 1;
   } else {

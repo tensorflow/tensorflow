@@ -27,8 +27,8 @@ class ScopedAllocatorInstance;
 // Manages a single backing tensor and a collection of aliases.
 class ScopedAllocator {
  public:
-  static const int32 kInvalidId = 0;
-  static const size_t kMaxAlignment = 64;
+  static constexpr int32 kInvalidId = 0;
+  static constexpr size_t kMaxAlignment = 64;
 
   // A subrange of the TensorBuffer associated with this object that
   // will be the backing memory for one aliased tensor.
@@ -39,7 +39,7 @@ class ScopedAllocator {
     size_t bytes_allocated;
   };
   // Field index that refers to backing tensor, not any aliased field.
-  static const int32 kBackingIndex = -1;
+  static constexpr int32 kBackingIndex = -1;
 
   // backing_tensor is expected to be newly allocated by a ScopedAllocatorOp
   // instance.  It must be large enough to back all of the specified

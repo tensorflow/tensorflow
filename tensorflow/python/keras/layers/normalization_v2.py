@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -76,8 +76,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
     gamma_regularizer: Optional regularizer for the gamma weight.
     beta_constraint: Optional constraint for the beta weight.
     gamma_constraint: Optional constraint for the gamma weight.
-    renorm: Whether to use Batch Renormalization
-      (https://arxiv.org/abs/1702.03275). This adds extra variables during
+    renorm: Whether to use [Batch Renormalization](
+      https://arxiv.org/abs/1702.03275). This adds extra variables during
       training. The inference is the same for either value of this parameter.
     renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
       scalar `Tensors` used to clip the renorm correction. The correction
@@ -158,7 +158,7 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
 
   def _calculate_mean_and_var(self, x, axes, keep_dims):
 
-    with ops.name_scope('moments', values=[x, axes]):
+    with backend.name_scope('moments'):
       # The dynamic range of fp16 is too limited to support the collection of
       # sufficient statistics. As a workaround we simply perform the operations
       # on 32-bit floats before converting the mean and variance back to fp16
@@ -208,9 +208,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
 class BatchNormalization(normalization.BatchNormalizationBase):
 
   __doc__ = normalization.replace_in_base_docstring([
-      ('{{TRAINABLE_ATTRIBUTE_NOTE}}',
-       '''
-  **About setting `layer.trainable = False` on a `BatchNormalization layer:**
+      ('{{TRAINABLE_ATTRIBUTE_NOTE}}', '''
+  **About setting `layer.trainable = False` on a `BatchNormalization` layer:**
 
   The meaning of setting `layer.trainable = False` is to freeze the layer,
   i.e. its internal state will not change during training:
@@ -242,6 +241,7 @@ class BatchNormalization(normalization.BatchNormalizationBase):
       attribute is changed after calling `compile()` on a model,
       the new value doesn't take effect for this model
       until `compile()` is called again.
-      ''')])
+      ''')
+  ])
 
   _USE_V2_BEHAVIOR = True

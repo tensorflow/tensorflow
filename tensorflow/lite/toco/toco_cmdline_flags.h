@@ -25,7 +25,8 @@ namespace toco {
 // Parse and remove arguments handled from toco. Returns true if parsing
 // is successful. msg has the usage string if there was an error or
 // "--help" was specified
-bool ParseTocoFlagsFromCommandLineFlags(int* argc, char* argv[], string* msg,
+bool ParseTocoFlagsFromCommandLineFlags(int* argc, char* argv[],
+                                        std::string* msg,
                                         ParsedTocoFlags* parsed_toco_flags_ptr);
 // Populate the TocoFlags proto with parsed_toco_flags data.
 void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,

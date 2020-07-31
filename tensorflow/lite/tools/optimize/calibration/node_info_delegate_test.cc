@@ -92,7 +92,7 @@ TEST(NodeInfoDelegateTest, ObserverErrorCausesModifyGraphFailure) {
   TfLiteDelegate delegate = CreateNodeInfoDelegate(&params);
 
   auto status = interpreter->ModifyGraphWithDelegate(&delegate);
-  EXPECT_EQ(kTfLiteError, status);
+  EXPECT_EQ(kTfLiteDelegateError, status);
 }
 
 TEST(NodeInfoDelegateTest, NodeInfoDelegateObserver) {

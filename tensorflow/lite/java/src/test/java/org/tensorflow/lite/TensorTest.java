@@ -46,6 +46,9 @@ public final class TensorTest {
   private static final String LONG_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/int64.bin";
 
+  private static final String STRING_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/string.bin";
+
   private static final String QUANTIZED_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/quantized.bin";
 
@@ -108,6 +111,20 @@ public final class TensorTest {
   public void testCopyToByteBuffer() {
     ByteBuffer parsedOutput =
         ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
+    tensor.copyTo(parsedOutput);
+    assertThat(parsedOutput.position()).isEqualTo(2 * 8 * 8 * 3 * 4);
+    float[] outputOneD = {
+      parsedOutput.getFloat(0), parsedOutput.getFloat(4), parsedOutput.getFloat(8)
+    };
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
+  public void testCopyToLargerByteBuffer() {
+    // Allocate a ByteBuffer that is larger than the Tensor, and ensure we can copy to it.
+    ByteBuffer parsedOutput =
+        ByteBuffer.allocateDirect(10 * 2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
     tensor.copyTo(parsedOutput);
     assertThat(parsedOutput.position()).isEqualTo(2 * 8 * 8 * 3 * 4);
     float[] outputOneD = {
@@ -203,8 +220,8 @@ public final class TensorTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "Cannot copy between a TensorFlowLite tensor with shape [2, 8, 8, 3] "
-                  + "and a Java object with shape [1, 8, 8, 3].");
+              "Cannot copy from a TensorFlowLite tensor (output) with shape [2, 8, 8, 3] "
+                  + "to a Java object with shape [1, 8, 8, 3].");
     }
   }
 
@@ -242,6 +259,22 @@ public final class TensorTest {
     tensor.setTo(inputFloatBuffer);
     tensor.copyTo(output);
     assertThat(output[0][0][0][0]).isEqualTo(5.0f);
+
+    // Assign from scalar float.
+    wrapper.resizeInput(0, new int[0]);
+    wrapper.allocateTensors();
+    float scalar = 5.0f;
+    tensor.setTo(scalar);
+    FloatBuffer outputScalar = FloatBuffer.allocate(1);
+    tensor.copyTo(outputScalar);
+    assertThat(outputScalar.get(0)).isEqualTo(5.0f);
+
+    // Assign from boxed scalar Float.
+    Float boxedScalar = 9.0f;
+    tensor.setTo(boxedScalar);
+    outputScalar = FloatBuffer.allocate(1);
+    tensor.copyTo(outputScalar);
+    assertThat(outputScalar.get(0)).isEqualTo(9.0f);
   }
 
   @Test
@@ -374,32 +407,38 @@ public final class TensorTest {
     float[][][][] differentShapeInput = new float[1][8][8][3];
     assertThat(tensor.getInputShapeIfDifferent(differentShapeInput))
         .isEqualTo(new int[] {1, 8, 8, 3});
+
+    Float differentShapeInputScalar = 5.0f;
+    assertThat(tensor.getInputShapeIfDifferent(differentShapeInputScalar)).isEqualTo(new int[] {});
   }
 
   @Test
   public void testDataTypeOf() {
     float[] testEmptyArray = {};
-    DataType dataType = Tensor.dataTypeOf(testEmptyArray);
+    DataType dataType = tensor.dataTypeOf(testEmptyArray);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     float[] testFloatArray = {0.783f, 0.251f};
-    dataType = Tensor.dataTypeOf(testFloatArray);
+    dataType = tensor.dataTypeOf(testFloatArray);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     float[][] testMultiDimArray = {testFloatArray, testFloatArray, testFloatArray};
-    dataType = Tensor.dataTypeOf(testMultiDimArray);
+    dataType = tensor.dataTypeOf(testMultiDimArray);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     FloatBuffer testFloatBuffer = FloatBuffer.allocate(1);
-    dataType = Tensor.dataTypeOf(testFloatBuffer);
+    dataType = tensor.dataTypeOf(testFloatBuffer);
+    assertThat(dataType).isEqualTo(DataType.FLOAT32);
+    float testFloat = 1.0f;
+    dataType = tensor.dataTypeOf(testFloat);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     try {
       double[] testDoubleArray = {0.783, 0.251};
-      Tensor.dataTypeOf(testDoubleArray);
+      tensor.dataTypeOf(testDoubleArray);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("cannot resolve DataType of");
     }
     try {
       Float[] testBoxedArray = {0.783f, 0.251f};
-      Tensor.dataTypeOf(testBoxedArray);
+      tensor.dataTypeOf(testBoxedArray);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("cannot resolve DataType of [Ljava.lang.Float;");
@@ -446,6 +485,20 @@ public final class TensorTest {
   }
 
   @Test
+  public void testCopyToScalarUnsupported() {
+    wrapper.resizeInput(0, new int[0]);
+    wrapper.allocateTensors();
+    tensor.setTo(5.0f);
+    Float outputScalar = 7.0f;
+    try {
+      tensor.copyTo(outputScalar);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
+  }
+
+  @Test
   public void testUseAfterClose() {
     tensor.close();
     try {
@@ -477,5 +530,16 @@ public final class TensorTest {
 
     assertThat(scale).isWithin(1e-6f).of(0.25f);
     assertThat(zeroPoint).isEqualTo(127);
+  }
+
+  @Test
+  public void testByteArrayStringTensorInput() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(STRING_MODEL_PATH);
+    wrapper.resizeInput(0, new int[] {1});
+    Tensor stringTensor = wrapper.getInputTensor(0);
+
+    byte[][] byteArray = new byte[][] {new byte[1]};
+    assertThat(stringTensor.dataTypeOf(byteArray)).isEqualTo(DataType.STRING);
+    assertThat(stringTensor.shape()).isEqualTo(new int[] {1});
   }
 }

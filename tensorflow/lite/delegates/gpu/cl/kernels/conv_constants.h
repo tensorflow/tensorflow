@@ -35,10 +35,10 @@ namespace cl {
 class ConvConstants : public GPUOperation {
  public:
   ConvConstants() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConvConstants(ConvConstants&& kernel);
@@ -47,10 +47,9 @@ class ConvConstants : public GPUOperation {
   ConvConstants& operator=(const ConvConstants&) = delete;
 
  private:
-  friend Status CreateConvConstants(const CreationContext& creation_context,
-                                    const OperationDef& definition,
-                                    const Convolution2DAttributes& attr,
-                                    ConvConstants* result);
+  friend absl::Status CreateConvConstants(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const Convolution2DAttributes& attr, ConvConstants* result);
   explicit ConvConstants(const OperationDef& definition,
                          const Convolution2DAttributes& attr)
       : GPUOperation(definition),
@@ -62,18 +61,12 @@ class ConvConstants : public GPUOperation {
         dst_channels_(attr.weights.shape.o) {}
 
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
-
-  Status BindArguments();
-  int3 GetGridSize() const;
-
-  Buffer weights_;
-  LinearStorage biases_;
 
   int2 kernel_size_;
   int2 stride_;
@@ -81,40 +74,50 @@ class ConvConstants : public GPUOperation {
   int2 dilation_;
   int src_channels_;
   int dst_channels_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>
-Status ConvConstants::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+absl::Status ConvConstants::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
-  const int float_size =
-      definition_.precision == CalculationsPrecision::F32 ? 4 : 2;
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+
+  BufferDescriptor desc;
+  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.element_size = 4;
+  desc.memory_type = MemoryType::CONSTANT;
+
+  const int float_size = f32_weights ? 4 : 2;
   const int float_count = src_channels_ * dst_depth * 4 * kernel_x * kernel_y;
 
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  Buffer weights_buffer;
+  if (f32_weights) {
     std::vector<float4> gpu_data(float_count / 4);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(float_size * float_count, gpu_data.data(),
-                                context, &weights_);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(
+        float_size * float_count, gpu_data.data(), context, &weights_buffer));
   } else {
     std::vector<half4> gpu_data(float_count / 4);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(float_size * float_count, gpu_data.data(),
-                                context, &weights_);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(
+        float_size * float_count, gpu_data.data(), context, &weights_buffer));
   }
+
+  args_.AddObject("weigths", AccessType::READ,
+                  absl::make_unique<Buffer>(std::move(weights_buffer)),
+                  absl::make_unique<BufferDescriptor>(desc));
+
+  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
 void ConvConstants::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
@@ -157,10 +160,10 @@ bool IsConvConstantsSupported(const CLDevice& device,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr);
 
-Status CreateConvConstants(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const Convolution2DAttributes& attr,
-                           ConvConstants* result);
+absl::Status CreateConvConstants(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const Convolution2DAttributes& attr,
+                                 ConvConstants* result);
 
 }  // namespace cl
 }  // namespace gpu

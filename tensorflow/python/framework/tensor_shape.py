@@ -184,10 +184,14 @@ class Dimension(object):
 
   def __init__(self, value):
     """Creates a new Dimension with the given value."""
-    if value is None:
+    if isinstance(value, int):  # Most common case.
+      if value < 0:
+        raise ValueError("Dimension %d must be >= 0" % value)
+      self._value = value
+    elif value is None:
       self._value = None
     elif isinstance(value, Dimension):
-      self._value = value
+      self._value = value._value
     else:
       try:
         # int(...) compensates for the int/long dichotomy on Python 2.X.
@@ -196,8 +200,8 @@ class Dimension(object):
       except AttributeError:
         six.raise_from(
             TypeError("Dimension value must be integer or None or have "
-                      "an __index__ method, got {!r}".format(value)),
-            None)
+                      "an __index__ method, got value '{0!r}' with type '{1!r}'"
+                      .format(value, type(value))), None)
       if self._value < 0:
         raise ValueError("Dimension %d must be >= 0" % self._value)
 
@@ -748,7 +752,9 @@ class TensorShape(object):
     Raises:
       TypeError: If dims cannot be converted to a list of dimensions.
     """
-    if dims is None:
+    if isinstance(dims, (tuple, list)):  # Most common case.
+      self._dims = [Dimension(d) for d in dims]
+    elif dims is None:
       self._dims = None
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
       if dims.unknown_rank:
@@ -768,7 +774,18 @@ class TensorShape(object):
         # Treat as a singleton dimension
         self._dims = [as_dimension(dims)]
       else:
-        self._dims = [as_dimension(d) for d in dims_iter]
+        self._dims = []
+        for d in dims_iter:
+          try:
+            self._dims.append(as_dimension(d))
+          except TypeError as e:
+            six.raise_from(
+                TypeError(
+                    "Failed to convert '{0!r}' to a shape: '{1!r}'"
+                    "could not be converted to a dimension. A shape should "
+                    "either be single dimension (e.g. 10), or an iterable of "
+                    "dimensions (e.g. [1, 10, None])."
+                    .format(dims, d)), e)
 
   @property
   def _v2_behavior(self):

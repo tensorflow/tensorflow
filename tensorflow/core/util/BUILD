@@ -20,11 +20,17 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
+
+default_package_visibility = [
+    "//tensorflow/core:__subpackages__",
+]
 
 package(
-    default_visibility = [
-        "//tensorflow/core:__subpackages__",
-    ],
+    default_visibility = default_package_visibility,
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -57,6 +63,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "abstract_stack_trace.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -89,6 +96,8 @@ filegroup(
         "port.h",
         "presized_cuckoo_map.h",
         "ptr_util.h",
+        "ragged_to_dense_util.cc",
+        "ragged_to_dense_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
         "saved_tensor_slice_util.h",
@@ -140,6 +149,7 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
+        "mkl_threadpool.h",
         "mkl_types.h",
         "mkl_util.h",
         "overflow.h",
@@ -269,6 +279,7 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
+        "mkl_threadpool.h",
         "mkl_util.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -305,6 +316,7 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
+        "abstract_stack_trace.h",
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
@@ -362,6 +374,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ragged_to_dense_util",
+    srcs = [
+        "ragged_to_dense_util.cc",
+    ],
+    hdrs = [
+        "ragged_to_dense_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_to_dense_util_test",
+    srcs = [
+        "ragged_to_dense_util_test.cc",
+    ],
+    deps = [
+        ":ragged_to_dense_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "stats_calculator_test",
     srcs = ["stats_calculator_test.cc"],
@@ -398,6 +439,22 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "abstract_stack_trace",
+    hdrs = ["abstract_stack_trace.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime/eager:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/eager:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
 )
 
 tf_cuda_library(
@@ -444,6 +501,7 @@ cc_library(
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
     copts = tf_copts(),
+    alwayslink = if_static(0, 1),
 )
 
 cc_library(
@@ -495,6 +553,17 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "incremental_barrier",
+    srcs = ["incremental_barrier.cc"],
+    hdrs = ["incremental_barrier.h"],
+    visibility = default_package_visibility + ["//tensorflow_serving:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/functional:bind_front",
     ],
 )
 
@@ -622,6 +691,20 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "incremental_barrier_test",
+    srcs = ["incremental_barrier_test.cc"],
+    deps = [
+        ":incremental_barrier",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/time",
     ],
 )
 

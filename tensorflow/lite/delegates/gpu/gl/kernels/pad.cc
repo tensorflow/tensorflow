@@ -34,27 +34,26 @@ namespace {
 
 class Pad : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-    auto attr = absl::any_cast<PadAttributes>(ctx.node->operation.attributes);
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
+    const auto& attr = absl::any_cast<const PadAttributes&>(ctx.op_attr);
 
     if (attr.type != PaddingContentType::ZEROS &&
         attr.type != PaddingContentType::REFLECT) {
-      return UnimplementedError(
+      return absl::UnimplementedError(
           "Only ZERO and REFLECT padding types are supported.");
     }
     if (attr.appended.h < 0 || attr.appended.w < 0 || attr.appended.c < 0 ||
         attr.prepended.h < 0 || attr.prepended.w < 0 || attr.prepended.c < 0) {
-      return UnimplementedError("Negative padding is not supported.");
+      return absl::UnimplementedError("Negative padding is not supported.");
     }
     if (attr.appended.b != 0 || attr.prepended.b != 0) {
-      return UnimplementedError("Padding for BATCH is not supported.");
+      return absl::UnimplementedError("Padding for BATCH is not supported.");
     }
     std::vector<Variable> parameters = {
-        {"input_data_0_h", input->tensor.shape.h},
-        {"input_data_0_w", input->tensor.shape.w},
-        {"input_data_0_c", input->tensor.shape.c},
+        {"input_data_0_h", static_cast<int>(ctx.input_shapes[0][1])},
+        {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])},
+        {"input_data_0_c", static_cast<int>(ctx.input_shapes[0][3])},
         {"prepended",
          int4(attr.prepended.w, attr.prepended.h, attr.prepended.c, 0)},
     };
@@ -99,7 +98,8 @@ class Pad : public NodeShader {
         source += "    value_0 = $input_data_0[src_x, src_y, gid.z]$;\n";
       } else if (attr.prepended.c % 4 == 0) {
         parameters.push_back(
-            {"src_slices", IntegralDivideRoundUp(input->tensor.shape.c, 4)});
+            {"src_slices",
+             DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)});
         source += R"(
     int src_z = gid.z - $prepended.z$ / 4;
     if (src_z >= 0 && src_z < $src_slices$) {
@@ -130,7 +130,7 @@ class Pad : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

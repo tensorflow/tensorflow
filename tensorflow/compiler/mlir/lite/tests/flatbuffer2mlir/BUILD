@@ -12,6 +12,7 @@ glob_lit_tests(
     test_file_exts = [
         "mlir",
         "cc",
+        "json",
     ],
 )
 
@@ -22,8 +23,10 @@ filegroup(
     data = [
         ":importer_test_legacy_reshape",
         ":importer_test_min_max",
+        ":test_schema.fbs",
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
+        "//tensorflow/compiler/mlir/lite:json_to_flatbuffer",
         "@llvm-project//llvm:FileCheck",
     ],
 )
@@ -51,7 +54,7 @@ tf_native_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -67,6 +70,6 @@ tf_native_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )

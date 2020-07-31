@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
 
 node {
   name: "PartitionedCall"
@@ -76,7 +76,7 @@ library {
     # ensure that kDeviceRetOp is used instead of kRetOp
     # CHECK-LABEL: func @foo
     # CHECK:    tf.experimental_ints_on_device = true
-    # CHECK:    return %{{.*}} tensor<i32>
+    # CHECK:    return %{{.*}} tensor<{{.*}}i32>
     attr {
       key: "experimental_ints_on_device"
       value {

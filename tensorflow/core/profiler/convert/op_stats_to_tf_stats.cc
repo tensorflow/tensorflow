@@ -15,13 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 
-#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
@@ -33,6 +32,7 @@ TfStatsRecord ConvertOpMetricsToTfStatsRecord(
     double ridge_point_operational_intensity) {
   TfStatsRecord record;
   record.set_host_or_device(on_device ? "Device" : "Host");
+  record.set_is_eager(metrics.is_eager());
   record.set_op_type(metrics.category());
   record.set_op_name(metrics.name());
   SetExecutionTimes(metrics, &record);
@@ -57,7 +57,7 @@ TfStatsTable GenerateTfStatsTable(const OpMetricsDb& host_tf_metrics_db,
   }
   double total_device_time_us = PicosToMicros(total_device_time_ps);
   for (const OpMetrics* metrics : SortedOpMetricsDb(device_tf_metrics_db)) {
-    if (exclude_idle && metrics->category() == "IDLE") continue;
+    if (exclude_idle && IsIdleOp(*metrics)) continue;
     TfStatsRecord* record = tf_stats_table.add_tf_stats_record();
     *record = ConvertOpMetricsToTfStatsRecord(
         /*on_device=*/true, *metrics, ridge_point);
@@ -73,7 +73,7 @@ TfStatsTable GenerateTfStatsTable(const OpMetricsDb& host_tf_metrics_db,
   double total_host_time_us = PicosToMicros(total_host_time_ps);
   for (const OpMetrics* metrics :
        tensorflow::profiler::SortedOpMetricsDb(host_tf_metrics_db)) {
-    if (exclude_idle && metrics->category() == "IDLE") continue;
+    if (exclude_idle && IsIdleOp(*metrics)) continue;
     TfStatsRecord* record = tf_stats_table.add_tf_stats_record();
     *record = ConvertOpMetricsToTfStatsRecord(
         /*on_device=*/false, *metrics, ridge_point);
@@ -88,7 +88,7 @@ TfStatsTable GenerateTfStatsTable(const OpMetricsDb& host_tf_metrics_db,
 TfStatsDatabase ConvertOpStatsToTfStats(const OpStats& op_stats) {
   const OpMetricsDb& host_tf_metrics_db = op_stats.host_op_metrics_db();
   OpMetricsDb device_tf_metrics_db =
-      CreateTfMetricsDbFromHloMetricsDb(op_stats.device_op_metrics_db());
+      CreateTfMetricsDbFromDeviceOpMetricsDb(op_stats.device_op_metrics_db());
   double ridge_point = op_stats.perf_env().ridge_point();
   TfStatsDatabase tf_stats_db;
   *tf_stats_db.mutable_with_idle() =

@@ -50,6 +50,14 @@ enum class RenderedGraphFormat {
   kUrl,
 };
 
+struct HloRenderOptions {
+  // Include the backend config string in the rendered graph.
+  bool show_backend_config = false;
+
+  // Include the fusion subcomputations in the rendered graph.
+  bool show_fusion_subcomputations = true;
+};
+
 // Renders an HLO module as a human-readable visual graph.
 //
 // Note that this only works well for relatively small graphs (no more than a
@@ -61,7 +69,7 @@ StatusOr<string> RenderGraph(
     const HloComputation& computation, absl::string_view label,
     const DebugOptions& debug_options, RenderedGraphFormat format,
     const HloExecutionProfile* hlo_execution_profile = nullptr,
-    bool show_backend_config = false);
+    HloRenderOptions hlo_render_options = {});
 
 // Like RenderGraph, but renders only nodes "near" the given node in the graph.
 //
@@ -73,7 +81,7 @@ StatusOr<string> RenderGraph(
 // will be omitted even if they are within the radius.
 StatusOr<string> RenderNeighborhoodAround(
     const HloInstruction& node, int radius, RenderedGraphFormat format,
-    bool show_backend_config = false,
+    HloRenderOptions hlo_render_options = {},
     const absl::flat_hash_set<const HloInstruction*>& boundary = {});
 
 // Renders nodes on any of the paths from `from` to `to`.  If there are more
@@ -82,7 +90,7 @@ StatusOr<string> RenderNeighborhoodAround(
 StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
                                       const HloInstruction& to, int64 max_nodes,
                                       RenderedGraphFormat format,
-                                      bool show_backend_config = false);
+                                      HloRenderOptions hlo_render_options = {});
 
 // Registers a function which implements RenderedGraphFormat::kUrl.
 //

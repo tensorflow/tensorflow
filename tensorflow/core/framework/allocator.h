@@ -32,6 +32,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class TensorShape;
+
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
 struct AllocationAttributes {
@@ -62,29 +64,81 @@ struct AllocationAttributes {
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
-// If defined, the runtime will cache Op names in thread-local memory
-// and some allocators will try to tag allocations with the requesting Op.
-#ifdef TENSORFLOW_MEM_DEBUG
-extern thread_local const char* pending_op_name;
-extern thread_local uint64 pending_step_id;
-#define MEMDEBUG_CACHE_OP(N) \
-  do {                       \
-    pending_op_name = (N);   \
-  } while (0)
-#define MEMDEBUG_CACHE_STEPID(N) \
-  do {                           \
-    pending_step_id = (N);       \
-  } while (0)
-#define MEMDEBUG_CACHE_VAL pending_op_name
-#else
-#define MEMDEBUG_CACHE_OP(N) \
-  do {                       \
-  } while (0)
-#define MEMDEBUG_CACHE_STEPID(N) \
-  do {                           \
-  } while (0)
-#define MEMDEBUG_CACHE_VAL nullptr
-#endif
+// Annotations for memory profiling and debugging purpose. The runtime will
+// cache the annotations in thread-local memory, and some allocators will try to
+// tag allocations with the annotations.
+struct MemoryDebugAnnotation {
+  const char* pending_op_name = nullptr;
+  int64 pending_step_id = 0;
+  const char* pending_region_type = nullptr;
+  int32 pending_data_type = 0;
+  const TensorShape* pending_shape = nullptr;
+};
+
+// Wrapper class of MemoryDebugAnnotation for RAII.
+class ScopedMemoryDebugAnnotation {
+ public:
+  static const MemoryDebugAnnotation& CurrentAnnotation() {
+    return annotation_;
+  }
+
+  explicit ScopedMemoryDebugAnnotation(const char* op_name) {
+    last_annotation_ = annotation_;
+    CleanupAnnotation();
+    annotation_.pending_op_name = op_name;
+  }
+
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id) {
+    last_annotation_ = annotation_;
+    CleanupAnnotation();
+    annotation_.pending_op_name = op_name;
+    annotation_.pending_step_id = step_id;
+  }
+
+  // This constructor keeps the pending_op_name and pending_step_id from parent
+  // (if any).  Otherwise it overwrites with op_name.
+  explicit ScopedMemoryDebugAnnotation(const char* op_name,
+                                       const char* region_type, int32 data_type,
+                                       const TensorShape* shape) {
+    last_annotation_ = annotation_;
+    if (!annotation_.pending_op_name) {
+      annotation_.pending_op_name = op_name;
+    }
+    annotation_.pending_region_type = region_type;
+    annotation_.pending_data_type = data_type;
+    annotation_.pending_shape = shape;
+  }
+
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id,
+                                       const char* region_type, int32 data_type,
+                                       const TensorShape* shape) {
+    last_annotation_ = annotation_;
+    annotation_.pending_op_name = op_name;
+    annotation_.pending_step_id = step_id;
+    annotation_.pending_region_type = region_type;
+    annotation_.pending_data_type = data_type;
+    annotation_.pending_shape = shape;
+  }
+
+  ~ScopedMemoryDebugAnnotation() { annotation_ = last_annotation_; }
+
+ private:
+  void CleanupAnnotation() {
+    annotation_.pending_op_name = nullptr;
+    annotation_.pending_step_id = 0;
+    annotation_.pending_region_type = nullptr;
+    annotation_.pending_data_type = 0;
+    annotation_.pending_shape = nullptr;
+  }
+
+  // Stores the current annotations.
+  static thread_local MemoryDebugAnnotation annotation_;
+
+  // Stores the previous values in case the annotations are nested.
+  MemoryDebugAnnotation last_annotation_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedMemoryDebugAnnotation);
+};
 
 // Runtime statistics collected by an allocator. Exactly the same as
 // stream_executor::AllocatorStats, but independently defined to preserve the
@@ -106,15 +160,18 @@ struct AllocatorStats {
   // if such a limit is known.
   absl::optional<int64> bytes_reservable_limit;
 
+  int64 largest_free_block_bytes;  // Largest free block's size in heap.
+
   AllocatorStats()
       : num_allocs(0),
         bytes_in_use(0),
         peak_bytes_in_use(0),
         largest_alloc_size(0),
         bytes_reserved(0),
-        peak_bytes_reserved(0) {}
+        peak_bytes_reserved(0),
+        largest_free_block_bytes(0) {}
 
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Allocator is an abstract interface for allocating and deallocating
@@ -127,7 +184,7 @@ class Allocator {
   virtual ~Allocator();
 
   // Return a string identifying this allocator
-  virtual string Name() = 0;
+  virtual std::string Name() = 0;
 
   // Return an uninitialized block of memory that is "num_bytes" bytes
   // in size.  The returned pointer is guaranteed to be aligned to a
@@ -242,7 +299,7 @@ class AllocatorWrapper : public Allocator {
   // Returns the wrapped allocator to which all calls are delegated.
   Allocator* wrapped() const { return wrapped_; }
 
-  string Name() override { return wrapped_->Name(); }
+  std::string Name() override { return wrapped_->Name(); }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return wrapped_->AllocateRaw(alignment, num_bytes);
@@ -336,7 +393,7 @@ struct AllocatorAttributes {
   int32 scope_id = 0;
 
   // Returns a human readable representation of this.
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Returns a trivial implementation of Allocator, which is a process singleton.

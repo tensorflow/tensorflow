@@ -134,14 +134,14 @@ TEST_F(GraphViewTest, BasicGraph) {
   EXPECT_EQ(input.node->name(), "AddN");
   EXPECT_EQ(input.port_id, 0);
   GraphView::OutputPort fanin = graph.GetRegularFanin(input);
-  EXPECT_EQ(fanin.node->name(), "Square");
+  EXPECT_EQ(fanin.node->name(), "Sign");
   EXPECT_EQ(fanin.port_id, 0);
 
   input = graph.GetInputPort("AddN", 1);
   EXPECT_EQ(input.node->name(), "AddN");
   EXPECT_EQ(input.port_id, 1);
   fanin = graph.GetRegularFanin(input);
-  EXPECT_EQ(fanin.node->name(), "Square_1");
+  EXPECT_EQ(fanin.node->name(), "Sign_1");
   EXPECT_EQ(fanin.port_id, 0);
 
   GraphView::OutputPort output = graph.GetOutputPort("AddN", 0);
@@ -169,7 +169,7 @@ TEST_F(GraphViewTest, BasicGraph) {
   EXPECT_EQ(fanouts, expected_fanouts);
 
   absl::flat_hash_set<string> fanins;
-  absl::flat_hash_set<string> expected_fanins = {"Square_1:0", "Square:0"};
+  absl::flat_hash_set<string> expected_fanins = {"Sign_1:0", "Sign:0"};
   for (const auto& fi : graph.GetFanins(*add_node, false)) {
     fanins.insert(absl::StrCat(fi.node->name(), ":", fi.port_id));
   }

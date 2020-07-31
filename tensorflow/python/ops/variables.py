@@ -47,6 +47,7 @@ from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.types import core
 
 
 def default_variable_creator(_, **kwds):
@@ -264,6 +265,7 @@ class VariableMetaclass(type):
 
 
 @tf_export("Variable", v1=[])
+# TODO(mdan): This should subclass core.Tensor, and not all its subclasses?
 class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   """See the [variable guide](https://tensorflow.org/guide/variable).
 
@@ -1551,7 +1553,7 @@ class VariableV1(Variable):
 
 
 # TODO(apassos): do not repeat all comments here
-class RefVariable(VariableV1):
+class RefVariable(VariableV1, core.Tensor):
   """Ref-based implementation of variables."""
 
   def __init__(
@@ -2465,6 +2467,72 @@ class RefVariable(VariableV1):
     return gen_state_ops.scatter_nd_update(
         self._variable, indices, updates, use_locking=True, name=name)
 
+  def scatter_nd_max(self, indices, updates, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered addition has completed.
+    """
+    return gen_state_ops.scatter_nd_max(
+        self._variable, indices, updates, use_locking=True, name=name)
+
+  def scatter_nd_min(self, indices, updates, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered addition has completed.
+    """
+    return gen_state_ops.scatter_nd_min(
+        self._variable, indices, updates, use_locking=True, name=name)
+
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
@@ -3032,7 +3100,6 @@ class PartitionedVariable(object):
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(RefVariable,
                                         RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
-ops.register_dense_tensor_like_type(RefVariable)
 
 
 @tf_export(v1=["global_variables"])

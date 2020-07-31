@@ -18,10 +18,6 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-
 #include <fstream>
 #include <iostream>
 
@@ -71,7 +67,7 @@ class TrivialResolver : public OpResolver {
   TfLiteRegistration* constant_return_;
 };
 
-TEST(BasicFlatBufferModel, TestNonExistantFiles) {
+TEST(BasicFlatBufferModel, TestNonExistentFiles) {
   ASSERT_TRUE(!FlatBufferModel::BuildFromFile("/tmp/tflite_model_1234"));
 }
 
@@ -386,7 +382,7 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
   ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
             kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
-  ASSERT_EQ(interpreter->tensors_size(), 1);
+  ASSERT_EQ(interpreter->tensors_size(), 2);
   TfLiteTensor* t1 = interpreter->tensor(0);
   ASSERT_EQ(t1->allocation_type, kTfLiteMmapRo);
 

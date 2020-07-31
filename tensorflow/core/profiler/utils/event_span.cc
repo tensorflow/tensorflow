@@ -14,14 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/event_span.h"
 
-#include <chrono>  // NOLINT
-#include <ctime>
-#include <thread>  // NOLINT
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -123,7 +128,8 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
   if (event_boundaries.empty()) return result;
   result.reserve(event_boundaries.size());
   PriorityTracker priority_tracker;
-  for (int64 i = 0; i < (event_boundaries.size() - 1); i++) {
+  for (int64 i = 0, iter_limit = (event_boundaries.size() - 1); i < iter_limit;
+       i++) {
     EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
     result.push_back({highest_priority, Timespan::FromEndPoints(
                                             event_boundaries[i].time_ps,
@@ -135,6 +141,7 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
 void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   dst->AppendMarkers(src.Markers());
   dst->AppendEvents(src.Events());
+  dst->AppendCollectives(src.Collectives());
 }
 
 EventType ClassifyDeviceCompute(absl::string_view event_name,
@@ -165,6 +172,9 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
     return DEVICE_TO_HOST;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoD"))
     return DEVICE_TO_DEVICE;
+  if (absl::StartsWithIgnoreCase(event_name, "nccl")) {
+    return DEVICE_COLLECTIVES;
+  }
   return ClassifyDeviceCompute(event_name, tensor_shapes);
 }
 
@@ -269,10 +279,7 @@ void CombineStepEvents(const StepEvents& src, StepEvents* dst) {
 
 // Converts from overlapped step-events to non-overlapped step-events.
 StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
-  auto start_time = std::chrono::steady_clock::now();
   StepEvents non_overlapped_step_events;
-
-  // We could parallelize the following loop if necessary.
   for (const auto& step_events : overlapped_step_events) {
     const auto& step_id = step_events.first;
     const auto& step_details = step_events.second;
@@ -280,13 +287,9 @@ StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
         step_details.Markers();
     *non_overlapped_step_events[step_id].MutableEvents() =
         ToNonOverlappedEvents(step_details.Events());
+    *non_overlapped_step_events[step_id].MutableCollectives() =
+        step_details.Collectives();
   }
-  auto end_time = std::chrono::steady_clock::now();
-  auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(
-      end_time - start_time);
-  double elapsed_time_ms = elapsed_time_us.count() / 1000.0;
-  LOG(INFO) << "Generation of step-events took " << elapsed_time_ms << " ms"
-            << std::endl;
   return non_overlapped_step_events;
 }
 
@@ -300,6 +303,17 @@ void StepDetails::AppendMarkers(const std::vector<StepMarker>& other_markers) {
 
 void StepDetails::AppendEvents(const std::vector<EventTypeSpan>& other_events) {
   events_.insert(events_.end(), other_events.begin(), other_events.end());
+}
+
+void StepDetails::AppendCollectives(
+    const absl::flat_hash_map<uint32, AllReduceDbResult>& collectives) {
+  for (const auto& it : collectives) {
+    collectives_[it.first] = it.second;
+  }
+}
+
+void StepDetails::AddCollectiveOpEvent(uint64 core_id, const AllReduceInfo& e) {
+  *collectives_[core_id].add_all_reduce_info() = e;
 }
 
 Timespan StepDetails::StepTime() const {
@@ -329,12 +343,12 @@ Timespan StepDetails::StepTime() const {
 
 std::string StepDetails::DebugString() const {
   std::string result = "([";
-  for (int i = 0; i < markers_.size(); i++) {
+  for (int i = 0, iter_limit = markers_.size(); i < iter_limit; i++) {
     if (i > 0) absl::StrAppend(&result, ", ");
     absl::StrAppend(&result, PrintStepMarker(markers_[i]));
   }
   absl::StrAppend(&result, "], [");
-  for (int i = 0; i < events_.size(); i++) {
+  for (int i = 0, iter_limit = events_.size(); i < iter_limit; i++) {
     if (i > 0) absl::StrAppend(&result, ", ");
     absl::StrAppend(&result, PrintEventTypeSpan(events_[i]));
   }

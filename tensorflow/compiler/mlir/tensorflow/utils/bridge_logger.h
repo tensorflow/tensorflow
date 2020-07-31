@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_BRIDGE_LOGGER_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_BRIDGE_LOGGER_H_
 
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 
 namespace tensorflow {
 
@@ -42,6 +42,13 @@ class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
   // with the stream to dump into.
   void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *operation,
                            PrintCallbackFn print_callback) override;
+};
+
+// Logger for logging/dumping pass pipeline timings after completion.
+class BridgeTimingConfig : public mlir::PassManager::PassTimingConfig {
+ public:
+  // Hook that control how/where is the output produced
+  void printTiming(PrintCallbackFn printCallback) override;
 };
 
 }  // namespace tensorflow

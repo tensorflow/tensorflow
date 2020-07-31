@@ -109,46 +109,12 @@ llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const HloToElementGeneratorMap& operand_to_generator) {
   switch (hlo->opcode()) {
-    case HloOpcode::kMap:
-      return [this, hlo, &operand_to_generator](
-                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        std::vector<llvm::Value*> operands;
-        for (int i = 0; i < hlo->operand_count(); i++) {
-          TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                              operand_to_generator.at(hlo->operand(i))(index));
-          operands.push_back(operand_value);
-        }
-        return ir_emitter_->EmitElementalMap(*Cast<HloMapInstruction>(hlo),
-                                             operands, llvm_ir::IrName(hlo));
-      };
-    case HloOpcode::kReduceWindow:
-      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
-        return ir_emitter_->EmitElementalReduceWindow(
-            Cast<HloReduceWindowInstruction>(hlo),
-            operand_to_generator.at(hlo->operand(0)), index);
-      };
     case HloOpcode::kConvolution:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         return ir_emitter_->EmitElementalConvolution(
             Cast<HloConvolutionInstruction>(hlo),
             operand_to_generator.at(hlo->operand(0)),
             operand_to_generator.at(hlo->operand(1)), index);
-      };
-    case HloOpcode::kReduce:
-      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
-        auto reduce_instr = Cast<HloReduceInstruction>(hlo);
-        std::vector<llvm_ir::ElementGenerator> input_generators;
-        for (const HloInstruction* instr : reduce_instr->inputs()) {
-          input_generators.push_back(operand_to_generator.at(instr));
-        }
-
-        std::vector<llvm_ir::ElementGenerator> initial_value_generators;
-        for (const HloInstruction* instr : reduce_instr->init_values()) {
-          initial_value_generators.push_back(operand_to_generator.at(instr));
-        }
-        return ir_emitter_->EmitElementalReduce(
-            reduce_instr, std::move(input_generators),
-            std::move(initial_value_generators), index);
       };
     default:
       return ElementalIrEmitter::MakeElementGenerator(hlo,

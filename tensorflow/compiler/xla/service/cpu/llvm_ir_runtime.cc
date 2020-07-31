@@ -121,7 +121,8 @@ void RewriteCalls(
   }
 
   // Generate the vectorized code.
-  CHECK_EQ(vector_width, input->getType()->getVectorNumElements());
+  CHECK_EQ(vector_width,
+           llvm::cast<llvm::VectorType>(input->getType())->getNumElements());
   llvm::Value* result = fn_body_generator(&b, input, vector_width);
 
   // Downcast result to scalar type if necessary.
@@ -142,8 +143,8 @@ void RewriteCalls(
   }
   for (auto* call_to_inline : calls_to_inline) {
     llvm::InlineFunctionInfo inline_function_info;
-    CHECK(
-        llvm::InlineFunction(call_to_inline, inline_function_info).isSuccess());
+    CHECK(llvm::InlineFunction(*call_to_inline, inline_function_info)
+              .isSuccess());
   }
   // LLVM's InjectTLIMappings adds functions that might be used for
   // vectorization to 'llvm.compiler.used'. Remove it before deleting the
@@ -317,7 +318,9 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   llvm::Value* is_pos_inf_mask = vsl.FCmpEQMask(input, pos_inf);
 
   // Cut off denormalized stuff.
-  llvm::Value* tmp0 = vsl.Max(min_norm_pos, input);
+  // Always allow fast max because we are checking for the nan above.
+  llvm::Value* tmp0 =
+      vsl.Max(min_norm_pos, input, /*enable_fast_min_max=*/true);
 
   // VectorSupportLibrary (intentionally) can't juggle more than one type at a
   // time so drop down to IRBuilder for this bit.

@@ -556,8 +556,8 @@ class InfeedQueue(object):
     """Generates the host-side Ops to enqueue the shards of a tuple.
 
     sharded_inputs is a list, one for each shard, of lists of
-    Tensors. sharded_inputs[0] is the tuple of Tensors to use to feed
-    shard 0 if the queue. Returns the host-side Ops that must be run to
+    Tensors. sharded_inputs[i] is the tuple of Tensors to use to feed
+    shard i of the queue. Returns the host-side Ops that must be run to
     enqueue the sharded tuple. The Op for shard i is colocated with the inputs
     for shard i.
 

@@ -50,7 +50,9 @@ GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
 }
 
 std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
-  return ComputeTransitiveFanin(graph, fetch);
+  std::vector<const NodeDef*> fanin_nodes;
+  TF_CHECK_OK(ComputeTransitiveFanin(graph, fetch, &fanin_nodes));
+  return fanin_nodes;
 }
 
 std::vector<const NodeDef*> GrapplerItem::EnqueueOpsFanin() const {
@@ -60,15 +62,20 @@ std::vector<const NodeDef*> GrapplerItem::EnqueueOpsFanin() const {
       enqueue_ops.push_back(enqueue_op);
     }
   }
-  return ComputeTransitiveFanin(graph, enqueue_ops);
+  std::vector<const NodeDef*> fanin_nodes;
+  TF_CHECK_OK(ComputeTransitiveFanin(graph, fetch, &fanin_nodes));
+  return fanin_nodes;
 }
 
 std::vector<const NodeDef*> GrapplerItem::InitOpsFanin() const {
-  return ComputeTransitiveFanin(graph, init_ops);
+  std::vector<const NodeDef*> fanin_nodes;
+  TF_CHECK_OK(ComputeTransitiveFanin(graph, init_ops, &fanin_nodes));
+  return fanin_nodes;
 }
 
 std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
-  std::vector<const NodeDef*> fanin = ComputeTransitiveFanin(graph, init_ops);
+  std::vector<const NodeDef*> fanin;
+  TF_CHECK_OK(ComputeTransitiveFanin(graph, init_ops, &fanin));
   std::vector<const NodeDef*> vars;
   for (const NodeDef* node : fanin) {
     if (IsVariable(*node)) {
@@ -198,23 +205,6 @@ const GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options()
 
 GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options() {
   return optimization_options_;
-}
-
-std::vector<const NodeDef*> ComputeTransitiveFanin(
-    const GraphDef& graph, const std::vector<string>& terminal_nodes) {
-  bool ill_formed = false;
-  std::vector<const NodeDef*> result =
-      ComputeTransitiveFanin(graph, terminal_nodes, &ill_formed);
-  CHECK(!ill_formed);
-  return result;
-}
-
-std::vector<const NodeDef*> ComputeTransitiveFanin(
-    const GraphDef& graph, const std::vector<string>& terminal_nodes,
-    bool* ill_formed) {
-  std::unordered_map<string, const NodeDef*> name_to_fanin_node;
-  return ComputeTransitiveFanin(graph, terminal_nodes, &name_to_fanin_node,
-                                ill_formed);
 }
 
 }  // end namespace grappler

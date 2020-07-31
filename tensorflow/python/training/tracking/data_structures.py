@@ -59,6 +59,8 @@ class NoDependency(object):
   variables will appear in `Model.variables`).
   """
 
+  __slots__ = ["value"]
+
   def __init__(self, value):
     self.value = value
 
@@ -518,9 +520,18 @@ class ListWrapper(
                self, self._storage, self._last_wrapped_list_snapshot)))
     return super(ListWrapper, self)._checkpoint_dependencies
 
+  def _has_mutation_or_trackable(self):
+    """Short-circuits a check for trackables if there's already a mutation."""
+    if self._non_append_mutation:
+      return True
+    return any(isinstance(element, base.Trackable) for element in self._storage)
+
   def __delitem__(self, key):
-    self._non_append_mutation = True
+    self._check_external_modification()
+    if self._has_mutation_or_trackable():
+      self._non_append_mutation = True
     del self._storage[key]
+    self._update_snapshot()
 
   def __setitem__(self, key, value):
     self._check_external_modification()
@@ -566,8 +577,11 @@ class ListWrapper(
 
   def __imul__(self, y):
     if y <= 0:
-      self._self_non_append_mutation = True
+      self._check_external_modification()
+      if self._has_mutation_or_trackable():
+        self._non_append_mutation = True
       self._storage *= y
+      self._update_snapshot()
       return self
 
     # Relies on super() calling append, which updates the snapshot.
@@ -597,19 +611,28 @@ class ListWrapper(
     raise TypeError("unhashable type: 'ListWrapper'")
 
   def insert(self, index, obj):
-    self._non_append_mutation = True
+    self._check_external_modification()
+    if (self._has_mutation_or_trackable() or isinstance(obj, base.Trackable)):
+      self._non_append_mutation = True
     self._storage.insert(index, obj)
+    self._update_snapshot()
 
   def sort(self):
-    self._non_append_mutation = True
+    self._check_external_modification()
+    if self._has_mutation_or_trackable():
+      self._non_append_mutation = True
     self._storage.sort()
+    self._update_snapshot()
 
   def __setslice__(self, i, j, y):
     self.__setitem__(slice(i, j), y)
 
   def __delslice__(self, i, j):
-    self._non_append_mutation = True
+    self._check_external_modification()
+    if self._has_mutation_or_trackable():
+      self._non_append_mutation = True
     del self._storage[slice(i, j)]
+    self._update_snapshot()
 
   def _track_value(self, value, name):
     """Allows storage of non-trackable objects."""
@@ -715,7 +738,7 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     if wrapped_dict is None:
       # Allow zero-argument construction, e.g. from session.run's re-wrapping.
       wrapped_dict = {}
-    if not isinstance(wrapped_dict, collections.Mapping):
+    if not isinstance(wrapped_dict, collections_abc.Mapping):
       # Allow construction from a sequence, e.g. from nest.pack_sequence_as.
       wrapped_dict = dict(wrapped_dict)
     wrapt.ObjectProxy.__init__(self, wrapped_dict)

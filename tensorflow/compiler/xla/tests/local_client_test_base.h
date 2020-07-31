@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -75,7 +76,7 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
 };
 
 // A base class for tests which exercise the LocalClient interface.
-class LocalClientTestBase : public ::testing::Test {
+class LocalClientTestBase : public ManifestCheckingTest {
  protected:
   struct EigenThreadPoolWrapper;
   explicit LocalClientTestBase(se::Platform* platform = nullptr);

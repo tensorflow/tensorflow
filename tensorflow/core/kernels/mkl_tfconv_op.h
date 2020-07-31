@@ -111,7 +111,8 @@ class MklToTfOp : public OpKernel {
       if (input.IsReorderNeeded(OUTPUT_TF_MD)) {
         // Insert reorder between MKL layout and TensorFlow layout
         OP_REQUIRES(
-            context, input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor),
+            context,
+            input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor, context),
             errors::Internal("MklToTfOp: Failed to create input reorder"));
       } else {
         // If not, just forward input tensor to output tensor.

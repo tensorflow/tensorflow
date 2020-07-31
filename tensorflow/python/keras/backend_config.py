@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 
 # The type of float to use throughout a session.
@@ -30,6 +31,7 @@ _IMAGE_DATA_FORMAT = 'channels_last'
 
 
 @keras_export('keras.backend.epsilon')
+@dispatch.add_dispatch_support
 def epsilon():
   """Returns the value of the fuzz factor used in numeric expressions.
 
@@ -86,8 +88,8 @@ def set_floatx(value):
   likely cause numeric stability issues. Instead, mixed precision, which is
   using a mix of float16 and float32, can be used by calling
   `tf.keras.mixed_precision.experimental.set_policy('mixed_float16')`. See the
-  [mixed precision
-  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for details.
+  [mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for details.
 
   Arguments:
       value: String; `'float16'`, `'float32'`, or `'float64'`.
@@ -110,6 +112,7 @@ def set_floatx(value):
 
 
 @keras_export('keras.backend.image_data_format')
+@dispatch.add_dispatch_support
 def image_data_format():
   """Returns the default image data format convention.
 

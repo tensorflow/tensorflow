@@ -20,15 +20,15 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace grappler {
 
-std::vector<const NodeDef*> ComputeTransitiveFanin(
+Status ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes,
     std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
-    bool* ill_formed) {
-  *ill_formed = false;
+    std::vector<const NodeDef*>* fanin_nodes) {
   std::unordered_map<string, const NodeDef*> name_to_node;
   std::unordered_map<string, const NodeDef*> name_to_send;
   for (const auto& node : graph.node()) {
@@ -43,14 +43,12 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
   for (const string& root : terminal_nodes) {
     const NodeDef* node = name_to_node[NodeName(root)];
     if (!node) {
-      *ill_formed = true;
-      VLOG(2) << "ComputeTransitiveFanin: problem with root node: " << root;
-      return {};
+      return errors::InvalidArgument("Graph does not contain terminal node ",
+                                     root, ".");
     }
     queue.push_back(node);
   }
 
-  std::vector<const NodeDef*> result;
   std::unordered_set<const NodeDef*> visited;
 
   while (!queue.empty()) {
@@ -60,15 +58,17 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
       // The node has already been visited.
       continue;
     }
-    result.push_back(node);
-    name_to_fanin_node->insert(
-        std::pair<string, const NodeDef*>(node->name(), node));
+    fanin_nodes->push_back(node);
+    if (name_to_fanin_node) {
+      name_to_fanin_node->insert(
+          std::pair<string, const NodeDef*>(node->name(), node));
+    }
     for (const string& input : node->input()) {
       const NodeDef* in = name_to_node[NodeName(input)];
       if (!in) {
-        VLOG(2) << "ComputeTransitiveFanin: problem with node: " << input;
-        *ill_formed = true;
-        return {};
+        return errors::InvalidArgument("Graph does not contain input ",
+                                       NodeName(input), " of node ",
+                                       node->name(), ".");
       }
       queue.push_back(in);
     }
@@ -82,7 +82,13 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
       // So, we do not set ill_formed for missing _Send.
     }
   }
-  return result;
+  return Status::OK();
+}
+
+Status ComputeTransitiveFanin(const GraphDef& graph,
+                              const std::vector<string>& terminal_nodes,
+                              std::vector<const NodeDef*>* fanin_nodes) {
+  return ComputeTransitiveFanin(graph, terminal_nodes, nullptr, fanin_nodes);
 }
 
 Status SetTransitiveFaninGraph(const GraphDef& input_graph,
@@ -90,15 +96,9 @@ Status SetTransitiveFaninGraph(const GraphDef& input_graph,
                                const std::vector<string>& terminal_nodes) {
   // Determines transitive fanin nodes from terminal nodes and add them to the
   // output graph.
-  bool ill_formed = false;
-  std::unordered_map<string, const NodeDef*> name_to_fanin_node;
-  std::vector<const NodeDef*> keep = ComputeTransitiveFanin(
-      input_graph, terminal_nodes, &name_to_fanin_node, &ill_formed);
-  if (ill_formed) {
-    // Some graph edges are invalid, or some of the feeds/fetch don't exist:
-    // let's be conservative and preserve the graph as is.
-    return errors::InvalidArgument("Invalid input graph.");
-  }
+  std::vector<const NodeDef*> keep;
+  TF_RETURN_IF_ERROR(
+      ComputeTransitiveFanin(input_graph, terminal_nodes, &keep));
   // Try to keep the nodes ordered somewhat topologically since this helps
   // further optimizations perform better.
   output_graph->mutable_node()->Reserve(keep.size());

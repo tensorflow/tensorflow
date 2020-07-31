@@ -32,4 +32,23 @@ limitations under the License.
 #define TFLITE_EXPECT_TRUE(cond) (cond)
 #endif
 
+// Normally we'd use ABSL_HAVE_ATTRIBUTE_WEAK and ABSL_ATTRIBUTE_WEAK, but
+// we avoid the absl dependency for binary size reasons.
+#ifdef __has_attribute
+#define TFLITE_HAS_ATTRIBUTE(x) __has_attribute(x)
+#else
+#define TFLITE_HAS_ATTRIBUTE(x) 0
+#endif
+
+#if (TFLITE_HAS_ATTRIBUTE(weak) ||                  \
+     (defined(__GNUC__) && !defined(__clang__))) && \
+    !(defined(__llvm__) && defined(_WIN32)) && !defined(__MINGW32__)
+#undef TFLITE_ATTRIBUTE_WEAK
+#define TFLITE_ATTRIBUTE_WEAK __attribute__((weak))
+#define TFLITE_HAS_ATTRIBUTE_WEAK 1
+#else
+#define TFLITE_ATTRIBUTE_WEAK
+#define TFLITE_HAS_ATTRIBUTE_WEAK 0
+#endif
+
 #endif  // TENSORFLOW_LITE_CORE_MACROS_H_

@@ -510,8 +510,25 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       // first compilation and the body/cond was recompiled with the updated
       // shape/datatype of the list.
       if (input_shape != list_shape) {
-        OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
-                                ctx->builder(), list_shape, &inputs[i]));
+        // Prepare dynamic dimensions for element shapes.
+        std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
+        for (int64 i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+          // Set dynamic dimension size to 0 for initilization value.
+          std::vector<xla::XlaOp> dynamic_dims;
+          const xla::Shape& shape = list_shape.tuple_shapes(i);
+          for (int64 dim = 0; dim < shape.dimensions_size(); ++dim) {
+            int32 dim_size = shape.dimensions(dim);
+            if (shape.is_dynamic_dimension(dim)) {
+              dim_size = 0;
+            }
+            dynamic_dims.push_back(
+                xla::ConstantR0<int32>(ctx->builder(), dim_size));
+          }
+          list_dynamic_dims.push_back(dynamic_dims);
+        }
+        OP_REQUIRES_OK(
+            ctx, CreateZerosTensorListWithShape(ctx->builder(), list_shape,
+                                                list_dynamic_dims, &inputs[i]));
       } else {
         inputs[i] = ctx->Input(input_num);
       }

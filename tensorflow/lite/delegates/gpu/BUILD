@@ -12,12 +12,6 @@ exports_files([
     "metal_delegate.h",
 ])
 
-# Primary purpose of this config is to replace ::util::Status with our custom
-# light implementation ::tflite::gpu::StatusLite to reduce binary size.  Besides
-# that, certain features that were hard to communicate without full open source
-# were hidden away too such as compiled models, serialization, and metadata.
-# While the latter will be fully available with the open source release, the
-# former will have to stay until absl::Status is released.
 config_setting(
     name = "tflite_gpu_binary_release",
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
@@ -38,7 +32,11 @@ cc_library(
     linkopts = select({
         "//tensorflow:android": [
             "-lEGL",
-            "-lGLESv3",
+            # We don't need to link libGLESv3, because if it exists,
+            # it is a symlink to libGLESv2.
+            # See Compatibility Definition Document:
+            # https://source.android.com/compatibility/10/android-10-cdd#7_1_4_1_opengl_es
+            "-lGLESv2",
         ],
         "//conditions:default": [],
     }),
@@ -82,6 +80,7 @@ objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
+    module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite:kernel_api",
@@ -91,6 +90,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
@@ -173,7 +173,7 @@ ios_static_framework(
         "metal_delegate.h",
         "metal_delegate_internal.h",
     ],
-    minimum_os_version = "10.0",
+    minimum_os_version = "11.0",
     deps = [":metal_delegate"],
 )
 
@@ -226,11 +226,22 @@ cc_library(
     linkopts = select({
         "//tensorflow:android": [
             "-lEGL",
-            "-lGLESv3",
+            # We don't need to link libGLESv3, because if it exists,
+            # it is a symlink to libGLESv2.
+            # See Compatibility Definition Document:
+            # https://source.android.com/compatibility/10/android-10-cdd#7_1_4_1_opengl_es
+            "-lGLESv2",
         ],
         "//conditions:default": [],
     }),
-    deps = [
+    deps = select({
+        "//tensorflow/lite/delegates/gpu/cl:opencl_delegate_no_gl": [],
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/gpu/gl:api2",
+        ],
+    }) + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
@@ -241,8 +252,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/gl:api2",
-        "@com_google_absl//absl/types:span",
+        "//tensorflow/lite/kernels/internal:optimized_base",
     ],
 )

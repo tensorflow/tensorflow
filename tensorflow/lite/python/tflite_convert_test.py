@@ -98,8 +98,8 @@ class TfLiteConvertV1Test(TestModels):
     sess.close()
 
     flags_str = ('--graph_def_file={0} --input_arrays={1} '
-                 '--output_arrays={2}'.format(graph_def_file,
-                                              'Placeholder', 'add'))
+                 '--output_arrays={2}'.format(graph_def_file, 'Placeholder',
+                                              'add'))
     self._run(flags_str, should_succeed=True)
     os.remove(graph_def_file)
 
@@ -137,8 +137,31 @@ class TfLiteConvertV1Test(TestModels):
     sess.close()
 
     flags_str = ('--graph_def_file={0} --input_arrays={1} '
-                 '--output_arrays={2}'.format(graph_def_file,
-                                              'random', 'add'))
+                 '--output_arrays={2}'.format(graph_def_file, 'random', 'add'))
+    self._run(flags_str, should_succeed=True)
+    os.remove(graph_def_file)
+
+  def testQATFrozenGraphDefInt8(self):
+    with ops.Graph().as_default():
+      in_tensor_1 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+      _ = array_ops.fake_quant_with_min_max_args(
+          in_tensor_1 + in_tensor_2, min=0., max=1., name='output',
+          num_bits=16)  # INT8 inference type works for 16 bits fake quant.
+      sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = self._getFilepath('model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    flags_str = ('--inference_type=INT8 --std_dev_values=128,128 '
+                 '--mean_values=128,128 '
+                 '--graph_def_file={0} --input_arrays={1},{2} '
+                 '--output_arrays={3}'.format(graph_def_file, 'inputA',
+                                              'inputB', 'output'))
     self._run(flags_str, should_succeed=True)
     os.remove(graph_def_file)
 
@@ -166,8 +189,8 @@ class TfLiteConvertV1Test(TestModels):
   def testKerasFileMLIR(self):
     keras_file = self._getKerasModelFile()
 
-    flags_str = ('--keras_model_file={} --experimental_new_converter'
-                 .format(keras_file))
+    flags_str = (
+        '--keras_model_file={} --experimental_new_converter'.format(keras_file))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)
 
@@ -258,11 +281,11 @@ class TfLiteConvertV1Test(TestModels):
                                                 self._input_shapes,
                                                 custom_opdefs_str))
 
-    # Ensure --experimental_new_converter.
+    # Ensure --allow_custom_ops.
     flags_str_final = ('{} --allow_custom_ops').format(flags_str)
     self._run(flags_str_final, should_succeed=False)
 
-    # Ensure --allow_custom_ops.
+    # Ensure --experimental_new_converter.
     flags_str_final = ('{} --experimental_new_converter').format(flags_str)
     self._run(flags_str_final, should_succeed=False)
 
@@ -299,8 +322,8 @@ class TfLiteConvertV2Test(TestModels):
   def testKerasFileMLIR(self):
     keras_file = self._getKerasModelFile()
 
-    flags_str = ('--keras_model_file={} --experimental_new_converter'
-                 .format(keras_file))
+    flags_str = (
+        '--keras_model_file={} --experimental_new_converter'.format(keras_file))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)
 
@@ -321,15 +344,18 @@ class ArgParserTest(test_util.TensorFlowTestCase):
         '--output_file=/tmp/output.tflite',
     ]
 
+    # Note that when the flag parses to None, the converter uses the default
+    # value, which is True.
+
     # V1 parser.
-    parser = tflite_convert._get_parser(False)
+    parser = tflite_convert._get_parser(use_v2_converter=False)
     parsed_args = parser.parse_args(args)
-    self.assertFalse(parsed_args.experimental_new_converter)
+    self.assertIsNone(parsed_args.experimental_new_converter)
 
     # V2 parser.
-    parser = tflite_convert._get_parser(True)
+    parser = tflite_convert._get_parser(use_v2_converter=True)
     parsed_args = parser.parse_args(args)
-    self.assertFalse(parsed_args.experimental_new_converter)
+    self.assertIsNone(parsed_args.experimental_new_converter)
 
   def test_experimental_new_converter(self):
     args = [
@@ -339,12 +365,12 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     ]
 
     # V1 parser.
-    parser = tflite_convert._get_parser(False)
+    parser = tflite_convert._get_parser(use_v2_converter=False)
     parsed_args = parser.parse_args(args)
     self.assertTrue(parsed_args.experimental_new_converter)
 
     # V2 parser.
-    parser = tflite_convert._get_parser(True)
+    parser = tflite_convert._get_parser(use_v2_converter=True)
     parsed_args = parser.parse_args(args)
     self.assertTrue(parsed_args.experimental_new_converter)
 
@@ -373,12 +399,12 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     ]
 
     # V1 parser.
-    parser = tflite_convert._get_parser(False)
+    parser = tflite_convert._get_parser(use_v2_converter=False)
     parsed_args = parser.parse_args(args)
     self.assertFalse(parsed_args.experimental_new_converter)
 
     # V2 parser.
-    parser = tflite_convert._get_parser(True)
+    parser = tflite_convert._get_parser(use_v2_converter=True)
     parsed_args = parser.parse_args(args)
     self.assertFalse(parsed_args.experimental_new_converter)
 

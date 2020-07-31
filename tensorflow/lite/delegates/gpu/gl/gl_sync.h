@@ -32,12 +32,12 @@ namespace gl {
 // GlSync is moveable but not copyable.
 class GlSync {
  public:
-  static Status NewSync(GlSync* gl_sync) {
+  static absl::Status NewSync(GlSync* gl_sync) {
     GLsync sync;
     RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glFenceSync, &sync,
                                        GL_SYNC_GPU_COMMANDS_COMPLETE, 0));
     *gl_sync = GlSync(sync);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Creates invalid object.
@@ -75,12 +75,12 @@ class GlSync {
 };
 
 // Waits until GPU is done with processing.
-Status GlSyncWait();
+absl::Status GlSyncWait();
 
-// Waits until all comands are flushed and then performs active waiting by
+// Waits until all commands are flushed and then performs active waiting by
 // spinning a thread and checking sync status. It leads to shorter wait time
 // (up to tens of ms) but consumes more CPU.
-Status GlActiveSyncWait();
+absl::Status GlActiveSyncWait();
 
 // CPU checks the value in the buffer that is going to be written by GPU. The
 // persistent buffer is used for the simultaneous access to the buffer by GPU
@@ -88,9 +88,9 @@ Status GlActiveSyncWait();
 // is not supported by the device.
 class GlShaderSync {
  public:
-  static Status NewSync(GlShaderSync* gl_sync);
+  static absl::Status NewSync(GlShaderSync* gl_sync);
   GlShaderSync() {}
-  Status Wait();
+  absl::Status Wait();
 
  private:
   GlProgram flag_program_;

@@ -131,8 +131,8 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
           // on the job called "worker" (but still adds the CPUs of other jobs).
           if (getenv("TPU_NO_POPULATE_DEVICE_LIST_FROM_CLUSTER_SPEC") !=
               nullptr) {
-            if (worker_name_parsed.job != "worker" ||
-                device_name_parsed.type.find("TPU") != std::string::npos) {
+            if (worker_name_parsed.job == "worker" ||
+                device_name_parsed.type.find("TPU") == std::string::npos) {
               remote_devices.push_back(d);
             }
           } else {

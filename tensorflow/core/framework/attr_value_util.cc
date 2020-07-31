@@ -216,7 +216,7 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
 
 string SummarizeFunc(const NameAttrList& func) {
   std::vector<string> entries;
-  for (auto p : func.attr()) {
+  for (const auto& p : func.attr()) {
     entries.push_back(
         strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
   }
@@ -278,7 +278,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
           pieces.push_back(SummarizeFunc(attr_value.list().func(i)));
         }
       }
-      constexpr int kMaxListSummarySize = 15;
+      constexpr int kMaxListSummarySize = 50;
       if (pieces.size() >= kMaxListSummarySize) {
         pieces.erase(pieces.begin() + 5, pieces.begin() + (pieces.size() - 6));
         pieces[5] = "...";

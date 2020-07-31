@@ -78,8 +78,8 @@ test {
   ROOT tuple = (f32[8,16], f32[8,16], f32[8,16], f32[]) tuple(all-reduce, all-reduce.1, all-reduce.2, all-reduce.3)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier(/*replica_count=*/8);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_THAT(
@@ -114,8 +114,8 @@ test {
   ROOT all-reduce.1 = f32[8,16] all-reduce(all-reduce), replica_groups={}, to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier(/*replica_count=*/8);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -155,8 +155,8 @@ test {
   ROOT tuple = (f32[8,16], f32[8,16], f32[8,16]) tuple(all-reduce, all-reduce.1, all-reduce.2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier(/*replica_count=*/8);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_THAT(

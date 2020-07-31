@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #if !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/lib/io/snappy/snappy_compression_options.h"
+#include "tensorflow/core/lib/io/snappy/snappy_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #endif  // IS_SLIM_BUILD
@@ -32,9 +34,12 @@ class RandomAccessFile;
 
 namespace io {
 
-class RecordReaderOptions {
- public:
-  enum CompressionType { NONE = 0, ZLIB_COMPRESSION = 1 };
+struct RecordReaderOptions {
+  enum CompressionType {
+    NONE = 0,
+    ZLIB_COMPRESSION = 1,
+    SNAPPY_COMPRESSION = 2
+  };
   CompressionType compression_type = NONE;
 
   // If buffer_size is non-zero, then all reads must be sequential, and no
@@ -46,8 +51,9 @@ class RecordReaderOptions {
       const string& compression_type);
 
 #if !defined(IS_SLIM_BUILD)
-  // Options specific to zlib compression.
+  // Options specific to compression.
   ZlibCompressionOptions zlib_options;
+  SnappyCompressionOptions snappy_options;
 #endif  // IS_SLIM_BUILD
 };
 
@@ -63,8 +69,8 @@ class RecordReader {
   //  uint32    masked crc of length
   //  byte      data[length]
   //  uint32    masked crc of data
-  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static const size_t kFooterSize = sizeof(uint32);
+  static constexpr size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
+  static constexpr size_t kFooterSize = sizeof(uint32);
 
   // Statistics (sizes are in units of bytes)
   struct Stats {

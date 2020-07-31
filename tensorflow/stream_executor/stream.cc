@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream.h"
 
-#include "tensorflow/stream_executor/platform/port.h"
-
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/stream_executor/blas.h"
@@ -24,6 +22,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
+#include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
@@ -286,7 +285,12 @@ Stream::~Stream() {
 
 port::Status Stream::RefreshStatus() {
   port::Status status = parent_->GetStatus(this);
-  CheckStatus(status);
+  // We should not put the stream in an error state, just because the GetStatus
+  // method is unimplemented.
+  if (status != port::Status(port::error::UNIMPLEMENTED,
+                             "GetStatus is not supported on this executor.")) {
+    CheckStatus(status);
+  }
   return status;
 }
 
@@ -1874,11 +1878,15 @@ Stream &Stream::ThenMemcpyH2DQuantized(
 }
 
 Stream *Stream::GetOrCreateSubStream() {
+  // Do not destroy bad streams when holding mu_ because ~Stream() may
+  // BlockHostUntilDone and it's host callbacks might attempt to acquire mu_.
+  std::vector<std::unique_ptr<Stream>> bad_streams;
+
   absl::MutexLock lock(&mu_);
 
   // Look for the first reusable sub_stream that is ok, dropping !ok sub_streams
   // we encounter along the way.
-  for (int64 index = 0; index < sub_streams_.size();) {
+  for (size_t index = 0; index < sub_streams_.size();) {
     std::pair<std::unique_ptr<Stream>, bool> &pair = sub_streams_[index];
     if (pair.second) {
       // The sub_stream is reusable.
@@ -1897,6 +1905,7 @@ Stream *Stream::GetOrCreateSubStream() {
       if (index != last) {
         std::swap(pair, sub_streams_[last]);
       }
+      bad_streams.push_back(std::move(sub_streams_.back().first));
       sub_streams_.pop_back();
       VLOG(1) << DebugStreamPointers() << " dropped !ok sub_stream "
               << sub_stream->DebugStreamPointers();
@@ -1921,10 +1930,14 @@ Stream *Stream::GetOrCreateSubStream() {
 }
 
 void Stream::ReturnSubStream(Stream *sub_stream) {
+  // Do not destroy bad streams when holding mu_ because ~Stream() may
+  // BlockHostUntilDone and it's host callbacks might attempt to acquire mu_.
+  std::unique_ptr<Stream> bad_stream;
+
   absl::MutexLock lock(&mu_);
 
   // Look for the sub-stream.
-  for (int64 index = 0; index < sub_streams_.size(); ++index) {
+  for (int64 index = 0, end = sub_streams_.size(); index < end; ++index) {
     std::pair<std::unique_ptr<Stream>, bool> &pair = sub_streams_[index];
     if (pair.first.get() != sub_stream) {
       continue;
@@ -1945,6 +1958,7 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
       if (index != last) {
         std::swap(pair, sub_streams_[last]);
       }
+      std::swap(bad_stream, sub_streams_.back().first);
       sub_streams_.pop_back();
     }
     return;
@@ -5242,16 +5256,18 @@ Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       DeviceMemory<uint8> scratch_memory;
-      auto status = dnn->PrepareForCtcLoss(
-                           this, probs_desc, probs_data, grads_desc,
-                           labels_data, labels_lengths_data, input_lengths_data,
-                           workspace_allocator, &scratch_memory)
-                        .ok();
+      int ctc_loss_algo_id;
+      auto status =
+          dnn->PrepareForCtcLoss(this, probs_desc, probs_data, grads_desc,
+                                 labels_data, labels_lengths_data,
+                                 input_lengths_data, workspace_allocator,
+                                 &scratch_memory, &ctc_loss_algo_id)
+              .ok();
       if (status) {
-        status =
-            dnn->DoCtcLoss(this, probs_desc, probs_data, labels_data,
-                           labels_lengths_data, input_lengths_data, costs_data,
-                           grads_desc, grads_data, &scratch_memory);
+        status = dnn->DoCtcLoss(this, probs_desc, probs_data, labels_data,
+                                labels_lengths_data, input_lengths_data,
+                                costs_data, grads_desc, grads_data,
+                                &scratch_memory, ctc_loss_algo_id);
       }
       if (!status) {
         SetError();

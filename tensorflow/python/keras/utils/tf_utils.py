@@ -34,6 +34,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -174,17 +176,24 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
     return map_fn(nested)
 
   # Recursively convert.
-  if not nest.is_sequence(nested):
+  if not nest.is_nested(nested):
     raise ValueError(
         'Received non-atomic and non-sequence element: {}'.format(nested))
   if nest._is_mapping(nested):
     values = [nested[k] for k in nest._sorted(nested)]
+  elif nest._is_attrs(nested):
+    values = _astuple(nested)
   else:
     values = nested
   mapped_values = [
       map_structure_with_atomic(is_atomic_fn, map_fn, ele) for ele in values
   ]
   return nest._sequence_like(nested, mapped_values)
+
+
+def get_shapes(tensors):
+  """Gets shapes from tensors."""
+  return nest.map_structure(lambda x: x.shape, tensors)
 
 
 #  pylint: enable=protected-access
@@ -277,7 +286,7 @@ def convert_inner_node_data(nested, wrap=False):
       return True
     if _is_serialized_node_data(nested):
       return True
-    return not nest.is_sequence(nested)
+    return not nest.is_nested(nested)
 
   def _convert_object_or_list(nested):
     """Convert b/t `ListWrapper` object and list representations."""
@@ -323,7 +332,7 @@ def shape_type_conversion(fn):
 
 
 def are_all_symbolic_tensors(tensors):
-  return all(is_symbolic_tensor(tensor) for tensor in tensors)
+  return all(map(is_symbolic_tensor, tensors))
 
 
 _user_convertible_tensor_types = set()
@@ -341,9 +350,12 @@ def is_symbolic_tensor(tensor):
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
-  if isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    tensor = ops.convert_to_tensor_or_composite(tensor)
-  if isinstance(tensor, variables.Variable):
+  if isinstance(tensor, ops.Tensor):
+    return hasattr(tensor, 'graph')
+  elif isinstance(tensor, composite_tensor.CompositeTensor):
+    component_tensors = nest.flatten(tensor, expand_composites=True)
+    return any(hasattr(t, 'graph') for t in component_tensors)
+  elif isinstance(tensor, variables.Variable):
     # Variables that are output of a Keras Layer in Functional API mode
     # should be considered symbolic.
     # TODO(omalleyt): We need a better way to check this in order to
@@ -351,12 +363,11 @@ def is_symbolic_tensor(tensor):
     # return Variables as outputs.
     return (getattr(tensor, '_keras_history', False) or
             not context.executing_eagerly())
-  if isinstance(tensor, composite_tensor.CompositeTensor):
-    component_tensors = nest.flatten(tensor, expand_composites=True)
-    return any(hasattr(t, 'graph') for t in component_tensors)
-  if isinstance(tensor, ops.Tensor):
-    return hasattr(tensor, 'graph')
-  return False
+  elif isinstance(tensor, tuple(_user_convertible_tensor_types)):
+    tensor = ops.convert_to_tensor_or_composite(tensor)
+    return is_symbolic_tensor(tensor)
+  else:
+    return False
 
 
 def register_symbolic_tensor_type(cls):
@@ -402,6 +413,13 @@ def type_spec_from_value(value):
     return tensor_spec.TensorSpec(value.shape, value.dtype)
   else:
     return type_spec.type_spec_from_value(value)
+
+
+def is_ragged(tensor):
+  """Returns true if `tensor` is a ragged tensor or ragged tensor value."""
+  return isinstance(
+      tensor,
+      (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue))
 
 
 def is_tensor_or_variable(x):
@@ -474,11 +492,15 @@ def dataset_is_infinite(dataset):
 
 def get_tensor_spec(t, dynamic_batch=False, name=None):
   """Returns a `TensorSpec` given a single `Tensor` or `TensorSpec`."""
+  # pylint: disable=protected-access
   if isinstance(t, type_spec.TypeSpec):
     spec = t
   elif isinstance(t, composite_tensor.CompositeTensor):
     # TODO(b/148821952): Should these specs have a name attr?
-    spec = t._type_spec  # pylint: disable=protected-access
+    spec = t._type_spec
+  elif (hasattr(t, '_keras_history') and
+        hasattr(t._keras_history[0], '_type_spec')):
+    return t._keras_history[0]._type_spec
   elif hasattr(t, 'shape') and hasattr(t, 'dtype'):
     spec = tensor_spec.TensorSpec(shape=t.shape, dtype=t.dtype, name=name)
   else:
@@ -489,11 +511,12 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
 
   dynamic_batch_spec = copy.deepcopy(spec)
   # RaggedTensorSpec only has a private _shape.
-  shape = dynamic_batch_spec._shape.as_list()  # pylint: disable=protected-access
+  shape = dynamic_batch_spec._shape.as_list()
   if shape:
     shape[0] = None
-    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)  # pylint: disable=protected-access
+    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)
   return dynamic_batch_spec
+  # pylint: enable=protected-access
 
 
 def to_numpy_or_python_type(tensors):
@@ -522,3 +545,14 @@ def to_numpy_or_python_type(tensors):
 
   return nest.map_structure(_to_single_numpy_or_python_type, tensors)
 
+
+def _astuple(attrs):
+  """Converts the given attrs to tuple non-recursively."""
+  cls = type(attrs)
+  fields = getattr(cls, '__attrs_attrs__', None)
+  if fields is None:
+    raise ValueError('%r is not an attrs-decorated class.' % cls)
+  values = []
+  for field in fields:
+    values.append(getattr(attrs, field.name))
+  return tuple(values)

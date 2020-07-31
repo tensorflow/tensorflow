@@ -16,14 +16,14 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -33,31 +33,32 @@ namespace TFDevice {
 
 namespace {
 
-constexpr char kReplicationAttr[] = "tf_device.is_same_data_across_replicas";
+constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
-// Analyzes the inputs to LaunchFuncOps in the module, and annotates their
+// Analyzes the inputs to ClusterFuncOps in the module, and annotates their
 // invoked functions whether each input has the same data across replicas.
 struct AnnotateParameterReplication
-    : public ModulePass<AnnotateParameterReplication> {
-  void runOnModule() override;
+    : public PassWrapper<AnnotateParameterReplication,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Returns the first value in the chain of operands, which is not defined by a
 // tf.IdentityOp or a tf.ReadVariableOp.
 Value SkipIdentityAndReadVariable(Value v) {
   while (auto op = v.getDefiningOp()) {
-    if (!(isa<TF::IdentityOp>(op) || isa<TF::ReadVariableOp>(op))) break;
+    if (!isa<TF::IdentityOp, TF::ReadVariableOp>(op)) break;
     v = op->getOperand(0);
   }
   return v;
 }
 
-void AnnotateParameterReplication::runOnModule() {
-  ModuleOp m = getModule();
+void AnnotateParameterReplication::runOnOperation() {
+  ModuleOp m = getOperation();
   OpBuilder builder(m.getContext());
-  m.walk([&](tf_device::LaunchFuncOp launch_func) {
-    auto replicate = launch_func.getParentOfType<tf_device::ReplicateOp>();
+  m.walk([&](tf_device::ClusterFuncOp cluster_func) {
+    auto replicate = cluster_func.getParentOfType<tf_device::ReplicateOp>();
     if (!replicate) return;
     auto mirrored_variable_indices_attr =
         replicate.getAttrOfType<ArrayAttr>(kMirroredVariableIndicesAttr);
@@ -68,8 +69,8 @@ void AnnotateParameterReplication::runOnModule() {
             mirrored_index.cast<IntegerAttr>().getInt());
       }
     }
-    auto func = llvm::cast<FuncOp>(m.lookupSymbol(launch_func.func()));
-    for (auto entry : llvm::enumerate(launch_func.getOperands())) {
+    auto func = llvm::cast<FuncOp>(m.lookupSymbol(cluster_func.func()));
+    for (auto entry : llvm::enumerate(cluster_func.getOperands())) {
       auto operand = SkipIdentityAndReadVariable(entry.value());
       auto block_arg = operand.dyn_cast<BlockArgument>();
       if (block_arg && block_arg.getOwner() == &replicate.GetBody()) {
@@ -82,21 +83,21 @@ void AnnotateParameterReplication::runOnModule() {
         // Not a replication-invariant operand.
         continue;
       }
-      func.setArgAttr(entry.index(), kReplicationAttr,
-                      builder.getBoolAttr(true));
+      func.setArgAttr(entry.index(), kReplicationAttr, builder.getUnitAttr());
     }
   });
 }
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateAnnotateParameterReplicationPass() {
   return std::make_unique<AnnotateParameterReplication>();
 }
 
 static PassRegistration<AnnotateParameterReplication> pass(
     "tf-annotate-parameter-replication",
-    "Annotate whether a LaunchFuncOp's parameters have the same data across "
+    "Annotate whether a ClusterFuncOp's parameters have the same data across "
     "replicas.");
 
 }  // namespace TFDevice

@@ -90,7 +90,7 @@ class GpuDebugInfoManager {
   std::set<ModuleIdentifier> GetRunningModules() {
     tensorflow::mutex_lock lock(mutex_);
     std::set<ModuleIdentifier> running;
-    for (const auto id : running_module_ids_) {
+    for (const auto& id : running_module_ids_) {
       running.insert(id.first);
     }
     return running;
@@ -98,7 +98,7 @@ class GpuDebugInfoManager {
   std::set<ModuleIdentifier> GetActiveModules() {
     tensorflow::mutex_lock lock(mutex_);
     std::set<ModuleIdentifier> active;
-    for (const auto id : active_modules_) {
+    for (const auto& id : active_modules_) {
       active.insert(id.first);
     }
     return active;

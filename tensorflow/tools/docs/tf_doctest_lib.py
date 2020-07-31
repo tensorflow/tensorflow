@@ -146,6 +146,12 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
       A bool, indicating if the check was successful or not.
     """
 
+    # If the docstring's output is empty and there is some output generated
+    # after running the snippet, return True. This is because if the user
+    # doesn't want to display output, respect that over what the doctest wants.
+    if not want and got:
+      return True
+
     # Replace python's addresses with ellipsis (`...`) since it can change on
     # each execution.
     want = self._ADDRESS_RE.sub('at ...>', want)

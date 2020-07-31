@@ -34,6 +34,7 @@ limitations under the License.
 #define PLATFORM_POSIX_IOS
 #define IS_MOBILE_PLATFORM
 #else
+// If no platform specified, use:
 #define PLATFORM_POSIX
 #endif
 

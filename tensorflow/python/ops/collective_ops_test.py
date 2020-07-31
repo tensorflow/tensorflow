@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+import time
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import context
@@ -40,11 +43,25 @@ from tensorflow.python.platform import tf_logging as logging
 
 class CollectiveOpTest(test.TestCase):
 
-  def _testCollectiveReduce(self, inputs, expected, set_graph_key,
-                            communication_hint='auto', fp16=False,
-                            instance_key=1, merge_op='Add', final_op='Div'):
+  def setUp(self):
+    context._reset_context()  # pylint: disable=protected-access
+    super(CollectiveOpTest, self).setUp()
+
+  def _testCollectiveReduce(self,
+                            inputs,
+                            expected,
+                            set_graph_key,
+                            communication_hint='auto',
+                            fp16=False,
+                            instance_key=1,
+                            merge_op='Add',
+                            final_op='Div',
+                            timeout=0,
+                            reported_group_size=None):
     group_key = 1
     group_size = len(inputs)
+    if reported_group_size is None:
+      reported_group_size = group_size
     device_type = 'CPU'
     config = config_pb2.ConfigProto(device_count={device_type: group_size})
     devices = ['/{}:{}'.format(device_type, i) for i in range(group_size)]
@@ -55,9 +72,16 @@ class CollectiveOpTest(test.TestCase):
         with ops.device(devices[i]):
           tensor = constant_op.constant(inputs[i], dtype=(
               dtypes.float16 if fp16 else dtypes.float32))
-          colred.append(collective_ops.all_reduce(
-              tensor, group_size, group_key, instance_key, merge_op, final_op,
-              communication_hint=communication_hint))
+          colred.append(
+              collective_ops.all_reduce(
+                  tensor,
+                  reported_group_size,
+                  group_key,
+                  instance_key,
+                  merge_op,
+                  final_op,
+                  communication_hint=communication_hint,
+                  timeout=timeout))
       run_options = config_pb2.RunOptions()
       if set_graph_key:
         run_options.experimental.collective_graph_key = 1
@@ -85,49 +109,221 @@ class CollectiveOpTest(test.TestCase):
     for i in range(group_size * num_instances):
       self.assertAllClose(results[i], expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testCollectiveReduce(self):
-    self._testCollectiveReduce(
-        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
-        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
-        set_graph_key=True)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveReduce(
+          inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                  [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+          expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+          set_graph_key=True)
 
-  @test_util.run_deprecated_v1
   def testCollectiveAutoGraphKey(self):
-    self._testCollectiveReduce(
-        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
-        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
-        set_graph_key=False)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveReduce(
+          inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                  [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+          expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+          set_graph_key=False)
 
-  @test_util.run_deprecated_v1
   def testFp16Reduce(self):
-    self._testCollectiveReduce(
-        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
-        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
-        set_graph_key=True,
-        fp16=True)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveReduce(
+          inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                  [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+          expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+          set_graph_key=True,
+          fp16=True)
 
-  @test_util.run_deprecated_v1
   def testCollectiveMultipleConcurrentReduce(self):
-    self._testMultipleConcurrentCollectiveReduce(
-        [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-        [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
-        [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testMultipleConcurrentCollectiveReduce(
+          [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+          [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
+          [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
 
-  @test_util.run_deprecated_v1
+  def testCollectiveTimeoutV1(self):
+    timeout = 4.5
+    kwargs = dict(
+        inputs=[[i + j + 0.1 for i in range(8)] for j in range(3)],
+        expected=[1 + i + 0.1 for i in range(8)],
+        set_graph_key=True,
+        timeout=timeout)
+
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveReduce(**kwargs)
+
+    start_time = time.time()
+    with ops.Graph().as_default():
+      with self.assertRaisesRegex(
+          errors.DeadlineExceededError,
+          'Collective has timed out waiting for other workers'):
+        self._testCollectiveReduce(
+            reported_group_size=len(kwargs['inputs']) + 1, **kwargs)
+    elapsed = time.time() - start_time
+    self.assertAllGreaterEqual(elapsed, timeout)
+
+  @test_util.run_v2_only
+  def testCollectiveTimeoutV2(self):
+    timeout = 4.5
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    @def_function.function
+    def run_all_reduce(group_size, reported_group_size=None):
+      group_key = 20
+      instance_key = 30
+      tensor = [1, 2, 3, 4]
+      results = []
+      if reported_group_size is None:
+        reported_group_size = group_size
+      for i in range(group_size):
+        with ops.device('/CPU:{}'.format(i)):
+          input_data = constant_op.constant(tensor)
+          collective_op = collective_ops.all_reduce(
+              input_data,
+              group_size=reported_group_size,
+              group_key=group_key,
+              instance_key=instance_key,
+              merge_op='Add',
+              final_op='Id',
+              timeout=timeout)
+          results.append(collective_op)
+      return results
+
+    run_all_reduce(2, 2)
+
+    start_time = time.time()
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      run_all_reduce(1, 2)
+    elapsed = time.time() - start_time
+    self.assertAllGreaterEqual(elapsed, timeout)
+
+  @test_util.run_v2_only
+  def testParamResolutionAfterTimeoutV2(self):
+    timeout = 1.5
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    group_key = 20
+    instance_key = 30
+    input_data = constant_op.constant([1, 2, 3, 4])
+
+    # This timeout comes from param solution.
+    with self.assertRaisesRegex(
+        errors.DeadlineExceededError,
+        'Collective has timed out waiting for other workers'):
+      with ops.device('CPU:0'):
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            instance_key=instance_key,
+            merge_op='Add',
+            final_op='Id',
+            timeout=timeout)
+
+    # We launch the second device after the first device times out. This is to
+    # simulate the situation when other workers are slow and the timeout is
+    # short. Since the CPU:0 times out in the param resolution phase, CPU:1
+    # should times out as well, but in the execute phase.
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      with ops.device('CPU:1'):
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            instance_key=instance_key,
+            merge_op='Add',
+            final_op='Id',
+            timeout=timeout)
+
+  @test_util.run_v2_only
+  def testExecutionAfterTimeoutV2(self):
+    timeout = 1.5
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    group_key = 20
+    instance_key = 30
+    input_data = constant_op.constant([1, 2, 3, 4])
+
+    @def_function.function
+    def run_all_reduce():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              input_data,
+              group_size=2,
+              group_key=group_key,
+              instance_key=instance_key,
+              merge_op='Add',
+              final_op='Id',
+              timeout=timeout)
+
+    # Run a normal all-reduce to complete param resolution.
+    run_all_reduce()
+
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      with ops.device('CPU:0'):
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            instance_key=instance_key,
+            merge_op='Add',
+            final_op='Id',
+            timeout=timeout)
+
+    # We launch the second device after the first device times out. This is to
+    # simulate the situation when other workers are slow and the timeout is
+    # short. It should error immediately.
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      with ops.device('CPU:1'):
+        # No timeout.
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            merge_op='Add',
+            final_op='Id',
+            instance_key=instance_key)
+
   def testNcclHintFallbackToRingReduce(self):
     """Tests that setting `communication_hint=nccl` works on non-GPU builds."""
     if kernels.get_registered_kernels_for_op('NcclAllReduce'):
       self.skipTest('Run only on non-GPU environments')
-    self._testCollectiveReduce(
-        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
-        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
-        set_graph_key=False,
-        communication_hint='nccl')
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveReduce(
+          inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                  [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+          expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+          set_graph_key=False,
+          communication_hint='nccl')
 
   def _testWhile(self, num_vars, num_iterations, key_base):
     group_size = 2
@@ -180,15 +376,16 @@ class CollectiveOpTest(test.TestCase):
           [((1 << (num_iterations + v)) * 1.) for v in range(num_vars)]
           for _ in range(group_size)])
 
-  @test_util.run_deprecated_v1
   def testSimpleWhile(self):
-    self._testWhile(num_vars=1, num_iterations=4, key_base=20)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testWhile(num_vars=1, num_iterations=4, key_base=20)
 
-  @test_util.run_deprecated_v1
   def testWhileMultipleAllReduce(self):
-    self._testWhile(num_vars=2, num_iterations=4, key_base=20)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testWhile(num_vars=2, num_iterations=4, key_base=20)
 
-  @test_util.run_deprecated_v1
   def testWhileWithScopedAllocator(self):
     group_size = 2
     group_key = 1
@@ -202,47 +399,52 @@ class CollectiveOpTest(test.TestCase):
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
 
-    with self.session(config=config) as sess:
-      run_ops = []
-      for i in range(group_size):
-        with ops.device('CPU:%d' % i):
-          constant = constant_op.constant(0.)
-          cond = lambda i: math_ops.less(i, 10.)
-          body = lambda i: math_ops.add(i, 1.)
-          input0 = control_flow_ops.while_loop(cond, body, [constant])
-          input1 = math_ops.add(constant, 5)
-          colred0 = collective_ops.all_reduce(input0, group_size, group_key,
-                                              instance_key0, 'Add', 'Id')
-          colred1 = collective_ops.all_reduce(input1, group_size, group_key,
-                                              instance_key1, 'Add', 'Id')
-          run_ops.append(math_ops.add_n([colred0, colred1]))
-      results = sess.run(run_ops)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      with self.session(config=config) as sess:
+        run_ops = []
+        for i in range(group_size):
+          with ops.device('CPU:%d' % i):
+            constant = constant_op.constant(0.)
+            cond = lambda i: math_ops.less(i, 10.)
+            body = lambda i: math_ops.add(i, 1.)
+            input0 = control_flow_ops.while_loop(cond, body, [constant])
+            input1 = math_ops.add(constant, 5)
+            colred0 = collective_ops.all_reduce(input0, group_size, group_key,
+                                                instance_key0, 'Add', 'Id')
+            colred1 = collective_ops.all_reduce(input1, group_size, group_key,
+                                                instance_key1, 'Add', 'Id')
+            run_ops.append(math_ops.add_n([colred0, colred1]))
+        results = sess.run(run_ops)
       self.assertEqual(results, [30., 30.])
 
-  @test_util.run_deprecated_v1
   def testCollectiveReduceScalar(self):
-    self._testCollectiveReduce(inputs=[0.1, 0.3], expected=0.2,
-                               set_graph_key=True)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveReduce(inputs=[0.1, 0.3], expected=0.2,
+                                 set_graph_key=True)
 
-  @test_util.run_deprecated_v1
   def testCollectiveReduceMaximum(self):
-    self._testCollectiveReduce(
-        inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
-        expected=[10., 20., 30., 40., 50.],
-        set_graph_key=True,
-        instance_key=30,
-        merge_op='Max',
-        final_op='Id')
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveReduce(
+          inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
+          expected=[10., 20., 30., 40., 50.],
+          set_graph_key=True,
+          instance_key=30,
+          merge_op='Max',
+          final_op='Id')
 
-  @test_util.run_deprecated_v1
   def testCollectiveReduceMinimum(self):
-    self._testCollectiveReduce(
-        inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
-        expected=[1., 2., 3., 4., 5.],
-        set_graph_key=True,
-        instance_key=40,
-        merge_op='Min',
-        final_op='Id')
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveReduce(
+          inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
+          expected=[1., 2., 3., 4., 5.],
+          set_graph_key=True,
+          instance_key=40,
+          merge_op='Min',
+          final_op='Id')
 
   def _testCollectiveBroadcast(self, in_val):
     group_key = 1
@@ -263,13 +465,15 @@ class CollectiveOpTest(test.TestCase):
     self.assertAllClose(results[0], in_val, rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[1], in_val, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testCollectiveBroadcast(self):
-    self._testCollectiveBroadcast([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1])
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveBroadcast([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1])
 
-  @test_util.run_deprecated_v1
   def testCollectiveBroadcastBool(self):
-    self._testCollectiveBroadcast([True, False])
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveBroadcast([True, False])
 
   def _testCollectiveGather(self, t0, t1, expected, set_graph_key):
     group_key = 1
@@ -289,94 +493,101 @@ class CollectiveOpTest(test.TestCase):
     self.assertAllClose(results[0], expected, rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[1], expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testCollectiveGather(self):
-    self._testCollectiveGather([0, 1, 2, 3, 4, 5, 6, 7],
-                               [10, 11, 12, 13, 14, 15, 16, 17],
-                               [0, 1, 2, 3, 4, 5, 6, 7,
-                                10, 11, 12, 13, 14, 15, 16, 17],
-                               True)
-    self._testCollectiveGather([[0, 1, 2, 3], [4, 5, 6, 7]],
-                               [[10, 11, 12, 13], [14, 15, 16, 17]],
-                               [[0, 1, 2, 3], [4, 5, 6, 7],
-                                [10, 11, 12, 13], [14, 15, 16, 17]],
-                               True)
-    self._testCollectiveGather([[[0, 1], [2, 3]], [[4, 5], [6, 7]]],
-                               [[[10, 11], [12, 13]], [[14, 15], [16, 17]]],
-                               [[[0, 1], [2, 3]], [[4, 5], [6, 7]],
-                                [[10, 11], [12, 13]], [[14, 15], [16, 17]]],
-                               True)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      self._testCollectiveGather([0, 1, 2, 3, 4, 5, 6, 7],
+                                 [10, 11, 12, 13, 14, 15, 16, 17],
+                                 [0, 1, 2, 3, 4, 5, 6, 7,
+                                  10, 11, 12, 13, 14, 15, 16, 17],
+                                 True)
+      self._testCollectiveGather([[0, 1, 2, 3], [4, 5, 6, 7]],
+                                 [[10, 11, 12, 13], [14, 15, 16, 17]],
+                                 [[0, 1, 2, 3], [4, 5, 6, 7],
+                                  [10, 11, 12, 13], [14, 15, 16, 17]],
+                                 True)
+      self._testCollectiveGather([[[0, 1], [2, 3]], [[4, 5], [6, 7]]],
+                                 [[[10, 11], [12, 13]], [[14, 15], [16, 17]]],
+                                 [[[0, 1], [2, 3]], [[4, 5], [6, 7]],
+                                  [[10, 11], [12, 13]], [[14, 15], [16, 17]]],
+                                 True)
 
-  @test_util.run_deprecated_v1
   def testCollectiveGatherShapeMismatch(self):
     group_key = 1
     instance_key = 1
     t0 = [1, 2, 3, 4]
     t1 = [5, 6, 7, 8]
     t2 = [9, 10]
-    with self.session(
-        config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
-      with ops.device('/CPU:0'):
-        in0 = constant_op.constant(t0)
-        c0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
-      with ops.device('/CPU:1'):
-        in1 = constant_op.constant(t1)
-        in2 = constant_op.constant(t2)
-        c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
-        c2 = collective_ops.all_gather(in2, 2, group_key, instance_key)
-      run_options = config_pb2.RunOptions()
-      run_options.experimental.collective_graph_key = 1
-      sess.run([c0, c1], options=run_options)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   'Shape mismatch'):
-        sess.run([c0, c2], options=run_options)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      with self.session(
+          config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
+        with ops.device('/CPU:0'):
+          in0 = constant_op.constant(t0)
+          c0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
+        with ops.device('/CPU:1'):
+          in1 = constant_op.constant(t1)
+          in2 = constant_op.constant(t2)
+          c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
+          c2 = collective_ops.all_gather(in2, 2, group_key, instance_key)
+        run_options = config_pb2.RunOptions()
+        run_options.experimental.collective_graph_key = 1
+        sess.run([c0, c1], options=run_options)
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'Shape mismatch'):
+          sess.run([c0, c2], options=run_options)
 
-  @test_util.run_deprecated_v1
   def testCollectiveGatherShapeMismatchAcrossDevices(self):
     group_key = 1
     instance_key = 1
     t0 = [1, 2, 3, 4]
     t1 = [5, 6]
-    with self.session(
-        config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
-      with ops.device('/CPU:0'):
-        in0 = constant_op.constant(t0)
-        c0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
-      with ops.device('/CPU:1'):
-        in1 = constant_op.constant(t1)
-        c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
-      run_options = config_pb2.RunOptions()
-      run_options.experimental.collective_graph_key = 1
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   'Shape mismatch'):
-        sess.run([c0, c1], options=run_options)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      with self.session(
+          config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
+        with ops.device('/CPU:0'):
+          in0 = constant_op.constant(t0)
+          c0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
+        with ops.device('/CPU:1'):
+          in1 = constant_op.constant(t1)
+          c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
+        run_options = config_pb2.RunOptions()
+        run_options.experimental.collective_graph_key = 1
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'Shape mismatch'):
+          sess.run([c0, c1], options=run_options)
 
-  @test_util.run_deprecated_v1
   def testCollectiveGatherPolymorphicShape(self):
     t0 = [0, 1, 2, 3, 4, 5, 6, 7]
     t1 = [10, 11, 12, 13, 14, 15, 16, 17]
     group_size = 2
     group_key = 1
     instance_key = 123
-    with self.session(
-        config=config_pb2.ConfigProto(
-            device_count={'CPU': group_size})) as sess:
-      with ops.device('/CPU:0'):
-        in0 = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
-        c0 = collective_ops.all_gather(in0, group_size, group_key, instance_key)
-      with ops.device('/CPU:1'):
-        in1 = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
-        c1 = collective_ops.all_gather(in1, group_size, group_key, instance_key)
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      with self.session(
+          config=config_pb2.ConfigProto(
+              device_count={'CPU': group_size})) as sess:
+        with ops.device('/CPU:0'):
+          in0 = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
+          c0 = collective_ops.all_gather(in0, group_size, group_key,
+                                         instance_key)
+        with ops.device('/CPU:1'):
+          in1 = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
+          c1 = collective_ops.all_gather(in1, group_size, group_key,
+                                         instance_key)
 
-      results = sess.run([c0, c1], feed_dict={in0: t0, in1: t1})
-      expected_output = [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17]
-      self.assertAllClose(results[0], expected_output, rtol=1e-5, atol=1e-5)
-      self.assertAllClose(results[1], expected_output, rtol=1e-5, atol=1e-5)
+        results = sess.run([c0, c1], feed_dict={in0: t0, in1: t1})
+        results_ = sess.run([c0, c1], feed_dict={in0: t0[1:], in1: t1[1:]})
 
-      results_ = sess.run([c0, c1], feed_dict={in0: t0[1:], in1: t1[1:]})
-      expected_output_ = [1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14, 15, 16, 17]
-      self.assertAllClose(results_[0], expected_output_, rtol=1e-5, atol=1e-5)
-      self.assertAllClose(results_[1], expected_output_, rtol=1e-5, atol=1e-5)
+    expected_output = [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17]
+    self.assertAllClose(results[0], expected_output, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(results[1], expected_output, rtol=1e-5, atol=1e-5)
+
+    expected_output_ = [1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14, 15, 16, 17]
+    self.assertAllClose(results_[0], expected_output_, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(results_[1], expected_output_, rtol=1e-5, atol=1e-5)
 
   @test_util.run_v2_only
   def testCollectiveGroupSizeMismatch(self):
@@ -406,12 +617,20 @@ class CollectiveOpTest(test.TestCase):
             merge_op='Add', final_op='Id')
       return c0, c1
 
-    with self.assertRaisesRegexp(errors.InternalError,
-                                 'but that group has size'):
+    with self.assertRaisesRegex(errors.InternalError,
+                                'but that group has size'):
       run_all_reduce()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v2_only
   def testCollectiveTensorsHaveNoDeviceSpecified(self):
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
     group_size = 2
     group_key = 1
     instance_key = 1
@@ -435,20 +654,12 @@ class CollectiveOpTest(test.TestCase):
 
       return results
 
-    with self.session(config=config_pb2.ConfigProto(
-        device_count={'CPU': 2})) as sess:
-      with ops.device('/CPU:0'):
-        in0 = constant_op.constant(1)
-      with ops.device('/CPU:1'):
-        in1 = constant_op.constant(3)
-
-      result_op = fn([in0, in1])
-
-      run_options = config_pb2.RunOptions()
-      run_options.experimental.collective_graph_key = 1
-      result = sess.run(result_op, options=run_options)
-
-      self.assertAllClose(result, [2, 2])
+    with ops.device('/CPU:0'):
+      in0 = constant_op.constant(1)
+    with ops.device('/CPU:1'):
+      in1 = constant_op.constant(3)
+    result = fn([in0, in1])
+    self.assertAllClose(result, [2, 2])
 
   @test_util.run_v2_only
   def testCollectiveGroupSizeOne(self):
@@ -466,7 +677,6 @@ class CollectiveOpTest(test.TestCase):
         in_tensor, group_size, group_key, instance_key)
     self.assertAllEqual(in_value, gathered_tensor.numpy())
 
-  @test_util.run_deprecated_v1
   def testConstantWithScopedAllocator(self):
     group_size = 2
     group_key = 1
@@ -483,21 +693,224 @@ class CollectiveOpTest(test.TestCase):
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
 
-    with self.session(config=cfg) as sess:
-      run_ops = []
-      for i in range(group_size):
-        with ops.device('CPU:%d' % i):
-          constant = constant_op.constant(i + 1.)
-          input_tensor1 = array_ops.identity(constant)
-          input_tensor2 = array_ops.identity(constant)
-          reduced_tensor1 = collective_ops.all_reduce(
-              input_tensor1, group_size, group_key, instance_key1, 'Add', 'Id')
-          reduced_tensor2 = collective_ops.all_reduce(
-              input_tensor2, group_size, group_key, instance_key2, 'Add', 'Id')
-          run_ops.append(array_ops.identity(reduced_tensor1))
-          run_ops.append(array_ops.identity(reduced_tensor2))
-      results = sess.run(run_ops)
-      self.assertEqual(results, [3., 3., 3., 3.])
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default():
+      with self.session(config=cfg) as sess:
+        run_ops = []
+        for i in range(group_size):
+          with ops.device('CPU:%d' % i):
+            constant = constant_op.constant(i + 1.)
+            input_tensor1 = array_ops.identity(constant)
+            input_tensor2 = array_ops.identity(constant)
+            reduced_tensor1 = collective_ops.all_reduce(
+                input_tensor1, group_size, group_key, instance_key1, 'Add',
+                'Id')
+            reduced_tensor2 = collective_ops.all_reduce(
+                input_tensor2, group_size, group_key, instance_key2, 'Add',
+                'Id')
+            run_ops.append(array_ops.identity(reduced_tensor1))
+            run_ops.append(array_ops.identity(reduced_tensor2))
+        results = sess.run(run_ops)
+    self.assertEqual(results, [3., 3., 3., 3.])
+
+  @test_util.run_v2_only
+  def testMultipleGroups(self):
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+    num_elements = 4
+
+    @def_function.function
+    def run_all_reduce(group_size, group_key):
+      instance_key = group_key
+      input_value = [group_key for i in range(num_elements)]
+      collectives = []
+      for device_idx in range(group_size):
+        with ops.device('/CPU:{}'.format(device_idx)):
+          input_tensor = constant_op.constant(input_value)
+          collectives.append(collective_ops.all_reduce(
+              input_tensor, group_size, group_key, instance_key, merge_op='Add',
+              final_op='Id'))
+      return collectives
+
+    def run_and_assert(group_size, group_key):
+      for reduced_tensor in run_all_reduce(group_size, group_key):
+        self.assertAllEqual(
+            [group_key * group_size for i in range(num_elements)],
+            reduced_tensor.numpy())
+
+    run_and_assert(group_size=2, group_key=1)
+    run_and_assert(group_size=3, group_key=2)
+
+  @test_util.run_v2_only
+  def testAbortGroupParamsResolution(self):
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant(1.)
+
+    def abort_fn():
+      time.sleep(2)
+      context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
+
+    t = threading.Thread(target=abort_fn)
+    t.start()
+
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      # This hangs on params resolution since we're only launching one
+      # collective for a group size of 2.
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # After abortion, subsequent collectives should fail immediately.
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # Reset the context in order to reset the collective executor.
+    context._reset_context()  # pylint: disable=protected-access
+    t.join()
+
+    # After reset non-NCCL collectives should work.
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+
+    def collective_fn():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              'Add',
+              'Id',
+              communication_hint='ring')
+
+    def_function.function(collective_fn)()
+
+  @test_util.run_v2_only
+  def testAbortInstanceParamsResolution(self):
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant(1.)
+
+    def collective_fn():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              'Add',
+              'Id',
+              communication_hint='ring')
+
+    # First perform a normal all-reduce to complete the group resolution.
+    def_function.function(collective_fn)()
+
+    def abort_fn():
+      time.sleep(2)
+      context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
+
+    t = threading.Thread(target=abort_fn)
+    t.start()
+
+    # Use a different instance key to trigger another instance resolution.
+    instance_key = 101
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      # This hangs on params resolution since we're only launching one
+      # collective for a group size of 2.
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # After abortion, subsequent collectives should fail immediately.
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # Reset the context in order to reset the collective executor.
+    context._reset_context()  # pylint: disable=protected-access
+    t.join()
+
+    # After reset non-NCCL collectives should work.
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    def_function.function(collective_fn)()
+
+  @test_util.run_v2_only
+  def testAbortRing(self):
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant(1.)
+
+    # First perform a normal collective to finish resolution.
+    def collective_fn():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              'Add',
+              'Id',
+              communication_hint='ring')
+
+    def_function.function(collective_fn)()
+
+    # Launch a collective that hangs, and abort the collective executor after
+    # the launch.
+    def abort_fn():
+      time.sleep(2)
+      context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
+
+    t = threading.Thread(target=abort_fn)
+    t.start()
+
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # After abortion, subsequent collectives should fail immediately.
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(in_tensor, group_size, group_key, instance_key,
+                                'Add', 'Id')
+
+    # Reset the context in order to reset the collective executor.
+    t.join()
+    context._reset_context()  # pylint: disable=protected-access
+    # After reset non-NCCL collectives should work.
+    cpus = config.list_physical_devices('CPU')
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    def_function.function(collective_fn)()
 
 
 if __name__ == '__main__':

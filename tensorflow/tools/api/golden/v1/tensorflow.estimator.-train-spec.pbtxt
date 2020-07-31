@@ -15,6 +15,10 @@ tf_class {
     name: "max_steps"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "saving_listeners"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
   }

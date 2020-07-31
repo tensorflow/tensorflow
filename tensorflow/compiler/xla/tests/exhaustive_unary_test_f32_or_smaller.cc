@@ -352,6 +352,17 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sqrt, {
   Run(Sqrt, std::sqrt, error_spec_gen);
 })
 
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cbrt, {
+  if (platform_ == "Host" || platform_ == "CUDA") {
+    ErrorSpecGen error_spec_gen = +[](NativeT x) {
+      return ErrorSpec{0.01, 0.01};
+    };
+    Run(Cbrt, std::cbrt, error_spec_gen);
+  } else {
+    Run(Cbrt, std::cbrt);
+  }
+})
+
 // TODO(jlebar): Test trig functions over complex inputs.
 XLA_TEST_P(ExhaustiveF32UnaryTest, Acosh) {
   // Error inherited from Log, which our implementation of Acosh uses.

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-device-decompose-resource-ops | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -tf-device-decompose-resource-ops | FileCheck %s
 
 // Tests that resources with subtypes are used if present.
 
@@ -87,6 +87,61 @@ func @decompose_resource_apply_gradient_descent(%arg0: tensor<f32>) -> () {
 
 // -----
 
+// Tests that composite tf.ResourceApplyMomentum (non-Nesterov) operation
+// is decomposed.
+
+// CHECK-LABEL: func @decompose_resource_apply_momentum_non_nesterov
+// CHECK-SAME:  [[LR:%.*]]: tensor<f32>, [[GRAD:%.*]]: tensor<f32>, [[MOMENTUM:%.*]]: tensor<f32>
+func @decompose_resource_apply_momentum_non_nesterov(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> () {
+
+  // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[ACCUM_HANDLE:%.*]] = "tf.VarHandleOp"
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[ACCUM:%.*]] = "tf.ReadVariableOp"([[ACCUM_HANDLE]])
+  // CHECK: [[ACCUM_MOMENTUM:%.*]] = "tf.Mul"([[ACCUM]], [[MOMENTUM]])
+  // CHECK: [[ACCUM_NEW:%.*]] = "tf.Add"([[ACCUM_MOMENTUM]], [[GRAD]])
+  // CHECK: "tf.AssignVariableOp"([[ACCUM_HANDLE]], [[ACCUM_NEW]])
+  // CHECK: [[ACCUM_NEW_LR:%.*]] = "tf.Mul"([[ACCUM_NEW]], [[LR]])
+  // CHECK: [[VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]])
+  // CHECK: [[VAR_NEW:%.*]] = "tf.Sub"([[VAR]], [[ACCUM_NEW_LR]])
+  // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[VAR_NEW]])
+  "tf.ResourceApplyMomentum"(%0, %1, %arg0, %arg1, %arg2) {use_locking = false, use_nesterov = false} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+  return
+}
+
+// -----
+
+// Tests that composite tf.ResourceApplyMomentum (with Nesterov) operation
+// is decomposed.
+
+// CHECK-LABEL: func @decompose_resource_apply_momentum_nesterov
+// CHECK-SAME:  [[LR:%.*]]: tensor<f32>, [[GRAD:%.*]]: tensor<f32>, [[MOMENTUM:%.*]]: tensor<f32>
+func @decompose_resource_apply_momentum_nesterov(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> () {
+
+  // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[ACCUM_HANDLE:%.*]] = "tf.VarHandleOp"
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[ACCUM:%.*]] = "tf.ReadVariableOp"([[ACCUM_HANDLE]])
+  // CHECK: [[ACCUM_MOMENTUM:%.*]] = "tf.Mul"([[ACCUM]], [[MOMENTUM]])
+  // CHECK: [[ACCUM_NEW:%.*]] = "tf.Add"([[ACCUM_MOMENTUM]], [[GRAD]])
+  // CHECK: "tf.AssignVariableOp"([[ACCUM_HANDLE]], [[ACCUM_NEW]])
+  // CHECK: [[GRAD_LR:%.*]] = "tf.Mul"([[GRAD]], [[LR]])
+  // CHECK: [[MOMENTUM_LR:%.*]] = "tf.Mul"([[MOMENTUM]], [[LR]])
+  // CHECK: [[ACCUM_NEW_MOMENTUM_LR:%.*]] = "tf.Mul"([[ACCUM_NEW]], [[MOMENTUM_LR]])
+  // CHECK: [[DELTA:%.*]] = "tf.Add"([[GRAD_LR]], [[ACCUM_NEW_MOMENTUM_LR]])
+  // CHECK: [[VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]])
+  // CHECK: [[VAR_NEW:%.*]] = "tf.Sub"([[VAR]], [[DELTA]])
+  // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[VAR_NEW]])
+  "tf.ResourceApplyMomentum"(%0, %1, %arg0, %arg1, %arg2) {use_locking = false, use_nesterov = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+  return
+}
+
+// -----
+
 // Tests that composite tf.ResourceApplyKerasMomentum (non-Nesterov) operation
 // is decomposed.
 
@@ -141,6 +196,37 @@ func @decompose_resource_apply_keras_momentum_nesterov(%arg0: tensor<f32>, %arg1
   // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE]], %[[NEW_VAR]])
 
   "tf.ResourceApplyKerasMomentum"(%0, %1, %arg0, %arg1, %arg2) {use_locking = false, use_nesterov = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+
+  return
+}
+
+// -----
+
+
+// Tests that composite tf.ResourceApplyAdagradV2 operation is decomposed.
+
+// CHECK-LABEL: func @decompose_resource_apply_adagradv2
+// CHECK-SAME: ([[LR:%.*]]: tensor<f32>, [[EPSILON:%.*]]: tensor<f32>, [[GRAD:%.*]]: tensor<f32>)
+func @decompose_resource_apply_adagradv2(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> () {
+
+// CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"()
+// CHECK: [[ACC_HANDLE:%.*]] = "tf.VarHandleOp"()
+// CHECK: [[GRAD_SQUARE:%.*]] = "tf.Mul"([[GRAD]], [[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+// CHECK: [[OLD_ACC:%.*]] = "tf.ReadVariableOp"([[ACC_HANDLE]]) : (tensor<*x!tf.resource>) -> tensor<*xf32>
+// CHECK: [[NEW_ACC:%.*]] = "tf.AddV2"([[OLD_ACC]], [[GRAD_SQUARE]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+// CHECK: [[LR_MULTIPLY:%.*]] = "tf.Mul"([[LR]], [[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+// CHECK: [[SQRT:%.*]] = "tf.Sqrt"([[NEW_ACC]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: [[DIVISOR:%.*]] = "tf.AddV2"([[SQRT]], [[EPSILON]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+// CHECK: [[VAR_DELTA:%.*]] = "tf.Div"([[LR_MULTIPLY]], [[DIVISOR]]) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK: [[OLD_VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]]) : (tensor<*x!tf.resource>) -> tensor<*xf32>
+// CHECK: [[NEW_VAR:%.*]] = "tf.Sub"(%9, %8) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[NEW_VAR]]) : (tensor<*x!tf.resource>, tensor<*xf32>) -> ()
+// CHECK: "tf.AssignVariableOp"([[ACC_HANDLE]], [[NEW_ACC]]) : (tensor<*x!tf.resource>, tensor<*xf32>) -> ()
+
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  "tf.ResourceApplyAdagradV2"(%0, %1, %arg0, %arg1, %arg2) {update_slots = true, use_locking = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
 
   return
 }
@@ -282,8 +368,58 @@ func @decompose_resource_gather_op(%indices : tensor<5xi32>) -> tensor<2x5x16xi3
 
 // -----
 
-// Tests that composite tf.ResourceScatterUpdate operation is decomposed.
+// Tests that composite tf.ResourceApplyCenteredRMSProp operation is decomposed.
 
+// CHECK-LABEL: func @decompose_resource_apply_centered_RMS_prop
+// CHECK-SAME:  [[VAR:%.*]]: tensor<f32>, [[MG:%.*]]: tensor<f32>, [[MS:%.*]]: tensor<f32>, [[MOM:%.*]]: tensor<f32>, [[LR:%.*]]: tensor<f32>, [[RHO:%.*]]: tensor<f32>, [[MOMENTUM:%.*]]: tensor<f32>, [[EPSILON:%.*]]: tensor<f32>, [[GRAD:%.*]]: tensor<f32>
+func @decompose_resource_apply_centered_RMS_prop(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>, %arg8: tensor<f32>) -> () {
+  // CHECK: [[ONE:%.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[MG_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[MS_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[MOM_HANDLE:%.*]] = "tf.VarHandleOp"
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %2 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %3 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[GRADSQ:%.*]] = "tf.Mul"([[GRAD]], [[GRAD]])
+  // CHECK: [[SB:%.*]] = "tf.Sub"([[ONE]], [[RHO]])
+  // CHECK: [[GRAD_SUB:%.*]] = "tf.Mul"([[GRADSQ]], [[SB]])
+  // CHECK: [[MS:%.*]] = "tf.ReadVariableOp"([[MS_HANDLE]])
+  // CHECK: [[MS_RHO:%.*]] = "tf.Mul"([[MS]], [[RHO]])
+  // CHECK: [[MS_NEW:%.*]] = "tf.Add"([[GRAD_SUB]], [[MS_RHO]])
+  // CHECK: "tf.AssignVariableOp"([[MS_HANDLE]], [[MS_NEW]])
+
+  // CHECK: [[SUB_RHO:%.*]] = "tf.Sub"([[ONE]], [[RHO]])
+  // CHECK: [[SUB_GRAD:%.*]] = "tf.Mul"([[GRAD]], [[SUB_RHO]])
+  // CHECK: [[MG:%.*]] = "tf.ReadVariableOp"([[MG_HANDLE]])
+  // CHECK: [[MG_RHO:%.*]] = "tf.Mul"([[MG]], [[RHO]])
+  // CHECK: [[MG_NEW:%.*]] = "tf.Add"([[SUB_GRAD]], [[MG_RHO]])
+  // CHECK: "tf.AssignVariableOp"([[MG_HANDLE]], [[MG_NEW]])
+
+  // CHECK: [[MOM:%.*]] = "tf.ReadVariableOp"([[MOM_HANDLE]])
+  // CHECK: [[MOM_MOM:%.*]] = "tf.Mul"([[MOMENTUM]], [[MOM]])
+  // CHECK: [[LR_GRAD:%.*]] = "tf.Mul"([[LR]], [[GRAD]])
+
+  // CHECK: [[MG_MG:%.*]] = "tf.Mul"([[MG_NEW]], [[MG_NEW]])
+  // CHECK: [[MG_NEW:%.*]] = "tf.Add"([[MG_MG]], [[EPSILON]])
+  // CHECK: [[MG_SUB:%.*]] = "tf.Sub"([[MS_NEW]], [[MG_NEW]])
+  // CHECK: [[MG_SQRT:%.*]] = "tf.Sqrt"([[MG_SUB]])
+  // CHECK: [[MOM_DIV:%.*]] = "tf.Div"([[LR_GRAD]], [[MG_SQRT]])
+  // CHECK: [[MOM_NEW:%.*]] = "tf.Add"([[MOM_MOM]], [[MOM_DIV]])
+
+  // CHECK: [[VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]])
+  // CHECK: [[VAR_NEW:%.*]] = "tf.Sub"([[VAR]], [[MOM_NEW]])
+  // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[VAR_NEW]])
+
+  "tf.ResourceApplyCenteredRMSProp"(%0, %1, %2, %3, %arg4, %arg5, %arg6, %arg7, %arg8) {use_locking = false} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+  return
+}
+
+// -----
+
+// Tests that composite tf.ResourceScatterUpdate operation is decomposed.
 
 // CHECK-LABEL: @decompose_resource_scatter_update_op
 // CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
@@ -297,4 +433,35 @@ func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates:
   "tf.ResourceScatterUpdate"(%resource, %indices, %updates) : (tensor<*x!tf.resource>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()
 
   return
+}
+
+// -----
+
+// Tests that tf.VariableShape operation is decomposed.
+
+// CHECK-LABEL: @decompose_variable_shape_i32
+func @decompose_variable_shape_i32(%input: tensor<!tf.resource<tensor<?x?x?xf32>>>) -> tensor<3xi32> {
+  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<?x?x?xf32>>>) -> tensor<3xi32>
+  // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%arg0)
+  // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%[[READ]])
+  // CHECK: return %[[SHAPE]]
+  return %0 : tensor<3xi32>
+}
+
+// CHECK-LABEL: @decompose_variable_shape_i64
+func @decompose_variable_shape_i64(%input: tensor<!tf.resource<tensor<?x?x?xf32>>>) -> tensor<3xi64> {
+  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<?x?x?xf32>>>) -> tensor<3xi64>
+  // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%arg0)
+  // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%[[READ]])
+  // CHECK: return %[[SHAPE]]
+  return %0 : tensor<3xi64>
+}
+
+// CHECK-LABEL: @decompose_variable_shape_no_subtype
+func @decompose_variable_shape_no_subtype(%input: tensor<!tf.resource>) -> tensor<3xi32> {
+  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource>) -> tensor<3xi32>
+  // CHECK: "tf.VariableShape"
+  // CHECK-NOT: "tf.ReadVariableOp"
+  // CHECK-NOT: "tf.Shape"
+  return %0 : tensor<3xi32>
 }

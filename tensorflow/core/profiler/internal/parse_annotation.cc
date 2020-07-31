@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 
 #include <stack>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_split.h"
@@ -47,7 +50,7 @@ std::vector<absl::string_view> SplitNameAndMetadata(
 std::vector<absl::string_view> SplitPairs(absl::string_view metadata) {
   std::vector<absl::string_view> key_value_pairs;
   std::stack<char> quotes;
-  int start = 0, end = 0;
+  size_t start = 0, end = 0;
   for (; end < metadata.size(); ++end) {
     char ch = metadata[end];
     switch (ch) {

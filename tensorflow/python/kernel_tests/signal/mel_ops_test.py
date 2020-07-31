@@ -170,8 +170,6 @@ class LinearToMelTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(num_mel_bins=0)
     with self.assertRaises(ValueError):
-      mel_ops.linear_to_mel_weight_matrix(num_spectrogram_bins=0)
-    with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(sample_rate=0.0)
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(lower_edge_hertz=-1)

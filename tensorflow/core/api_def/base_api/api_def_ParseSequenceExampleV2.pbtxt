@@ -59,7 +59,7 @@ END
   in_arg {
     name: "feature_list_dense_missing_assumed_empty"
     description: <<END
-A vector corresponding 1:1 with featue_list_dense_keys, indicating which
+A vector corresponding 1:1 with feature_list_dense_keys, indicating which
 features may be missing from the SequenceExamples.  If the associated
 FeatureList is missing, it is treated as empty.
 END

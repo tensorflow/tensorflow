@@ -136,7 +136,7 @@ class HTMLGenerator(object):
       dot_after: A string, the dot representation of the model after
         the conversion.
       toco_err_log: A string, the logs emitted by TOCO during conversion. Caller
-        need to ensure that this string is properly anoynimized (any kind of
+        need to ensure that this string is properly anonymized (any kind of
         user data should be eliminated).
       tflite_graph_path: A string, the filepath to the converted TFLite model.
 

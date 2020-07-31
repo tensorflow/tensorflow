@@ -55,7 +55,7 @@ def get_source_inputs(tensor, layer=None, node_index=None):
     return [tensor]
   else:
     node = layer._inbound_nodes[node_index]
-    if not node.inbound_layers:
+    if node.is_input:
       # Reached an Input layer, stop recursion.
       return nest.flatten(node.input_tensors)
     else:
@@ -140,7 +140,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     nodes = []
     for v in nodes_by_depth:
       if (len(v) > 1) or (len(v) == 1 and
-                          len(nest.flatten(v[0].inbound_layers)) > 1):
+                          len(nest.flatten(v[0].keras_inputs)) > 1):
         # if the model has multiple nodes
         # or if the nodes have multiple inbound_layers
         # the model is no longer sequential

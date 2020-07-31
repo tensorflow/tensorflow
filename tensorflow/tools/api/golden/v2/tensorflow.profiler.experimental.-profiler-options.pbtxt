@@ -1,0 +1,27 @@
+path: "tensorflow.profiler.experimental.ProfilerOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.profiler.profiler_v2.ProfilerOptions\'>"
+  is_instance: "<class \'tensorflow.python.profiler.profiler_v2.ProfilerOptions\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "device_tracer_level"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "host_tracer_level"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "python_tracer_level"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

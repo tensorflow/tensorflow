@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -133,6 +135,12 @@ class SimpleRNNLayerTest(test.TestCase, parameterized.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
+  def test_deep_copy_SimpleRNN(self):
+    cell = keras.layers.SimpleRNNCell(5)
+    copied_cell = copy.deepcopy(cell)
+    self.assertEqual(copied_cell.units, 5)
+    self.assertEqual(cell.get_config(), copied_cell.get_config())
+
   def test_regularizers_SimpleRNN(self):
     embedding_dim = 4
     layer_class = keras.layers.SimpleRNN
@@ -225,8 +233,7 @@ class SimpleRNNLayerTest(test.TestCase, parameterized.TestCase):
     initial_state = cell.get_initial_state(
         batch_size=batch_size, dtype=dtypes.float32)
     _, state = cell(np.ones((batch_size, 20), dtype=np.float32), initial_state)
-    self.assertLen(state, 1)
-    self.assertEqual(state[0].shape, initial_state.shape)
+    self.assertEqual(state.shape, initial_state.shape)
 
 
 if __name__ == '__main__':

@@ -58,7 +58,6 @@ android_library(
     deps = [
         "//tensorflow/lite/java:tensorflowlite",
         "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
-        "@org_checkerframework_qual",
     ],
 )
 
@@ -75,7 +74,6 @@ java_library(
         "//tensorflow/lite/java:tensorflowlite_java",
         "//tensorflow/lite/java/src/main/native",
         "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
-        "@org_checkerframework_qual",
     ],
 )
 
@@ -114,7 +112,6 @@ android_library(
     deps = [
         "//tensorflow/lite/java:tensorflowlite",
         "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
-        "@org_checkerframework_qual",
     ],
 )
 
@@ -131,6 +128,5 @@ java_library(
         "//tensorflow/lite/java:tensorflowlite_java",
         "//tensorflow/lite/java/src/main/native",
         "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
-        "@org_checkerframework_qual",
     ],
 )

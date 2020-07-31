@@ -27,6 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -93,6 +94,7 @@ def remove_squeezable_dimensions(
 
 
 @tf_export('math.confusion_matrix', v1=[])
+@dispatch.add_dispatch_support
 def confusion_matrix(labels,
                      predictions,
                      num_classes=None,
@@ -202,6 +204,7 @@ def confusion_matrix(labels,
 
 
 @tf_export(v1=['math.confusion_matrix', 'confusion_matrix'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('confusion_matrix', 'train.confusion_matrix')
 def confusion_matrix_v1(labels,
                         predictions,

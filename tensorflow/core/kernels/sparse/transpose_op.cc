@@ -262,11 +262,7 @@ struct CSRSparseMatrixTransposeComponent<GPUDevice, T> {
     TF_RETURN_IF_ERROR(ValidateTransposeInputs(x, *y));
     GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
-#if GOOGLE_CUDA
-    const gpusparseAction_t copyValues = CUSPARSE_ACTION_NUMERIC;
-#elif TENSORFLOW_USE_ROCM
-    const gpusparseAction_t copyValues = HIPSPARSE_ACTION_NUMERIC;
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    const gpusparseAction_t copyValues = GPUSPARSE(ACTION_NUMERIC);
     const int rank = x.dense_shape_host.size();
     const int m = x.row_ptr.size() - 1;
     const int n = x.dense_shape_host(rank - 1);

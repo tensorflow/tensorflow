@@ -30,10 +30,10 @@ LIBRARY_ZIP=${1}
 
 rm -rf ${TEMP_BUILD_DIR}
 
-mkdir -p ${ARDUINO_HOME_DIR}/libraries
+mkdir -p "${ARDUINO_HOME_DIR}/libraries"
 mkdir -p ${TEMP_BUILD_DIR}
 
-unzip -q ${LIBRARY_ZIP} -d ${ARDUINO_LIBRARIES_DIR}
+unzip -q ${LIBRARY_ZIP} -d "${ARDUINO_LIBRARIES_DIR}"
 
 # Installs all dependencies for Arduino
 InstallLibraryDependencies () {
@@ -52,7 +52,7 @@ InstallLibraryDependencies () {
   # the defines in ArduCAM/memorysaver.h are correct.
   wget -O /tmp/arducam-master.zip https://github.com/ArduCAM/Arduino/archive/e216049ba304048ec9bb29adfc2cc24c16f589b1/master.zip
   unzip /tmp/arducam-master.zip -d /tmp
-  cp -r /tmp/Arduino-e216049ba304048ec9bb29adfc2cc24c16f589b1/ArduCAM ${ARDUINO_LIBRARIES_DIR}
+  cp -r /tmp/Arduino-e216049ba304048ec9bb29adfc2cc24c16f589b1/ArduCAM "${ARDUINO_LIBRARIES_DIR}"
 }
 
 InstallLibraryDependencies

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -61,6 +61,20 @@ inline void MaybeRaiseFromStatus(const Status& status) {
 
 inline void MaybeRaiseRegisteredFromStatus(const tensorflow::Status& status) {
   if (!status.ok()) {
+    PyErr_SetObject(PyExceptionRegistry::Lookup(status.code()),
+                    pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                         status.error_message())
+                        .ptr());
+    throw pybind11::error_already_set();
+  }
+}
+
+inline void MaybeRaiseRegisteredFromStatusWithGIL(
+    const tensorflow::Status& status) {
+  if (!status.ok()) {
+    // Acquire GIL for throwing exception.
+    pybind11::gil_scoped_acquire acquire;
+
     PyErr_SetObject(PyExceptionRegistry::Lookup(status.code()),
                     pybind11::make_tuple(pybind11::none(), pybind11::none(),
                                          status.error_message())

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 
+#include <algorithm>
 #include <limits>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -23,6 +25,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
+
+XlaOp DynamicStridedSlice(XlaOp input, absl::Span<const XlaOp> base_indices,
+                          absl::Span<const int64> window_sizes,
+                          absl::Span<const int64> strides) {
+  XlaOp sliced_input = DynamicSlice(input, base_indices, window_sizes);
+  if (std::any_of(strides.begin(), strides.end(),
+                  [](int64 stride) { return stride != 1; })) {
+    sliced_input = Slice(sliced_input, std::vector<int64>(window_sizes.size()),
+                         window_sizes, strides);
+  }
+  return sliced_input;
+}
 
 XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
                        absl::Span<const int64> end) {

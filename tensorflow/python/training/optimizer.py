@@ -759,7 +759,7 @@ class Optimizer(
     if hasattr(var, "_distributed_container"):
       # NOTE: If this isn't patched, then there is no `handle` in
       # `_resource_apply_dense`.
-      distributed_container = var._distributed_container()
+      distributed_container = var._distributed_container
       assert distributed_container is not None
       if ops.executing_eagerly_outside_functions():
         key = distributed_container._unique_id
@@ -768,7 +768,7 @@ class Optimizer(
       # pylint: enable=protected-access
       mirrored_slot = named_slots.get(key, None)
       if mirrored_slot is None: return None
-      return mirrored_slot._get_closest()  # pylint: disable=protected-access
+      return mirrored_slot._get_on_device_or_primary()  # pylint: disable=protected-access
 
     return named_slots.get(_var_key(var), None)
 

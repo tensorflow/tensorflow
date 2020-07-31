@@ -88,6 +88,10 @@ class SimpleOrcJIT {
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level);
 
+  int64 SizeOfGeneratedCodeInBytes() const {
+    return size_of_generated_code_in_bytes_;
+  }
+
  private:
   llvm::JITSymbol ResolveRuntimeSymbol(const std::string& name);
 
@@ -103,6 +107,7 @@ class SimpleOrcJIT {
   std::shared_ptr<llvm::orc::SymbolResolver> symbol_resolver_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
+  int64 size_of_generated_code_in_bytes_ = 0;
 
   // Non owning pointer to a JIT event listener that registers the JIT events
   // with an attached GDB.

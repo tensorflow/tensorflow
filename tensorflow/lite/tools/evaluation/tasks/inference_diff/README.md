@@ -16,42 +16,18 @@ parametrized by the user's arguments.
 It measures the latency of both, as well as the absolute difference between the
 output tensors from each Interpreter, on a per-element basis.
 
-The final output typically looks like this:
+The final output (logged to stdout) typically looks like this:
 
 ```
-num_runs: 50
-process_metrics {
-  inference_profiler_metrics {
-    reference_latency {
-      last_us: 43111
-      max_us: 49314
-      min_us: 42965
-      sum_us: 6525771
-      avg_us: 43505.14
-    }
-    test_latency {
-      last_us: 26906
-      max_us: 107118
-      min_us: 26454
-      sum_us: 5286197
-      avg_us: 35241.313333333332
-    }
-    output_errors {
-      max_value: 0.000999001
-      min_value: 0
-      avg_value: 1.9980019424110651e-05
-      std_deviation: 0.00013986013
-    }
-  }
-}
+Num evaluation runs: 50
+Reference run latency: avg=84364.2(us), std_dev=12525(us)
+Test run latency: avg=7281.64(us), std_dev=2089(us)
+OutputDiff[0]: avg_error=1.96277e-05, std_dev=6.95767e-06
 ```
 
-The values in `test_latency` denote the inference latency statistics in
-milliseconds. `reference_latency` denotes single-threaded CPU behavior.
-
-There is one instance of `output_errors` for each output tensor in the model,
-and the statistics in `output_errors[i]` correspond to the absolute difference
-in raw values across all elements for the `i`th output.
+There is one instance of `OutputDiff` for each output tensor in the model, and
+the statistics in `OutputDiff[i]` correspond to the absolute difference in raw
+values across all elements for the `i`th output.
 
 ## Parameters
 
@@ -62,10 +38,6 @@ The binary takes the following parameters:
 
 *   `model_file` : `string` \
     Path to the TFlite model file.
-
-*   `output_file_path`: `string` \
-    The final metrics are dumped into `output_file_path` as a string-serialized
-    instance of `tflite::evaluation::EvaluationStageMetrics`.
 
 and the following optional parameters:
 
@@ -87,6 +59,16 @@ and the following optional parameters:
     for instructions on how to set it up for the Hexagon delegate. The tool
     assumes that `libhexagon_interface.so` and Qualcomm libraries lie in
     `/data/local/tmp`.
+
+*   `output_file_path`: `string` \
+    The final metrics are dumped into `output_file_path` as a serialized
+    instance of `tflite::evaluation::EvaluationStageMetrics`
+
+This script also supports runtime/delegate arguments introduced by the
+[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+If there is any conflict (for example, `num_threads` vs
+`num_interpreter_threads` here), the parameters of this
+script are given precedence.
 
 ## Running the binary on Android
 
@@ -116,7 +98,6 @@ adb push mobilenet_v1_1.0_224.tflite /data/local/tmp
 ```
 adb shell /data/local/tmp/run_eval \
   --model_file=/data/local/tmp/mobilenet_v1_1.0_224.tflite \
-  --output_file_path=/data/local/tmp/inference_diff.txt \
   --delegate=gpu
 ```
 

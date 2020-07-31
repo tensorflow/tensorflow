@@ -26,8 +26,7 @@ using ::testing::ElementsAre;
 
 class DelegateTest : public testing::FlexModelTest {
  public:
-  DelegateTest() {
-    delegate_ = FlexDelegate::Create();
+  DelegateTest() : delegate_(FlexDelegate::Create()) {
     interpreter_.reset(new Interpreter(&error_reporter_));
   }
 
@@ -44,7 +43,7 @@ class DelegateTest : public testing::FlexModelTest {
   }
 
  private:
-  std::unique_ptr<FlexDelegate> delegate_;
+  std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)> delegate_;
 };
 
 TEST_F(DelegateTest, FullGraph) {

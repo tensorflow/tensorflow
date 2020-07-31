@@ -17,6 +17,7 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -65,9 +66,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testResizeBilinear1x2x1To1x4x1 {
@@ -89,9 +90,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1.0, 2.5, 4.0, 4.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testResizeBilinear2x2x1To4x4x1 {
@@ -113,11 +114,11 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 4.0, 6.0, 8.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors(
       {1.0, 2.5, 4.0, 4.0, 3.5, 4.75, 6.0, 6.0, 6.0, 7.0, 8.0, 8.0, 6.0, 7.0, 8.0, 8.0},
       model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testResizeBilinear2x2x1To3x3x1WithoutHalfPixel {
@@ -140,10 +141,10 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1.0, 1.666666, 2.0, 2.333333, 3.0, 3.333333, 3.0, 3.666666, 4.0},
                           model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testResizeBilinear2x2x1To3x3x1WithHalfPixel {
@@ -166,9 +167,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1.0, 1.5, 2.0, 2.0, 2.5, 3.0, 3.0, 3.5, 4.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testResizeNearest1x2x1To2x4x1 {
@@ -190,9 +191,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end

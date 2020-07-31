@@ -32,7 +32,7 @@ ifeq ($(TARGET),rpi)
   # TODO(petewarden) In the future, we'll want to use OpenBLAS as a faster
   # alternative to Eigen on non-NEON ARM hardware like armv6.
   ifeq ($(TARGET_ARCH), armv6)
-    TARGET_TOOLCHAIN_PREFIX := arm-linux-gnueabi-
+    TARGET_TOOLCHAIN_PREFIX := arm-linux-gnueabihf-
     CXXFLAGS += \
       -march=armv6 \
       -mfpu=vfp \

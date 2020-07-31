@@ -18,11 +18,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TYPES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TYPES_H_
 
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -90,8 +91,7 @@ class TensorFlowType : public Type {
 
 // Returns true if the specified type is a valid TensorFlow element type.
 static inline bool IsValidTFElementType(Type type) {
-  return type.isa<ComplexType>() || type.isa<FloatType>() ||
-         type.isa<IntegerType>() || type.isa<TensorFlowType>();
+  return type.isa<ComplexType, FloatType, IntegerType, TensorFlowType>();
 }
 
 // Returns true if this is a valid TensorFlow tensor type.
@@ -110,9 +110,10 @@ namespace detail {
 //   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
 //     type.
 template <typename Derived>
-class TensorFlowTypeImpl : public Type::TypeBase<Derived, TensorFlowType> {
+class TensorFlowTypeImpl
+    : public Type::TypeBase<Derived, TensorFlowType, TypeStorage> {
  public:
-  using Base = typename Type::TypeBase<Derived, TensorFlowType>;
+  using Base = typename Type::TypeBase<Derived, TensorFlowType, TypeStorage>;
   using TFBase = TensorFlowTypeImpl<Derived>;
   using Base::Base;
 
@@ -164,6 +165,17 @@ class TensorFlowRefType : public TensorFlowType {
 // type.
 static inline Type GetDefaultTypeOf(TensorFlowRefType type) {
   return type.RemoveRef();
+}
+
+// Returns the element type if `type` is a `ShapedType` and the type itself
+// otherwise, converting `TensorFlowRef` type to corresponding `TensorFlow` or
+// standard type if necessary.
+static inline Type GetElementTypeOrSelfResolveRef(Type type) {
+  Type element_type = mlir::getElementTypeOrSelf(type);
+  if (auto ref_type = element_type.dyn_cast<mlir::TF::TensorFlowRefType>()) {
+    element_type = ref_type.RemoveRef();
+  }
+  return element_type;
 }
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name)                          \
@@ -264,6 +276,9 @@ class TensorFlowTypeWithSubtype : public TensorFlowType {
 
   // Converts a TypeWithSubtype type to the same type but without its subtypes.
   Type RemoveSubtypes();
+
+  // Returns the subtypes.
+  ArrayRef<TensorType> GetSubtypes();
 };
 
 // Returns the corresponding TensorFlow type with subtypes but without its
@@ -294,6 +309,37 @@ class VariantType : public detail::TypeWithSubtypeImpl<VariantType> {
   static unsigned getTypeKind() { return TensorFlowTypes::VARIANT; }
   static std::string getTypeName() { return "VariantType"; }
 };
+
+// Returns whether two arrays of Type are broadcast compatible.
+bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
+
+// Returns whether the two elemental types are compatible. Shapes are compatible
+// if:
+// - the types are statically equal
+// - could be dynamically equal
+//   - considering dynamic shapes equal unless contradictory info known;
+//   - element types are equivalent, modulo subtypes possible be less exact
+//     (e.g., a resource type without subtype is considered compatible with
+//      resource type with known subtype).
+// Provide option to ignore ref types on 'lhs'.
+bool HasCompatibleElementTypes(Type lhs, Type rhs,
+                               bool may_ignore_ref_type_lhs = false);
+
+// Returns true if all TensorFlow types can be cast to one
+// another. In other words, a single run-time value is legal for both the types.
+// For example, tensor<*xf32>, tensor<?xf32> and tensor<3xf32> are cast
+// compatible.
+bool AreCastCompatible(ArrayRef<Type> types);
+
+// If the given tensor has elements of type with subtypes, then returns a new
+// type after dropping subtypes info. Otherwise, returns the original type as
+// is.
+ShapedType DropTypeSubTypes(ShapedType ty);
+
+// If the given tensor has elements of type ref, then returns a new type
+// of the shape, but corresponding non-ref type as element type. Otherwise,
+// returns the original type as is.
+ShapedType DropRefType(ShapedType ty);
 
 }  // end namespace TF
 }  // end namespace mlir

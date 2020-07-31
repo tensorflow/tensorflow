@@ -80,7 +80,7 @@ def load_data(path='imdb.npz',
 
       **x_train, x_test**: lists of sequences, which are lists of indexes
         (integers). If the num_words argument was specific, the maximum
-        possible index value is num_words-1. If the `maxlen` argument was
+        possible index value is `num_words - 1`. If the `maxlen` argument was
         specified, the largest possible sequence length is `maxlen`.
 
       **y_train, y_test**: lists of integer labels (1 or 0).
@@ -113,31 +113,35 @@ def load_data(path='imdb.npz',
     x_train, labels_train = f['x_train'], f['y_train']
     x_test, labels_test = f['x_test'], f['y_test']
 
-  np.random.seed(seed)
+  rng = np.random.RandomState(seed)
   indices = np.arange(len(x_train))
-  np.random.shuffle(indices)
+  rng.shuffle(indices)
   x_train = x_train[indices]
   labels_train = labels_train[indices]
 
   indices = np.arange(len(x_test))
-  np.random.shuffle(indices)
+  rng.shuffle(indices)
   x_test = x_test[indices]
   labels_test = labels_test[indices]
+
+  if start_char is not None:
+    x_train = [[start_char] + [w + index_from for w in x] for x in x_train]
+    x_test = [[start_char] + [w + index_from for w in x] for x in x_test]
+  elif index_from:
+    x_train = [[w + index_from for w in x] for x in x_train]
+    x_test = [[w + index_from for w in x] for x in x_test]
+
+  if maxlen:
+    x_train, labels_train = _remove_long_seq(maxlen, x_train, labels_train)
+    x_test, labels_test = _remove_long_seq(maxlen, x_test, labels_test)
+    if not x_train or not x_test:
+      raise ValueError('After filtering for sequences shorter than maxlen=' +
+                       str(maxlen) + ', no sequence was kept. '
+                       'Increase maxlen.')
 
   xs = np.concatenate([x_train, x_test])
   labels = np.concatenate([labels_train, labels_test])
 
-  if start_char is not None:
-    xs = [[start_char] + [w + index_from for w in x] for x in xs]
-  elif index_from:
-    xs = [[w + index_from for w in x] for x in xs]
-
-  if maxlen:
-    xs, labels = _remove_long_seq(maxlen, xs, labels)
-    if not xs:
-      raise ValueError('After filtering for sequences shorter than maxlen=' +
-                       str(maxlen) + ', no sequence was kept. '
-                       'Increase maxlen.')
   if not num_words:
     num_words = max(max(x) for x in xs)
 

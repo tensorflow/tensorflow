@@ -20,6 +20,9 @@ load(
     "cc_library",
 )
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
+
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
@@ -47,6 +50,7 @@ exports_files(
         "logging.h",
         "lookup_interface.h",
         "memory_types.h",
+        "metrics.h",
         "model.h",
         "node_def_builder.h",
         "numeric_op.h",
@@ -74,10 +78,12 @@ exports_files(
         "tensor_util.h",
         "thread_factory.h",
         "tracking_allocator.h",
-        "unique_tensor_references.h",
         "versions.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
+    ],
 )
 
 # List of exported test source files that do not yet have local build rules.
@@ -174,6 +180,7 @@ filegroup(
         "logging.h",
         "lookup_interface.h",
         "memory_types.h",
+        "metrics.h",
         "model.h",
         "node_def_builder.h",
         "node_def_util.h",
@@ -218,7 +225,6 @@ filegroup(
         "type_traits.h",
         "typed_allocator.h",
         "types.h",
-        "unique_tensor_references.h",
         "variant.h",
         "variant_encode_decode.h",
         "variant_op_registry.h",
@@ -245,6 +251,7 @@ filegroup(
         "logging.cc",
         "lookup_interface.cc",
         "memory_types.cc",
+        "metrics.cc",
         "model.cc",
         "node_def_builder.cc",
         "op_kernel.cc",
@@ -256,7 +263,6 @@ filegroup(
         "run_handler_util.cc",
         "tensor_slice.cc",
         "tensor_util.cc",
-        "unique_tensor_references.cc",
         "versions.cc",
     ],
 )
@@ -346,6 +352,8 @@ filegroup(
         "lookup_interface.h",
         "memory_types.cc",
         "memory_types.h",
+        "metrics.cc",
+        "metrics.h",
         "model.cc",
         "model.h",
         "node_def_builder.cc",
@@ -384,15 +392,12 @@ filegroup(
         "shape_inference.cc",
         "shape_inference.h",
         "stats_aggregator.h",
-        "tensor_interface.h",
         "tensor_reference.h",
         "tensor_slice.cc",
         "tensor_slice.h",
         "tensor_util.cc",
         "tensor_util.h",
         "thread_factory.h",
-        "unique_tensor_references.cc",
-        "unique_tensor_references.h",
         "versions.cc",
         "versions.h",
     ],
@@ -423,7 +428,7 @@ filegroup(
     ],
 )
 
-# Individual targets. These should be prefered over tensorflow/core:framework
+# Individual targets. These should be preferred over tensorflow/core:framework
 # whenever possible.
 
 # This is redundant with the "tensorflow/core:framework" target. It's useful for
@@ -505,7 +510,7 @@ cc_library(
     srcs = ["tensor_testutil.cc"],
     hdrs = ["tensor_testutil.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -616,7 +621,7 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core/platform:macros",
         "//third_party/eigen3",
@@ -632,7 +637,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/core/tfrt_delegate:__pkg__",
+        "//tensorflow/core/runtime_fallback:__subpackages__",
     ],
     deps = [
         ":bounds_check",
@@ -672,7 +677,11 @@ cc_library(
     name = "type_index",
     hdrs = ["type_index.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core/platform:types"],
+    deps = [
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 cc_library(
@@ -717,6 +726,7 @@ tf_cuda_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
     deps = [
         ":allocation_description_proto_cc",
@@ -934,6 +944,7 @@ cc_library(
 cc_library(
     name = "selective_registration",
     hdrs = ["selective_registration.h"],
+    deps = tf_selective_registration_deps(),
 )
 
 cc_library(
@@ -1006,6 +1017,7 @@ tf_cc_tests(
     srcs = [
         "allocator_test.cc",
         "attr_value_util_test.cc",
+        "batch_util_test.cc",
         "bfloat16_test.cc",
         "cancellation_test.cc",
         "common_shape_fns_test.cc",
@@ -1039,7 +1051,6 @@ tf_cc_tests(
         "tensor_util_test.cc",
         "tracking_allocator_test.cc",
         "types_test.cc",
-        "unique_tensor_references_test.cc",
         "variant_op_registry_test.cc",
         "variant_test.cc",
     ],

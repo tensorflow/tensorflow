@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -49,6 +50,12 @@ class BatchDatasetOp::Dataset : public DatasetBase {
           bool parallel_copy, const DatasetBase* input, int op_version)
       : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
+        // Dataset batch is sometimes used to stack all elements in the
+        // dataset. In such cases, a very large batch size (e.g., INT32_MAX)
+        // is passed with drop_remainder set to false. Avoid OOM in such case
+        // by limiting `reserve()` size by 2**16.
+        reserve_size_(drop_remainder ? batch_size
+                                     : std::min<int64>(batch_size, 1 << 16)),
         drop_remainder_(drop_remainder),
         parallel_copy_(parallel_copy),
         input_(input),
@@ -153,7 +160,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
           *end_of_sequence = true;
           return Status::OK();
         }
-        batch_elements.reserve(dataset()->batch_size_);
+        batch_elements.reserve(dataset()->reserve_size_);
         *end_of_sequence = false;
         for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence; ++i) {
           std::vector<Tensor> batch_element_tuple;
@@ -257,12 +264,13 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
       return Status::OK();
     }
@@ -288,6 +296,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
   };
 
   const int64 batch_size_;
+  const int64 reserve_size_;
   const bool drop_remainder_;
   const bool parallel_copy_;
   const DatasetBase* const input_;

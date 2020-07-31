@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BASIC_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -176,6 +177,61 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
     // parameter.
     int max_enqueued_batches = 10;
 
+    // If true, an input task (i.e., input of `BasicBatchScheduler::Schedule`)
+    // with a large size (i.e., larger than the largest value of
+    // `allowed_batch_sizes`) will be split into multiple smaller batch tasks
+    // and possibly put into different batches for processing. If false, each
+    // input task is put into one batch as a whole for processing.
+    //
+    // API note:
+    // The value of this option doesn't affect processing output given the same
+    // input; it affects implementation details as stated below:
+    // 1. Improve batching efficiency by eliminating unnecessary padding in the
+    // following scenario: when an open batch has M slots while an input of size
+    // N is scheduled (M < N), the input can be split to fill remaining slots
+    // of an open batch as opposed to padding.
+    // 2.`max_batch_size` specifies the limit of input and
+    // `max_execution_batch_size` specifies the limit of a task to be processed.
+    // API user can give an input of size 128 when 'max_execution_batch_size'
+    // is 32 -> implementation can split input of 128 into 4 x 32, schedule
+    // concurrent processing, and then return concatenated results corresponding
+    // to 128.
+    bool enable_large_batch_splitting = false;
+
+    // `split_input_task_func` specifies how to split `input_task` into
+    // `output_tasks`.
+    //
+    // `input_task`: a unit of task to be split.
+    // `first_output_task_size`: task size of first output.
+    // `max_batch_size`: Maximum size of each batch.
+    // `output_tasks`: A list of output tasks after split.
+    //
+    // REQUIRED:
+    // 1) All `output_tasks` should be non-empty tasks.
+    // 2) Sizes of `output_tasks` add up to size of `input_task`.
+    //
+    // NOTE:
+    // Instantiations of `TaskType` may vary, so it's up to caller to define
+    // how (e.g., which members to access) to split input tasks.
+    std::function<Status(std::unique_ptr<TaskType>* input_task,
+                         int first_output_task_size, int input_batch_size_limit,
+                         std::vector<std::unique_ptr<TaskType>>* output_tasks)>
+        split_input_task_func;
+
+    // The maximum size of each enqueued batch (i.e., in `batches_`).
+    //
+    // The scheduler may form batches of any size between 1 and this number
+    // (inclusive). If there is a need to quantize the batch sizes, i.e. only
+    // submit batches whose size is in a small set of allowed sizes, that can be
+    // done by adding padding in the process-batch callback.
+    //
+    // REQUIRES:
+    // - If enable_large_batch_splitting is true, `max_execution_batch_size` is
+    // less than or equal to `max_batch_size`.
+    // - If enable_large_batch_splitting is false, `max_execution_batch_size` is
+    // equal to `max_batch_size`.
+    int max_execution_batch_size = 10;
+
     // The following options are typically only overridden by test code.
 
     // The environment to use.
@@ -231,6 +287,12 @@ Status BasicBatchScheduler<TaskType>::Create(
       options.batch_timeout_micros;
   shared_scheduler_queue_options.max_enqueued_batches =
       options.max_enqueued_batches;
+  shared_scheduler_queue_options.enable_large_batch_splitting =
+      options.enable_large_batch_splitting;
+  shared_scheduler_queue_options.split_input_task_func =
+      options.split_input_task_func;
+  shared_scheduler_queue_options.max_execution_batch_size =
+      options.max_execution_batch_size;
   std::unique_ptr<BatchScheduler<TaskType>> shared_scheduler_queue;
   TF_RETURN_IF_ERROR(shared_scheduler->AddQueue(shared_scheduler_queue_options,
                                                 process_batch_callback,

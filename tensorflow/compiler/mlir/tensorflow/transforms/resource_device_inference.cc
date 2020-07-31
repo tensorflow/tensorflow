@@ -26,16 +26,16 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -53,8 +53,9 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 //
 // This pass changes the module by adding "tf.device" attribute to function
 // arguments and adding "device" attribute to TF ops.
-struct ResourceDeviceInference : public ModulePass<ResourceDeviceInference> {
-  void runOnModule() override;
+struct ResourceDeviceInference
+    : public PassWrapper<ResourceDeviceInference, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // A class that records each resource's device assignment in a function.
@@ -148,7 +149,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
   }
   auto walk_res = func_op.walk([&](Operation* op) {
     if (auto var_handle = llvm::dyn_cast<TF::VarHandleOp>(op)) {
-      // Record VarHanldeOp's device attribute.
+      // Record VarHandleOp's device attribute.
       auto device_attr =
           var_handle.getAttrOfType<mlir::StringAttr>(kDeviceAttr);
       if (!device_attr || device_attr.getValue().empty()) {
@@ -190,8 +191,8 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
   return failure(walk_res.wasInterrupted());
 }
 
-void ResourceDeviceInference::runOnModule() {
-  auto module = getModule();
+void ResourceDeviceInference::runOnOperation() {
+  auto module = getOperation();
   llvm::SmallDenseMap<Operation*, PerFunctionResult, 4> per_function_results;
   llvm::SetVector<FuncOp> worklist;
   module.walk([&](FuncOp func_op) {
@@ -202,36 +203,36 @@ void ResourceDeviceInference::runOnModule() {
   // called function's arguments.
   auto propagate_operands_to_callee_arguments =
       [&](Operation* caller, Operation::operand_range caller_operands,
-          llvm::StringRef called_func_name,
-          const PerFunctionResult& caller_res) {
-        auto callee =
-            llvm::dyn_cast<FuncOp>(module.lookupSymbol(called_func_name));
-        assert(callee);
-        auto& callee_res = per_function_results.find(callee)->getSecond();
-        bool callee_needs_recompute = false;
-        for (auto operand_and_argument :
-             llvm::zip(caller_operands, callee.getArguments())) {
-          if (!mlir::getElementTypeOrSelf(
-                   std::get<0>(operand_and_argument).getType())
-                   .isa<TF::ResourceType>()) {
-            continue;
+          ArrayRef<FuncOp> callees, const PerFunctionResult& caller_res) {
+        for (FuncOp callee : callees) {
+          assert(callee);
+          auto& callee_res = per_function_results.find(callee)->getSecond();
+          bool callee_needs_recompute = false;
+          for (auto operand_and_argument :
+               llvm::zip(caller_operands, callee.getArguments())) {
+            if (!mlir::getElementTypeOrSelf(
+                     std::get<0>(operand_and_argument).getType())
+                     .isa<TF::ResourceType>()) {
+              continue;
+            }
+            auto device =
+                caller_res.DeviceForResource(std::get<0>(operand_and_argument));
+            if (!device) continue;
+            if (failed(AddResourceDeviceAndEmitError(
+                    std::get<1>(operand_and_argument), *device, caller,
+                    &callee_res, &callee_needs_recompute))) {
+              return failure();
+            }
           }
-          auto device =
-              caller_res.DeviceForResource(std::get<0>(operand_and_argument));
-          if (!device) continue;
-          if (failed(AddResourceDeviceAndEmitError(
-                  std::get<1>(operand_and_argument), *device, caller,
-                  &callee_res, &callee_needs_recompute))) {
-            return failure();
+          // If the callee recording is modified, make sure that it will be
+          // reprocessed.
+          if (callee_needs_recompute) {
+            worklist.insert(callee);
           }
-        }
-        // If the callee recording is modified, make sure that it will be
-        // reprocessed.
-        if (callee_needs_recompute) {
-          worklist.insert(callee);
         }
         return success();
       };
+
   while (!worklist.empty()) {
     auto func_op = worklist.back();
     worklist.pop_back();
@@ -244,18 +245,14 @@ void ResourceDeviceInference::runOnModule() {
     auto walk_res = func_op.walk([&](Operation* op) {
       if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
-                while_op, while_op.getOperands(), while_op.body(), func_res)) ||
-            failed(propagate_operands_to_callee_arguments(
-                while_op, while_op.getOperands(), while_op.cond(), func_res))) {
+                while_op, while_op.getOperands(),
+                {while_op.body_func(), while_op.cond_func()}, func_res)))
           return WalkResult::interrupt();
-        }
       } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
-                if_op, if_op.input(), if_op.then_branch(), func_res)) ||
-            failed(propagate_operands_to_callee_arguments(
-                if_op, if_op.input(), if_op.else_branch(), func_res))) {
+                if_op, if_op.input(), {if_op.then_func(), if_op.else_func()},
+                func_res)))
           return WalkResult::interrupt();
-        }
       }
       return WalkResult::advance();
     });
@@ -265,7 +262,7 @@ void ResourceDeviceInference::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass() {
   return std::make_unique<ResourceDeviceInference>();
 }
 

@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import abc
 import atexit
-import collections
 from collections import OrderedDict
 import functools
 import multiprocessing.pool
@@ -55,7 +54,7 @@ from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -616,7 +615,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, collections.Mapping):
+  if isinstance(x_weight, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
@@ -863,7 +862,7 @@ def collect_per_output_metric_info(metrics,
               [metrics_module.clone_metric(m) for m in metrics])
       else:
         nested_metrics = [metrics]
-  elif isinstance(metrics, collections.Mapping):
+  elif isinstance(metrics, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys('metrics', metrics, output_names)
     nested_metrics = []
     for name in output_names:
@@ -1049,11 +1048,21 @@ def has_symbolic_tensors(ls):
 
 
 def has_tensors(ls):
+  """Returns true if `ls` contains tensors."""
+  # Note: at some point in time ragged tensors didn't count as tensors, so this
+  # returned false for ragged tensors. Making this return true fails some tests
+  # which would then require a steps_per_epoch argument.
   if isinstance(ls, (list, tuple)):
-    return any(tensor_util.is_tensor(v) for v in ls)
+    return any(
+        tensor_util.is_tensor(v) and
+        not isinstance(v, ragged_tensor.RaggedTensor) for v in ls)
   if isinstance(ls, dict):
-    return any(tensor_util.is_tensor(v) for _, v in six.iteritems(ls))
-  return tensor_util.is_tensor(ls)
+    return any(
+        tensor_util.is_tensor(v) and
+        not isinstance(v, ragged_tensor.RaggedTensor)
+        for _, v in six.iteritems(ls))
+  return tensor_util.is_tensor(ls) and not isinstance(
+      ls, ragged_tensor.RaggedTensor)
 
 
 def get_metric_name(metric, weighted=False):
@@ -1147,7 +1156,7 @@ def call_metric_function(metric_fn,
     else:
       # Update dimensions of weights to match with mask.
       weights = math_ops.cast(weights, dtype=y_pred.dtype)
-      mask, _, weights = tf_losses_utils.squeeze_or_expand_dimensions(
+      mask, _, weights = losses_utils.squeeze_or_expand_dimensions(
           mask, sample_weight=weights)
       weights *= mask
 
@@ -1432,7 +1441,7 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
     ValueError: In case of invalid `sample_weight_mode` input.
   """
 
-  if isinstance(sample_weight_mode, collections.Mapping):
+  if isinstance(sample_weight_mode, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'sample_weight_mode', sample_weight_mode,
         [e.output_name for e in training_endpoints])
@@ -1525,7 +1534,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
   if loss_weights is None:
     for e in training_endpoints:
       e.loss_weight = 1.
-  elif isinstance(loss_weights, collections.Mapping):
+  elif isinstance(loss_weights, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'loss_weights', loss_weights,
         [e.output_name for e in training_endpoints])
@@ -1584,7 +1593,7 @@ def assert_not_batched(dataset):
   if isinstance(dataset, dataset_ops.DatasetV1Adapter):
     return assert_not_batched(dataset._dataset)
   else:
-    whitelisted_types = [
+    allowed_types = [
         dataset_ops._OptionsDataset,
         dataset_ops.ConcatenateDataset,
         dataset_ops.CacheDataset,
@@ -1605,7 +1614,7 @@ def assert_not_batched(dataset):
         readers.TextLineDatasetV2,
         readers.TFRecordDatasetV2,
     ]
-    for ty in whitelisted_types:
+    for ty in allowed_types:
       if isinstance(dataset, ty):
         for input_dataset in dataset._inputs():
           assert_not_batched(input_dataset)
@@ -1639,7 +1648,7 @@ def assert_not_shuffled(dataset):
   if isinstance(dataset, dataset_ops.DatasetV1Adapter):
     return assert_not_shuffled(dataset._dataset)
   else:
-    whitelisted_types = [
+    allowed_types = [
         dataset_ops._OptionsDataset,
         dataset_ops.BatchDataset,
         dataset_ops.ConcatenateDataset,
@@ -1662,7 +1671,7 @@ def assert_not_shuffled(dataset):
         readers.TextLineDatasetV2,
         readers.TFRecordDatasetV2,
     ]
-    for ty in whitelisted_types:
+    for ty in allowed_types:
       if isinstance(dataset, ty):
         for input_dataset in dataset._inputs():
           assert_not_shuffled(input_dataset)
@@ -1924,7 +1933,7 @@ def get_input_shape_and_dtype(layer):
       raise ValueError('An empty Model cannot be used as a Layer.')
     layer = layer.layers[0]
 
-  if hasattr(layer, '_batch_input_shape'):
+  if getattr(layer, '_batch_input_shape', None):
     return layer._batch_input_shape, layer.dtype
   return None, None
 

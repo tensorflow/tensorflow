@@ -176,15 +176,23 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   for (const ShapedBuffer* const arg : arguments) {
     argument_shapes.push_back(&arg->on_host_shape());
   }
-  TF_ASSIGN_OR_RETURN(auto options_and_stream,
-                      RunHelper(argument_shapes, run_options));
-  ExecutableRunOptions options = options_and_stream.first.run_options();
-  options.set_device_ordinal(-1);
-  auto result = RunAsync(arguments, options);
-  Status block_status = options.stream()->BlockHostUntilDone();
-  TF_RETURN_IF_ERROR(result.status());
-  TF_RETURN_IF_ERROR(block_status);
-  return result;
+  return AsyncCallAndBlockHostUntilDone<xla::ScopedShapedBuffer>(
+      argument_shapes, run_options, [&](const ExecutableRunOptions& options) {
+        return RunAsync(arguments, options);
+      });
+}
+
+StatusOr<ExecutionOutput> LocalExecutable::Run(
+    std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options) {
+  std::vector<const Shape*> argument_shapes;
+  argument_shapes.reserve(arguments.size());
+  for (const ExecutionInput& arg : arguments) {
+    argument_shapes.push_back(&arg.host_shape());
+  }
+  return AsyncCallAndBlockHostUntilDone<ExecutionOutput>(
+      argument_shapes, run_options, [&](const ExecutableRunOptions& options) {
+        return RunAsync(argument_shapes, std::move(arguments), options);
+      });
 }
 
 static std::shared_ptr<HloSnapshot> DumpArguments(
@@ -310,6 +318,16 @@ StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
   }
 
   return std::move(outputs);
+}
+
+StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
+    std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options) {
+  std::vector<const Shape*> argument_shapes;
+  argument_shapes.reserve(arguments.size());
+  for (const ExecutionInput& arg : arguments) {
+    argument_shapes.push_back(&arg.host_shape());
+  }
+  return RunAsync(argument_shapes, std::move(arguments), run_options);
 }
 
 se::Platform* LocalClient::platform() const {

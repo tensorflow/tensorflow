@@ -18,31 +18,6 @@ cc_library(
     hdrs = ["mkl_graph_util.h"],
 )
 
-# TODO(bmzhao): Refactor this target to use granular dependencies
-# after stage 4 of the TF build refactor is complete:
-# https://github.com/tensorflow/community/pull/179
-tf_cc_test(
-    name = "quantize_training_test",
-    srcs = ["quantize_training_test.cc"],
-    deps = [
-        "//tensorflow/core",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/util:protos_test_cc",
-    ],
-)
-
 tf_cc_test(
     name = "collective_order_test",
     size = "small",
@@ -69,11 +44,8 @@ filegroup(
     srcs = [
         "algorithm.h",
         "default_device.h",
-        "gradients.h",
         "graph.h",
-        "graph_constructor.h",
         "graph_def_builder.h",
-        "graph_def_builder_util.h",
         "graph_node_util.h",
         "node_builder.h",
         "validate.h",
@@ -110,7 +82,7 @@ filegroup(
 # Note(bmzhao): This target is a holdover from the GRAPH_HDRS array
 # in tensorflow/core/BUILD. This target contains all '.h' files under
 # tensorflow/core/graph, except for the following:
-# 'benchmark_testlib.h', 'mkl_graph_util.h', 'gradients.h', 'quantize_training.h'.
+# 'benchmark_testlib.h'.
 filegroup(
     name = "graph_headers",
     srcs = [
@@ -122,13 +94,9 @@ filegroup(
         "default_device.h",
         "edgeset.h",
         "graph.h",
-        "graph_constructor.h",  # NOTE(mrry): Don't include the .cc since it depends on common_runtime.
         "graph_def_builder.h",
-        "graph_def_builder_util.h",
         "graph_node_util.h",
         "graph_partition.h",
-        "mkl_layout_pass.h",
-        "mkl_tfconversion_pass.h",
         "node_builder.h",
         "optimizer_cse.h",
         "subgraph.h",
@@ -156,33 +124,6 @@ filegroup(
 )
 
 filegroup(
-    name = "core_cpu_lib_headers",
-    srcs = [
-        "gradients.h",
-        "quantize_training.h",
-    ],
-)
-
-# Both of these files depend on common_runtime.
-filegroup(
-    name = "core_cpu_base_no_ops_srcs",
-    srcs = [
-        "graph_constructor.cc",
-        "graph_def_builder_util.cc",
-    ],
-)
-
-filegroup(
-    name = "core_cpu_impl_srcs",
-    srcs = [
-        "gradients.cc",
-        "mkl_layout_pass.cc",
-        "mkl_tfconversion_pass.cc",
-        "quantize_training.cc",
-    ],
-)
-
-filegroup(
     name = "testlib_headers",
     srcs = [
         "benchmark_testlib.h",
@@ -205,31 +146,6 @@ filegroup(
 )
 
 filegroup(
-    name = "higher_level_tests_needing_kernels",
-    srcs = [
-        "graph_constructor_test.cc",
-    ],
-)
-
-filegroup(
-    name = "mkl_related_tests",
-    srcs = [
-        "mkl_layout_pass_test.cc",
-        "mkl_tfconversion_pass_test.cc",
-    ],
-)
-
-filegroup(
-    name = "quantize_training_hdrs",
-    srcs = [
-        "quantize_training.h",
-    ],
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ],
-)
-
-filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "algorithm.cc",
@@ -246,31 +162,19 @@ filegroup(
         "default_device.h",
         "edgeset.cc",
         "edgeset.h",
-        "gradients.cc",
-        "gradients.h",
         "graph.cc",
         "graph.h",
-        "graph_constructor.cc",
-        "graph_constructor.h",
         "graph_def_builder.cc",
         "graph_def_builder.h",
-        "graph_def_builder_util.cc",
-        "graph_def_builder_util.h",
         "graph_node_util.cc",
         "graph_node_util.h",
         "graph_partition.cc",
         "graph_partition.h",
         "mkl_graph_util.h",
-        "mkl_layout_pass.cc",
-        "mkl_layout_pass.h",
-        "mkl_tfconversion_pass.cc",
-        "mkl_tfconversion_pass.h",
         "node_builder.cc",
         "node_builder.h",
         "optimizer_cse.cc",
         "optimizer_cse.h",
-        "quantize_training.cc",
-        "quantize_training.h",
         "subgraph.cc",
         "subgraph.h",
         "tensor_id.cc",

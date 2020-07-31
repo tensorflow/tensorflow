@@ -262,13 +262,13 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
     if (context.executing_eagerly()) or is_default_strategy(distribution):
       self.run_correctness_test(distribution, use_numpy, use_validation_data)
     elif K.is_tpu_strategy(distribution) and not context.executing_eagerly():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'Expected `model` argument to be a functional `Model` instance, '
           'but got a subclass model instead.'):
         self.run_correctness_test(distribution, use_numpy, use_validation_data)
     else:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'We currently do not support distribution strategy with a '
           '`Sequential` model that is created without `input_shape`/'
@@ -281,13 +281,13 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
         is_default_strategy(distribution)):
       self.run_dynamic_lr_test(distribution)
     elif K.is_tpu_strategy(distribution):
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'Expected `model` argument to be a functional `Model` instance, '
           'but got a subclass model instead.'):
         self.run_dynamic_lr_test(distribution)
     else:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'We currently do not support distribution strategy with a '
           '`Sequential` model that is created without `input_shape`/'
@@ -299,7 +299,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
   def test_dnn_correctness_with_partial_last_batch_eval(self, distribution,
                                                         use_numpy,
                                                         use_validation_data):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'Expected `model` argument to be a functional `Model` instance, '
         'but got a subclass model instead.'):

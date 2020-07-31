@@ -320,6 +320,25 @@ TEST(NNOpsTest, FusedBatchNormGrad_ShapeFn) {
            "[d0_3|d2_0|d3_0|d4_0];[d0_3|d2_0|d3_0|d4_0];[0];[0]");
 }
 
+TEST(NNOpsTest, Conv2DBackpropInput_ShapeFn) {
+  ShapeInferenceTestOp op("Conv2DBackpropInput");
+
+  // Test rank error.
+  INFER_ERROR("input_sizes to contain 4 values or 2 values", op,
+              "[3];[?,?,?,?];[?,?,?,?]");
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op,
+              "[4];[?,?,?,?];[?,?,?]");
+
+  // When input_sizes is a 4D shape and the convolution is grouped, the channel
+  // size of the input grad doesn't always equal the input channel size of the
+  // filter. So, when input_sizes is a 4D shape, the channel size of the input
+  // grad is determined by the content of input_sizes.
+  INFER_OK(op, "[4];[?,?,2,?];[1,?,?,?]", "[d2_0,?,?,?]");
+  // When input_sizes is a 2D shape, the channel size of the input grad always
+  // matches the filter shape.
+  INFER_OK(op, "[2];[?,?,2,?];[1,?,?,?]", "[d2_0,?,?,d1_2]");
+}
+
 TEST(NNOpsTest, Conv3DBackpropInput_ShapeFn) {
   ShapeInferenceTestOp op("Conv3DBackpropInput");
 

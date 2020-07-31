@@ -21,12 +21,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -61,13 +61,14 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
       /*custom_kernel_creator=*/nullptr,
       /*session_metadata=*/nullptr,
-      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
-        *r = new IntraProcessRendezvous(device_mgr);
-        return Status::OK();
-      });
+      Rendezvous::Factory{
+          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            *r = new IntraProcessRendezvous(device_mgr);
+            return Status::OK();
+          }});
 
   string fetch_node = "";
-  for (auto node : graph_def.node()) {
+  for (const auto& node : graph_def.node()) {
     if (node.op() == "_Retval") {
       fetch_node = node.input(0);
     }

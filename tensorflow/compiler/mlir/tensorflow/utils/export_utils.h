@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -34,9 +34,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+namespace mlir {
+class ShapedType;
+}  // namespace mlir
+
 namespace tensorflow {
 
 using stream_executor::port::StatusOr;
+
+// Add custom op prefix for TensorFlow dialects.
+Status AddTensorFlowOpPrefix(std::string);
 
 // Maps an MLIR op name in the TensorFlow dialect or the TensorFlow control
 // dialect back into a TensorFlow valid op name.

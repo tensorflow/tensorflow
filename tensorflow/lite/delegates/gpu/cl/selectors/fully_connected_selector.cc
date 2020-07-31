@@ -27,44 +27,60 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-Status SelectFullyConnectedAdreno(const FullyConnectedAttributes& attr,
-                                  const CreationContext& creation_context,
-                                  const OperationDef& op_def, int batch_size,
-                                  std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectFullyConnectedGeneric(
+    const FullyConnectedAttributes& attr,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    int batch_size, std::unique_ptr<GPUOperation>* ptr) {
   if (op_def.IsBatchSupported()) {
     ConvTexture conv;
     RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvTexture>(std::move(conv));
   } else {
     FullyConnected fc;
-    RETURN_IF_ERROR(
-        CreateFullyConnected(creation_context, op_def, attr, &fc));
+    RETURN_IF_ERROR(CreateFullyConnected(creation_context, op_def, attr, &fc));
     *ptr = absl::make_unique<FullyConnected>(std::move(fc));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectFullyConnectedPowerVR(const FullyConnectedAttributes& attr,
-                                   const CreationContext& creation_context,
-                                   const OperationDef& op_def, int batch_size,
-                                   std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectFullyConnectedAdreno(const FullyConnectedAttributes& attr,
+                                        const CreationContext& creation_context,
+                                        const OperationDef& op_def,
+                                        int batch_size,
+                                        std::unique_ptr<GPUOperation>* ptr) {
+  if (op_def.IsBatchSupported()) {
+    ConvTexture conv;
+    RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvTexture>(std::move(conv));
+  } else {
+    FullyConnected fc;
+    RETURN_IF_ERROR(CreateFullyConnected(creation_context, op_def, attr, &fc));
+    *ptr = absl::make_unique<FullyConnected>(std::move(fc));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status SelectFullyConnectedPowerVR(
+    const FullyConnectedAttributes& attr,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    int batch_size, std::unique_ptr<GPUOperation>* ptr) {
   if (op_def.IsBatchSupported()) {
     ConvPowerVR conv;
     RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   } else {
     FullyConnected fc;
-    RETURN_IF_ERROR(
-        CreateFullyConnected(creation_context, op_def, attr, &fc));
+    RETURN_IF_ERROR(CreateFullyConnected(creation_context, op_def, attr, &fc));
     *ptr = absl::make_unique<FullyConnected>(std::move(fc));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectFullyConnectedMali(const FullyConnectedAttributes& attr,
-                                const CreationContext& creation_context,
-                                const OperationDef& op_def, int batch_size,
-                                std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectFullyConnectedMali(const FullyConnectedAttributes& attr,
+                                      const CreationContext& creation_context,
+                                      const OperationDef& op_def,
+                                      int batch_size,
+                                      std::unique_ptr<GPUOperation>* ptr) {
   if (op_def.IsBatchSupported()) {
     if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
       ConvBuffer1x1 conv;
@@ -78,30 +94,32 @@ Status SelectFullyConnectedMali(const FullyConnectedAttributes& attr,
     }
   } else {
     FullyConnected fc;
-    RETURN_IF_ERROR(
-        CreateFullyConnected(creation_context, op_def, attr, &fc));
+    RETURN_IF_ERROR(CreateFullyConnected(creation_context, op_def, attr, &fc));
     *ptr = absl::make_unique<FullyConnected>(std::move(fc));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectFullyConnected(const FullyConnectedAttributes& attr,
-                            const CreationContext& creation_context,
-                            const OperationDef& op_def, int batch_size,
-                            std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectFullyConnected(const FullyConnectedAttributes& attr,
+                                  const CreationContext& creation_context,
+                                  const OperationDef& op_def, int batch_size,
+                                  std::unique_ptr<GPUOperation>* ptr) {
   switch (creation_context.device->vendor()) {
     case Vendor::QUALCOMM:
       return SelectFullyConnectedAdreno(attr, creation_context, op_def,
                                         batch_size, ptr);
     case Vendor::POWERVR:
+    case Vendor::AMD:
+    case Vendor::NVIDIA:
+    case Vendor::INTEL:
       return SelectFullyConnectedPowerVR(attr, creation_context, op_def,
                                          batch_size, ptr);
     case Vendor::MALI:
       return SelectFullyConnectedMali(attr, creation_context, op_def,
                                       batch_size, ptr);
     default:
-      return SelectFullyConnectedAdreno(attr, creation_context, op_def,
-                                        batch_size, ptr);
+      return SelectFullyConnectedGeneric(attr, creation_context, op_def,
+                                         batch_size, ptr);
   }
 }
 

@@ -24,7 +24,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifndef TENSORFLOW_LITE_PROTOS
 namespace {
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public protobuf::io::ErrorCollector {
@@ -32,7 +31,6 @@ class NoOpErrorCollector : public protobuf::io::ErrorCollector {
   void AddError(int line, int column, const std::string& message) override {}
 };
 }  // namespace
-#endif  // TENSORFLOW_LITE_PROTOS
 
 Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
                      absl::string_view* output) {
@@ -45,8 +43,7 @@ Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
 
 Status ParseTextProto(absl::string_view text_proto,
                       absl::string_view prefix_to_strip,
-                      protobuf::MessageLite* parsed_proto) {
-#ifndef TENSORFLOW_LITE_PROTOS
+                      protobuf::Message* parsed_proto) {
   protobuf::TextFormat::Parser parser;
   // Don't produce errors when attempting to parse text format as it would fail
   // when the input is actually a binary file.
@@ -60,15 +57,11 @@ Status ParseTextProto(absl::string_view text_proto,
   }
   protobuf::io::ArrayInputStream input_stream(text_proto_without_prefix.data(),
                                               text_proto_without_prefix.size());
-  if (parser.Parse(&input_stream,
-                   tensorflow::down_cast<protobuf::Message*>(parsed_proto))) {
+  if (parser.Parse(&input_stream, parsed_proto)) {
     return Status::OK();
   }
   parsed_proto->Clear();
   return errors::InvalidArgument("Could not parse text proto: ", text_proto);
-#else
-  return errors::Unavailable("Cannot parse text protos on mobile.");
-#endif  // TENSORFLOW_LITE_PROTOS
 }
 
 }  // namespace tensorflow

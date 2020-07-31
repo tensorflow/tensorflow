@@ -18,19 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import dense_attention
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class BaseDenseAttentionTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class BaseDenseAttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_one_dim_with_mask(self):
     # Scores tensor of shape [1, 1, 1]
@@ -150,8 +151,8 @@ class BaseDenseAttentionTest(test.TestCase):
     self.assertEqual(new_layer.causal, True)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class AttentionTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class AttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_calculate_scores_one_dim(self):
     # Query tensor of shape [1, 1, 1]
@@ -359,7 +360,6 @@ class AttentionTest(test.TestCase):
       attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
       self.assertAllClose(1., attention_layer.scale.value())
 
-  @test_util.deprecated_graph_mode_only
   def test_scale_init_graph(self):
     """Tests that scale initializes to 1 when use_scale=True."""
     with self.cached_session() as sess:
@@ -399,39 +399,37 @@ class AttentionTest(test.TestCase):
   def test_inputs_not_list(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer must be called on a list of inputs'):
       attention_layer(q)
 
   def test_inputs_too_short(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Attention layer accepts inputs list of length 2 or 3'):
+    with self.assertRaisesRegex(
+        ValueError, 'Attention layer accepts inputs list of length 2 or 3'):
       attention_layer([q])
 
   def test_inputs_too_long(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Attention layer accepts inputs list of length 2 or 3'):
+    with self.assertRaisesRegex(
+        ValueError, 'Attention layer accepts inputs list of length 2 or 3'):
       attention_layer([q, q, q, q])
 
   def test_mask_not_list(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
-        ValueError, 'Attention layer mask must be a list'):
+    with self.assertRaisesRegex(ValueError,
+                                'Attention layer mask must be a list'):
       attention_layer([q, q], mask=mask)
 
   def test_mask_too_short(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask])
 
@@ -439,7 +437,7 @@ class AttentionTest(test.TestCase):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask, mask, mask])
 
@@ -470,8 +468,8 @@ class AttentionTest(test.TestCase):
     self.assertEqual(new_layer.use_scale, True)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class AdditiveAttentionTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class AdditiveAttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_calculate_scores_one_dim(self):
     # Query tensor of shape [1, 1, 1]
@@ -716,8 +714,8 @@ class AdditiveAttentionTest(test.TestCase):
     self.assertEqual(new_layer.use_scale, True)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class LowerTriangularMaskTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class LowerTriangularMaskTest(test.TestCase, parameterized.TestCase):
 
   def test_square_shape(self):
     actual = dense_attention._lower_triangular_mask([3, 3])

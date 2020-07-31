@@ -69,4 +69,6 @@ message TfStatsRecord {
   // Whether this operation is "Compute" or "Memory" bound,
   // according to the Roofline Model.
   string bound_by = 17;
+  // Whether this TF-op is eagerly executed.
+  bool is_eager = 18;
 }

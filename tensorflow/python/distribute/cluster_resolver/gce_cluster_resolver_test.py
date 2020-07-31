@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.distribute.cluster_resolver import GCEClusterResolver
-from tensorflow.python.distribute.cluster_resolver import UnionClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
+from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GCEClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -309,6 +309,38 @@ class GCEClusterResolverTest(test.TestCase):
                          tasks { key: 5 value: '10.6.7.8:8470' } }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+
+  def testSettingTaskTypeRaiseError(self):
+    name_to_ip = [
+        {
+            'name': 'instance1',
+            'ip': '10.1.2.3'
+        },
+        {
+            'name': 'instance2',
+            'ip': '10.2.3.4'
+        },
+        {
+            'name': 'instance3',
+            'ip': '10.3.4.5'
+        },
+    ]
+
+    gce_cluster_resolver = GCEClusterResolver(
+        project='test-project',
+        zone='us-east1-d',
+        instance_group='test-instance-group',
+        task_type='testworker',
+        port=8470,
+        credentials=None,
+        service=self.gen_standard_mock_service_client(name_to_ip))
+
+    with self.assertRaisesRegex(
+        RuntimeError, 'You cannot reset the task_type '
+        'of the GCEClusterResolver after it has '
+        'been created.'):
+      gce_cluster_resolver.task_type = 'foobar'
+
 
 if __name__ == '__main__':
   test.main()

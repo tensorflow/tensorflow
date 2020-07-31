@@ -31,18 +31,13 @@ limitations under the License.
 //   Each item indicates whether the corresponding lookup has a returned value.
 //   0 for missing key, 1 for found key.
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
+#include <stdint.h>
+
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
-#include <limits>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
@@ -92,7 +87,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     status = context->ResizeTensor(context, output, outputSize);
   }
-  if (context->ResizeTensor(context, hits, hitSize) == kTfLiteError) {
+  if (context->ResizeTensor(context, hits, hitSize) != kTfLiteOk) {
     status = kTfLiteError;
   }
   return status;

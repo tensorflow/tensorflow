@@ -1,0 +1,12 @@
+op {
+  name: "LookupTableSize"
+  input_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT64
+  }
+}

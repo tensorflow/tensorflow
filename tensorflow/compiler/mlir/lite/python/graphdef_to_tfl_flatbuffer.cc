@@ -18,12 +18,13 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "llvm/ADT/None.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
-#include "mlir/Transforms/ViewOpGraph.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
@@ -55,8 +56,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
   std::vector<std::vector<int>> node_shapes;
-  std::vector<double> node_mins;
-  std::vector<double> node_maxs;
+  std::vector<llvm::Optional<double>> node_mins;
+  std::vector<llvm::Optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
@@ -84,8 +85,14 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
 
+  mlir::TFL::PassConfig pass_config(quant_specs);
+  bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.lower_tensor_list_ops = true;
+
   return internal::ConvertMLIRToTFLiteFlatBuffer(toco_flags, std::move(module),
-                                                 quant_specs, result);
+                                                 pass_config, result,
+                                                 /*session=*/llvm::None);
 }
 
 }  // namespace tensorflow

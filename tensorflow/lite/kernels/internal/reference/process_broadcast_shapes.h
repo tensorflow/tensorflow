@@ -76,6 +76,10 @@ inline bool ProcessBroadcastShapes(const RuntimeShape& shape0,
           BroadcastableOpCategory::kFirstInputBroadcastsFast &&
       params->broadcast_category !=
           BroadcastableOpCategory::kSecondInputBroadcastsFast) {
+    // This is unreachable because at least one else clause in the above loop
+    // must be reached.
+    TFLITE_DCHECK(false);
+    params->broadcast_category = BroadcastableOpCategory::kNonBroadcast;
     return false;
   }
 

@@ -30,6 +30,8 @@ std::string RunId::ToString() const {
   return "RunId: " + std::to_string(data_);
 }
 
+int64 RunId::ToInt() const { return data_; }
+
 ExecutableRunOptions& ExecutableRunOptions::set_device_ordinal(
     int device_ordinal) {
   device_ordinal_ = device_ordinal;

@@ -4,8 +4,8 @@ func @main() {
 ^bb0:
   // CHECK: name: "node_name"
   // CHECK-NEXT: op: "Const"
-  // CHECK: attr {
-  // CHECK-NEXT: key: "dtype"
+  // CHECK-NEXT: attr {
+  // CHECK:      key: "dtype"
   // CHECK-NEXT:   value {
   // CHECK-NEXT:     type: DT_INT32
   // CHECK-NEXT:   }

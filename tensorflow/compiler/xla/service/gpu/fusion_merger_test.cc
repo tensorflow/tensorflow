@@ -367,6 +367,37 @@ TEST_F(FusionMergerTest, WillNotMergeIfFusionEmitterIsInefficient) {
   EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(FusionMergerTest, WillMergeExpensiveFusionsIfSavesMemory) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    %f_a (p: f32[]) -> f32[1024,1024,1024] {
+      %p = f32[] parameter(0)
+      %b = f32[1024,1024,1024] broadcast(%p), dimensions={}
+      ROOT %t = f32[1024,1024,1024] tanh(%b)
+    }
+
+    %f_b (p: f32[1024,1024,1024]) -> f32[1024,1024,1024] {
+      %p = f32[1024,1024,1024] parameter(0)
+      ROOT %t = f32[1024,1024,1024] tanh(%p)
+    }
+
+    %f_c (p: f32[1024,1024,1024]) -> f32[1024,1024,1024] {
+      %p = f32[1024,1024,1024] parameter(0)
+      ROOT %t = f32[1024,1024,1024] tanh(%p)
+    }
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+      f1 = f32[1024,1024,1024] fusion(p0), kind=kLoop, calls=%f_a
+      f2 = f32[1024,1024,1024] fusion(f1), kind=kLoop, calls=%f_b
+      f3 = f32[1024,1024,1024] fusion(f1), kind=kLoop, calls=%f_c
+      ROOT f4 = f32[1024,1024,1024] add(f2, f3)
+    })")
+                    .ValueOrDie();
+  EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

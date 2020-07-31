@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import pickle
 import types
 
 from tensorflow.python.platform import test
@@ -130,6 +131,16 @@ class LazyLoadingWrapperTest(test.TestCase):
     wrapped_module = module_wrapper.TFModuleWrapper(
         module, 'test', public_apis=apis, deprecation=False, has_lite=True)
     self.assertEqual(wrapped_module.lite, _cmd)
+
+
+class PickleTest(test.TestCase):
+
+  def testPickleSubmodule(self):
+    name = PickleTest.__module__  # The current module is a submodule.
+    module = module_wrapper.TFModuleWrapper(MockModule(name), name)
+    restored = pickle.loads(pickle.dumps(module))
+    self.assertEqual(restored.__name__, name)
+    self.assertIsNotNone(restored.PickleTest)
 
 
 if __name__ == '__main__':

@@ -11,14 +11,13 @@ each step of the developer workflow and provides links to further instructions.
 <a id="1_choose_a_model"></a>
 
 A TensorFlow model is a data structure that contains the logic and knowledge of
-a machine learning network trained to solve a particular problem.
-There are many ways to obtain a TensorFlow model, from using pre-trained models
-to training your own.
+a machine learning network trained to solve a particular problem. There are many
+ways to obtain a TensorFlow model, from using pre-trained models to training
+your own.
 
-To use a model with TensorFlow Lite, you must convert a
-full TensorFlow model into the TensorFlow Lite format—you
-cannot create or train a model using TensorFlow Lite. So you must start with a
-regular TensorFlow model, and then
+To use a model with TensorFlow Lite, you must convert a full TensorFlow model
+into the TensorFlow Lite format—you cannot create or train a model using
+TensorFlow Lite. So you must start with a regular TensorFlow model, and then
 [convert the model](#2_convert_the_model_format).
 
 Note: TensorFlow Lite supports a limited subset of TensorFlow operations, so not
@@ -135,9 +134,9 @@ performance or reduce file size. This is covered in section 4,
 
 ### Ops compatibility
 
-TensorFlow Lite currently supports a [limited subset of TensorFlow
-operations](ops_compatibility.md). The long term goal is for all TensorFlow
-operations to be supported.
+TensorFlow Lite currently supports a
+[limited subset of TensorFlow operations](ops_compatibility.md). The long term
+goal is for all TensorFlow operations to be supported.
 
 If the model you wish to convert contains unsupported operations, you can use
 [TensorFlow Select](ops_select.md) to include operations from TensorFlow. This
@@ -215,11 +214,9 @@ Embedded Linux is an important platform for deploying machine learning. To get
 started using Python to perform inference with your TensorFlow Lite models,
 follow the [Python quickstart](python.md).
 
-To instead install the C++ library, see the
-build instructions for [Raspberry Pi](build_rpi.md) or
-[Arm64-based boards](build_arm64.md) (for boards such as Odroid C2, Pine64, and
-NanoPi).
-
+To instead install the C++ library, see the build instructions for
+[Raspberry Pi](build_rpi.md) or [Arm64-based boards](build_arm64.md) (for boards
+such as Odroid C2, Pine64, and NanoPi).
 
 ### Microcontrollers
 

@@ -1,6 +1,7 @@
 tensorflow {
   global:
     *tensorflow*;
+    *absl*kSeed*;
     *toco*;
     *perftools*gputools*;
     *tf_*;
@@ -10,6 +11,7 @@ tensorflow {
     *nsync_*;
     *stream_executor*;
     *xla*;
+    *PyInit_*;
   local:
     *;
 };

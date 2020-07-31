@@ -26,6 +26,7 @@ import weakref
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
@@ -36,13 +37,14 @@ from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import serialized_attributes
 from tensorflow.python.keras.saving.saved_model import utils
+from tensorflow.python.keras.utils import version_utils
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -412,7 +414,7 @@ class LayerCallCollection(object):
       if self._expects_training_arg:
         def trace_with_training(value, fn=fn):
           utils.set_training_arg(value, self._training_arg_index, args, kwargs)
-          with K.learning_phase_scope(value):
+          with K.deprecated_internal_learning_phase_scope(value):
             fn.get_concrete_function(*args, **kwargs)
 
         trace_with_training(True)
@@ -520,7 +522,7 @@ def layer_call_wrapper(call_collection, method):
     with base_layer_utils.call_context().enter(
         layer, inputs=inputs, build_graph=False, training=training,
         saving=True):
-      with base_layer_utils.autocast_context_manager(layer._compute_dtype):  # pylint: disable=protected-access
+      with ops.enable_auto_cast_variables(layer._compute_dtype_object):  # pylint: disable=protected-access
         ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret
@@ -563,7 +565,16 @@ def _wrap_call_and_conditional_losses(layer):
   # Create function that generates both outputs and losses
   layer_call = _get_layer_call_method(layer)
   def call_and_return_conditional_losses(inputs, *args, **kwargs):
-    return layer_call(inputs, *args, **kwargs), layer.get_losses_for(inputs)
+    """Returns layer (call_output, conditional losses) tuple."""
+    call_output = layer_call(inputs, *args, **kwargs)
+    if version_utils.is_v1_layer_or_model(layer):
+      conditional_losses = layer.get_losses_for(inputs)
+    else:
+      conditional_losses = [
+          l for l in layer.losses if not hasattr(l, '_unconditional_loss')
+      ]
+    return call_output, conditional_losses
+
   return _create_call_fn_decorator(layer, call_and_return_conditional_losses)
 
 

@@ -232,6 +232,24 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, expected_output=[b"foo", b"bar", b"baz"])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testFromGeneratorDatastructures(self):
+    # Tests multiple datastructures.
+    def generator():
+      yield {"a": "foo", "b": [1, 2], "c": (9,)}
+      yield {"a": "bar", "b": [3], "c": (7, 6)}
+      yield {"a": "baz", "b": [5, 6], "c": (5, 4)}
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator,
+        output_types={"a": dtypes.string, "b": dtypes.int32, "c": dtypes.int32},
+        output_shapes={"a": [], "b": [None], "c": [None]})
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[{"a": b"foo", "b": [1, 2], "c": [9]},
+                         {"a": b"bar", "b": [3], "c": [7, 6]},
+                         {"a": b"baz", "b": [5, 6], "c": [5, 4]}])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorTypeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)
@@ -474,6 +492,30 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIsInstance(ret, sparse_tensor.SparseTensor)
     self.assertAllEqual([[1, 0, 0, 0], [0, 0, 2, 0], [0, 0, 0, 0]],
                         sparse_ops.sparse_tensor_to_dense(ret))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTypeIsListError(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    with self.assertRaisesRegex(
+        TypeError, r"Cannot convert value \[tf.int64\] to a TensorFlow DType"):
+      dataset_ops.Dataset.from_generator(
+          generator, output_types=[dtypes.int64])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDimensionIsListError(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    with self.assertRaisesRegex(TypeError,
+                                r"Dimension value must be integer or None"):
+      dataset_ops.Dataset.from_generator(
+          generator, output_types=(dtypes.int64), output_shapes=[[1]])
 
 
 if __name__ == "__main__":

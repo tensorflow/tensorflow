@@ -18,12 +18,13 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
@@ -90,6 +91,10 @@ bool IsRunOnceOptimizer(const string& name) {
          name == "loop_optimizer" || name == "auto_mixed_precision";
 }
 
+bool IsTFDataFunction(const FunctionDef& func) {
+  return func.attr().contains(data::kTFDataFunction);
+}
+
 // Creates a function library stub from a real function library: copy only
 // signatures and attributes of all the function defined in fdef_lib. This stub
 // can be swapped with real function library in a graph, before passing it to
@@ -109,12 +114,12 @@ FunctionDefLibrary GetFunctionDefLibraryStub(
 }
 
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
-  const uint64 kFiveMinutesInUsec = 5 * 60 * 1000 * 1000;
+  const uint64 kTwentyMinutesInUsec = 20 * 60 * 1000 * 1000;
   if (cfg.meta_optimizer_timeout_ms() < 0) {
     return 0;
   } else {
     return cfg.meta_optimizer_timeout_ms() == 0
-               ? Env::Default()->NowMicros() + kFiveMinutesInUsec
+               ? Env::Default()->NowMicros() + kTwentyMinutesInUsec
                : Env::Default()->NowMicros() +
                      cfg.meta_optimizer_timeout_ms() * 1000;
   }
@@ -183,7 +188,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("remap", new Remapper(cfg_.remapping()));
   MK_OPT("layout", new GenericLayoutOptimizer());
   MK_OPT("auto_mixed_precision",
-         new AutoMixedPrecision(cfg_.auto_mixed_precision()));
+         new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
+  MK_OPT("auto_mixed_precision_mkl",
+         new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
   MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("common_subgraph_elimination",
          new CommonSubgraphElimination(cfg_.common_subgraph_elimination()));
@@ -244,7 +251,11 @@ Status MetaOptimizer::InitializeOptimizers(
   }
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
     optimizers->push_back(
-        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
+        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
+  }
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
   }
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
@@ -390,6 +401,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     return Status::OK();
   }
 
+  const uint64 start_us = Env::Default()->NowMicros();
+
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   if (cfg_.optimizers().empty()) {
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
@@ -519,6 +532,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
+  const uint64 end_us = Env::Default()->NowMicros();
+  metrics::UpdateGrapplerPassTime("OptimizeMainGraph", end_us - start_us);
+
   return Status::OK();
 }
 
@@ -591,6 +607,8 @@ Status MetaOptimizer::RunOptimizer(
 
 Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                           GraphDef* optimized_graph) {
+  const uint64 start_us = Env::Default()->NowMicros();
+
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
@@ -696,6 +714,9 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
 
+      // Skip tf.data functions as they are optimized by tf.data meta optimizer.
+      if (IsTFDataFunction(func)) continue;
+
       VLOG(3) << "Optimize function: function=" << func_name << " ["
               << function_idx++ << " of "
               << optimized_graph->library().function_size() << "]";
@@ -794,6 +815,10 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                         reinterpret_cast<uintptr_t>(optimized_graph)),
         *optimized_graph);
   }
+
+  const uint64 end_us = Env::Default()->NowMicros();
+  metrics::UpdateGrapplerPassTime("*", end_us - start_us);
+
   return Status::OK();
 }
 
@@ -827,6 +852,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
+         AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_mkl()) ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }

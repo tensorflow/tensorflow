@@ -11,7 +11,7 @@ package(
 ios_static_framework(
     name = "TensorFlowLiteBenchmarkC_framework",
     hdrs = [
-        "//tensorflow/lite/tools/benchmark:logging.h",
+        "//tensorflow/lite/tools:logging.h",
         "//tensorflow/lite/tools/benchmark/experimental/c:benchmark_c_api.h",
         "//tensorflow/lite/tools/benchmark/experimental/c:c_api_types.h",
     ],

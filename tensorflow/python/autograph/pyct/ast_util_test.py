@@ -90,6 +90,14 @@ class AstUtilTest(test.TestCase):
 
     self.assertIs(anno.getanno(node, 'foo'), orig_anno)
 
+  def test_rename_symbols_function(self):
+    node = parser.parse('def f():\n  pass')
+    node = ast_util.rename_symbols(node,
+                                   {qual_names.QN('f'): qual_names.QN('f1')})
+
+    source = parser.unparse(node, include_encoding_marker=False)
+    self.assertEqual(source.strip(), 'def f1():\n    pass')
+
   def test_copy_clean(self):
     node = parser.parse(
         textwrap.dedent("""
@@ -226,37 +234,6 @@ class AstUtilTest(test.TestCase):
       self.assertIn(
           parser.unparse(node.body, include_encoding_marker=False).strip(),
           expected_bodies)
-
-  def test_find_matching_definitions_lambda(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1',))
-
-  def test_find_matching_definitions_lambda_multiple_matches(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1, lambda x: 2
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1', '2'))
-
-  def test_find_matching_definitions_lambda_uses_arg_names(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1, lambda y: 2
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1',))
-
-    f = lambda y: y
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('2',))
 
 
 if __name__ == '__main__':

@@ -47,7 +47,10 @@ versions {
   producer: 27
 }
 
-# CHECK:      func @main(%arg0: tensor<4xi32>) -> tensor<4xi32>
-# CHECK:      attributes {tf.entry_function = {inputs = "input", outputs = "output"}} {
-# CHECK-NEXT:   return %arg0 : tensor<4xi32>
-# CHECK-NEXT: }
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<4xi32>) -> tensor<4xi32>
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "input"
+# CHECK-SAME:  outputs = "output"
+# CHECK-NEXT:    return %[[ARG_0]] : tensor<4xi32>
+# CHECK-NEXT:  }

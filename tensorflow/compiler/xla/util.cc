@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <numeric>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -301,6 +303,40 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
   return bounds;
 }
 
+ConvertedDimensionNumbers ConvertDimensionNumbers(
+    absl::Span<const int64> from_dimensions, absl::Span<const int64> from_sizes,
+    absl::Span<const int64> to_sizes) {
+  ConvertedDimensionNumbers dimensions;
+  auto common_factors = CommonFactors(from_sizes, to_sizes);
+  for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+    bool any_present = false;
+    bool all_present = true;
+    for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+         ++d) {
+      const bool present = absl::c_linear_search(from_dimensions, d);
+      any_present |= present;
+      all_present &= present;
+    }
+    if (all_present) {
+      for (int64 d = common_factors[i].second; d < common_factors[i + 1].second;
+           ++d) {
+        dimensions.to_dimensions.push_back(d);
+      }
+      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+           ++d) {
+        dimensions.transformed_from_dimensions.push_back(d);
+      }
+    } else if (any_present) {
+      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+           ++d) {
+        if (absl::c_linear_search(from_dimensions, d)) {
+          dimensions.untransformed_from_dimensions.push_back(d);
+        }
+      }
+    }
+  }
+  return dimensions;
+}
 string SanitizeFileName(string file_name) {
   for (char& c : file_name) {
     if (c == '/' || c == '\\' || c == '[' || c == ']' || c == ' ') {

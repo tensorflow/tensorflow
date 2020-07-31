@@ -34,6 +34,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 MAE = losses.MeanAbsoluteError
@@ -288,7 +289,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
           model_layers, input_shape=(10,))
 
       x = np.ones((10, 10), 'float32')
-      y = np.ones((10, 1), 'float32')
+      y = np.zeros((10, 1), 'float32')
 
       optimizer = RMSPropOptimizer(learning_rate=0.001)
       model.compile(
@@ -340,7 +341,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     class LayerWithLoss(layers.Layer):
 
       def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs), inputs)
+        self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
         return inputs * 2
 
     shared_layer = LayerWithLoss()
@@ -357,7 +358,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     class LayerWithLoss(layers.Layer):
 
       def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs), inputs)
+        self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
         return inputs * 2
 
     class LayerWithNestedLayerWithLoss(layers.Layer):
@@ -434,7 +435,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       inputs = Input(shape=(1,))
       outputs = testing_utils.Bias()(inputs)
       model = Model(inputs, outputs)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'Expected a symbolic Tensors or a callable for the loss value'):
         model.add_loss(1.)
@@ -445,10 +446,23 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       inputs = Input(shape=(1,))
       outputs = testing_utils.Bias()(inputs)
       model = Model(inputs, outputs)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'Expected a symbolic Tensors or a callable for the loss value'):
         model.add_loss(model.weights[0])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_add_entropy_loss_on_functional_model(self):
+    inputs = Input(shape=(1,))
+    targets = Input(shape=(1,))
+    outputs = testing_utils.Bias()(inputs)
+    model = Model([inputs, targets], outputs)
+    model.add_loss(losses.binary_crossentropy(targets, outputs))
+    model.compile('sgd', run_eagerly=testing_utils.should_run_eagerly())
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      model.fit([self.x, self.y], batch_size=3, epochs=5)
+      self.assertNotIn('Gradients do not exist for variables',
+                       str(mock_log.call_args))
 
 
 if __name__ == '__main__':

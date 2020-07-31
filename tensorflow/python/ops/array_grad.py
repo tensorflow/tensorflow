@@ -641,7 +641,8 @@ def _GatherV2Grad(op, grad):
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
     if context.executing_eagerly():
-      params_tail_shape = params_shape.cpu()[1:]
+      with ops.device("/cpu:0"):
+        params_tail_shape = array_ops.identity(params_shape)[1:]
     else:
       params_tail_shape = params_shape[1:]
     values_shape = array_ops.concat([indices_size, params_tail_shape], 0)
@@ -846,7 +847,7 @@ def _PadGrad(op, grad):
                                array_ops.stack([array_ops.rank(x), 1]))
   # Make it a 1-D tensor.
   begin = array_ops.reshape(pad_before, [-1])
-  sizes = array_ops.shape(x)
+  sizes = array_ops.shape(x, out_type=begin.dtype)
   x_grad = array_ops.slice(grad, begin, sizes)
   if len(op.inputs) == 3:
     return x_grad, None, None

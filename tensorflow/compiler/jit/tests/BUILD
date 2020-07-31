@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

@@ -378,7 +378,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
       }
     } else {
       CloseHandle(parent_pipe_[CHAN_STDIN]);
-      parent_pipe_[CHAN_STDIN] == NULL;
+      parent_pipe_[CHAN_STDIN] = NULL;
     }
 
     if (parent_pipe_[CHAN_STDOUT] != nullptr) {

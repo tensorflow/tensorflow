@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -212,6 +212,35 @@ TEST(CAPI, CancellationManager) {
   TFE_DeleteCancellationManager(c_mgr);
 }
 
+TEST(CAPI, ExecutorContextDestructionOrder) {
+  TF_Status* status = TF_NewStatus();
+
+  {
+    TFE_ContextOptions* opts = TFE_NewContextOptions();
+    TFE_Context* ctx = TFE_NewContext(opts, status);
+    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+    TFE_DeleteContextOptions(opts);
+    TFE_Executor* executor = TFE_NewExecutor(/*is_async=*/false);
+    TFE_ContextSetExecutorForThread(ctx, executor);
+
+    TFE_DeleteContext(ctx);
+    TFE_DeleteExecutor(executor);
+  }
+
+  {
+    TFE_ContextOptions* opts = TFE_NewContextOptions();
+    TFE_Context* ctx = TFE_NewContext(opts, status);
+    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+    TFE_DeleteContextOptions(opts);
+    TFE_Executor* executor = TFE_NewExecutor(/*is_async=*/false);
+    TFE_ContextSetExecutorForThread(ctx, executor);
+
+    TFE_DeleteExecutor(executor);
+    TFE_DeleteContext(ctx);
+  }
+  TF_DeleteStatus(status);
+}
+
 TEST(CAPI, Function_ident_CPU) {
   // First create a simple identity function.
   TF_Graph* function_graph = TF_NewGraph();
@@ -378,7 +407,7 @@ void Executor_MatMul_CPU(bool async) {
   TFE_Executor* executor = TFE_NewExecutor(async);
   TFE_ContextSetExecutorForThread(ctx, executor);
 
-  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
   TFE_Op* matmul = MatMulOp(ctx, m, m);
   TFE_TensorHandle* retvals[2] = {nullptr, nullptr};
   int num_retvals = 2;
@@ -423,7 +452,7 @@ TEST(CAPI, TensorHandleOnDeviceMemory) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
   TF_Tensor* m_data = TFE_TensorHandleResolve(m, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   float* m_float = static_cast<float*>(TF_TensorData(m_data));
@@ -455,6 +484,7 @@ TEST(CAPI, TensorHandleOnDeviceMemory) {
     TFE_DeleteTensorHandle(copy_aliased);  // Note that this will delete copy.
     TFE_DeleteTensorHandle(on_host);
   }
+  TF_DeleteDeviceList(devices);
   TF_DeleteTensor(m_data);
   TFE_DeleteTensorHandle(m);
   TFE_DeleteContext(ctx);

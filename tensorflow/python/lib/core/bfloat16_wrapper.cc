@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 PYBIND11_MODULE(_pywrap_bfloat16, m) {

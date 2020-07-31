@@ -139,7 +139,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(test_base.graph_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testPrefetchToDeviceGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -148,16 +148,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/gpu:0"))
 
-    iterator = dataset_ops.make_initializable_iterator(device_dataset)
-    next_element = iterator.get_next()
-
-    with self.cached_session(
-        config=config_pb2.ConfigProto(allow_soft_placement=False)):
-      self.evaluate(iterator.initializer)
-      for i in range(10):
-        self.assertEqual(i, self.evaluate(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(next_element)
+    self.assertDatasetProduces(device_dataset, list(range(10)))
 
   @combinations.generate(test_base.graph_only_combinations())
   def testPrefetchToDeviceWithReInit(self):
@@ -209,6 +200,18 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testPrefetchToDevicePlacement(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.prefetch_to_device("/gpu:0"))
+
+    self.assertEqual(device_dataset._variant_tensor.device,
+                     "/job:localhost/replica:0/task:0/device:GPU:0")
 
 
 if __name__ == "__main__":

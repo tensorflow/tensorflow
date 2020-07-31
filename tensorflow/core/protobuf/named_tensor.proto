@@ -8,7 +8,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "NamedTensorProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // A pair of tensor name and tensor values.
 message NamedTensorProto {

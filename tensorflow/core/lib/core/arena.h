@@ -57,7 +57,7 @@ class Arena {
 #ifdef __i386__
   static const int kDefaultAlignment = 4;
 #else
-  static const int kDefaultAlignment = 8;
+  static constexpr int kDefaultAlignment = 8;
 #endif
 
  protected:

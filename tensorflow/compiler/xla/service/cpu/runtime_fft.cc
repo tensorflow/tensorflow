@@ -28,13 +28,14 @@ using tensorflow::int64;
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenFft(
     const void* run_options_ptr, void* out, void* operand, int32 fft_type,
-    int32 fft_rank, int64 input_batch, int64 fft_length0, int64 fft_length1,
-    int64 fft_length2) {
+    int32 double_precision, int32 fft_rank, int64 input_batch,
+    int64 fft_length0, int64 fft_length1, int64 fft_length2) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
   tensorflow::xla::EigenFftImpl(
       *run_options->intra_op_thread_pool(), out, operand,
-      static_cast<tensorflow::xla::FftType>(fft_type), fft_rank, input_batch,
-      fft_length0, fft_length1, fft_length2);
+      static_cast<tensorflow::xla::FftType>(fft_type),
+      static_cast<bool>(double_precision), fft_rank, input_batch, fft_length0,
+      fft_length1, fft_length2);
 }

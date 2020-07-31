@@ -58,7 +58,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
  private:
-  static const int64 kTableSize = (1 << 10);
+  static constexpr int64 kTableSize = (1 << 10);
 
   const float* InitCoeffsTable() {
     // Allocate and initialize coefficients table using Bicubic

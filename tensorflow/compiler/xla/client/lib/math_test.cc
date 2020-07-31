@@ -236,6 +236,19 @@ XLA_TEST_F(MathTest, SqrtF32) {
   ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
 }
 
+XLA_TEST_F(MathTest, SqrtF64) {
+  XlaBuilder builder(TestName());
+  Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F64);
+
+  std::unique_ptr<GlobalData> zero_data =
+      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+
+  XlaOp zero = Parameter(&builder, 0, zero_literal.shape(), "zero");
+  Sqrt(zero);
+
+  ComputeAndCompareR0<double>(&builder, 0.0f, {zero_data.get()}, error_spec_);
+}
+
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
 XLA_TEST_F(MathTest, ErfInvF64) {
   XlaBuilder builder(TestName());
@@ -296,6 +309,15 @@ XLA_TEST_F(MathTest, SqrtSixValues) {
 
   std::vector<float> expected = {4, 1, 32, 0.4, 0.4472, 111.1080};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, CbrtSixValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {8.0, 1.0, 4096.0, -64.0, 1.728, 1331});
+  Cbrt(x);
+
+  std::vector<float> expected = {2, 1, 16, -4, 1.2, 11};
+  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.001));
 }
 
 XLA_TEST_F(MathTest, SinhSmallValues) {

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "unicode/errorcode.h"  // TF:icu
-#include "unicode/uscript.h"  // TF:icu
+#include "unicode/errorcode.h"  // from @icu
+#include "unicode/uscript.h"  // from @icu
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {

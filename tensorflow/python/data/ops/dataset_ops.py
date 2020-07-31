@@ -36,12 +36,14 @@ from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd_utils
@@ -65,12 +67,14 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 # Loaded lazily due to a circular dependency (roughly
@@ -93,10 +97,17 @@ ops.NotDifferentiable("ReduceDataset")
 AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
+# Constants representing infinite and unknown cardinalities.
+INFINITE = -1
+UNKNOWN = -2
+tf_export("data.INFINITE_CARDINALITY").export_constant(__name__, "INFINITE")
+tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
+
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
+class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
+                composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 
   The `tf.data.Dataset` API supports writing descriptive and efficient input
@@ -152,14 +163,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Elements may be nested structures containing multiple components. For
     example, the element `(1, (3, "apple"))` has one tuple nested in another
     tuple. The components are `1`, `3`, and `"apple"`.
+
   **Component**: The leaf in the nested structure of an element.
 
   Supported types:
 
   Elements can be nested structures of tuples, named tuples, and dictionaries.
-  Element components can be of any type representable by `tf.TypeSpec`,
-  including `tf.Tensor`, `tf.data.Dataset`, `tf.SparseTensor`,
-  `tf.RaggedTensor`, and `tf.TensorArray`.
+  Note that Python lists are *not* treated as nested structures of components.
+  Instead, lists are converted to tensors and treated as components. For
+  example, the element `(1, [1, 2, 3])` has only two components; the tensor `1`
+  and the tensor `[1, 2, 3]`. Element components can be of any type
+  representable by `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`,
+  `tf.sparse.SparseTensor`, `tf.RaggedTensor`, and `tf.TensorArray`.
 
   >>> a = 1 # Integer element
   >>> b = 2.0 # Float element
@@ -194,6 +209,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         name="_variant_tracker")
     self._graph_attr = ops.get_default_graph()
 
+    # Initialize the options for this dataset and its inputs.
+    self._options_attr = Options()
+    for input_dataset in self._inputs():
+      input_options = input_dataset.options()
+      if input_options is not None:
+        self._options_attr = self._options_attr.merge(input_options)
+
   @property
   def _variant_tensor(self):
     return self._variant_tensor_attr
@@ -225,9 +247,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       serialized graph.
     """
     if external_state_policy:
-      policy = None
-      if external_state_policy:
-        policy = external_state_policy.value
+      policy = external_state_policy.value
       return gen_dataset_ops.dataset_to_graph_v2(
           self._variant_tensor,
           external_state_policy=policy,
@@ -334,12 +354,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
-    options = Options()
-    for input_dataset in self._inputs():
-      input_options = input_dataset.options()
-      if input_options is not None:
-        options = options.merge(input_options)
-    return options
+    return self._options_attr
 
   def _apply_options(self):
     """Apply options, such as optimization configuration, to the dataset."""
@@ -362,16 +377,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     graph_rewrites = options._graph_rewrites()
     graph_rewrite_configs = options._graph_rewrite_configs()
     # pylint: enable=protected-access
-    if graph_rewrites:
+    if graph_rewrites.enabled or graph_rewrites.default:
       if self._has_captured_ref():
         warnings.warn(
             "tf.data graph rewrites are not compatible with tf.Variable. "
             "The following rewrites will be disabled: %s. To enable "
             "rewrites, use resource variables instead by calling "
             "`tf.enable_resource_variables()` at the start of the program." %
-            ", ".join(graph_rewrites))
+            ", ".join(graph_rewrites.enabled + graph_rewrites.default))
       else:
-        dataset = _OptimizeDataset(dataset, graph_rewrites,
+        dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
+                                   graph_rewrites.disabled,
+                                   graph_rewrites.default,
                                    graph_rewrite_configs)
 
     # (3) Apply autotune options
@@ -389,13 +406,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return dataset
 
   def __iter__(self):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
-    The returned iterator implements the Python iterator protocol and therefore
-    can only be used in eager mode.
+    The returned iterator implements the Python Iterator protocol.
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      An `tf.data.Iterator` for the elements of this dataset.
 
     Raises:
       RuntimeError: If not inside of tf.function and not executing eagerly.
@@ -406,11 +422,42 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
 
+  def __bool__(self):
+    return True  # Required as __len__ is defined
+
+  __nonzero__ = __bool__  # Python 2 backward compatibility
+
+  def __len__(self):
+    """Returns the length of the dataset if it is known and finite.
+
+    This method requires that you are running in eager mode, and that the
+    length of the dataset is known and non-infinite. When the length may be
+    unknown or infinite, or if you are running in graph mode, use
+    `tf.data.Dataset.cardinality` instead.
+
+    Returns:
+      An integer representing the length of the dataset.
+
+    Raises:
+      RuntimeError: If the dataset length is unknown or infinite, or if eager
+        execution is not enabled.
+    """
+    if not context.executing_eagerly():
+      raise TypeError("__len__() is not supported while tracing functions. "
+                      "Use `tf.data.Dataset.cardinality` instead.")
+    length = self.cardinality()
+    if length.numpy() == INFINITE:
+      raise TypeError("dataset length is infinite.")
+    if length.numpy() == UNKNOWN:
+      raise TypeError("dataset length is unknown.")
+    return length
+
   @abc.abstractproperty
   def element_spec(self):
     """The type specification of an element of this dataset.
 
-    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3]).element_spec
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> dataset.element_spec
     TensorSpec(shape=(), dtype=tf.int32, name=None)
 
     Returns:
@@ -476,7 +523,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       raise RuntimeError("as_numpy_iterator() is not supported while tracing "
                          "functions")
     for component_spec in nest.flatten(self.element_spec):
-      if not isinstance(component_spec, tensor_spec.TensorSpec):
+      if not isinstance(
+          component_spec,
+          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec)):
         raise TypeError(
             "Dataset.as_numpy_iterator() does not support datasets containing "
             + str(component_spec.value_type))
@@ -722,7 +771,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Note: The current implementation of `Dataset.from_generator()` uses
     `tf.numpy_function` and inherits the same constraints. In particular, it
-    requires the `Dataset`- and `Iterator`-related operations to be placed
+    requires the dataset and iterator related operations to be placed
     on a device in the same process as the Python program that called
     `Dataset.from_generator()`. The body of `generator` will not be
     serialized in a `GraphDef`, and you should not use this method if you
@@ -1062,14 +1111,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Example:
       If we had the following files on our filesystem:
-      
+
         - /path/to/dir/a.txt
         - /path/to/dir/b.py
         - /path/to/dir/c.py
-      
+
       If we pass "/path/to/dir/*.py" as the directory, the dataset
       would produce:
-      
+
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
@@ -1377,7 +1426,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Raises:
       InvalidArgumentError: if `num_shards` or `index` are illegal values.
-      
+
         Note: error checking is done on a best-effort basis, and errors aren't
         guaranteed to be caught upon dataset creation. (e.g. providing in a
         placeholder tensor bypasses the early checking, and will instead result
@@ -1487,9 +1536,19 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.as_numpy_iterator())
     [(array([[ 1,  2,  3, -1], [ 4,  5, -1, -1]], dtype=int32),
       array([[ 10, 100], [ 11,  12]], dtype=int32))]
+    >>> # Pad with a single value and multiple components.
+    >>> E = tf.data.Dataset.zip((A, A)).padded_batch(2, padding_values=-1)
+    >>> for element in E.as_numpy_iterator():
+    ...   print(element)
+    (array([[ 1, -1],
+           [ 2,  2]], dtype=int32), array([[ 1, -1],
+           [ 2,  2]], dtype=int32))
+    (array([[ 3,  3,  3, -1],
+           [ 4,  4,  4,  4]], dtype=int32), array([[ 3,  3,  3, -1],
+           [ 4,  4,  4,  4]], dtype=int32))
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
-    elements that may have different shapes into a `tf.SparseTensor`.
+    elements that may have different shapes into a `tf.sparse.SparseTensor`.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1505,7 +1564,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         `tf.Tensor`, representing the padding values to use for the respective
         components. None represents that the nested structure should be padded
         with default values.  Defaults are `0` for numeric types and the empty
-        string for string types.
+        string for string types. The `padding_values` should have the
+        same structure as the input dataset. If `padding_values` is a single
+        element and the input dataset has multiple components, then the same
+        `padding_values` will be used to pad every component of the dataset.
+        If `padding_values` is a scalar, then its value will be broadcasted
+        to match the shape of each component.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
@@ -1552,7 +1616,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> result = dataset.map(lambda x: x + 1)
 
     >>> # Each element is a tuple containing two `tf.Tensor` objects.
-    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz)")]
+    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz")]
     >>> dataset = tf.data.Dataset.from_generator(
     ...     lambda: elements, (tf.int32, tf.string))
     >>> # `map_func` takes two arguments of type `tf.Tensor`. This function
@@ -1604,7 +1668,7 @@ name=None))
 
     Note that irrespective of the context in which `map_func` is defined (eager
     vs. graph), tf.data traces the function and executes it as a graph. To use
-    Python code inside of the function you have two options:
+    Python code inside of the function you have a few options:
 
     1) Rely on AutoGraph to convert Python code into an equivalent graph
     computation. The downside of this approach is that AutoGraph can convert
@@ -1621,6 +1685,23 @@ name=None))
     ...           inp=[x], Tout=tf.string))
     >>> list(d.as_numpy_iterator())
     [b'HELLO', b'WORLD']
+
+    3) Use `tf.numpy_function`, which also allows you to write arbitrary
+    Python code. Note that `tf.py_function` accepts `tf.Tensor` whereas
+    `tf.numpy_function` accepts numpy arrays and returns only numpy arrays.
+    For example:
+
+    >>> d = tf.data.Dataset.from_tensor_slices(['hello', 'world'])
+    >>> def upper_case_fn(t: np.ndarray):
+    ...   return t.decode('utf-8').upper()
+    >>> d = d.map(lambda x: tf.numpy_function(func=upper_case_fn,
+    ...           inp=[x], Tout=tf.string))
+    >>> list(d.as_numpy_iterator())
+    [b'HELLO', b'WORLD']
+
+    Note that the use of `tf.numpy_function` and `tf.py_function`
+    in general precludes the possibility of executing user-defined
+    transformations in parallel (because of Python GIL).
 
     Performance can often be improved by setting `num_parallel_calls` so that
     `map` will use multiple threads to process elements. If deterministic order
@@ -1666,7 +1747,8 @@ name=None))
     stays the same. For example, to flatten a dataset of batches into a
     dataset of their elements:
 
-    >>> dataset = Dataset.from_tensor_slices([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> dataset = tf.data.Dataset.from_tensor_slices(
+    ...                [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     >>> dataset = dataset.flat_map(lambda x: Dataset.from_tensor_slices(x))
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -1685,8 +1767,8 @@ name=None))
 
   def interleave(self,
                  map_func,
-                 cycle_length=AUTOTUNE,
-                 block_length=1,
+                 cycle_length=None,
+                 block_length=None,
                  num_parallel_calls=None,
                  deterministic=None):
     """Maps `map_func` across this dataset, and interleaves the results.
@@ -1755,12 +1837,13 @@ name=None))
     Args:
       map_func: A function mapping a dataset element to a dataset.
       cycle_length: (Optional.) The number of input elements that will be
-        processed concurrently. If not specified, the value will be derived from
-        the number of available CPU cores. If the `num_parallel_calls` argument
-        is set to `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument
-        also identifies the maximum degree of parallelism.
+        processed concurrently. If not set, the tf.data runtime decides what it
+        should be based on available CPU. If `num_parallel_calls` is set to
+        `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument identifies
+        the maximum degree of parallelism.
       block_length: (Optional.) The number of consecutive elements to produce
-        from each input element before cycling to another input element.
+        from each input element before cycling to another input element. If not
+        set, defaults to 1.
       num_parallel_calls: (Optional.) If specified, the implementation creates a
         threadpool, which is used to fetch inputs from cycle elements
         asynchronously and in parallel. The default behavior is to fetch inputs
@@ -1777,6 +1860,12 @@ name=None))
     Returns:
       Dataset: A `Dataset`.
     """
+    if block_length is None:
+      block_length = 1
+
+    if cycle_length is None:
+      cycle_length = AUTOTUNE
+
     if num_parallel_calls is None:
       return InterleaveDataset(self, map_func, cycle_length, block_length)
     else:
@@ -2049,6 +2138,10 @@ name=None))
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 1, 2, 1, 2, 3, 4]
 
+    Note: `unbatch` requires a data copy to slice up the batched tensor into
+    smaller, unbatched tensors. When optimizing performance, try to avoid
+    unnecessary usage of `unbatch`.
+
     Returns:
       A `Dataset`.
     """
@@ -2081,6 +2174,34 @@ name=None))
       ValueError: when an option is set more than once to a non-default value
     """
     return _OptionsDataset(self, options)
+
+  def cardinality(self):
+    """Returns the cardinality of the dataset, if known.
+
+    `cardinality` may return `tf.data.INFINITE_CARDINALITY` if the dataset
+    contains an infinite number of elements or `tf.data.UNKNOWN_CARDINALITY` if
+    the analysis fails to determine the number of elements in the dataset
+    (e.g. when the dataset source is a file).
+
+    >>> dataset = tf.data.Dataset.range(42)
+    >>> print(dataset.cardinality().numpy())
+    42
+    >>> dataset = dataset.repeat()
+    >>> cardinality = dataset.cardinality()
+    >>> print((cardinality == tf.data.INFINITE_CARDINALITY).numpy())
+    True
+    >>> dataset = dataset.filter(lambda x: True)
+    >>> cardinality = dataset.cardinality()
+    >>> print((cardinality == tf.data.UNKNOWN_CARDINALITY).numpy())
+    True
+
+    Returns:
+      A scalar `tf.int64` `Tensor` representing the cardinality of the dataset.
+      If the cardinality is infinite or unknown, `cardinality` returns the
+      named constants `tf.data.INFINITE_CARDINALITY` and
+      `tf.data.UNKNOWN_CARDINALITY` respectively.
+    """
+    return gen_dataset_ops.dataset_cardinality(self._variant_tensor)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -2119,18 +2240,43 @@ class DatasetV1(DatasetV2):
     raise NotImplementedError("Dataset._as_variant_tensor")
 
   @deprecation.deprecated(
-      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
-      "`tf.estimator`, return the `Dataset` object directly from your input "
-      "function. As a last resort, you can use "
-      "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+      None, "This is a deprecated API that should only be used in TF 1 graph "
+      "mode and legacy TF 2 graph mode available through `tf.compat.v1`. In "
+      "all other situations -- namely, eager mode and inside `tf.function` -- "
+      "you can consume dataset elements using `for elem in dataset: ...` or "
+      "by explicitly creating iterator via `iterator = iter(dataset)` and "
+      "fetching its elements via `values = next(iterator)`. Furthermore, "
+      "this API is not available in TF 2. During the transition from TF 1 "
+      "to TF 2 you can use `tf.compat.v1.data.make_one_shot_iterator(dataset)` "
+      "to create a TF 1 graph mode style iterator for a dataset created "
+      "through TF 2 APIs. Note that this should be a transient state of your "
+      "code base as there are in general no guarantees about the "
+      "interoperability of TF 1 and TF 2 code.")
   def make_one_shot_iterator(self):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
     Note: The returned iterator will be initialized automatically.
-    A "one-shot" iterator does not currently support re-initialization.
+    A "one-shot" iterator does not currently support re-initialization. For
+    that see `make_initializable_iterator`.
+
+    Example:
+
+    ```python
+    # Building graph ...
+    dataset = ...
+    next_value = dataset.make_one_shot_iterator().get_next()
+
+    # ... from within a session ...
+    try:
+      while True:
+        value = sess.run(next_value)
+        ...
+    except tf.errors.OutOfRangeError:
+        pass
+    ```
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      An `tf.data.Iterator` for elements of this dataset.
     """
     return self._make_one_shot_iterator()
 
@@ -2143,7 +2289,7 @@ class DatasetV1(DatasetV2):
     # by value _make_dataset() function would try to capture these variant
     # tensor dataset inputs, which are marked as stateful ops and would throw
     # an error if we try and capture them. We therefore traverse the graph
-    # to find all these ops and whitelist them so that the capturing
+    # to find all these ops and allowlist them so that the capturing
     # logic instead of throwing an error recreates these ops which is what was
     # happening before.
     all_ds_ops = traverse.obtain_all_variant_tensor_ops(self)
@@ -2151,7 +2297,7 @@ class DatasetV1(DatasetV2):
 
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
-    @function.Defun(capture_by_value=True, whitelisted_stateful_ops=all_ds_ops)
+    @function.Defun(capture_by_value=True, allowlisted_stateful_ops=all_ds_ops)
     def _make_dataset():
       """Factory function for a dataset."""
       # NOTE(mrry): `Defun` does not capture the graph-level seed from the
@@ -2186,21 +2332,39 @@ class DatasetV1(DatasetV2):
         get_legacy_output_classes(self))
 
   @deprecation.deprecated(
-      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
-      "`tf.estimator`, return the `Dataset` object directly from your input "
-      "function. As a last resort, you can use "
-      "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+      None, "This is a deprecated API that should only be used in TF 1 graph "
+      "mode and legacy TF 2 graph mode available through `tf.compat.v1`. "
+      "In all other situations -- namely, eager mode and inside `tf.function` "
+      "-- you can consume dataset elements using `for elem in dataset: ...` "
+      "or by explicitly creating iterator via `iterator = iter(dataset)` "
+      "and fetching its elements via `values = next(iterator)`. "
+      "Furthermore, this API is not available in TF 2. During the transition "
+      "from TF 1 to TF 2 you can use "
+      "`tf.compat.v1.data.make_initializable_iterator(dataset)` to create a TF "
+      "1 graph mode style iterator for a dataset created through TF 2 APIs. "
+      "Note that this should be a transient state of your code base as there "
+      "are in general no guarantees about the interoperability of TF 1 and TF "
+      "2 code.")
   def make_initializable_iterator(self, shared_name=None):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
     Note: The returned iterator will be in an uninitialized state,
     and you must run the `iterator.initializer` operation before using it:
 
     ```python
+    # Building graph ...
     dataset = ...
     iterator = dataset.make_initializable_iterator()
-    # ...
+    next_value = iterator.get_next()  # This is a Tensor.
+
+    # ... from within a session ...
     sess.run(iterator.initializer)
+    try:
+      while True:
+        value = sess.run(next_value)
+        ...
+    except tf.errors.OutOfRangeError:
+        pass
     ```
 
     Args:
@@ -2209,12 +2373,11 @@ class DatasetV1(DatasetV2):
         devices (e.g. when using a remote server).
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      A `tf.data.Iterator` for elements of this dataset.
 
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-
     return self._make_initializable_iterator(shared_name)
 
   def _make_initializable_iterator(self, shared_name=None):  # pylint: disable=missing-docstring
@@ -2299,10 +2462,10 @@ class DatasetV1(DatasetV2):
   @staticmethod
   @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
   def from_sparse_tensor_slices(sparse_tensor):
-    """Splits each rank-N `tf.SparseTensor` in this dataset row-wise.
+    """Splits each rank-N `tf.sparse.SparseTensor` in this dataset row-wise.
 
     Args:
-      sparse_tensor: A `tf.SparseTensor`.
+      sparse_tensor: A `tf.sparse.SparseTensor`.
 
     Returns:
       Dataset: A `Dataset` of rank-(N-1) sparse tensors.
@@ -2451,8 +2614,8 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.interleave)
   def interleave(self,
                  map_func,
-                 cycle_length=AUTOTUNE,
-                 block_length=1,
+                 cycle_length=None,
+                 block_length=None,
                  num_parallel_calls=None,
                  deterministic=None):
     return DatasetV1Adapter(
@@ -2563,7 +2726,7 @@ def _ensure_same_dataset_graph(dataset):
 
 @tf_export(v1=["data.make_one_shot_iterator"])
 def make_one_shot_iterator(dataset):
-  """Creates a `tf.compat.v1.data.Iterator` for enumerating dataset elements.
+  """Creates an iterator for elements of `dataset`.
 
   Note: The returned iterator will be initialized automatically.
   A "one-shot" iterator does not support re-initialization.
@@ -2572,7 +2735,7 @@ def make_one_shot_iterator(dataset):
     dataset: A `tf.data.Dataset`.
 
   Returns:
-    A `tf.compat.v1.data.Iterator` over the elements of this dataset.
+    A `tf.data.Iterator` for elements of `dataset`.
   """
   try:
     # Call the defined `_make_one_shot_iterator()` if there is one, because some
@@ -2584,7 +2747,7 @@ def make_one_shot_iterator(dataset):
 
 @tf_export(v1=["data.make_initializable_iterator"])
 def make_initializable_iterator(dataset, shared_name=None):
-  """Creates a `tf.compat.v1.data.Iterator` for enumerating the elements of a dataset.
+  """Creates an iterator for elements of `dataset`.
 
   Note: The returned iterator will be in an uninitialized state,
   and you must run the `iterator.initializer` operation before using it:
@@ -2603,7 +2766,7 @@ def make_initializable_iterator(dataset, shared_name=None):
       (e.g. when using a remote server).
 
   Returns:
-    A `tf.compat.v1.data.Iterator` over the elements of `dataset`.
+    A `tf.data.Iterator` for elements of `dataset`.
 
   Raises:
     RuntimeError: If eager execution is enabled.
@@ -2618,10 +2781,10 @@ def make_initializable_iterator(dataset, shared_name=None):
 
 @tf_export("data.experimental.get_structure")
 def get_structure(dataset_or_iterator):
-  """Returns the type specification of an element of a `Dataset` or `Iterator`.
+  """Returns the type signature for elements of the input dataset / iterator.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
+    dataset_or_iterator: A `tf.data.Dataset` or an `tf.data.Iterator`.
 
   Returns:
     A nested structure of `tf.TypeSpec` objects matching the structure of an
@@ -2629,21 +2792,20 @@ def get_structure(dataset_or_iterator):
     components.
 
   Raises:
-    TypeError: If `dataset_or_iterator` is not a `Dataset` or `Iterator` object.
+    TypeError: If input is not a `tf.data.Dataset` or an `tf.data.Iterator`
+      object.
   """
   try:
     return dataset_or_iterator.element_spec  # pylint: disable=protected-access
   except AttributeError:
-    raise TypeError("`dataset_or_iterator` must be a Dataset or Iterator "
-                    "object, but got %s." % type(dataset_or_iterator))
+    raise TypeError("`dataset_or_iterator` must be a `tf.data.Dataset` or "
+                    "tf.data.Iterator object, but got %s." %
+                    type(dataset_or_iterator))
 
 
 @tf_export(v1=["data.get_output_classes"])
 def get_legacy_output_classes(dataset_or_iterator):
-  """Returns the output classes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_classes` property.
+  """Returns the output classes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
@@ -2660,10 +2822,7 @@ def get_legacy_output_classes(dataset_or_iterator):
 
 @tf_export(v1=["data.get_output_shapes"])
 def get_legacy_output_shapes(dataset_or_iterator):
-  """Returns the output shapes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_shapes` property.
+  """Returns the output shapes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
@@ -2680,10 +2839,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
 
 @tf_export(v1=["data.get_output_types"])
 def get_legacy_output_types(dataset_or_iterator):
-  """Returns the output shapes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_types` property.
+  """Returns the output shapes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
@@ -2767,36 +2923,47 @@ class Options(options_lib.OptionsBase):
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
       ty=distribute_options.ExternalStatePolicy,
-      docstring="By default, tf.data will refuse to serialize a dataset or "
-      "checkpoint its iterator if the dataset contains a stateful op as the "
-      "serialization / checkpointing won't be able to capture its state. "
-      "Users can -- at their own risk -- override this restriction by "
-      "explicitly specifying that they are fine throwing away the state "
-      "in these ops. There are three settings available - IGNORE: in which we"
-      "completely ignore any state; WARN: We warn the user that some state "
-      "might be thrown away; FAIL: We fail if any state is being captured.",
-      default_factory=lambda: distribute_options.ExternalStatePolicy.WARN)
+      docstring="This option can be used to override the default policy for "
+      "how to handle external state when serializing a dataset or "
+      "checkpointing its iterator. There are three settings available - "
+      "IGNORE: in which we completely ignore any state; WARN: We warn the "
+      "user that some state might be thrown away; FAIL: We fail if any state "
+      "is being captured.")
 
   def _graph_rewrites(self):
-    """Produces the list of enabled static graph rewrites."""
-    result = []
+    """Produces lists of enabled, disabled, default static graph rewrites.
+
+    Returns:
+      result: a namedtuple with three attributes. `result.enabled` is the list
+        of user enabled graph rewrites. `result.disabled` is the list of user
+        disabled graph rewrites. `result.default` is the list of graph
+        rewrites that are enabled by default (the user has not explicitly
+        enabled or disabled them).
+    """
     if self.experimental_optimization is not None:
-      result.extend(self.experimental_optimization._graph_rewrites())  # pylint: disable=protected-access
+      result = self.experimental_optimization._graph_rewrites()  # pylint: disable=protected-access
     else:
       # Apply default options
-      result.extend(
-          optimization_options.OptimizationOptions()._graph_rewrites())  # pylint: disable=protected-access
+      result = optimization_options.OptimizationOptions()._graph_rewrites()  # pylint: disable=protected-access
 
-    if self.experimental_deterministic is False:
-      result.append("make_sloppy")
-    if self.experimental_stats and self.experimental_stats.latency_all_edges:
-      result.append("latency_all_edges")
-    if self.experimental_slack:
-      result.append("slack")
-    if (self.experimental_distribute and
-        self.experimental_distribute._make_stateless):  # pylint: disable=protected-access
-      result.append("make_stateless")
-    return result
+    if self.experimental_deterministic is False:  # pylint: disable=g-bool-id-comparison
+      result.enabled.append("make_sloppy")
+    elif self.experimental_deterministic is True:  # pylint: disable=g-bool-id-comparison
+      result.disabled.append("make_sloppy")
+    if self.experimental_stats:
+      if  self.experimental_stats.latency_all_edges is True:  # pylint: disable=g-bool-id-comparison
+        result.enabled.append("latency_all_edges")
+      elif self.experimental_stats.latency_all_edges is False:  # pylint: disable=g-bool-id-comparison
+        result.disabled.append("latency_all_edges")
+    if self.experimental_slack is True:  # pylint: disable=g-bool-id-comparison
+      result.enabled.append("slack")
+    elif self.experimental_slack is False:  # pylint: disable=g-bool-id-comparison
+      result.disabled.append("slack")
+
+    graph_rewrites = options_lib.graph_rewrites()
+    return graph_rewrites(enabled=list(set(result.enabled)),
+                          disabled=list(set(result.disabled)),
+                          default=list(set(result.default)))
 
   def _graph_rewrite_configs(self):
     """Produces the list of configurations for enabled graph optimizations."""
@@ -2915,14 +3082,14 @@ class TensorSliceDataset(DatasetSource):
 
 
 class SparseTensorSliceDataset(DatasetSource):
-  """A `Dataset` that splits a rank-N `tf.SparseTensor` into its rows."""
+  """A `Dataset` that splits a rank-N `tf.sparse.SparseTensor` into its rows."""
 
   def __init__(self, sparse_tensor):
     """See `Dataset.from_sparse_tensor_slices()` for details."""
     if not isinstance(sparse_tensor, sparse_tensor_lib.SparseTensor):
       raise TypeError(
-          "`sparse_tensor` must be a `tf.SparseTensor` object. Was {}.".format(
-              sparse_tensor))
+          "`sparse_tensor` must be a `tf.sparse.SparseTensor` object."
+          "Was {}.".format(sparse_tensor))
     self._sparse_tensor = sparse_tensor
 
     indices_shape = self._sparse_tensor.indices.get_shape()
@@ -3019,7 +3186,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   @property
   def value_type(self):
-    return _VariantDataset
+    return Dataset
 
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)
@@ -3077,7 +3244,6 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 class StructuredFunctionWrapper(object):
   """A function wrapper that supports structured arguments and return values."""
 
-  # pylint: disable=protected-access
   def __init__(self,
                func,
                transformation_name,
@@ -3120,6 +3286,7 @@ class StructuredFunctionWrapper(object):
       ValueError: If an invalid combination of `dataset`, `input_classes`,
         `input_shapes`, and `input_types` is passed.
     """
+    # pylint: disable=protected-access
     if input_structure is None:
       if dataset is None:
         if input_classes is None or input_shapes is None or input_types is None:
@@ -3239,7 +3406,14 @@ class StructuredFunctionWrapper(object):
         _warn_if_collections(transformation_name)
 
     else:
+      if def_function.functions_run_eagerly():
+        warnings.warn(
+            "Even though the tf.config.experimental_run_functions_eagerly "
+            "option is set, this option does not apply to tf.data functions. "
+            "tf.data functions are still traced and executed as graphs.")
+
       defun_kwargs.update({"func_name": func_name})
+      defun_kwargs.update({"_tf_data_function": True})
 
       # Note: _wrapper_helper will apply autograph based on context.
       @eager_function.defun_with_attributes(
@@ -3256,9 +3430,9 @@ class StructuredFunctionWrapper(object):
       with tracking.resource_tracker_scope(resource_tracker):
         # TODO(b/141462134): Switch to using garbage collection.
         self._function = wrapper_fn.get_concrete_function()
-
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())
+
       if resource_tracker.resources:
         _warn_if_collections(transformation_name)
 
@@ -3270,7 +3444,6 @@ class StructuredFunctionWrapper(object):
               "if the random op has not been provided any seed. Explicitly set "
               "the seed in the function if this is not the intended behavior."
               %(outer_graph_seed, func_name), stacklevel=4)
-  # pylint: enable=protected-access
 
   @property
   def output_structure(self):
@@ -3501,47 +3674,6 @@ class RangeDataset(DatasetSource):
     return self._structure
 
 
-class _MemoryCacheDeleter(object):
-  """An object which cleans up an anonymous memory cache resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  def __init__(self, handle, device, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_memory_cache(
-              handle=self._handle, deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_memory_cache(
-              handle=self._handle, deleter=self._deleter)
-
-
-class _MemoryCache(object):
-  """Represents a memory cache resource."""
-
-  def __init__(self):
-    super(_MemoryCache, self).__init__()
-    self._device = context.context().device_name
-    self._handle, self._deleter = (gen_dataset_ops.anonymous_memory_cache())
-    self._resource_deleter = _MemoryCacheDeleter(
-        handle=self._handle, device=self._device, deleter=self._deleter)
-
-  @property
-  def handle(self):
-    return self._handle
-
-
 class CacheDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that caches elements of its input."""
 
@@ -3551,11 +3683,10 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
     if tf2.enabled() and (context.executing_eagerly() or ops.inside_function()):
-      self._cache = _MemoryCache()
       variant_tensor = gen_dataset_ops.cache_dataset_v2(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           filename=self._filename,
-          cache=self._cache.handle,
+          cache=gen_dataset_ops.dummy_memory_cache(),
           **self._flat_structure)
     else:
       variant_tensor = gen_dataset_ops.cache_dataset(
@@ -3563,48 +3694,6 @@ class CacheDataset(UnaryUnchangedStructureDataset):
           filename=self._filename,
           **self._flat_structure)
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class _RandomSeedGeneratorDeleter(object):
-  """An object which cleans up an anonymous random seed generator resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  def __init__(self, handle, device, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_random_seed_generator(
-              handle=self._handle, deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_random_seed_generator(
-              handle=self._handle, deleter=self._deleter)
-
-
-class _RandomSeedGenerator(object):
-  """Represents a random seed generator resource."""
-
-  def __init__(self, seed, seed2):
-    super(_RandomSeedGenerator, self).__init__()
-    self._device = context.context().device_name
-    self._handle, self._deleter = (
-        gen_dataset_ops.anonymous_random_seed_generator(seed=seed, seed2=seed2))
-    self._resource_deleter = _RandomSeedGeneratorDeleter(
-        handle=self._handle, device=self._device, deleter=self._deleter)
-
-  @property
-  def handle(self):
-    return self._handle
 
 
 class ShuffleDataset(UnaryUnchangedStructureDataset):
@@ -3638,19 +3727,19 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
     self._seed, self._seed2 = random_seed.get_seed(seed)
-
     if reshuffle_each_iteration is None:
-      self._reshuffle_each_iteration = True
-    else:
-      self._reshuffle_each_iteration = reshuffle_each_iteration
+      reshuffle_each_iteration = True
+    self._reshuffle_each_iteration = reshuffle_each_iteration
 
-    if tf2.enabled() and self._reshuffle_each_iteration and (
-        context.executing_eagerly() or ops.inside_function()):
-      self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
-      variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
+    if (tf2.enabled() and
+        (context.executing_eagerly() or ops.inside_function())):
+      variant_tensor = gen_dataset_ops.shuffle_dataset_v3(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           buffer_size=self._buffer_size,
-          seed_generator=self._seed_generator.handle,
+          seed=self._seed,
+          seed2=self._seed2,
+          seed_generator=gen_dataset_ops.dummy_seed_generator(),
+          reshuffle_each_iteration=self._reshuffle_each_iteration,
           **self._flat_structure)
     else:
       variant_tensor = gen_dataset_ops.shuffle_dataset(
@@ -3748,17 +3837,19 @@ class BatchDataset(UnaryDataset):
 class _NumpyIterator(object):
   """Iterator over a dataset with elements converted to numpy."""
 
+  __slots__ = ["_iterator"]
+
   def __init__(self, dataset):
     self._iterator = iter(dataset)
 
   def __iter__(self):
     return self
 
-  def next(self):
+  def __next__(self):
     return nest.map_structure(lambda x: x.numpy(), next(self._iterator))
 
-  def __next__(self):
-    return self.next()
+  def next(self):
+    return self.__next__()
 
 
 class _VariantTracker(tracking.CapturableResource):
@@ -3944,6 +4035,12 @@ class PaddedBatchDataset(UnaryDataset):
     self._padded_shapes = nest.pack_sequence_as(input_shapes,
                                                 flat_padded_shapes_as_tensors)
 
+    # If padding_values is a single element and input_shapes is a structure,
+    # "broadcast" padding_values to the same structure as input_shapes.
+    if nest.is_sequence(input_shapes) and not nest.is_sequence(padding_values):
+      padding_values = nest.map_structure(lambda _: padding_values,
+                                          input_shapes)
+
     self._padding_values = nest.map_structure_up_to(
         input_shapes, _padding_value_to_tensor, padding_values,
         get_legacy_output_types(input_dataset))
@@ -4061,29 +4158,17 @@ class ParallelMapDataset(UnaryDataset):
     else:
       self._deterministic = "false"
     self._preserve_cardinality = preserve_cardinality
-    if deterministic is not None or compat.forward_compatible(2020, 3, 6):
-      self._num_parallel_calls = ops.convert_to_tensor(
-          num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-      variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          f=self._map_func.function,
-          num_parallel_calls=self._num_parallel_calls,
-          deterministic=self._deterministic,
-          use_inter_op_parallelism=self._use_inter_op_parallelism,
-          preserve_cardinality=self._preserve_cardinality,
-          **self._flat_structure)
-    else:
-      self._num_parallel_calls = ops.convert_to_tensor(
-          num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
-      variant_tensor = gen_dataset_ops.parallel_map_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          f=self._map_func.function,
-          num_parallel_calls=self._num_parallel_calls,
-          use_inter_op_parallelism=self._use_inter_op_parallelism,
-          preserve_cardinality=self._preserve_cardinality,
-          **self._flat_structure)
+    self._num_parallel_calls = ops.convert_to_tensor(
+        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
+    variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
+        num_parallel_calls=self._num_parallel_calls,
+        deterministic=self._deterministic,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
+        preserve_cardinality=self._preserve_cardinality,
+        **self._flat_structure)
     super(ParallelMapDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
@@ -4133,6 +4218,7 @@ class InterleaveDataset(UnaryDataset):
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
+
     self._input_dataset = input_dataset
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
@@ -4209,39 +4295,17 @@ class ParallelInterleaveDataset(UnaryDataset):
     else:
       deterministic_string = "false"
 
-    if (buffer_output_elements != AUTOTUNE or
-        prefetch_input_elements != AUTOTUNE or
-        compat.forward_compatible(2020, 3, 6)):
-      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v4(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-          self._cycle_length,
-          self._block_length,
-          self._buffer_output_elements,
-          self._prefetch_input_elements,
-          self._num_parallel_calls,
-          f=self._map_func.function,
-          deterministic=deterministic_string,
-          **self._flat_structure)
-    elif deterministic is not None or compat.forward_compatible(2020, 2, 20):
-      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v3(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-          self._cycle_length,
-          self._block_length,
-          self._num_parallel_calls,
-          f=self._map_func.function,
-          deterministic=deterministic_string,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-          self._cycle_length,
-          self._block_length,
-          self._num_parallel_calls,
-          f=self._map_func.function,
-          **self._flat_structure)
+    variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v4(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,  # pylint: disable=protected-access
+        self._cycle_length,
+        self._block_length,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        self._num_parallel_calls,
+        f=self._map_func.function,
+        deterministic=deterministic_string,
+        **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 
@@ -4306,14 +4370,18 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     """
     self._input_dataset = input_dataset
     if buffer_size is None:
-      buffer_size = -1  # This is the sentinel for auto-tuning.
+      buffer_size = AUTOTUNE
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    variant_tensor = gen_dataset_ops.prefetch_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        buffer_size=self._buffer_size,
-        slack_period=slack_period,
-        **self._flat_structure)
+    # pylint: disable=protected-access
+    # We colocate the prefetch dataset with its input as this collocation only
+    # happens automatically in graph mode.
+    with ops.device(input_dataset._variant_tensor.device):
+      variant_tensor = gen_dataset_ops.prefetch_dataset(
+          input_dataset._variant_tensor,
+          buffer_size=self._buffer_size,
+          slack_period=slack_period,
+          **self._flat_structure)
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -4358,16 +4426,16 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, options):
     self._input_dataset = input_dataset
-    self._options = input_dataset.options()
-    if self._options:
-      self._options = self._options.merge(options)
-    else:
-      self._options = options
     variant_tensor = input_dataset._variant_tensor  # pylint: disable=protected-access
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
+    if self._options_attr:
+      self._options_attr = self._options_attr.merge(options)
+    else:
+      self._options_attr = options
+
   def options(self):
-    return self._options
+    return self._options_attr
 
 
 class _ModelDataset(UnaryUnchangedStructureDataset):
@@ -4386,19 +4454,55 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
 class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
-  def __init__(self, input_dataset, optimizations, optimization_configs=None):
+  def __init__(self,
+               input_dataset,
+               optimizations_enabled,
+               optimizations_disabled,
+               optimizations_default,
+               optimization_configs=None):
     self._input_dataset = input_dataset
-    if optimizations is None:
-      optimizations = []
     if optimization_configs is None:
       optimization_configs = []
-    self._optimizations = ops.convert_to_tensor(
-        optimizations, dtype=dtypes.string, name="optimizations")
-    variant_tensor = gen_dataset_ops.optimize_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._optimizations,
-        optimization_configs=optimization_configs,
-        **self._flat_structure)
+
+    if compat.forward_compatible(2020, 8, 6):
+      self._optimizations_enabled = convert.optional_param_to_tensor(
+          argument_name="optimizations_enabled",
+          argument_value=optimizations_enabled,
+          argument_default=[],
+          argument_dtype=dtypes.string)
+      self._optimizations_disabled = convert.optional_param_to_tensor(
+          argument_name="optimizations_disabled",
+          argument_value=optimizations_disabled,
+          argument_default=[],
+          argument_dtype=dtypes.string)
+      self._optimizations_default = convert.optional_param_to_tensor(
+          argument_name="optimizations_default",
+          argument_value=optimizations_default,
+          argument_default=[],
+          argument_dtype=dtypes.string)
+
+      variant_tensor = gen_dataset_ops.optimize_dataset_v2(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._optimizations_enabled,
+          self._optimizations_disabled,
+          self._optimizations_default,
+          optimization_configs=optimization_configs,
+          **self._flat_structure)
+    else:
+      if optimizations_enabled is None:
+        optimizations_enabled = []
+      if optimizations_default is None:
+        optimizations_default = []
+
+      self._optimizations = ops.convert_to_tensor(
+          optimizations_enabled + optimizations_default,
+          dtype=dtypes.string,
+          name="optimizations")
+      variant_tensor = gen_dataset_ops.optimize_dataset(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._optimizations,
+          optimization_configs=optimization_configs,
+          **self._flat_structure)
     super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
 
 

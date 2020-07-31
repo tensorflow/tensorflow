@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SVDF_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SVDF_H_
 
+#include <stdint.h>
+
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -223,7 +226,8 @@ inline void EvalHybridSVDF(
     const TfLiteTensor* weights_feature, const TfLiteTensor* weights_time,
     const TfLiteTensor* bias, const TfLiteSVDFParams* params,
     TfLiteTensor* scratch, TfLiteTensor* scaling_factors,
-    TfLiteTensor* input_quantized, TfLiteTensor* state, TfLiteTensor* output) {
+    TfLiteTensor* input_quantized, TfLiteTensor* state, TfLiteTensor* output,
+    TfLiteTensor* zero_points, TfLiteTensor* row_sums, bool* compute_row_sums) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -244,6 +248,13 @@ inline void EvalHybridSVDF(
 
   float* output_ptr = GetTensorData<float>(output);
 
+  int32_t* zero_points_ptr = nullptr;
+  int32_t* row_sums_ptr = nullptr;
+  if (params->asymmetric_quantize_inputs && row_sums != nullptr) {
+    zero_points_ptr = GetTensorData<int32_t>(zero_points);
+    row_sums_ptr = GetTensorData<int32_t>(row_sums);
+  }
+
   // Initialize the weights scale.
   const float weights_feature_scale = weights_feature->params.scale;
 
@@ -257,22 +268,23 @@ inline void EvalHybridSVDF(
   std::fill_n(scratch_ptr, batch_size * num_filters, 0.0f);
 
   if (!tensor_utils::IsZeroVector(input_ptr, batch_size * input_size)) {
-    // Quantize input from float to int8.
-    float unused_min, unused_max;
+    // Quantize input from float to int8_t.
+    tensor_utils::BatchQuantizeFloats(input_ptr, batch_size, input_size,
+                                      quantized_input_ptr, scaling_factors_ptr,
+                                      zero_points_ptr,
+                                      params->asymmetric_quantize_inputs);
     for (int b = 0; b < batch_size; ++b) {
-      const int offset = b * input_size;
-      tensor_utils::SymmetricQuantizeFloats(
-          input_ptr + offset, input_size, quantized_input_ptr + offset,
-          &unused_min, &unused_max, &scaling_factors_ptr[b]);
       scaling_factors_ptr[b] *= weights_feature_scale;
     }
 
     // Compute conv1d(inputs, weights_feature).
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         weights_feature_ptr, num_filters, input_size, quantized_input_ptr,
-        scaling_factors_ptr, batch_size, scratch_ptr);
+        scaling_factors_ptr, batch_size, scratch_ptr,
+        /*per_channel_scale=*/nullptr, zero_points_ptr,
+        reinterpret_cast<int32_t*>(scratch_ptr), row_sums_ptr, compute_row_sums,
+        /*context=*/nullptr);
   }
-
   // Copy the latest activation from scratch into activation_state:
   // The last, i.e. (memory_size-1)th entry for each batch, and filter.
   for (int i = 0; i < batch_size * num_filters; ++i) {

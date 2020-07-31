@@ -30,7 +30,7 @@ def make_reverse_v2_tests(options):
   test_parameters = [{
       "dtype": [tf.float32, tf.bool],
       "base_shape": [[3, 4, 3], [3, 4], [5, 6, 7, 8]],
-      "axis": [0, 1, 2, 3],
+      "axis": [-2, -1, 0, 1, 2, 3],
   }]
 
   def get_valid_axis(parameters):

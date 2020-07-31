@@ -23,6 +23,8 @@ import contextlib
 import functools
 import weakref
 
+import numpy as np
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import _pywrap_utils
@@ -49,6 +51,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
@@ -264,6 +267,8 @@ class EagerResourceDeleter(object):
   the cycle will be collectable.
   """
 
+  __slots__ = ["_handle", "_handle_device", "_context"]
+
   def __init__(self, handle, handle_device):
     if not isinstance(handle, ops.Tensor):
       raise ValueError(
@@ -280,6 +285,9 @@ class EagerResourceDeleter(object):
     # Resources follow object-identity when executing eagerly, so it is safe to
     # delete the resource we have a handle to.
     try:
+      # A packed EagerTensor doesn't own any resource.
+      if isinstance(self._handle, ops.EagerTensor) and self._handle.is_packed:
+        return
       # This resource was created in eager mode. However, this destructor may be
       # running in graph mode (especially during unit tests). To clean up
       # successfully, we switch back into eager mode temporarily.
@@ -330,7 +338,7 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
-class BaseResourceVariable(variables.VariableV1):
+class BaseResourceVariable(variables.VariableV1, core.Tensor):
   """A python variable from an existing handle."""
 
   # TODO(wangpeng): Deprecate `constraint` when callers no long pass it in.
@@ -441,9 +449,14 @@ class BaseResourceVariable(variables.VariableV1):
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
+      # If we cannot read the value for any reason, still produce a __repr__.
+      try:
+        value_text = ops.numpy_text(self.read_value(), is_repr=True)
+      except:  # pylint: disable=bare-except
+        value_text = "<unavailable>"
+
       return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
-          self.name, self.get_shape(), self.dtype.name,
-          ops.numpy_text(self.read_value(), is_repr=True))
+          self.name, self.get_shape(), self.dtype.name, value_text)
     else:
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
@@ -462,6 +475,23 @@ class BaseResourceVariable(variables.VariableV1):
         yield
     else:
       yield
+
+  def __array__(self):
+    """Allows direct conversion to a numpy array.
+
+    >>> np.array(tf.Variable([1.0]))
+    array([1.], dtype=float32)
+
+    Returns:
+      The variable value as a numpy array.
+    """
+    # You can't return `self.numpy()` here because for scalars
+    # that raises:
+    #     ValueError: object __array__ method not producing an array
+    # Even `self.read_value().__array__()` and `self.read_value()._numpy()` give
+    # the same error. The `EagerTensor` class must be doing something behind the
+    # scenes to make `np.array(tf.constant(1))` work.
+    return np.asarray(self.numpy())
 
   def __nonzero__(self):
     return self.__bool__()
@@ -623,6 +653,18 @@ class BaseResourceVariable(variables.VariableV1):
     """
     return gen_state_ops.resource_count_up_to(self.handle, limit=limit,
                                               T=self.dtype)
+
+  def _map_resources(self, save_options):
+    """For implementing `Trackable`."""
+    new_variable = None
+    if save_options.experimental_variable_policy._save_variable_devices():  # pylint:disable=protected-access
+      with ops.device(self.device):
+        new_variable = copy_to_graph_uninitialized(self)
+    else:
+      new_variable = copy_to_graph_uninitialized(self)
+    obj_map = {self: new_variable}
+    resource_map = {self._handle: new_variable.handle}
+    return obj_map, resource_map
 
   def _read_variable_op(self):
     variable_accessed(self)
@@ -1196,6 +1238,78 @@ class BaseResourceVariable(variables.VariableV1):
         self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
         name=name))
 
+  def scatter_nd_max(self, indices, updates, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      The updated variable.
+    """
+    return self._lazy_read(
+        gen_state_ops.resource_scatter_nd_max(
+            self.handle,
+            indices,
+            ops.convert_to_tensor(updates, self.dtype),
+            name=name))
+
+  def scatter_nd_min(self, indices, updates, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      The updated variable.
+    """
+    return self._lazy_read(
+        gen_state_ops.resource_scatter_nd_min(
+            self.handle,
+            indices,
+            ops.convert_to_tensor(updates, self.dtype),
+            name=name))
+
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
@@ -1350,7 +1464,7 @@ class ResourceVariable(BaseResourceVariable):
         which is the initial value for the Variable. Can also be a
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
-         to a shape before being used here.)
+        to a shape before being used here.)
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
@@ -1825,7 +1939,6 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(BaseResourceVariable,
                                         _dense_var_to_tensor)
-ops.register_dense_tensor_like_type(BaseResourceVariable)
 
 
 class _UnreadVariable(BaseResourceVariable):
@@ -1944,13 +2057,18 @@ class _UnreadVariable(BaseResourceVariable):
       return super(_UnreadVariable, self).scatter_nd_update(indices, updates,
                                                             name)
 
+  def scatter_nd_max(self, indices, updates, name=None):
+    with ops.control_dependencies([self._parent_op]):
+      return super(_UnreadVariable, self).scatter_nd_max(indices, updates, name)
+
+  def scatter_nd_min(self, indices, updates, name=None):
+    with ops.control_dependencies([self._parent_op]):
+      return super(_UnreadVariable, self).scatter_nd_min(indices, updates, name)
+
   @property
   def op(self):
     """The op for this variable."""
     return self._parent_op
-
-
-ops.register_dense_tensor_like_type(_UnreadVariable)
 
 
 @ops.RegisterGradient("ReadVariableOp")

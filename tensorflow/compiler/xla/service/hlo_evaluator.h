@@ -164,6 +164,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const Array2D<float>& lhs, const Array2D<float>& rhs);
   static std::unique_ptr<Array2D<double>> MatmulArray2D(
       const Array2D<double>& lhs, const Array2D<double>& rhs);
+  static std::unique_ptr<Array2D<std::complex<float>>> MatmulArray2D(
+      const Array2D<std::complex<float>>& lhs,
+      const Array2D<std::complex<float>>& rhs);
+  static std::unique_ptr<Array2D<std::complex<double>>> MatmulArray2D(
+      const Array2D<std::complex<double>>& lhs,
+      const Array2D<std::complex<double>>& rhs);
   static std::unique_ptr<Array2D<int32>> MatmulArray2D(
       const Array2D<int32>& lhs, const Array2D<int32>& rhs);
 

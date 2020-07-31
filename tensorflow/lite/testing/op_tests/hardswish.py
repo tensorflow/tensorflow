@@ -48,10 +48,17 @@ def make_hardswish_tests(options):
   """Make a set of tests to do hardswish."""
 
   # Chose a set of parameters
-  test_parameters = [{
-      "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
-                      [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
-  }]
+  if options.run_with_flex:
+    # Only Flex is able to execute on the data bigger than four dimension.
+    test_parameters = [{
+        "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                        [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+    }]
+  else:
+    test_parameters = [{
+        "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                        [3, 15, 14, 3]],
+    }]
 
   def build_graph(parameters):
     inp = tf.compat.v1.placeholder(

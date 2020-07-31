@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 # Names below are lower_case.
@@ -82,6 +83,7 @@ def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
 @tf_export(
     'linalg.triangular_solve',
     v1=['linalg.triangular_solve', 'matrix_triangular_solve'])
+@dispatch.add_dispatch_support
 def matrix_triangular_solve(matrix, rhs, lower=True, adjoint=False, name=None):
   """Solve systems of linear equations with upper or lower triangular matrices.
 
@@ -143,6 +145,7 @@ def matrix_triangular_solve(matrix, rhs, lower=True, adjoint=False, name=None):
 
 @tf_export(
     'linalg.cholesky_solve', v1=['linalg.cholesky_solve', 'cholesky_solve'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('cholesky_solve')
 def cholesky_solve(chol, rhs, name=None):
   """Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
@@ -187,12 +190,15 @@ def cholesky_solve(chol, rhs, name=None):
 
 
 @tf_export('eye', 'linalg.eye')
+@dispatch.add_dispatch_support
 def eye(num_rows,
         num_columns=None,
         batch_shape=None,
         dtype=dtypes.float32,
         name=None):
   """Construct an identity matrix, or a batch of matrices.
+
+  See also `tf.ones`, `tf.zeros`, `tf.fill`, `tf.one_hot`.
 
   ```python
   # Construct one identity matrix.
@@ -232,6 +238,7 @@ def eye(num_rows,
 
 
 @tf_export('linalg.lstsq', v1=['linalg.lstsq', 'matrix_solve_ls'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('matrix_solve_ls')
 def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   r"""Solves one or more linear least-squares problems.
@@ -369,6 +376,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
 
 
 @tf_export('linalg.eig', 'eig', v1=[])
+@dispatch.add_dispatch_support
 def eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of matrices.
 
@@ -399,6 +407,7 @@ def eig(tensor, name=None):
 
 
 @tf_export('linalg.eigvals', 'eigvals', v1=[])
+@dispatch.add_dispatch_support
 def eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more matrices.
 
@@ -425,6 +434,7 @@ def eigvals(tensor, name=None):
 
 
 @tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('self_adjoint_eig')
 def self_adjoint_eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of self-adjoint matrices.
@@ -448,6 +458,7 @@ def self_adjoint_eig(tensor, name=None):
 
 
 @tf_export('linalg.eigvalsh', v1=['linalg.eigvalsh', 'self_adjoint_eigvals'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('self_adjoint_eigvals')
 def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
@@ -471,6 +482,7 @@ def self_adjoint_eigvals(tensor, name=None):
 
 
 @tf_export('linalg.svd', v1=['linalg.svd', 'svd'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('svd')
 def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   r"""Computes the singular value decompositions of one or more matrices.
@@ -542,6 +554,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 # pylint: disable=redefined-builtin
 @tf_export('norm', 'linalg.norm', v1=[])
+@dispatch.add_dispatch_support
 def norm_v2(tensor,
             ord='euclidean',
             axis=None,
@@ -613,6 +626,7 @@ def norm_v2(tensor,
 
 # pylint: disable=redefined-builtin
 @tf_export(v1=['norm', 'linalg.norm'])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(
     None, 'keep_dims is deprecated, use keepdims instead', 'keep_dims')
 def norm(tensor,

@@ -102,11 +102,15 @@ void SubProcess::FreeArgs() {
 void SubProcess::ClosePipes() {
   for (int i = 0; i < kNFds; i++) {
     if (parent_pipe_[i] >= 0) {
-      close(parent_pipe_[i]);
+      if (close(parent_pipe_[i]) < 0) {
+        LOG(ERROR) << "close() failed: " << strerror(errno);
+      }
       parent_pipe_[i] = -1;
     }
     if (child_pipe_[i] >= 0) {
-      close(child_pipe_[i]);
+      if (close(child_pipe_[i]) < 0) {
+        LOG(ERROR) << "close() failed: " << strerror(errno);
+      }
       child_pipe_[i] = -1;
     }
   }
@@ -215,7 +219,9 @@ bool SubProcess::Start() {
     running_ = true;
     for (int i = 0; i < kNFds; i++) {
       if (child_pipe_[i] >= 0) {
-        close(child_pipe_[i]);
+        if (close(child_pipe_[i]) < 0) {
+          LOG(ERROR) << "close() failed: " << strerror(errno);
+        }
         child_pipe_[i] = -1;
       }
     }
@@ -227,7 +233,9 @@ bool SubProcess::Start() {
   int devnull_fd = -1;
   for (int i = 0; i < kNFds; i++) {
     if (parent_pipe_[i] >= 0) {
-      close(parent_pipe_[i]);
+      if (close(parent_pipe_[i]) < 0) {
+        LOG(ERROR) << "close() failed: " << strerror(errno);
+      }
       parent_pipe_[i] = -1;
     }
 
@@ -242,7 +250,9 @@ bool SubProcess::Start() {
             _exit(1);
           }
         }
-        close(child_pipe_[i]);
+        if (close(child_pipe_[i]) < 0) {
+          LOG(ERROR) << "close() failed: " << strerror(errno);
+        }
         child_pipe_[i] = -1;
         break;
 
@@ -264,14 +274,18 @@ bool SubProcess::Start() {
             }
           }
         } else {
-          close(i);
+          if (close(i) < 0) {
+            LOG(ERROR) << "close() failed: " << strerror(errno);
+          }
         }
         break;
     }
   }
 
   if (devnull_fd >= 0) {
-    close(devnull_fd);
+    if (close(devnull_fd) < 0) {
+      LOG(ERROR) << "close() failed: " << strerror(errno);
+    }
   }
 
   // Execute the child program.
@@ -379,7 +393,9 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
           // Special case: if no data is given to send to the child process,
           // close the pipe to unblock the child, and skip the file descriptor.
           if (stdin_input == nullptr) {
-            close(parent_pipe_[i]);
+            if (close(parent_pipe_[i]) < 0) {
+              LOG(ERROR) << "close() failed: " << strerror(errno);
+            }
             parent_pipe_[i] = -1;
             continue;
           }
@@ -441,7 +457,9 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
               fds[i].fd = -1;
               fd_remain--;
               // Close the child's stdin pipe to unblock the process.
-              close(parent_pipe_[CHAN_STDIN]);
+              if (close(parent_pipe_[CHAN_STDIN]) < 0) {
+                LOG(ERROR) << "close() failed: " << strerror(errno);
+              }
               parent_pipe_[CHAN_STDIN] = -1;
             }
           } else if (!retry(errno)) {

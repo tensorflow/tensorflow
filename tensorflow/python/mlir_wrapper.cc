@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/python/mlir.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -44,12 +44,13 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
 
   m.def("ExperimentalConvertSavedModelV1ToMlir",
         [](const std::string &saved_model_path, const std::string &tags,
-           bool show_debug_info) {
+           bool lift_variables, bool upgrade_legacy, bool show_debug_info) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           std::string output =
               tensorflow::ExperimentalConvertSavedModelV1ToMlir(
-                  saved_model_path, tags, show_debug_info, status.get());
+                  saved_model_path, tags, lift_variables, upgrade_legacy,
+                  show_debug_info, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return output;
         });

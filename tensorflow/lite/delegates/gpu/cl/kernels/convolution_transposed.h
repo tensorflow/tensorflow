@@ -38,10 +38,10 @@ namespace cl {
 class ConvolutionTransposed : public GPUOperation {
  public:
   ConvolutionTransposed() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
-
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Tune(const TuningParameters& params) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConvolutionTransposed(ConvolutionTransposed&& operation);
@@ -50,7 +50,7 @@ class ConvolutionTransposed : public GPUOperation {
   ConvolutionTransposed& operator=(const ConvolutionTransposed&) = delete;
 
  private:
-  friend Status CreateConvolutionTransposed(
+  friend absl::Status CreateConvolutionTransposed(
       const CreationContext& creation_context, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr,
       ConvolutionTransposed* result);
@@ -58,23 +58,13 @@ class ConvolutionTransposed : public GPUOperation {
                                  const ConvolutionTransposedAttributes& attr,
                                  const CLDevice& device);
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
-  Status BindArguments();
-  int3 GetGridSize() const;
-
-  LinearStorage biases_;
-
-  Texture2D weights_0_;
-  Texture2D weights_1_;
-  Texture2D weights_2_;
-  Texture2D weights_3_;
-  Buffer weights_buf_;
   bool weights_are_buffer_;
 
   int2 kernel_size_;
@@ -82,17 +72,14 @@ class ConvolutionTransposed : public GPUOperation {
   int2 padding_;
 
   int3 block_size_ = int3(1, 1, 1);
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>
-Status ConvolutionTransposed::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+absl::Status ConvolutionTransposed::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int dst_depth =
-      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.z);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
   int texture_width = dst_depth;
@@ -103,29 +90,34 @@ Status ConvolutionTransposed::UploadWeights(
 
   const int float4_size = f32_weights ? 16 : 8;
 
+  Texture2D weights_0;
+  Texture2D weights_1;
+  Texture2D weights_2;
+  Texture2D weights_3;
+  Buffer weights_buf;
   if (f32_weights) {
     std::vector<float4> gpu_data(elements_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
     if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
-                                           &weights_buf_));
+                                           &weights_buf));
     } else {
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
-          gpu_data.data(), context, &weights_0_));
+          gpu_data.data(), context, &weights_0));
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
           gpu_data.data() + texture_width * texture_height, context,
-          &weights_1_));
+          &weights_1));
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
           gpu_data.data() + texture_width * texture_height * 2, context,
-          &weights_2_));
+          &weights_2));
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
           gpu_data.data() + texture_width * texture_height * 3, context,
-          &weights_3_));
+          &weights_3));
     }
   } else {
     std::vector<half4> gpu_data(elements_count);
@@ -133,35 +125,59 @@ Status ConvolutionTransposed::UploadWeights(
     if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
-                                           &weights_buf_));
+                                           &weights_buf));
     } else {
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
-          gpu_data.data(), context, &weights_0_));
+          gpu_data.data(), context, &weights_0));
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
           gpu_data.data() + texture_width * texture_height, context,
-          &weights_1_));
+          &weights_1));
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
           gpu_data.data() + texture_width * texture_height * 2, context,
-          &weights_2_));
+          &weights_2));
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
           gpu_data.data() + texture_width * texture_height * 3, context,
-          &weights_3_));
+          &weights_3));
     }
   }
 
-  return OkStatus();
+  if (weights_are_buffer_) {
+    BufferDescriptor desc;
+    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_size = 16;
+    args_.AddObject("weights", AccessType::READ,
+                    absl::make_unique<Buffer>(std::move(weights_buf)),
+                    absl::make_unique<BufferDescriptor>(desc));
+  } else {
+    Texture2DDescriptor desc;
+    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    args_.AddObject("weights0", AccessType::READ,
+                    absl::make_unique<Texture2D>(std::move(weights_0)),
+                    absl::make_unique<Texture2DDescriptor>(desc));
+    args_.AddObject("weights1", AccessType::READ,
+                    absl::make_unique<Texture2D>(std::move(weights_1)),
+                    absl::make_unique<Texture2DDescriptor>(desc));
+    args_.AddObject("weights2", AccessType::READ,
+                    absl::make_unique<Texture2D>(std::move(weights_2)),
+                    absl::make_unique<Texture2DDescriptor>(desc));
+    args_.AddObject("weights3", AccessType::READ,
+                    absl::make_unique<Texture2D>(std::move(weights_3)),
+                    absl::make_unique<Texture2DDescriptor>(desc));
+  }
+
+  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
 void ConvolutionTransposed::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
   const int dst_depth =
-      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.z);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
   int texture_width = dst_depth;
@@ -208,10 +224,9 @@ void ConvolutionTransposed::RearrangeWeightsData(
   }
 }
 
-Status CreateConvolutionTransposed(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const ConvolutionTransposedAttributes& attr,
-                                   ConvolutionTransposed* result);
+absl::Status CreateConvolutionTransposed(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr, ConvolutionTransposed* result);
 
 }  // namespace cl
 }  // namespace gpu

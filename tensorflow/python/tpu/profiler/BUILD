@@ -11,8 +11,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":profiler_analysis_pb2_grpc",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:util",
     ],
 )
@@ -38,7 +38,8 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:versions",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/eager:profiler_client",
+        "//tensorflow/python/profiler:profiler_client",
+        "//tensorflow/python/profiler:profiler_v2",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],

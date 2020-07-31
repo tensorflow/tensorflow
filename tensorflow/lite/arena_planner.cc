@@ -197,7 +197,8 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   dealloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
   allocs_.resize(graph_info_->num_tensors());
   // Set allocation and deallocation for temporary tensors.
-  for (size_t i = first_node; i <= last_node && i < graph_info_->num_nodes();
+  for (size_t i = first_node;
+       i <= static_cast<size_t>(last_node) && i < graph_info_->num_nodes();
        ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_temporaries = node.temporaries;
@@ -287,14 +288,13 @@ std::vector<int32_t> ArenaPlanner::CreateTensorAllocationVector(int first_node,
     return this->alloc_node_[idx1] < this->alloc_node_[idx2];
   };
 
-  std::set<int32_t> tensors_set;
+  std::vector<int32_t> tensor_order;
   for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
     if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
-      tensors_set.insert(i);
+      tensor_order.push_back(i);
     }
   }
   // Indices of tensors in order their allocation offsets will be calculated.
-  std::vector<int32_t> tensor_order(tensors_set.begin(), tensors_set.end());
   std::sort(tensor_order.begin(), tensor_order.end(), tensor_compare);
 
   return tensor_order;

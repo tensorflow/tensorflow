@@ -60,6 +60,14 @@ TEST(MemoryUsage, GetMemoryUsage) {
 #endif
 }
 
+TEST(MemoryUsage, IsSupported) {
+#ifdef __linux__
+  EXPECT_TRUE(MemoryUsage::IsSupported());
+#else
+  EXPECT_FALSE(MemoryUsage::IsSupported());
+#endif
+}
+
 }  // namespace memory
 }  // namespace profiling
 }  // namespace tflite

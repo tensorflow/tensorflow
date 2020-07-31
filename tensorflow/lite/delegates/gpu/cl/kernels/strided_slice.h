@@ -27,10 +27,9 @@ namespace cl {
 class StridedSlice : public GPUOperation {
  public:
   StridedSlice(const OperationDef& definition, const SliceAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
-
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   StridedSlice(StridedSlice&& operation);
@@ -39,13 +38,7 @@ class StridedSlice : public GPUOperation {
   StridedSlice& operator=(const StridedSlice&) = delete;
 
  private:
-  Status BindArguments();
-  int3 GetGridSize() const;
-
   SliceAttributes attributes_;
-
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 StridedSlice CreateStridedSlice(const OperationDef& definition,

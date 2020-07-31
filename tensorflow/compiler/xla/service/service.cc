@@ -313,7 +313,10 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     if (execution_options->num_partitions() > 0) {
       config->set_num_partitions(execution_options->num_partitions());
     }
+    config->set_use_spmd_partitioning(
+        execution_options->use_spmd_partitioning());
     config->set_seed(execution_options->seed());
+    config->set_launch_id(execution_options->launch_id());
     config->set_debug_options(execution_options->debug_options());
   } else {
     config->set_replica_count(options_.number_of_replicas());

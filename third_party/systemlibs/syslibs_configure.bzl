@@ -11,6 +11,7 @@ _TF_SYSTEM_LIBS = "TF_SYSTEM_LIBS"
 VALID_LIBS = [
     "absl_py",
     "astor_archive",
+    "astunparse_archive",
     "boringssl",
     "com_github_googleapis_googleapis",
     "com_github_googlecloudplatform_google_cloud_cpp",
@@ -37,6 +38,7 @@ VALID_LIBS = [
     "pasta",
     "pcre",
     "png",
+    "pybind11",
     "six_archive",
     "snappy",
     "swig",

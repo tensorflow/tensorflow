@@ -25,8 +25,16 @@ from tensorflow.python.platform import test
 class BuildInfoTest(test.TestCase):
 
   def testBuildInfo(self):
-    self.assertEqual(build_info.is_rocm_build, test.is_built_with_rocm())
-    self.assertEqual(build_info.is_cuda_build, test.is_built_with_cuda())
+    self.assertEqual(build_info.build_info['is_rocm_build'],
+                     test.is_built_with_rocm())
+    self.assertEqual(build_info.build_info['is_cuda_build'],
+                     test.is_built_with_cuda())
+
+  def testDeterministicOrder(self):
+    # The dict may contain other keys depending on the platform, but the ones
+    # it always contains should be in order.
+    self.assertContainsSubsequence(build_info.build_info.keys(),
+                                   ('is_cuda_build', 'is_rocm_build'))
 
 
 if __name__ == '__main__':

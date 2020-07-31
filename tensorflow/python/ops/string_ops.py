@@ -73,6 +73,7 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 
 @tf_export(
     "strings.regex_replace", v1=["strings.regex_replace", "regex_replace"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("regex_replace")
 @dispatch.add_dispatch_support
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
@@ -112,6 +113,7 @@ def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
 
 
 @tf_export("strings.format")
+@dispatch.add_dispatch_support
 def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   r"""Formats a string template using a list of tensors.
 
@@ -122,37 +124,18 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
 
   Example:
     Formatting a single-tensor template:
-    ```python
-    sess = tf.compat.v1.Session()
-    with sess.as_default():
-        tensor = tf.range(10)
-        formatted = tf.strings.format("tensor: {}, suffix", tensor)
-        out = sess.run(formatted)
-        expected = "tensor: [0 1 2 ... 7 8 9], suffix"
 
-        assert(out.decode() == expected)
-    ```
+    >>> tensor = tf.range(5)
+    >>> tf.strings.format("tensor: {}, suffix", tensor)
+    <tf.Tensor: shape=(), dtype=string, numpy=b'tensor: [0 1 2 3 4], suffix'>
 
     Formatting a multi-tensor template:
-    ```python
-    sess = tf.compat.v1.Session()
-    with sess.as_default():
-        tensor_one = tf.reshape(tf.range(100), [10, 10])
-        tensor_two = tf.range(10)
-        formatted = tf.strings.format("first: {}, second: {}, suffix",
-          (tensor_one, tensor_two))
 
-        out = sess.run(formatted)
-        expected = ("first: [[0 1 2 ... 7 8 9]\n"
-              " [10 11 12 ... 17 18 19]\n"
-              " [20 21 22 ... 27 28 29]\n"
-              " ...\n"
-              " [70 71 72 ... 77 78 79]\n"
-              " [80 81 82 ... 87 88 89]\n"
-              " [90 91 92 ... 97 98 99]], second: [0 1 2 ... 7 8 9], suffix")
+    >>> tensor_a = tf.range(2)
+    >>> tensor_b = tf.range(1, 4, 2)
+    >>> tf.strings.format("a: {}, b: {}, suffix", (tensor_a, tensor_b))
+    <tf.Tensor: shape=(), dtype=string, numpy=b'a: [0 1], b: [1 3], suffix'>
 
-        assert(out.decode() == expected)
-    ```
 
   Args:
     template: A string template to format tensor values into.
@@ -319,6 +302,7 @@ def _reduce_join_reduction_dims(x, axis):
 
 
 @tf_export(v1=["strings.reduce_join", "reduce_join"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
@@ -431,6 +415,7 @@ string_length_v2.__doc__ = gen_string_ops.string_length.__doc__
 
 
 @tf_export(v1=["substr"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
 def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
   return substr(input, pos, len, name=name, unit=unit)
@@ -495,6 +480,7 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
 
 
 @tf_export(v1=["strings.to_number", "string_to_number"])
+@dispatch.add_dispatch_support
 def string_to_number_v1(
     string_tensor=None,
     out_type=dtypes.float32,
@@ -538,6 +524,7 @@ def string_to_hash_bucket(input, num_buckets, name=None):
 
 
 @tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])
+@dispatch.add_dispatch_support
 def string_to_hash_bucket_v1(
     string_tensor=None,
     num_buckets=None,
@@ -551,6 +538,7 @@ string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__
 
 
 @tf_export("strings.join", v1=["strings.join", "string_join"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("string_join")
 @dispatch.add_dispatch_support
 def string_join(inputs, separator="", name=None):

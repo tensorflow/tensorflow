@@ -14,18 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <initializer_list>
+#include <memory>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
 
@@ -44,11 +42,10 @@ using ::testing::ElementsAreArray;
 template <typename T>
 class DensifyOpModel : public SingleOpModel {
  public:
-  DensifyOpModel(TensorType type, std::initializer_list<int> shape,
-                 std::initializer_list<T> input_data, int version = 1) {
-    const TensorData io_tensor_data = {type, shape};
-    input_ = AddConstSparseInput(type, shape, input_data);
-    output_ = AddOutput(io_tensor_data);
+  DensifyOpModel(const TensorData& input, std::initializer_list<T> input_data,
+                 int version = 1) {
+    input_ = AddConstSparseInput(input, input_data);
+    output_ = AddOutput({input.type, input.shape});
 
     SetBuiltinOp(BuiltinOperator_DENSIFY, BuiltinOptions_DensifyOptions,
                  CreateDensifyOptions(builder_).Union());
@@ -56,7 +53,7 @@ class DensifyOpModel : public SingleOpModel {
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_DENSIFY, ops::builtin::Register_DENSIFY(), version);
 
-    BuildInterpreter({shape});
+    BuildInterpreter({input.shape});
   }
 
   std::vector<T> GetInput() { return ExtractVector<T>(input_); }
@@ -71,7 +68,12 @@ TEST(DensifyOpTest, Float) {
   std::initializer_list<float> dense_values = {6, 0, 9, 8, 0, 0,
                                                0, 0, 5, 0, 0, 7};
   std::initializer_list<float> sparse_values = {6, 9, 8, 5, 7};
-  DensifyOpModel<float> m(TensorType_FLOAT32, {3, 4}, dense_values);
+  TensorData input = {};
+  input.type = TensorType_FLOAT32;
+  input.shape = {3, 4};
+  input.traversal_order = {0, 1};
+  input.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  DensifyOpModel<float> m(input, dense_values);
   m.Invoke();
   EXPECT_THAT(m.GetInput(), ElementsAreArray(sparse_values));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(dense_values));
@@ -81,7 +83,12 @@ TEST(DensifyOpTest, Float3D) {
   std::initializer_list<float> dense_values = {6, 0, 9, 8, 0, 0,
                                                0, 0, 5, 0, 0, 7};
   std::initializer_list<float> sparse_values = {6, 9, 8, 5, 7};
-  DensifyOpModel<float> m(TensorType_FLOAT32, {3, 2, 2}, dense_values);
+  TensorData input = {};
+  input.type = TensorType_FLOAT32;
+  input.shape = {3, 2, 2};
+  input.traversal_order = {0, 1, 2};
+  input.format = {kTfLiteDimDense, kTfLiteDimDense, kTfLiteDimSparseCSR};
+  DensifyOpModel<float> m(input, dense_values);
   m.Invoke();
   EXPECT_THAT(m.GetInput(), ElementsAreArray(sparse_values));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(dense_values));
@@ -91,7 +98,12 @@ TEST(DensifyOpTest, Int8) {
   std::initializer_list<int8_t> dense_values = {6, 0, 9, 8, 0, 0,
                                                 0, 0, 5, 0, 0, 7};
   std::initializer_list<int8_t> sparse_values = {6, 9, 8, 5, 7};
-  DensifyOpModel<int8_t> m(TensorType_INT8, {3, 4}, dense_values);
+  TensorData input = {};
+  input.type = TensorType_INT8;
+  input.shape = {3, 4};
+  input.traversal_order = {0, 1};
+  input.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  DensifyOpModel<int8_t> m(input, dense_values);
   m.Invoke();
   EXPECT_THAT(m.GetInput(), ElementsAreArray(sparse_values));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(dense_values));

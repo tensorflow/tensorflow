@@ -144,6 +144,10 @@ Status SessionMgr::CreateSession(
   return Status::OK();
 }
 
+void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
+  default_worker_cache_.reset(worker_cache);
+}
+
 Status SessionMgr::UpdateSession(
     const string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
@@ -171,7 +175,7 @@ Status SessionMgr::UpdateSession(
 
   std::vector<std::unique_ptr<Device>> cluster_devices;
 
-  DeviceMgr* local_device_mgr = worker_session->device_mgr();
+  const DeviceMgr* local_device_mgr = worker_session->device_mgr();
   DeviceMgr* remote_device_mgr = worker_session->remote_device_mgr();
   std::vector<Device*> curr_remote_devices = remote_device_mgr->ListDevices();
   std::vector<std::unique_ptr<Device>> added_remote_devices;

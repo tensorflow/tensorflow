@@ -22,17 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "unicode/appendable.h"  // TF:icu
-#include "unicode/schriter.h"  // TF:icu
-#include "unicode/uchar.h"  // TF:icu
-#include "unicode/ucnv.h"  // TF:icu
-#include "unicode/ucnv_err.h"  // TF:icu
-#include "unicode/umachine.h"  // TF:icu
-#include "unicode/uniset.h"  // TF:icu
-#include "unicode/unistr.h"  // TF:icu
-#include "unicode/uset.h"  // TF:icu
-#include "unicode/utf.h"  // TF:icu
-#include "unicode/utypes.h"  // TF:icu
+#include "unicode/appendable.h"  // from @icu
+#include "unicode/schriter.h"  // from @icu
+#include "unicode/uchar.h"  // from @icu
+#include "unicode/ucnv.h"  // from @icu
+#include "unicode/ucnv_err.h"  // from @icu
+#include "unicode/umachine.h"  // from @icu
+#include "unicode/uniset.h"  // from @icu
+#include "unicode/unistr.h"  // from @icu
+#include "unicode/uset.h"  // from @icu
+#include "unicode/utf.h"  // from @icu
+#include "unicode/utypes.h"  // from @icu
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"

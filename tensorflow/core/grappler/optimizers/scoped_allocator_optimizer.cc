@@ -73,7 +73,8 @@ bool HasOpName(const string& node_name, const string& op_name) {
 Status GetOutputDataType(
     const std::vector<OpInfo::TensorProperties>& output_props, int output_index,
     DataType* dtype) {
-  if (output_index >= output_props.size()) {
+  int output_props_size = output_props.size();
+  if (output_index >= output_props_size) {
     return errors::Internal("Invalid output index ", output_index,
                             " size of output_props ", output_props.size());
   }
@@ -117,13 +118,17 @@ Status CheckTypesAndGetShapes(const GraphProperties& graph_properties,
       *type = props.dtype();
     } else if (*type != props.dtype()) {
       return errors::Internal("Group ops don't all have same type");
-    } else if (!TensorShape::IsValid(props.shape())) {
-      return errors::Internal("Complete shape not known for ", n->name());
     }
     if (*type != dtype) {
       return errors::Internal(
           "Type mismatch: type in op attr = ", DataTypeString(dtype),
           ", type in output props = ", DataTypeString(*type));
+    }
+    if (!TensorShape::IsValid(props.shape()) || props.shape().unknown_rank()) {
+      // TensorShape::IsValid may return true if unknown_rank is True, i.e.
+      // number of dimensions is unknown.  But for ScopedAllocatorOptimizer we
+      // need to know the shape fully.
+      return errors::Internal("Complete shape not known for ", n->name());
     }
     VLOG(2) << "Adding shape " << props.shape().DebugString();
     shapes->push_back(TensorShape(props.shape()));
@@ -516,7 +521,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 
     // Add control edges from the ScopedAllocatorOp to all of the
     // input nodes and mark them for allocation from backing tensor.
-    for (int i = 0; i < inputs.size(); ++i) {
+    for (int i = 0, iter_limit = inputs.size(); i < iter_limit; ++i) {
       auto& nd = inputs[i];
       if (IsArg(*nd.from_node_def)) {
         return errors::Internal(
@@ -543,7 +548,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       std::vector<InputDesc> inputs_to_first;
       LOG_WARNING_AND_RETURN_IF_ERROR(GetDataInputs(
           graph, sa_opti->node_map(), nd.from_node_def, &inputs_to_first));
-      for (int i = 0; i < inputs_to_first.size(); ++i) {
+      for (int i = 0, iter_limit = inputs_to_first.size(); i < iter_limit;
+           ++i) {
         if (fanout.find(inputs_to_first[i].from_node_def) != fanout.end()) {
           VLOG(2) << "Found node " << inputs_to_first[i].from_node_def->name()
                   << " in the fanout of " << sa_name;
@@ -583,7 +589,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     VLOG(2) << "BuildSAConcatNode " << sac_name;
     // control input: edge name -> source node name
     absl::flat_hash_map<string, string> sac_ctl_inputs;
-    for (int i = 0; i < ops.size(); ++i) {
+    for (int i = 0, iter_limit = ops.size(); i < iter_limit; ++i) {
       NodeDef* old_op = ops[i];
       for (const string& old_op_input : old_op->input()) {
         int position = 0;
@@ -704,11 +710,11 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                         const std::set<string>& op_instance_names,
                         const string& op_name, const string& sas_name) {
     VLOG(2) << "RewireSubgraph";
-    for (int op_idx = 0; op_idx < ops.size(); ++op_idx) {
+    for (int op_idx = 0, idx_limit = ops.size(); op_idx < idx_limit; ++op_idx) {
       NodeDef* old_op = ops[op_idx];
       // Copy the output node set since we'll be modifying the version
       // maintained by NodeMap in the loop.
-      std::set<NodeDef*> output_nodes = node_map->GetOutputs(old_op->name());
+      auto output_nodes = node_map->GetOutputs(old_op->name());
       VLOG(3) << "old_op " << old_op->name() << " had " << output_nodes.size()
               << " outputs.  Moving them to the ScopedAllocatorSplit node.";
       if (VLOG_IS_ON(2)) {
@@ -971,7 +977,7 @@ class Tree {
  public:
   Tree(const string& edge, int depth) : edge_(edge), depth_(depth) {}
   ~Tree() {
-    for (auto it : subtrees_) delete it.second;
+    for (const auto& it : subtrees_) delete it.second;
   }
 
   Tree* GetSubTree(const string& edge) {
@@ -996,7 +1002,7 @@ class Tree {
 // on any non-OK Status.
 Status ApplyToAll(Tree* tree, const std::function<Status(Tree*)>& func) {
   Status s;
-  for (auto it : tree->subtrees_) {
+  for (const auto& it : tree->subtrees_) {
     s = ApplyToAll(it.second, func);
     if (!s.ok()) return s;
   }

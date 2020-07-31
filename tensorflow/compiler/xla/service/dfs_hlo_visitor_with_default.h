@@ -98,6 +98,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleCholesky(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  Status HandleAllGather(HloInstructionPtr crs) override {
+    return DefaultAction(crs);
+  }
   Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
@@ -105,6 +108,12 @@ class DfsHloVisitorWithDefaultBase
     return DefaultAction(hlo);
   }
   Status HandleCollectivePermute(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleCollectivePermuteStart(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleCollectivePermuteDone(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
   Status HandleReplicaId(HloInstructionPtr hlo) override {

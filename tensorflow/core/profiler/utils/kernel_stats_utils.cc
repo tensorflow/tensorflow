@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 
+#include <algorithm>
+#include <string>
 #include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 
 namespace tensorflow {
@@ -34,15 +37,15 @@ void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
   const std::vector<absl::string_view> params =
       absl::StrSplit(xstat_kernel_details, absl::ByAnyChar(":\n"));
 
-  constexpr uint32_t kNumDimensions = 3;
-  for (uint32_t dim = 0; dim < kNumDimensions; ++dim) {
+  constexpr uint32 kNumDimensions = 3;
+  for (uint32 dim = 0; dim < kNumDimensions; ++dim) {
     kernel->add_block_dim(1);
     kernel->add_grid_dim(1);
   }
 
   // Process value pairs.
-  for (uint32_t ii = 0; ii < params.size(); ii += 2) {
-    uint32_t value = 0;
+  for (uint32 ii = 0; ii < params.size(); ii += 2) {
+    uint32 value = 0;
     if (params[ii] == "registers_per_thread" &&
         absl::SimpleAtoi(params[ii + 1], &value)) {
       kernel->set_registers_per_thread(value);
@@ -79,10 +82,9 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
   // turing_fp16_s1688cudnn_fp16
   bool possible_tensor_kernel = absl::StrContains(kernel_name, "884") ||
                                 absl::StrContains(kernel_name, "1688");
-#if defined(VLOG_IF)
-  VLOG_IF(1, possible_tensor_kernel)
-      << "Possible tensor kernel: " << kernel_name << "\n";
-#endif  // defined(VLOG_IF)
+  if (possible_tensor_kernel) {
+    VLOG(1) << "Possible tensor kernel: " << kernel_name << "\n";
+  }
 
   return (absl::StartsWith(kernel_name, "volta_i884") ||
           absl::StartsWith(kernel_name, "volta_h884") ||
@@ -100,12 +102,48 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
 
 // This list is not exhaustive.
 bool IsOpTensorCoreEligible(absl::string_view tf_op_name) {
-  return (absl::StrContains(tf_op_name, "Conv") ||
-          absl::StrContains(tf_op_name, "Einsum"));
+  // Disable formatting to keep inline comments vertically aligned.
+  // clang-format off
+  return false
+      // Using EndsWith to match Fused operations.
+      || absl::EndsWith(tf_op_name, "Conv2D")
+      || absl::EndsWith(tf_op_name, "Conv2DBackpropFilter")
+      || absl::EndsWith(tf_op_name, "Conv2DBackpropInput")
+      || absl::EndsWith(tf_op_name, "Conv3D")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNative")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNativeBackpropFilter")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNativeBackpropInput")
+      // Using Contains to match V2/V3 suffixes.
+      || absl::StrContains(tf_op_name, "BatchMatMul")
+      // MatMul requires exact matching.
+      || absl::EndsWith(tf_op_name, "/MatMul")
+      || absl::EndsWith(tf_op_name, "FusedMatMul")
+      // cuDNN operations.
+      || absl::EndsWith(tf_op_name, "/CudnnRNN")
+      || absl::StrContains(tf_op_name, "CudnnRNNV")
+      || absl::StrContains(tf_op_name, "CudnnRNNForward")
+      || absl::StrContains(tf_op_name, "CudnnRNNBackprop")
+      // Special cases.
+      || absl::EndsWith(tf_op_name, "XlaDot");
+  // clang-format on
+}
+
+bool IsEinsumTensorCoreEligible(absl::string_view equation) {
+  if (equation.empty()) {
+    return false;
+  }
+  const std::vector<absl::string_view> input_output =
+      absl::StrSplit(equation, "->");
+  if (input_output.size() != 2) {
+    return false;
+  }
+  const std::vector<absl::string_view> lhs_rhs =
+      absl::StrSplit(input_output[0], ',');
+  return lhs_rhs.size() == 2;
 }
 
 bool KernelReportLessThanComparator::operator()(const KernelReport& lhs,
-                                                const KernelReport& rhs) {
+                                                const KernelReport& rhs) const {
   // Disable formatting to keep vertical alignment for better readability,
   // and make it easier to reorder columns.
   // clang-format off
@@ -143,7 +181,7 @@ bool KernelReportLessThanComparator::operator()(const KernelReport& lhs,
 }
 
 bool KernelReportEqualToComparator::operator()(const KernelReport& lhs,
-                                               const KernelReport& rhs) {
+                                               const KernelReport& rhs) const {
   // Disable formatting to keep vertical alignment for better readability,
   // and make it easier to reorder columns.
   // clang-format off
@@ -176,33 +214,54 @@ void SortKernelsByTotalDurationDesc(KernelStatsDb* kernel_stats_db) {
             });
 }
 
-void GroupKernelReports(std::vector<KernelReport>* reports,
-                        KernelStatsDb* dst) {
-  // Sort reports by grouping criteria.
-  std::sort(reports->begin(), reports->end(), KernelReportLessThanComparator());
-
-  // Group reports together.
-  KernelReport* prev = nullptr;
-  for (const KernelReport& report : *reports) {
-    DCHECK_EQ(3, report.grid_dim_size());
-    DCHECK_EQ(3, report.block_dim_size());
-    if (prev != nullptr && KernelReportEqualToComparator()(*prev, report)) {
-      // Previous element is identical to the one that we are adding, so
-      // aggregate them.
-      prev->set_occurrences(prev->occurrences() + 1);
-      prev->set_max_duration_ns(
-          std::max(prev->max_duration_ns(), report.max_duration_ns()));
-      prev->set_min_duration_ns(
-          std::min(prev->min_duration_ns(), report.min_duration_ns()));
-      prev->set_total_duration_ns(prev->total_duration_ns() +
-                                  report.total_duration_ns());
-    } else {
-      // Current element does not exist yet.
-      prev = dst->add_reports();
-      *prev = report;
-      prev->set_occurrences(1);
-    }
+void CopyKernelReportsToDb(const KernelReportMap& reports, KernelStatsDb* dst) {
+  for (const auto& report_value : reports) {
+    KernelReport* report = dst->add_reports();
+    *report = report_value.first;
+    // Set value using KernelReportValue.
+    report->set_occurrences(report_value.second.occurrences);
+    report->set_min_duration_ns(report_value.second.min_duration_ns);
+    report->set_max_duration_ns(report_value.second.max_duration_ns);
+    report->set_total_duration_ns(report_value.second.total_duration_ns);
   }
+}
+
+void InsertOrUpdateKernelReport(const KernelReport& kernel,
+                                const KernelReportValue& value,
+                                KernelReportMap* dst) {
+  KernelReportValue& element = (*dst)[kernel];
+  if (element.occurrences == 0) {
+    element = value;
+  } else {
+    element.total_duration_ns += value.total_duration_ns;
+    element.min_duration_ns =
+        std::min(element.min_duration_ns, value.min_duration_ns);
+    element.max_duration_ns =
+        std::max(element.max_duration_ns, value.max_duration_ns);
+    element.occurrences += 1;
+  }
+}
+
+void MergeKernelReports(const KernelReportMap& reports, KernelReportMap* dst) {
+  for (auto& kernel_value : reports) {
+    InsertOrUpdateKernelReport(kernel_value.first, kernel_value.second, dst);
+  }
+}
+
+absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
+GroupKernelReportsByOpName(const KernelStatsDb& kernel_stats_db) {
+  absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
+      grouped_kernel_reports;
+  for (const KernelReport& kernel_report : kernel_stats_db.reports()) {
+    std::vector<const KernelReport*>& kernel_reports =
+        grouped_kernel_reports[kernel_report.op_name()];
+    kernel_reports.push_back(&kernel_report);
+    // Verifies operations with the same name have the same TensorCore
+    // eligibility.
+    DCHECK_EQ(kernel_reports.front()->is_op_tensor_core_eligible(),
+              kernel_reports.back()->is_op_tensor_core_eligible());
+  }
+  return grouped_kernel_reports;
 }
 
 }  // namespace profiler

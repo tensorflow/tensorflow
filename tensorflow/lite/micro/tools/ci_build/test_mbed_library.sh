@@ -21,7 +21,7 @@
 set -e
 
 PATH=`pwd`/tensorflow/lite/micro/tools/make/downloads/gcc_embedded/bin:${PATH}
-cd ${1}
+cd "${1}"
 
 mbed config root .
 mbed deploy

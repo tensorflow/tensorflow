@@ -105,8 +105,18 @@ OpenCLVersion ParseCLVersion(const std::string& version) {
     } else {
       return OpenCLVersion::CL_1_0;
     }
+  } else if (major == 2) {
+    if (minor == 2) {
+      return OpenCLVersion::CL_2_2;
+    } else if (minor == 1) {
+      return OpenCLVersion::CL_2_1;
+    } else {
+      return OpenCLVersion::CL_2_0;
+    }
+  } else if (major == 3) {
+    return OpenCLVersion::CL_3_0;
   } else {
-    return OpenCLVersion::CL_2_0;
+    return OpenCLVersion::CL_1_0;
   }
 }
 
@@ -131,6 +141,9 @@ Vendor ParseVendor(const std::string& device_name,
   } else if (d_name.find("advanced micro devices") != std::string::npos ||
              v_name.find("advanced micro devices") != std::string::npos) {
     return Vendor::AMD;
+  } else if (d_name.find("intel") != std::string::npos ||
+             v_name.find("intel") != std::string::npos) {
+    return Vendor::INTEL;
   } else {
     return Vendor::UNKNOWN;
   }
@@ -187,7 +200,7 @@ MaliGPU GetMaliGPUVersion(const std::string& device_name) {
       {"G52", MaliGPU::G52},   {"G72", MaliGPU::G72},   {"G76", MaliGPU::G76},
       {"G57", MaliGPU::G57},   {"G77", MaliGPU::G77},
   };
-  for (auto v : kMapping) {
+  for (const auto& v : kMapping) {
     if (device_name.find(v.first) != std::string::npos) {
       return v.second;
     }
@@ -207,6 +220,8 @@ std::string VendorToString(Vendor v) {
       return "NVIDIA";
     case Vendor::AMD:
       return "AMD";
+    case Vendor::INTEL:
+      return "Intel";
     case Vendor::UNKNOWN:
       return "unknown vendor";
   }
@@ -222,6 +237,12 @@ std::string OpenCLVersionToString(OpenCLVersion version) {
       return "1.2";
     case OpenCLVersion::CL_2_0:
       return "2.0";
+    case OpenCLVersion::CL_2_1:
+      return "2.1";
+    case OpenCLVersion::CL_2_2:
+      return "2.2";
+    case OpenCLVersion::CL_3_0:
+      return "3.0";
   }
 }
 
@@ -474,6 +495,39 @@ std::string CLDevice::GetPlatformVersion() const {
   return GetPlatformInfo(platform_id_, CL_PLATFORM_VERSION);
 }
 
+bool CLDevice::IsCL20OrHigher() const {
+  return info_.cl_version != OpenCLVersion::CL_1_0 &&
+         info_.cl_version != OpenCLVersion::CL_1_1 &&
+         info_.cl_version != OpenCLVersion::CL_1_2;
+}
+
+bool CLDevice::SupportsSubGroupWithSize(int sub_group_size) const {
+  if (IsIntel()) {
+    if (SupportsExtension("cl_intel_required_subgroup_size")) {
+      size_t sub_groups_count;
+      cl_int error =
+          clGetDeviceInfo(id_, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
+                          nullptr, &sub_groups_count);
+      if (error != CL_SUCCESS) {
+        return false;
+      }
+      std::vector<size_t> sub_group_sizes(sub_groups_count);
+      error = clGetDeviceInfo(id_, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
+                              sizeof(size_t) * sub_groups_count,
+                              sub_group_sizes.data(), nullptr);
+      if (error != CL_SUCCESS) {
+        return false;
+      }
+      for (int i = 0; i < sub_groups_count; ++i) {
+        if (sub_group_sizes[i] == sub_group_size) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool CLDevice::IsAdreno() const { return info_.vendor == Vendor::QUALCOMM; }
 
 bool CLDevice::IsAdreno3xx() const {
@@ -508,6 +562,8 @@ bool CLDevice::IsMali() const { return info_.vendor == Vendor::MALI; }
 
 bool CLDevice::IsAMD() const { return info_.vendor == Vendor::AMD; }
 
+bool CLDevice::IsIntel() const { return info_.vendor == Vendor::INTEL; }
+
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;
 }
@@ -516,11 +572,11 @@ void CLDevice::DisableOneLayerTextureArray() {
   info_.adreno_info.support_one_layer_texture_array = false;
 }
 
-Status CreateDefaultGPUDevice(CLDevice* result) {
+absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   cl_uint num_platforms;
   clGetPlatformIDs(0, nullptr, &num_platforms);
   if (num_platforms == 0) {
-    return UnknownError("No supported OpenCL platform.");
+    return absl::UnknownError("No supported OpenCL platform.");
   }
   std::vector<cl_platform_id> platforms(num_platforms);
   clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
@@ -529,7 +585,7 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
   cl_uint num_devices;
   clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
   if (num_devices == 0) {
-    return UnknownError("No GPU on current platform.");
+    return absl::UnknownError("No GPU on current platform.");
   }
 
   std::vector<cl_device_id> devices(num_devices);
@@ -537,7 +593,7 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
                  nullptr);
 
   *result = CLDevice(devices[0], platform_id);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

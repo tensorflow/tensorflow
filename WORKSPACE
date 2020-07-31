@@ -36,18 +36,6 @@ load(
 
 bazel_toolchains_repositories()
 
-load(
-    "@io_bazel_rules_docker//repositories:repositories.bzl",
-    container_repositories = "repositories",
-)
-
-container_repositories()
-
-load("//third_party/toolchains/preconfig/generate:workspace.bzl",
-     "remote_config_workspace")
-
-remote_config_workspace()
-
 # Use `swift_rules_dependencies` to fetch the toolchains. With the
 # `git_repository` rules above, the following call will skip redefining them.
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
@@ -114,6 +102,14 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "person_detect_data",
+    sha256 = "170542270da256994ce24d1e357f6e84a54fdaf7d28ff2b74725a40b70b082cf",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2020_05_24.zip",
+    ],
+)
+
 # Required for dependency @com_github_grpc_grpc
 
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
@@ -137,4 +133,8 @@ apple_support_dependencies()
 load("@upb//bazel:repository_defs.bzl", "bazel_version_repository")
 
 bazel_version_repository(name = "bazel_version")
+
+load("//third_party/googleapis:repository_rules.bzl", "config_googleapis")
+
+config_googleapis()
 

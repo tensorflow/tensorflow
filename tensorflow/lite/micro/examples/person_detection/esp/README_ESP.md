@@ -16,17 +16,20 @@ The next steps assume that the
 [IDF environment variables are set](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html#step-4-set-up-the-environment-variables) :
 * The `IDF_PATH` environment variable is set. * `idf.py` and Xtensa-esp32 tools
 (e.g., `xtensa-esp32-elf-gcc`) are in `$PATH`. * `esp32-camera` should be
-downloaded in `comopnents/` dir of example as explained in `Build the
+downloaded in `components/` dir of example as explained in `Build the
 example`(below)
 
 ## Build the example
 
 As the `person_detection` example requires an external component `esp32-camera`
 for functioning hence we will have to manually clone it in `components/`
-directory of the example with following command.
+directory of the example with following commands.
 
 ```
  git clone https://github.com/espressif/esp32-camera.git components/esp32-camera
+ cd components/esp32-camera/
+ git checkout eacd640b8d379883bff1251a1005ebf3cf1ed95c
+ cd ../../
 ```
 
 To build this, run:

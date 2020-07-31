@@ -62,7 +62,7 @@ void ReduceGeneric(bool keep_dims, const std::vector<int>& axes,
   }
 
   std::vector<int> output_indices(input_shape.dimensions_count());
-  for (int input_offset = 0; input_offset < input.size(); ++input_offset) {
+  for (size_t input_offset = 0; input_offset < input.size(); ++input_offset) {
     std::vector<int> input_indices = ReverseOffset(input_shape, input_offset);
     // Calculate the output location by squashing input indices to 0
     // in reduced axes.
@@ -319,7 +319,7 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
   } else if (unary_op->type == OperatorType::kRelu6 ||
              unary_op->type == OperatorType::kRelu1 ||
              unary_op->type == OperatorType::kRelu) {
-    for (size_t i = 0; i < output_buffer_size; ++i) {
+    for (int i = 0; i < output_buffer_size; ++i) {
       const float value = (*input_float_data)[i];
       float new_value = 0.0f;
       switch (unary_op->type) {

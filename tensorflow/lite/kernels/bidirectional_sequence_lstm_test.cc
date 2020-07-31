@@ -14,17 +14,12 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Bidirectional LSTM op.
 
-#include <initializer_list>
-#include <iomanip>
-#include <memory>
+#include <tuple>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -40,7 +35,8 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
                            bool use_projection_bias, bool merge_outputs,
                            bool use_aux_input, float cell_clip, float proj_clip,
                            bool quantize_weights, bool time_major,
-                           const std::vector<std::vector<int>>& input_shapes)
+                           const std::vector<std::vector<int>>& input_shapes,
+                           bool asymmetric_quantize_inputs = false)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_fw_cell_(n_cell),
@@ -93,7 +89,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       fw_input_gate_bias_ = AddInput(TensorType_FLOAT32);
     }
     fw_forget_gate_bias_ = AddInput(TensorType_FLOAT32);
-    fw_cell_bias_ = AddInput(TensorType_FLOAT32);
+    fw_cell_gate_bias_ = AddInput(TensorType_FLOAT32);
     fw_output_gate_bias_ = AddInput(TensorType_FLOAT32);
 
     if (use_projection_weights) {
@@ -148,7 +144,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       bw_input_gate_bias_ = AddInput(TensorType_FLOAT32);
     }
     bw_forget_gate_bias_ = AddInput(TensorType_FLOAT32);
-    bw_cell_bias_ = AddInput(TensorType_FLOAT32);
+    bw_cell_gate_bias_ = AddInput(TensorType_FLOAT32);
     bw_output_gate_bias_ = AddInput(TensorType_FLOAT32);
 
     if (use_projection_weights) {
@@ -207,12 +203,13 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       bw_aux_input_to_output_weights_ = AddNullInput();
     }
 
-    SetBuiltinOp(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
-                 BuiltinOptions_BidirectionalSequenceLSTMOptions,
-                 CreateBidirectionalSequenceLSTMOptions(
-                     builder_, ActivationFunctionType_TANH, cell_clip,
-                     proj_clip, merge_outputs, time_major)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
+        BuiltinOptions_BidirectionalSequenceLSTMOptions,
+        CreateBidirectionalSequenceLSTMOptions(
+            builder_, ActivationFunctionType_TANH, cell_clip, proj_clip,
+            merge_outputs, time_major, asymmetric_quantize_inputs)
+            .Union());
     BuildInterpreter(input_shapes);
   }
 
@@ -291,8 +288,8 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   }
 
   void SetCellBias(const std::vector<float>& f) {
-    PopulateTensor(fw_cell_bias_, f);
-    PopulateTensor(bw_cell_bias_, f);
+    PopulateTensor(fw_cell_gate_bias_, f);
+    PopulateTensor(bw_cell_gate_bias_, f);
   }
 
   void SetOutputGateBias(const std::vector<float>& f) {
@@ -367,7 +364,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
 
   int fw_input_gate_bias_;
   int fw_forget_gate_bias_;
-  int fw_cell_bias_;
+  int fw_cell_gate_bias_;
   int fw_output_gate_bias_;
 
   int fw_projection_weights_;
@@ -389,7 +386,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
 
   int bw_input_gate_bias_;
   int bw_forget_gate_bias_;
-  int bw_cell_bias_;
+  int bw_cell_gate_bias_;
   int bw_output_gate_bias_;
 
   int bw_projection_weights_;
@@ -424,11 +421,14 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   bool quantize_weights_;
 };
 
-// Declare LSTMOpTest as a parameterized test, where the parameter is a boolean
-// indicating whether to use quantization or not.
-class LSTMOpTest : public ::testing::TestWithParam<bool> {};
+// Declare LSTMOpTest as a parameterized test.
+class LSTMOpTest
+    : public ::testing::TestWithParam<::testing::tuple<bool, bool>> {};
 
-INSTANTIATE_TEST_SUITE_P(QuantizationOrNot, LSTMOpTest, ::testing::Bool());
+INSTANTIATE_TEST_SUITE_P(QuantizationOrNot, LSTMOpTest,
+                         ::testing::Combine(
+                             /*quantize_weights*/ ::testing::Bool(),
+                             /*asymmetric_quantize_inputs*/ ::testing::Bool()));
 
 TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
   const int n_batch = 1;
@@ -437,7 +437,9 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
-  const bool quantize_weights = GetParam();
+  auto params = GetParam();
+  const bool quantize_weights = std::get<0>(params);
+  const bool asymmetric_quantize_inputs = std::get<1>(params);
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
@@ -465,7 +467,7 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -488,7 +490,7 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -509,7 +511,8 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
           {0},                            // aux_bw_input_to_forget tensor
           {0},                            // aux_bw_input_to_cell tensor
           {0},                            // aux_bw_input_to_output tensor
-      });
+      },
+      asymmetric_quantize_inputs);
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912, -0.15680569,
@@ -600,7 +603,9 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
-  const bool quantize_weights = GetParam();
+  auto params = GetParam();
+  const bool quantize_weights = std::get<0>(params);
+  const bool asymmetric_quantize_inputs = std::get<1>(params);
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
@@ -628,7 +633,7 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -651,7 +656,7 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -672,7 +677,8 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
           {0},                            // aux_bw_input_to_forget tensor
           {0},                            // aux_bw_input_to_cell tensor
           {0},                            // aux_bw_input_to_output tensor
-      });
+      },
+      asymmetric_quantize_inputs);
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912, -0.15680569,
@@ -790,7 +796,7 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClippingReverse) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -813,7 +819,7 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClippingReverse) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -950,7 +956,7 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -972,7 +978,7 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -1101,7 +1107,7 @@ TEST(LSTMOpTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -1123,7 +1129,7 @@ TEST(LSTMOpTest,
 
           {0},       // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -1252,7 +1258,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
@@ -1274,7 +1280,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
@@ -1955,7 +1961,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClippingBatchMajor) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
@@ -1977,7 +1983,7 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClippingBatchMajor) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {n_output, n_cell},  // projection_weight tensor
@@ -2631,7 +2637,9 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
-  const bool quantize_weights = GetParam();
+  auto params = GetParam();
+  const bool quantize_weights = std::get<0>(params);
+  const bool asymmetric_quantize_inputs = std::get<1>(params);
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
@@ -2659,7 +2667,7 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -2682,7 +2690,7 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -2703,7 +2711,8 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
           {n_cell, n_input},                    // aux_bw_input_to_forget tensor
           {n_cell, n_input},                    // aux_bw_input_to_cell tensor
           {n_cell, n_input},                    // aux_bw_input_to_output tensor
-      });
+      },
+      asymmetric_quantize_inputs);
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912, -0.15680569,
@@ -2766,11 +2775,11 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
   // Aux input and input are the same, so we should observe the same outputs
   // as there's no aux input.
   lstm.SetAuxInput(0, batch0_start, batch0_end);
-  std::vector<float> dummpy_weights(n_cell * n_input, 0.0f);
-  lstm.SetAuxInputToInputWeights(dummpy_weights);
-  lstm.SetAuxInputToForgetWeights(dummpy_weights);
-  lstm.SetAuxInputToCellWeights(dummpy_weights);
-  lstm.SetAuxInputToOutputWeights(dummpy_weights);
+  std::vector<float> dummy_weights(n_cell * n_input, 0.0f);
+  lstm.SetAuxInputToInputWeights(dummy_weights);
+  lstm.SetAuxInputToForgetWeights(dummy_weights);
+  lstm.SetAuxInputToCellWeights(dummy_weights);
+  lstm.SetAuxInputToOutputWeights(dummy_weights);
 
   lstm.Invoke();
 
@@ -2802,7 +2811,9 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
-  const bool quantize_weights = GetParam();
+  auto params = GetParam();
+  const bool quantize_weights = std::get<0>(params);
+  const bool asymmetric_quantize_inputs = std::get<1>(params);
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
@@ -2830,7 +2841,7 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -2853,7 +2864,7 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
 
           {n_cell},  // input_gate_bias tensor
           {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
+          {n_cell},  // cell_gate_bias tensor
           {n_cell},  // output_gate_bias tensor
 
           {0, 0},  // projection_weight tensor
@@ -2874,7 +2885,8 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
           {n_cell, n_input},                    // aux_bw_input_to_forget tensor
           {n_cell, n_input},                    // aux_bw_input_to_cell tensor
           {n_cell, n_input},                    // aux_bw_input_to_output tensor
-      });
+      },
+      asymmetric_quantize_inputs);
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912, -0.15680569,

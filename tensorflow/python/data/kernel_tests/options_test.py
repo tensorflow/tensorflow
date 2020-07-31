@@ -68,8 +68,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options1.experimental_optimization.autotune = True
     options2 = dataset_ops.Options()
     options2.experimental_optimization.autotune = False
-    with self.assertRaisesRegexp(ValueError,
-                                 "Cannot merge incompatible values"):
+    with self.assertRaisesRegex(ValueError, "Cannot merge incompatible values"):
       dataset_ops.Dataset.range(0).with_options(options1).with_options(options2)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -99,6 +98,15 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(options1.experimental_stats, stats_options.StatsOptions())
     self.assertEqual(options1.experimental_threading,
                      threading_options.ThreadingOptions())
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testNestedDataset(self):
+    ds = dataset_ops.Dataset.from_tensors(0)
+    result = ds
+
+    for _ in range(999):
+      result = result.concatenate(ds)
+    self.assertDatasetProduces(result, [0]*1000)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,10 @@ message TensorTracerReport {
   // A map from tensor name to its TracedTensorDef.
   map<string, TracedTensorDef> tensordef = 3;
 
+  // The fingerprint of the TensorTracerReport (fingerprint calculation excludes
+  // this field and graphdef).
+  string fingerprint = 4;
+
   message TensorTracerConfig {
     // Tensor tracer version, e.g. hostcall, outside compilation.
     string version = 1;

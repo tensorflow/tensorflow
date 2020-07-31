@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -34,9 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -96,7 +96,7 @@ class FakeDevice : public Device {
                                             const string& device_type) {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
-    device_attributes.set_device_type(DeviceType(device_type).type());
+    device_attributes.set_device_type(device_type);
     return std::unique_ptr<Device>(new FakeDevice(device_attributes));
   }
 
@@ -232,6 +232,9 @@ class PlacerTest : public ::testing::Test {
     }
     local_devices_.emplace_back(FakeDevice::MakeDevice(
         "/job:a/replica:0/task:0/device:XLA_CPU:0", "XLA_CPU"));
+    devices_.AddDevice(local_devices_.back().get());
+    local_devices_.emplace_back(FakeDevice::MakeDevice(
+        "/job:a/replica:0/task:0/device:COMPOSITE:0", "COMPOSITE"));
     devices_.AddDevice(local_devices_.back().get());
   }
 
@@ -1175,6 +1178,40 @@ TEST_F(PlacerTest, TestReferenceConnectionNoSourceDevice) {
   EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
 }
 
+TEST_F(PlacerTest, TestResourceHandleOnCompositeDevice) {
+  auto build_graph = [this](Graph* g) -> Status {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    // Build ten variable-and-assignment pairs.
+    Node* var = ops::SourceOp("HandleVariableCPU", b.opts().WithName("var"));
+    ops::BinaryOp("TestHandleAssign", var, input, b.opts().WithName("assign"));
+    TF_RETURN_IF_ERROR(BuildGraph(b, g));
+    // `var` is assigned to COMPOSITE.
+    GetNodeByName(*g, "var")->set_assigned_device_name(
+        "/job:a/replica:0/task:0/device:COMPOSITE:0");
+    return Status::OK();
+  };
+
+  {
+    // `assign` is not assigned to any device.
+    Graph g(OpRegistry::Global());
+    TF_ASSERT_OK(build_graph(&g));
+    TF_ASSERT_OK(Place(&g));
+    EXPECT_DEVICE_TYPE(g, "var", "COMPOSITE");
+    EXPECT_DEVICE_TYPE(g, "assign", "COMPOSITE");
+  }
+  {
+    // `assign` is assigned to FakeCPU.
+    Graph g(OpRegistry::Global());
+    TF_ASSERT_OK(build_graph(&g));
+    GetNodeByName(g, "assign")
+        ->set_assigned_device_name("/job:a/replica:0/task:0/device:FakeCPU:0");
+    TF_ASSERT_OK(Place(&g));
+    EXPECT_DEVICE_TYPE(g, "var", "COMPOSITE");
+    EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
+  }
+}
+
 TEST_F(PlacerTest, TestColocationGroup) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -1282,6 +1319,9 @@ TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
     Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
     Node* var1 = ops::SourceOp("VariableCPU", b.opts().WithName("var1"));
     Node* var2 = ops::SourceOp("VariableCPU", b.opts().WithName("var2"));
+    Node* var3 = ops::SourceOp(
+        "VariableCPU",
+        b.opts().WithName("var3").WithDevice("/device:COMPOSITE:0"));
 
     // Two assigns (reference connections) with two different
     // colocation groups. Because their colocation groups all map to the
@@ -1292,14 +1332,20 @@ TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
     ops::BinaryOp(
         "TestAssign", var2, input,
         b.opts().WithName("assign2").WithAttr("_class", {"loc:@var2"}));
+    ops::BinaryOp(
+        "TestAssign", var3, input,
+        b.opts().WithName("assign3").WithAttr("_class", {"loc:@var3"}));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
   EXPECT_COLOCATED(g, "in", "var1");
   EXPECT_COLOCATED(g, "in", "var2");
   EXPECT_COLOCATED(g, "var1", "assign2");
   EXPECT_COLOCATED(g, "var2", "assign1");
+  EXPECT_DEVICE_TYPE(g, "var3", "COMPOSITE");
+  EXPECT_COLOCATED(g, "var3", "assign3");
 }
 
 TEST_P(SoftPlacementPlacerTest,

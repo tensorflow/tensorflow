@@ -37,8 +37,12 @@ namespace cl {
 class ConvolutionTransposed4x4 : public GPUOperation {
  public:
   ConvolutionTransposed4x4() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Tune(const TuningParameters& params) override {
+    return absl::OkStatus();
+  }
+  absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConvolutionTransposed4x4(ConvolutionTransposed4x4&& operation);
@@ -56,34 +60,26 @@ class ConvolutionTransposed4x4 : public GPUOperation {
  private:
   ConvolutionTransposed4x4(const OperationDef& definition,
                            const CLDevice& device);
-  friend Status CreateConvolutionTransposed4x4(
+  friend absl::Status CreateConvolutionTransposed4x4(
       const CreationContext& creation_context, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr,
       ConvolutionTransposed4x4* result);
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
-  Status BindArguments();
-  int3 GetGridSize() const;
-
-  Buffer weights_;
   WeightsUploadType weights_upload_type_;
-  LinearStorage biases_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>
-Status ConvolutionTransposed4x4::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+absl::Status ConvolutionTransposed4x4::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 4;  //  This operation support only 4x4 kernel
   const int kernel_y = 4;
   const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
@@ -91,24 +87,40 @@ Status ConvolutionTransposed4x4::UploadWeights(
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
   const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
+  Buffer weights_buffer;
   if (f32_weights) {
     std::vector<float4> gpu_data(flt4_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(flt4_size * flt4_count, gpu_data.data(),
-                                context, &weights_);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(
+        flt4_size * flt4_count, gpu_data.data(), context, &weights_buffer));
   } else {
     std::vector<half4> gpu_data(flt4_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(flt4_size * flt4_count, gpu_data.data(),
-                                context, &weights_);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(
+        flt4_size * flt4_count, gpu_data.data(), context, &weights_buffer));
   }
+
+  BufferDescriptor desc;
+  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.element_size = 4;
+  desc.memory_type =
+      weights_upload_type_ ==
+              ConvolutionTransposed4x4::WeightsUploadType::CONSTANT_MEM
+          ? MemoryType::CONSTANT
+          : MemoryType::GLOBAL;
+
+  args_.AddObject("weights", AccessType::READ,
+                  absl::make_unique<Buffer>(std::move(weights_buffer)),
+                  absl::make_unique<BufferDescriptor>(desc));
+
+  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
 void ConvolutionTransposed4x4::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 4;
   const int kernel_y = 4;
 
@@ -150,7 +162,7 @@ bool IsConvolutionTransposed4x4Supported(
     const CLDevice& device, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
-Status CreateConvolutionTransposed4x4(
+absl::Status CreateConvolutionTransposed4x4(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed4x4* result);

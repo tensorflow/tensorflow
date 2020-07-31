@@ -46,7 +46,7 @@ class FunctionWrappersTest(test.TestCase):
         converter.ConversionOptions(
             optional_features=converter.Feature.AUTO_CONTROL_DEPS)) as scope:
       v.assign(2)
-      op = scope.mark_return_value(constant_op.constant(1))
+      op = scope.ret(constant_op.constant(1), True)
     self.evaluate(op)
     self.assertEqual(self.evaluate(v.read_value()), 2)
 

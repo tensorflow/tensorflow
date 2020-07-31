@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
@@ -41,21 +41,21 @@ namespace tensorflow {
 
 // Convert PyObject* to py::object with no error handling.
 
-inline py::object pyo(PyObject* ptr) {
+inline py::object Pyo(PyObject* ptr) {
   return py::reinterpret_steal<py::object>(ptr);
 }
 
 // Raise an exception if the PyErrOccurred flag is set or else return the Python
 // object.
 
-inline py::object pyo_or_throw(PyObject* ptr) {
+inline py::object PyoOrThrow(PyObject* ptr) {
   if (PyErr_Occurred() || ptr == nullptr) {
     throw py::error_already_set();
   }
-  return pyo(ptr);
+  return Pyo(ptr);
 }
 
-void throwTypeError(const char* error_message) {
+void ThrowTypeError(const char* error_message) {
   PyErr_SetString(PyExc_TypeError, error_message);
   throw pybind11::error_already_set();
 }

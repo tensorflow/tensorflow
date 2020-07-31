@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 
+#include <vector>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

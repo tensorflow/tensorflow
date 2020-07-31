@@ -107,6 +107,11 @@ class ConvBackpropInputOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &input_tensor_shape));
     xla::Shape input_shape =
         TensorShapeToXLAShape(ctx->input_xla_type(1), input_tensor_shape);
+    OP_REQUIRES(ctx, input_shape.rank() == attrs_.num_spatial_dims + 2,
+                errors::InvalidArgument(
+                    "The rank of the specified input shape must be "
+                    "num_spatial_dims + 2. Expected ",
+                    attrs_.num_spatial_dims + 2, " got ", input_shape.rank()));
 
     xla::StatusOr<xla::XlaOp> in_backprop =
         MakeXlaBackpropInputConvOp(ctx->op_kernel().type_string(), input_shape,

@@ -765,8 +765,9 @@ bool Tensor::RefCountIsOne() const {
   }
 
 #define CASES(TYPE_ENUM, STMTS)                                      \
-  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
-                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS,                               \
+                     LOG(FATAL) << "Unexpected type: " << TYPE_ENUM; \
+                     , LOG(FATAL) << "Type not set";)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {

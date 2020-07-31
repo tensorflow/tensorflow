@@ -84,6 +84,10 @@ class DeviceContext : public core::RefCounted {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
   }
 
+  // Same as CopyCPUTensorToDevice, but in a synchronous way.
+  Status CopyCPUTensorToDeviceSync(const Tensor* cpu_tensor, Device* device,
+                                   Tensor* device_tensor) const;
+
   // Copies a tensor in this device.
   virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
                                       Device* device, Tensor* output_tensor,
@@ -100,6 +104,11 @@ class DeviceContext : public core::RefCounted {
     done(errors::Internal("Unrecognized device type in device-to-CPU Copy"));
   }
 
+  // Same as `CopyDeviceTensorToCPU`, but blocks until the copy is done.
+  Status CopyDeviceTensorToCPUSync(const Tensor* device_tensor,
+                                   StringPiece tensor_name, Device* device,
+                                   Tensor* cpu_tensor);
+
   // If possible, wait for all events on *stream to complete then execute func.
   // A non-OK Status is returned otherwise.  The stream argument should be the
   // one provided by GpuDeviceInfo.  This function is not applicable to devices
@@ -109,9 +118,6 @@ class DeviceContext : public core::RefCounted {
     return errors::Internal("ThenExecute not supported by device");
   }
 };
-
-// map[i] is the DeviceContext* for the node with id i, if i < map.size().
-typedef std::vector<DeviceContext*> DeviceContextMap;
 
 class DeviceBase {
  public:

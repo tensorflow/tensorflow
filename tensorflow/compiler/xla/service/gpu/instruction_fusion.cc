@@ -29,12 +29,27 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+bool ElementIsF32OrF16(const Shape& shape) {
+  PrimitiveType type = shape.element_type();
+  return type == F32 || type == F16;
+}
+}  // namespace
+
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
-  // We say that floating-point division is cheap on the GPU.
-  if (instruction.opcode() == HloOpcode::kDivide &&
-      ShapeUtil::ElementIsFloating(instruction.shape())) {
-    return false;
+  // We say that some floating-point math ops are cheap on the GPU. Unlike other
+  // intrinsics that can be expanded into many instructions, Div and Rsqrt are
+  // lowered into single hardware instructions.
+  switch (instruction.opcode()) {
+    case HloOpcode::kDivide:
+    case HloOpcode::kRsqrt:
+      if (ElementIsF32OrF16(instruction.shape())) {
+        return false;
+      }
+      break;
+    default:
+      break;
   }
   return InstructionFusion::IsExpensive(instruction);
 }
@@ -65,12 +80,16 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
+    VLOG(5) << "Not fusing inexpensive checks of operand " << operand_index
+            << " of " << consumer->ToString();
     return false;
   }
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
   if (FusionWouldBeTooLarge(*consumer, *producer)) {
+    VLOG(5) << "Fusion of (" << producer->ToString() << ") into ("
+            << consumer->ToString() << ") would be too large";
     return false;
   }
   if (consumer->opcode() != HloOpcode::kFusion) {

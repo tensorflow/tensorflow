@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <string>
+
 namespace tensorflow {
 namespace swig {
 
@@ -234,7 +236,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
 //   nest: an arbitrarily nested structure or a scalar object. Note, numpy
 //       arrays are considered scalars.
 //   expand_composites: If true, then composite tensors (such as
-//       `tf.SparseTensor` and `tf.RaggedTensor` are flattened into their
+//       `tf.sparse.SparseTensor` and `tf.RaggedTensor` are flattened into their
 //       component tensors.
 //
 // Returns:
@@ -270,9 +272,17 @@ PyObject* FlattenForData(PyObject* nested);
 PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
                                      bool check_types);
 
-// RegisterType is used to pass PyTypeObject (which is defined in python) for an
-// arbitrary identifier `type_name` into C++.
+// Registers a Python object so it can be looked up from c++.  The set of
+// valid names, and the expected values for those names, are listed in
+// the documentation for `RegisteredPyObjects`.  Returns PyNone.
+PyObject* RegisterPyObject(PyObject* name, PyObject* value);
+
+// Variant of RegisterPyObject that requires the object's value to be a type.
 PyObject* RegisterType(PyObject* type_name, PyObject* type);
+
+// Returns a borrowed reference to an object that was registered with
+// RegisterPyObject.  (Do not call Py_DECREF on the result).
+PyObject* GetRegisteredPyObject(const std::string& name);
 
 }  // namespace swig
 }  // namespace tensorflow

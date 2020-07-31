@@ -30,7 +30,7 @@ END
 N is the size of the segment being reduced.
 
 Like `SparseSegmentSqrtN`, but allows missing ids in `segment_ids`. If an id is
-misisng, the `output` tensor at that position will be zeroed.
+missing, the `output` tensor at that position will be zeroed.
 
 Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)

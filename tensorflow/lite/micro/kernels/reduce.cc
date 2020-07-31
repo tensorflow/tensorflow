@@ -43,14 +43,14 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
   // Validate axis type
-  const TfLiteTensor* axis = &context->tensors[node->inputs->data[1]];
+  const TfLiteTensor* axis = GetInput(context, node, 1);
   TF_LITE_ENSURE_TYPES_EQ(context, axis->type, kTfLiteInt32);
   return kTfLiteOk;
 }
 
 TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
-  // TODO(b/144955155): Support uint8(b/144955155) and int8(b/144955018)
+  // TODO(b/144955155): Support uint8_t(b/144955155) and int8_t(b/144955018)
   return kTfLiteOk;
 }
 
@@ -58,7 +58,7 @@ void ResolveAxis(const int* axis_data, int axis_count,
                  tflite::MeanParams* op_params) {
   int i = 0;
   for (; i < axis_count; ++i) {
-    op_params->axis[i] = static_cast<int16>(axis_data[i]);
+    op_params->axis[i] = static_cast<int16_t>(axis_data[i]);
   }
   for (; i < 4; ++i) {
     op_params->axis[i] = 1;
@@ -67,9 +67,9 @@ void ResolveAxis(const int* axis_data, int axis_count,
 }
 
 TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  const TfLiteTensor* axis = &context->tensors[node->inputs->data[1]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* axis = GetInput(context, node, 1);
+  TfLiteTensor* output = GetOutput(context, node, 0);
   TfLiteReducerParams* params =
       reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
 
@@ -110,7 +110,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     default:
-      // TODO(b/144955155): Support uint8(b/144955155) and int8(b/144955018)
+      // TODO(b/144955155): Support uint8_t(b/144955155) and int8_t(b/144955018)
       TF_LITE_ENSURE_MSG(context, false,
                          "Currently, only float32 input type "
                          "is supported.");
@@ -119,13 +119,15 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace reduce
 
-TfLiteRegistration* Register_MEAN() {
-  static TfLiteRegistration r = {};
-  r.init = nullptr;
-  r.free = nullptr;
-  r.prepare = reduce::PrepareMeanOrSum;
-  r.invoke = reduce::EvalMean;
-  return &r;
+TfLiteRegistration Register_MEAN() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/reduce::PrepareMeanOrSum,
+          /*invoke=*/reduce::EvalMean,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 }  // namespace micro
 }  // namespace ops

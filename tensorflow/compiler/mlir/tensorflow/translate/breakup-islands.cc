@@ -19,14 +19,13 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/STLExtras.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -42,7 +41,7 @@ namespace mlir {
 
 namespace {
 
-struct BreakUpIslands : FunctionPass<BreakUpIslands> {
+struct BreakUpIslands : PassWrapper<BreakUpIslands, FunctionPass> {
   void runOnFunction() final;
 
   void BreakUpIsland(tf_executor::IslandOp island_op,
@@ -114,7 +113,7 @@ void BreakUpIslands::runOnFunction() {
     state.addOperands(operands);
     Operation* new_op = builder.createOperation(state);
     item.replaceAllUsesWith(new_op);
-    new_op->setAttrs(item.getAttrList());
+    new_op->setAttrs(item.getMutableAttrDict());
     item.erase();
   }
 }
@@ -220,7 +219,7 @@ void BreakUpIslands::BreakUpIsland(
   }
 
   // Skip islands that are already only a single op.
-  if (has_single_element(island_body)) return;
+  if (island_op.WrapsSingleOp()) return;
 
   auto control_type = tf_executor::ControlType::get(&getContext());
   auto island_control_inputs = llvm::to_vector<4>(island_op.controlInputs());
@@ -307,9 +306,8 @@ void BreakUpIslands::BreakUpIsland(
               llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
         (*new_control_inputs)[other_island_op].push_back(sink_island_control);
       } else if (owner->getDialect() == island_op.getDialect() &&
-                 !llvm::isa<tf_executor::GraphOp>(owner) &&
-                 !llvm::isa<tf_executor::YieldOp>(owner) &&
-                 !llvm::isa<tf_executor::NextIterationSourceOp>(owner)) {
+                 !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
+                            tf_executor::NextIterationSourceOp>(owner)) {
         (*new_control_inputs)[owner].push_back(sink_island_control);
       } else {
         owner->emitOpError("adding control dependency not supported");
@@ -325,7 +323,7 @@ void BreakUpIslands::BreakUpIsland(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateBreakUpIslandsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateBreakUpIslandsPass() {
   return std::make_unique<BreakUpIslands>();
 }
 

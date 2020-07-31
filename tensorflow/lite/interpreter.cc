@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/delegates/status.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -51,6 +52,8 @@ static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
 
 namespace tflite {
 
+namespace impl {
+
 namespace {
 
 // Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
@@ -69,11 +72,23 @@ TfLiteQuantization GetQuantizationFromLegacy(
   return quantization;
 }
 
+// TODO(b/153131797): We have put 'delegate_status' to 0 in the following macro
+// temporarily because delegate-specific error codes are either not retrievable
+// at the moment, which we will add later.
+#define TF_LITE_ENSURE_STATUS_WITH_SCOPED_INSTRUMENTATION(runtime_event, a) \
+  do {                                                                      \
+    TfLiteStatus status = (a);                                              \
+    runtime_event.set_runtime_status(/*delegate_status=*/0,                 \
+                                     static_cast<int64_t>(status));         \
+    TF_LITE_ENSURE_STATUS(status);                                          \
+  } while (0)
+
 }  // namespace
 
 Interpreter::Interpreter(ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
+    : error_reporter_(error_reporter ? error_reporter : DefaultErrorReporter()),
+      lazy_delegate_provider_(
+          TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {})) {
   // TODO(b/128420794): Include the TFLite runtime version in the log.
   // Prod logging is useful for mobile platforms where scraping console logs is
   // critical for debugging.
@@ -136,7 +151,7 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
   // If it's overwritten here, we will release the resource of the internally
   // owned external context.
   // Note: the 'max thread count' info associated with the overwritten context
-  // will be lost here, and such info is now detemined by the new context, thus
+  // will be lost here, and such info is now determined by the new context, thus
   // affecting how much parallelism a TFLite op would have.
   if (kTfLiteCpuBackendContext == type &&
       external_contexts_[kTfLiteCpuBackendContext] ==
@@ -161,6 +176,16 @@ TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
 }
 
 TfLiteStatus Interpreter::AllocateTensors() {
+  // Apply the default delegate that TFLite will enable at this point to allow
+  // other user-level delegates to be applied first.
+  if (lazy_delegate_provider_) {
+    // The execution will fall back to default implementation if the XNNPACK
+    // delegate fails to be applied. Therefore, we ignore the return status
+    // here and let it fall through the rest of the code.
+    ModifyGraphWithDelegate(std::move(lazy_delegate_provider_));
+    lazy_delegate_provider_.reset();
+  }
+
   return primary_subgraph().AllocateTensors();
 }
 
@@ -195,6 +220,11 @@ TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
   return primary_subgraph().ResizeInputTensor(tensor_index, dims);
 }
 
+TfLiteStatus Interpreter::ResizeInputTensorStrict(
+    int tensor_index, const std::vector<int>& dims) {
+  return primary_subgraph().ResizeInputTensorStrict(tensor_index, dims);
+}
+
 TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
   // TODO(b/138790287): We could do this for all subgraphs whose tensors have
   // been allocated. However, AllocateTensors() relies on Control Flow ops to
@@ -203,11 +233,15 @@ TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  TF_LITE_ENSURE_STATUS(primary_subgraph().Invoke());
+  ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
+                                                           "invoke");
+  TF_LITE_ENSURE_STATUS_WITH_SCOPED_INSTRUMENTATION(
+      scoped_runtime_event, primary_subgraph().Invoke());
 
   if (!allow_buffer_handle_output_) {
     for (int tensor_index : outputs()) {
-      TF_LITE_ENSURE_STATUS(
+      TF_LITE_ENSURE_STATUS_WITH_SCOPED_INSTRUMENTATION(
+          scoped_runtime_event,
           primary_subgraph().EnsureTensorDataIsReadable(tensor_index));
     }
   }
@@ -254,10 +288,12 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
+    const int* dims, TfLiteQuantizationParams quantization, bool is_variable,
+    const size_t rank_dims_signature, const int* dims_signature) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
   return primary_subgraph().SetTensorParametersReadWrite(
-      tensor_index, type, name, rank, dims, new_quantization, is_variable);
+      tensor_index, type, name, rank, dims, new_quantization, is_variable,
+      rank_dims_signature, dims_signature);
 }
 
 TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
@@ -266,12 +302,12 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
 
 void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
 
-void Interpreter::SetNumThreads(int num_threads) {
+TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
   if (num_threads < -1) {
     context_->ReportError(context_,
                           "num_threads should be >=0 or just -1 to let TFLite "
                           "runtime set the value.");
-    return;
+    return kTfLiteError;
   }
 
   for (auto& subgraph : subgraphs_) {
@@ -284,6 +320,7 @@ void Interpreter::SetNumThreads(int num_threads) {
       c->Refresh(context_);
     }
   }
+  return kTfLiteOk;
 }
 
 void Interpreter::SetAllowFp16PrecisionForFp32(bool allow) {
@@ -301,11 +338,22 @@ void Interpreter::SetCancellationFunction(void* data,
   }
 }
 
+bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
+
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
-    TF_LITE_ENSURE_OK(context_, subgraph->ModifyGraphWithDelegate(delegate));
+    status = subgraph->ModifyGraphWithDelegate(delegate);
+    if (status != kTfLiteOk) {
+      break;
+    }
   }
-  return kTfLiteOk;
+  // Delegate-specific errors can be recovered from by restoring Interpreter to
+  // its original state.
+  if (status == kTfLiteDelegateError) {
+    TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
+  }
+  return status;
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
@@ -314,6 +362,15 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
   owned_delegates_.push_back(std::move(delegate));
   return ModifyGraphWithDelegate(owned_delegates_.back().get());
 }
+
+TfLiteStatus Interpreter::RemoveAllDelegates() {
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
+  }
+  return kTfLiteOk;
+}
+
+bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
@@ -352,23 +409,28 @@ void Interpreter::SetProfiler(Profiler* profiler) {
   // Release resources occupied by owned_profiler_ which is replaced by
   // caller-owned profiler.
   owned_profiler_.reset(nullptr);
-  SetSubgraphProfiler(profiler);
+  installed_profiler_ = profiler;
+  SetSubgraphProfiler();
 }
 
 void Interpreter::SetProfiler(std::unique_ptr<Profiler> profiler) {
   owned_profiler_ = std::move(profiler);
-  SetSubgraphProfiler(owned_profiler_.get());
+  installed_profiler_ = owned_profiler_.get();
+  SetSubgraphProfiler();
 }
 
-void Interpreter::SetSubgraphProfiler(Profiler* profiler) {
+void Interpreter::SetSubgraphProfiler() {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    subgraphs_[subgraph_index]->SetProfiler(profiler, subgraph_index);
+    subgraphs_[subgraph_index]->SetProfiler(installed_profiler_,
+                                            subgraph_index);
   }
 }
 
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
+
+}  // namespace impl
 
 }  // namespace tflite

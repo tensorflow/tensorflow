@@ -750,6 +750,9 @@ def run_distribute_coordinator(worker_fn,
     otherwise.
   """
   tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
+  rpc_layer = tf_config.get("rpc_layer", rpc_layer)
+  environment = tf_config.get("environment", None)
+
   if not cluster_spec:
     cluster_spec = tf_config.get("cluster", {})
     task_env = tf_config.get("task", {})
@@ -758,11 +761,15 @@ def run_distribute_coordinator(worker_fn,
       task_id = int(task_env.get("index", task_id))
 
   if cluster_spec:
-    cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
     # TODO(yuefengz): validate cluster_spec.
-
-  rpc_layer = tf_config.get("rpc_layer", rpc_layer)
-  environment = tf_config.get("environment", None)
+    cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
+  elif hasattr(strategy.extended, "_cluster_resolver"):
+    cluster_resolver = strategy.extended._cluster_resolver  # pylint: disable=protected-access
+    task_type = cluster_resolver.task_type
+    task_id = cluster_resolver.task_id
+    rpc_layer = cluster_resolver.rpc_layer or rpc_layer
+    environment = cluster_resolver.environment
+    cluster_spec = cluster_resolver.cluster_spec()
 
   # Setting the session config is necessary for some strategies such as
   # CollectiveAllReduceStrategy.

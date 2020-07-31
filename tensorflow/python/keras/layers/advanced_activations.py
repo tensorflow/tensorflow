@@ -349,6 +349,9 @@ class ReLU(Layer):
     if negative_slope < 0.:
       raise ValueError('negative_slope of Relu layer '
                        'cannot be negative value: ' + str(negative_slope))
+    if threshold is None:
+      raise ValueError('threshold of Relu layer '
+                       'cannot be None. Required a float')
 
     self.support_masking = True
     if max_value is not None:

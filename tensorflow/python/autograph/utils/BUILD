@@ -30,7 +30,6 @@ py_library(
         "tensor_list.py",
         "tensors.py",
         "testing.py",
-        "type_check.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -74,17 +73,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
-    deps = [
-        ":utils",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "type_check_test",
-    srcs = ["type_check_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",

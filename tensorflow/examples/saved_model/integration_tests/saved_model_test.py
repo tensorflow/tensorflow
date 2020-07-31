@@ -25,7 +25,8 @@ import tensorflow.compat.v2 as tf
 
 from tensorflow.examples.saved_model.integration_tests import distribution_strategy_utils as ds_utils
 from tensorflow.examples.saved_model.integration_tests import integration_scripts as scripts
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as distribute_combinations
+from tensorflow.python.framework import combinations
 
 
 class SavedModelTest(scripts.TestCase, parameterized.TestCase):
@@ -89,8 +90,8 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
               retrain_flag_value=["true", "false"],
               regularization_loss_multiplier=[None, 2],  # Test for b/134528831.
           )),
-      test_combinations=(combinations.NamedGPUCombination(),
-                         combinations.NamedTPUCombination()))
+      test_combinations=(distribute_combinations.NamedGPUCombination(),
+                         distribute_combinations.NamedTPUCombination()))
 
   @combinations.generate(**TEST_MNIST_CNN_GENERATE_KWARGS)
   def test_mnist_cnn(self, use_keras_save_api, named_strategy,

@@ -34,7 +34,6 @@ import re
 import sys
 
 import six
-from six.moves import range
 import tensorflow as tf
 
 from google.protobuf import message
@@ -87,9 +86,8 @@ _API_GOLDEN_FOLDER_V2 = None
 def _InitPathConstants():
   global _API_GOLDEN_FOLDER_V1
   global _API_GOLDEN_FOLDER_V2
-  root_golden_path_v2 = os.path.join(
-      resource_loader.get_data_files_path(), '..', 'golden', 'v2',
-      'tensorflow.pbtxt')
+  root_golden_path_v2 = os.path.join(resource_loader.get_data_files_path(),
+                                     '..', 'golden', 'v2', 'tensorflow.pbtxt')
 
   if FLAGS.update_goldens:
     root_golden_path_v2 = os.path.realpath(root_golden_path_v2)
@@ -105,7 +103,6 @@ _UPDATE_WARNING_FILE = resource_loader.get_path_to_datafile(
     'API_UPDATE_WARNING.txt')
 
 _NON_CORE_PACKAGES = ['estimator']
-
 
 # TODO(annarev): remove this once we test with newer version of
 # estimator that actually has compat v1 version.
@@ -135,6 +132,13 @@ def _KeyToFilePath(key, api_version):
                                 six.ensure_str(key))
   api_folder = (
       _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
+  if key.startswith('tensorflow.experimental.numpy'):
+    # Jumps up one more level in order to let Copybara find the
+    # 'tensorflow/third_party' string to replace
+    api_folder = os.path.join(
+        api_folder, '..', '..', '..', '..', '../third_party',
+        'py', 'numpy', 'tf_numpy_api')
+    api_folder = os.path.normpath(api_folder)
   return os.path.join(api_folder, '%s.pbtxt' % case_insensitive_key)
 
 
@@ -200,6 +204,12 @@ def _FilterGoldenProtoDict(golden_proto_dict, omit_golden_symbols_map):
         del members[:]
         members.extend(filtered_members)
   return filtered_proto_dict
+
+
+def _GetTFNumpyGoldenPattern(api_version):
+  return os.path.join(resource_loader.get_root_dir_with_all_resources(),
+                      _KeyToFilePath('tensorflow.experimental.numpy*',
+                                     api_version))
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -282,9 +292,6 @@ class ApiCompatibilityTest(test.TestCase):
       diff_count = len(diffs)
       logging.error(self._test_readme_message)
       logging.error('%d differences found between API and golden.', diff_count)
-      messages = verbose_diffs if verbose else diffs
-      for i in range(diff_count):
-        print('Issue %d\t: %s' % (i + 1, messages[i]), file=sys.stderr)
 
       if update_goldens:
         # Write files if requested.
@@ -303,6 +310,10 @@ class ApiCompatibilityTest(test.TestCase):
           file_io.write_string_to_file(
               filepath, text_format.MessageToString(actual_dict[key]))
       else:
+        # Include the actual differences to help debugging.
+        for d, verbose_d in zip(diffs, verbose_diffs):
+          logging.error('    %s', d)
+          logging.error('    %s', verbose_d)
         # Fail if we cannot fix the test by updating goldens.
         self.fail('%d differences found between API and golden.' % diff_count)
 
@@ -338,7 +349,7 @@ class ApiCompatibilityTest(test.TestCase):
 
   def _checkBackwardsCompatibility(self,
                                    root,
-                                   golden_file_pattern,
+                                   golden_file_patterns,
                                    api_version,
                                    additional_private_map=None,
                                    omit_golden_symbols_map=None):
@@ -351,6 +362,13 @@ class ApiCompatibilityTest(test.TestCase):
       public_api_visitor.private_map['tf'].append('enable_v2_behavior')
 
     public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
+    # Do not descend into these numpy classes because their signatures may be
+    # different between internal and OSS.
+    public_api_visitor.do_not_descend_map['tf.experimental.numpy'] = [
+        'bool_', 'complex_', 'complex128', 'complex64', 'float_', 'float16',
+        'float32', 'float64', 'inexact', 'int_', 'int16', 'int32', 'int64',
+        'int8', 'object_', 'string_', 'uint16', 'uint32', 'uint64', 'uint8',
+        'unicode_', 'iinfo']
     if FLAGS.only_test_core_api:
       public_api_visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
     if additional_private_map:
@@ -360,7 +378,7 @@ class ApiCompatibilityTest(test.TestCase):
     proto_dict = visitor.GetProtos()
 
     # Read all golden files.
-    golden_file_list = file_io.get_matching_files(golden_file_pattern)
+    golden_file_list = file_io.get_matching_files(golden_file_patterns)
     if FLAGS.only_test_core_api:
       golden_file_list = _FilterNonCoreGoldenFiles(golden_file_list)
 
@@ -390,19 +408,21 @@ class ApiCompatibilityTest(test.TestCase):
     api_version = 1
     if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
       api_version = 2
-    golden_file_pattern = os.path.join(
-        resource_loader.get_root_dir_with_all_resources(),
-        _KeyToFilePath('*', api_version))
+    golden_file_patterns = [
+        os.path.join(resource_loader.get_root_dir_with_all_resources(),
+                     _KeyToFilePath('*', api_version)),
+        _GetTFNumpyGoldenPattern(api_version)]
     omit_golden_symbols_map = {}
-    if (api_version == 2 and FLAGS.only_test_core_api
-        and not _TENSORBOARD_AVAILABLE):
+    if (api_version == 2 and FLAGS.only_test_core_api and
+        not _TENSORBOARD_AVAILABLE):
       # In TF 2.0 these summary symbols are imported from TensorBoard.
       omit_golden_symbols_map['tensorflow.summary'] = [
-          'audio', 'histogram', 'image', 'scalar', 'text']
+          'audio', 'histogram', 'image', 'scalar', 'text'
+      ]
 
     self._checkBackwardsCompatibility(
         tf,
-        golden_file_pattern,
+        golden_file_patterns,
         api_version,
         # Skip compat.v1 and compat.v2 since they are validated
         # in separate tests.
@@ -414,11 +434,13 @@ class ApiCompatibilityTest(test.TestCase):
 
   def testAPIBackwardsCompatibilityV1(self):
     api_version = 1
-    golden_file_pattern = os.path.join(
+    golden_file_patterns = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
     self._checkBackwardsCompatibility(
-        tf.compat.v1, golden_file_pattern, api_version,
+        tf.compat.v1,
+        golden_file_patterns,
+        api_version,
         additional_private_map={
             'tf': ['pywrap_tensorflow'],
             'tf.compat': ['v1', 'v2'],
@@ -427,17 +449,19 @@ class ApiCompatibilityTest(test.TestCase):
 
   def testAPIBackwardsCompatibilityV2(self):
     api_version = 2
-    golden_file_pattern = os.path.join(
-        resource_loader.get_root_dir_with_all_resources(),
-        _KeyToFilePath('*', api_version))
+    golden_file_patterns = [
+        os.path.join(resource_loader.get_root_dir_with_all_resources(),
+                     _KeyToFilePath('*', api_version)),
+        _GetTFNumpyGoldenPattern(api_version)]
     omit_golden_symbols_map = {}
     if FLAGS.only_test_core_api and not _TENSORBOARD_AVAILABLE:
       # In TF 2.0 these summary symbols are imported from TensorBoard.
       omit_golden_symbols_map['tensorflow.summary'] = [
-          'audio', 'histogram', 'image', 'scalar', 'text']
+          'audio', 'histogram', 'image', 'scalar', 'text'
+      ]
     self._checkBackwardsCompatibility(
         tf.compat.v2,
-        golden_file_pattern,
+        golden_file_patterns,
         api_version,
         additional_private_map={'tf.compat': ['v1', 'v2']},
         omit_golden_symbols_map=omit_golden_symbols_map)

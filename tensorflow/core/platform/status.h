@@ -29,6 +29,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+// A struct representing a frame in a stack trace.
+struct StackFrame {
+  std::string file_name;
+  int line_number;
+  std::string function_name;
+};
+
 #if defined(__clang__)
 // Only clang supports warn_unused_result as a type annotation.
 class TF_MUST_USE_RESULT Status;
@@ -43,7 +50,15 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tensorflow::error::Code code, tensorflow::StringPiece msg);
+  Status(tensorflow::error::Code code, tensorflow::StringPiece msg)
+      : Status(code, msg, {}) {}
+
+  /// \brief Create a status with the specified error code, msg, and stack trace
+  /// as a human-readable string containing more detailed information.
+#ifndef SWIG
+  Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
+         std::vector<StackFrame>&& stack_trace);
+#endif
 
   /// Copy the specified status.
   Status(const Status& s);
@@ -56,14 +71,18 @@ class Status {
   static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.
-  bool ok() const { return (state_ == NULL); }
+  bool ok() const { return (state_ == nullptr); }
 
   tensorflow::error::Code code() const {
     return ok() ? tensorflow::error::OK : state_->code;
   }
 
-  const string& error_message() const {
+  const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
+  }
+
+  const std::vector<StackFrame>& stack_trace() const {
+    return ok() ? empty_stack_trace() : state_->stack_trace;
   }
 
   bool operator==(const Status& x) const;
@@ -82,7 +101,7 @@ class Status {
 
   /// \brief Return a string representation of this status suitable for
   /// printing. Returns the string `"OK"` for success.
-  string ToString() const;
+  std::string ToString() const;
 
   // Ignores any errors. This method does nothing except potentially suppress
   // complaints from any tools that are checking that errors are not dropped on
@@ -90,10 +109,12 @@ class Status {
   void IgnoreError() const;
 
  private:
-  static const string& empty_string();
+  static const std::string& empty_string();
+  static const std::vector<StackFrame>& empty_stack_trace();
   struct State {
     tensorflow::error::Code code;
-    string msg;
+    std::string msg;
+    std::vector<StackFrame> stack_trace;
   };
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)

@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -41,6 +43,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
     case kTfLiteInt64:
     case kTfLiteInt32:
+    case kTfLiteString:
       break;
     default:
       context->ReportError(
@@ -104,6 +107,15 @@ TfLiteStatus GatherNd(const TfLiteTensor* params, const TfLiteTensor* indices,
 }
 
 template <typename IndicesT>
+TfLiteStatus GatherNdString(const TfLiteTensor* params,
+                            const TfLiteTensor* indices, TfLiteTensor* output) {
+  reference_ops::GatherNdString(
+      GetTensorShape(params), params, GetTensorShape(indices),
+      GetTensorData<IndicesT>(indices), GetTensorShape(output), output);
+  return kTfLiteOk;
+}
+
+template <typename IndicesT>
 TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
                           const TfLiteTensor* indices, TfLiteTensor* output) {
   switch (params->type) {
@@ -117,6 +129,8 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
       return GatherNd<int32_t, IndicesT>(params, indices, output);
     case kTfLiteInt64:
       return GatherNd<int64_t, IndicesT>(params, indices, output);
+    case kTfLiteString:
+      return GatherNdString<IndicesT>(params, indices, output);
     default:
       context->ReportError(context,
                            "Params type '%s' are not supported by gather_nd.",

@@ -77,6 +77,10 @@ def serialize_concrete_function(concrete_function, node_ids, coder):
 
 def serialize_bare_concrete_function(concrete_function, name_map):
   """Build a SavedBareConcreteFunction."""
+  # TODO(edloper): Currently, bare concrete functions don't have access to a
+  # function_spec, so they can't be called with the structured signature.
+  # Update the serialization to include a function_spec.
+
   # pylint: disable=protected-access
   name = name_map.get(compat.as_text(concrete_function.name),
                       concrete_function.name)
@@ -151,7 +155,8 @@ def wrap_cached_variables(concrete_function):
   func_graph_module.func_graph_from_py_func(
       None, wrap_function, args=tuple(args), kwargs={},
       func_graph=outer_graph)
-  fn = defun.ConcreteFunction(outer_graph)
+  fn = defun.ConcreteFunction(
+      outer_graph, function_spec=concrete_function._function_spec)  # pylint: disable=protected-access
   fn._arg_keywords = concrete_function._arg_keywords  # pylint: disable=protected-access
   fn._num_positional_args = concrete_function._num_positional_args  # pylint: disable=protected-access
 

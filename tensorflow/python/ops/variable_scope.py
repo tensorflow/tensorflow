@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as collections_lib
 import copy
 import enum  # pylint: disable=g-bad-import-order
 import functools
@@ -42,10 +41,12 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -62,6 +63,8 @@ _api_usage_gauge = monitoring.BoolGauge(
 class _PartitionInfo(object):
   """Holds partition info used by initializer functions."""
 
+  __slots__ = ["_full_shape", "_var_offset"]
+
   def __init__(self, full_shape, var_offset):
     """Constructor.
 
@@ -76,13 +79,13 @@ class _PartitionInfo(object):
       ValueError: If `full_shape` or `var_offset` differ in length. If
         `var_offset` exceeds `full_shape` in any dimension.
     """
-    if not isinstance(full_shape, collections_lib.Sequence) or isinstance(
+    if not isinstance(full_shape, collections_abc.Sequence) or isinstance(
         full_shape, six.string_types):
       raise TypeError(
           "`full_shape` must be a sequence (like tuple or list) instead of " +
           type(full_shape).__name__)
 
-    if not isinstance(var_offset, collections_lib.Sequence) or isinstance(
+    if not isinstance(var_offset, collections_abc.Sequence) or isinstance(
         var_offset, six.string_types):
       raise TypeError(
           "`var_offset` must be a sequence (like tuple or list) instead of " +
@@ -150,7 +153,7 @@ class _PartitionInfo(object):
       ValueError: If `shape` is not the same length as `self.full_shape`. If
         the variable is partitioned in more than one dimension.
     """
-    if not isinstance(shape, collections_lib.Sequence) or isinstance(
+    if not isinstance(shape, collections_abc.Sequence) or isinstance(
         shape, six.string_types):
       raise TypeError(
           "`shape` must be a sequence (like tuple or list) instead of " +
@@ -277,6 +280,8 @@ class _VariableStore(object):
     vars: a dictionary with string names (same as passed in GetVar) as keys and
       the corresponding TensorFlow Variables as values.
   """
+
+  __slots__ = ["_vars", "_partitioned_vars", "_store_eager_variables"]
 
   def __init__(self):
     """Create a variable store."""
@@ -450,7 +455,7 @@ class _VariableStore(object):
         synchronization=VariableSynchronization.AUTO,
         aggregation=VariableAggregation.NONE):
       is_scalar = (
-          shape is not None and isinstance(shape, collections_lib.Sequence) and
+          shape is not None and isinstance(shape, collections_abc.Sequence) and
           not shape)
       # Partitioned variable case
       if partitioner is not None and not is_scalar:
@@ -1000,7 +1005,7 @@ class _VariableStore(object):
     return initializer, initializing_from_value
 
 
-class _LazyEvalTensor(object):
+class _LazyEvalTensor(core.Tensor):
   """A Tensor-like object that only evaluates its thunk when used."""
 
   def __init__(self, thunk):
@@ -1068,8 +1073,6 @@ session.register_session_run_conversion_functions(
     _LazyEvalTensor,
     lambda fetch: ([fetch._master_tensor], lambda fetched_vals: fetched_vals[0])  # pylint: disable=protected-access
     )
-
-ops.register_dense_tensor_like_type(_LazyEvalTensor)
 
 
 # To stop regularization, use this regularizer
@@ -2512,7 +2515,7 @@ def _call_partitioner(partitioner, shape, dtype):
                      "shape: %s" % shape)
 
   slicing = partitioner(shape=shape, dtype=dtype)
-  if not isinstance(slicing, collections_lib.Sequence):
+  if not isinstance(slicing, collections_abc.Sequence):
     raise ValueError("Partitioner must return a sequence, but saw: %s" %
                      slicing)
   if len(slicing) != shape.ndims:

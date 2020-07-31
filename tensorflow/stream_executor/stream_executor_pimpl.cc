@@ -173,7 +173,7 @@ StreamExecutor::~StreamExecutor() {
   }
 
   if (FLAGS_check_device_leaks) {
-    for (auto it : mem_allocs_) {
+    for (const auto &it : mem_allocs_) {
       LOG(INFO) << "Memory alloced at executor exit: addr: "
                 << absl::StrFormat("%p", it.first)
                 << ", bytes: " << it.second.bytes << ", trace: \n"
@@ -291,19 +291,22 @@ bool StreamExecutor::GetConvolveAlgorithms(
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
-    dnn::ConvolutionKind kind, Stream *stream, dnn::DataType element_type,
-    const dnn::BatchDescriptor &input_descriptor,
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+    const dnn::BatchDescriptor &input_descriptor, DeviceMemoryBase input_data,
     const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor,
+    ScratchAllocator *scratch_allocator,
     std::vector<dnn::ProfileResult> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
   return dnn_support->GetMIOpenConvolveAlgorithms(
-      kind, stream, element_type, input_descriptor, filter_descriptor,
-      convolution_descriptor, output_descriptor, out_algorithms);
+      kind, element_type, stream, input_descriptor, input_data,
+      filter_descriptor, filter_data, output_descriptor, output_data,
+      convolution_descriptor, scratch_allocator, out_algorithms);
 }
 
 bool StreamExecutor::GetRnnAlgorithms(
@@ -475,7 +478,7 @@ port::Status StreamExecutor::GetStatus(Stream *stream) {
 
 DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
   if (memory_limit_bytes_ > 0 &&
-      mem_alloc_bytes_ + size > memory_limit_bytes_) {
+      static_cast<int64>(mem_alloc_bytes_ + size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
                  << " within provided limit. [used=" << mem_alloc_bytes_

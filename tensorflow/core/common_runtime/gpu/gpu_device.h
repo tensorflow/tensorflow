@@ -114,6 +114,11 @@ class BaseGPUDevice : public LocalDevice {
   // the compute stream and are not yet known to have completed.
   int PendingKernels();
 
+  int priority() const { return stream_->priority; }
+
+  // Helper method for unit tests to reset the streams. Never use in production.
+  static void TestOnlyReset();
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
@@ -131,6 +136,7 @@ class BaseGPUDevice : public LocalDevice {
     se::Stream* host_to_device = nullptr;
     se::Stream* device_to_host = nullptr;
     gtl::InlinedVector<se::Stream*, 4> device_to_device;
+    int priority = 0;
   };
   class StreamGroupFactory;
 
@@ -305,6 +311,8 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
+  Status GetDeviceDetails(int device_index,
+                          std::unordered_map<string, string>* details) override;
 
   struct InterconnectMap {
     // Name of interconnect technology, if known.
@@ -363,9 +371,20 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status GetValidDeviceIds(const std::vector<PlatformGpuId>& visible_gpu_order,
                            std::vector<PlatformGpuId>* ids);
 
+  // Cache the valid device IDs if not already cached. Cached IDs are stored in
+  // field cached_device_ids_. Passes {0, 1, ..., num_devices-1} to
+  // GetValidDeviceIds, so this should only be used in functions where all
+  // devices should be treated as visible, like ListPhysicalDevices.
+  Status CacheDeviceIds();
+
   // visible_gpu_initialized_[platform_gpu_id] is true if visible GPU
   // platform_gpu_id has been initialized by the process.
   std::unordered_map<int, bool> visible_gpu_initialized_;
+
+  // Cached device IDs, as returned by GetValidDeviceIds when every physical
+  // device is visible. Cache should not be used if some devices are not
+  // visible.
+  std::vector<PlatformGpuId> cached_device_ids_;
 };
 
 }  // namespace tensorflow

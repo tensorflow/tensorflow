@@ -67,6 +67,7 @@ class LocallyConnected1D(Layer):
           any `dilation_rate` value != 1.
       padding: Currently only supports `"valid"` (case-insensitive).
           `"same"` may be supported in the future.
+          `"valid"` means no padding.
       data_format: A string,
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
@@ -375,6 +376,7 @@ class LocallyConnected2D(Layer):
           all spatial dimensions.
       padding: Currently only support `"valid"` (case-insensitive).
           `"same"` will be supported in future.
+          `"valid"` means no padding.
       data_format: A string,
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
@@ -782,7 +784,7 @@ def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
                              output_shape):
   """Apply N-D convolution with un-shared weights using a single sparse matmul.
 
-  This method outputs `inputs . tf.SparseTensor(indices=kernel_idxs,
+  This method outputs `inputs . tf.sparse.SparseTensor(indices=kernel_idxs,
   values=kernel, dense_shape=kernel_shape)`, with `.` standing for
   matrix-multiply. It also reshapes `inputs` to 2-D and `output` to (N+2)-D.
 

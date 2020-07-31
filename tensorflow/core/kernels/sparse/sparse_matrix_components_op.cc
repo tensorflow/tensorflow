@@ -120,10 +120,8 @@ REGISTER(CPU, complex128)
 
 REGISTER(GPU, float)
 REGISTER(GPU, double)
-#if GOOGLE_CUDA
 REGISTER(GPU, complex64)
 REGISTER(GPU, complex128)
-#endif
 
 #undef REGISTER
 
@@ -141,10 +139,8 @@ namespace functor {
 DECLARE_GPU_SPEC(int32);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if GOOGLE_CUDA
 DECLARE_GPU_SPEC(complex64);
 DECLARE_GPU_SPEC(complex128);
-#endif
 
 #undef DECLARE_GPU_SPEC
 }  // namespace functor

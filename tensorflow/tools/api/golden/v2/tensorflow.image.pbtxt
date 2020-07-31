@@ -134,7 +134,7 @@ tf_module {
   }
   member_method {
     name: "non_max_suppression_padded"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'pad_to_max_output_size\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'pad_to_max_output_size\', \'name\', \'sorted_input\', \'canonicalized_coordinates\', \'tile_size\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\', \'False\', \'False\', \'512\'], "
   }
   member_method {
     name: "non_max_suppression_with_scores"
@@ -231,6 +231,14 @@ tf_module {
   member_method {
     name: "ssim_multiscale"
     argspec: "args=[\'img1\', \'img2\', \'max_val\', \'power_factors\', \'filter_size\', \'filter_sigma\', \'k1\', \'k2\'], varargs=None, keywords=None, defaults=[\'(0.0448, 0.2856, 0.3001, 0.2363, 0.1333)\', \'11\', \'1.5\', \'0.01\', \'0.03\'], "
+  }
+  member_method {
+    name: "stateless_random_flip_left_right"
+    argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_random_flip_up_down"
+    argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "total_variation"

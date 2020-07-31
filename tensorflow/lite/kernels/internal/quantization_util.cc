@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 
 namespace tflite {
 
@@ -341,13 +342,13 @@ void NudgeQuantizationRange(const float min, const float max,
   const float quant_max_float = static_cast<float>(quant_max);
   *nudged_scale = (max - min) / (quant_max_float - quant_min_float);
   const float zero_point_from_min = quant_min_float - min / *nudged_scale;
-  uint16 nudged_zero_point;
+  uint16_t nudged_zero_point;
   if (zero_point_from_min < quant_min_float) {
-    nudged_zero_point = static_cast<uint16>(quant_min);
+    nudged_zero_point = static_cast<uint16_t>(quant_min);
   } else if (zero_point_from_min > quant_max_float) {
-    nudged_zero_point = static_cast<uint16>(quant_max);
+    nudged_zero_point = static_cast<uint16_t>(quant_max);
   } else {
-    nudged_zero_point = static_cast<uint16>(TfLiteRound(zero_point_from_min));
+    nudged_zero_point = static_cast<uint16_t>(TfLiteRound(zero_point_from_min));
   }
   *nudged_min = (quant_min_float - nudged_zero_point) * (*nudged_scale);
   *nudged_max = (quant_max_float - nudged_zero_point) * (*nudged_scale);
@@ -372,7 +373,7 @@ void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
 
 bool CheckedLog2(const float x, int* log2_result) {
   // Using TfLiteRound instead of std::round and std::log instead of
-  // std::log2 to work around these fuctions being missing in a toolchain
+  // std::log2 to work around these functions being missing in a toolchain
   // used in some TensorFlow tests as of May 2018.
   const float x_log2 = std::log(x) * (1.0f / std::log(2.0f));
   const float x_log2_rounded = TfLiteRound(x_log2);

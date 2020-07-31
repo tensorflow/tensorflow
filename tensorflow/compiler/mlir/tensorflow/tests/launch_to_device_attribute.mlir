@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-launch-to-device-attribute | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-launch-to-device-attribute | FileCheck %s
 
 
 // Tests single TensorFlow op is hoisted out and has the correct device assigned
@@ -70,8 +70,8 @@ func @non_tf_dialect_op_launch() {
       // expected-error@+1 {{'tf_device.launch' op must contain only 'tf' dialect ops}}
       %launch:2 = "tf_device.launch"() ( {
         %b = "tf.opB"(%a) : (tensor<i1>) -> tensor<i32>
-        %c = "unknown.opC"(%b) : (tensor<i32>) -> tensor<f32>
-        tf_device.return %c, %b : tensor<f32>, tensor<i32>
+        %c = addi %b, %b : tensor<i32>
+        tf_device.return %c, %b : tensor<i32>, tensor<i32>
       }) {device = "CPU:0"} : () -> (tensor<f32>, tensor<i32>)
       %d = "tf.opD"() : () -> tensor<i1>
       tf_executor.yield %a, %launch#0, %launch#1, %d : tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>

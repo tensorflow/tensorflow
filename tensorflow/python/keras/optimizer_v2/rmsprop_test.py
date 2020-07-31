@@ -30,17 +30,18 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 _DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
 # TODO(b/143684500): Eigen to support complex sqrt
-if (not test_util.IsBuiltWithNvcc() and not test.is_built_with_rocm()):
+if not test_util.IsBuiltWithNvcc():
   _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
 
 _TEST_PARAM_VALUES = [
@@ -104,15 +105,15 @@ class RMSpropOptimizerTest(test.TestCase):
   def testDense(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with ops.get_default_graph().as_default(), test_util.use_gpu():
+      with ops.get_default_graph().as_default(), testing_utils.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.2], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np, dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable(var1_np, dtype=dtype)
+        var0 = variables.Variable(var0_np, dtype=dtype)
+        var1 = variables.Variable(var1_np, dtype=dtype)
         grads0 = constant_op.constant(grads0_np, dtype=dtype)
         grads1 = constant_op.constant(grads1_np, dtype=dtype)
         opt = rmsprop.RMSprop(
@@ -186,8 +187,8 @@ class RMSpropOptimizerTest(test.TestCase):
       var1_np = np.array([3.0, 4.0])
       grads1_np = np.array([0.01, 0.2])
 
-      var0 = resource_variable_ops.ResourceVariable(var0_np)
-      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      var0 = variables.Variable(var0_np)
+      var1 = variables.Variable(var1_np)
       grads0 = constant_op.constant(grads0_np)
       grads1 = constant_op.constant(grads1_np)
       learning_rate = 0.01
@@ -258,8 +259,8 @@ class RMSpropOptimizerTest(test.TestCase):
       var1_np = np.array([3.0, 4.0])
       grads1_np = np.array([0.01, 0.2])
 
-      var0 = resource_variable_ops.ResourceVariable(var0_np)
-      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      var0 = variables.Variable(var0_np)
+      var1 = variables.Variable(var1_np)
       grads0 = constant_op.constant(grads0_np)
       grads1 = constant_op.constant(grads1_np)
       learning_rate = 0.01
@@ -327,7 +328,7 @@ class RMSpropOptimizerTest(test.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in _DATA_TYPES:
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
@@ -354,7 +355,7 @@ class RMSpropOptimizerTest(test.TestCase):
       for dtype in _DATA_TYPES:
         if test_util.is_xla_enabled() and dtype.is_complex:
           self.skipTest("b/143578550")
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
@@ -379,7 +380,7 @@ class RMSpropOptimizerTest(test.TestCase):
   def testSparse(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with ops.get_default_graph().as_default(), test_util.use_gpu():
+      with ops.get_default_graph().as_default(), testing_utils.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -461,8 +462,8 @@ class RMSpropOptimizerTest(test.TestCase):
   def testCallableParams(self):
     with context.eager_mode():
       for dtype in _DATA_TYPES:
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
 
@@ -547,18 +548,16 @@ class RMSpropOptimizerTest(test.TestCase):
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
 
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class SlotColocationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   @test_util.run_gpu_only
-  @test_util.run_in_graph_and_eager_modes
   def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
     with ops.device("/device:CPU:0"):
       if use_resource:
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                      dtype=dtypes.float32)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0],
-                                                      dtype=dtypes.float32)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)
       else:
         var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
         var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)

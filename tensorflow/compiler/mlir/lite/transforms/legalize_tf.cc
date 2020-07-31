@@ -28,17 +28,19 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "llvm/Support/Threading.h"
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -70,8 +72,21 @@ constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-struct LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+ public:
+  LegalizeTF() = default;
+  LegalizeTF(const LegalizeTF&) {}
+  explicit LegalizeTF(bool run_tfl_runtime_verification) {
+    run_tfl_runtime_verification_ = run_tfl_runtime_verification;
+  }
+
+  /// Performs the lowering to TFLite dialect.
   void runOnFunction() override;
+
+ private:
+  Option<bool> run_tfl_runtime_verification_{
+      *this, "run-tfl-runtime-verification",
+      llvm::cl::desc("Allow tfl runtime verification."), llvm::cl::init(true)};
 };
 
 // Returns true if all tensor value in `values` has static shape and same shape.
@@ -98,19 +113,18 @@ bool HasSameStaticShapes(Operation* op) {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
 
-#define DECL_CONVERT_OP(tf_op)                                             \
-  struct ConvertTF##tf_op##Op : public RewritePattern {                    \
-    explicit ConvertTF##tf_op##Op(MLIRContext* context)                    \
-        : RewritePattern(TF::tf_op##Op::getOperationName(), 1, context) {} \
-    PatternMatchResult matchAndRewrite(                                    \
-        Operation* op, PatternRewriter& rewriter) const override;          \
+#define DECL_CONVERT_OP(tf_op)                                               \
+  struct ConvertTF##tf_op##Op : public RewritePattern {                      \
+    explicit ConvertTF##tf_op##Op(MLIRContext* context)                      \
+        : RewritePattern(TF::tf_op##Op::getOperationName(), 1, context) {}   \
+    LogicalResult matchAndRewrite(Operation* op,                             \
+                                  PatternRewriter& rewriter) const override; \
   }
 
 // TODO(antiagainst): Define this pattern in a table-driven manner once variadic
 // operands are properly supported in declarative rewrite rule specification.
 
 DECL_CONVERT_OP(Assert);
-DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(MatrixDiagV2);
@@ -127,14 +141,14 @@ DECL_CONVERT_OP(BroadcastTo);
 
 #undef DECL_CONVERT_OP
 
-PatternMatchResult ConvertTFRandomUniformOp::matchAndRewrite(
+LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto random_uniform_op = cast<TF::RandomUniformOp>(op);
   if (random_uniform_op.seed() == 0 && random_uniform_op.seed2() == 0) {
-    return matchFailure();
+    return failure();
   }
   if (!random_uniform_op.dtype().isF32()) {
-    return matchFailure();
+    return failure();
   }
   typedef tensorflow::random::UniformDistribution<
       tensorflow::random::PhiloxRandom, float>
@@ -149,7 +163,7 @@ PatternMatchResult ConvertTFRandomUniformOp::matchAndRewrite(
           random_uniform_op.output().getType().dyn_cast_or_null<ShapedType>()) {
     if (auto ranked_output = output_type.dyn_cast_or_null<RankedTensorType>()) {
       if (!ranked_output.hasRank() || ranked_output.getNumDynamicDims() != 0) {
-        return matchFailure();
+        return failure();
       }
       num_elements = output_type.getNumElements();
       size_t offset = 0;
@@ -165,32 +179,33 @@ PatternMatchResult ConvertTFRandomUniformOp::matchAndRewrite(
       }
       auto output_data = DenseFPElementsAttr::get(output_type, data);
       rewriter.replaceOpWithNewOp<ConstantOp>(op, output_type, output_data);
-      return matchSuccess();
+      return success();
     }
   }
-  return matchFailure();
+  return failure();
 }
 
-PatternMatchResult ConvertTFConcatOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_concat_op = cast<TF::ConcatOp>(op);
+// Converts any IntegerAttr to an IntegerAttr of an i32 type.
+// The value won't change in the new attribute, but if the value is out of
+// the bound of i32, the function returns a failure.
+LogicalResult ConvertToI32Attr(IntegerAttr attr, IntegerAttr* attr_i32) {
+  if (attr.getType().isInteger(/*width=*/32)) {
+    *attr_i32 = attr;
+    return success();
+  }
 
-  auto values = tf_concat_op.values();
-  auto output_type = tf_concat_op.output().getType();
-  // Extract axis attribute from constant concat_dims tensor
-  ElementsAttr axis;
-  if (!matchPattern(tf_concat_op.concat_dim(), m_Constant(&axis)))
-    return matchFailure();
+  int64_t value = attr.getInt();
+  if (value > std::numeric_limits<int>::max() ||
+      value < std::numeric_limits<int>::min()) {
+    return failure();
+  }
 
-  StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
-  rewriter.replaceOpWithNewOp<TFL::ConcatenationOp>(
-      op, output_type, values, mlir::TFL::ExtractSingleElementAsInteger(axis),
-      fused_activation_function);
-  return matchSuccess();
+  *attr_i32 = IntegerAttr::get(
+      IntegerType::get(/*width=*/32, attr.getContext()), value);
+  return success();
 }
 
-PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
+LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concat_op = cast<TF::ConcatV2Op>(op);
 
@@ -198,15 +213,18 @@ PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
   auto output_type = tf_concat_op.output().getType();
   // Extract axis attribute from constant axis tensor
   ElementsAttr axis;
-  if (!matchPattern(tf_concat_op.axis(), m_Constant(&axis)))
-    return matchFailure();
+  if (!matchPattern(tf_concat_op.axis(), m_Constant(&axis))) return failure();
+  IntegerAttr axis_int = ExtractSingleElementAsInteger(axis);
+
+  // "axis" operand could be a i64 tensor. Resolve it here.
+  IntegerAttr axis_i32;
+  if (failed(ConvertToI32Attr(axis_int, &axis_i32))) return failure();
 
   StringAttr fused_activation_function =
       StringAttr::get("NONE", rewriter.getContext());
   rewriter.replaceOpWithNewOp<ConcatenationOp>(
-      op, output_type, values, ExtractSingleElementAsInteger(axis),
-      fused_activation_function);
-  return matchSuccess();
+      op, output_type, values, axis_i32, fused_activation_function);
+  return success();
 }
 
 // The following is effectively:
@@ -215,11 +233,11 @@ PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
 //      ConstBoolAttrTrue:$transpose_b),
 //   (TFL_FullyConnectedOp:$__0 $a, $b,
 //     NoInput.pattern, TFL_AF_None, TFL_FCWO_Default, ConstBoolAttrFalse)>;
-PatternMatchResult ConvertTFMatMulOp::matchAndRewrite(
+LogicalResult ConvertTFMatMulOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_matmul_op = cast<TF::MatMulOp>(op);
-  if (tf_matmul_op.transpose_a()) return matchFailure();
-  if (!tf_matmul_op.transpose_b()) return matchFailure();
+  if (tf_matmul_op.transpose_a()) return failure();
+  if (!tf_matmul_op.transpose_b()) return failure();
 
   Type output_type = tf_matmul_op.getResult().getType();
   // TODO(jpienaar): Follow up post shuffle discussion.
@@ -230,10 +248,10 @@ PatternMatchResult ConvertTFMatMulOp::matchAndRewrite(
       op->getOperand(1), no_input, rewriter.getStringAttr("NONE"),
       rewriter.getStringAttr("DEFAULT"), rewriter.getBoolAttr(false));
   rewriter.replaceOp(op, {fc_op.getResult(0)});
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFPackOp::matchAndRewrite(
+LogicalResult ConvertTFPackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_pack_op = cast<TF::PackOp>(op);
 
@@ -245,10 +263,10 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<PackOp>(op, output_type, values, values_count,
                                       axis);
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
+LogicalResult ConvertTFReshapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_reshape_op = cast<TF::ReshapeOp>(op);
 
@@ -269,37 +287,33 @@ PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
   }
   rewriter.replaceOpWithNewOp<ReshapeOp>(op, tf_reshape_op.output().getType(),
                                          input, shape);
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
+LogicalResult ConvertTFSplitOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_split_op = cast<TF::SplitOp>(op);
 
-  auto output_types = functional::map([](Value v) { return v.getType(); },
-                                      tf_split_op.output());
   // Number of splits cannot be negative.
   auto num_split = rewriter.getI32IntegerAttr(tf_split_op.num_split());
 
-  rewriter.replaceOpWithNewOp<TFL::SplitOp>(op, output_types,
+  rewriter.replaceOpWithNewOp<TFL::SplitOp>(op, tf_split_op.output().getTypes(),
                                             tf_split_op.split_dim(),
                                             tf_split_op.value(), num_split);
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
+LogicalResult ConvertTFSplitVOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_splitv_op = cast<TF::SplitVOp>(op);
 
-  auto output_types = functional::map([](Value v) { return v.getType(); },
-                                      tf_splitv_op.output());
   // Number of splits cannot be negative.
   auto num_split = rewriter.getI32IntegerAttr(tf_splitv_op.num_split());
 
   rewriter.replaceOpWithNewOp<TFL::SplitVOp>(
-      op, output_types, tf_splitv_op.value(), tf_splitv_op.size_splits(),
-      tf_splitv_op.split_dim(), num_split);
-  return matchSuccess();
+      op, tf_splitv_op.output().getTypes(), tf_splitv_op.value(),
+      tf_splitv_op.size_splits(), tf_splitv_op.split_dim(), num_split);
+  return success();
 }
 
 Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
@@ -315,7 +329,7 @@ Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
     // can't do any padding. Instead we just return it.
     return attribute;
   }
-  for (auto idx : dense_elem_attr.getIntValues()) {
+  for (const auto& idx : dense_elem_attr.getIntValues()) {
     padded_val.push_back(idx.getSExtValue());
   }
   auto attr_dim_count = ranked_attr_type.getShape()[0];
@@ -330,7 +344,7 @@ Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
   return rewriter.create<ConstantOp>(op->getLoc(), type, attr);
 }
 
-PatternMatchResult ConvertTFStridedSliceOp::matchAndRewrite(
+LogicalResult ConvertTFStridedSliceOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_strided_slice_op = cast<TF::StridedSliceOp>(op);
   auto ranked_input_type =
@@ -352,7 +366,7 @@ PatternMatchResult ConvertTFStridedSliceOp::matchAndRewrite(
             tf_strided_slice_op.new_axis_mask().getSExtValue()),
         rewriter.getI32IntegerAttr(
             tf_strided_slice_op.shrink_axis_mask().getSExtValue()));
-    return matchSuccess();
+    return success();
   }
 
   int num_input_dims = ranked_input_type.getRank();
@@ -382,22 +396,21 @@ PatternMatchResult ConvertTFStridedSliceOp::matchAndRewrite(
           tf_strided_slice_op.new_axis_mask().getSExtValue()),
       rewriter.getI32IntegerAttr(
           tf_strided_slice_op.shrink_axis_mask().getSExtValue()));
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
+LogicalResult ConvertTFUnpackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
 
   auto input = tf_unpack_op.value();
-  auto output_types = functional::map([](Value v) { return v.getType(); },
-                                      tf_unpack_op.output());
   auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num());
   // Axis can be negative.
   auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.axis().getSExtValue());
 
-  rewriter.replaceOpWithNewOp<UnpackOp>(op, output_types, input, num, axis);
-  return matchSuccess();
+  rewriter.replaceOpWithNewOp<UnpackOp>(op, tf_unpack_op.output().getTypes(),
+                                        input, num, axis);
+  return success();
 }
 
 // MatrixDiagV3 is MatrixDiagV2 with an alignment attribute. This attribute
@@ -441,7 +454,7 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
   if (!matchPattern(tf_matrix_diag_v2_or_v3_op.padding_value(),
                     m_Constant(&padding_value)))
     return false;
-  for (auto value : padding_value.getValues<APInt>()) {
+  for (const auto& value : padding_value.getValues<APInt>()) {
     if (value != 0) return false;
   }
 
@@ -449,25 +462,25 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
   return true;
 }
 
-PatternMatchResult ConvertTFMatrixDiagV2Op::matchAndRewrite(
+LogicalResult ConvertTFMatrixDiagV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   if (ConvertTFMatrixDiagV2orV3<TF::MatrixDiagV2Op>(op, &rewriter))
-    return matchSuccess();
-  return matchFailure();
+    return success();
+  return failure();
 }
 
-PatternMatchResult ConvertTFMatrixDiagV3Op::matchAndRewrite(
+LogicalResult ConvertTFMatrixDiagV3Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   if (ConvertTFMatrixDiagV2orV3<TF::MatrixDiagV3Op>(op, &rewriter))
-    return matchSuccess();
-  return matchFailure();
+    return success();
+  return failure();
 }
 
 // TF Lite doesn't support Assert, we just drop the assert from the graph.
-PatternMatchResult ConvertTFAssertOp::matchAndRewrite(
+LogicalResult ConvertTFAssertOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   rewriter.eraseOp(op);
-  return matchSuccess();
+  return success();
 }
 
 StatusOr<ConstantOp> CreateConstOpWithSingleValue(PatternRewriter* rewriter,
@@ -480,6 +493,14 @@ StatusOr<ConstantOp> CreateConstOpWithSingleValue(PatternRewriter* rewriter,
   switch (element_type.getKind()) {
     case mlir::StandardTypes::F16: {
       auto floatType = mlir::FloatType::getF16(element_type.getContext());
+      auto floatAttr =
+          mlir::FloatAttr::get(floatType, static_cast<float>(value));
+      std::vector<Attribute> floatValues({floatAttr});
+      attr = DenseElementsAttr::get(scalar_type, floatValues);
+      break;
+    }
+    case mlir::StandardTypes::BF16: {
+      auto floatType = mlir::FloatType::getBF16(element_type.getContext());
       auto floatAttr =
           mlir::FloatAttr::get(floatType, static_cast<float>(value));
       std::vector<Attribute> floatValues({floatAttr});
@@ -545,7 +566,7 @@ StatusOr<ConstantOp> CreateConstOpWithSingleValue(PatternRewriter* rewriter,
   return rewriter->create<ConstantOp>(loc, scalar_type, attr);
 }
 
-PatternMatchResult ConvertTFReciprocalOp::matchAndRewrite(
+LogicalResult ConvertTFReciprocalOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_reciprocal_op = cast<TF::ReciprocalOp>(op);
 
@@ -553,7 +574,7 @@ PatternMatchResult ConvertTFReciprocalOp::matchAndRewrite(
       &rewriter, op->getLoc(),
       tf_reciprocal_op.x().getType().cast<ShapedType>(), 1);
   if (!status_or_const_op.ok()) {
-    return matchFailure();
+    return failure();
   }
 
   StringAttr fused_activation_function =
@@ -562,10 +583,10 @@ PatternMatchResult ConvertTFReciprocalOp::matchAndRewrite(
   rewriter.replaceOpWithNewOp<TFL::DivOp>(op, status_or_const_op.ValueOrDie(),
                                           tf_reciprocal_op.x(),
                                           fused_activation_function);
-  return matchSuccess();
+  return success();
 }
 
-PatternMatchResult ConvertTFBroadcastToOp::matchAndRewrite(
+LogicalResult ConvertTFBroadcastToOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
   auto element_type = tf_broadcast_to_op.input().getType().cast<ShapedType>();
@@ -574,7 +595,7 @@ PatternMatchResult ConvertTFBroadcastToOp::matchAndRewrite(
   auto status_or_const_op =
       CreateConstOpWithSingleValue(&rewriter, op->getLoc(), element_type, 1);
   if (!status_or_const_op.ok()) {
-    return matchFailure();
+    return failure();
   }
 
   auto tfl_fill_op = rewriter.create<TFL::FillOp>(
@@ -587,7 +608,7 @@ PatternMatchResult ConvertTFBroadcastToOp::matchAndRewrite(
   rewriter.replaceOpWithNewOp<TFL::MulOp>(
       op, output_type, tf_broadcast_to_op.input(), tfl_fill_op,
       fused_activation_function);
-  return matchSuccess();
+  return success();
 }
 
 // Legalize unidirectional sequence lstm.
@@ -595,11 +616,11 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
   explicit LegalizeUnidirectionalSequenceLstm(MLIRContext* context)
       : RewritePattern(kUnidirectionalSequenceLstm, 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation* op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     auto tflite_indices_attr =
         op->getAttrOfType<ArrayAttr>(kTfLiteInputIndices);
-    if (!tflite_indices_attr) return matchFailure();
+    if (!tflite_indices_attr) return failure();
 
     SmallVector<int64_t, 20> tflite_indices;
     for (auto index_attr : tflite_indices_attr.getValue()) {
@@ -640,7 +661,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
                                                rewriter.getStringAttr("TANH")));
     // cell_clip.
     attributes.push_back(
-        rewriter.getNamedAttr("cell_clip", rewriter.getF32FloatAttr(10.0)));
+        rewriter.getNamedAttr("cell_clip", rewriter.getF32FloatAttr(0.0)));
     // proj_clip.
     attributes.push_back(
         rewriter.getNamedAttr("proj_clip", rewriter.getF32FloatAttr(0.0)));
@@ -654,7 +675,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
     // Rewire the output.
     op->getResult(2).replaceAllUsesWith(lstm_op.getResult());
     rewriter.eraseOp(op);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -663,24 +684,24 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
   explicit LegalizeUnidirectionalSequenceRnn(MLIRContext* context)
       : RewritePattern(kUnidirectionalSequenceRnn, 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation* op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     auto tflite_indices_attr =
         op->getAttrOfType<ArrayAttr>(kTfLiteInputIndices);
-    if (!tflite_indices_attr) return matchFailure();
+    if (!tflite_indices_attr) return failure();
 
     if (op->getNumOperands() != 5) {
       op->emitError()
           << "We're expecting 5 inputs for UnidirectionalSequenceRNN, only "
           << op->getNumOperands() << " provided";
-      return matchFailure();
+      return failure();
     }
 
     if (op->getNumResults() != 2) {
       op->emitError()
           << "We're expecting 2 inputs for UnidirectionalSequenceRNN, only "
           << op->getNumResults() << " found";
-      return matchFailure();
+      return failure();
     }
 
     // Populate inputs.
@@ -714,7 +735,7 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
     op->getResult(1).replaceAllUsesWith(rnn_op.getResult());
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -725,12 +746,12 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(context, &patterns);
-  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                  ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op,
-                  ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
-                  ConvertTFSplitVOp, ConvertTFStridedSliceOp, ConvertTFUnpackOp,
-                  ConvertTFAssertOp, ConvertTFReciprocalOp,
-                  ConvertTFRandomUniformOp, ConvertTFBroadcastToOp>(context);
+  patterns
+      .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
+              ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,
+              ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFStridedSliceOp,
+              ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFReciprocalOp,
+              ConvertTFRandomUniformOp, ConvertTFBroadcastToOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
@@ -742,12 +763,32 @@ void LegalizeTF::runOnFunction() {
   // graph.
   target.addLegalOp<mlir::ConstantOp>();
   target.addLegalOp<ConstOp>();
-  target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
-      Optional<ConversionTarget::DynamicLegalityCallbackFn>([](Operation* op) {
-        auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
-        if (!tfl_op) return false;
-        return succeeded(tfl_op.VerifyTflRuntimeTypes(tfl_op.getOperation()));
-      }));
+  if (run_tfl_runtime_verification_) {
+    target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
+        Optional<ConversionTarget::DynamicLegalityCallbackFn>(
+            [](Operation* op) {
+              auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
+              if (!tfl_op) return false;
+              return succeeded(tfl_op.VerifyTflRuntimeConstraints(op));
+            }));
+  } else {
+    target.addLegalDialect<TensorFlowLiteDialect>();
+  }
+
+  // Ignore transient errors by registering an no-op handler.
+  // Applying legalization patterns will emit unwanted, transient errors when
+  // the replaced TFLite ops do not meet the sanity checks. In order to ignore
+  // the transient errors, the following lines override a diagnostic handler
+  // with an no-op handler only while this pass runs.
+  uint64_t current_thread_id = llvm::get_threadid();
+  ScopedDiagnosticHandler scoped_diag_handler(
+      context, [&current_thread_id](Diagnostic&) -> LogicalResult {
+        // Consume only errors that are coming from the same thread in order not
+        // to ignore errors from other passes that are running. Things running
+        // in the pass manager can be multi-threaded.
+        return success(current_thread_id == llvm::get_threadid());
+      });
+
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
   // Look if there is a function that tries until it converge.
@@ -763,8 +804,9 @@ void LegalizeTF::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFPass() {
-  return std::make_unique<LegalizeTF>();
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
+    bool run_tfl_runtime_verification) {
+  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
 }
 
 static PassRegistration<LegalizeTF> pass(

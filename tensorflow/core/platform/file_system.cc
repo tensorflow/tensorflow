@@ -16,9 +16,6 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 
 #include <sys/stat.h>
-#if defined(IS_MOBILE_PLATFORM)
-#include <fnmatch.h>
-#endif
 
 #include <algorithm>
 #include <deque>
@@ -26,12 +23,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#include <fnmatch.h>
+#else
+#include "tensorflow/core/platform/regexp.h"
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
-#if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/platform/regexp.h"
-#endif
 #include "tensorflow/core/platform/scanner.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -39,16 +39,20 @@ limitations under the License.
 namespace tensorflow {
 
 bool FileSystem::Match(const string& filename, const string& pattern) {
-#if defined(IS_MOBILE_PLATFORM)
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
   // We avoid relying on RE2 on mobile platforms, because it incurs a
   // significant binary size increase.
+  // For POSIX platforms, there is no need to depend on RE2 if `fnmatch` can be
+  // used safely.
   return fnmatch(pattern.c_str(), filename.c_str(), FNM_PATHNAME) == 0;
 #else
   string regexp(pattern);
-  RE2::GlobalReplace(&regexp, "\\*", "[^/]*");
-  RE2::GlobalReplace(&regexp, "\\?", ".");
+  regexp = str_util::StringReplace(regexp, "*", "[^/]*", true);
+  regexp = str_util::StringReplace(regexp, "?", ".", true);
+  regexp = str_util::StringReplace(regexp, "(", "\\(", true);
+  regexp = str_util::StringReplace(regexp, ")", "\\)", true);
   return RE2::FullMatch(filename, regexp);
-#endif
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
 }
 
 string FileSystem::TranslateName(const string& name) const {
@@ -66,7 +70,8 @@ string FileSystem::TranslateName(const string& name) const {
   return this->CleanPath(path);
 }
 
-Status FileSystem::IsDirectory(const string& name) {
+Status FileSystem::IsDirectory(
+    const string& name /*, TransactionToken *token */) {
   // Check if path exists.
   TF_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
@@ -82,10 +87,11 @@ Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
   return Status::OK();
 }
 
-void FileSystem::FlushCaches() {}
+void FileSystem::FlushCaches(/* TransactionToken *token */) {}
 
-bool FileSystem::FilesExist(const std::vector<string>& files,
-                            std::vector<Status>* status) {
+bool FileSystem::FilesExist(
+    const std::vector<string>& files,
+    std::vector<Status>* status /*, TransactionToken *token */) {
   bool result = true;
   for (const auto& file : files) {
     Status s = FileExists(file);
@@ -100,9 +106,9 @@ bool FileSystem::FilesExist(const std::vector<string>& files,
   return result;
 }
 
-Status FileSystem::DeleteRecursively(const string& dirname,
-                                     int64* undeleted_files,
-                                     int64* undeleted_dirs) {
+Status FileSystem::DeleteRecursively(
+    const string& dirname, int64* undeleted_files,
+    int64* undeleted_dirs /*, TransactionToken *token */) {
   CHECK_NOTNULL(undeleted_files);
   CHECK_NOTNULL(undeleted_dirs);
 
@@ -172,7 +178,8 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   return ret;
 }
 
-Status FileSystem::RecursivelyCreateDir(const string& dirname) {
+Status FileSystem::RecursivelyCreateDir(
+    const string& dirname /*, TransactionToken *token */) {
   StringPiece scheme, host, remaining_dir;
   this->ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
@@ -217,7 +224,8 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   return Status::OK();
 }
 
-Status FileSystem::CopyFile(const string& src, const string& target) {
+Status FileSystem::CopyFile(
+    const string& src, const string& target /*, TransactionToken *token */) {
   return FileSystemCopyFile(this, src, this, target);
 }
 
@@ -304,7 +312,7 @@ StringPiece FileSystem::Basename(StringPiece path) const {
 StringPiece FileSystem::Extension(StringPiece path) const {
   StringPiece basename = this->Basename(path);
 
-  int pos = basename.rfind('.');
+  size_t pos = basename.rfind('.');
   if (pos == StringPiece::npos) {
     return StringPiece(path.data() + path.size(), 0);
   } else {
@@ -430,6 +438,16 @@ string FileSystem::CreateURI(StringPiece scheme, StringPiece host,
     return string(path);
   }
   return strings::StrCat(scheme, "://", host, path);
+}
+
+std::string FileSystem::DecodeTransaction(const TransactionToken* token) {
+  // TODO(sami): Switch using StrCat when void* is supported
+  if (token) {
+    std::stringstream oss;
+    oss << "Token= " << token->token << ", Owner=" << token->owner;
+    return oss.str();
+  }
+  return "No Transaction";
 }
 
 }  // namespace tensorflow

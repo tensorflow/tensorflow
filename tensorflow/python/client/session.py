@@ -862,7 +862,7 @@ class BaseSession(SessionInterface):
     * A `tf.Tensor`.
       The corresponding fetched value will be a numpy ndarray containing the
       value of that tensor.
-    * A `tf.SparseTensor`.
+    * A `tf.sparse.SparseTensor`.
       The corresponding fetched value will be a
       `tf.compat.v1.SparseTensorValue`
       containing the value of that sparse tensor.
@@ -907,7 +907,7 @@ class BaseSession(SessionInterface):
       `tf.compat.v1.placeholder`, the shape of
       the value will be checked for compatibility with the placeholder.
     * If the key is a
-      `tf.SparseTensor`,
+      `tf.sparse.SparseTensor`,
       the value should be a
       `tf.compat.v1.SparseTensorValue`.
     * If the key is a nested tuple of `Tensor`s or `SparseTensor`s, the value

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
@@ -154,6 +155,8 @@ class Pooling3DTest(xla_test.XLATestCase):
         padding="SAME",
         expected=expected_output.flatten())
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testKernelSmallerThanStride(self):
     self._VerifyValues(
         nn_ops.max_pool3d,
@@ -311,6 +314,8 @@ class Pooling3DTest(xla_test.XLATestCase):
             atol=1e-6)
         self.assertShapeEqual(actual_grad_gradients_vals, outputs)
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testMaxPoolGradValidPadding1_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
@@ -321,6 +326,8 @@ class Pooling3DTest(xla_test.XLATestCase):
         padding="VALID",
         pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testMaxPoolGradValidPadding2_1_6_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
@@ -343,6 +350,8 @@ class Pooling3DTest(xla_test.XLATestCase):
         strides=[1, 1, 1],
         padding="VALID")
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testMaxPoolGradValidPadding2_2_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
@@ -353,6 +362,8 @@ class Pooling3DTest(xla_test.XLATestCase):
         padding="VALID",
         pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testMaxPoolGradSamePadding1_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
@@ -363,6 +374,8 @@ class Pooling3DTest(xla_test.XLATestCase):
         padding="SAME",
         pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testMaxPoolGradSamePadding2_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
@@ -373,6 +386,8 @@ class Pooling3DTest(xla_test.XLATestCase):
         padding="SAME",
         pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testMaxPoolGradSamePadding2_2_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
@@ -383,6 +398,8 @@ class Pooling3DTest(xla_test.XLATestCase):
         padding="SAME",
         pool_grad_grad_func=gen_nn_ops.max_pool3d_grad_grad)
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testMaxPoolGradSamePadding3_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,

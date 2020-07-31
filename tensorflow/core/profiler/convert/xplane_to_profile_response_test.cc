@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -77,10 +78,9 @@ TEST(ConvertXPlaneToProfileResponse, OverviewPage) {
   ProfileResponse response;
   TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
   EXPECT_EQ(1, response.tool_data_size());
-  EXPECT_EQ("overview_page.pb", response.tool_data(/*index=*/0).name());
+  EXPECT_EQ("overview_page.pb", response.tool_data(0).name());
   OverviewPage overview_page;
-  ASSERT_TRUE(
-      overview_page.ParseFromString(response.tool_data(/*index=*/0).data()));
+  ASSERT_TRUE(overview_page.ParseFromString(response.tool_data(0).data()));
 }
 
 TEST(ConvertXPlaneToProfileResponse, InputPipeline) {
@@ -91,10 +91,9 @@ TEST(ConvertXPlaneToProfileResponse, InputPipeline) {
   ProfileResponse response;
   TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
   EXPECT_EQ(1, response.tool_data_size());
-  EXPECT_EQ("input_pipeline.pb", response.tool_data(/*index=*/0).name());
+  EXPECT_EQ("input_pipeline.pb", response.tool_data(0).name());
   InputPipelineAnalysisResult input_pipeline;
-  ASSERT_TRUE(
-      input_pipeline.ParseFromString(response.tool_data(/*index=*/0).data()));
+  ASSERT_TRUE(input_pipeline.ParseFromString(response.tool_data(0).data()));
 }
 
 TEST(ConvertXPlaneToProfileResponse, TensorflowStats) {
@@ -105,10 +104,9 @@ TEST(ConvertXPlaneToProfileResponse, TensorflowStats) {
   ProfileResponse response;
   TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
   EXPECT_EQ(1, response.tool_data_size());
-  EXPECT_EQ("tensorflow_stats.pb", response.tool_data(/*index=*/0).name());
+  EXPECT_EQ("tensorflow_stats.pb", response.tool_data(0).name());
   TfStatsDatabase tf_stats_db;
-  ASSERT_TRUE(
-      tf_stats_db.ParseFromString(response.tool_data(/*index=*/0).data()));
+  ASSERT_TRUE(tf_stats_db.ParseFromString(response.tool_data(0).data()));
 }
 
 }  // namespace

@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
@@ -52,7 +52,7 @@ bool DecodeOpaqueValueInConstantOp(Operation *op) {
 }
 
 // A pass to decode opaque constant values into readable ones.
-struct DecodeConstant : public FunctionPass<DecodeConstant> {
+struct DecodeConstant : public PassWrapper<DecodeConstant, FunctionPass> {
   void runOnFunction() override {
     auto walk_result = getFunction().walk([](Operation *op) {
       return DecodeOpaqueValueInConstantOp(op) ? WalkResult::advance()
@@ -64,7 +64,7 @@ struct DecodeConstant : public FunctionPass<DecodeConstant> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateDecodeConstantPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateDecodeConstantPass() {
   return std::make_unique<DecodeConstant>();
 }
 

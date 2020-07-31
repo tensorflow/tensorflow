@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/framework/gradients.h"
+
 #include <deque>
 #include <vector>
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
-#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/while_gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
@@ -521,15 +522,15 @@ Status SymbolicGradientBuilder::AddGradients() {
     // gradient function to the src node/output to which it should be
     // backpropped. Maybe grad functions can return a vector of Output pairs to
     // make this association explicit.
-    size_t dx_index = 0;
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      if (dx_index == dx.size()) {
+      int dx_index = e->dst_input();
+      if (dx_index >= dx.size()) {
         return errors::Internal(
             "Invalid gradient output index: ", dx_index, " size: ", dx.size());
       }
       TF_RETURN_IF_ERROR(
-          BackpropAlongEdge(dx[dx_index++], {e->src(), e->src_output()}));
+          BackpropAlongEdge(dx[dx_index], {e->src(), e->src_output()}));
     }
   }
 

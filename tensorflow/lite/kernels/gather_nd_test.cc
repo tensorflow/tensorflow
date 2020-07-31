@@ -12,13 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <string>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -313,5 +318,28 @@ TEST(GatherNdOpTest, Int64Int64) {
               ElementsAreArray({-2LL, 2LL, 2LL, 3LL, 3LL, -3LL}));
 }
 
+TEST(GatherNdOpTest, StringInt32) {
+  GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
+  m.SetInput<std::string>({"A", "B", "C", "D", "E", "F",  //
+                           "G", "H", "I", "J", "K", "L",  //
+                           "M", "N", "O", "P", "Q", "R"});
+  m.SetPositions<int32_t>({0, 1, 1, 0});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<std::string>(),
+              ElementsAreArray({"D", "E", "F", "G", "H", "I"}));
+}
+
+TEST(GatherNdOpTest, StringInt64) {
+  GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT64, {2, 2}});
+  m.SetInput<std::string>({"A", "B", "C", "D", "E", "F",  //
+                           "G", "H", "I", "J", "K", "L",  //
+                           "M", "N", "O", "P", "Q", "R"});
+  m.SetPositions<int64_t>({0LL, 1LL, 1LL, 0LL});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<std::string>(),
+              ElementsAreArray({"D", "E", "F", "G", "H", "I"}));
+}
 }  // namespace
 }  // namespace tflite

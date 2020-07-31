@@ -40,11 +40,9 @@ from tensorflow.python.autograph.pyct.static_analysis import annos
 class Analyzer(cfg.GraphVisitor):
   """CFG visitor that performs liveness analysis at statement level."""
 
-  def __init__(self, graph):
+  def __init__(self, graph, include_annotations):
     super(Analyzer, self).__init__(graph)
-    # This allows communicating that nodes generate extra symbols,
-    # e.g. those that a function definition closes over.
-    self.extra_gen = {}
+    self.include_annotations = include_annotations
 
   def init_state(self, _):
     return set()
@@ -55,7 +53,9 @@ class Analyzer(cfg.GraphVisitor):
     if anno.hasanno(node.ast_node, anno.Static.SCOPE):
       node_scope = anno.getanno(node.ast_node, anno.Static.SCOPE)
 
-      gen = node_scope.read | self.extra_gen.get(node.ast_node, frozenset())
+      gen = node_scope.read
+      if not self.include_annotations:
+        gen -= node_scope.annotations
       # TODO(mdan): verify whether composites' parents need to be added.
       # E.g. whether x needs to be added if x.y is live. Theoretically the
       # activity analysis should have both so that wouldn't be needed.
@@ -66,13 +66,21 @@ class Analyzer(cfg.GraphVisitor):
         live_out |= self.in_[n]
       live_in = gen | (live_out - kill)
 
+      reaching_functions = anno.getanno(
+          node.ast_node, anno.Static.DEFINED_FNS_IN)
+      for fn_ast_node in reaching_functions:
+        if isinstance(fn_ast_node, gast.Lambda):
+          # Exception: lambda functions are assumed to be used only in the
+          # place where they are defined, and not later.
+          continue
+        fn_scope = anno.getanno(fn_ast_node, annos.NodeAnno.ARGS_AND_BODY_SCOPE)
+        # Any closure of a reaching function definition is conservatively
+        # considered live.
+        live_in |= (fn_scope.read - fn_scope.bound)
+
     else:
-      # Nodes that don't have a scope annotation are assumed not to touch any
-      # symbols.
-      # This Name node below is a literal name, e.g. False
-      assert isinstance(node.ast_node,
-                        (gast.Name, gast.Continue, gast.Break, gast.Pass,
-                         gast.Global, gast.Nonlocal)), type(node.ast_node)
+      assert self.can_ignore(node), (node.ast_node, node)
+
       live_out = set()
       for n in node.next:
         live_out |= self.in_[n]
@@ -85,7 +93,7 @@ class Analyzer(cfg.GraphVisitor):
     return prev_live_in != live_in
 
 
-class WholeTreeAnalyzer(transformer.Base):
+class TreeAnnotator(transformer.Base):
   """Runs liveness analysis on each of the functions defined in the AST.
 
   If a function defined other local functions, those will have separate CFGs.
@@ -95,7 +103,7 @@ class WholeTreeAnalyzer(transformer.Base):
   subfunction. For example:
 
     def foo():
-      # baz is live here
+      # baz is live from here on
       def bar():
         print(baz)
 
@@ -103,62 +111,15 @@ class WholeTreeAnalyzer(transformer.Base):
   for the effect above.
   """
 
-  def __init__(self, source_info, graphs):
-    super(WholeTreeAnalyzer, self).__init__(source_info)
+  def __init__(self, source_info, graphs, include_annotations):
+    super(TreeAnnotator, self).__init__(source_info)
+    self.include_annotations = include_annotations
+    self.allow_skips = False
     self.graphs = graphs
-    self.current_analyzer = None
-    self.analyzers = {}
-
-  def visit_FunctionDef(self, node):
-    parent_analyzer = self.current_analyzer
-    subgraph = self.graphs[node]
-
-    # Postorder tree processing makes this a bit complicated:
-    #  1. construct an analyzer object and put it on stack
-    #  2. recursively walk the subtree; this will initialize the analyzer's
-    #     in_ state properly (done in a block below)
-    #  3. run the final analysis
-    analyzer = Analyzer(subgraph)
-    self.current_analyzer = analyzer
-    node = self.generic_visit(node)
-    analyzer.visit_reverse()
-
-    if parent_analyzer is not None:
-      # Wire the state between the two subgraphs' analyzers.
-      child_in_state = analyzer.in_[subgraph.entry]
-      # Exception: symbols modified in the child function are local to it
-      body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
-      for qn in body_scope.modified:
-        # Note: a function modifying the symbol doesn't make that symbol
-        # live at the function's entry. In fact when that happens it is
-        # probably a case of undefined assignment, like this:
-        #
-        #   bar = 0
-        #   def foo():
-        #     print(bar)  # bar is undefined here!
-        #     bar = 1
-        #
-        # Hence we use discard and not remove below.
-        child_in_state.discard(qn)
-      parent_analyzer.extra_gen[node] = frozenset(child_in_state,)
-
-    self.analyzers[node] = analyzer
-    self.current_analyzer = parent_analyzer
-    return node
-
-
-class Annotator(transformer.Base):
-  """AST visitor that annotates each control flow block with live symbols."""
-
-  # Note: additional nodes may be added as needed.
-
-  def __init__(self, source_info, cross_function_analyzer):
-    super(Annotator, self).__init__(source_info)
-    self.cross_function_analyzer = cross_function_analyzer
     self.current_analyzer = None
 
   def visit(self, node):
-    node = super(Annotator, self).visit(node)
+    node = super(TreeAnnotator, self).visit(node)
     if (self.current_analyzer is not None and
         isinstance(node, gast.stmt) and
         node in self.current_analyzer.graph.index):
@@ -167,13 +128,22 @@ class Annotator(transformer.Base):
                    frozenset(self.current_analyzer.in_[cfg_node]))
     return node
 
-  def visit_FunctionDef(self, node):
+  def _analyze_function(self, node, is_lambda):
     parent_analyzer = self.current_analyzer
-    self.current_analyzer = self.cross_function_analyzer.analyzers[node]
 
+    analyzer = Analyzer(self.graphs[node], self.include_annotations)
+    analyzer.visit_reverse()
+    self.current_analyzer = analyzer
     node = self.generic_visit(node)
+
     self.current_analyzer = parent_analyzer
     return node
+
+  def visit_Lambda(self, node):
+    return self._analyze_function(node, is_lambda=True)
+
+  def visit_FunctionDef(self, node):
+    return self._analyze_function(node, is_lambda=False)
 
   def _block_statement_live_out(self, node):
     successors = self.current_analyzer.graph.stmt_next[node]
@@ -232,18 +202,18 @@ class Annotator(transformer.Base):
     return node
 
 
-def resolve(node, source_info, graphs):
+# TODO(mdan): Investigate the possibility of removing include_annotations.
+def resolve(node, source_info, graphs, include_annotations=True):
   """Resolves the live symbols at the exit of control flow statements.
 
   Args:
     node: ast.AST
     source_info: transformer.SourceInfo
     graphs: Dict[ast.FunctionDef, cfg.Graph]
+    include_annotations: Bool, whether type annotations should be included in
+      the analysis.
   Returns:
     ast.AST
   """
-  cross_function_analyzer = WholeTreeAnalyzer(source_info, graphs)
-  node = cross_function_analyzer.visit(node)
-  visitor = Annotator(source_info, cross_function_analyzer)
-  node = visitor.visit(node)
+  node = TreeAnnotator(source_info, graphs, include_annotations).visit(node)
   return node

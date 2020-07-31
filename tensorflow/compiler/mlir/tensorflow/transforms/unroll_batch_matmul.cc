@@ -24,16 +24,15 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -44,7 +43,8 @@ namespace {
 // Unrolls a BatchMatMul on the batch dimension. We need to slice each batch out
 // of the inputs, matmul them individually, then stack them all back together at
 // the end.
-struct UnrollBatchMatMulPass : public FunctionPass<UnrollBatchMatMulPass> {
+struct UnrollBatchMatMulPass
+    : public PassWrapper<UnrollBatchMatMulPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -54,7 +54,7 @@ void UnrollBatchMatMulPass::runOnFunction() {
 
   patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(&getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
@@ -186,18 +186,18 @@ TF::PackOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createMatMulOps(
 }
 
 template <typename BatchMatMulOpType>
-PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
+LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     BatchMatMulOpType op, PatternRewriter& rewriter) const {
   Value input_lhs = op.x();
   Value input_rhs = op.y();
 
   if (!input_lhs.getType().isa<RankedTensorType>()) {
     // LHS must be a ranked tensor type
-    return this->matchFailure();
+    return failure();
   }
   if (!input_rhs.getType().isa<RankedTensorType>()) {
     // RHS must be a ranked tensor type
-    return this->matchFailure();
+    return failure();
   }
 
   auto lhs_type = input_lhs.getType().cast<RankedTensorType>();
@@ -207,7 +207,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
 
   if (element_type != rhs_type.getElementType()) {
     // The element type of LHS must be the same with element type of RHS
-    return this->matchFailure();
+    return failure();
   }
 
   auto lhs_shape = lhs_type.getShape();
@@ -220,7 +220,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   const int dims_b = rhs_shape.size();
   if (dims_a < 2 || dims_b < 2) {
     // Both inputs must have rank >= 2
-    return this->matchFailure();
+    return failure();
   }
 
   // Transpose LHS input if necessary.
@@ -241,7 +241,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
 
   if (lhs_shape[dims_a - 1] != rhs_shape[dims_b - 2]) {
     // Input dimensions must be compatible for multiplication.
-    return this->matchFailure();
+    return failure();
   }
 
   if (dims_a == 2 && dims_b == 2) {
@@ -254,19 +254,19 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
                                               /*b=*/input_rhs,
                                               /*transpose_a=*/false_attr,
                                               /*transpose_b=*/false_attr);
-    return this->matchSuccess();
+    return success();
   }
 
   // Input dimensions must be defined. MatMulBCast does not support partial
   // shapes.
   for (auto dim : lhs_shape) {
     if (dim == -1) {
-      return this->matchFailure();
+      return failure();
     }
   }
   for (auto dim : rhs_shape) {
     if (dim == -1) {
-      return this->matchFailure();
+      return failure();
     }
   }
   // Ensure that batch shapes are broadcastable.
@@ -277,7 +277,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
 
   if (!bcast.IsValid()) {
     // Input batch dimensions must be broadcastable
-    return this->matchFailure();
+    return failure();
   }
 
   // Compute slices for each batch in the LHS and RHS.
@@ -302,14 +302,14 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   auto reshape_op = createReshapeOp(pack_op.output(), result_shape,
                                     element_type, loc, rewriter);
   rewriter.replaceOp(op, reshape_op.output());
-  return this->matchSuccess();
+  return success();
 }
 
 static PassRegistration<UnrollBatchMatMulPass> pass(
     "tf-unroll-batch-matmul",
     "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.");
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateUnrollBatchMatMulPassPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
   return std::make_unique<UnrollBatchMatMulPass>();
 }
 

@@ -14,7 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -22,6 +31,7 @@ namespace profiler {
 XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
     : stat_(stat),
       metadata_(plane->GetStatMetadata(stat->metadata_id())),
+      plane_(plane),
       type_(plane->GetStatType(stat->metadata_id())) {}
 
 std::string XStatVisitor::ToString() const {
@@ -34,8 +44,27 @@ std::string XStatVisitor::ToString() const {
       return absl::StrCat(stat_->double_value());
     case XStat::kStrValue:
       return stat_->str_value();
+    case XStat::kBytesValue:
+      return "<opaque bytes>";
+    case XStat::kRefValue:
+      return plane_->GetStatMetadata(stat_->ref_value())->name();
     case XStat::VALUE_NOT_SET:
       return "";
+  }
+}
+
+absl::string_view XStatVisitor::StrOrRefValue() const {
+  switch (stat_->value_case()) {
+    case XStat::kStrValue:
+      return stat_->str_value();
+    case XStat::kRefValue:
+      return plane_->GetStatMetadata(stat_->ref_value())->name();
+    case XStat::kInt64Value:
+    case XStat::kUint64Value:
+    case XStat::kDoubleValue:
+    case XStat::kBytesValue:
+    case XStat::VALUE_NOT_SET:
+      return absl::string_view();
   }
 }
 

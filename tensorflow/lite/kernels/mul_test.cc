@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stddef.h>
+#include <stdint.h>
+
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -291,12 +296,6 @@ void NoActivation() {
 
 template <TensorType tensor_type, typename integer_dtype>
 void NoActivationLargeMultiplier() {
-  // TODO(b/138722124): Remove this after setting the appropriate op version (3)
-  // for dependent tests.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    // NNAPI doesn't currently support Mul with multiplier>1.
-    return;
-  }
   // Intentionally pathological output range much narrower than needed
   // to represent input values to exercise the multiplier>1 case.
   QuantizedMulOpModel m({tensor_type, {1, 2, 2, 1}, -100, 100},

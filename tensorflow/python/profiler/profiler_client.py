@@ -30,7 +30,8 @@ def trace(service_addr,
           logdir,
           duration_ms,
           worker_list='',
-          num_tracing_attempts=3):
+          num_tracing_attempts=3,
+          options=None):
   """Sends grpc requests to profiler server to perform on-demand profiling.
 
   This method will block caller thread until it receives tracing result. This
@@ -48,6 +49,8 @@ def trace(service_addr,
       the current session (TPU only).
     num_tracing_attempts: Optional. Automatically retry N times when no trace
       event is collected (default 3).
+    options: profiler.experimental.ProfilerOptions namedtuple for miscellaneous
+      profiler options.
 
   Raises:
     UnavailableError: If no trace event is collected.
@@ -86,9 +89,10 @@ def trace(service_addr,
   Open your browser and go to localhost:6006/#profile to view profiling results.
 
   """
+  opts = dict(options._asdict()) if options is not None else {}
   _pywrap_profiler.trace(
       _strip_prefix(service_addr, _GRPC_PREFIX), logdir, worker_list, True,
-      duration_ms, num_tracing_attempts)
+      duration_ms, num_tracing_attempts, opts)
 
 
 @tf_export('profiler.experimental.client.monitor', v1=[])

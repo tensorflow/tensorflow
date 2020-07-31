@@ -53,7 +53,7 @@ struct Softplus {
     activations.device(d) = too_large.select(
         features,                       // softplus(x) ~= x for x large
         too_small.select(features_exp,  // softplus(x) ~= exp(x) for x small
-                         (features_exp + features.constant(T(1))).log()));
+                         features_exp.log1p()));
   }
 };
 

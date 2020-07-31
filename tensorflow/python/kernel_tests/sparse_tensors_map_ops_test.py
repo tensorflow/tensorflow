@@ -217,7 +217,7 @@ class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
             st_serialized, dtype=values.dtype)
         st_deserialized_op = st_deserialized.values.op
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         st_roundtrip_values = self.evaluate(st_roundtrip)
         st_deserialized_values = self.evaluate(st_deserialized)

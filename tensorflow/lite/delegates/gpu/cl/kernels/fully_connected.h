@@ -37,9 +37,12 @@ namespace cl {
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Tune(const TuningParameters& params) override {
+    return absl::OkStatus();
+  }
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   FullyConnected(FullyConnected&& kernel);
@@ -49,54 +52,61 @@ class FullyConnected : public GPUOperation {
 
  private:
   explicit FullyConnected(const OperationDef& definition);
-  friend Status CreateFullyConnected(const CreationContext& creation_context,
-                                     const OperationDef& definition,
-                                     const FullyConnectedAttributes& attr,
-                                     FullyConnected* result);
+  friend absl::Status CreateFullyConnected(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const FullyConnectedAttributes& attr, FullyConnected* result);
 
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType T, typename S>
-  void RearrangeWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+  void RearrangeWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                         absl::Span<S> dst);
-
-  Buffer weights_;
-  LinearStorage biases_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(0, 0, 0);
 };
 
 template <DataType T>
-Status FullyConnected::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+absl::Status FullyConnected::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
   const int elements_count = src_depth * dst_depth * 4;
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
 
   const int float4_size = f32_weights ? 16 : 8;
 
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  BufferDescriptor desc;
+  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.element_size = 16;
+
+  Buffer weights_buffer;
+  if (f32_weights) {
     std::vector<float4> gpu_data(dst_depth * src_depth * 4);
     RearrangeWeights(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
-                                context, &weights_);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
+                                         gpu_data.data(), context,
+                                         &weights_buffer));
   } else {
     std::vector<half4> gpu_data(dst_depth * src_depth * 4);
     RearrangeWeights(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
-                                context, &weights_);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
+                                         gpu_data.data(), context,
+                                         &weights_buffer));
   }
+
+  args_.AddObject("weights", AccessType::READ,
+                  absl::make_unique<Buffer>(std::move(weights_buffer)),
+                  absl::make_unique<BufferDescriptor>(desc));
+
+  return absl::OkStatus();
 }
 
 template <DataType T, typename S>
 void FullyConnected::RearrangeWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+    const tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   int counter = 0;
 
   for (int s = 0; s < src_depth; ++s) {
@@ -123,10 +133,10 @@ void FullyConnected::RearrangeWeights(
   }
 }
 
-Status CreateFullyConnected(const CreationContext& creation_context,
-                            const OperationDef& definition,
-                            const FullyConnectedAttributes& attr,
-                            FullyConnected* result);
+absl::Status CreateFullyConnected(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  FullyConnected* result);
 
 }  // namespace cl
 }  // namespace gpu

@@ -15,19 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <algorithm>
-#include <cstdarg>
+#include <iterator>
 #include <limits>
 #include <random>
 #include <sstream>
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "ruy/matrix.h"  // from @ruy
+#include "ruy/reference_mul.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
 
 namespace tflite {
 
@@ -350,11 +357,10 @@ void ReferenceGemm(
   cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, rhs_data, &ruy_rhs);
   cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, dst_data, &ruy_dst);
 
-  ruy::BasicSpec<AccumScalar, DstScalar> ruy_spec;
-  cpu_backend_gemm::detail::MakeRuySpec(params, &ruy_spec);
+  ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
+  cpu_backend_gemm::detail::MakeRuyMulParams(params, &ruy_mul_params);
 
-  ruy::Mul<ruy::Path::kReference>(ruy_lhs, ruy_rhs, ruy_spec,
-                                  context->ruy_context(), &ruy_dst);
+  ruy::ReferenceMul(ruy_lhs, ruy_rhs, ruy_mul_params, &ruy_dst);
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
@@ -364,7 +370,8 @@ void TestSomeGemm(int rows, int depth, int cols,
   CpuBackendContext cpu_backend_context;
   std::default_random_engine random_engine;
   cpu_backend_context.SetMaxNumThreads(1 + (random_engine() % 8));
-
+  bool use_caching = static_cast<bool>(random_engine() % 2);
+  cpu_backend_context.SetUseCaching(use_caching);
   const bool use_golden = !golden.empty();
 
   std::vector<LhsScalar> lhs_data;

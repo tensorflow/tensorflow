@@ -160,7 +160,7 @@ string TypeNameVariantImpl(
     const T& value,
     TypeNameResolver<T, false /* has_type_name */, false /* Tensor */,
                      false /* protobuf */>) {
-  return port::MaybeAbiDemangle(MakeTypeIndex<T>().name());
+  return port::MaybeAbiDemangle(TypeIndex::Make<T>().name());
 }
 
 template <typename T>

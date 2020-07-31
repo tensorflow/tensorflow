@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/python/grappler/model_analyzer.h"

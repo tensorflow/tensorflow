@@ -238,7 +238,7 @@ TEST_F(AllReduceCombinerTest, NoDependentCombination) {
 
 // Tests that AllReduce ops with different groups are not combined.
 TEST_F(AllReduceCombinerTest, GroupAllReduce) {
-  auto module = CreateNewVerifiedModule();
+  auto module = CreateNewVerifiedModule(TestName(), /*replica_count=*/4);
   HloComputation::Builder b(TestName());
   HloComputation* reduction = MakeReduction(HloOpcode::kAdd, module.get());
 

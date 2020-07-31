@@ -122,8 +122,11 @@ void FusionNodeIndexingEvaluation::UpdateIndexingUsersOfOperands(
       operand = fusion_->operand(operand->parameter_number());
     }
     // For simplicity we assume that all shape and layout changing
-    // operations invalidate index reuse.
-    if (Shape::Equal().IgnoreElementType()(operand->shape(),
+    // operations except Transposes invalidate index reuse. Transposes are
+    // special: although they are shape changing, we can reuse the
+    // multi-dimensional index for the operand by permuting it.
+    if (instruction->opcode() == HloOpcode::kTranspose ||
+        Shape::Equal().IgnoreElementType()(operand->shape(),
                                            instruction->shape())) {
       // If the index is reused, it means the operand gets index values
       // from the same set of (indirect) users as 'instruction' itself.

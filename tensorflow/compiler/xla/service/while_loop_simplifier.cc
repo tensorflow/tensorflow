@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -21,8 +23,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
@@ -492,14 +496,43 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   // Transform while loops with static trip count of 1 into a call op, then
   // inline the call.
   if (trip_count && *trip_count == 1) {
-    auto computation = while_op->parent();
-    auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
-        while_op->shape(), while_op->operands(), while_op->while_body()));
-    TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
-    TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
-                        CallInliner::Inline(call_op));
-    (void)inlined_instructions_map;
-    return true;
+    // Do not simplify the loop away when there is a side-effectful op,
+    // otherwise the infeed op may not inherit the data dependency from
+    // the while loop.
+    //
+    // Example: while_body (param_a) {
+    //   param_a = parameter(0)
+    //   infeed2 = infeed()
+    // }
+    //
+    // infeed1 = ...
+    // while = while(infeed1), body=while_body // infeed2 has implicit
+    // dependency on infeed1.
+    //
+    // After simplification:
+    //
+    // infeed1 = ...
+    // infeed2 = infeed() // no dependency between infeed1 and infeed2. infeed1
+    //                    // can be scheduled after infeed2.
+    //
+    bool has_side_effects = absl::c_any_of(
+        while_op->called_computations(), [](const HloComputation* computation) {
+          return computation->HasSideEffect();
+        });
+    if (!has_side_effects) {
+      auto computation = while_op->parent();
+      auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
+          while_op->shape(), while_op->operands(), while_op->while_body()));
+      TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
+      TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                          CallInliner::Inline(call_op));
+      (void)inlined_instructions_map;
+      return true;
+    } else {
+      VLOG(2) << "Not attempting to simplify while loop because it contains a "
+                 "side-effecting node: "
+              << while_op->ToShortString();
+    }
   }
   return false;
 }

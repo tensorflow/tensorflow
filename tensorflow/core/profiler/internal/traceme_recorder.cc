@@ -16,8 +16,18 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <algorithm>
+#include <atomic>
+#include <new>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {

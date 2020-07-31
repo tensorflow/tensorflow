@@ -21,20 +21,20 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -94,9 +94,10 @@ Value Transpose(OpBuilder* builder, Value value_to_transpose,
 
   // Create tensor type for the transpose result.
   auto transpose_type = original_type;
-  auto transpose_shape = functional::map(
-      [transpose_type](int32_t dim) { return transpose_type.getDimSize(dim); },
-      perm);
+  auto transpose_shape =
+      llvm::to_vector<8>(llvm::map_range(perm, [transpose_type](int32_t dim) {
+        return transpose_type.getDimSize(dim);
+      }));
   auto elem_type = transpose_type.getElementType();
   auto result_type = RankedTensorType::get(transpose_shape, elem_type);
 
@@ -650,26 +651,21 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   auto final_inputs = input;
   auto final_input_type = input_type;
-  // We will transpose the inputs.
-  if (!time_majored) {
-    SmallVector<int32_t, 4> perm = {1, 0, 2};
-    final_inputs =
-        Transpose(builder, final_inputs, perm, input_type, func_op.getLoc());
-    final_input_type = final_inputs.getType().dyn_cast<RankedTensorType>();
-  }
 
   // Handle go_backwards:
   // LSTM in Keras semantic will reverse the input sequence if it's go_backwards
   auto go_backwards_attr = func_op.getAttrOfType<BoolAttr>("tf.go_backwards");
 
   if (go_backwards_attr != nullptr && go_backwards_attr.getValue()) {
-    // We assume input is already in {time, batch, size} layout.
-    final_inputs =
-        Reverse(builder, final_inputs, 0, final_input_type, func_op.getLoc());
+    int time_dim = time_majored ? 0 : 1;
+    final_inputs = Reverse(builder, final_inputs, time_dim, final_input_type,
+                           func_op.getLoc());
   }
 
-  int batch = final_input_type.getDimSize(1);
-  int time = final_input_type.getDimSize(0);
+  int batch = time_majored ? final_input_type.getDimSize(1)
+                           : final_input_type.getDimSize(0);
+  int time = time_majored ? final_input_type.getDimSize(0)
+                          : final_input_type.getDimSize(1);
 
   // Setup correct weights.
   RankedTensorType weight_type =
@@ -710,7 +706,12 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
     return failure();
 
   // Build the lstm op.
-  SmallVector<int64_t, 3> output_shape = {time, batch, n_output};
+  SmallVector<int64_t, 3> output_shape;
+  if (time_majored) {
+    output_shape = {time, batch, n_output};
+  } else {
+    output_shape = {batch, time, n_output};
+  }
   auto result_type = mlir::RankedTensorType::get(
       output_shape,
       final_inputs.getType().cast<RankedTensorType>().getElementType());
@@ -743,15 +744,9 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*cell_layer_norm_coefficients=*/none,
       /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
       builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getBoolAttr(true));
+      builder->getBoolAttr(time_majored));
 
   auto final_output_full_sequences = lstm.getResult();
-  if (!time_majored) {
-    SmallVector<int32_t, 4> perm = {1, 0, 2};
-    final_output_full_sequences =
-        Transpose(builder, final_output_full_sequences, perm, result_type,
-                  func_op.getLoc());
-  }
 
   // Populate the last output: last output is sliced from the full sequences.
   // If time_major: last_output = outputs[-1, :, :]

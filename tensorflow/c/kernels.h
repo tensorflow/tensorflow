@@ -107,6 +107,10 @@ TF_CAPI_EXPORT extern void TF_KernelBuilder_TypeConstraint(
 TF_CAPI_EXPORT extern void TF_KernelBuilder_HostMemory(
     TF_KernelBuilder* kernel_builder, const char* arg_name);
 
+// Specify a priority number for this kernel.
+TF_CAPI_EXPORT extern void TF_KernelBuilder_Priority(
+    TF_KernelBuilder* kernel_builder, int32_t priority_number);
+
 // Register the given kernel builder with the TensorFlow runtime. If
 // registration fails, the given status will be populated.
 //

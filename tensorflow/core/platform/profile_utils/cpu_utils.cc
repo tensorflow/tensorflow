@@ -88,6 +88,8 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
      defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
     retval = sscanf(line.c_str(), "clock              : %lfMHz", &cpu_freq);
     freq_factor = 1.0;
+#elif defined(__s390x__)
+    retval = sscanf(line.c_str(), "bogomips per cpu: %lf", &cpu_freq);
 #else
     retval = sscanf(line.c_str(), "bogomips : %lf", &cpu_freq);
 #endif

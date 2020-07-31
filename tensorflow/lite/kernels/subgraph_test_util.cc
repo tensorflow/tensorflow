@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#include <vector>
+
+#include <gtest/gtest.h>
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 
 namespace tflite {
 namespace subgraph_test_util {

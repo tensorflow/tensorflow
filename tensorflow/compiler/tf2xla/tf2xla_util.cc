@@ -302,6 +302,7 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
 
 }  // namespace
 
+const char kTpuReplicateAttrName[] = "_tpu_replicate";
 const char kXlaOutsideCompilationAttrName[] = "_xla_outside_compilation";
 
 Status ValidateConfig(const tf2xla::Config& config) {
@@ -621,7 +622,7 @@ Status RewriteAssociatedFunction(
       NodeDebugInfo debug_info(*node);
       NodeDefBuilder builder(node->name(), rewritten_function_name, fld,
                              &debug_info);
-      for (auto attr : node->attrs()) {
+      for (const auto& attr : node->attrs()) {
         builder.Attr(attr.first, attr.second);
       }
       for (int i = 0; i < node->num_inputs(); i++) {
@@ -695,7 +696,7 @@ Status CachedFunctionHandles::GetOrInstantiate(
 
 Status CachedFunctionHandles::ReleaseAllHandles() {
   Status result;
-  for (auto iter : handles_) {
+  for (const auto& iter : handles_) {
     result.Update(flr_->ReleaseHandle(iter.second));
   }
   handles_.clear();

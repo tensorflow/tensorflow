@@ -12,10 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/comparisons.h"
+
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace ops {
@@ -27,7 +36,8 @@ constexpr int kInputTensor1 = 0;
 constexpr int kInputTensor2 = 1;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus ComparisonPrepareCommon(TfLiteContext* context, TfLiteNode* node,
+                                     bool is_string_allowed) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -36,7 +46,9 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Don't support string.
-  TF_LITE_ENSURE(context, input1->type != kTfLiteString);
+  if (!is_string_allowed) {
+    TF_LITE_ENSURE(context, input1->type != kTfLiteString);
+  }
   // Currently only support tensors have the same type.
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
   output->type = kTfLiteBool;
@@ -52,6 +64,15 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   return context->ResizeTensor(context, output, output_size);
+}
+
+TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
+  return ComparisonPrepareCommon(context, node, false);
+}
+
+TfLiteStatus ComparisonPrepareStringAllowed(TfLiteContext* context,
+                                            TfLiteNode* node) {
+  return ComparisonPrepareCommon(context, node, true);
 }
 
 template <typename input_dtype, reference_ops::ComparisonFn<int32> opname>
@@ -108,6 +129,21 @@ void Comparison(const TfLiteTensor* input1, const TfLiteTensor* input2,
             GetTensorShape(output), GetTensorData<bool>(output));
 }
 
+void ComparisonString(bool (*opname)(const StringRef&, const StringRef&),
+                      const TfLiteTensor* input1, const TfLiteTensor* input2,
+                      TfLiteTensor* output, bool requires_broadcast) {
+  bool* output_data = GetTensorData<bool>(output);
+  if (requires_broadcast) {
+    reference_ops::BroadcastComparison4DSlowStringImpl(
+        opname, GetTensorShape(input1), input1, GetTensorShape(input2), input2,
+        GetTensorShape(output), output_data);
+  } else {
+    reference_ops::ComparisonStringImpl(opname, GetTensorShape(input1), input1,
+                                        GetTensorShape(input2), input2,
+                                        GetTensorShape(output), output_data);
+  }
+}
+
 TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
@@ -138,9 +174,14 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
       ComparisonQuantized<int8_t, reference_ops::EqualFn>(
           input1, input2, output, requires_broadcast);
       break;
+    case kTfLiteString:
+      ComparisonString(reference_ops::StringRefEqualFn, input1, input2, output,
+                       requires_broadcast);
+      break;
     default:
       context->ReportError(
-          context, "Does not support type %d, requires bool|float|int|uint8",
+          context,
+          "Does not support type %d, requires bool|float|int|uint8|string",
           input1->type);
       return kTfLiteError;
   }
@@ -177,9 +218,14 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
       ComparisonQuantized<int8_t, reference_ops::NotEqualFn>(
           input1, input2, output, requires_broadcast);
       break;
+    case kTfLiteString:
+      ComparisonString(reference_ops::StringRefNotEqualFn, input1, input2,
+                       output, requires_broadcast);
+      break;
     default:
       context->ReportError(
-          context, "Does not support type %d, requires bool|float|int|uint8",
+          context,
+          "Does not support type %d, requires bool|float|int|uint8|string",
           input1->type);
       return kTfLiteError;
   }
@@ -330,14 +376,15 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace comparisons
 
 TfLiteRegistration* Register_EQUAL() {
-  static TfLiteRegistration r = {
-      nullptr, nullptr, comparisons::ComparisonPrepare, comparisons::EqualEval};
+  static TfLiteRegistration r = {nullptr, nullptr,
+                                 comparisons::ComparisonPrepareStringAllowed,
+                                 comparisons::EqualEval};
   return &r;
 }
 
 TfLiteRegistration* Register_NOT_EQUAL() {
   static TfLiteRegistration r = {nullptr, nullptr,
-                                 comparisons::ComparisonPrepare,
+                                 comparisons::ComparisonPrepareStringAllowed,
                                  comparisons::NotEqualEval};
   return &r;
 }

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
@@ -132,11 +133,11 @@ class LazyColumnTest(test.TestCase):
 
   def test_error_if_feature_is_not_found(self):
     builder = _LazyBuilder(features={'a': [[2], [3.]]})
-    with self.assertRaisesRegexp(ValueError,
-                                 'bbb is not in features dictionary'):
+    with self.assertRaisesRegex(ValueError,
+                                'bbb is not in features dictionary'):
       builder.get('bbb')
-    with self.assertRaisesRegexp(ValueError,
-                                 'bbb is not in features dictionary'):
+    with self.assertRaisesRegex(ValueError,
+                                'bbb is not in features dictionary'):
       builder.get(u'bbb')
 
   def test_not_supported_feature_column(self):
@@ -156,8 +157,8 @@ class LazyColumnTest(test.TestCase):
         pass
 
     builder = _LazyBuilder(features={'a': [[2], [3.]]})
-    with self.assertRaisesRegexp(ValueError,
-                                 'NotAProperColumn is not supported'):
+    with self.assertRaisesRegex(ValueError,
+                                'NotAProperColumn is not supported'):
       builder.get(NotAProperColumn())
 
   def test_key_should_be_string_or_feature_colum(self):
@@ -166,7 +167,7 @@ class LazyColumnTest(test.TestCase):
       pass
 
     builder = _LazyBuilder(features={'a': [[2], [3.]]})
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, '"key" must be either a "str" or "_FeatureColumn".'):
       builder.get(NotAFeatureColumn())
 
@@ -198,7 +199,7 @@ class NumericColumnTest(test.TestCase):
     self.assertIsNone(a.normalizer_fn)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._numeric_column(key=('aaa',))
 
   def test_shape_saved_as_tuple(self):
@@ -213,14 +214,14 @@ class NumericColumnTest(test.TestCase):
 
   def test_shape_and_default_value_compatibility(self):
     fc._numeric_column('aaa', shape=[2], default_value=[1, 2.])
-    with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
+    with self.assertRaisesRegex(ValueError, 'The shape of default_value'):
       fc._numeric_column('aaa', shape=[2], default_value=[1, 2, 3.])
     fc._numeric_column(
         'aaa', shape=[3, 2], default_value=[[2, 3], [1, 2], [2, 3.]])
-    with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
+    with self.assertRaisesRegex(ValueError, 'The shape of default_value'):
       fc._numeric_column(
           'aaa', shape=[3, 1], default_value=[[2, 3], [1, 2], [2, 3.]])
-    with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
+    with self.assertRaisesRegex(ValueError, 'The shape of default_value'):
       fc._numeric_column(
           'aaa', shape=[3, 3], default_value=[[2, 3], [1, 2], [2, 3.]])
 
@@ -229,30 +230,30 @@ class NumericColumnTest(test.TestCase):
         'aaa', shape=[2], default_value=[1, 2.], dtype=dtypes.float32)
     fc._numeric_column(
         'aaa', shape=[2], default_value=[1, 2], dtype=dtypes.int32)
-    with self.assertRaisesRegexp(TypeError, 'must be compatible with dtype'):
+    with self.assertRaisesRegex(TypeError, 'must be compatible with dtype'):
       fc._numeric_column(
           'aaa', shape=[2], default_value=[1, 2.], dtype=dtypes.int32)
-    with self.assertRaisesRegexp(TypeError,
-                                 'default_value must be compatible with dtype'):
+    with self.assertRaisesRegex(TypeError,
+                                'default_value must be compatible with dtype'):
       fc._numeric_column('aaa', default_value=['string'])
 
   def test_shape_must_be_positive_integer(self):
-    with self.assertRaisesRegexp(TypeError, 'shape dimensions must be integer'):
+    with self.assertRaisesRegex(TypeError, 'shape dimensions must be integer'):
       fc._numeric_column(
           'aaa', shape=[
               1.0,
           ])
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'shape dimensions must be greater than 0'):
+    with self.assertRaisesRegex(ValueError,
+                                'shape dimensions must be greater than 0'):
       fc._numeric_column(
           'aaa', shape=[
               0,
           ])
 
   def test_dtype_is_convertible_to_float(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'dtype must be convertible to float'):
+    with self.assertRaisesRegex(ValueError,
+                                'dtype must be convertible to float'):
       fc._numeric_column('aaa', dtype=dtypes.string)
 
   def test_scalar_default_value_fills_the_shape(self):
@@ -279,7 +280,7 @@ class NumericColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([price]))
     self.assertIn('price', features)
     with self.cached_session():
-      self.assertAllEqual([[20., 110.]], features['price'].eval())
+      self.assertAllEqual([[20., 110.]], features['price'])
 
   @test_util.run_deprecated_v1
   def test_parse_example_with_default_value(self):
@@ -302,10 +303,10 @@ class NumericColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([price]))
     self.assertIn('price', features)
     with self.cached_session():
-      self.assertAllEqual([[20., 110.], [11., 11.]], features['price'].eval())
+      self.assertAllEqual([[20., 110.], [11., 11.]], features['price'])
 
   def test_normalizer_fn_must_be_callable(self):
-    with self.assertRaisesRegexp(TypeError, 'must be a callable'):
+    with self.assertRaisesRegex(TypeError, 'must be a callable'):
       fc._numeric_column('price', normalizer_fn='NotACallable')
 
   @test_util.run_deprecated_v1
@@ -317,7 +318,7 @@ class NumericColumnTest(test.TestCase):
     price = fc._numeric_column('price', shape=[2], normalizer_fn=_increment_two)
     output = _transform_features({'price': [[1., 2.], [5., 6.]]}, [price])
     with self.cached_session():
-      self.assertAllEqual([[3., 4.], [7., 8.]], output[price].eval())
+      self.assertAllEqual([[3., 4.], [7., 8.]], output[price])
 
   @test_util.run_deprecated_v1
   def test_get_dense_tensor(self):
@@ -336,7 +337,7 @@ class NumericColumnTest(test.TestCase):
             sparse_tensor.SparseTensor(
                 indices=[[0, 0]], values=[0.3], dense_shape=[1, 1])
     })
-    with self.assertRaisesRegexp(ValueError, 'must be a Tensor'):
+    with self.assertRaisesRegex(ValueError, 'must be a Tensor'):
       price._transform_feature(builder)
 
   @test_util.run_deprecated_v1
@@ -387,30 +388,26 @@ class BucketizedColumnTest(test.TestCase):
 
   def test_invalid_source_column_type(self):
     a = fc._categorical_column_with_hash_bucket('aaa', hash_bucket_size=10)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'source_column must be a column generated with numeric_column'):
       fc._bucketized_column(a, boundaries=[0, 1])
 
   def test_invalid_source_column_shape(self):
     a = fc._numeric_column('aaa', shape=[2, 3])
-    with self.assertRaisesRegexp(
-        ValueError, 'source_column must be one-dimensional column'):
+    with self.assertRaisesRegex(ValueError,
+                                'source_column must be one-dimensional column'):
       fc._bucketized_column(a, boundaries=[0, 1])
 
   def test_invalid_boundaries(self):
     a = fc._numeric_column('aaa')
-    with self.assertRaisesRegexp(
-        ValueError, 'boundaries must be a sorted list'):
+    with self.assertRaisesRegex(ValueError, 'boundaries must be a sorted list'):
       fc._bucketized_column(a, boundaries=None)
-    with self.assertRaisesRegexp(
-        ValueError, 'boundaries must be a sorted list'):
+    with self.assertRaisesRegex(ValueError, 'boundaries must be a sorted list'):
       fc._bucketized_column(a, boundaries=1.)
-    with self.assertRaisesRegexp(
-        ValueError, 'boundaries must be a sorted list'):
+    with self.assertRaisesRegex(ValueError, 'boundaries must be a sorted list'):
       fc._bucketized_column(a, boundaries=[1, 0])
-    with self.assertRaisesRegexp(
-        ValueError, 'boundaries must be a sorted list'):
+    with self.assertRaisesRegex(ValueError, 'boundaries must be a sorted list'):
       fc._bucketized_column(a, boundaries=[1, 1])
 
   def test_name(self):
@@ -457,7 +454,7 @@ class BucketizedColumnTest(test.TestCase):
         features=fc.make_parse_example_spec([bucketized_price]))
     self.assertIn('price', features)
     with self.cached_session():
-      self.assertAllEqual([[20., 110.]], features['price'].eval())
+      self.assertAllEqual([[20., 110.]], features['price'])
 
   @test_util.run_deprecated_v1
   def test_transform_feature(self):
@@ -539,7 +536,7 @@ class BucketizedColumnTest(test.TestCase):
             sparse_tensor.SparseTensor(
                 indices=[[0, 0]], values=[0.3], dense_shape=[1, 1])
     })
-    with self.assertRaisesRegexp(ValueError, 'must be a Tensor'):
+    with self.assertRaisesRegex(ValueError, 'must be a Tensor'):
       bucketized_price._transform_feature(builder)
 
   @test_util.run_deprecated_v1
@@ -680,22 +677,22 @@ class HashedCategoricalColumnTest(test.TestCase):
     self.assertEqual(dtypes.string, a.dtype)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_hash_bucket(('key',), 10)
 
   def test_bucket_size_should_be_given(self):
-    with self.assertRaisesRegexp(ValueError, 'hash_bucket_size must be set.'):
+    with self.assertRaisesRegex(ValueError, 'hash_bucket_size must be set.'):
       fc._categorical_column_with_hash_bucket('aaa', None)
 
   def test_bucket_size_should_be_positive(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'hash_bucket_size must be at least 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'hash_bucket_size must be at least 1'):
       fc._categorical_column_with_hash_bucket('aaa', 0)
 
   def test_dtype_should_be_string_or_integer(self):
     fc._categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.string)
     fc._categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.int32)
-    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       fc._categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.float32)
 
   @test_util.run_deprecated_v1
@@ -754,10 +751,9 @@ class HashedCategoricalColumnTest(test.TestCase):
     expected_values = [6, 4, 1]
     with self.cached_session():
       self.assertEqual(dtypes.int64, output.values.dtype)
-      self.assertAllEqual(expected_values, output.values.eval())
-      self.assertAllEqual(wire_tensor.indices.eval(), output.indices.eval())
-      self.assertAllEqual(wire_tensor.dense_shape.eval(),
-                          output.dense_shape.eval())
+      self.assertAllEqual(expected_values, output.values)
+      self.assertAllEqual(wire_tensor.indices, output.indices)
+      self.assertAllEqual(wire_tensor.dense_shape, output.dense_shape.eval())
 
   def test_tensor_dtype_should_be_string_or_integer(self):
     string_fc = fc._categorical_column_with_hash_bucket(
@@ -785,7 +781,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     })
     builder.get(string_fc)
     builder.get(int_fc)
-    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       builder.get(float_fc)
 
   def test_dtype_should_match_with_tensor(self):
@@ -794,7 +790,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     wire_tensor = sparse_tensor.SparseTensor(
         values=['omar'], indices=[[0, 0]], dense_shape=[1, 1])
     builder = _LazyBuilder({'wire': wire_tensor})
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       builder.get(hashed_sparse)
 
   @test_util.run_deprecated_v1
@@ -810,7 +806,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [3, 7, 5]
     with self.cached_session():
-      self.assertAllEqual(expected_values, output.values.eval())
+      self.assertAllEqual(expected_values, output.values)
 
   @test_util.run_deprecated_v1
   def test_int32_64_is_compatible(self):
@@ -825,7 +821,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [3, 7, 5]
     with self.cached_session():
-      self.assertAllEqual(expected_values, output.values.eval())
+      self.assertAllEqual(expected_values, output.values)
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors(self):
@@ -852,9 +848,9 @@ class HashedCategoricalColumnTest(test.TestCase):
             'aaa': inputs
         }), weight_collections=('my_weights',))
 
-    self.assertItemsEqual(
-        [], ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
-    self.assertItemsEqual([], ops.get_collection('my_weights'))
+    self.assertCountEqual([],
+                          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+    self.assertCountEqual([], ops.get_collection('my_weights'))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
@@ -915,37 +911,34 @@ class HashedCategoricalColumnTest(test.TestCase):
 class CrossedColumnTest(test.TestCase):
 
   def test_keys_empty(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'keys must be a list with length > 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'keys must be a list with length > 1'):
       fc._crossed_column([], 10)
 
   def test_keys_length_one(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'keys must be a list with length > 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'keys must be a list with length > 1'):
       fc._crossed_column(['a'], 10)
 
   def test_key_type_unsupported(self):
-    with self.assertRaisesRegexp(ValueError, 'Unsupported key type'):
+    with self.assertRaisesRegex(ValueError, 'Unsupported key type'):
       fc._crossed_column(['a', fc._numeric_column('c')], 10)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'categorical_column_with_hash_bucket is not supported'):
       fc._crossed_column(
           ['a', fc._categorical_column_with_hash_bucket('c', 10)], 10)
 
   def test_hash_bucket_size_negative(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'hash_bucket_size must be > 1'):
+    with self.assertRaisesRegex(ValueError, 'hash_bucket_size must be > 1'):
       fc._crossed_column(['a', 'c'], -1)
 
   def test_hash_bucket_size_zero(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'hash_bucket_size must be > 1'):
+    with self.assertRaisesRegex(ValueError, 'hash_bucket_size must be > 1'):
       fc._crossed_column(['a', 'c'], 0)
 
   def test_hash_bucket_size_none(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'hash_bucket_size must be > 1'):
+    with self.assertRaisesRegex(ValueError, 'hash_bucket_size must be > 1'):
       fc._crossed_column(['a', 'c'], None)
 
   def test_name(self):
@@ -1028,12 +1021,12 @@ class CrossedColumnTest(test.TestCase):
     self.assertIn('price', features)
     self.assertIn('wire', features)
     with self.cached_session():
-      self.assertAllEqual([[20., 110.]], features['price'].eval())
+      self.assertAllEqual([[20., 110.]], features['price'])
       wire_sparse = features['wire']
-      self.assertAllEqual([[0, 0], [0, 1]], wire_sparse.indices.eval())
+      self.assertAllEqual([[0, 0], [0, 1]], wire_sparse.indices)
       # Use byte constants to pass the open-source test.
-      self.assertAllEqual([b'omar', b'stringer'], wire_sparse.values.eval())
-      self.assertAllEqual([1, 2], wire_sparse.dense_shape.eval())
+      self.assertAllEqual([b'omar', b'stringer'], wire_sparse.values)
+      self.assertAllEqual([1, 2], wire_sparse.dense_shape)
 
   @test_util.run_deprecated_v1
   def test_transform_feature(self):
@@ -1191,7 +1184,7 @@ class CrossedColumnTest(test.TestCase):
     t = _TestColumnWithWeights()
     crossed = fc._crossed_column([t, 'c'], hash_bucket_size=5, hash_key=5)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'crossed_column does not support weight_tensor.*{}'.format(t.name)):
         fc.linear_model({
@@ -1279,7 +1272,7 @@ class CrossedColumnTest(test.TestCase):
     t = _TestColumnWithWeights()
     crossed = fc._crossed_column([t, 'c'], hash_bucket_size=5, hash_key=5)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'crossed_column does not support weight_tensor.*{}'.format(t.name)):
         get_keras_linear_model_predictions({
@@ -1334,12 +1327,12 @@ def get_keras_linear_model_predictions(features,
 class LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'feature_columns must not be empty'):
+    with self.assertRaisesRegex(ValueError,
+                                'feature_columns must not be empty'):
       fc.linear_model(features={}, feature_columns=[])
 
   def test_should_be_feature_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a _FeatureColumn'):
+    with self.assertRaisesRegex(ValueError, 'must be a _FeatureColumn'):
       fc.linear_model(features={'a': [[0]]}, feature_columns='NotSupported')
 
   def test_should_be_dense_or_categorical_column(self):
@@ -1357,19 +1350,19 @@ class LinearModelTest(test.TestCase):
       def _parse_example_spec(self):
         pass
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'must be either a _DenseColumn or _CategoricalColumn'):
       fc.linear_model(
           features={'a': [[0]]}, feature_columns=[NotSupportedColumn()])
 
   def test_does_not_support_dict_columns(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
       fc.linear_model(
           features={'a': [[0]]}, feature_columns={'a': fc._numeric_column('a')})
 
   def test_raises_if_duplicate_name(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Duplicate feature column name found for columns'):
       fc.linear_model(
           features={'a': [[0]]},
@@ -1607,7 +1600,7 @@ class LinearModelTest(test.TestCase):
     price = fc._numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           Exception,
           r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
         fc.linear_model(features, [price])
@@ -1678,12 +1671,12 @@ class LinearModelTest(test.TestCase):
       with _initialized_session():
         self.assertEqual([0.], cols_to_vars['bias'][0].eval())
         # Partitioning shards the [2, 1] price1 var into 2 [1, 1] Variables.
-        self.assertAllEqual([[0.]], cols_to_vars[price1][0].eval())
-        self.assertAllEqual([[0.]], cols_to_vars[price1][1].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price1][0])
+        self.assertAllEqual([[0.]], cols_to_vars[price1][1])
         # Partitioning shards the [3, 1] price2 var into a [2, 1] Variable and
         # a [1, 1] Variable.
-        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0].eval())
-        self.assertAllEqual([[0.]], cols_to_vars[price2][1].eval())
+        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0])
+        self.assertAllEqual([[0.]], cols_to_vars[price2][1])
 
   def test_fills_cols_to_output_tensors(self):
     # Provide three _DenseColumn's to input_layer: a _NumericColumn, a
@@ -1714,10 +1707,10 @@ class LinearModelTest(test.TestCase):
       # We check the mapping by checking that we have the right keys,
       # and that the values (output_tensors) were indeed the ones used to
       # form the input layer.
-      self.assertItemsEqual(all_cols, cols_to_output_tensors.keys())
+      self.assertCountEqual(all_cols, cols_to_output_tensors.keys())
       input_layer_inputs = [tensor for tensor in input_layer.op.inputs[:-1]]
       output_tensors = [tensor for tensor in cols_to_output_tensors.values()]
-      self.assertItemsEqual(input_layer_inputs, output_tensors)
+      self.assertCountEqual(input_layer_inputs, output_tensors)
 
   def test_dense_collection(self):
     price = fc._numeric_column('price')
@@ -1830,7 +1823,7 @@ class LinearModelTest(test.TestCase):
           'price1': [[1.], [5.], [7.]],  # batchsize = 3
           'price2': [[3.], [4.]]  # batchsize = 2
       }
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Batch size \(first dimension\) of each feature must be same.'):
       fc.linear_model(features, [price1, price2])
@@ -1845,7 +1838,7 @@ class LinearModelTest(test.TestCase):
           'price2': [[3.], [4.]],  # batchsize = 2
           'price3': [[3.], [4.], [5.]]  # batchsize = 3
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.linear_model(features, [price1, price2, price3])
@@ -1860,8 +1853,8 @@ class LinearModelTest(test.TestCase):
       }
       predictions = fc.linear_model(features, [price1, price2])
       with _initialized_session() as sess:
-        with self.assertRaisesRegexp(errors.OpError,
-                                     'must have the same size and shape'):
+        with self.assertRaisesRegex(errors.OpError,
+                                    'must have the same size and shape'):
           sess.run(
               predictions, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
@@ -1975,7 +1968,7 @@ class LinearModelTest(test.TestCase):
     self.assertEqual(0, features['price'].shape.ndims)
 
     # Static rank 0 should fail
-    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+    with self.assertRaisesRegex(ValueError, 'Feature .* cannot have rank 0'):
       fc.linear_model(features, [price])
 
     # Dynamic rank 0 should fail
@@ -2013,12 +2006,12 @@ class LinearModelTest(test.TestCase):
 class _LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'feature_columns must not be empty'):
+    with self.assertRaisesRegex(ValueError,
+                                'feature_columns must not be empty'):
       get_keras_linear_model_predictions(features={}, feature_columns=[])
 
   def test_should_be_feature_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a _FeatureColumn'):
+    with self.assertRaisesRegex(ValueError, 'must be a _FeatureColumn'):
       get_keras_linear_model_predictions(
           features={'a': [[0]]}, feature_columns='NotSupported')
 
@@ -2037,19 +2030,19 @@ class _LinearModelTest(test.TestCase):
       def _parse_example_spec(self):
         pass
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'must be either a _DenseColumn or _CategoricalColumn'):
       get_keras_linear_model_predictions(
           features={'a': [[0]]}, feature_columns=[NotSupportedColumn()])
 
   def test_does_not_support_dict_columns(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
       fc.linear_model(
           features={'a': [[0]]}, feature_columns={'a': fc._numeric_column('a')})
 
   def test_raises_if_duplicate_name(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Duplicate feature column name found for columns'):
       get_keras_linear_model_predictions(
           features={'a': [[0]]},
@@ -2275,7 +2268,7 @@ class _LinearModelTest(test.TestCase):
     price = fc._numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           Exception,
           r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
         get_keras_linear_model_predictions(features, [price])
@@ -2346,12 +2339,12 @@ class _LinearModelTest(test.TestCase):
       with _initialized_session():
         self.assertEqual([0.], cols_to_vars['bias'][0].eval())
         # Partitioning shards the [2, 1] price1 var into 2 [1, 1] Variables.
-        self.assertAllEqual([[0.]], cols_to_vars[price1][0].eval())
-        self.assertAllEqual([[0.]], cols_to_vars[price1][1].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price1][0])
+        self.assertAllEqual([[0.]], cols_to_vars[price1][1])
         # Partitioning shards the [3, 1] price2 var into a [2, 1] Variable and
         # a [1, 1] Variable.
-        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0].eval())
-        self.assertAllEqual([[0.]], cols_to_vars[price2][1].eval())
+        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0])
+        self.assertAllEqual([[0.]], cols_to_vars[price2][1])
 
   def test_dense_collection(self):
     price = fc._numeric_column('price')
@@ -2465,7 +2458,7 @@ class _LinearModelTest(test.TestCase):
           'price1': [[1.], [5.], [7.]],  # batchsize = 3
           'price2': [[3.], [4.]]  # batchsize = 2
       }
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
       get_keras_linear_model_predictions(features, [price1, price2])
@@ -2480,7 +2473,7 @@ class _LinearModelTest(test.TestCase):
           'price2': [[3.], [4.]],  # batchsize = 2
           'price3': [[3.], [4.], [5.]]  # batchsize = 3
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         get_keras_linear_model_predictions(features, [price1, price2, price3])
@@ -2496,8 +2489,8 @@ class _LinearModelTest(test.TestCase):
       predictions = get_keras_linear_model_predictions(features,
                                                        [price1, price2])
       with _initialized_session() as sess:
-        with self.assertRaisesRegexp(errors.OpError,
-                                     'must have the same size and shape'):
+        with self.assertRaisesRegex(errors.OpError,
+                                    'must have the same size and shape'):
           sess.run(
               predictions, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
@@ -2617,7 +2610,7 @@ class _LinearModelTest(test.TestCase):
     self.assertEqual(0, features['price'].shape.ndims)
 
     # Static rank 0 should fail
-    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+    with self.assertRaisesRegex(ValueError, 'Feature .* cannot have rank 0'):
       get_keras_linear_model_predictions(features, [price])
 
     # Dynamic rank 0 should fail
@@ -2734,12 +2727,12 @@ class InputLayerTest(test.TestCase):
 class FunctionalInputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'feature_columns must not be empty'):
+    with self.assertRaisesRegex(ValueError,
+                                'feature_columns must not be empty'):
       fc.input_layer(features={}, feature_columns=[])
 
   def test_should_be_dense_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a _DenseColumn'):
+    with self.assertRaisesRegex(ValueError, 'must be a _DenseColumn'):
       fc.input_layer(
           features={'a': [[0]]},
           feature_columns=[
@@ -2747,7 +2740,7 @@ class FunctionalInputLayerTest(test.TestCase):
           ])
 
   def test_does_not_support_dict_columns(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
       fc.input_layer(
           features={'a': [[0]]}, feature_columns={'a': fc._numeric_column('a')})
@@ -2768,7 +2761,7 @@ class FunctionalInputLayerTest(test.TestCase):
         self.assertAllClose([[0., 1.]], self.evaluate(net))
 
   def test_raises_if_duplicate_name(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Duplicate feature column name found for columns'):
       fc.input_layer(
           features={'a': [[0]]},
@@ -2795,7 +2788,7 @@ class FunctionalInputLayerTest(test.TestCase):
     price = fc._numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           Exception,
           r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
         fc.input_layer(features, [price])
@@ -2841,7 +2834,7 @@ class FunctionalInputLayerTest(test.TestCase):
       cols_to_vars = {}
       all_cols = [price1, dense_feature_bucketized, some_embedding_column]
       fc.input_layer(features, all_cols, cols_to_vars=cols_to_vars)
-      self.assertItemsEqual(list(cols_to_vars.keys()), all_cols)
+      self.assertCountEqual(list(cols_to_vars.keys()), all_cols)
       self.assertEqual(0, len(cols_to_vars[price1]))
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
@@ -2891,7 +2884,7 @@ class FunctionalInputLayerTest(test.TestCase):
           shared_embedding_a, shared_embedding_b
       ]
       fc.input_layer(features, all_cols, cols_to_vars=cols_to_vars)
-      self.assertItemsEqual(list(cols_to_vars.keys()), all_cols)
+      self.assertCountEqual(list(cols_to_vars.keys()), all_cols)
       self.assertEqual(0, len(cols_to_vars[price1]))
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
@@ -2927,7 +2920,7 @@ class FunctionalInputLayerTest(test.TestCase):
           'input_from_feature_columns',
           partitioner=partitioned_variables.fixed_size_partitioner(3, axis=0)):
         fc.input_layer(features, all_cols, cols_to_vars=cols_to_vars)
-      self.assertItemsEqual(list(cols_to_vars.keys()), all_cols)
+      self.assertCountEqual(list(cols_to_vars.keys()), all_cols)
       self.assertEqual(0, len(cols_to_vars[price1]))
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(3, len(cols_to_vars[some_embedding_column]))
@@ -2961,7 +2954,7 @@ class FunctionalInputLayerTest(test.TestCase):
               sparse_tensor.SparseTensor(
                   indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
       }
-      with self.assertRaisesRegexp(Exception, 'must be a _DenseColumn'):
+      with self.assertRaisesRegex(Exception, 'must be a _DenseColumn'):
         fc.input_layer(features, [animal])
 
   def test_static_batch_size_mismatch(self):
@@ -2972,7 +2965,7 @@ class FunctionalInputLayerTest(test.TestCase):
           'price1': [[1.], [5.], [7.]],  # batchsize = 3
           'price2': [[3.], [4.]]  # batchsize = 2
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.input_layer(features, [price1, price2])
@@ -2987,7 +2980,7 @@ class FunctionalInputLayerTest(test.TestCase):
           'price2': [[3.], [4.]],  # batchsize = 2
           'price3': [[3.], [4.], [5.]]  # batchsize = 3
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.input_layer(features, [price1, price2, price3])
@@ -3002,8 +2995,8 @@ class FunctionalInputLayerTest(test.TestCase):
       }
       net = fc.input_layer(features, [price1, price2])
       with _initialized_session() as sess:
-        with self.assertRaisesRegexp(errors.OpError,
-                                     'Dimensions of inputs should match'):
+        with self.assertRaisesRegex(errors.OpError,
+                                    'Dimensions of inputs should match'):
           sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
   def test_runtime_batch_size_matches(self):
@@ -3043,7 +3036,7 @@ class FunctionalInputLayerTest(test.TestCase):
           'input_layer/sparse_feature_embedding/embedding_weights:0',
           'input_layer_1/sparse_feature_embedding/embedding_weights:0'
       ]
-      self.assertItemsEqual(
+      self.assertCountEqual(
           expected_var_names,
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
@@ -3077,7 +3070,7 @@ class FunctionalInputLayerTest(test.TestCase):
       # Make sure that only 1 variable gets created in this case.
       self.assertEqual(1, len(
           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
-      self.assertItemsEqual(
+      self.assertCountEqual(
           ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
@@ -3129,7 +3122,7 @@ class FunctionalInputLayerTest(test.TestCase):
       # Make sure that only 1 variable gets created in this case.
       self.assertEqual(1, len(
           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
-      self.assertItemsEqual(
+      self.assertCountEqual(
           ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
@@ -3254,7 +3247,7 @@ class FunctionalInputLayerTest(test.TestCase):
     self.assertEqual(0, features['price'].shape.ndims)
 
     # Static rank 0 should fail
-    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+    with self.assertRaisesRegex(ValueError, 'Feature .* cannot have rank 0'):
       fc.input_layer(features, [price])
 
     # Dynamic rank 0 should fail
@@ -3286,7 +3279,7 @@ class MakeParseExampleSpecTest(test.TestCase):
     key1 = 'key1'
     parse_spec1 = parsing_ops.FixedLenFeature(
         shape=(2,), dtype=dtypes.float32, default_value=0.)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'All feature_columns must be _FeatureColumn instances.*invalid_column'):
       fc.make_parse_example_spec(
@@ -3316,7 +3309,7 @@ class MakeParseExampleSpecTest(test.TestCase):
     parse_spec1 = parsing_ops.FixedLenFeature(
         shape=(2,), dtype=dtypes.float32, default_value=0.)
     parse_spec2 = parsing_ops.VarLenFeature(dtype=dtypes.string)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'feature_columns contain different parse_spec for key key1'):
       fc.make_parse_example_spec(
@@ -3388,7 +3381,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     }, column._parse_example_spec)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_vocabulary_file(
           key=('aaa',), vocabulary_file='path_to_file', vocabulary_size=3)
 
@@ -3421,12 +3414,12 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
       }, column._parse_example_spec)
 
   def test_vocabulary_file_none(self):
-    with self.assertRaisesRegexp(ValueError, 'Missing vocabulary_file'):
+    with self.assertRaisesRegex(ValueError, 'Missing vocabulary_file'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa', vocabulary_file=None, vocabulary_size=3)
 
   def test_vocabulary_file_empty_string(self):
-    with self.assertRaisesRegexp(ValueError, 'Missing vocabulary_file'):
+    with self.assertRaisesRegex(ValueError, 'Missing vocabulary_file'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa', vocabulary_file='', vocabulary_size=3)
 
@@ -3439,17 +3432,17 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
     column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    with self.assertRaisesRegexp(errors.OpError, 'file_does_not_exist'):
+    with self.assertRaisesRegex(errors.OpError, 'file_does_not_exist'):
       with self.cached_session():
         lookup_ops.tables_initializer().run()
 
   def test_invalid_vocabulary_size(self):
-    with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
+    with self.assertRaisesRegex(ValueError, 'Invalid vocabulary_size'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file=self._wire_vocabulary_file_name,
           vocabulary_size=-1)
-    with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
+    with self.assertRaisesRegex(ValueError, 'Invalid vocabulary_size'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file=self._wire_vocabulary_file_name,
@@ -3466,12 +3459,12 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
     column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    with self.assertRaisesRegexp(errors.OpError, 'Invalid vocab_size'):
+    with self.assertRaisesRegex(errors.OpError, 'Invalid vocab_size'):
       with self.cached_session():
         lookup_ops.tables_initializer().run()
 
   def test_invalid_num_oov_buckets(self):
-    with self.assertRaisesRegexp(ValueError, 'Invalid num_oov_buckets'):
+    with self.assertRaisesRegex(ValueError, 'Invalid num_oov_buckets'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file='path',
@@ -3479,7 +3472,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
           num_oov_buckets=-1)
 
   def test_invalid_dtype(self):
-    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file='path',
@@ -3487,8 +3480,8 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
           dtype=dtypes.float64)
 
   def test_invalid_buckets_and_default_value(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'both num_oov_buckets and default_value'):
+    with self.assertRaisesRegex(ValueError,
+                                'both num_oov_buckets and default_value'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file=self._wire_vocabulary_file_name,
@@ -3506,7 +3499,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(12, 24, 36),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_invalid_input_dtype_string(self):
@@ -3519,7 +3512,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   @test_util.run_deprecated_v1
@@ -3618,9 +3611,9 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
             'aaa': inputs
         }), weight_collections=('my_weights',))
 
-    self.assertItemsEqual(
-        [], ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
-    self.assertItemsEqual([], ops.get_collection('my_weights'))
+    self.assertCountEqual([],
+                          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+    self.assertCountEqual([], ops.get_collection('my_weights'))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
@@ -3848,7 +3841,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     }, column._parse_example_spec)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_vocabulary_list(
           key=('aaa',), vocabulary_list=('omar', 'stringer', 'marlo'))
 
@@ -3887,57 +3880,57 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
       }, column._parse_example_spec)
 
   def test_invalid_dtype(self):
-    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa',
           vocabulary_list=('omar', 'stringer', 'marlo'),
           dtype=dtypes.float32)
 
   def test_invalid_mapping_dtype(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'vocabulary dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError,
+                                r'vocabulary dtype must be string or integer'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12., 24., 36.))
 
   def test_mismatched_int_dtype(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'dtype.*and vocabulary dtype.*do not match'):
+    with self.assertRaisesRegex(ValueError,
+                                r'dtype.*and vocabulary dtype.*do not match'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa',
           vocabulary_list=('omar', 'stringer', 'marlo'),
           dtype=dtypes.int32)
 
   def test_mismatched_string_dtype(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'dtype.*and vocabulary dtype.*do not match'):
+    with self.assertRaisesRegex(ValueError,
+                                r'dtype.*and vocabulary dtype.*do not match'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12, 24, 36), dtype=dtypes.string)
 
   def test_none_mapping(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'vocabulary_list.*must be non-empty'):
+    with self.assertRaisesRegex(ValueError,
+                                r'vocabulary_list.*must be non-empty'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=None)
 
   def test_empty_mapping(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'vocabulary_list.*must be non-empty'):
+    with self.assertRaisesRegex(ValueError,
+                                r'vocabulary_list.*must be non-empty'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=tuple([]))
 
   def test_duplicate_mapping(self):
-    with self.assertRaisesRegexp(ValueError, 'Duplicate keys'):
+    with self.assertRaisesRegex(ValueError, 'Duplicate keys'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12, 24, 12))
 
   def test_invalid_num_oov_buckets(self):
-    with self.assertRaisesRegexp(ValueError, 'Invalid num_oov_buckets'):
+    with self.assertRaisesRegex(ValueError, 'Invalid num_oov_buckets'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12, 24, 36), num_oov_buckets=-1)
 
   def test_invalid_buckets_and_default_value(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'both num_oov_buckets and default_value'):
+    with self.assertRaisesRegex(ValueError,
+                                'both num_oov_buckets and default_value'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa',
           vocabulary_list=(12, 24, 36),
@@ -3951,7 +3944,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(12, 24, 36),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_invalid_input_dtype_string(self):
@@ -3961,7 +3954,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   @test_util.run_deprecated_v1
@@ -4058,9 +4051,9 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
             'aaa': inputs
         }), weight_collections=('my_weights',))
 
-    self.assertItemsEqual(
-        [], ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
-    self.assertItemsEqual([], ops.get_collection('my_weights'))
+    self.assertCountEqual([],
+                          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+    self.assertCountEqual([], ops.get_collection('my_weights'))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
@@ -4256,7 +4249,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
     }, column._parse_example_spec)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_identity(key=('aaa',), num_buckets=3)
 
   @test_util.run_deprecated_v1
@@ -4270,20 +4263,20 @@ class IdentityCategoricalColumnTest(test.TestCase):
       }, column._parse_example_spec)
 
   def test_invalid_num_buckets_zero(self):
-    with self.assertRaisesRegexp(ValueError, 'num_buckets 0 < 1'):
+    with self.assertRaisesRegex(ValueError, 'num_buckets 0 < 1'):
       fc._categorical_column_with_identity(key='aaa', num_buckets=0)
 
   def test_invalid_num_buckets_negative(self):
-    with self.assertRaisesRegexp(ValueError, 'num_buckets -1 < 1'):
+    with self.assertRaisesRegex(ValueError, 'num_buckets -1 < 1'):
       fc._categorical_column_with_identity(key='aaa', num_buckets=-1)
 
   def test_invalid_default_value_too_small(self):
-    with self.assertRaisesRegexp(ValueError, 'default_value -1 not in range'):
+    with self.assertRaisesRegex(ValueError, 'default_value -1 not in range'):
       fc._categorical_column_with_identity(
           key='aaa', num_buckets=3, default_value=-1)
 
   def test_invalid_default_value_too_big(self):
-    with self.assertRaisesRegexp(ValueError, 'default_value 3 not in range'):
+    with self.assertRaisesRegex(ValueError, 'default_value 3 not in range'):
       fc._categorical_column_with_identity(
           key='aaa', num_buckets=3, default_value=3)
 
@@ -4293,7 +4286,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'Invalid input, not integer'):
+    with self.assertRaisesRegex(ValueError, 'Invalid input, not integer'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   @test_util.run_deprecated_v1
@@ -4363,9 +4356,9 @@ class IdentityCategoricalColumnTest(test.TestCase):
             'aaa': inputs
         }), weight_collections=('my_weights',))
 
-    self.assertItemsEqual(
-        [], ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
-    self.assertItemsEqual([], ops.get_collection('my_weights'))
+    self.assertCountEqual([],
+                          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+    self.assertCountEqual([], ops.get_collection('my_weights'))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
@@ -4415,8 +4408,8 @@ class IdentityCategoricalColumnTest(test.TestCase):
         _LazyBuilder({'aaa': sparse_input}))
 
     with _initialized_session():
-      with self.assertRaisesRegexp(errors.OpError,
-                                   r'indices\[0\] = 2 is not in \[0, 2\)'):
+      with self.assertRaisesRegex(errors.OpError,
+                                  r'indices\[0\] .* 2 .* \[0, 2\)'):
         self.evaluate(embedding_lookup)
 
   @test_util.run_deprecated_v1
@@ -4566,9 +4559,9 @@ class TransformFeaturesTest(test.TestCase):
                                         [bucketized_price, hashed_sparse])
       with _initialized_session():
         self.assertIn(bucketized_price.name, transformed[bucketized_price].name)
-        self.assertAllEqual([[0], [3]], transformed[bucketized_price].eval())
+        self.assertAllEqual([[0], [3]], transformed[bucketized_price])
         self.assertIn(hashed_sparse.name, transformed[hashed_sparse].name)
-        self.assertAllEqual([6, 4, 1], transformed[hashed_sparse].values.eval())
+        self.assertAllEqual([6, 4, 1], transformed[hashed_sparse].values)
 
   def test_column_order(self):
     """When the column is both dense and sparse, uses sparse tensors."""
@@ -4820,7 +4813,7 @@ class IndicatorColumnTest(test.TestCase):
         self.assertAllClose([[0., 1., 1., 0.]], self.evaluate(net))
 
 
-class EmbeddingColumnTest(test.TestCase):
+class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_defaults(self):
@@ -4911,7 +4904,7 @@ class EmbeddingColumnTest(test.TestCase):
   def test_invalid_initializer(self):
     categorical_column = fc._categorical_column_with_identity(
         key='aaa', num_buckets=3)
-    with self.assertRaisesRegexp(ValueError, 'initializer must be callable'):
+    with self.assertRaisesRegex(ValueError, 'initializer must be callable'):
       fc._embedding_column(
           categorical_column, dimension=2, initializer='not_fn')
 
@@ -4956,10 +4949,29 @@ class EmbeddingColumnTest(test.TestCase):
       _assert_sparse_tensor_value(self, self.evaluate(output_a),
                                   self.evaluate(output_embedded))
 
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': True,
+          'partition_variables': False,
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': False,
+          'partition_variables': False,
+      }, {
+          'testcase_name': 'use_safe_embedding_lookup_partitioned',
+          'use_safe_embedding_lookup': True,
+          'partition_variables': True,
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup_partitioned',
+          'use_safe_embedding_lookup': False,
+          'partition_variables': True,
+      })
   @test_util.run_deprecated_v1
-  def test_get_dense_tensor(self):
+  def test_get_dense_tensor(self, use_safe_embedding_lookup,
+                            partition_variables):
     # Inputs.
-    vocabulary_size = 3
+    vocabulary_size = 4
     sparse_input = sparse_tensor.SparseTensorValue(
         # example 0, ids [2]
         # example 1, ids [0, 1]
@@ -4974,12 +4986,20 @@ class EmbeddingColumnTest(test.TestCase):
     embedding_values = (
         (1., 2.),  # id 0
         (3., 5.),  # id 1
-        (7., 11.)  # id 2
+        (7., 11.),  # id 2
+        (9., 13.)  # id 3
     )
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+
+    def _initializer(shape, dtype, partition_info=None):
+      if partition_variables:
+        self.assertEqual([vocabulary_size, embedding_dimension],
+                         partition_info.full_shape)
+        self.assertAllEqual((2, embedding_dimension), shape)
+      else:
+        self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+        self.assertIsNone(partition_info)
+
       self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
       return embedding_values
 
     # Expected lookup result, using combiner='mean'.
@@ -4997,24 +5017,42 @@ class EmbeddingColumnTest(test.TestCase):
     # Build columns.
     categorical_column = fc._categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc._embedding_column(
-        categorical_column,
-        dimension=embedding_dimension,
-        initializer=_initializer)
+    partitioner = None
+    if partition_variables:
+      partitioner = partitioned_variables.fixed_size_partitioner(2, axis=0)
+    with variable_scope.variable_scope('vars', partitioner=partitioner):
+      embedding_column = fc._embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          initializer=_initializer,
+          use_safe_embedding_lookup=use_safe_embedding_lookup)
 
-    # Provide sparse input and get dense result.
-    embedding_lookup = embedding_column._get_dense_tensor(
-        _LazyBuilder({
-            'aaa': sparse_input
-        }))
+      # Provide sparse input and get dense result.
+      embedding_lookup = embedding_column._get_dense_tensor(
+          _LazyBuilder({'aaa': sparse_input}))
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(('embedding_weights:0',),
-                          tuple([v.name for v in global_vars]))
+    if partition_variables:
+      self.assertCountEqual(('vars/embedding_weights/part_0:0',
+                             'vars/embedding_weights/part_1:0'),
+                            tuple([v.name for v in global_vars]))
+    else:
+      self.assertCountEqual(('vars/embedding_weights:0',),
+                            tuple([v.name for v in global_vars]))
+    for v in global_vars:
+      self.assertIsInstance(v, variables_lib.Variable)
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
+
+    if use_safe_embedding_lookup:
+      self.assertIn('SparseFillEmptyRows',
+                    [x.type for x in ops.get_default_graph().get_operations()])
+    else:
+      self.assertNotIn(
+          'SparseFillEmptyRows',
+          [x.type for x in ops.get_default_graph().get_operations()])
 
   @test_util.run_deprecated_v1
   def test_get_dense_tensor_3d(self):
@@ -5072,10 +5110,10 @@ class EmbeddingColumnTest(test.TestCase):
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(('embedding_weights:0',),
+    self.assertCountEqual(('embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   @test_util.run_deprecated_v1
@@ -5102,11 +5140,11 @@ class EmbeddingColumnTest(test.TestCase):
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(('embedding_weights:0',),
+    self.assertCountEqual(('embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
     my_vars = ops.get_collection('my_vars')
-    self.assertItemsEqual(
-        ('embedding_weights:0',), tuple([v.name for v in my_vars]))
+    self.assertCountEqual(('embedding_weights:0',),
+                          tuple([v.name for v in my_vars]))
 
   @test_util.run_deprecated_v1
   def test_get_dense_tensor_placeholder_inputs(self):
@@ -5169,10 +5207,10 @@ class EmbeddingColumnTest(test.TestCase):
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
-        ('embedding_weights:0',), tuple([v.name for v in global_vars]))
+    self.assertCountEqual(('embedding_weights:0',),
+                          tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, embedding_lookup.eval(
           feed_dict={
               input_indices: sparse_input.indices,
@@ -5233,10 +5271,10 @@ class EmbeddingColumnTest(test.TestCase):
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
-        ('embedding_weights:0',), tuple([v.name for v in global_vars]))
+    self.assertCountEqual(('embedding_weights:0',),
+                          tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   @test_util.run_deprecated_v1
@@ -5280,14 +5318,14 @@ class EmbeddingColumnTest(test.TestCase):
           'linear_model/aaa_embedding/weights:0',
           'linear_model/aaa_embedding/embedding_weights:0',
       )
-      self.assertItemsEqual(
+      self.assertCountEqual(
           expected_var_names,
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
       trainable_vars = {
           v.name: v for v in ops.get_collection(
               ops.GraphKeys.TRAINABLE_VARIABLES)
       }
-      self.assertItemsEqual(expected_var_names, trainable_vars.keys())
+      self.assertCountEqual(expected_var_names, trainable_vars.keys())
       bias = trainable_vars['linear_model/bias_weights:0']
       embedding_weights = trainable_vars[
           'linear_model/aaa_embedding/embedding_weights:0']
@@ -5361,14 +5399,14 @@ class EmbeddingColumnTest(test.TestCase):
           'linear_model/aaa_embedding/weights:0',
           'linear_model/aaa_embedding/embedding_weights:0',
       )
-      self.assertItemsEqual(
+      self.assertCountEqual(
           expected_var_names,
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
       trainable_vars = {
           v.name: v
           for v in ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       }
-      self.assertItemsEqual(expected_var_names, trainable_vars.keys())
+      self.assertCountEqual(expected_var_names, trainable_vars.keys())
       bias = trainable_vars['linear_model/bias_weights:0']
       embedding_weights = trainable_vars[
           'linear_model/aaa_embedding/embedding_weights:0']
@@ -5450,15 +5488,13 @@ class EmbeddingColumnTest(test.TestCase):
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
-        ('input_layer/aaa_embedding/embedding_weights:0',),
-        tuple([v.name for v in global_vars]))
+    self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
+                          tuple([v.name for v in global_vars]))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
-    self.assertItemsEqual(
-        ('input_layer/aaa_embedding/embedding_weights:0',),
-        tuple([v.name for v in trainable_vars]))
+    self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
+                          tuple([v.name for v in trainable_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, trainable_vars[0].eval())
+      self.assertAllEqual(embedding_values, trainable_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
 
   @test_util.run_deprecated_v1
@@ -5513,17 +5549,16 @@ class EmbeddingColumnTest(test.TestCase):
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
-        ('input_layer/aaa_embedding/embedding_weights:0',),
-        tuple([v.name for v in global_vars]))
-    self.assertItemsEqual(
-        [], ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
+    self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
+                          tuple([v.name for v in global_vars]))
+    self.assertCountEqual([],
+                          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
 
 
-class SharedEmbeddingColumnTest(test.TestCase):
+class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_defaults(self):
@@ -5667,7 +5702,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         key='aaa', num_buckets=3)
     categorical_column_b = fc._categorical_column_with_identity(
         key='bbb', num_buckets=3)
-    with self.assertRaisesRegexp(ValueError, 'initializer must be callable'):
+    with self.assertRaisesRegex(ValueError, 'initializer must be callable'):
       fc_new.shared_embedding_columns(
           [categorical_column_a, categorical_column_b],
           dimension=2,
@@ -5681,9 +5716,8 @@ class SharedEmbeddingColumnTest(test.TestCase):
         key='bbb', num_buckets=3)
     categorical_column_c = fc._categorical_column_with_hash_bucket(
         key='ccc', hash_bucket_size=3)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'all categorical_columns must have the same type.*'
+    with self.assertRaisesRegex(
+        ValueError, 'all categorical_columns must have the same type.*'
         '_IdentityCategoricalColumn.*_HashedCategoricalColumn'):
       fc_new.shared_embedding_columns(
           [categorical_column_a, categorical_column_b, categorical_column_c],
@@ -5772,33 +5806,59 @@ class SharedEmbeddingColumnTest(test.TestCase):
       _assert_sparse_tensor_value(self, self.evaluate(output_b),
                                   self.evaluate(output_b_embedded))
 
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': True,
+          'partition_variables': False,
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup',
+          'use_safe_embedding_lookup': False,
+          'partition_variables': False,
+      }, {
+          'testcase_name': 'use_safe_embedding_lookup_partitioned',
+          'use_safe_embedding_lookup': True,
+          'partition_variables': True,
+      }, {
+          'testcase_name': 'dont_use_safe_embedding_lookup_partitioned',
+          'use_safe_embedding_lookup': False,
+          'partition_variables': True,
+      })
   @test_util.run_deprecated_v1
-  def test_get_dense_tensor(self):
+  def test_get_dense_tensor(self, use_safe_embedding_lookup,
+                            partition_variables):
     # Inputs.
-    vocabulary_size = 3
+    vocabulary_size = 4
     # -1 values are ignored.
-    input_a = np.array(
-        [[2, -1, -1],  # example 0, ids [2]
-         [0, 1, -1]])  # example 1, ids [0, 1]
-    input_b = np.array(
-        [[0, -1, -1],  # example 0, ids [0]
-         [-1, -1, -1]])  # example 1, ids []
-    input_features = {
-        'aaa': input_a,
-        'bbb': input_b
-    }
+    input_a = np.array([
+        [2, -1, -1],  # example 0, ids [2]
+        [0, 1, -1]
+    ])  # example 1, ids [0, 1]
+    input_b = np.array([
+        [0, -1, -1],  # example 0, ids [0]
+        [-1, -1, -1]
+    ])  # example 1, ids []
+    input_features = {'aaa': input_a, 'bbb': input_b}
 
     # Embedding variable.
     embedding_dimension = 2
     embedding_values = (
         (1., 2.),  # id 0
         (3., 5.),  # id 1
-        (7., 11.)  # id 2
+        (7., 11.),  # id 2
+        (9., 13.)  # id 3
     )
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+
+    def _initializer(shape, dtype, partition_info=None):
+      if partition_variables:
+        self.assertEqual([vocabulary_size, embedding_dimension],
+                         partition_info.full_shape)
+        self.assertAllEqual((2, embedding_dimension), shape)
+      else:
+        self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+        self.assertIsNone(partition_info)
+
       self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
       return embedding_values
 
     # Expected lookup result, using combiner='mean'.
@@ -5808,38 +5868,65 @@ class SharedEmbeddingColumnTest(test.TestCase):
         # example 1:
         (2., 3.5),  # ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
     )
-    expected_lookups_b = (
-        # example 0:
-        (1., 2.),  # ids [0], embedding = [1, 2]
-        # example 1:
-        (0., 0.),  # ids [], embedding = [0, 0]
-    )
+    if use_safe_embedding_lookup:
+      expected_lookups_b = (
+          # example 0:
+          (1., 2.),  # ids [0], embedding = [1, 2]
+          # example 1:
+          (0., 0.),  # ids [], embedding = [0, 0]
+      )
+    else:
+      expected_lookups_b = (
+          # example 0:
+          (1., 2.),  # ids [0], embedding = [1, 2]
+      )
 
     # Build columns.
     categorical_column_a = fc._categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
     categorical_column_b = fc._categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
-        [categorical_column_a, categorical_column_b],
-        dimension=embedding_dimension,
-        initializer=_initializer)
 
-    # Provide sparse input and get dense result.
-    embedding_lookup_a = embedding_column_a._get_dense_tensor(
-        _LazyBuilder(input_features))
-    embedding_lookup_b = embedding_column_b._get_dense_tensor(
-        _LazyBuilder(input_features))
+    partitioner = None
+    if partition_variables:
+      partitioner = partitioned_variables.fixed_size_partitioner(2, axis=0)
 
+    with variable_scope.variable_scope('vars', partitioner=partitioner):
+      embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
+          [categorical_column_a, categorical_column_b],
+          dimension=embedding_dimension,
+          initializer=_initializer,
+          use_safe_embedding_lookup=use_safe_embedding_lookup)
+      # Provide sparse input and get dense result.
+      embedding_lookup_a = embedding_column_a._get_dense_tensor(
+          _LazyBuilder(input_features))
+      embedding_lookup_b = embedding_column_b._get_dense_tensor(
+          _LazyBuilder(input_features))
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(('embedding_weights:0',),
-                          tuple([v.name for v in global_vars]))
+    if partition_variables:
+      self.assertCountEqual(('vars/embedding_weights/part_0:0',
+                             'vars/embedding_weights/part_1:0'),
+                            tuple([v.name for v in global_vars]))
+    else:
+      self.assertCountEqual(('vars/embedding_weights:0',),
+                            tuple([v.name for v in global_vars]))
     embedding_var = global_vars[0]
-    with _initialized_session():
-      self.assertAllEqual(embedding_values, self.evaluate(embedding_var))
-      self.assertAllEqual(expected_lookups_a, self.evaluate(embedding_lookup_a))
-      self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
+
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+
+    self.assertAllEqual(embedding_values, self.evaluate(embedding_var))
+    self.assertAllEqual(expected_lookups_a, self.evaluate(embedding_lookup_a))
+    self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
+
+    if use_safe_embedding_lookup:
+      self.assertIn('SparseFillEmptyRows',
+                    [x.type for x in ops.get_default_graph().get_operations()])
+    else:
+      self.assertNotIn(
+          'SparseFillEmptyRows',
+          [x.type for x in ops.get_default_graph().get_operations()])
 
   @test_util.run_deprecated_v1
   def test_get_dense_tensor_weight_collections(self):
@@ -5886,11 +5973,11 @@ class SharedEmbeddingColumnTest(test.TestCase):
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
+    self.assertCountEqual(
         ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
         tuple(v.name for v in global_vars))
     my_vars = ops.get_collection('my_vars')
-    self.assertItemsEqual(
+    self.assertCountEqual(
         ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
         tuple(v.name for v in my_vars))
 
@@ -5997,14 +6084,14 @@ class SharedEmbeddingColumnTest(test.TestCase):
           'linear_model/aaa_bbb_shared_embedding/embedding_weights:0',
           'linear_model/aaa_bbb_shared_embedding_1/weights:0',
       )
-      self.assertItemsEqual(
+      self.assertCountEqual(
           expected_var_names,
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
       trainable_vars = {
           v.name: v for v in ops.get_collection(
               ops.GraphKeys.TRAINABLE_VARIABLES)
       }
-      self.assertItemsEqual(expected_var_names, trainable_vars.keys())
+      self.assertCountEqual(expected_var_names, trainable_vars.keys())
       bias = trainable_vars['linear_model/bias_weights:0']
       embedding_weights = trainable_vars[
           'linear_model/aaa_bbb_shared_embedding/embedding_weights:0']
@@ -6091,14 +6178,14 @@ class SharedEmbeddingColumnTest(test.TestCase):
           'linear_model/aaa_bbb_shared_embedding/embedding_weights:0',
           'linear_model/aaa_bbb_shared_embedding_1/weights:0',
       )
-      self.assertItemsEqual(
+      self.assertCountEqual(
           expected_var_names,
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
       trainable_vars = {
           v.name: v
           for v in ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       }
-      self.assertItemsEqual(expected_var_names, trainable_vars.keys())
+      self.assertCountEqual(expected_var_names, trainable_vars.keys())
       bias = trainable_vars['linear_model/bias_weights:0']
       embedding_weights = trainable_vars[
           'linear_model/aaa_bbb_shared_embedding/embedding_weights:0']
@@ -6195,19 +6282,19 @@ class SharedEmbeddingColumnTest(test.TestCase):
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
+    self.assertCountEqual(
         ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
         tuple([v.name for v in global_vars]))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     if trainable:
-      self.assertItemsEqual(
+      self.assertCountEqual(
           ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
           tuple([v.name for v in trainable_vars]))
     else:
-      self.assertItemsEqual([], tuple([v.name for v in trainable_vars]))
+      self.assertCountEqual([], tuple([v.name for v in trainable_vars]))
     shared_embedding_vars = global_vars
     with _initialized_session():
-      self.assertAllEqual(embedding_values, shared_embedding_vars[0].eval())
+      self.assertAllEqual(embedding_values, shared_embedding_vars[0])
       self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
 
   @test_util.run_deprecated_v1
@@ -6251,7 +6338,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
       }, column._parse_example_spec)
 
   def test_invalid_dtype_none(self):
-    with self.assertRaisesRegexp(ValueError, 'is not convertible to float'):
+    with self.assertRaisesRegex(ValueError, 'is not convertible to float'):
       fc._weighted_categorical_column(
           categorical_column=fc._categorical_column_with_identity(
               key='ids', num_buckets=3),
@@ -6259,7 +6346,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
           dtype=None)
 
   def test_invalid_dtype_string(self):
-    with self.assertRaisesRegexp(ValueError, 'is not convertible to float'):
+    with self.assertRaisesRegex(ValueError, 'is not convertible to float'):
       fc._weighted_categorical_column(
           categorical_column=fc._categorical_column_with_identity(
               key='ids', num_buckets=3),
@@ -6275,11 +6362,11 @@ class WeightedCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'Bad dtype'):
+    with self.assertRaisesRegex(ValueError, 'Bad dtype'):
       _transform_features({'ids': strings, 'values': strings}, (column,))
 
   def test_column_name_collision(self):
-    with self.assertRaisesRegexp(ValueError, r'Parse config.*already exists'):
+    with self.assertRaisesRegex(ValueError, r'Parse config.*already exists'):
       fc._weighted_categorical_column(
           categorical_column=fc._categorical_column_with_identity(
               key='aaa', num_buckets=3),
@@ -6294,8 +6381,8 @@ class WeightedCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(
-        ValueError, 'values is not in features dictionary'):
+    with self.assertRaisesRegex(ValueError,
+                                'values is not in features dictionary'):
       _transform_features({'ids': inputs}, (column,))
 
   @test_util.run_deprecated_v1
@@ -6459,8 +6546,8 @@ class WeightedCategoricalColumnTest(test.TestCase):
             key='ids', num_buckets=3),
         weight_feature_key='values')
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError,
-                                   r'Dimensions.*are not compatible'):
+      with self.assertRaisesRegex(ValueError,
+                                  r'Dimensions.*are not compatible'):
         get_keras_linear_model_predictions({
             'ids':
                 sparse_tensor.SparseTensorValue(
@@ -6496,7 +6583,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
       with _initialized_session(config):
-        with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
+        with self.assertRaisesRegex(errors.OpError, 'Incompatible shapes'):
           self.evaluate(predictions)
 
   def test_keras_linear_model_mismatched_dense_shape(self):
@@ -6560,8 +6647,8 @@ class WeightedCategoricalColumnTest(test.TestCase):
             key='ids', num_buckets=3),
         weight_feature_key='values')
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
-          ValueError, r'Dimensions.*are not compatible'):
+      with self.assertRaisesRegex(ValueError,
+                                  r'Dimensions.*are not compatible'):
         fc.linear_model({
             'ids': sparse_tensor.SparseTensorValue(
                 indices=((0, 0), (1, 0), (1, 1)),
@@ -6595,7 +6682,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
       with _initialized_session(config):
-        with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
+        with self.assertRaisesRegex(errors.OpError, 'Incompatible shapes'):
           self.evaluate(predictions)
 
   def test_linear_model_mismatched_dense_shape(self):

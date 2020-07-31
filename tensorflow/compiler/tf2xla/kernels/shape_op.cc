@@ -274,10 +274,23 @@ class ZerosLikeOp : public XlaOpKernel {
 
       auto list_shape_or = ctx->builder()->GetShape(list);
       OP_REQUIRES_OK(ctx, list_shape_or.status());
+      const xla::Shape& list_shape = list_shape_or.ValueOrDie();
+      std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
+      list_dynamic_dims.reserve(list_shape.tuple_shapes_size() - 1);
+      for (int64 i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+        // Set dynamic dimension size to 0 for initialization value.
+        std::vector<xla::XlaOp> dynamic_dims;
+        const xla::Shape& shape = list_shape.tuple_shapes(i);
+        auto sub_element = xla::GetTupleElement(list, i);
+        for (int64 dim = 0; dim < shape.dimensions_size(); ++dim) {
+          dynamic_dims.push_back(xla::GetDimensionSize(sub_element, dim));
+        }
+        list_dynamic_dims.push_back(dynamic_dims);
+      }
       xla::XlaOp new_list;
       OP_REQUIRES_OK(
-          ctx, CreateZerosTensorListWithShape(
-                   ctx->builder(), list_shape_or.ValueOrDie(), &new_list));
+          ctx, CreateZerosTensorListWithShape(ctx->builder(), list_shape,
+                                              list_dynamic_dims, &new_list));
 
       xla::XlaOp push_index;
       OP_REQUIRES_OK(ctx, GetTensorListPushIndex(list, &push_index));
@@ -287,10 +300,20 @@ class ZerosLikeOp : public XlaOpKernel {
                      SetTensorListPushIndex(new_list, push_index, &result));
       ctx->SetTensorListOutput(0, result);
     } else {
-      const TensorShape input_shape = ctx->InputShape(0);
-
       auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
-      ctx->SetOutput(0, xla::Broadcast(zero, input_shape.dim_sizes()));
+      xla::XlaOp input = ctx->Input(0);
+      auto input_shape = ctx->InputXlaShape(0).ValueOrDie();
+      auto result = xla::Broadcast(zero, input_shape.dimensions());
+
+      // Setting up dynamic dimensions of the broadcast.
+      for (int64 i = 0; i < input_shape.dimensions_size(); ++i) {
+        if (input_shape.is_dynamic_dimension(i)) {
+          xla::XlaOp input_dynamic_dim = xla::GetDimensionSize(input, i);
+          result = xla::SetDimensionSize(result, input_dynamic_dim, i);
+        }
+      }
+
+      ctx->SetOutput(0, result);
     }
   }
 };

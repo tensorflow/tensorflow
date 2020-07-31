@@ -239,13 +239,14 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                                          dataset()->window_shift_);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (!input_impl_) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         } else {
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         }
         // Save buffer.
         TF_RETURN_IF_ERROR(writer->WriteScalar(strings::StrCat("buffer_size"),

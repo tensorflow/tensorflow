@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "XlaSendToHost"
+  in_arg: {
+    name: "input"
+  }
+  attr {
+    name: "Tinput"
+  }
+  attr {
+    name: "key"
+  }
+}

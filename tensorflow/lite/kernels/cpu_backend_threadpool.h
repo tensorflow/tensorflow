@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 #ifdef TFLITE_WITH_RUY
-#include "tensorflow/lite/experimental/ruy/context.h"
-#include "tensorflow/lite/experimental/ruy/thread_pool.h"
+#include "ruy/context.h"  // from @ruy
+#include "ruy/thread_pool.h"  // from @ruy
 #else
 #include "public/gemmlowp.h"
 #endif
@@ -37,7 +37,8 @@ template <typename TaskType>
 void Execute(int tasks_count, TaskType* tasks,
              CpuBackendContext* cpu_backend_context) {
   TFLITE_DCHECK_LE(tasks_count, cpu_backend_context->max_num_threads());
-  cpu_backend_context->ruy_context()->workers_pool.Execute(tasks_count, tasks);
+  cpu_backend_context->ruy_context()->mutable_thread_pool()->Execute(
+      tasks_count, tasks);
 }
 
 #else  // not TFLITE_WITH_RUY

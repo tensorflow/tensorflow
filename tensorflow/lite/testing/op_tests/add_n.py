@@ -32,16 +32,25 @@ def make_add_n_tests(options):
           "dtype": [tf.float32, tf.int32],
           "input_shape": [[2, 5, 3, 1]],
           "num_inputs": [2, 3, 4, 5],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32, tf.int32],
           "input_shape": [[5]],
           "num_inputs": [2, 3, 4, 5],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32, tf.int32],
           "input_shape": [[]],
           "num_inputs": [2, 3, 4, 5],
+          "dynamic_range_quantize": [False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[]],
+          "num_inputs": [2, 3, 4, 5],
+          "dynamic_range_quantize": [True],
       },
   ]
 

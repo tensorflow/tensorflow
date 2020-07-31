@@ -49,6 +49,10 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
     const TfLiteRegistration* registration, int32_t min_version,
     int32_t max_version);
 
+// Enable or disable the NN API for the interpreter (true to enable).
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetUseNNAPI(
+    TfLiteInterpreterOptions* options, bool enable);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

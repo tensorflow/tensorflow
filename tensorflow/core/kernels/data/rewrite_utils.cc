@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/rewrite_utils.h"
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/graph_view.h"
@@ -79,8 +79,7 @@ void RemoveFakeSinks(FunctionDef* function_def) {
 
 Status ApplyRewrites(OpKernelContext* ctx,
                      const std::function<RewriterConfig(void)> config_factory,
-                     bool optimize_function_library, GraphDef* graph_def,
-                     string* output_node) {
+                     GraphDef* graph_def, string* output_node) {
   // Add an identity node as the fetch node, otherwise we might get 'placeholder
   // is both fed and fetched' errors in some cases when using input list with
   // placeholder dataset nodes.
@@ -117,8 +116,9 @@ Status ApplyRewrites(OpKernelContext* ctx,
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef(
           "graph", meta_graph_def, item_config);
-  grappler_item->optimization_options().optimize_function_library =
-      optimize_function_library;
+  // Grappler should not optimize function library of tf.data graphs. The
+  // tf.data meta optimizer takes care of optimizing tf.data functions.
+  grappler_item->optimization_options().optimize_function_library = false;
   std::unordered_map<string, tensorflow::DeviceProperties> device_map;
   tensorflow::grappler::VirtualCluster cluster(device_map);
 
@@ -143,32 +143,16 @@ Status ApplyRewrites(OpKernelContext* ctx,
 
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library, bool record_fingerprint,
-                      DatasetBase** rewritten_input) {
-  SerializationContext::Params params;
+                      bool record_fingerprint, DatasetBase** rewritten_input) {
   std::vector<std::pair<string, Tensor>> input_list;
-  params.input_list = &input_list;
-  params.external_state_policy =
-      SerializationContext::ExternalStatePolicy::kIgnore;
-  params.fail_if_unimplemented = false;
-  params.serialize_data_tensors = false;
-  params.preserve_random_seeds = false;
-  SerializationContext serialization_ctx(params);
   GraphDef graph_def;
-  TF_RETURN_IF_ERROR(
-      AsGraphDef(ctx, input, std::move(serialization_ctx), &graph_def));
-
   string output_node;
-  for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
-      output_node = node.input(0);
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      AsGraphDefMinimal(ctx, input, &input_list, &graph_def, &output_node));
 
   VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
-  TF_RETURN_IF_ERROR(ApplyRewrites(ctx, config_factory,
-                                   optimize_function_library, &graph_def,
-                                   &output_node));
+  TF_RETURN_IF_ERROR(
+      ApplyRewrites(ctx, config_factory, &graph_def, &output_node));
   VLOG(3) << "After graph rewrites: " << graph_def.DebugString();
 
   // Instantiate the optimized input pipeline by running the optimized graph
@@ -195,8 +179,10 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
 
   if (record_fingerprint) {
     (*ctx->runner())([graph_def = std::move(graph_def),
+                      lib_def = lib_def.release(),
                       input_list = std::move(input_list),
                       output_node = std::move(output_node)]() {
+      std::unique_ptr<FunctionLibraryDefinition> lib_def_owner(lib_def);
       const NodeDef* node_def = nullptr;
       for (const auto& node : graph_def.node()) {
         if (node.name() == output_node) {
@@ -209,7 +195,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
         return;
       }
       uint64 hash = 0;
-      Status s = HashNode(graph_def, *node_def, &hash);
+      Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
       if (!s.ok()) {
         VLOG(3) << "Failed to hash graph: " << s.ToString();
         return;

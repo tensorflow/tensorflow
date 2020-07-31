@@ -29,8 +29,10 @@ def make_minimum_tests(options):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape_1": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
-      "input_shape_2": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "input_shape_1": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3],
+                        [5, 32, 32, 1, 1], [5, 32, 32, 1, 1]],
+      "input_shape_2": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3],
+                        [5, 32, 32, 1, 1], [5, 32, 32, 1, 3]],
       "fully_quantize": [False, True],
   }]
 
@@ -69,4 +71,4 @@ def make_minimum_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=16)
+      expected_tf_failures=44)

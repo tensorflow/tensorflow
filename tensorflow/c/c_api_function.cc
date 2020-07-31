@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/base64.h"
+#include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::errors::InvalidArgument;
 
@@ -54,7 +54,7 @@ Status ProcessInputs(
     TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   input_tensors->reserve(ninputs);
   for (int i = 0; i < ninputs; ++i) {
-    Node* node = &inputs[i].oper->node;
+    Node* node = inputs[i].oper ? &inputs[i].oper->node : nullptr;
     int idx = inputs[i].index;
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -90,7 +90,7 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
     TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   output_tensors->reserve(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    Node* node = &outputs[i].oper->node;
+    Node* node = outputs[i].oper ? &outputs[i].oper->node : nullptr;
     int idx = outputs[i].index;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         fn_body->graph.IsValidOutputTensor(node, idx),
