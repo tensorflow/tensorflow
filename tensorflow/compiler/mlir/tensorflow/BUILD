@@ -333,6 +333,7 @@ cc_library(
     deps = [
         ":tensorflow_types",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:Support",
     ],
 )
