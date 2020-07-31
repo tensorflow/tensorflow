@@ -228,10 +228,11 @@ extern "C" void am_pdm0_isr(void) {
           source_buffer[indi];
       g_audio_capture_buffer_start =
           (g_audio_capture_buffer_start + 1) % kAudioCaptureBufferSize;
+
       slotCount++;   //bug here, need to move this outside of for loop
     }
     
-//    slotCount++;  
+//    slotCount++;
 
     g_total_samples_captured += slotCount;
     g_latest_audio_timestamp =
@@ -343,4 +344,3 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
 }
 
 int32_t LatestAudioTimestamp() { return g_latest_audio_timestamp; }
-
