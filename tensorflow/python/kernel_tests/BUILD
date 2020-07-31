@@ -3071,21 +3071,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "slice_op_test",
-    size = "medium",
-    srcs = ["slice_op_test.py"],
-    tags = ["no_windows"],  # b/126916429
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
     name = "huge_slice_op_test",
     size = "medium",
     srcs = ["huge_slice_op_test.py"],
