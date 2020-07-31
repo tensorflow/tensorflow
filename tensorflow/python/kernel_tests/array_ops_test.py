@@ -800,7 +800,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   def testExpandVariable(self):
     with self.session(use_gpu=True):
       x = variables.Variable(7, dtype=dtypes.int32)
-      x.initializer.run()
+      self.evaluate(x.initializer)
       y = x[None].eval()
       self.assertEqual(y.shape, (1,))
       self.assertAllEqual(y, (7,))

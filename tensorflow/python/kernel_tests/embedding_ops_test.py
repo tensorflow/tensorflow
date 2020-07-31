@@ -808,7 +808,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
         initializer=initializer))
     for w in embedding_weights:
-      w.initializer.run()
+      self.evaluate(w.initializer)
     embedding_weights = [w.eval() for w in embedding_weights]
     return embedding_weights
 

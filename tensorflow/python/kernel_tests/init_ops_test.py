@@ -116,7 +116,7 @@ class ConstantInitializersTest(test.TestCase):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.zeros_initializer())
-      x.initializer.run()
+      self.evaluate(x.initializer)
       self.assertAllEqual(x, np.zeros(shape))
 
   @test_util.run_deprecated_v1
@@ -125,7 +125,7 @@ class ConstantInitializersTest(test.TestCase):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.ones_initializer())
-      x.initializer.run()
+      self.evaluate(x.initializer)
       self.assertAllEqual(x, np.ones(shape))
 
   @test_util.run_deprecated_v1
@@ -134,7 +134,7 @@ class ConstantInitializersTest(test.TestCase):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(0.0))
-      x.initializer.run()
+      self.evaluate(x.initializer)
       self.assertAllEqual(x, np.zeros(shape))
 
   @test_util.run_deprecated_v1
@@ -143,7 +143,7 @@ class ConstantInitializersTest(test.TestCase):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(1.0))
-      x.initializer.run()
+      self.evaluate(x.initializer)
       self.assertAllEqual(x, np.ones(shape))
 
   @test_util.run_deprecated_v1
@@ -155,7 +155,7 @@ class ConstantInitializersTest(test.TestCase):
           shape=shape,
           dtype=dtypes.int32,
           initializer=init_ops.constant_initializer(7))
-      x.initializer.run()
+      self.evaluate(x.initializer)
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
       self.assertAllEqual(x, 7 * np.ones(shape, dtype=np.int32))
 
@@ -168,7 +168,7 @@ class ConstantInitializersTest(test.TestCase):
           shape=shape,
           dtype=dtypes.int32,
           initializer=init_ops.constant_initializer((10, 20, 30)))
-      x.initializer.run()
+      self.evaluate(x.initializer)
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
       self.assertAllEqual(x, [10, 20, 30])
 
@@ -176,7 +176,7 @@ class ConstantInitializersTest(test.TestCase):
     with self.cached_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       x = variable_scope.get_variable(name, shape=shape, initializer=init)
-      x.initializer.run()
+      self.evaluate(x.initializer)
 
       actual = array_ops.reshape(x, [-1]).eval()
       self.assertEqual(len(actual), len(expected))
@@ -201,7 +201,7 @@ class ConstantInitializersTest(test.TestCase):
     with self.cached_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       x = variable_scope.get_variable(name, shape=shape, initializer=init)
-      x.initializer.run()
+      self.evaluate(x.initializer)
 
       actual = array_ops.reshape(x, [-1]).eval()
       self.assertGreater(len(actual), len(expected))
@@ -931,7 +931,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
             "{}".format(i),
             shape=shape,
             initializer=init_ops.convolutional_delta_orthogonal)
-        x.initializer.run()
+        self.evaluate(x.initializer)
         y = self.evaluate(x)[1, 1, :, :]
         determinant = np.linalg.det(y)
         value += determinant
@@ -1000,7 +1000,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
             "{}".format(i),
             shape=shape,
             initializer=init_ops.convolutional_orthogonal_1d)
-        x.initializer.run()
+        self.evaluate(x.initializer)
         y = np.sum(x.eval(), axis=0)
         determinant = np.linalg.det(y)
         value += determinant
@@ -1229,7 +1229,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
             "{}".format(i),
             shape=shape,
             initializer=init_ops.convolutional_orthogonal_3d)
-        x.initializer.run()
+        self.evaluate(x.initializer)
         y = np.sum(x.eval(), axis=(0, 1, 2))
         determinant = np.linalg.det(y)
         value += determinant

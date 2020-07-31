@@ -147,7 +147,7 @@ class CondV2Test(test.TestCase):
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.0)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       op = v.assign_add(1.0)
 
       def true_branch():

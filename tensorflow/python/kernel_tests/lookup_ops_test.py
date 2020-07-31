@@ -306,7 +306,7 @@ class StaticHashTableTest(BaseLookupTableTest):
     # Init the table in the second session and verify that we do not get a
     # "Table already initialized" error.
     with session2:
-      table.initializer.run()
+      self.evaluate(table.initializer)
       self.assertAllEqual(3, self.evaluate(table.size()))
 
   @test_util.run_v2_only
@@ -812,7 +812,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       # Initialize with non existing file (old_file.txt) should fail.
       # TODO(yleon): Update message, which might change per FileSystem.
       with self.assertRaisesOpError("old_file.txt"):
-        table.initializer.run()
+        self.evaluate(table.initializer)
 
       # Initialize the model feeding the vocabulary file.
       filenames = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
@@ -2443,7 +2443,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
                   vocab_file, vocab_size=vocab_size), default_value),
           oov_buckets)
 
-      table.initializer.run()
+      self.evaluate(table.initializer)
 
       input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
 
@@ -2466,7 +2466,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
           oov_buckets,
           key_dtype=dtypes.int32)
 
-      table.initializer.run()
+      self.evaluate(table.initializer)
 
       values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int32)
 
@@ -2487,7 +2487,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
                   vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
               default_value), oov_buckets)
 
-      table.initializer.run()
+      self.evaluate(table.initializer)
 
       values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int64)
 
@@ -2503,7 +2503,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       # Set a table that only uses hash buckets, for each input value returns
       # an id calculated by fingerprint("input") mod oov_buckets.
       table = lookup_ops.IdTableWithHashBuckets(None, oov_buckets)
-      table.initializer.run()
+      self.evaluate(table.initializer)
 
       values = constant_op.constant(("brain", "salad", "surgery"))
 
@@ -2526,7 +2526,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       # an id calculated by fingerprint("input") mod oov_buckets.
       table = lookup_ops.IdTableWithHashBuckets(
           None, oov_buckets, key_dtype=dtypes.int32)
-      table.initializer.run()
+      self.evaluate(table.initializer)
 
       input_string = constant_op.constant([42, 1, -1000], dtype=dtypes.int32)
 
@@ -2606,7 +2606,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
                   vocab_file, vocab_size=vocab_size), default_value),
           oov_buckets)
 
-      table1.initializer.run()
+      self.evaluate(table1.initializer)
 
       input_string_1 = constant_op.constant(
           ["brain", "salad", "surgery", "UNK"])
@@ -2622,7 +2622,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       oov_buckets = 1
 
       # Underlying lookup table already initialized in previous session.
-      # No need to call table2.initializer.run()
+      # No need to call self.evaluate(table2.initializer)
       table2 = lookup_ops.IdTableWithHashBuckets(
           lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
@@ -2687,7 +2687,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
           lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
               -1), 1)
-      table.initializer.run()
+      self.evaluate(table.initializer)
 
       sp_ids = table.lookup(sp_features)
 
@@ -2716,7 +2716,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
                   (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
           1,
           key_dtype=dtypes.int32)
-      table.initializer.run()
+      self.evaluate(table.initializer)
 
       sp_ids = table.lookup(sp_features)
 
@@ -2745,7 +2745,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
                   (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
           1,
           key_dtype=dtypes.int64)
-      table.initializer.run()
+      self.evaluate(table.initializer)
 
       sp_ids = table.lookup(sp_features)
 
