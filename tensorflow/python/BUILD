@@ -4947,23 +4947,6 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "gradient_checker_test",
-    size = "medium",
-    srcs = ["ops/gradient_checker_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":nn_grad",
-        ":nn_ops",
-        ":platform",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_test(
     name = "op_selector_test",
     srcs = ["ops/op_selector_test.py"],
