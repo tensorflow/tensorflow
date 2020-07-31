@@ -284,7 +284,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   HloComputation* new_while_body =
       live_in_instructions_result.new_while_instr->while_body();
 
-  for (int i = 0; i < instructions_to_replace.size(); i++) {
+  for (int i = 0, end = instructions_to_replace.size(); i < end; i++) {
     HloInstruction* instruction_to_replace_in_new_while =
         FindOrDie(live_in_instructions_result.while_body_instruction_map,
                   instructions_to_replace[i]);
