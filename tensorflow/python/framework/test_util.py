@@ -3318,16 +3318,16 @@ class AbstractGradientTape:
   duplicating tests.
   """
 
-  def __init__(self, use_tape):
+  def __init__(self, use_tape, persistent=False):
     self._use_tape = use_tape
+    self._persistent = persistent
 
   def __enter__(self):
     if self._use_tape:
-      self._tape_impl = backprop.GradientTape()
+      self._tape_impl = backprop.GradientTape(persistent=self._persistent)
     else:
       self._tape_impl = _fake_gradient_tape_context_manager()
     return self._tape_impl.__enter__()
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     self._tape_impl.__exit__(exc_type, exc_val, exc_tb)
-
