@@ -1058,6 +1058,66 @@ void DeleteDir(const TF_Filesystem* filesystem, const char* path,
   }
 }
 
+void RenameFile(const TF_Filesystem* filesystem, const char* src,
+                const char* dst, TF_Status* status) {
+  Aws::String bucket_src, object_src;
+  ParseS3Path(src, false, &bucket_src, &object_src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  Aws::String copy_src = bucket_src + "/" + object_src;
+
+  Aws::String bucket_dst, object_dst;
+  ParseS3Path(dst, false, &bucket_dst, &object_dst, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  if (object_src.back() == '/') {
+    if (object_dst.back() != '/') {
+      object_dst.push_back('/');
+    }
+  } else {
+    if (object_dst.back() == '/') {
+      object_dst.pop_back();
+    }
+  }
+
+  Aws::S3::Model::DeleteObjectRequest delete_object_request;
+  Aws::S3::Model::ListObjectsRequest list_objects_request;
+  list_objects_request.WithBucket(bucket_src)
+      .WithPrefix(object_src)
+      .WithMaxKeys(kS3GetChildrenMaxKeys);
+  list_objects_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+
+  Aws::S3::Model::ListObjectsResult list_objects_result;
+  do {
+    auto list_objects_outcome =
+        s3_file->s3_client->ListObjects(list_objects_request);
+    if (!list_objects_outcome.IsSuccess())
+      return TF_SetStatusFromAWSError(list_objects_outcome.GetError(), status);
+
+    list_objects_result = list_objects_outcome.GetResult();
+    for (const auto& object : list_objects_result.GetContents()) {
+      Aws::String key_src = object.GetKey();
+      Aws::String key_dst = key_src;
+      key_dst.replace(0, object_src.length(), object_dst);
+      CopyFile(filesystem, ("s3://" + bucket_src + "/" + key_src).c_str(),
+               ("s3://" + bucket_dst + "/" + key_dst).c_str(), status);
+      if (TF_GetCode(status) != TF_OK) return;
+
+      delete_object_request.WithBucket(bucket_src).WithKey(key_src);
+      auto delete_object_outcome =
+          s3_file->s3_client->DeleteObject(delete_object_request);
+      if (!delete_object_outcome.IsSuccess())
+        return TF_SetStatusFromAWSError(delete_object_outcome.GetError(),
+                                        status);
+    }
+    list_objects_request.SetMarker(list_objects_result.GetNextMarker());
+  } while (list_objects_result.GetIsTruncated());
+  TF_SetStatus(status, TF_OK, "");
+}
+
 int GetChildren(const TF_Filesystem* filesystem, const char* path,
                 char*** entries, TF_Status* status) {
   Aws::String bucket, prefix;
@@ -1161,6 +1221,7 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   ops->filesystem_ops->delete_file = tf_s3_filesystem::DeleteFile;
   ops->filesystem_ops->delete_dir = tf_s3_filesystem::DeleteDir;
   ops->filesystem_ops->copy_file = tf_s3_filesystem::CopyFile;
+  ops->filesystem_ops->rename_file = tf_s3_filesystem::RenameFile;
   ops->filesystem_ops->path_exists = tf_s3_filesystem::PathExists;
   ops->filesystem_ops->get_file_size = tf_s3_filesystem::GetFileSize;
   ops->filesystem_ops->stat = tf_s3_filesystem::Stat;
