@@ -40,6 +40,14 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
   let verifier = [{ return Verify(*this); }];
 }
 
+def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
+def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
+def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
+def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
+def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
+    HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
+]>;
+
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -1375,7 +1383,8 @@ def HLO_FusionOp : HLO_Op<"fusion", []> {
   let regions = (region SizedRegion<1>:$fused_computation);
 
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands
+    Variadic<HLO_TensorOrTuple>:$operands,
+    OptionalAttr<HLO_FusionKindAttr>:$fusion_kind
   );
 
   let results = (outs

@@ -73,6 +73,27 @@ void SetProtoIdAndName(T* entry, const string& base_name, char separator,
 }
 }  // namespace
 
+namespace internal {
+
+XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
+                            absl::Span<const XlaOp> operands,
+                            absl::string_view fusion_kind,
+                            const XlaComputation& fused_computation) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    instr.set_fusion_kind(std::string(fusion_kind));
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(auto program_shape,
+                        fused_computation.GetProgramShape());
+    *instr.mutable_shape() = program_shape.result().ToProto();
+    builder->AddCalledComputation(fused_computation, &instr);
+    return builder->AddInstruction(std::move(instr), HloOpcode::kFusion,
+                                   operands);
+  });
+}
+
+}  // namespace internal
+
 XlaOp operator-(XlaOp x) { return Neg(x); }
 XlaOp operator+(XlaOp x, XlaOp y) { return Add(x, y); }
 XlaOp operator-(XlaOp x, XlaOp y) { return Sub(x, y); }
