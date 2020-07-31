@@ -809,7 +809,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
         initializer=initializer))
     for w in embedding_weights:
       self.evaluate(w.initializer)
-    embedding_weights = [w.eval() for w in embedding_weights]
+    embedding_weights = [self.evaluate(w) for w in embedding_weights]
     return embedding_weights
 
   def _ids_and_weights_2d(self):

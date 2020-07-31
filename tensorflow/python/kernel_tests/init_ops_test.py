@@ -1001,7 +1001,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
             shape=shape,
             initializer=init_ops.convolutional_orthogonal_1d)
         self.evaluate(x.initializer)
-        y = np.sum(x.eval(), axis=0)
+        y = np.sum(self.evaluate(x), axis=0)
         determinant = np.linalg.det(y)
         value += determinant
         abs_value += np.abs(determinant)
@@ -1230,7 +1230,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
             shape=shape,
             initializer=init_ops.convolutional_orthogonal_3d)
         self.evaluate(x.initializer)
-        y = np.sum(x.eval(), axis=(0, 1, 2))
+        y = np.sum(self.evaluate(x), axis=(0, 1, 2))
         determinant = np.linalg.det(y)
         value += determinant
         abs_value += np.abs(determinant)

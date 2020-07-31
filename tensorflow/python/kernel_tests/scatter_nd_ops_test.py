@@ -556,7 +556,7 @@ class ScatterNdTest(test.TestCase):
     scatter = self.scatter_nd(indices, updates, shape)
 
     with self.cached_session():
-      self.assertEqual(scatter.eval().size, 0)
+      self.assertEqual(self.evaluate(scatter).size, 0)
 
   @test_util.run_deprecated_v1
   def testRank3InvalidShape1(self):

@@ -1690,7 +1690,7 @@ class DenseHashTableOpTest(test.TestCase):
           [[11, 12], [11, 14], [11, 15], [13, 14], [13, 15]], dtypes.int64)
       output = table.lookup(input_string)
       self.assertAllEqual([[0, 1], [2, 3], [-1, -2], [4, 5], [-1, -2]],
-                          output.eval())
+                          self.evaluate(output))
 
   @test_util.run_v1_only("Saver V1 only")
   def testVectorScalarSaveRestore(self):
