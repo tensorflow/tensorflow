@@ -25,7 +25,9 @@ cc_library(
         "//tensorflow:windows": get_win_copts(),
     }),
     deps = [
+        "//tensorflow/c:env",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//third_party/hadoop:hdfs",
     ],
 )
