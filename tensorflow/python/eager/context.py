@@ -2310,7 +2310,7 @@ def async_scope():
         train_step_fn()
   except tf.errors.OutOfRangeError:
     tf.experimental.async_clear_error()
-  logging.info('loss =', loss.numpy())
+  logging.info('loss = %s', loss.numpy())
   ```
 
   Yields:
@@ -2364,7 +2364,7 @@ def async_clear_error():
     except tf.errors.OutOfRangeError:
       tf.experimental.async_clear_error()
       break
-  logging.info('loss =', loss.numpy())
+  logging.info('loss = %s', loss.numpy())
   ```
   """
   context().clear_executor_errors()
