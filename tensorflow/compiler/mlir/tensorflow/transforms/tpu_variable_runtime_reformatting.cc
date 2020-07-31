@@ -351,7 +351,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
   cond.setType(FunctionType::get(append_types(cond.getType().getInputs()),
                                  cond.getType().getResults(),
                                  cond.getContext()));
-  for (int64_t i = 0; i < state_vars.size(); ++i) {
+  for (int64_t i = 0, end = state_vars.size(); i < end; ++i) {
     int64_t arg_index = body.getNumArguments() - state_vars.size() + i;
     TF::VarHandleOp state_var = state_vars[i];
     auto device_attr = state_var.getAttr(kDeviceAttr);

@@ -41,15 +41,6 @@ class Add : public ElementwiseOperation {
   Add& operator=(Add&& operation);
   Add(const Add&) = delete;
   Add& operator=(const Add&) = delete;
-
-  absl::Status SetArgs(const std::string& unique_postfix,
-                       Arguments* args) override;
-  bool IsLinkable() const override { return dst_depth_ == src_depthes_[0]; }
-
- private:
-  int link_index_;
-  std::vector<int> src_depthes_;
-  int dst_depth_;
 };
 
 Add CreateAdd(const OperationDef& definition, const std::vector<int>& channels,

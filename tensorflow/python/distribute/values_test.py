@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
@@ -408,6 +409,9 @@ class DistributedDelegateTest(test.TestCase):
             strategy_combinations.tpu_strategy,
             strategy_combinations.tpu_strategy_packed_var,
             strategy_combinations.central_storage_strategy_with_two_gpus,
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu
         ],
         synchronization=[
             variables_lib.VariableSynchronization.ON_READ,
@@ -427,7 +431,13 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
           1., synchronization=synchronization, aggregation=aggregation)
     self.assertIsInstance(v, variables_lib.Variable)
 
-  def testCheckpointing(self, distribution, synchronization, aggregation):
+  def testCheckpointing(self, distribution, synchronization, aggregation, mode):
+
+    if (isinstance(distribution,
+                   collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+        and mode == "graph"):
+      self.skipTest("MWMS combinations tests do not work well in graph mode.")
+
     with distribution.scope():
       v = variables_lib.Variable(
           constant_op.constant([1., 2., 3., 4]),
@@ -1017,25 +1027,6 @@ def _make_replica_local(method, strategy=None):
     var_cls = values_lib.SyncOnReadVariable
   replica_local = var_cls(strategy, v, method)
   return v, replica_local
-
-
-# TODO(b/144432582): Add variable aggregation type to combinations to simplify
-# tests.
-def strategy_and_run_tf_function_combinations():
-  # Test the combination of different strategies and whether a tf.function
-  # is passed into strategy.run."""
-  return combinations.combine(
-      distribution=[
-          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-      ],
-      mode=["graph", "eager"],
-      experimental_run_tf_function=[True, False]) + combinations.combine(
-          distribution=[
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["graph", "eager"],
-          experimental_run_tf_function=[True])
 
 
 class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):

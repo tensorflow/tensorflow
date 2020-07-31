@@ -36,7 +36,7 @@ class AssignOpTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       p = variables.Variable(x)
       assign = state_ops.assign(p, y)
-      p.initializer.run()
+      self.evaluate(p.initializer)
       new_value = self.evaluate(assign)
       return self.evaluate(p), new_value
 
@@ -45,7 +45,7 @@ class AssignOpTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       p = variables.Variable(x)
       add = state_ops.assign_add(p, y)
-      p.initializer.run()
+      self.evaluate(p.initializer)
       new_value = self.evaluate(add)
       return self.evaluate(p), new_value
 
@@ -54,7 +54,7 @@ class AssignOpTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       p = variables.Variable(x)
       sub = state_ops.assign_sub(p, y)
-      p.initializer.run()
+      self.evaluate(p.initializer)
       new_value = self.evaluate(sub)
       return self.evaluate(p), new_value
 

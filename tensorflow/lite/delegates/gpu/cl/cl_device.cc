@@ -432,6 +432,38 @@ bool DeviceInfo::SupportsImage3D() const {
   return supports_image3d_writes;
 }
 
+bool DeviceInfo::IsAdreno() const { return vendor == Vendor::QUALCOMM; }
+
+bool DeviceInfo::IsAdreno3xx() const {
+  return IsAdreno() && IsGPUVersionInRange(adreno_info.gpu_version, 300, 400);
+}
+
+bool DeviceInfo::IsAdreno4xx() const {
+  return IsAdreno() && IsGPUVersionInRange(adreno_info.gpu_version, 400, 500);
+}
+
+bool DeviceInfo::IsAdreno5xx() const {
+  return IsAdreno() && IsGPUVersionInRange(adreno_info.gpu_version, 500, 600);
+}
+
+bool DeviceInfo::IsAdreno6xx() const {
+  return IsAdreno() && IsGPUVersionInRange(adreno_info.gpu_version, 600, 700);
+}
+
+bool DeviceInfo::IsAdreno6xxOrHigher() const {
+  return IsAdreno() && adreno_info.gpu_version >= 600;
+}
+
+bool DeviceInfo::IsPowerVR() const { return vendor == Vendor::POWERVR; }
+
+bool DeviceInfo::IsNvidia() const { return vendor == Vendor::NVIDIA; }
+
+bool DeviceInfo::IsMali() const { return vendor == Vendor::MALI; }
+
+bool DeviceInfo::IsAMD() const { return vendor == Vendor::AMD; }
+
+bool DeviceInfo::IsIntel() const { return vendor == Vendor::INTEL; }
+
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
     : id_(id), platform_id_(platform_id), info_(id) {}
 
@@ -528,41 +560,29 @@ bool CLDevice::SupportsSubGroupWithSize(int sub_group_size) const {
   return false;
 }
 
-bool CLDevice::IsAdreno() const { return info_.vendor == Vendor::QUALCOMM; }
+bool CLDevice::IsAdreno() const { return info_.IsAdreno(); }
 
-bool CLDevice::IsAdreno3xx() const {
-  return IsAdreno() &&
-         IsGPUVersionInRange(info_.adreno_info.gpu_version, 300, 400);
-}
+bool CLDevice::IsAdreno3xx() const { return info_.IsAdreno3xx(); }
 
-bool CLDevice::IsAdreno4xx() const {
-  return IsAdreno() &&
-         IsGPUVersionInRange(info_.adreno_info.gpu_version, 400, 500);
-}
+bool CLDevice::IsAdreno4xx() const { return info_.IsAdreno4xx(); }
 
-bool CLDevice::IsAdreno5xx() const {
-  return IsAdreno() &&
-         IsGPUVersionInRange(info_.adreno_info.gpu_version, 500, 600);
-}
+bool CLDevice::IsAdreno5xx() const { return info_.IsAdreno5xx(); }
 
-bool CLDevice::IsAdreno6xx() const {
-  return IsAdreno() &&
-         IsGPUVersionInRange(info_.adreno_info.gpu_version, 600, 700);
-}
+bool CLDevice::IsAdreno6xx() const { return info_.IsAdreno6xx(); }
 
 bool CLDevice::IsAdreno6xxOrHigher() const {
-  return IsAdreno() && info_.adreno_info.gpu_version >= 600;
+  return info_.IsAdreno6xxOrHigher();
 }
 
-bool CLDevice::IsPowerVR() const { return info_.vendor == Vendor::POWERVR; }
+bool CLDevice::IsPowerVR() const { return info_.IsPowerVR(); }
 
-bool CLDevice::IsNvidia() const { return info_.vendor == Vendor::NVIDIA; }
+bool CLDevice::IsNvidia() const { return info_.IsNvidia(); }
 
-bool CLDevice::IsMali() const { return info_.vendor == Vendor::MALI; }
+bool CLDevice::IsMali() const { return info_.IsMali(); }
 
-bool CLDevice::IsAMD() const { return info_.vendor == Vendor::AMD; }
+bool CLDevice::IsAMD() const { return info_.IsAMD(); }
 
-bool CLDevice::IsIntel() const { return info_.vendor == Vendor::INTEL; }
+bool CLDevice::IsIntel() const { return info_.IsIntel(); }
 
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;

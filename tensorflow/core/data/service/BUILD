@@ -59,6 +59,7 @@ cc_library(
         ":credentials_factory",
         ":data_service",
         ":dispatcher_proto_cc",
+        ":dispatcher_state",
         ":grpc_util",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
@@ -176,7 +177,6 @@ cc_library(
 tf_cc_test(
     name = "journal_test",
     srcs = ["journal_test.cc"],
-    tags = ["no_windows"],  # b/162268597
     deps = [
         ":common_proto_cc",
         ":journal",

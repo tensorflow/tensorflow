@@ -68,6 +68,10 @@ class ConvConstants : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
+  std::string GenerateConvolutionConstantCode(
+      const OperationDef& op_def, const int2& kernel_size, int src_channels,
+      int dst_channels, bool stride_correction, const CLDevice& device);
+
   int2 kernel_size_;
   int2 stride_;
   int2 padding_;

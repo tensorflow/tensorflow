@@ -41,7 +41,10 @@ class LSTMOpModel : public SingleOpModel {
               bool use_projection_bias, const TensorType weight_type,
               bool model_has_legacy_20_inputs, bool is_layer_norm,
               bool asymmetric_quantize_inputs)
-      : n_input_(n_input), n_output_(n_output), weight_type_(weight_type) {
+      : n_input_(n_input),
+        n_output_(n_output),
+        n_batch_(n_batch),
+        weight_type_(weight_type) {
     input_ = AddInput({TensorType_FLOAT32, {n_batch, n_input}});
 
     if (use_cifg) {
@@ -124,7 +127,7 @@ class LSTMOpModel : public SingleOpModel {
       }
     }
 
-    output_ = AddOutput({TensorType_FLOAT32, {n_output}});
+    output_ = AddOutput({TensorType_FLOAT32, {n_batch, n_output}});
 
     // TODO(b/161825581): Add tests where cell_clip and/or proj_clip is not the
     // default 0.
@@ -234,6 +237,7 @@ class LSTMOpModel : public SingleOpModel {
 
   int num_inputs() { return n_input_; }
   int num_outputs() { return n_output_; }
+  int num_batches() { return n_batch_; }
 
  protected:
   int input_;
@@ -268,6 +272,7 @@ class LSTMOpModel : public SingleOpModel {
 
   int n_input_;
   int n_output_;
+  int n_batch_;
 
  private:
   void PopulateTensor(int index, const std::vector<float>& data) {
@@ -327,10 +332,10 @@ class LstmOpTest
   std::vector<float> cell_layer_norm_coefficients_;
   std::vector<float> output_layer_norm_coefficients_;
 
-  // LSTM input is stored as num_batch x num_inputs vector.
-  std::vector<std::vector<float>> lstm_input_;
-  // LSTM output is stored as num_batch x num_outputs vector.
-  std::vector<std::vector<float>> lstm_golden_output_;
+  // LSTM input is stored as num_steps * num_batch * num_inputs vector.
+  std::vector<std::vector<std::vector<float>>> lstm_input_;
+  // LSTM output is stored as num_steps * num_batch * num_outputs vector.
+  std::vector<std::vector<std::vector<float>>> lstm_golden_output_;
 
   // Compares output up to tolerance to the result of the lstm given the input.
   void VerifyGoldens(LSTMOpModel* lstm, float tolerance) {
@@ -340,30 +345,33 @@ class LstmOpTest
     SetAllWeightsAndBiases(lstm);
     lstm->ApplyDelegate();
 
-    const int num_batches = lstm_input_.size();
-    EXPECT_GT(num_batches, 0);
     const int num_inputs = lstm->num_inputs();
-    EXPECT_GT(num_inputs, 0);
-    const int input_sequence_size = lstm_input_[0].size() / num_inputs;
-    EXPECT_GT(input_sequence_size, 0);
-    for (int i = 0; i < input_sequence_size; ++i) {
-      for (int b = 0; b < num_batches; ++b) {
-        const float* batch_start = lstm_input_[b].data() + i * num_inputs;
-        const float* batch_end = batch_start + num_inputs;
+    const int num_outputs = lstm->num_outputs();
+    const int num_batches = lstm->num_batches();
 
-        lstm->SetInput(b * lstm->num_inputs(), batch_start, batch_end);
+    ASSERT_EQ(lstm_input_.size(), lstm_golden_output_.size());
+    const int num_steps = lstm_input_.size();
+
+    for (int i = 0; i < num_steps; ++i) {
+      ASSERT_EQ(num_batches, lstm_input_[i].size());
+      for (int b = 0; b < num_batches; ++b) {
+        ASSERT_EQ(num_inputs, lstm_input_[i][b].size());
+        const float* batch_start = lstm_input_[i][b].data();
+        const float* batch_end = batch_start + num_inputs;
+        lstm->SetInput(b * num_inputs, batch_start, batch_end);
       }
 
       lstm->Invoke();
 
-      const int num_outputs = lstm->num_outputs();
       std::vector<float> expected;
+      ASSERT_EQ(num_batches, lstm_golden_output_[i].size());
       for (int b = 0; b < num_batches; ++b) {
-        const float* golden_start_batch =
-            lstm_golden_output_[b].data() + i * num_outputs;
-        const float* golden_end_batch = golden_start_batch + num_outputs;
-        expected.insert(expected.end(), golden_start_batch, golden_end_batch);
+        ASSERT_EQ(num_outputs, lstm_golden_output_[i][b].size());
+        const float* batch_start = lstm_golden_output_[i][b].data();
+        const float* batch_end = batch_start + num_outputs;
+        expected.insert(expected.end(), batch_start, batch_end);
       }
+
       EXPECT_THAT(lstm->GetOutput(),
                   ElementsAreArray(ArrayFloatNear(expected, tolerance)));
     }
@@ -457,10 +465,12 @@ TEST_P(LstmOpTest, NoCifg_NoPeephole_NoProjection_NoLayerNorm) {
       0.48572797,  -0.50656658, 0.20047462, -0.20607421,
       -0.51818722, -0.15390486, 0.0468148,  0.39922136};
 
-  lstm_input_ = {{2., 3., 3., 4., 1., 1.}};
-  lstm_golden_output_ = {{-0.02973187, 0.1229473, 0.20885126, -0.15358765,
-                          -0.03716109, 0.12507336, 0.41193449, -0.20860538,
-                          -0.15053082, 0.09120187, 0.24278517, -0.12222792}};
+  // num_steps * num_batch * num_inputs
+  lstm_input_ = {{{2., 3.}}, {{3., 4.}}, {{1., 1.}}};
+  // num_steps * num_batch * num_outputs
+  lstm_golden_output_ = {{{-0.02973187, 0.1229473, 0.20885126, -0.15358765}},
+                         {{-0.03716109, 0.12507336, 0.41193449, -0.20860538}},
+                         {{-0.15053082, 0.09120187, 0.24278517, -0.12222792}}};
 
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/false, /*use_peephole=*/false,
@@ -528,10 +538,10 @@ TEST_P(LstmOpTest, Cifg_Peephole_NoProjection_NoLayerNorm) {
   cell_to_forget_weights_ = {0.47485286, -0.51955009, -0.24458408, 0.31544167};
   cell_to_output_weights_ = {-0.17135078, 0.82760304, 0.85573703, -0.77109635};
 
-  lstm_input_ = {{2., 3., 3., 4., 1., 1.}};
-  lstm_golden_output_ = {{-0.36444446, -0.00352185, 0.12886585, -0.05163646,
-                          -0.42312205, -0.01218222, 0.24201041, -0.08124574,
-                          -0.358325, -0.04621704, 0.21641694, -0.06471302}};
+  lstm_input_ = {{{2., 3.}}, {{3., 4.}}, {{1., 1.}}};
+  lstm_golden_output_ = {{{-0.36444446, -0.00352185, 0.12886585, -0.05163646}},
+                         {{-0.42312205, -0.01218222, 0.24201041, -0.08124574}},
+                         {{-0.358325, -0.04621704, 0.21641694, -0.06471302}}};
 
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/true, /*use_peephole=*/true,
@@ -1073,49 +1083,47 @@ TEST_P(LstmOpTest, NoCifg_Peephole_Projection_NoLayerNorm) {
       0.01891392,    -0.046839405,  -0.040167913,  0.017953383,  -0.09700955,
       0.0061885654,  -0.07000971,   0.026893595,   -0.038844477, 0.14543656};
 
-  lstm_input_ = {
-      {// Batch0: 4 (input_sequence_size) * 5 (n_input)
-       0.787926, 0.151646, 0.071352, 0.118426, 0.458058,   // step 0
-       0.596268, 0.998386, 0.568695, 0.864524, 0.571277,   // step 1
-       0.073204, 0.296072, 0.743333, 0.069199, 0.045348,   // step 2
-       0.867394, 0.291279, 0.013714, 0.482521, 0.626339},  // step 3
-
-      {// Batch1: 4 (input_sequence_size) * 5 (n_input)
-       0.295743, 0.544053, 0.690064, 0.858138, 0.497181,  // step 0
-       0.642421, 0.524260, 0.134799, 0.003639, 0.162482,  // step 1
-       0.640394, 0.930399, 0.050782, 0.432485, 0.988078,  // step 2
-       0.082922, 0.563329, 0.865614, 0.333232, 0.259916}  // step 3
-  };
+  lstm_input_ = {// Step 1
+                 {{0.787926, 0.151646, 0.071352, 0.118426, 0.458058},
+                  {0.295743, 0.544053, 0.690064, 0.858138, 0.497181}},
+                 // Step 2
+                 {{0.596268, 0.998386, 0.568695, 0.864524, 0.571277},
+                  {0.642421, 0.524260, 0.134799, 0.003639, 0.162482}},
+                 // Step 3
+                 {{0.073204, 0.296072, 0.743333, 0.069199, 0.045348},
+                  {0.640394, 0.930399, 0.050782, 0.432485, 0.988078}},
+                 // Step 4
+                 {{0.867394, 0.291279, 0.013714, 0.482521, 0.626339},
+                  {0.082922, 0.563329, 0.865614, 0.333232, 0.259916}}};
 
   lstm_golden_output_ = {
-      {// Batch0: 4 (input_sequence_size) * 16 (n_output)
-       -0.00396806, 0.029352,     -0.00279226, 0.0159977,   -0.00835576,
-       -0.0211779,  0.0283512,    -0.0114597,  0.00907307,  -0.0244004,
-       -0.0152191,  -0.0259063,   0.00914318,  0.00415118,  0.017147,
-       0.0134203,   -0.0166936,   0.0381209,   0.000889694, 0.0143363,
-       -0.0328911,  -0.0234288,   0.0333051,   -0.012229,   0.0110322,
-       -0.0457725,  -0.000832209, -0.0202817,  0.0327257,   0.0121308,
-       0.0155969,   0.0312091,    -0.0213783,  0.0350169,   0.000324794,
-       0.0276012,   -0.0263374,   -0.0371449,  0.0446149,   -0.0205474,
-       0.0103729,   -0.0576349,   -0.0150052,  -0.0292043,  0.0376827,
-       0.0136115,   0.0243435,    0.0354492,   -0.0189322,  0.0464512,
-       -0.00251373, 0.0225745,    -0.0308346,  -0.0317124,  0.0460407,
-       -0.0189395,  0.0149363,    -0.0530162,  -0.0150767,  -0.0340193,
-       0.0286833,   0.00824207,   0.0264887,   0.0305169},
-      {// Batch1: 4 (input_sequence_size) * 16 (n_output)
-       -0.013869,    0.0287268,   -0.00334693, 0.00733398,  -0.0287926,
-       -0.0186926,   0.0193662,   -0.0115437,  0.00422612,  -0.0345232,
-       0.00223253,   -0.00957321, 0.0210624,   0.013331,    0.0150954,
-       0.02168,      -0.0141913,  0.0322082,   0.00227024,  0.0260507,
-       -0.0188721,   -0.0296489,  0.0399134,   -0.0160509,  0.0116039,
-       -0.0447318,   -0.0150515,  -0.0277406,  0.0316596,   0.0118233,
-       0.0214762,    0.0293641,   -0.0204549,  0.0450315,   -0.00117378,
-       0.0167673,    -0.0375007,  -0.0238314,  0.038784,    -0.0174034,
-       0.0131743,    -0.0506589,  -0.0048447,  -0.0240239,  0.0325789,
-       0.00790065,   0.0220157,   0.0333314,   -0.0264787,  0.0387855,
-       -0.000764675, 0.0217599,   -0.037537,   -0.0335206,  0.0431679,
-       -0.0211424,   0.010203,    -0.062785,   -0.00832363, -0.025181,
-       0.0412031,    0.0118723,   0.0239643,   0.0394009}};
+      {{-0.00396806, 0.029352, -0.00279226, 0.0159977, -0.00835576, -0.0211779,
+        0.0283512, -0.0114597, 0.00907307, -0.0244004, -0.0152191, -0.0259063,
+        0.00914318, 0.00415118, 0.017147, 0.0134203},
+       {-0.013869, 0.0287268, -0.00334693, 0.00733398, -0.0287926, -0.0186926,
+        0.0193662, -0.0115437, 0.00422612, -0.0345232, 0.00223253, -0.00957321,
+        0.0210624, 0.013331, 0.0150954, 0.02168}},
+
+      {{-0.0166936, 0.0381209, 0.000889694, 0.0143363, -0.0328911, -0.0234288,
+        0.0333051, -0.012229, 0.0110322, -0.0457725, -0.000832209, -0.0202817,
+        0.0327257, 0.0121308, 0.0155969, 0.0312091},
+       {-0.0141913, 0.0322082, 0.00227024, 0.0260507, -0.0188721, -0.0296489,
+        0.0399134, -0.0160509, 0.0116039, -0.0447318, -0.0150515, -0.0277406,
+        0.0316596, 0.0118233, 0.0214762, 0.0293641}},
+
+      {{-0.0213783, 0.0350169, 0.000324794, 0.0276012, -0.0263374, -0.0371449,
+        0.0446149, -0.0205474, 0.0103729, -0.0576349, -0.0150052, -0.0292043,
+        0.0376827, 0.0136115, 0.0243435, 0.0354492},
+       {-0.0204549, 0.0450315, -0.00117378, 0.0167673, -0.0375007, -0.0238314,
+        0.038784, -0.0174034, 0.0131743, -0.0506589, -0.0048447, -0.0240239,
+        0.0325789, 0.00790065, 0.0220157, 0.0333314}},
+
+      {{-0.0189322, 0.0464512, -0.00251373, 0.0225745, -0.0308346, -0.0317124,
+        0.0460407, -0.0189395, 0.0149363, -0.0530162, -0.0150767, -0.0340193,
+        0.0286833, 0.00824207, 0.0264887, 0.0305169},
+       {-0.0264787, 0.0387855, -0.000764675, 0.0217599, -0.037537, -0.0335206,
+        0.0431679, -0.0211424, 0.010203, -0.062785, -0.00832363, -0.025181,
+        0.0412031, 0.0118723, 0.0239643, 0.0394009}}};
 
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/false, /*use_peephole=*/true,
@@ -1199,29 +1207,19 @@ TEST_P(LstmOpTest, NoCifg_Peephole_Projection_LayerNorm) {
                          0.3,  0.08, 0.07, 0.2,  -0.4, 0.2};
 
   lstm_input_ = {
-      {// Batch0: 3 (input_sequence_size) * 5 (n_input)
-       0.7, 0.8, 0.1, 0.2, 0.3,   // seq 0
-       0.8, 0.1, 0.2, 0.4, 0.5,   // seq 1
-       0.2, 0.7, 0.7, 0.1, 0.7},  // seq 2
+      {{0.7, 0.8, 0.1, 0.2, 0.3}, {0.3, 0.2, 0.9, 0.8, 0.1}},
 
-      {// Batch1: 3 (input_sequence_size) * 5 (n_input)
-       0.3, 0.2, 0.9, 0.8, 0.1,   // seq 0
-       0.1, 0.5, 0.2, 0.4, 0.2,   // seq 1
-       0.6, 0.9, 0.2, 0.5, 0.7},  // seq 2
+      {{0.8, 0.1, 0.2, 0.4, 0.5}, {0.1, 0.5, 0.2, 0.4, 0.2}},
+
+      {{0.2, 0.7, 0.7, 0.1, 0.7}, {0.6, 0.9, 0.2, 0.5, 0.7}},
   };
 
-  lstm_golden_output_ = {{
-                             // Batch0: 3 (input_sequence_size) * 3 (n_output)
-                             0.0244077, 0.128027, -0.00170918,  // seq 0
-                             0.0137642, 0.140751, 0.0395835,    // seq 1
-                             -0.00459231, 0.155278, 0.0837377,  // seq 2
-                         },
-                         {
-                             // Batch1: 3 (input_sequence_size) * 3 (n_output)
-                             -0.00692428, 0.0848741, 0.063445,  // seq 0
-                             -0.00403912, 0.139963, 0.072681,   // seq 1
-                             0.00752706, 0.161903, 0.0561371,   // seq 2
-                         }};
+  lstm_golden_output_ = {
+      {{0.0244077, 0.128027, -0.00170918}, {-0.00692428, 0.0848741, 0.063445}},
+
+      {{0.0137642, 0.140751, 0.0395835}, {-0.00403912, 0.139963, 0.072681}},
+
+      {{-0.00459231, 0.155278, 0.0837377}, {0.00752706, 0.161903, 0.0561371}}};
 
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/false, /*use_peephole=*/true,
@@ -1283,30 +1281,19 @@ TEST_P(LstmOpTest, Cifg_Peephole_Projection_LayerNorm) {
   projection_weights_ = {-0.1, 0.2,  0.01, -0.2, 0.1,  0.5,
                          0.3,  0.08, 0.07, 0.2,  -0.4, 0.2};
 
-  lstm_input_ = {
-      {// Batch0: 3 (input_sequence_size) * 5 (n_input)
-       0.7, 0.8, 0.1, 0.2, 0.3,   // seq 0
-       0.8, 0.1, 0.2, 0.4, 0.5,   // seq 1
-       0.2, 0.7, 0.7, 0.1, 0.7},  // seq 2
+  lstm_input_ = {{{0.7, 0.8, 0.1, 0.2, 0.3}, {0.3, 0.2, 0.9, 0.8, 0.1}},
 
-      {// Batch1: 3 (input_sequence_size) * 5 (n_input)
-       0.3, 0.2, 0.9, 0.8, 0.1,   // seq 0
-       0.1, 0.5, 0.2, 0.4, 0.2,   // seq 1
-       0.6, 0.9, 0.2, 0.5, 0.7},  // seq 2
-  };
-  lstm_golden_output_ = {
-      {
-          // Batch0: 3 (input_sequence_size) * 3 (n_output)
-          0.02129706, 0.140816242, 0.0112733059,     // seq 0
-          0.0132302344, 0.152308047, 0.0346313119,   // seq 1
-          -0.0123688057, 0.165790111, 0.0893077999,  // seq 2
-      },
-      {
-          // Batch1: 3 (input_sequence_size) * 3 (n_output)
-          -0.0226350538, 0.0916948169, 0.0769175813,  // seq 0
-          -0.0269966982, 0.149707705, 0.094149217,    // seq 1
-          -0.0103429332, 0.173016444, 0.0720508844,   // seq 2
-      }};
+                 {{0.8, 0.1, 0.2, 0.4, 0.5}, {0.1, 0.5, 0.2, 0.4, 0.2}},
+
+                 {{0.2, 0.7, 0.7, 0.1, 0.7}, {0.6, 0.9, 0.2, 0.5, 0.7}}};
+  lstm_golden_output_ = {{{0.02129706, 0.140816242, 0.0112733059},
+                          {-0.0226350538, 0.0916948169, 0.0769175813}},
+
+                         {{0.0132302344, 0.152308047, 0.0346313119},
+                          {-0.0269966982, 0.149707705, 0.094149217}},
+
+                         {{-0.0123688057, 0.165790111, 0.0893077999},
+                          {-0.0103429332, 0.173016444, 0.0720508844}}};
 
   LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
                    /*use_cifg=*/true, /*use_peephole=*/true,

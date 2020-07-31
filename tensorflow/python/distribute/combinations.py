@@ -234,7 +234,7 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
-               use_pool_runner=True):
+               use_pool_runner=False):
     """Initialize NamedDistribution.
 
     Args:

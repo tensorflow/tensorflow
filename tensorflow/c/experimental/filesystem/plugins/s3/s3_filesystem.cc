@@ -282,7 +282,7 @@ void Cleanup(TF_RandomAccessFile* file) {
 static int64_t ReadS3Client(S3File* s3_file, uint64_t offset, size_t n,
                             char* buffer, TF_Status* status) {
   Aws::S3::Model::GetObjectRequest get_object_request;
-  get_object_request.WithBucket(s3_file->bucket).WithKey(s3_file->bucket);
+  get_object_request.WithBucket(s3_file->bucket).WithKey(s3_file->object);
   Aws::String bytes =
       absl::StrCat("bytes=", offset, "-", offset + n - 1).c_str();
   get_object_request.SetRange(bytes);
@@ -646,7 +646,8 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
         head_object_outcome.GetResult().GetLastModified().Millis() * 1e6;
     found = true;
   } else {
-    return TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION) return;
   }
 
   auto prefix = object;
@@ -1110,6 +1111,7 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   for (int i = 0; i < num_entries; i++)
     (*entries)[i] = strdup(result[i].c_str());
   TF_SetStatus(status, TF_OK, "");
+  return num_entries;
 }
 
 static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {

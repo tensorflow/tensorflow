@@ -109,10 +109,10 @@ def on_read_assign_cross_replica(var, value, read_value=True):
       # total across all devices when restoring a variable that was summed
       # when saving.
       tensor = value
-      # TODO(anjs): Should this be over all the replicas in sync since we
-      # call `reduce` on the variable during read?
       if var.aggregation == vs.VariableAggregation.SUM:
-        tensor = math_ops.cast(tensor / len(var._devices), var.dtype)  # pylint: disable=protected-access
+        strategy = var._distribute_strategy  # pylint: disable=protected-access
+        tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
+                               var.dtype)
       return assign_on_each_device(var, assign_on_device, tensor,
                                    read_value)
 

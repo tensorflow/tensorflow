@@ -98,10 +98,11 @@ absl::Status SelectResize(const Resize2DAttributes& attr,
 absl::Status SelectConcat(const ConcatAttributes& attr,
                           const std::vector<int>& channels,
                           const OperationDef& op_def,
+                          const DeviceInfo& device_info,
                           std::unique_ptr<GPUOperation>* ptr) {
   switch (attr.axis) {
     case Axis::CHANNELS: {
-      ConcatZ operation = CreateConcatZ(op_def, channels);
+      ConcatZ operation = CreateConcatZ(op_def, channels, device_info);
       *ptr = absl::make_unique<ConcatZ>(std::move(operation));
       return absl::OkStatus();
     }
@@ -109,7 +110,7 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
     case Axis::DEPTH:
     case Axis::HEIGHT:
     case Axis::WIDTH: {
-      ConcatXY operation = CreateConcatXY(op_def, attr, channels.size());
+      ConcatXY operation = CreateConcatXY(op_def, attr);
       *ptr = absl::make_unique<ConcatXY>(std::move(operation));
       return absl::OkStatus();
     }

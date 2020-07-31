@@ -115,6 +115,15 @@ bool IsTuple(PyObject* o);
 //   True if the sequence subclasses mapping.
 bool IsMappingView(PyObject* o);
 
+// Returns a true if its input has a `__tf_dispatch__` attribute.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if `o` has a `__tf_dispatch__` attribute.
+bool IsDispatchable(PyObject* o);
+
 // A version of PyMapping_Keys that works in C++11
 //
 // Args:

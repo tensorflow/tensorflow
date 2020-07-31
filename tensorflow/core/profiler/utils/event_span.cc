@@ -128,8 +128,7 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
   if (event_boundaries.empty()) return result;
   result.reserve(event_boundaries.size());
   PriorityTracker priority_tracker;
-  for (int64 i = 0, iter_limit = (event_boundaries.size() - 1); i < iter_limit;
-       i++) {
+  for (int64 i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
     EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
     result.push_back({highest_priority, Timespan::FromEndPoints(
                                             event_boundaries[i].time_ps,
@@ -343,12 +342,12 @@ Timespan StepDetails::StepTime() const {
 
 std::string StepDetails::DebugString() const {
   std::string result = "([";
-  for (int i = 0, iter_limit = markers_.size(); i < iter_limit; i++) {
+  for (int i = 0, end = markers_.size(); i < end; i++) {
     if (i > 0) absl::StrAppend(&result, ", ");
     absl::StrAppend(&result, PrintStepMarker(markers_[i]));
   }
   absl::StrAppend(&result, "], [");
-  for (int i = 0, iter_limit = events_.size(); i < iter_limit; i++) {
+  for (int i = 0, end = events_.size(); i < end; i++) {
     if (i > 0) absl::StrAppend(&result, ", ");
     absl::StrAppend(&result, PrintEventTypeSpan(events_[i]));
   }

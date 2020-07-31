@@ -28,7 +28,6 @@ namespace cl {
 class LSTM : public GPUOperation {
  public:
   explicit LSTM(const OperationDef& definition);
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
@@ -37,6 +36,9 @@ class LSTM : public GPUOperation {
   LSTM& operator=(LSTM&& kernel);
   LSTM(const LSTM&) = delete;
   LSTM& operator=(const LSTM&) = delete;
+
+ private:
+  std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device);
 };
 
 LSTM CreateLSTM(const OperationDef& definition);

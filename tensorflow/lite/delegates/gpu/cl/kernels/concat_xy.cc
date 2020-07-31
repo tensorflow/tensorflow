@@ -27,20 +27,28 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
+ConcatXY::ConcatXY(const OperationDef& definition, const ConcatAttributes& attr)
+    : GPUOperation(definition) {
+  code_ = GetConcatKernelCode(definition, attr);
+}
 
-std::string GetConcatKernelCode(const OperationDef& op_def,
-                                const ConcatAttributes& attr, Arguments* args) {
+ConcatXY::ConcatXY(ConcatXY&& operation) : GPUOperation(std::move(operation)) {}
+
+ConcatXY& ConcatXY::operator=(ConcatXY&& operation) {
+  if (this != &operation) {
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string ConcatXY::GetConcatKernelCode(const OperationDef& op_def,
+                                          const ConcatAttributes& attr) {
   std::vector<std::string> tensor_names(op_def.src_tensors.size());
   for (int i = 0; i < op_def.src_tensors.size(); ++i) {
     tensor_names[i] = "src_tensor_" + std::to_string(i);
-    args->AddObjectRef(
-        tensor_names[i], AccessType::READ,
-        absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
+    AddSrcTensor(tensor_names[i], op_def.src_tensors[i]);
   }
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   std::map<Axis, std::string> axis_to_selector = {
       {Axis::WIDTH, "Width"}, {Axis::HEIGHT, "Height"},
@@ -120,43 +128,6 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
   return c;
 }
 
-}  // namespace
-
-ConcatXY::ConcatXY(ConcatXY&& operation)
-    : GPUOperation(std::move(operation)),
-      attr_(operation.attr_),
-      tensors_count_(operation.tensors_count_) {}
-
-ConcatXY& ConcatXY::operator=(ConcatXY&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    tensors_count_ = operation.tensors_count_;
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status ConcatXY::Compile(const CreationContext& creation_context) {
-  std::string code = GetConcatKernelCode(definition_, attr_, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status ConcatXY::BindArguments() {
-  for (int i = 0; i < definition_.src_tensors.size(); ++i) {
-    RETURN_IF_ERROR(
-        args_.SetObjectRef("src_tensor_" + std::to_string(i), src_[i]));
-  }
-  return args_.SetObjectRef("dst_tensor", dst_[0]);
-}
-
 int3 ConcatXY::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height() * dst_[0]->Depth();
@@ -165,8 +136,8 @@ int3 ConcatXY::GetGridSize() const {
 }
 
 ConcatXY CreateConcatXY(const OperationDef& definition,
-                        const ConcatAttributes& attr, int tensors_count) {
-  return ConcatXY(definition, attr, tensors_count);
+                        const ConcatAttributes& attr) {
+  return ConcatXY(definition, attr);
 }
 
 }  // namespace cl

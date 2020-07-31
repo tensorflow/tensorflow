@@ -70,3 +70,11 @@ tf_fuzz_target(
         "//tensorflow/core/platform:stringprintf",
     ],
 )
+
+tf_fuzz_target(
+    name = "tstring_fuzz",
+    srcs = ["tstring_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:tstring",
+    ],
+)

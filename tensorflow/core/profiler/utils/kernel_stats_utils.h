@@ -106,9 +106,24 @@ void InsertOrUpdateKernelReport(const KernelReport& kernel,
 // Aggregates values from one KernelReportMap into another.
 void MergeKernelReports(const KernelReportMap& reports, KernelReportMap* dst);
 
+// Kernel stats aggregated at TF operation level.
+struct OpLevelKernelStats {
+  // Whether op is eligible to use TensorCore.
+  bool is_op_tensor_core_eligible = false;
+  // The accumulated duration of all the kernels launched in this op.
+  uint64 total_duration_ns = 0;
+  // The accumulated duration of all the kernels using TensorCore in this op.
+  // If this value is not 0, at least one of the kernels launched by this op
+  // is using TensorCore.
+  uint64 tensor_core_duration_ns = 0;
+};
+
+using KernelStatsByOpName =
+    absl::flat_hash_map<absl::string_view, OpLevelKernelStats>;
+
 // Groups KernelReport in <kernel_stats_db> by tensorflow operation name.
-absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
-GroupKernelReportsByOpName(const KernelStatsDb& kernel_stats_db);
+KernelStatsByOpName GroupKernelReportsByOpName(
+    const KernelStatsDb& kernel_stats_db);
 
 }  // namespace profiler
 }  // namespace tensorflow

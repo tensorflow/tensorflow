@@ -23,7 +23,19 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
+
+FullyConnected::FullyConnected(const OperationDef& definition)
+    : GPUOperation(definition) {}
+
+FullyConnected::FullyConnected(FullyConnected&& kernel)
+    : GPUOperation(std::move(kernel)) {}
+
+FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
+  if (this != &kernel) {
+    GPUOperation::operator=(std::move(kernel));
+  }
+  return *this;
+}
 
 // We split vec vec dot (every thread do vec vec dot product in basic
 // vec mat mult) on 4 parts to create more threads
@@ -31,15 +43,10 @@ namespace {
 // Good results for ~1024 x 1024 sizes, for other can be written more
 // optimized shaders
 
-std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
-                                        const int3& work_group_size,
-                                        Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+std::string FullyConnected::GetFullyConnectedKernelCode(
+    const OperationDef& op_def, const int3& work_group_size) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
   switch (op_def.precision) {
@@ -84,20 +91,6 @@ std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
 
   return c;
 }
-}  // namespace
-
-FullyConnected::FullyConnected(const OperationDef& definition)
-    : GPUOperation(definition) {}
-
-FullyConnected::FullyConnected(FullyConnected&& kernel)
-    : GPUOperation(std::move(kernel)) {}
-
-FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
 
 absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
   int wg_width = 32;
@@ -107,7 +100,7 @@ absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
     work_group_size_ = {wg_width, wg_height, 1};
     wg_width /= 2;
     std::string code =
-        GetFullyConnectedKernelCode(definition_, work_group_size_, &args_);
+        GetFullyConnectedKernelCode(definition_, work_group_size_);
     std::string element_wise_code;
     RETURN_IF_ERROR(
         MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -127,11 +120,6 @@ absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
     work_items = work_group_size_.x * work_group_size_.y * work_group_size_.z;
   } while (work_items > kernel_.GetMaxWorkGroupSize());
   return absl::OkStatus();
-}
-
-absl::Status FullyConnected::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 FullyConnected::GetGridSize() const {

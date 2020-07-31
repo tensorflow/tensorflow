@@ -107,6 +107,10 @@ message RewriterConfig {
   // < 0 means do not skip optimization.
   int32 min_graph_nodes = 17;
 
+  // Disable optimizations that assume compressed tensors. Note that this flag
+  // is experimental and may be removed in the future.
+  bool experimental_disable_compressed_tensor_optimization = 26;
+
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)
     DEFAULT_MEM_OPT = 0;

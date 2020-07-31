@@ -240,7 +240,7 @@ class TopKBenchmark(test.Benchmark):
           v = resource_variable_ops.ResourceVariable(x)
           op = nn_ops.top_k(v, k)
         with session.Session() as sess:
-          v.initializer.run()
+          self.evaluate(v.initializer)
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           gb_processed_input = m * n / 1.0e9
           throughput = gb_processed_input / r["wall_time"]

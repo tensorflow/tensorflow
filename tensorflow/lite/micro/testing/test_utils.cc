@@ -106,7 +106,7 @@ int8_t F2QS(float value, float min, float max) {
 }
 
 int32_t F2Q32(float value, float scale) {
-  double quantized = value / scale;
+  double quantized = static_cast<double>(value / scale);
   if (quantized > std::numeric_limits<int32_t>::max()) {
     quantized = std::numeric_limits<int32_t>::max();
   } else if (quantized < std::numeric_limits<int32_t>::min()) {

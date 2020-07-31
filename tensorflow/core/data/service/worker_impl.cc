@@ -238,6 +238,7 @@ void DataServiceWorkerImpl::HeartbeatThread() {
     Status s = SendTaskUpdate();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
+      Env::Default()->SleepForMicroseconds(kHeartbeatIntervalMicros);
     }
   }
 }

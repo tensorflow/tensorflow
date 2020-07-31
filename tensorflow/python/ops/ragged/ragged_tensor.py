@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -2269,11 +2270,6 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
           self._shape, self._dtype).is_compatible_with(spec_or_value)
     else:
       return super(RaggedTensorSpec, self).is_compatible_with(spec_or_value)
-
-  @property
-  def dtype(self):
-    """The `tf.dtypes.DType` specified by this type for the RaggedTensor."""
-    return self._dtype
 
   def _serialize(self):
     return (self._shape, self._dtype, self._ragged_rank, self._row_splits_dtype)

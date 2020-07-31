@@ -598,7 +598,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     std::deque<InputAndShape> add_ops;
 
     // Prepare leaf AddN nodes for inputs of equal shape
-    for (int i = 0, iter_limit = shapes.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = shapes.size(); i < end; ++i) {
       const auto node_name = leaf_node_name(i);
       const auto& inputs = shape_sig_to_inputs[ShapeSignature(shapes[i])];
       add_ops.push_back(AddInputsOfSymbolicallyEqualShape(*group.root_node,
@@ -750,8 +750,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
         ctx().node_map->AddOutput(new_add_node->name(), new_outer_node->name());
 
         // Hoist non-shared factors up into the new AddN node.
-        for (int i = 0, iter_limit = unique_factors.size(); i < iter_limit;
-             ++i) {
+        for (int i = 0, end = unique_factors.size(); i < end; ++i) {
           const string& unique_factor_i = unique_factors[i];
           new_add_node->set_input(i, unique_factor_i);
           ctx().node_map->AddOutput(unique_factor_i, new_add_node->name());
@@ -1203,7 +1202,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     if (a.size() != b.size()) {
       return false;
     }
-    for (int i = 0, iter_limit = a.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = a.size(); i < end; ++i) {
       if (a[b[i]] != i) {
         return false;
       }
@@ -1212,7 +1211,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   }
 
   bool IsIdentityPermutation(const std::vector<int64>& perm) {
-    for (int64 i = 0, iter_limit = perm.size(); i < iter_limit; ++i) {
+    for (int64 i = 0, end = perm.size(); i < end; ++i) {
       if (i != perm[i]) {
         return false;
       }
@@ -3380,7 +3379,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
     int begin_index = -1;
     int64 begin_value = 0;
-    for (int i = 0, iter_limit = slice_begin_vec.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = slice_begin_vec.size(); i < end; ++i) {
       const int64 v = slice_begin_vec[i];
       if (v != 0) {
         if (begin_index != -1) {
@@ -3394,7 +3393,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
     int end_index = -1;
     int64 end_value = 0;
-    for (int i = 0, iter_limit = slice_begin_vec.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = slice_begin_vec.size(); i < end; ++i) {
       const int64 v = slice_end_vec[i];
       if (v != pack_output_shape.dim_size(i)) {
         if (end_index != -1) {

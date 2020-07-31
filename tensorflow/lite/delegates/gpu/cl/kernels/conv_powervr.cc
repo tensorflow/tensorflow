@@ -183,7 +183,7 @@ absl::Status ConvPowerVR::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_padding_.x != 1;
   std::string code = GenerateConv(*creation_context.device, definition_,
-                                  stride_correction, conv_params_, &args_);
+                                  stride_correction, conv_params_);
   work_group_size_ = conv_params_.work_group_size;
   std::string element_wise_code;
   RETURN_IF_ERROR(
@@ -205,9 +205,6 @@ absl::Status ConvPowerVR::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status ConvPowerVR::BindArguments() {
-  if (definition_.src_tensors.size() == 2) {
-    RETURN_IF_ERROR(args_.SetObjectRef("weights", src_[1]));
-  }
   if (!conv_params_.x_kernel_is_1 || !conv_params_.y_kernel_is_1) {
     RETURN_IF_ERROR(args_.SetInt("stride_x", stride_padding_.x));
     RETURN_IF_ERROR(args_.SetInt("stride_y", stride_padding_.y));
@@ -220,8 +217,6 @@ absl::Status ConvPowerVR::BindArguments() {
         args_.SetInt("dilation_x", kernel_dilation_.z * src_[0]->Batch()));
     RETURN_IF_ERROR(args_.SetInt("dilation_y", kernel_dilation_.w));
   }
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   if (conv_params_.linear_hw) {
     const int grid_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
                                      conv_params_.block_size.x);
@@ -279,34 +274,47 @@ absl::Status ConvPowerVR::Tune(const TuningParameters& params) {
   return absl::OkStatus();
 }
 
-std::string GenerateConv(const CLDevice& device, const OperationDef& op_def,
-                         bool stride_correction,
-                         const ConvPowerVR::ConvParams& conv_params,
-                         Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(TextureAddressMode::ZERO);
+std::string ConvPowerVR::GenerateConv(
+    const CLDevice& device, const OperationDef& op_def, bool stride_correction,
+    const ConvPowerVR::ConvParams& conv_params) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
   if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  AddSrcTensor("src_tensor", src_desc);
+  if (op_def.src_tensors.size() == 2) {
+    // dynamic weights
+    BufferDescriptor desc;
+    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_size = 4;
+    desc.memory_type = conv_params.weights_upload_type ==
+                               ConvPowerVR::WeightsUploadType::CONSTANT_MEM
+                           ? MemoryType::CONSTANT
+                           : MemoryType::GLOBAL;
+
+    AddSrcBuffer("weights", desc);
+  }
+
+  auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    dst_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  const bool is1x1 = conv_params.x_kernel_is_1 && conv_params.y_kernel_is_1;
+  AddDstTensor("dst_tensor", dst_desc);
+
+  const bool is1x1 = conv_params_.x_kernel_is_1 && conv_params_.y_kernel_is_1;
   if (!is1x1) {
-    args->AddInt("stride_x");
-    args->AddInt("stride_y");
-    args->AddInt("padding_x");
-    args->AddInt("padding_y");
-    args->AddInt("kernel_size_x");
-    args->AddInt("kernel_size_y");
-    args->AddInt("dilation_x");
-    args->AddInt("dilation_y");
+    args_.AddInt("stride_x");
+    args_.AddInt("stride_y");
+    args_.AddInt("padding_x");
+    args_.AddInt("padding_y");
+    args_.AddInt("kernel_size_x");
+    args_.AddInt("kernel_size_y");
+    args_.AddInt("dilation_x");
+    args_.AddInt("dilation_y");
   }
-  if (conv_params.linear_hw) {
-    args->AddInt("task_size_x");
+  if (conv_params_.linear_hw) {
+    args_.AddInt("task_size_x");
   }
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
@@ -1013,16 +1021,6 @@ absl::Status CreateConvPowerVRDynamicWeights(
     ConvPowerVR* result, const BHWC* dst_shape) {
   *result = ConvPowerVR(definition, attr, weights_shape,
                         *creation_context.device, dst_shape);
-  BufferDescriptor desc;
-  desc.element_type = definition.src_tensors[1].data_type;
-  desc.element_size = 4;
-  desc.memory_type = result->conv_params_.weights_upload_type ==
-                             ConvPowerVR::WeightsUploadType::CONSTANT_MEM
-                         ? MemoryType::CONSTANT
-                         : MemoryType::GLOBAL;
-
-  result->args_.AddObjectRef("weights", AccessType::READ,
-                             absl::make_unique<BufferDescriptor>(desc));
   return result->UploadBias(attr.bias, creation_context.context);
 }
 

@@ -404,11 +404,14 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
-// Convert squeeze to reshape if possible.
+// Returns True if the operand type is RankedTensorType.
+def HasRankedTensor : Constraint<
+    CPred<"$0.getType().isa<RankedTensorType>()">>;
+
 def ConvertSqueezeToReshape : Pat<
   (TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
   (TFL_ReshapeOp $input, (ConstantOp (GetShape $squeeze_op))),
-  [(AnyStaticShapeTensor $squeeze_op)]>;
+  [(HasRankedTensor $squeeze_op)]>;
 
 // Convert expand_dims to reshape if possible.
 def ConvertExpandDimsToReshape : Pat<
@@ -422,6 +425,11 @@ class FloatValueEquals<string val> : Constraint<CPred<
   "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
 
 // ReLU patterns
+def MatchReluPattern : Pat<
+  (TFL_MaximumOp $input, (ConstantOp $Zero)),
+  (TFL_ReluOp $input),
+  [(FloatValueEquals<"0"> $Zero)]>;
+
 def MatchRelu1Pattern1 : Pat<
   (TFL_MinimumOp (TFL_MaximumOp $input, (ConstantOp $NegOne)),
     (ConstantOp $One)),

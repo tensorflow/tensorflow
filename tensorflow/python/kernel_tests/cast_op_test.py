@@ -180,7 +180,9 @@ class CastOpTest(test.TestCase):
             x = math_ops.cast(x, dst_t)
             return x
 
-          gradient_checker_v2.compute_gradient(cast, [x])
+          err = gradient_checker_v2.max_error(
+              *gradient_checker_v2.compute_gradient(cast, [x]))
+          self.assertLess(err, 1e-3)
 
 
 class SparseTensorCastTest(test.TestCase):
