@@ -39,6 +39,10 @@ class XlaReductionOp : public XlaOpKernel {
   // Return the base case for the reduction.
   virtual xla::XlaOp InitialValue(xla::XlaBuilder* builder) = 0;
 
+  // Preprocesses input before reduction.
+  virtual xla::XlaOp PreprocessInput(xla::XlaBuilder* builder,
+                                     const xla::XlaOp& data);
+
   // Implement the (scalar,scalar)->scalar lambda that should be
   // applied to each pair of elements to be reduced. The desired
   // computation should be added to 'builder' and
