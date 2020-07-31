@@ -325,13 +325,11 @@ class TFGraphNode {
       (*node_.mutable_attrs())[attr.first].MergeFrom(attr.second);
       if (attr.first == "shape" && attr.second.has_shape()) {
         if (!shape_.empty()) {
-          absl::FPrintF(stderr, "Found duplicated shapes!\n");
           continue;
         }
         shape_ = ShapeProtoToVec(attr.second.shape());
       } else if (attr.first == "_output_shapes" && attr.second.has_list()) {
         if (!output_shapes_.empty()) {
-          absl::FPrintF(stderr, "Found duplicated output shapes!\n");
           continue;
         }
         for (int i = 0; i < attr.second.list().shape_size(); ++i) {
@@ -667,8 +665,6 @@ class TFGraphNode {
       }
       if (complete_shape) {
         return params;
-      } else {
-        absl::FPrintF(stderr, "Incomplete shape.\n");
       }
     }
     return 0;

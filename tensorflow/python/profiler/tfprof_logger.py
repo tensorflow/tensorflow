@@ -91,7 +91,7 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
   if run_meta:
     graph = _fill_missing_graph_shape(graph, run_meta)
 
-  op_missing_shape = 0
+  missing_shape_ops = []
   logged_ops = {}
   string_to_id = {}
   string_to_id['none'] = len(string_to_id)
@@ -102,7 +102,7 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
           graph, op.node_def, REGISTERED_FLOP_STATS)
     except ValueError:
       # Catch Exception When shape is incomplete. Skip it.
-      op_missing_shape += 1
+      missing_shape_ops.append(op.name)
       stats = None
 
     entry = tfprof_log_pb2.OpLogEntry()
@@ -136,9 +136,10 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
       else:
         logged_ops[v.op.name].types.append(TRAINABLE_VARIABLES)
 
-  if op_missing_shape > 0 and not run_meta:
-    sys.stderr.write('%d ops no flops stats due to incomplete shapes.\n' %
-                     op_missing_shape)
+  if missing_shape_ops and not run_meta:
+    sys.stderr.write(
+        '%d ops have no flops stats due to incomplete shapes: [%s] \n' %
+        len(missing_shape_ops), missing_shape_ops)
   return logged_ops, string_to_id
 
 
