@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/default/integral_types.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
