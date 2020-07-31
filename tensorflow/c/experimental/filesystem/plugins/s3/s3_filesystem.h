@@ -94,6 +94,8 @@ void DeleteDir(const TF_Filesystem* filesystem, const char* path,
                TF_Status* status);
 void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
               TF_Status* status);
+void RenameFile(const TF_Filesystem* filesystem, const char* src,
+                const char* dst, TF_Status* status);
 }  // namespace tf_s3_filesystem
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_FILESYSTEM_H_
