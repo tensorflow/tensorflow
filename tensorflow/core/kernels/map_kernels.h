@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/tensor_map.h"
-//#include "tensorflow/core/kernels/tensor_list.h"
 #include "tensorflow/core/util/batch_util.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
