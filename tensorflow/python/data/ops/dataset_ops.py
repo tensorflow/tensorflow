@@ -884,9 +884,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           return nest.map_structure(lambda ts: ts._serialize(), s)  # pylint: disable=protected-access
 
         try:
-          output_dtypes = nest.map_structure(lambda t: t.dtype,
-                                             output_signature)
-          values = structure.normalize_element(values, dtypes=output_dtypes)
+          values = structure.normalize_element(
+            values, element_signature=output_signature)
         except (TypeError, ValueError):
           six.reraise(
               TypeError,

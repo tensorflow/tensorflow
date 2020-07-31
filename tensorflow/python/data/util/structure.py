@@ -67,7 +67,7 @@ def _RaggedTensorStructure(dtype, shape, ragged_rank):
 
 # TODO(jsimsa): Remove the special-case for `TensorArray` pass-through once
 # it is a subclass of `CompositeTensor`.
-def normalize_element(element, dtypes=None):
+def normalize_element(element, element_signature=None):
   """Normalizes a nested structure of element components.
 
   * Components matching `SparseTensorSpec` are converted to `SparseTensor`.
@@ -87,18 +87,24 @@ def normalize_element(element, dtypes=None):
     A nested structure of `Tensor`, `Dataset`, `SparseTensor`, `RaggedTensor`,
     or `TensorArray` objects.
   """
-  components = nest.flatten(element)
   normalized_components = []
-  if dtypes is None:
-    flattened_dtypes = [None] * len(components)
+  if element_signature is None:
+    components = nest.flatten(element)
+    flattened_signature = [None] * len(components)
   else:
-    flattened_dtypes = nest.flatten(dtypes)
+    flattened_signature = nest.flatten(element_signature)
+    components = nest.flatten_up_to(element_signature, element)
   with ops.name_scope("normalize_element"):
     # Imported here to avoid circular dependency.
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
-    for i, (t, dtype) in enumerate(zip(components, flattened_dtypes)):
+    for i, (t, type_spec) in enumerate(zip(components, flattened_signature)):
+      dtype = None
       try:
-        spec = type_spec_from_value(t, use_fallback=False)
+        if type_spec is not None:
+          spec = type_spec
+        else:
+          spec = type_spec_from_value(t, use_fallback=False)
+        dtype = getattr(spec, "dtype", None)
       except TypeError:
         # TypeError indicates it was not possible to compute a `TypeSpec` for
         # the value. As a fallback try converting the value to a tensor.
@@ -121,7 +127,7 @@ def normalize_element(element, dtypes=None):
         else:
           normalized_components.append(
               ops.convert_to_tensor(t, name="component_%d" % i, dtype=dtype))
-  return nest.pack_sequence_as(element, normalized_components)
+  return nest.pack_sequence_as(element_signature, normalized_components)
 
 
 def convert_legacy_structure(output_types, output_shapes, output_classes):
