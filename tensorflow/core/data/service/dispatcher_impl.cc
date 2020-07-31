@@ -114,8 +114,8 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       }
       task->finished = true;
       bool finished = true;
-      for (const auto& task : tasks_by_job_[task->job_id]) {
-        if (!task->finished) {
+      for (const auto& job_task : tasks_by_job_[task->job_id]) {
+        if (!job_task->finished) {
           finished = false;
           break;
         }
