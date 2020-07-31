@@ -82,6 +82,8 @@ REGISTER_OP("TensorMapListKeys")
     .Attr("key_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape()); // output keys
+      //c->set_output(0, c->MakeShape({c->UnknownDim()}));
+      //c->set_output(0, c->Vector(2));
       return Status::OK();
     });
 

@@ -26,12 +26,13 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import map_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.platform import test
 
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
-  '''
-  def testEmptyTensorMapSize(self):
+
+  '''def testEmptyTensorMapSize(self):
     m = map_ops.empty_tensor_map()
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
@@ -59,7 +60,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 "Trying to lookup non-existent key."):
       l = map_ops.tensor_map_lookup(m, k, dtypes.float32)
       self.evaluate(l)
-  '''
+  
   def testTensorMapErase(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
@@ -72,7 +73,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
     self.assertAllClose(e, v)
-  '''
+
   def testTensorMapEraseFromEmptyMapFails(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
@@ -91,7 +92,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 "Trying to erase non-existent item."):
       m, e = map_ops.tensor_map_erase(m, k, dtypes.float32)
       self.evaluate(e)
-  '''
+
   def testTensorMapHasKey(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
@@ -103,7 +104,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     b2 = map_ops.tensor_map_has_key(m, k2)
     self.assertAllEqual(b, True)
     self.assertAllEqual(b2, False)
-  '''
+
   def testHasKeyLookup(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
@@ -119,19 +120,29 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
                                 lambda: default_value)
     self.assertAllClose(l, v)
-    self.assertAllClose(l2, default_value)
-  '''
+    self.assertAllClose(l2, default_value)'''
+
   def testListKeys(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     k2 = constant_op.constant(2.0)
+    k3 = constant_op.constant(3.0)
     v = constant_op.constant(21.0)
     v2 = constant_op.constant(22.0)
+    v3 = constant_op.constant(23.0)
     m = map_ops.tensor_map_insert(m, k, v)
     m = map_ops.tensor_map_insert(m, k2, v2)
     keys = map_ops.tensor_map_list_keys(m, k.dtype)
-    #print(keys)
-  '''
+    expected = constant_op.constant([1.0, 2.0])
+    self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
+    self.assertAllClose(sort_ops.sort(keys), expected)
+
+    m = map_ops.tensor_map_insert(m, k3, v3)
+    keys = map_ops.tensor_map_list_keys(m, k.dtype)
+    expected = constant_op.constant([1.0, 2.0, 3.0])
+    self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
+    self.assertAllClose(sort_ops.sort(keys), expected)
+'''
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:
       m = map_ops.empty_tensor_map()

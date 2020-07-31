@@ -117,7 +117,8 @@ TEST(TensorMapTest, ListKeys) {
   tm.insert(k2, v2);
   std::vector<Tensor> keys = tm.keys();
   EXPECT_EQ(keys.size(), 2);
-  //test::ExpectTensorEqual<int32>(keys[0], k);
+  EXPECT_EQ(keys[0].shape(), k.shape());
+  EXPECT_EQ(keys[1].shape(), k.shape());
 }
 
 TEST(TensorMapTest, Copy) {
