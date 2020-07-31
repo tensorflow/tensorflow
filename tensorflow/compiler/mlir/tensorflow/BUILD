@@ -748,7 +748,6 @@ cc_library(
         "transforms/sink_constant.cc",
         "transforms/stack_ops_decomposition.cc",
         "transforms/tensor_array_ops_decomposition.cc",
-        "transforms/tensor_device_copy_conversion.cc",
         "transforms/tensor_list_ops_decomposition.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tf_data_optimization_pass.cc",
