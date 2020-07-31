@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -29,51 +29,33 @@ constexpr int inputs_size = 2;
 constexpr int outputs_size = 1;
 constexpr int tensors_size = inputs_size + outputs_size;
 
-void TestComparison(tflite::BuiltinOperator op, TfLiteTensor* tensors,
-                    bool* expected_output_data, bool* output_data) {
+void TestComparison(const TfLiteRegistration& registration,
+                    TfLiteTensor* tensors, bool* expected_output_data,
+                    bool* output_data) {
   const int output_dims_count = ElementCount(*tensors[inputs_size].dims);
-
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   const int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   const int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, /*buffer=*/nullptr, /*length=*/0);
-  }
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, /*builtin_data=*/nullptr,
+                             micro_test::reporter);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
 }
 
-void TestComparisonFloat(tflite::BuiltinOperator op, int* input1_dims_data,
-                         float* input1_data, int* input2_dims_data,
-                         float* input2_data, bool* expected_output_data,
-                         int* output_dims_data, bool* output_data) {
+void TestComparisonFloat(const TfLiteRegistration& registration,
+                         int* input1_dims_data, float* input1_data,
+                         int* input2_dims_data, float* input2_data,
+                         bool* expected_output_data, int* output_dims_data,
+                         bool* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -84,13 +66,14 @@ void TestComparisonFloat(tflite::BuiltinOperator op, int* input1_dims_data,
       CreateBoolTensor(output_data, output_dims),
   };
 
-  TestComparison(op, tensors, expected_output_data, output_data);
+  TestComparison(registration, tensors, expected_output_data, output_data);
 }
 
-void TestComparisonBool(tflite::BuiltinOperator op, int* input1_dims_data,
-                        bool* input1_data, int* input2_dims_data,
-                        bool* input2_data, bool* expected_output_data,
-                        int* output_dims_data, bool* output_data) {
+void TestComparisonBool(const TfLiteRegistration& registration,
+                        int* input1_dims_data, bool* input1_data,
+                        int* input2_dims_data, bool* input2_data,
+                        bool* expected_output_data, int* output_dims_data,
+                        bool* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -101,13 +84,14 @@ void TestComparisonBool(tflite::BuiltinOperator op, int* input1_dims_data,
       CreateBoolTensor(output_data, output_dims),
   };
 
-  TestComparison(op, tensors, expected_output_data, output_data);
+  TestComparison(registration, tensors, expected_output_data, output_data);
 }
 
-void TestComparisonInt(tflite::BuiltinOperator op, int* input1_dims_data,
-                       int32_t* input1_data, int* input2_dims_data,
-                       int32_t* input2_data, bool* expected_output_data,
-                       int* output_dims_data, bool* output_data) {
+void TestComparisonInt(const TfLiteRegistration& registration,
+                       int* input1_dims_data, int32_t* input1_data,
+                       int* input2_dims_data, int32_t* input2_data,
+                       bool* expected_output_data, int* output_dims_data,
+                       bool* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -118,10 +102,10 @@ void TestComparisonInt(tflite::BuiltinOperator op, int* input1_dims_data,
       CreateBoolTensor(output_data, output_dims),
   };
 
-  TestComparison(op, tensors, expected_output_data, output_data);
+  TestComparison(registration, tensors, expected_output_data, output_data);
 }
 
-void TestComparisonQuantizedUInt8(tflite::BuiltinOperator op,
+void TestComparisonQuantizedUInt8(const TfLiteRegistration& registration,
                                   int* input1_dims_data, float* input1_data,
                                   uint8_t* input1_quantized, float input1_scale,
                                   int input1_zero_point, int* input2_dims_data,
@@ -141,10 +125,10 @@ void TestComparisonQuantizedUInt8(tflite::BuiltinOperator op,
       CreateBoolTensor(output_data, output_dims),
   };
 
-  TestComparison(op, tensors, expected_output_data, output_data);
+  TestComparison(registration, tensors, expected_output_data, output_data);
 }
 
-void TestComparisonQuantizedInt8(tflite::BuiltinOperator op,
+void TestComparisonQuantizedInt8(const TfLiteRegistration& registration,
                                  int* input1_dims_data, float* input1_data,
                                  int8_t* input1_quantized, float input1_scale,
                                  int input1_zero_point, int* input2_dims_data,
@@ -164,7 +148,7 @@ void TestComparisonQuantizedInt8(tflite::BuiltinOperator op,
       CreateBoolTensor(output_data, output_dims),
   };
 
-  TestComparison(op, tensors, expected_output_data, output_data);
+  TestComparison(registration, tensors, expected_output_data, output_data);
 }
 
 }  // namespace
@@ -184,9 +168,9 @@ TF_LITE_MICRO_TEST(EqualBool) {
   int expected_dim[] = {4, 1, 1, 1, 4};
 
   bool output_data[4];
-  tflite::testing::TestComparisonBool(tflite::BuiltinOperator_EQUAL, input1_dim,
-                                      input1_data, input2_dim, input2_data,
-                                      expected_data, expected_dim, output_data);
+  tflite::testing::TestComparisonBool(
+      tflite::ops::micro::Register_EQUAL(), input1_dim, input1_data, input2_dim,
+      input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(EqualFloat) {
@@ -201,7 +185,7 @@ TF_LITE_MICRO_TEST(EqualFloat) {
 
   bool output_data[4];
   tflite::testing::TestComparisonFloat(
-      tflite::BuiltinOperator_EQUAL, input1_dim, input1_data, input2_dim,
+      tflite::ops::micro::Register_EQUAL(), input1_dim, input1_data, input2_dim,
       input2_data, expected_data, expected_dim, output_data);
 }
 
@@ -215,9 +199,9 @@ TF_LITE_MICRO_TEST(EqualInt) {
   bool expected_data[] = {false, false, true, false};
   int expected_dim[] = {4, 1, 1, 1, 4};
   bool output_data[4];
-  tflite::testing::TestComparisonInt(tflite::BuiltinOperator_EQUAL, input1_dim,
-                                     input1_data, input2_dim, input2_data,
-                                     expected_data, expected_dim, output_data);
+  tflite::testing::TestComparisonInt(
+      tflite::ops::micro::Register_EQUAL(), input1_dim, input1_data, input2_dim,
+      input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(EqualBroadcast) {
@@ -231,9 +215,9 @@ TF_LITE_MICRO_TEST(EqualBroadcast) {
   int expected_dim[] = {4, 1, 1, 1, 4};
 
   bool output_data[4];
-  tflite::testing::TestComparisonInt(tflite::BuiltinOperator_EQUAL, input1_dim,
-                                     input1_data, input2_dim, input2_data,
-                                     expected_data, expected_dim, output_data);
+  tflite::testing::TestComparisonInt(
+      tflite::ops::micro::Register_EQUAL(), input1_dim, input1_data, input2_dim,
+      input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(EqualBroadcastTwoD) {
@@ -248,9 +232,9 @@ TF_LITE_MICRO_TEST(EqualBroadcastTwoD) {
   int expected_dim[] = {4, 1, 1, 2, 4};
 
   bool output_data[8];
-  tflite::testing::TestComparisonInt(tflite::BuiltinOperator_EQUAL, input1_dim,
-                                     input1_data, input2_dim, input2_data,
-                                     expected_data, expected_dim, output_data);
+  tflite::testing::TestComparisonInt(
+      tflite::ops::micro::Register_EQUAL(), input1_dim, input1_data, input2_dim,
+      input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(NotEqualBool) {
@@ -265,8 +249,8 @@ TF_LITE_MICRO_TEST(NotEqualBool) {
 
   bool output_data[4];
   tflite::testing::TestComparisonBool(
-      tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(NotEqualFloat) {
@@ -281,8 +265,8 @@ TF_LITE_MICRO_TEST(NotEqualFloat) {
 
   bool output_data[4];
   tflite::testing::TestComparisonFloat(
-      tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(NotEqualInt) {
@@ -297,8 +281,8 @@ TF_LITE_MICRO_TEST(NotEqualInt) {
 
   bool output_data[4];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(NotEqualBroadcast) {
@@ -313,8 +297,8 @@ TF_LITE_MICRO_TEST(NotEqualBroadcast) {
 
   bool output_data[4];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(NotEqualBroadcastTwoD) {
@@ -329,8 +313,8 @@ TF_LITE_MICRO_TEST(NotEqualBroadcastTwoD) {
 
   bool output_data[8];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(GreaterFloat) {
@@ -345,8 +329,8 @@ TF_LITE_MICRO_TEST(GreaterFloat) {
 
   bool output_data[4];
   tflite::testing::TestComparisonFloat(
-      tflite::BuiltinOperator_GREATER, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_GREATER(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(GreaterInt) {
@@ -361,8 +345,8 @@ TF_LITE_MICRO_TEST(GreaterInt) {
 
   bool output_data[4];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_GREATER, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_GREATER(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(GreaterBroadcast) {
@@ -377,8 +361,8 @@ TF_LITE_MICRO_TEST(GreaterBroadcast) {
 
   bool output_data[4];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_GREATER, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_GREATER(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(GreaterBroadcastTwoD) {
@@ -393,8 +377,8 @@ TF_LITE_MICRO_TEST(GreaterBroadcastTwoD) {
 
   bool output_data[8];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_GREATER, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_GREATER(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(GreaterEqualFloat) {
@@ -409,7 +393,7 @@ TF_LITE_MICRO_TEST(GreaterEqualFloat) {
 
   bool output_data[4];
   tflite::testing::TestComparisonFloat(
-      tflite::BuiltinOperator_GREATER_EQUAL, input1_dim, input1_data,
+      tflite::ops::micro::Register_GREATER_EQUAL(), input1_dim, input1_data,
       input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
@@ -425,7 +409,7 @@ TF_LITE_MICRO_TEST(GreaterEqualInt) {
 
   bool output_data[4];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_GREATER_EQUAL, input1_dim, input1_data,
+      tflite::ops::micro::Register_GREATER_EQUAL(), input1_dim, input1_data,
       input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
@@ -441,7 +425,7 @@ TF_LITE_MICRO_TEST(GreaterEqualBroadcast) {
 
   bool output_data[4];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_GREATER_EQUAL, input1_dim, input1_data,
+      tflite::ops::micro::Register_GREATER_EQUAL(), input1_dim, input1_data,
       input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
@@ -457,7 +441,7 @@ TF_LITE_MICRO_TEST(GreaterEqualBroadcastTwoD) {
 
   bool output_data[8];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_GREATER_EQUAL, input1_dim, input1_data,
+      tflite::ops::micro::Register_GREATER_EQUAL(), input1_dim, input1_data,
       input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
@@ -473,7 +457,7 @@ TF_LITE_MICRO_TEST(LessFloat) {
 
   bool output_data[4];
   tflite::testing::TestComparisonFloat(
-      tflite::BuiltinOperator_LESS, input1_dim, input1_data, input2_dim,
+      tflite::ops::micro::Register_LESS(), input1_dim, input1_data, input2_dim,
       input2_data, expected_data, expected_dim, output_data);
 }
 
@@ -488,9 +472,9 @@ TF_LITE_MICRO_TEST(LessInt) {
   int expected_dim[] = {4, 1, 1, 1, 4};
 
   bool output_data[4];
-  tflite::testing::TestComparisonInt(tflite::BuiltinOperator_LESS, input1_dim,
-                                     input1_data, input2_dim, input2_data,
-                                     expected_data, expected_dim, output_data);
+  tflite::testing::TestComparisonInt(
+      tflite::ops::micro::Register_LESS(), input1_dim, input1_data, input2_dim,
+      input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(LessBroadcast) {
@@ -504,9 +488,9 @@ TF_LITE_MICRO_TEST(LessBroadcast) {
   int expected_dim[] = {4, 1, 1, 1, 4};
 
   bool output_data[4];
-  tflite::testing::TestComparisonInt(tflite::BuiltinOperator_LESS, input1_dim,
-                                     input1_data, input2_dim, input2_data,
-                                     expected_data, expected_dim, output_data);
+  tflite::testing::TestComparisonInt(
+      tflite::ops::micro::Register_LESS(), input1_dim, input1_data, input2_dim,
+      input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(LessBroadcastTwoD) {
@@ -520,9 +504,9 @@ TF_LITE_MICRO_TEST(LessBroadcastTwoD) {
   int expected_dim[] = {4, 1, 1, 2, 4};
 
   bool output_data[8];
-  tflite::testing::TestComparisonInt(tflite::BuiltinOperator_LESS, input1_dim,
-                                     input1_data, input2_dim, input2_data,
-                                     expected_data, expected_dim, output_data);
+  tflite::testing::TestComparisonInt(
+      tflite::ops::micro::Register_LESS(), input1_dim, input1_data, input2_dim,
+      input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(LessEqualFloat) {
@@ -537,8 +521,8 @@ TF_LITE_MICRO_TEST(LessEqualFloat) {
 
   bool output_data[4];
   tflite::testing::TestComparisonFloat(
-      tflite::BuiltinOperator_LESS_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_LESS_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(LessEqualInt) {
@@ -553,8 +537,8 @@ TF_LITE_MICRO_TEST(LessEqualInt) {
 
   bool output_data[4];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_LESS_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_LESS_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(LessEqualBroadcast) {
@@ -569,8 +553,8 @@ TF_LITE_MICRO_TEST(LessEqualBroadcast) {
 
   bool output_data[4];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_LESS_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_LESS_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(LessEqualBroadcastTwoD) {
@@ -585,8 +569,8 @@ TF_LITE_MICRO_TEST(LessEqualBroadcastTwoD) {
 
   bool output_data[8];
   tflite::testing::TestComparisonInt(
-      tflite::BuiltinOperator_LESS_EQUAL, input1_dim, input1_data, input2_dim,
-      input2_data, expected_data, expected_dim, output_data);
+      tflite::ops::micro::Register_LESS_EQUAL(), input1_dim, input1_data,
+      input2_dim, input2_data, expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(EqualQuantizedUInt8) {
@@ -607,10 +591,10 @@ TF_LITE_MICRO_TEST(EqualQuantizedUInt8) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedUInt8(
-      tflite::BuiltinOperator_EQUAL, input1_dim, input1_data, input1_quantized,
-      input1_scale, input1_zero_point, input2_dim, input2_data,
-      input2_quantized, input2_scale, input2_zero_point, expected_data,
-      expected_dim, output_data);
+      tflite::ops::micro::Register_EQUAL(), input1_dim, input1_data,
+      input1_quantized, input1_scale, input1_zero_point, input2_dim,
+      input2_data, input2_quantized, input2_scale, input2_zero_point,
+      expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(EqualQuantizedInt8) {
@@ -632,10 +616,10 @@ TF_LITE_MICRO_TEST(EqualQuantizedInt8) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedInt8(
-      tflite::BuiltinOperator_EQUAL, input1_dim, input1_data, input1_quantized,
-      input1_scale, input1_zero_point, input2_dim, input2_data,
-      input2_quantized, input2_scale, input2_zero_point, expected_data,
-      expected_dim, output_data);
+      tflite::ops::micro::Register_EQUAL(), input1_dim, input1_data,
+      input1_quantized, input1_scale, input1_zero_point, input2_dim,
+      input2_data, input2_quantized, input2_scale, input2_zero_point,
+      expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(NotEqualQuantizedUInt8) {
@@ -656,7 +640,7 @@ TF_LITE_MICRO_TEST(NotEqualQuantizedUInt8) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedUInt8(
-      tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data,
+      tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
       input1_quantized, input1_scale, input1_zero_point, input2_dim,
       input2_data, input2_quantized, input2_scale, input2_zero_point,
       expected_data, expected_dim, output_data);
@@ -681,7 +665,7 @@ TF_LITE_MICRO_TEST(NotEqualQuantizedInt8) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedInt8(
-      tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data,
+      tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
       input1_quantized, input1_scale, input1_zero_point, input2_dim,
       input2_data, input2_quantized, input2_scale, input2_zero_point,
       expected_data, expected_dim, output_data);
@@ -705,7 +689,7 @@ TF_LITE_MICRO_TEST(GreaterQuantizedUInt8) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedUInt8(
-      tflite::BuiltinOperator_GREATER, input1_dim, input1_data,
+      tflite::ops::micro::Register_GREATER(), input1_dim, input1_data,
       input1_quantized, input1_scale, input1_zero_point, input2_dim,
       input2_data, input2_quantized, input2_scale, input2_zero_point,
       expected_data, expected_dim, output_data);
@@ -729,7 +713,7 @@ TF_LITE_MICRO_TEST(GreaterQuantizedUInt8SmallRange) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedUInt8(
-      tflite::BuiltinOperator_GREATER, input1_dim, input1_data,
+      tflite::ops::micro::Register_GREATER(), input1_dim, input1_data,
       input1_quantized, input1_scale, input1_zero_point, input2_dim,
       input2_data, input2_quantized, input2_scale, input2_zero_point,
       expected_data, expected_dim, output_data);
@@ -752,7 +736,7 @@ TF_LITE_MICRO_TEST(GreaterUInt8EqualQuantized) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedUInt8(
-      tflite::BuiltinOperator_GREATER_EQUAL, input1_dim, input1_data,
+      tflite::ops::micro::Register_GREATER_EQUAL(), input1_dim, input1_data,
       input1_quantized, input1_scale, input1_zero_point, input2_dim,
       input2_data, input2_quantized, input1_scale, input1_zero_point,
       expected_data, expected_dim, output_data);
@@ -775,10 +759,10 @@ TF_LITE_MICRO_TEST(LessQuantizedUInt8) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedUInt8(
-      tflite::BuiltinOperator_LESS, input1_dim, input1_data, input1_quantized,
-      input1_scale, input1_zero_point, input2_dim, input2_data,
-      input2_quantized, input1_scale, input1_zero_point, expected_data,
-      expected_dim, output_data);
+      tflite::ops::micro::Register_LESS(), input1_dim, input1_data,
+      input1_quantized, input1_scale, input1_zero_point, input2_dim,
+      input2_data, input2_quantized, input1_scale, input1_zero_point,
+      expected_data, expected_dim, output_data);
 }
 
 TF_LITE_MICRO_TEST(LessEqualQuantizedUInt8) {
@@ -798,7 +782,7 @@ TF_LITE_MICRO_TEST(LessEqualQuantizedUInt8) {
 
   bool output_data[4];
   tflite::testing::TestComparisonQuantizedUInt8(
-      tflite::BuiltinOperator_LESS_EQUAL, input1_dim, input1_data,
+      tflite::ops::micro::Register_LESS_EQUAL(), input1_dim, input1_data,
       input1_quantized, input1_scale, input1_zero_point, input2_dim,
       input2_data, input2_quantized, input1_scale, input1_zero_point,
       expected_data, expected_dim, output_data);
@@ -826,7 +810,7 @@ TF_LITE_MICRO_TEST(EqualQuantizedUInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedUInt8(
-        tflite::BuiltinOperator_EQUAL, input1_dim, input1_data,
+        tflite::ops::micro::Register_EQUAL(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);
@@ -855,7 +839,7 @@ TF_LITE_MICRO_TEST(NotEqualQuantizedUInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedUInt8(
-        tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data,
+        tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);
@@ -884,7 +868,7 @@ TF_LITE_MICRO_TEST(NotEqualQuantizedInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedInt8(
-        tflite::BuiltinOperator_NOT_EQUAL, input1_dim, input1_data,
+        tflite::ops::micro::Register_NOT_EQUAL(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);
@@ -913,7 +897,7 @@ TF_LITE_MICRO_TEST(GreaterQuantizedUInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedUInt8(
-        tflite::BuiltinOperator_GREATER, input1_dim, input1_data,
+        tflite::ops::micro::Register_GREATER(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);
@@ -942,7 +926,7 @@ TF_LITE_MICRO_TEST(GreaterQuantizedInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedInt8(
-        tflite::BuiltinOperator_GREATER, input1_dim, input1_data,
+        tflite::ops::micro::Register_GREATER(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);
@@ -971,7 +955,7 @@ TF_LITE_MICRO_TEST(GreaterEqualQuantizedUInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedUInt8(
-        tflite::BuiltinOperator_GREATER_EQUAL, input1_dim, input1_data,
+        tflite::ops::micro::Register_GREATER_EQUAL(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);
@@ -1000,7 +984,7 @@ TF_LITE_MICRO_TEST(GreaterEqualQuantizedInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedInt8(
-        tflite::BuiltinOperator_GREATER_EQUAL, input1_dim, input1_data,
+        tflite::ops::micro::Register_GREATER_EQUAL(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);
@@ -1029,10 +1013,10 @@ TF_LITE_MICRO_TEST(LessQuantizedUInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedUInt8(
-        tflite::BuiltinOperator_LESS, input1_dim, input1_data, input1_quantized,
-        input1_scale, input1_zero_point, input2_dim, input2_data,
-        input2_quantized, input1_scale, input1_zero_point, expected_data,
-        expected_dim, output_data);
+        tflite::ops::micro::Register_LESS(), input1_dim, input1_data,
+        input1_quantized, input1_scale, input1_zero_point, input2_dim,
+        input2_data, input2_quantized, input1_scale, input1_zero_point,
+        expected_data, expected_dim, output_data);
   }
 }
 
@@ -1058,10 +1042,10 @@ TF_LITE_MICRO_TEST(LessQuantizedInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedInt8(
-        tflite::BuiltinOperator_LESS, input1_dim, input1_data, input1_quantized,
-        input1_scale, input1_zero_point, input2_dim, input2_data,
-        input2_quantized, input1_scale, input1_zero_point, expected_data,
-        expected_dim, output_data);
+        tflite::ops::micro::Register_LESS(), input1_dim, input1_data,
+        input1_quantized, input1_scale, input1_zero_point, input2_dim,
+        input2_data, input2_quantized, input1_scale, input1_zero_point,
+        expected_data, expected_dim, output_data);
   }
 }
 
@@ -1087,7 +1071,7 @@ TF_LITE_MICRO_TEST(LessEqualQuantizedUInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedUInt8(
-        tflite::BuiltinOperator_LESS_EQUAL, input1_dim, input1_data,
+        tflite::ops::micro::Register_LESS_EQUAL(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);
@@ -1116,7 +1100,7 @@ TF_LITE_MICRO_TEST(LessEqualQuantizedInt8WithBroadcast) {
 
     bool output_data[6];
     tflite::testing::TestComparisonQuantizedInt8(
-        tflite::BuiltinOperator_LESS_EQUAL, input1_dim, input1_data,
+        tflite::ops::micro::Register_LESS_EQUAL(), input1_dim, input1_data,
         input1_quantized, input1_scale, input1_zero_point, input2_dim,
         input2_data, input2_quantized, input1_scale, input1_zero_point,
         expected_data, expected_dim, output_data);

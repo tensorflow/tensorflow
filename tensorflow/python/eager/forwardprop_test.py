@@ -340,6 +340,15 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         y = x + x
       self.assertAllClose(2. * array_ops.ones_like(x), acc.jvp(y))
 
+  def testVariableUnwatchedZero(self):
+    v = variables.Variable([[1.]])
+    x = constant_op.constant(1.)
+    xt = constant_op.constant(2.)
+    with forwardprop.ForwardAccumulator(x, xt) as acc:
+      pass
+    self.assertIsNone(acc.jvp(v))
+    self.assertAllClose([[0.]], acc.jvp(v, unconnected_gradients="zero"))
+
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMultipleWatchesAdd(self):
     x = constant_op.constant(-2.)

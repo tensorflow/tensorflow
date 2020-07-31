@@ -213,6 +213,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -2845,9 +2846,22 @@ class ReplicaContext(object):
   """
 
   def __init__(self, strategy, replica_id_in_sync_group):
+    """Creates a ReplicaContext.
+
+    Args:
+      strategy: A `tf.distribute.Strategy`.
+      replica_id_in_sync_group: An integer, a `Tensor` or None. Prefer an
+        integer whenever possible to avoid issues with nested `tf.function`. It
+        accepts a `Tensor` only to be compatible with `tpu.replicate`.
+    """
     self._strategy = strategy
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
+    if not (replica_id_in_sync_group is None or
+            tensor_util.is_tensor(replica_id_in_sync_group) or
+            isinstance(replica_id_in_sync_group, int)):
+      raise ValueError(
+          "replica_id_in_sync_group can only be an integer, a Tensor or None.")
     self._replica_id_in_sync_group = replica_id_in_sync_group
     self._summary_recording_distribution_strategy = None
 
@@ -2856,7 +2870,7 @@ class ReplicaContext(object):
     _push_per_thread_mode(self._thread_context)
 
     def replica_id_is_zero():
-      return math_ops.equal(self._replica_id_in_sync_group,
+      return math_ops.equal(self.replica_id_in_sync_group,
                             constant_op.constant(0))
 
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
@@ -2929,9 +2943,24 @@ class ReplicaContext(object):
 
     NOTE: This is not guaranteed to be the same ID as the XLA replica ID use
     for low-level operations such as collective_permute.
+
+    Returns:
+      a `Tensor`.
     """
-    require_replica_context(self)
-    return self._replica_id_in_sync_group
+    # It's important to prefer making the Tensor at call time whenever possible.
+    # Keeping Tensors in global states doesn't work well with nested
+    # tf.function, since it's possible that the tensor is generated in one func
+    # graph, and gets captured by another, which will result in a subtle "An op
+    # outside of the function building code is being passed a Graph tensor"
+    # error. Making the tensor at call time to ensure it is the same graph where
+    # it's used. However to be compatible with tpu.replicate(),
+    # self._replica_id_in_sync_group can also be a Tensor.
+    if tensor_util.is_tensor(self._replica_id_in_sync_group):
+      return self._replica_id_in_sync_group
+    return constant_op.constant(
+        self._replica_id_in_sync_group,
+        dtypes.int32,
+        name="replica_id_in_sync_group")
 
   @property
   def strategy(self):
@@ -3155,9 +3184,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
       raise NotImplementedError("TODO")
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    with ReplicaContext(
-        self._container_strategy(),
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
+    with ReplicaContext(self._container_strategy(), replica_id_in_sync_group=0):
       return fn(*args, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
@@ -3260,6 +3287,16 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _global_batch_size(self):
     """Global and per-replica batching are equivalent for this strategy."""
     return True
+
+
+class _DefaultReplicaContext(ReplicaContext):
+  """ReplicaContext for _DefaultDistributionStrategy."""
+
+  @property
+  def replica_id_in_sync_group(self):
+    # Return 0 instead of a constant tensor to avoid creating a new node for
+    # users who don't use distribution strategy.
+    return 0
 
 
 # ------------------------------------------------------------------------------

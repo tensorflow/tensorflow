@@ -3722,6 +3722,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
@@ -7663,6 +7664,72 @@ op {
     type: "float"
     default_value {
       f: 0
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "CollectiveReduceV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "group_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "instance_key"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "merge_op"
+    type: "string"
+    allowed_values {
+      list {
+        s: "Min"
+        s: "Max"
+        s: "Mul"
+        s: "Add"
+      }
+    }
+  }
+  attr {
+    name: "final_op"
+    type: "string"
+    allowed_values {
+      list {
+        s: "Id"
+        s: "Div"
+      }
+    }
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
     }
   }
   is_stateful: true
@@ -20018,6 +20085,21 @@ op {
   }
 }
 op {
+  name: "KthOrderStatistic"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "k"
+    type: "int"
+  }
+}
+op {
   name: "L2Loss"
   input_arg {
     name: "t"
@@ -22341,6 +22423,17 @@ op {
     type: DT_RESOURCE
   }
   is_stateful: true
+}
+op {
+  name: "MakeUnique"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
 }
 op {
   name: "MapAndBatchDataset"
@@ -26264,6 +26357,49 @@ op {
   }
   input_arg {
     name: "optimizations"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "optimization_configs"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+}
+op {
+  name: "OptimizeDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "optimizations_enabled"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "optimizations_disabled"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "optimizations_default"
     type: DT_STRING
   }
   output_arg {
@@ -35299,6 +35435,37 @@ op {
     default_value {
       b: true
     }
+  }
+}
+op {
+  name: "RebatchDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_sizes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {
@@ -48917,6 +49084,45 @@ op {
   is_stateful: true
 }
 op {
+  name: "StatelessCase"
+  input_arg {
+    name: "branch_index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "branches"
+    type: "list(func)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+  }
+}
+op {
   name: "StatelessIf"
   input_arg {
     name: "cond"
@@ -50639,6 +50845,64 @@ op {
   }
 }
 op {
+  name: "TPUCompile"
+  input_arg {
+    name: "dynamic_shapes"
+    type: DT_INT64
+    number_attr: "NumDynamicShapes"
+  }
+  input_arg {
+    name: "guaranteed_constants"
+    type_list_attr: "Tguaranteed_constants"
+  }
+  output_arg {
+    name: "compilation_status"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "program"
+    type: DT_STRING
+    number_attr: "num_computations"
+  }
+  output_arg {
+    name: "may_modify_variables"
+    type: DT_BOOL
+    number_attr: "num_computations"
+  }
+  attr {
+    name: "num_computations"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "function"
+    type: "func"
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+  }
+  attr {
+    name: "NumDynamicShapes"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "Tguaranteed_constants"
+    type: "list(type)"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "TPUCompileSucceededAssert"
+  input_arg {
+    name: "compilation_status"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
   name: "TPUEmbeddingActivations"
   input_arg {
     name: "embedding_variable"
@@ -50662,6 +50926,68 @@ op {
     type: "int"
     has_minimum: true
   }
+}
+op {
+  name: "TPUExecute"
+  input_arg {
+    name: "args"
+    type_list_attr: "Targs"
+  }
+  input_arg {
+    name: "key"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "results"
+    type_list_attr: "Tresults"
+  }
+  attr {
+    name: "Targs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tresults"
+    type: "list(type)"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "TPUExecuteAndUpdateVariables"
+  input_arg {
+    name: "args"
+    type_list_attr: "Targs"
+  }
+  input_arg {
+    name: "key"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "results"
+    type_list_attr: "Tresults"
+  }
+  attr {
+    name: "Targs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tresults"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "device_var_reads_indices"
+    type: "list(int)"
+    has_minimum: true
+  }
+  attr {
+    name: "device_var_updates_indices"
+    type: "list(int)"
+    has_minimum: true
+  }
+  is_stateful: true
 }
 op {
   name: "TPUOrdinalSelector"
@@ -50701,6 +51027,64 @@ op {
   }
   attr {
     name: "autotuner_thresh"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}
+op {
+  name: "TPUPartitionedInput"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "partition_dim"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}
+op {
+  name: "TPUPartitionedOutput"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+    number_attr: "num_splits"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "num_splits"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "partition_dim"
     type: "int"
     default_value {
       i: 0
@@ -53284,6 +53668,25 @@ op {
   }
 }
 op {
+  name: "TopKUnique"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "topk"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "topk_indices"
+    type: DT_INT32
+  }
+  attr {
+    name: "k"
+    type: "int"
+  }
+}
+op {
   name: "TopKV2"
   input_arg {
     name: "input"
@@ -53327,6 +53730,25 @@ op {
         type: DT_UINT64
       }
     }
+  }
+}
+op {
+  name: "TopKWithUnique"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "topk"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "topk_indices"
+    type: DT_INT32
+  }
+  attr {
+    name: "k"
+    type: "int"
   }
 }
 op {
@@ -55253,6 +55675,96 @@ op {
       }
     }
   }
+}
+op {
+  name: "XlaHostCompute"
+  input_arg {
+    name: "inputs"
+    type_list_attr: "Tinputs"
+  }
+  output_arg {
+    name: "outputs"
+    type_list_attr: "Toutputs"
+  }
+  attr {
+    name: "Tinputs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Toutputs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "ancestors"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    has_minimum: true
+  }
+  attr {
+    name: "shape_inference_graph"
+    type: "func"
+  }
+  attr {
+    name: "key"
+    type: "string"
+  }
+  attr {
+    name: "cost_estimate_ns"
+    type: "int"
+    default_value {
+      i: 1000000
+    }
+  }
+  attr {
+    name: "tpu_core"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaRecvFromHost"
+  output_arg {
+    name: "output"
+    type_attr: "Toutput"
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  attr {
+    name: "key"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaSendToHost"
+  input_arg {
+    name: "input"
+    type_attr: "Tinput"
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+  }
+  attr {
+    name: "key"
+    type: "string"
+  }
+  is_stateful: true
 }
 op {
   name: "Xlog1py"

@@ -1694,7 +1694,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     const std::vector<InferredShape>& retval_shapes, const Graph& graph,
     const Node* replicate_node, FunctionLibraryRuntime* flr,
     std::vector<xla::OpSharding>* arg_sharding, std::vector<bool>* arg_fast_mem,
-    std::vector<xla::OpSharding>* retval_sharding) {
+    std::vector<xla::OpSharding>* retval_sharding,
+    std::vector<std::string>* arg_names) {
   // Builds vectors of the argument and return nodes.
   std::vector<Node*> args(arg_types.size());
   std::vector<Node*> retvals(retval_types.size());
@@ -1744,6 +1745,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   TensorDevicePlacer args_device_selector(num_cores_per_replica, arg_types,
                                           arg_shapes);
   arg_sharding->resize(args.size());
+  arg_names->resize(args.size());
   arg_fast_mem->resize(args.size());
   CachedFunctionHandles cached_function_handles(flr);
   const bool use_spmd = UseSpmdForXlaPartitioning(replicate_node) ||
@@ -1832,6 +1834,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     }
     (*arg_sharding)[i] = *sharding;
     (*arg_fast_mem)[i] = is_fast_mem;
+    (*arg_names)[i] = n->name();
     if (is_fast_mem) {
       VLOG(3) << "Add " << TPU_FAST_MEM_ATTR << " attribute to "
               << args[i]->name();
@@ -2000,6 +2003,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     const string& session_handle,
     const std::vector<xla::OpSharding>& arg_sharding,
     const std::vector<bool>& arg_fast_mem,
+    const std::vector<std::string>& arg_names,
     const std::vector<xla::OpSharding>& retval_sharding,
     int num_cores_per_replica, const string& compile_device,
     const xla::DeviceAssignment* xla_device_assignment,
@@ -2041,6 +2045,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     tpu::TPUCompileMetadataProto::Arg* arg = proto.add_args();
     DataType type = arg_types[i];
     const InferredShape& arg_shape = arg_shapes[i];
+    arg->set_name(arg_names[i]);
     if (type == DT_RESOURCE) {
       TF_RET_CHECK(arg_shape.handle_type != DT_INVALID) << i;
       arg->set_dtype(arg_shape.handle_type);
@@ -3812,11 +3817,12 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
 
   std::vector<xla::OpSharding> arg_sharding;
   std::vector<bool> arg_fast_mem;
+  std::vector<std::string> arg_names;
   std::vector<xla::OpSharding> retval_sharding;
   TF_RETURN_IF_ERROR(AssignArgsAndRetvalsToCores(
       num_cores_per_replica, params_info, arg_types, arg_shapes, retval_types,
       retval_shapes, *computation, replicate_node, flr, &arg_sharding,
-      &arg_fast_mem, &retval_sharding));
+      &arg_fast_mem, &retval_sharding, &arg_names));
 
   VLOG(1) << DumpGraphToFile("distributed_tpu_graph_to_replicate", *computation,
                              flib_def);
@@ -3874,7 +3880,7 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
   TF_RETURN_IF_ERROR(BuildCompileNode(
       replicate_node, *function, library_fingerprint, params_info, arg_shapes,
       arg_types, guaranteed_constant_nodes, session_handle, arg_sharding,
-      arg_fast_mem, retval_sharding, num_cores_per_replica,
+      arg_fast_mem, arg_names, retval_sharding, num_cores_per_replica,
       /*compile_device=*/tpu_compilation_device, xla_device_assignment.get(),
       dynamic_shape_nodes, graph, &compile_node, autotuner_thresh));
 

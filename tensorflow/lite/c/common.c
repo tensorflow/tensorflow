@@ -219,29 +219,6 @@ const char* TfLiteTypeGetName(TfLiteType type) {
   return "Unknown type";
 }
 
-// Size of string is not constant, return 0 in such case.
-int TfLiteTypeGetSize(TfLiteType type) {
-  switch (type) {
-    case kTfLiteUInt8:
-    case kTfLiteInt8:
-      return 1;
-    case kTfLiteBool:
-      return sizeof(bool);
-    case kTfLiteInt16:
-    case kTfLiteFloat16:
-      return 2;
-    case kTfLiteFloat32:
-    case kTfLiteInt32:
-      return 4;
-    case kTfLiteInt64:
-    case kTfLiteComplex64:
-    case kTfLiteFloat64:
-      return 8;
-    default:
-      return 0;
-  }
-}
-
 TfLiteDelegate TfLiteDelegateCreate() {
   TfLiteDelegate d = {
       .data_ = NULL,

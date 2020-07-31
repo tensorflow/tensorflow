@@ -745,7 +745,7 @@ Status MemoryUsageTracker::EndInstruction() {
   for (BufferId buffer_id : in_progress_item_->buffers_used) {
     Buffer& buffer = buffers_.at(buffer_id);
     buffer.unfinished_user_count--;
-    CHECK_GE(buffer.unfinished_user_count, 0)
+    TF_RET_CHECK(buffer.unfinished_user_count >= 0)
         << buffer.ToString() << " has negative unfinished user count.";
     if (buffer.unfinished_user_count == 0) {
       // Buffer is now dead.

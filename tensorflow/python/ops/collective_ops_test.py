@@ -254,6 +254,64 @@ class CollectiveOpTest(test.TestCase):
             final_op='Id',
             timeout=timeout)
 
+  @test_util.run_v2_only
+  def testExecutionAfterTimeoutV2(self):
+    timeout = 1.5
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    group_key = 20
+    instance_key = 30
+    input_data = constant_op.constant([1, 2, 3, 4])
+
+    @def_function.function
+    def run_all_reduce():
+      for device in ['CPU:0', 'CPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              input_data,
+              group_size=2,
+              group_key=group_key,
+              instance_key=instance_key,
+              merge_op='Add',
+              final_op='Id',
+              timeout=timeout)
+
+    # Run a normal all-reduce to complete param resolution.
+    run_all_reduce()
+
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      with ops.device('CPU:0'):
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            instance_key=instance_key,
+            merge_op='Add',
+            final_op='Id',
+            timeout=timeout)
+
+    # We launch the second device after the first device times out. This is to
+    # simulate the situation when other workers are slow and the timeout is
+    # short. It should error immediately.
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      with ops.device('CPU:1'):
+        # No timeout.
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            merge_op='Add',
+            final_op='Id',
+            instance_key=instance_key)
+
   def testNcclHintFallbackToRingReduce(self):
     """Tests that setting `communication_hint=nccl` works on non-GPU builds."""
     if kernels.get_registered_kernels_for_op('NcclAllReduce'):

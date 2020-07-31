@@ -880,6 +880,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsOneArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::ABS:
+      case OperationType::COPY:
       case OperationType::COS:
       case OperationType::EXP:
       case OperationType::LOG:
@@ -2561,8 +2562,23 @@ class MeanOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
-                              /*outputs=*/1);
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1,
+                                       /*outputs=*/1));
+
+    // Simple mechanism to check if MEAN is to be performed only on HW plane.
+    auto* axes = &context->tensors[tflite_node->inputs->data[1]];
+    if (axes->allocation_type != kTfLiteMmapRo || axes->type != kTfLiteInt32) {
+      return absl::UnimplementedError("Mean has unsupported tensor for axes");
+    }
+    auto* axes_data = axes->data.i32;
+    const bool is_hw_mean = tflite::NumElements(axes) == 2 &&
+                            ((axes_data[0] == 1 && axes_data[1] == 2) ||
+                             (axes_data[0] == 2 && axes_data[1] == 1));
+    if (!is_hw_mean) {
+      return absl::UnimplementedError("Mean operation supports only HW plane");
+    }
+    return absl::OkStatus();
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
@@ -2641,6 +2657,10 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       break;
     case kTfLiteBuiltinDiv:
       return std::make_unique<ElementwiseOperationParser>(OperationType::DIV);
+    case kTfLiteBuiltinElu:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::ELU);
+    case kTfLiteBuiltinExp:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::EXP);
     case kTfLiteBuiltinFullyConnected:
       return std::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinHardSwish:

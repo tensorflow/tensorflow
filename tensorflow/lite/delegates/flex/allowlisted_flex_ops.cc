@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <set>
 
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops_internal.h"
 
 namespace tflite {
@@ -547,8 +548,36 @@ const std::set<std::string>& GetFlexAllowlist() {
   // NOLINTNEXTLINE
 }
 
+// Allow the tf.text ops if they are registered in the global op registry.
+bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
+  static const std::set<std::string>* tftext_flex_ops =
+      new std::set<std::string>({
+          "CaseFoldUTF8",
+          "ConstrainedSequence",
+          "MaxSpanningTree",
+          "NormalizeUTF8",
+          "NormalizeUTF8WithOffsetsMap",
+          "RegexSplitWithOffsets",
+          "RougeL",
+          "SentenceFragments",
+          "SentencepieceOp",
+          "SentencepieceTokenizeOp",
+          "SentencepieceTokenizeWithOffsetsOp",
+          "SentencepieceDetokenizeOp",
+          "SentencepieceVocabSizeOp",
+          "SplitMergeTokenizeWithOffsets",
+          "UnicodeScriptTokenizeWithOffsets",
+          "WhitespaceTokenizeWithOffsets",
+          "WordpieceTokenizeWithOffsets",
+      });
+  if (tftext_flex_ops->count(op_name) == 0) return false;
+  return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
+}
+
 bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
-  return GetFlexAllowlist().count(tensorflow_op_name) != 0;
+  if (GetFlexAllowlist().count(tensorflow_op_name) != 0) return true;
+  // Check if the op is an allowlisted tf.text op.
+  return IsAllowedTFTextOpForFlex(tensorflow_op_name);
 }
 
 }  // namespace flex

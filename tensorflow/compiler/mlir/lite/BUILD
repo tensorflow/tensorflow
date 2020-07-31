@@ -238,28 +238,6 @@ cc_library(
 )
 
 cc_library(
-    name = "constant_utils",
-    srcs = [
-        "utils/constant_utils.cc",
-    ],
-    hdrs = [
-        "utils/constant_utils.h",
-    ],
-    copts = ["-std=c++14"],
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:status",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
     name = "lstm_utils",
     srcs = [
         "utils/lstm_utils.cc",
@@ -292,6 +270,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/core:framework",
+        "@flatbuffers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
@@ -368,20 +347,23 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
-        ":constant_utils",
         ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tftext_utils",
         ":validators",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:unroll_batch_matmul_pass",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
@@ -471,8 +453,9 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        "@com_google_absl//absl/base",
+        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

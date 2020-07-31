@@ -69,6 +69,8 @@ class DynamicBuffer {
   // Join a list of string with separator, and add as a single string to the
   // buffer.
   void AddJoinedString(const std::vector<StringRef>& strings, char separator);
+  void AddJoinedString(const std::vector<StringRef>& strings,
+                       StringRef separator);
 
   // Fill content into a buffer and returns the number of bytes stored.
   // The function allocates space for the buffer but does NOT take ownership.

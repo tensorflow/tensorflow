@@ -26,18 +26,7 @@ namespace cl {
 namespace {
 
 std::string GetElementWiseCode(const OperationDef& op_def,
-                               bool check_src_slices, Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
-  }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
-  if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
-  }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-
+                               bool check_src_slices) {
   std::string c = GetCommonDefines(op_def.precision);
 
   c += "__kernel void main_function(\n";
@@ -126,6 +115,10 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_),
       grid_size_(operation.grid_size_),
+      code_(std::move(operation.code_)),
+      src_tensors_names_(std::move(operation.src_tensors_names_)),
+      dst_tensors_names_(std::move(operation.dst_tensors_names_)),
+      compiler_options_(std::move(operation.compiler_options_)),
       linked_operations_(std::move(operation.linked_operations_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
@@ -137,6 +130,10 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
     std::swap(grid_size_, operation.grid_size_);
+    code_ = std::move(operation.code_);
+    src_tensors_names_ = std::move(operation.src_tensors_names_);
+    dst_tensors_names_ = std::move(operation.dst_tensors_names_);
+    compiler_options_ = std::move(operation.compiler_options_);
     linked_operations_ = std::move(operation.linked_operations_);
   }
   return *this;
@@ -146,25 +143,71 @@ void GPUOperation::AddOperation(ElementwiseOperation* operation) {
   linked_operations_.push_back(operation);
 }
 
+void GPUOperation::AddSrcTensor(const std::string& tensor_name,
+                                const TensorDescriptor& desc) {
+  src_tensors_names_.push_back(tensor_name);
+  auto desc_new = absl::make_unique<TensorDescriptor>(desc);
+  args_.AddObjectRef(tensor_name, AccessType::READ, std::move(desc_new));
+}
+
+void GPUOperation::AddSrcBuffer(const std::string& buffer_name,
+                                const BufferDescriptor& desc) {
+  src_tensors_names_.push_back(buffer_name);
+  auto desc_new = absl::make_unique<BufferDescriptor>(desc);
+  args_.AddObjectRef(buffer_name, AccessType::READ, std::move(desc_new));
+}
+
+void GPUOperation::AddDstTensor(const std::string& tensor_name,
+                                const TensorDescriptor& desc) {
+  dst_tensors_names_.push_back(tensor_name);
+  auto desc_new = absl::make_unique<TensorDescriptor>(desc);
+  args_.AddObjectRef(tensor_name, AccessType::WRITE, std::move(desc_new));
+}
+
+absl::Status GPUOperation::UpdateParams() {
+  for (int i = 0; i < src_tensors_names_.size(); ++i) {
+    RETURN_IF_ERROR(args_.SetObjectRef(src_tensors_names_[i], src_[i]));
+  }
+  for (int i = 0; i < dst_tensors_names_.size(); ++i) {
+    RETURN_IF_ERROR(args_.SetObjectRef(dst_tensors_names_[i], dst_[i]));
+  }
+  for (const auto linked_op : linked_operations_) {
+    for (int i = 0; i < linked_op->src_tensors_names_.size(); ++i) {
+      RETURN_IF_ERROR(args_.SetObjectRef(linked_op->src_tensors_names_[i],
+                                         linked_op->src_[i + 1]));
+    }
+  }
+  RETURN_IF_ERROR(BindArguments());
+  grid_size_ = GetGridSize();
+  return absl::OkStatus();
+}
+
+absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(
+      creation_context.device->GetInfo(),
+      {{dst_tensors_names_[0], element_wise_code}}, &code_));
+  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
+      code_, "main_function", *creation_context.context,
+      *creation_context.device, &kernel_));
+  return PostCompileCheck();
+}
+
 ElementwiseOperation::ElementwiseOperation(ElementwiseOperation&& operation)
     : GPUOperation(std::move(operation)),
       check_src_channels_size_(operation.check_src_channels_size_),
-      code_(std::move(operation.code_)) {}
+      linkable_(operation.linkable_) {}
 
 ElementwiseOperation& ElementwiseOperation::operator=(
     ElementwiseOperation&& operation) {
   if (this != &operation) {
     check_src_channels_size_ = operation.check_src_channels_size_;
-    code_ = std::move(operation.code_);
+    linkable_ = operation.linkable_;
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
-}
-
-absl::Status ElementwiseOperation::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  return SetArgs("", &args_);
 }
 
 int3 ElementwiseOperation::GetGridSize() const {
@@ -176,19 +219,43 @@ int3 ElementwiseOperation::GetGridSize() const {
 
 absl::Status ElementwiseOperation::Compile(
     const CreationContext& creation_context) {
-  std::string code =
-      GetElementWiseCode(definition_, check_src_channels_size_, &args_);
+  auto src_desc =
+      absl::make_unique<TensorDescriptor>(definition_.src_tensors[0]);
+  if (definition_.IsBatchSupported()) {
+    src_desc->SetStateVar("BatchedWidth", "true");
+  }
+  src_tensors_names_.insert(src_tensors_names_.begin(), "src_tensor");
+  args_.AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
+
+  auto dst_desc =
+      absl::make_unique<TensorDescriptor>(definition_.dst_tensors[0]);
+  if (definition_.IsBatchSupported()) {
+    dst_desc->SetStateVar("BatchedWidth", "true");
+  }
+  dst_tensors_names_.insert(dst_tensors_names_.begin(), "dst_tensor");
+  args_.AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
+
+  std::string code = GetElementWiseCode(definition_, check_src_channels_size_);
   std::string element_wise_code;
   element_wise_code += "{\n" + code_ + "\n}\n";
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(
+      creation_context.device->GetInfo(),
+      {{dst_tensors_names_[0], element_wise_code}}, &code));
   code = absl::Substitute(code, args_.GetListOfArgs());
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
+}
+
+void ElementwiseOperation::AddUniquePostfix(const std::string& unique_postfix) {
+  for (int i = 0; i < src_tensors_names_.size(); ++i) {
+    src_tensors_names_[i] += unique_postfix;
+  }
+  for (int i = 0; i < dst_tensors_names_.size(); ++i) {
+    dst_tensors_names_[i] += unique_postfix;
+  }
 }
 
 absl::Status MergeOperations(
@@ -201,15 +268,7 @@ absl::Status MergeOperations(
     link_args.RenameArgs(unique_postfix, &code);
     *merged_code += "{\n" + code + "\n}\n";
     RETURN_IF_ERROR(merged_args->Merge(std::move(link_args), unique_postfix));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status SetArguments(const std::vector<ElementwiseOperation*>& linked_ops,
-                          Arguments* args) {
-  for (int i = 0; i < linked_ops.size(); ++i) {
-    std::string unique_postfix = absl::StrCat("_link", i + 1);
-    RETURN_IF_ERROR(linked_ops[i]->SetArgs(unique_postfix, args));
+    linked_ops[i]->AddUniquePostfix(unique_postfix);
   }
   return absl::OkStatus();
 }

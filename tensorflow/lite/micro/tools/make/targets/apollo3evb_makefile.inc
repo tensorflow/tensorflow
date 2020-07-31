@@ -118,9 +118,11 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
 
   CMSIS_SRC_DIR := $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source
   THIRD_PARTY_CC_SRCS := \
+  $(CMSIS_SRC_DIR)/BasicMathFunctions/arm_dot_prod_q15.c \
   $(CMSIS_SRC_DIR)/BasicMathFunctions/arm_mult_q15.c \
   $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_init_q15.c \
   $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_q15.c \
+  $(CMSIS_SRC_DIR)/TransformFunctions/arm_bitreversal2.c \
   $(CMSIS_SRC_DIR)/TransformFunctions/arm_cfft_q15.c \
   $(CMSIS_SRC_DIR)/TransformFunctions/arm_cfft_radix4_q15.c \
   $(CMSIS_SRC_DIR)/CommonTables/arm_const_structs.c \

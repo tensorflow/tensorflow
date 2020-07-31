@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -34,6 +35,7 @@ from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
@@ -1519,7 +1521,43 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
         run_metadata = config_pb2.RunMetadata()
         sess.run(out_cond_2, options=run_options, run_metadata=run_metadata)
 
-        self.assertTrue(len(run_metadata.partition_graphs) >= 2)
+        self.assertGreaterEqual(len(run_metadata.partition_graphs), 2)
+
+
+class CaseTest(test.TestCase):
+
+  def testCase(self):
+
+    def branch1(x):
+      logging_ops.print_v2("1")
+      return x
+
+    def branch2(x):
+      return x + 1
+
+    with ops.Graph().as_default():
+      x = array_ops.constant(1)
+      output = cond_v2.indexed_case(
+          array_ops.constant(0), [lambda: branch1(x), lambda: branch2(x)])
+      cond_op = output.op.inputs[0].op
+      self.assertEqual(cond_op.type, "Case")
+      self.assertEqual(1., self.evaluate(output))
+
+  def testStatelessCase(self):
+
+    def branch1(x):
+      return x + 1
+
+    def branch2(x):
+      return x + 2
+
+    with ops.Graph().as_default():
+      x = array_ops.constant(1)
+      output = cond_v2.indexed_case(
+          array_ops.constant(0), [lambda: branch1(x), lambda: branch2(x)])
+      cond_op = output.op.inputs[0].op
+      self.assertEqual(cond_op.type, "StatelessCase")
+      self.assertEqual(2., self.evaluate(output))
 
 
 def _cond(pred, true_fn, false_fn, name):
@@ -1544,4 +1582,5 @@ def _has_node_with_op(run_metadata, op_type):
 
 
 if __name__ == "__main__":
-  test.main()
+  with forward_compatibility_horizon(2020, 8, 21):
+    test.main()

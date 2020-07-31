@@ -203,7 +203,7 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_SafeCast) {
 //  128       | 10.0
 TF_LITE_MICRO_TEST(QuantizationUtilTest_ChooseQuantizationParams) {
   tflite::QuantizationParams qp =
-      tflite::ChooseQuantizationParams<uint8>(-10.0, 30.0);
+      tflite::ChooseQuantizationParams<uint8_t>(-10.0, 30.0);
   TF_LITE_MICRO_EXPECT_NEAR(qp.scale, 0.156863, 1e-5);
   TF_LITE_MICRO_EXPECT_EQ(qp.zero_point, 64);
 }
@@ -211,7 +211,7 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_ChooseQuantizationParams) {
 TF_LITE_MICRO_TEST(
     QuantizationUtilTest_ChooseQuantizationParamsZeroPointOnMinBoundary) {
   tflite::QuantizationParams qp =
-      tflite::ChooseQuantizationParams<uint8>(0.0, 30.0);
+      tflite::ChooseQuantizationParams<uint8_t>(0.0, 30.0);
   TF_LITE_MICRO_EXPECT_NEAR(qp.scale, 0.117647, 1e-5);
   TF_LITE_MICRO_EXPECT_EQ(qp.zero_point, 0);
 }
@@ -219,7 +219,7 @@ TF_LITE_MICRO_TEST(
 TF_LITE_MICRO_TEST(
     QuantizationUtilTest_ChooseQuantizationParamsEmptyRangeZero) {
   tflite::QuantizationParams qp =
-      tflite::ChooseQuantizationParams<uint8>(0.0, 0.0);
+      tflite::ChooseQuantizationParams<uint8_t>(0.0, 0.0);
   TF_LITE_MICRO_EXPECT_NEAR(qp.scale, 0.0, 1e-5);
   TF_LITE_MICRO_EXPECT_EQ(qp.zero_point, 0);
 }
@@ -227,7 +227,7 @@ TF_LITE_MICRO_TEST(
 TF_LITE_MICRO_TEST(
     QuantizationUtilTest_ChooseQuantizationParamsZeroPointOnMaxBoundary) {
   tflite::QuantizationParams qp =
-      tflite::ChooseQuantizationParams<uint8>(-10.0, 0.0);
+      tflite::ChooseQuantizationParams<uint8_t>(-10.0, 0.0);
   TF_LITE_MICRO_EXPECT_NEAR(qp.scale, 0.039216, 1e-5);
   TF_LITE_MICRO_EXPECT_EQ(qp.zero_point, 255);
 }
@@ -418,11 +418,11 @@ TF_LITE_MICRO_TEST(QuantizationUtilTest_QuantizeMultiplierArray) {
                             0.125, 0.25, 0.5, 1,    2,     4};
 
   const int size = 13;
-  int32 effective_scale_significand[size];
+  int32_t effective_scale_significand[size];
   int effective_scale_shift[size];
   tflite::QuantizeMultiplierArray(weights, size, effective_scale_significand,
                                   effective_scale_shift);
-  const int32 expected_effective_scale_significand[] = {
+  const int32_t expected_effective_scale_significand[] = {
       -1073741824,  // float scale = -4
       -1073741824,  // float scale = -2
       -1073741824,  // float scale = -1

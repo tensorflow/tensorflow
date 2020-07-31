@@ -28,12 +28,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
   tensorflow::StringPiece sp(char_data, size);
 
-  tensorflow::str_util::ArgDefCase(sp);
-  for (const auto &c : sp) {
+  std::string ns = tensorflow::str_util::ArgDefCase(sp);
+  for (const auto &c : ns) {
     const bool is_letter = 'a' <= c && c <= 'z';
     const bool is_digit = '0' <= c && c <= '9';
     if (!is_letter && !is_digit) {
-      printf("Got '%c'\n", c);
       assert(c == '_');
     }
   }

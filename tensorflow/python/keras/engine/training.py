@@ -393,6 +393,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       else:
         graph = backend.get_graph()
       with graph.as_default():
+        if (isinstance(input_shape, list) and
+            all(d is None or isinstance(d, int) for d in input_shape)):
+          input_shape = tuple(input_shape)
         if isinstance(input_shape, list):
           x = [base_layer_utils.generate_placeholders_from_shape(shape)
                for shape in input_shape]
@@ -709,7 +712,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # (2) Explicitly setting run_eagerly causes a Model to be run eagerly.
     # (3) Not explicitly setting run_eagerly defaults to TF's global setting.
     return (self.dynamic or self._run_eagerly or
-            (def_function.RUN_FUNCTIONS_EAGERLY and self._run_eagerly is None))
+            (def_function.functions_run_eagerly() and
+             self._run_eagerly is None))
 
   @run_eagerly.setter
   def run_eagerly(self, value):
@@ -2732,7 +2736,7 @@ def _minimize(strategy, tape, optimizer, loss, trainable_variables):
 
   # Whether to aggregate gradients outside of optimizer. This requires support
   # of the optimizer and doesn't work with ParameterServerStrategy and
-  # CentralStroageStrategy.
+  # CentralStorageStrategy.
   aggregate_grads_outside_optimizer = (
       optimizer._HAS_AGGREGATE_GRAD and  # pylint: disable=protected-access
       not isinstance(strategy.extended,

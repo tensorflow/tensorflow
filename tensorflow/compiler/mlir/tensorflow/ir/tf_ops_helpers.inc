@@ -578,3 +578,23 @@ LogicalResult VerifyRegionResults(Operation *op, Region &region,
   }
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Function control flow canonicalization.
+//===----------------------------------------------------------------------===//
+
+// Eliminate attributes that are not needed, but can get attached to Ops
+// during import.
+template <typename Op>
+struct DropAttributes : public OpRewritePattern<Op> {
+  using OpRewritePattern<Op>::OpRewritePattern;
+
+  // Drop the "output_shapes" attribute.
+  LogicalResult matchAndRewrite(Op op,
+                                PatternRewriter &rewriter) const override {
+    bool found = op.removeAttr("output_shapes") ==
+                 MutableDictionaryAttr::RemoveResult::Removed;
+    return success(found);
+  }
+};
+

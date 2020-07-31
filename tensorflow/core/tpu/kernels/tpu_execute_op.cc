@@ -40,11 +40,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_external.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
@@ -57,14 +58,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 
 namespace tensorflow {
-
 namespace {
-
+using ::tensorflow::tpu::CompilationCacheEntryRef;
+using ::tensorflow::tpu::TpuCompilationCacheLookup;
 using ::tensorflow::tpu::TpuNodeContext;
-using CompilationCacheEntryRef = ::tensorflow::tpu::CompilationCacheEntryRef<
-    ::tensorflow::tpu::TpuCompilationCacheEntry>;
-using TpuCompilationCacheLookup =
-    ::tensorflow::tpu::TpuCompilationCacheLookup<CompilationCacheEntryRef>;
 
 // Looks up the input `key` in the compilation cache, populating
 // `*rendezvous_key_base` and `*entry`.
@@ -198,8 +195,8 @@ struct InputBuffers {
 // Builds an InputBuffers object that describes the inputs to the computation.
 xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
     OpKernelContext* context, const xla::Shape& input_host_shape,
-    const VariableUpdateMap& variable_updates, TpuNodeContext* node_context,
-    se::Stream* stream) {
+    const VariableUpdateMap& variable_updates, xla::Backend* backend,
+    int device_ordinal, se::Stream* stream) {
   profiler::TraceMe trace_me("BuildComputationInputs", /*level=*/2);
   OpInputList arg_list;
   TF_RETURN_IF_ERROR(context->input_list("args", &arg_list));
@@ -274,10 +271,8 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
         validate_shape(variables[i].index(), *variables[i].var()->tensor()));
   }
 
-  se::DeviceMemoryAllocator* const allocator = node_context->memory_allocator();
-  xla::TransferManager* const transfer_manager =
-      node_context->transfer_manager();
-  const int device_ordinal = node_context->device_ordinal();
+  se::DeviceMemoryAllocator* const allocator = backend->memory_allocator();
+  xla::TransferManager* const transfer_manager = backend->transfer_manager();
 
   auto input_buffers = absl::make_unique<InputBuffers>(
       transfer_manager->HostShapeToDeviceShape(input_host_shape));
@@ -366,16 +361,16 @@ struct OutputBuffers {
         memory_allocator(allocator) {}
 
   ~OutputBuffers() {
-    buffers.buffers().ForEachElement([&](const xla::ShapeIndex& index,
-                                         const se::DeviceMemoryBase& buffer) {
-      if (owned_buffers.element(index) && !buffer.is_null()) {
-        Status status =
-            memory_allocator->Deallocate(buffers.device_ordinal(), buffer);
-        if (!status.ok()) {
-          LOG(ERROR) << "Error deallocating buffer " << status;
-        }
-      }
-    });
+    buffers.buffers().ForEachElement(
+        [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+          if (owned_buffers.element(index) && !buffer.is_null()) {
+            Status status =
+                memory_allocator->Deallocate(buffers.device_ordinal(), buffer);
+            if (!status.ok()) {
+              LOG(ERROR) << "Error deallocating buffer " << status;
+            }
+          }
+        });
   }
 
   // Which of the buffers do we own?
@@ -411,7 +406,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
   }
 
   xla::TransferManager* const transfer_manager =
-      node_context->transfer_manager();
+      node_context->backend()->transfer_manager();
 
   std::vector<TensorShape> output_tensor_shapes;
   output_tensor_shapes.reserve(sub_elements);
@@ -434,7 +429,8 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
   TF_RET_CHECK(scoped_buffers.on_host_shape().IsTuple());
   TF_RET_CHECK(!xla::ShapeUtil::IsNestedTuple(scoped_buffers.on_host_shape()));
 
-  se::DeviceMemoryAllocator* const allocator = node_context->memory_allocator();
+  se::DeviceMemoryAllocator* const allocator =
+      node_context->backend()->memory_allocator();
 
   auto output_buffers =
       absl::make_unique<OutputBuffers>(std::move(scoped_buffers), allocator);
@@ -633,41 +629,49 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
                       TpuNodeContext::Create(device_ordinal));
 
   profiler::TraceMe trace_me(
-      [&, device_ordinal] {
-        return absl::StrCat("TpuExecuteOp#device_ordinal=", device_ordinal,
-                            ",id=", context->step_id(),
-                            ",iter_num=", context->frame_iter().iter_id, "#");
+      [device_ordinal, context] {
+        return profiler::TraceMeEncode(
+            "TpuExecuteOp", {{"device_ordinal", device_ordinal},
+                             {"id", context->step_id()},
+                             {"iter_num", context->frame_iter().iter_id}});
       },
       /*level=*/2);
   profiler::TraceMe trace_me_init("TPUExecuteOp::Init", /*level=*/2);
 
   string rendezvous_key_base;
-  std::unique_ptr<CompilationCacheEntryRef> entry;
+  std::unique_ptr<CompilationCacheEntryRef> entry_ref;
   TF_RETURN_IF_ERROR(
-      GetComputationCacheEntry(context, &rendezvous_key_base, &entry));
+      GetComputationCacheEntry(context, &rendezvous_key_base, &entry_ref));
 
   // Shapes of the inputs and outputs, in xla::Shape form.
-  const TPUExecutableInfoProto* proto = entry->get().get_executable_info();
+  tpu::TpuCompilationCacheEntry entry = entry_ref->get();
+  const tpu::TpuProgramGroup* tpu_program_group =
+      tensorflow::down_cast<const tpu::TpuProgramGroup*>(
+          entry.tpu_program_group());
+  CHECK_NE(tpu_program_group, nullptr);
+  const int core_index = entry.core_index();
+  const TPUExecutableInfoProto& executable =
+      tpu_program_group->executable_info(core_index);
 
-  xla::TransferManager* const transfer_manager =
-      node_context->transfer_manager();
-  CHECK(context->op_device_context());
+  xla::Backend* const backend = node_context->backend();
+  xla::TransferManager* const transfer_manager = backend->transfer_manager();
+  TF_RET_CHECK(context->op_device_context());
   se::Stream* stream = context->op_device_context()->stream();
 
-  TF_RET_CHECK(proto->input_shapes_size() == 1);
+  TF_RET_CHECK(executable.input_shapes_size() == 1);
 
-  xla::Shape host_shape(proto->input_shapes(0));
+  xla::Shape host_shape(executable.input_shapes(0));
 
   TF_ASSIGN_OR_RETURN(
       auto variable_update_map,
-      BuildVariableUpdateMap(proto->variable_indices(),
+      BuildVariableUpdateMap(executable.variable_indices(),
                              fused_device_var_reads_in_computation_inputs_,
                              fused_device_var_updates_in_computation_outputs_,
-                             proto->output_tensor_shapes().size()));
+                             executable.output_tensor_shapes().size()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<InputBuffers> input_buffers,
-      BuildComputationInputs(context, host_shape, variable_update_map,
-                             node_context.get(), stream));
+      BuildComputationInputs(context, host_shape, variable_update_map, backend,
+                             device_ordinal, stream));
 
   // Ideally this should be the host-to-device stream from XlaDeviceContext.
   // The particular anti-dependency this is avoiding (why we need a separate
@@ -680,11 +684,11 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   // TODO(jmolloy): Add the necessary plumbing to obtain the proper
   // host-to-device stream here.
   TF_ASSIGN_OR_RETURN(auto transfer_stream_ptr,
-                      node_context->BorrowStream(device_ordinal));
+                      backend->BorrowStream(device_ordinal));
 
-  se::DeviceMemoryAllocator* const allocator = node_context->memory_allocator();
-  auto shaped_buffer =
-      input_buffers->ToShapedBuffer(host_shape, allocator, device_ordinal);
+  se::DeviceMemoryAllocator* const allocator = backend->memory_allocator();
+  auto shaped_buffer = input_buffers->ToShapedBuffer(std::move(host_shape),
+                                                     allocator, device_ordinal);
   if (transfer_manager->CanShapedBufferBeAccessedNow(stream->parent(),
                                                      shaped_buffer)) {
     TF_RETURN_IF_ERROR(transfer_manager->WriteRootTupleIndexTable(
@@ -698,8 +702,9 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
 
   // Snapshot the inputs, if a snapshot was requested.
   std::shared_ptr<xla::HloSnapshot> hlo_snapshot;
-  if (proto->has_session_module()) {
-    hlo_snapshot = std::make_shared<xla::HloSnapshot>(proto->session_module());
+  if (executable.has_session_module()) {
+    hlo_snapshot =
+        std::make_shared<xla::HloSnapshot>(executable.session_module());
     auto literal =
         std::make_shared<xla::Literal>(shaped_buffer.on_host_shape());
     transfer_manager->TransferLiteralFromDevice(
@@ -724,17 +729,17 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   const uint32 rng_seed = GetXLARandomSeed();
 
   std::unique_ptr<xla::DeviceAssignment> device_assignment;
-  if (proto->has_device_assignment()) {
+  if (executable.has_device_assignment()) {
     TF_ASSIGN_OR_RETURN(device_assignment, xla::DeviceAssignment::Deserialize(
-                                               proto->device_assignment()));
+                                               executable.device_assignment()));
   }
 
   VLOG(4) << "Input buffers after alias resolution: "
           << shaped_buffer.ToString();
 
   std::vector<xla::ExecutionInput> input;
-  input.emplace_back(
-      xla::ExecutionInput(std::move(input_buffers->buffers), host_shape));
+  input.emplace_back(xla::ExecutionInput(std::move(input_buffers->buffers),
+                                         shaped_buffer.on_host_shape()));
 
   // The buffers to be freed are in the `output` and will be automatically
   // freed when it goes out of the scope. In async mode, this means the buffers
@@ -744,24 +749,24 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   // we free a memory and reassign it to other users while a program is running,
   // all subsequent writes to the program that could possibly clobber the memory
   // will depend on the program to finish.
-  const TPUHostTransferInfoProto* host_transfer_info =
-      entry->get().get_host_transfer_info();
-  const xla::HloProto* hlo_metadata = entry->get().get_hlo_metadata();
+  const TPUHostTransferInfoProto& host_transfer_info =
+      tpu_program_group->host_transfer_info(core_index);
   TF_ASSIGN_OR_RETURN(
       xla::ExecutionOutput output,
-      TPUExecute(*proto, *host_transfer_info, *hlo_metadata, std::move(input),
+      TPUExecute(executable, host_transfer_info,
+                 *tpu_program_group->hlo_metadata(core_index), std::move(input),
                  rendezvous_key_base, rng_seed, node_context.get(),
                  device_assignment.get(), context->cancellation_manager(),
                  context, stream, transfer_stream_ptr.get(),
-                 entry->get().get_tpu_program()));
+                 tpu_program_group->tpu_program(core_index)));
   stream->ThenRecordEvent(definition_event.get());
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<OutputBuffers> output_buffers,
-      AllocateOutputTensors(context, output.ConsumeResult(),
-                            proto->output_tensor_shapes(), variable_update_map,
-                            node_context.get(), stream, device_ordinal,
-                            input_buffers.get(), definition_event));
+      AllocateOutputTensors(
+          context, output.ConsumeResult(), executable.output_tensor_shapes(),
+          variable_update_map, node_context.get(), stream, device_ordinal,
+          input_buffers.get(), definition_event));
 
   // Transfer the outputs and save the snapshot to disk.
   if (hlo_snapshot) {

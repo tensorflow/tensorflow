@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -170,8 +169,8 @@ static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     mlir::DenseIntElementsAttr groups) {
-  int64_t num_groups = groups.getType().getDimSize(0);
-  int64_t group_size = groups.getType().getDimSize(1);
+  uint64_t num_groups = groups.getType().getDimSize(0);
+  uint64_t group_size = groups.getType().getDimSize(1);
 
   std::vector<xla::ReplicaGroup> result;
   result.reserve(num_groups);
@@ -435,14 +434,14 @@ static void ExtractShardingsFromFunction(
     llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* ret_shardings) {
   arg_shardings->resize(function.getNumArguments(),
                         absl::optional<xla::OpSharding>());
-  for (int i = 0; i < function.getNumArguments(); ++i)
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i)
     if (auto sharding =
             function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr))
       (*arg_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
 
   ret_shardings->resize(function.getNumResults(),
                         absl::optional<xla::OpSharding>());
-  for (int i = 0; i < function.getNumResults(); ++i)
+  for (int i = 0, end = function.getNumResults(); i < end; ++i)
     if (auto sharding =
             function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr))
       (*ret_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
@@ -463,7 +462,7 @@ class ConvertToHloModule {
   // single value.
   explicit ConvertToHloModule(
       mlir::ModuleOp module, bool use_tuple_args, bool return_tuple,
-      tensorflow::XlaCompiler::ShapeRepresentationFn shape_representation_fn)
+      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : module_(module),
         module_builder_("main"),
         use_tuple_args_(use_tuple_args),
@@ -545,7 +544,7 @@ class ConvertToHloModule {
 
   // Shape representation function to determine entry function argument and
   // result shapes.
-  tensorflow::XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+  tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -758,7 +757,7 @@ LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
   auto edge_padding_low = ConvertDenseIntAttr(op.edge_padding_low());
   auto edge_padding_high = ConvertDenseIntAttr(op.edge_padding_high());
   auto interior_padding = ConvertDenseIntAttr(op.interior_padding());
-  for (xla::int64 i = 0; i < edge_padding_low.size(); ++i) {
+  for (xla::int64 i = 0, end = edge_padding_low.size(); i < end; ++i) {
     auto* dims = padding_config.add_dimensions();
     dims->set_edge_padding_low(edge_padding_low[i]);
     dims->set_edge_padding_high(edge_padding_high[i]);
@@ -1500,7 +1499,7 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
                            bool use_tuple_args, bool return_tuple,
-                           const tensorflow::XlaCompiler::ShapeRepresentationFn
+                           const tensorflow::XlaHelpers::ShapeRepresentationFn
                                shape_representation_fn) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   ConvertToHloModule converter(module, use_tuple_args, return_tuple,

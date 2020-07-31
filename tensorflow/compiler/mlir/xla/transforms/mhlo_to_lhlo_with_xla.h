@@ -127,6 +127,9 @@ tensorflow::Status HloToLhloModule(const ::xla::BufferAssignment& assignment,
                                    const ::xla::HloModule& hlo_module,
                                    ModuleOp module);
 
+OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
+                                               mlir::MLIRContext* context);
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_

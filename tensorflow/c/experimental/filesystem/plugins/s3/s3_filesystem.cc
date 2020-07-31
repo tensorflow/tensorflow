@@ -24,6 +24,7 @@ limitations under the License.
 #include <aws/s3/model/CompletedPart.h>
 #include <aws/s3/model/CopyObjectRequest.h>
 #include <aws/s3/model/CreateMultipartUploadRequest.h>
+#include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadBucketRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
@@ -44,6 +45,7 @@ limitations under the License.
 constexpr char kS3FileSystemAllocationTag[] = "S3FileSystemAllocation";
 constexpr char kS3ClientAllocationTag[] = "S3ClientAllocation";
 constexpr int64_t kS3TimeoutMsec = 300000;  // 5 min
+constexpr int kS3GetChildrenMaxKeys = 100;
 
 constexpr char kExecutorTag[] = "TransferManagerExecutorAllocation";
 constexpr int kExecutorPoolSize = 25;
@@ -80,9 +82,8 @@ static inline void TF_SetStatusFromAWSError(
   }
 }
 
-static void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
-                        Aws::String* bucket, Aws::String* object,
-                        TF_Status* status) {
+void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
+                 Aws::String* bucket, Aws::String* object, TF_Status* status) {
   size_t scheme_end = fname.find("://") + 2;
   if (fname.substr(0, scheme_end + 1) != "s3://") {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -226,11 +227,13 @@ static void GetExecutor(tf_s3_filesystem::S3File* s3_file) {
 static void GetTransferManager(
     const Aws::Transfer::TransferDirection& direction,
     tf_s3_filesystem::S3File* s3_file) {
+  // These functions should be called before holding `initialization_lock`.
+  GetS3Client(s3_file);
+  GetExecutor(s3_file);
+
   absl::MutexLock l(&s3_file->initialization_lock);
 
   if (s3_file->transfer_managers[direction].get() == nullptr) {
-    GetS3Client(s3_file);
-    GetExecutor(s3_file);
     Aws::Transfer::TransferManagerConfiguration config(s3_file->executor.get());
     config.s3Client = s3_file->s3_client;
     config.bufferSize = s3_file->multi_part_chunk_sizes[direction];
@@ -643,7 +646,8 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
         head_object_outcome.GetResult().GetLastModified().Millis() * 1e6;
     found = true;
   } else {
-    return TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    TF_SetStatusFromAWSError(head_object_outcome.GetError(), status);
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION) return;
   }
 
   auto prefix = object;
@@ -961,7 +965,158 @@ void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
                   s3_file, status);
 }
 
-// TODO(vnvo2409): Implement later
+void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  Aws::S3::Model::DeleteObjectRequest delete_object_request;
+  delete_object_request.WithBucket(bucket).WithKey(object);
+  auto delete_object_outcome =
+      s3_file->s3_client->DeleteObject(delete_object_request);
+  if (!delete_object_outcome.IsSuccess())
+    TF_SetStatusFromAWSError(delete_object_outcome.GetError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+void CreateDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, true, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  if (object.empty()) {
+    Aws::S3::Model::HeadBucketRequest head_bucket_request;
+    head_bucket_request.WithBucket(bucket);
+    auto head_bucket_outcome =
+        s3_file->s3_client->HeadBucket(head_bucket_request);
+    if (!head_bucket_outcome.IsSuccess())
+      TF_SetStatusFromAWSError(head_bucket_outcome.GetError(), status);
+    else
+      TF_SetStatus(status, TF_OK, "");
+    return;
+  }
+
+  Aws::String dir_path = path;
+  if (dir_path.back() != '/') dir_path.push_back('/');
+
+  PathExists(filesystem, dir_path.c_str(), status);
+  if (TF_GetCode(status) == TF_OK) {
+    std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile * file)> file(
+        new TF_WritableFile, [](TF_WritableFile* file) {
+          if (file != nullptr) {
+            if (file->plugin_file != nullptr) tf_writable_file::Cleanup(file);
+            delete file;
+          }
+        });
+    file->plugin_file = nullptr;
+    NewWritableFile(filesystem, dir_path.c_str(), file.get(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+    tf_writable_file::Close(file.get(), status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  if (object.back() != '/') object.push_back('/');
+  Aws::S3::Model::ListObjectsRequest list_objects_request;
+  list_objects_request.WithBucket(bucket).WithPrefix(object).WithMaxKeys(2);
+  list_objects_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+  auto list_objects_outcome =
+      s3_file->s3_client->ListObjects(list_objects_request);
+  if (list_objects_outcome.IsSuccess()) {
+    auto contents = list_objects_outcome.GetResult().GetContents();
+    if (contents.size() > 1 ||
+        (contents.size() == 1 && contents[0].GetKey() != object)) {
+      TF_SetStatus(status, TF_UNKNOWN,
+                   "Cannot delete a non-empty directory. "
+                   "This operation will be retried in case this "
+                   "is due to S3's eventual consistency.");
+    }
+    if (contents.size() == 1 && contents[0].GetKey() == object) {
+      Aws::String dir_path = path;
+      if (dir_path.back() != '/') dir_path.push_back('/');
+      DeleteFile(filesystem, dir_path.c_str(), status);
+    }
+  } else {
+    TF_SetStatusFromAWSError(list_objects_outcome.GetError(), status);
+  }
+}
+
+int GetChildren(const TF_Filesystem* filesystem, const char* path,
+                char*** entries, TF_Status* status) {
+  Aws::String bucket, prefix;
+  ParseS3Path(path, true, &bucket, &prefix, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+  if (!prefix.empty() && prefix.back() != '/') prefix.push_back('/');
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+
+  Aws::S3::Model::ListObjectsRequest list_objects_request;
+  list_objects_request.WithBucket(bucket)
+      .WithPrefix(prefix)
+      .WithMaxKeys(kS3GetChildrenMaxKeys)
+      .WithDelimiter("/");
+  list_objects_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+
+  Aws::S3::Model::ListObjectsResult list_objects_result;
+  std::vector<Aws::String> result;
+  do {
+    auto list_objects_outcome =
+        s3_file->s3_client->ListObjects(list_objects_request);
+    if (!list_objects_outcome.IsSuccess()) {
+      TF_SetStatusFromAWSError(list_objects_outcome.GetError(), status);
+      return -1;
+    }
+
+    list_objects_result = list_objects_outcome.GetResult();
+    for (const auto& object : list_objects_result.GetCommonPrefixes()) {
+      Aws::String s = object.GetPrefix();
+      s.erase(s.length() - 1);
+      Aws::String entry = s.substr(prefix.length());
+      if (entry.length() > 0) {
+        result.push_back(entry);
+      }
+    }
+    for (const auto& object : list_objects_result.GetContents()) {
+      Aws::String s = object.GetKey();
+      Aws::String entry = s.substr(prefix.length());
+      if (entry.length() > 0) {
+        result.push_back(entry);
+      }
+    }
+    list_objects_result.SetMarker(list_objects_result.GetNextMarker());
+  } while (list_objects_result.GetIsTruncated());
+
+  int num_entries = result.size();
+  *entries = static_cast<char**>(
+      plugin_memory_allocate(num_entries * sizeof((*entries)[0])));
+  for (int i = 0; i < num_entries; i++)
+    (*entries)[i] = strdup(result[i].c_str());
+  TF_SetStatus(status, TF_OK, "");
+  return num_entries;
+}
+
+static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
+  return strdup(uri);
+}
 
 }  // namespace tf_s3_filesystem
 
@@ -969,6 +1124,48 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
                                         const char* uri) {
   TF_SetFilesystemVersionMetadata(ops);
   ops->scheme = strdup(uri);
+
+  ops->random_access_file_ops = static_cast<TF_RandomAccessFileOps*>(
+      plugin_memory_allocate(TF_RANDOM_ACCESS_FILE_OPS_SIZE));
+  ops->random_access_file_ops->cleanup = tf_random_access_file::Cleanup;
+  ops->random_access_file_ops->read = tf_random_access_file::Read;
+
+  ops->writable_file_ops = static_cast<TF_WritableFileOps*>(
+      plugin_memory_allocate(TF_WRITABLE_FILE_OPS_SIZE));
+  ops->writable_file_ops->cleanup = tf_writable_file::Cleanup;
+  ops->writable_file_ops->append = tf_writable_file::Append;
+  ops->writable_file_ops->tell = tf_writable_file::Tell;
+  ops->writable_file_ops->flush = tf_writable_file::Flush;
+  ops->writable_file_ops->sync = tf_writable_file::Sync;
+  ops->writable_file_ops->close = tf_writable_file::Close;
+
+  ops->read_only_memory_region_ops = static_cast<TF_ReadOnlyMemoryRegionOps*>(
+      plugin_memory_allocate(TF_READ_ONLY_MEMORY_REGION_OPS_SIZE));
+  ops->read_only_memory_region_ops->cleanup =
+      tf_read_only_memory_region::Cleanup;
+  ops->read_only_memory_region_ops->data = tf_read_only_memory_region::Data;
+  ops->read_only_memory_region_ops->length = tf_read_only_memory_region::Length;
+
+  ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
+      plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
+  ops->filesystem_ops->init = tf_s3_filesystem::Init;
+  ops->filesystem_ops->cleanup = tf_s3_filesystem::Cleanup;
+  ops->filesystem_ops->new_random_access_file =
+      tf_s3_filesystem::NewRandomAccessFile;
+  ops->filesystem_ops->new_writable_file = tf_s3_filesystem::NewWritableFile;
+  ops->filesystem_ops->new_appendable_file =
+      tf_s3_filesystem::NewAppendableFile;
+  ops->filesystem_ops->new_read_only_memory_region_from_file =
+      tf_s3_filesystem::NewReadOnlyMemoryRegionFromFile;
+  ops->filesystem_ops->create_dir = tf_s3_filesystem::CreateDir;
+  ops->filesystem_ops->delete_file = tf_s3_filesystem::DeleteFile;
+  ops->filesystem_ops->delete_dir = tf_s3_filesystem::DeleteDir;
+  ops->filesystem_ops->copy_file = tf_s3_filesystem::CopyFile;
+  ops->filesystem_ops->path_exists = tf_s3_filesystem::PathExists;
+  ops->filesystem_ops->get_file_size = tf_s3_filesystem::GetFileSize;
+  ops->filesystem_ops->stat = tf_s3_filesystem::Stat;
+  ops->filesystem_ops->get_children = tf_s3_filesystem::GetChildren;
+  ops->filesystem_ops->translate_name = tf_s3_filesystem::TranslateName;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

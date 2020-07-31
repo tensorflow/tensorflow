@@ -37,6 +37,16 @@ std::string GetOneInputCode(const OperationType& op_type,
     case OperationType::COS:
       result = "$0 = cos($0);\n";
       break;
+    case OperationType::COPY:
+      // No op as inout_value will be copied to dest automatically.
+      result = "\n";
+      break;
+    case OperationType::ELU:
+      result = "$0.x = $0.x < (FLT)(0.0f) ? exp($0.x) - (FLT)(1.0f) : $0.x;\n";
+      result += "$0.y = $0.y < (FLT)(0.0f) ? exp($0.y) - (FLT)(1.0f) : $0.y;\n";
+      result += "$0.z = $0.z < (FLT)(0.0f) ? exp($0.z) - (FLT)(1.0f) : $0.z;\n";
+      result += "$0.w = $0.w < (FLT)(0.0f) ? exp($0.w) - (FLT)(1.0f) : $0.w;\n";
+      break;
     case OperationType::EXP:
       result = "$0 = exp($0);\n";
       break;
@@ -126,18 +136,16 @@ std::string GetTwoInputCode(const OperationType& op_type,
 
 ElementwiseOneInput::ElementwiseOneInput(const OperationDef& definition,
                                          const OperationType& op_type)
-    : ElementwiseOperation(definition), op_type_(op_type) {
+    : ElementwiseOperation(definition) {
   code_ = GetOneInputCode(op_type, definition.precision, "in_out_value");
 }
 
 ElementwiseOneInput::ElementwiseOneInput(ElementwiseOneInput&& operation)
-    : ElementwiseOperation(std::move(operation)),
-      op_type_(operation.op_type_) {}
+    : ElementwiseOperation(std::move(operation)) {}
 
 ElementwiseOneInput& ElementwiseOneInput::operator=(
     ElementwiseOneInput&& operation) {
   if (this != &operation) {
-    std::swap(op_type_, operation.op_type_);
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
@@ -152,7 +160,7 @@ ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
 ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
     const OperationDef& definition, const OperationType& op_type,
     float scalar_parameter, CalculationsPrecision scalar_precision)
-    : ElementwiseOperation(definition), op_type_(op_type) {
+    : ElementwiseOperation(definition) {
   if (definition.precision == CalculationsPrecision::F32) {
     args_.AddFloat("scalar", scalar_parameter);
   } else {
@@ -163,15 +171,11 @@ ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
 
 ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
     ElementwiseOneRuntimeOneScalar&& operation)
-    : ElementwiseOperation(std::move(operation)),
-      link_index_(operation.link_index_),
-      op_type_(operation.op_type_) {}
+    : ElementwiseOperation(std::move(operation)) {}
 
 ElementwiseOneRuntimeOneScalar& ElementwiseOneRuntimeOneScalar::operator=(
     ElementwiseOneRuntimeOneScalar&& operation) {
   if (this != &operation) {
-    link_index_ = operation.link_index_;
-    op_type_ = operation.op_type_;
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
@@ -192,14 +196,12 @@ ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
                                          const OperationType& op_type,
                                          const BroadcastSettings& broadcast)
     : ElementwiseOperation(definition),
-      op_type_(op_type),
       broadcast_(broadcast) {
-  auto src_desc =
-      absl::make_unique<TensorDescriptor>(definition.src_tensors[1]);
+  auto src_desc = definition.src_tensors[1];
   if (definition.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args_.AddObjectRef("second_tensor", AccessType::READ, std::move(src_desc));
+  AddSrcTensor("second_tensor", src_desc);
   const std::string x_coord = broadcast.width ? "0" : "X_COORD";
   const std::string y_coord = broadcast.height ? "0" : "Y_COORD";
   const std::string s_coord = broadcast.channels ? "0" : "S_COORD";
@@ -218,7 +220,6 @@ ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
                                          const BroadcastSettings& broadcast,
                                          Tensor&& constant_tensor)
     : ElementwiseOperation(definition),
-      op_type_(op_type),
       broadcast_(broadcast) {
   auto descriptor = constant_tensor.GetDescriptor();
   args_.AddObject("second_tensor", AccessType::READ,
@@ -239,28 +240,15 @@ ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
 
 ElementwiseTwoInput::ElementwiseTwoInput(ElementwiseTwoInput&& operation)
     : ElementwiseOperation(std::move(operation)),
-      link_index_(operation.link_index_),
-      op_type_(operation.op_type_),
       broadcast_(operation.broadcast_) {}
 
 ElementwiseTwoInput& ElementwiseTwoInput::operator=(
     ElementwiseTwoInput&& operation) {
   if (this != &operation) {
-    link_index_ = operation.link_index_;
-    op_type_ = operation.op_type_;
     broadcast_ = operation.broadcast_;
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
-}
-
-absl::Status ElementwiseTwoInput::SetArgs(const std::string& unique_postfix,
-                                          Arguments* args) {
-  std::string tensor_name = absl::StrCat("second_tensor", unique_postfix);
-  if (src_.size() == 2) {
-    RETURN_IF_ERROR(args->SetObjectRef(tensor_name, src_[1]));
-  }
-  return absl::OkStatus();
 }
 
 absl::Status CreateElementwiseTwoInput(

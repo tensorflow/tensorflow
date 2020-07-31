@@ -58,11 +58,17 @@ class DistributionParameter(combinations_lib.ParameterModifier):
   """
 
   def modified_arguments(self, kwargs, requested_parameters):
-    del requested_parameters
+    # Get the parameter that indicates if we need to set the `_use_policy` flag
+    # on the strategy object. This is a temporary flag for testing the variable
+    # policy rollout.
+    use_var_policy = kwargs.get("use_var_policy", None)
     distribution_arguments = {}
     for k, v in kwargs.items():
       if isinstance(v, NamedDistribution):
-        distribution_arguments[k] = v.strategy
+        strategy = v.strategy
+        if use_var_policy:
+          strategy.extended._use_var_policy = use_var_policy
+        distribution_arguments[k] = strategy
     return distribution_arguments
 
 
@@ -228,7 +234,7 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
-               use_pool_runner=True):
+               use_pool_runner=False):
     """Initialize NamedDistribution.
 
     Args:

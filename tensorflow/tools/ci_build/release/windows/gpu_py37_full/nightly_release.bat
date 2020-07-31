@@ -17,4 +17,4 @@ SET PYTHON_DIRECTORY=Python37
 
 CALL tensorflow\tools\ci_build\release\common_win.bat
 
-call tensorflow\tools\ci_build\windows\gpu\pip\run.bat --tf_nightly --extra_build_flags "--config=release_gpu_windows"
+call tensorflow\tools\ci_build\windows\gpu\pip\run.bat --tf_nightly

@@ -27,23 +27,20 @@ namespace cl {
 
 Add::Add(const OperationDef& definition, const std::vector<int>& channels,
          int dst_channels)
-    : ElementwiseOperation(definition),
-      dst_depth_(DivideRoundUp(dst_channels, 4)) {
-  src_depthes_.resize(channels.size());
-  for (int i = 0; i < channels.size(); ++i) {
-    src_depthes_[i] = DivideRoundUp(channels[i], 4);
-  }
-  if (src_depthes_[0] < dst_depth_) {
+    : ElementwiseOperation(definition) {
+  int dst_depth = DivideRoundUp(dst_channels, 4);
+  int src0_depth = DivideRoundUp(channels[0], 4);
+  linkable_ = dst_depth == src0_depth;
+  if (src0_depth < dst_depth) {
     check_src_channels_size_ = true;
   }
   for (int i = 1; i < definition_.src_tensors.size(); ++i) {
     const std::string tensor_name = absl::StrCat("src_data_", i);
-    auto src_desc =
-        absl::make_unique<TensorDescriptor>(definition_.src_tensors[i]);
+    auto src_desc = definition_.src_tensors[i];
     if (definition_.IsBatchSupported()) {
-      src_desc->SetStateVar("BatchedWidth", "true");
+      src_desc.SetStateVar("BatchedWidth", "true");
     }
-    args_.AddObjectRef(tensor_name, AccessType::READ, std::move(src_desc));
+    AddSrcTensor(tensor_name, src_desc);
     code_ += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
     code_ += "  in_out_value += args." + tensor_name +
              ".Read(X_COORD, Y_COORD, S_COORD);\n";
@@ -51,28 +48,13 @@ Add::Add(const OperationDef& definition, const std::vector<int>& channels,
   }
 }
 
-Add::Add(Add&& operation)
-    : ElementwiseOperation(std::move(operation)),
-      link_index_(operation.link_index_),
-      src_depthes_(std::move(operation.src_depthes_)),
-      dst_depth_(operation.dst_depth_) {}
+Add::Add(Add&& operation) : ElementwiseOperation(std::move(operation)) {}
 
 Add& Add::operator=(Add&& operation) {
   if (this != &operation) {
-    link_index_ = operation.link_index_;
-    src_depthes_ = std::move(operation.src_depthes_);
-    dst_depth_ = operation.dst_depth_;
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
-}
-
-absl::Status Add::SetArgs(const std::string& unique_postfix, Arguments* args) {
-  for (int i = 1; i < definition_.src_tensors.size(); ++i) {
-    std::string tensor_name = absl::StrCat("src_data_", i, unique_postfix);
-    RETURN_IF_ERROR(args->SetObjectRef(tensor_name, src_[i]));
-  }
-  return absl::OkStatus();
 }
 
 Add CreateAdd(const OperationDef& definition, const std::vector<int>& channels,

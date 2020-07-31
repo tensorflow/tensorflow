@@ -26,7 +26,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -35,7 +36,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.layers.experimental.preprocessing.CategoryCrossing')
-class CategoryCrossing(Layer):
+class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
   """Category crossing layer.
 
   This layer concatenates multiple categorical inputs into a single categorical
@@ -115,6 +116,7 @@ class CategoryCrossing(Layer):
 
   def __init__(self, depth=None, name=None, separator=None, **kwargs):
     super(CategoryCrossing, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('CategoryCrossing')
     self.depth = depth
     if separator is None:
       separator = '_X_'
@@ -150,7 +152,7 @@ class CategoryCrossing(Layer):
     inputs = [self._preprocess_input(inp) for inp in inputs]
     depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
     ragged_out = sparse_out = False
-    if any(ragged_tensor.is_ragged(inp) for inp in inputs):
+    if any(tf_utils.is_ragged(inp) for inp in inputs):
       ragged_out = True
     elif any(isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs):
       sparse_out = True

@@ -113,6 +113,18 @@ struct DeviceInfo {
   DeviceInfo() = default;
   explicit DeviceInfo(cl_device_id id);
 
+  bool IsAdreno() const;
+  bool IsAdreno3xx() const;
+  bool IsAdreno4xx() const;
+  bool IsAdreno5xx() const;
+  bool IsAdreno6xx() const;
+  bool IsAdreno6xxOrHigher() const;
+  bool IsPowerVR() const;
+  bool IsNvidia() const;
+  bool IsMali() const;
+  bool IsAMD() const;
+  bool IsIntel() const;
+
   bool SupportsTextureArray() const;
   bool SupportsImageBuffer() const;
   bool SupportsImage3D() const;

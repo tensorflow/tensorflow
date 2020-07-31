@@ -296,7 +296,7 @@ Status KernelAndDeviceOp::Run(
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
-        [&] { return kernel_->TraceString(&context, /*verbose=*/false); },
+        [&] { return kernel_->TraceString(context, /*verbose=*/false); },
         profiler::TraceMeLevel::kInfo);
     device_->Compute(kernel_.get(), &context);
   }

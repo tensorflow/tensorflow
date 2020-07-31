@@ -52,6 +52,9 @@ def write_build_info(filename, key_value_list):
     else:
       build_info[key] = value.format(**build_info)
 
+  # Sort the build info to ensure deterministic output.
+  sorted_build_info_pairs = sorted(build_info.items())
+
   contents = """
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
@@ -72,8 +75,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-build_info = {build_info}
-""".format(build_info=build_info)
+import collections
+
+build_info = collections.OrderedDict(%s)
+""" % sorted_build_info_pairs
   open(filename, "w").write(contents)
 
 

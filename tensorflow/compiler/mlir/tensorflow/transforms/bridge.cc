@@ -40,14 +40,16 @@ void EnableLogging(PassManager *pm) {
 namespace TFTPU {
 namespace {
 void AddGraphExportLoweringPasses(OpPassManager &pm) {
+  auto add_pass = [&](std::unique_ptr<Pass> pass) {
+    pm.addNestedPass<FuncOp>(std::move(pass));
+    pm.addPass(CreateBreakUpIslandsPass());
+  };
+
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
-  pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
-  pm.addNestedPass<FuncOp>(TFDevice::CreateParallelExecuteToIslandsPass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
-  pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
+  add_pass(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass());
+  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
+  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
 }
 
 tensorflow::Status RunTPUBridge(

@@ -537,12 +537,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._logical_device_stack = [0]
 
     if context.executing_eagerly():
-      # In async remote eager, we want to sync the exectors before exiting the
+      # In async remote eager, we want to sync the executors before exiting the
       # program.
       def async_wait():
         if context.context()._context_handle is not None:  # pylint: disable=protected-access
           context.async_wait()
       atexit.register(async_wait)
+
+    # Flag to turn on VariablePolicy
+    self._use_var_policy = False
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
@@ -870,8 +873,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     return distribute_utils.create_mirrored_variable(
         self._container_strategy(), _real_mirrored_creator,
-        tpu_values.TPUMirroredVariable, tpu_values.TPUSyncOnReadVariable,
-        **kwargs)
+        distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
+        distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
@@ -1202,9 +1205,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
 
   # TODO(sourabhbajaj): Call for each replica should be updating this.
   # TODO(b/118385803): Always properly initialize replica_id.
-  def __init__(self, strategy, replica_id_in_sync_group=None):
-    if replica_id_in_sync_group is None:
-      replica_id_in_sync_group = constant_op.constant(0, dtypes.int32)
+  def __init__(self, strategy, replica_id_in_sync_group=0):
     distribute_lib.ReplicaContext.__init__(
         self, strategy, replica_id_in_sync_group=replica_id_in_sync_group)
 
@@ -1212,7 +1213,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   def devices(self):
     distribute_lib.require_replica_context(self)
     ds = self._strategy
-    replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
+    replica_id = tensor_util.constant_value(self.replica_id_in_sync_group)
 
     if replica_id is None:  # Non-constant `Tensor` inside `tpu.replicate`.
       # TODO(cjfj): Return other devices when model parallelism is supported.

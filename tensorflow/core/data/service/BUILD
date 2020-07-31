@@ -59,6 +59,7 @@ cc_library(
         ":credentials_factory",
         ":data_service",
         ":dispatcher_proto_cc",
+        ":dispatcher_state",
         ":grpc_util",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
@@ -74,6 +75,37 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         tf_grpc_cc_dependency(),
+    ],
+)
+
+cc_library(
+    name = "dispatcher_state",
+    srcs = ["dispatcher_state.cc"],
+    hdrs = [
+        "dispatcher_state.h",
+    ],
+    deps = [
+        ":common_proto_cc",
+        ":data_service",
+        ":journal_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "dispatcher_state_test",
+    srcs = ["dispatcher_state_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":dispatcher_state",
+        ":journal_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -131,6 +163,42 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "journal",
+    srcs = ["journal.cc"],
+    hdrs = ["journal.h"],
+    deps = [
+        ":journal_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "journal_test",
+    srcs = ["journal_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":journal",
+        ":journal_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_proto_library(
+    name = "journal_proto",
+    srcs = ["journal.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":common_proto",
+    ],
+)
+
+cc_library(
     name = "credentials_factory",
     srcs = ["credentials_factory.cc"],
     hdrs = ["credentials_factory.h"],
@@ -171,6 +239,7 @@ cc_library(
     hdrs = ["test_cluster.h"],
     deps = [
         ":server_lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
     ],
@@ -213,6 +282,7 @@ cc_library(
     deps = [
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         tf_grpc_cc_dependency(),
     ],
@@ -225,6 +295,7 @@ cc_library(
     deps = [
         ":worker_cc_grpc_proto",
         ":worker_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         tf_grpc_cc_dependency(),
     ],
@@ -254,6 +325,7 @@ cc_library(
         ":grpc_util",
         ":grpc_worker_impl",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         tf_grpc_cc_dependency(),
     ],

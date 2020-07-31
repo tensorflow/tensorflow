@@ -34,7 +34,6 @@ class TransposeOpBuilder : public OpBuilder {
 
  private:
   TensorID node_output_;
-  float input_min_, input_max_;
 };
 }  // namespace hexagon
 }  // namespace delegates

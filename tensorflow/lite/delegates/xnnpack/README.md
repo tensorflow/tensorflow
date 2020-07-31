@@ -260,6 +260,13 @@ Below is the list of current operators and limitations:
   static (use `kTfLiteMmapRo` allocation type), or absent (with the new shape
   specified via `ReshapeOptions` table).
 
+### `RESIZE_BILINEAR`
+
+* The first input and the output must be 4D tensors in 32-bit floating-point
+  format.
+* The second input (the input with the new shape specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
 ### `ROUND`
 
 * Inputs and outputs must be in 32-bit floating-point format.

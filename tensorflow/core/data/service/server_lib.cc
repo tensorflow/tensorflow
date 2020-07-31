@@ -72,15 +72,14 @@ void GrpcDataServerBase::Join() { server_->Wait(); }
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
 
-DispatchGrpcDataServer::DispatchGrpcDataServer(int port,
-                                               const std::string& protocol)
-    : GrpcDataServerBase(port, protocol) {}
+DispatchGrpcDataServer::DispatchGrpcDataServer(
+    const experimental::DispatcherConfig& config)
+    : GrpcDataServerBase(config.port(), config.protocol()), config_(config) {}
 
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
 void DispatchGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  auto service = absl::make_unique<GrpcDispatcherImpl>(builder, protocol_);
-  service_ = service.release();
+  service_ = absl::make_unique<GrpcDispatcherImpl>(builder, config_).release();
 }
 
 Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
@@ -96,22 +95,17 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
 }
 
 WorkerGrpcDataServer::WorkerGrpcDataServer(
-    int port, const std::string& protocol,
-    const std::string& dispatcher_address, const std::string& worker_address)
-    : GrpcDataServerBase(port, protocol),
-      dispatcher_address_(dispatcher_address),
-      worker_address_(worker_address) {}
+    const experimental::WorkerConfig& config)
+    : GrpcDataServerBase(config.port(), config.protocol()), config_(config) {}
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
 void WorkerGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  auto service = absl::make_unique<GrpcWorkerImpl>(builder, dispatcher_address_,
-                                                   protocol_);
-  service_ = service.release();
+  service_ = absl::make_unique<GrpcWorkerImpl>(builder, config_).release();
 }
 
 Status WorkerGrpcDataServer::StartServiceInternal() {
-  std::string worker_address = worker_address_;
+  std::string worker_address = config_.worker_address();
   if (worker_address.empty()) {
     worker_address = absl::StrCat("localhost:", kPortPlaceholder);
   }
@@ -122,25 +116,15 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   return Status::OK();
 }
 
-Status NewDispatchServer(int port, const std::string& protocol,
+Status NewDispatchServer(const experimental::DispatcherConfig& config,
                          std::unique_ptr<DispatchGrpcDataServer>* out_server) {
-  *out_server = absl::make_unique<DispatchGrpcDataServer>(port, protocol);
+  *out_server = absl::make_unique<DispatchGrpcDataServer>(config);
   return Status::OK();
 }
 
-Status NewWorkerServer(int port, const std::string& protocol,
-                       const std::string& dispatcher_address,
+Status NewWorkerServer(const experimental::WorkerConfig& config,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server) {
-  return NewWorkerServer(port, protocol, dispatcher_address,
-                         /*worker_address=*/"", out_server);
-}
-
-Status NewWorkerServer(int port, const std::string& protocol,
-                       const std::string& dispatcher_address,
-                       const std::string& worker_address,
-                       std::unique_ptr<WorkerGrpcDataServer>* out_server) {
-  *out_server = absl::make_unique<WorkerGrpcDataServer>(
-      port, protocol, dispatcher_address, worker_address);
+  *out_server = absl::make_unique<WorkerGrpcDataServer>(config);
   return Status::OK();
 }
 

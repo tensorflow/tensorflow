@@ -432,13 +432,21 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         )
 
   def test_repr_distributed(self):
-    with mirrored_strategy.MirroredStrategy(['/cpu:1', '/cpu:2']).scope():
+    strategy = mirrored_strategy.MirroredStrategy(['/cpu:1', '/cpu:2'])
+    with strategy.scope():
       x = get_var(1., dtypes.float32)
       x = autocast_variable.create_autocast_variable(x)
-      self.assertRegex(
-          repr(x).replace('\n', ' '),
-          '<AutoCastDistributedVariable dtype=float32 true_dtype=float32 '
-          'inner_variable=MirroredVariable.*>')
+      use_policy = getattr(strategy.extended, '_use_policy', False)
+      if use_policy:
+        self.assertRegex(
+            repr(x).replace('\n', ' '),
+            '<AutoCastDistributedVariable dtype=float32 true_dtype=float32 '
+            'inner_variable=DistributedVariable.*>')
+      else:
+        self.assertRegex(
+            repr(x).replace('\n', ' '),
+            '<AutoCastDistributedVariable dtype=float32 true_dtype=float32 '
+            'inner_variable=MirroredVariable.*>')
 
   @parameterized.named_parameters(
       ('v1', gradient_descent_v1.GradientDescentOptimizer),

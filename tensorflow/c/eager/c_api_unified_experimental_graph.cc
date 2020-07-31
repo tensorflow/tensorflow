@@ -49,7 +49,6 @@ class GraphTensor : public TracingTensorHandle {
  public:
   explicit GraphTensor(TF_Output output)
       : TracingTensorHandle(kGraph), output_(output) {}
-  void Release() override { delete this; }
 
   tensorflow::DataType DataType() const override {
     return static_cast<tensorflow::DataType>(TF_OperationOutputType(output_));

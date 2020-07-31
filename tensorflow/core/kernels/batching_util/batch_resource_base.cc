@@ -270,8 +270,6 @@ Status BatchResourceBase::ConcatInputTensors(
           // In this context, Concat can be further optimized to get rid of
           // some (probably all) memcpy when input tensors are slices of
           // another copy.
-          // TODO(b/154140947):
-          // Add a custom implementation of Split and then optimize Concat.
           std::vector<Tensor> to_concatenate;
           to_concatenate.reserve(output->size());
           for (int j = 0; j < output->size(); ++j) {

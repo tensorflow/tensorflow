@@ -38,6 +38,8 @@ class StridedSlice : public GPUOperation {
   StridedSlice& operator=(const StridedSlice&) = delete;
 
  private:
+  std::string GetStridedSliceCode(const OperationDef& op_def, bool alignedx4);
+
   SliceAttributes attributes_;
 };
 

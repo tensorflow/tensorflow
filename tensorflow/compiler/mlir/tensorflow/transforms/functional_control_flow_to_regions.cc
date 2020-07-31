@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-functional-cf-to-region"
@@ -46,19 +47,18 @@ struct FunctionalControlFlowToRegions
   void runOnOperation() override;
 };
 
-// Creates a call to function `callee` in region `caller_region`. Use `args` as
+// Creates a call to function `func` in region `caller_region`. Use `args` as
 // the call arguments, and terminate the region with a yield. The arguments are
 // cast to the required type before the call. `use_region_args` control whether
 // the input arguments are used as is (for IfOp) or block arguments of the same
 // type as the input arguments are created and then used as call arguments (for
 // While).
-void CreateCall(Operation* op, StringRef callee, Region& caller_region,
+void CreateCall(Operation* op, FuncOp func, Region& caller_region,
                 ValueRange args, bool use_region_args) {
   assert(caller_region.empty() &&
          "Expected empty region for newly created ops");
   OpBuilder builder(caller_region);
   Block* entry = builder.createBlock(&caller_region);
-  auto func = op->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(callee);
 
   if (use_region_args) {
     entry->addArguments(args.getType());
@@ -84,11 +84,12 @@ LogicalResult ConvertIfOp(IfOp if_op) {
   auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
       if_op.getLoc(), if_op.getResultTypes(), if_op.cond(),
       if_op.is_stateless());
+  CopyUnderscoredAttributes(if_op, if_region);
 
-  CreateCall(if_op, /*callee=*/if_op.then_branch(),
+  CreateCall(if_op, if_op.then_func(),
              /*caller_region=*/if_region.then_branch(), if_op.input(),
              /*use_region_args=*/false);
-  CreateCall(if_op, /*callee=*/if_op.else_branch(),
+  CreateCall(if_op, if_op.else_func(),
              /*caller_region=*/if_region.else_branch(), if_op.input(),
              /*use_region_args=*/false);
   if_op.replaceAllUsesWith(if_region.getResults());
@@ -100,10 +101,13 @@ LogicalResult ConvertWhileOp(WhileOp while_op) {
   auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
       while_op.getLoc(), while_op.getResultTypes(), while_op.input(),
       while_op.is_stateless(), while_op.parallel_iterations());
+  CopyUnderscoredAttributes(while_op, while_region);
 
-  CreateCall(while_op, while_op.cond(), while_region.cond(), while_op.input(),
+  CreateCall(while_op, while_op.cond_func(),
+             /*caller_region=*/while_region.cond(), while_op.input(),
              /*use_region_args=*/true);
-  CreateCall(while_op, while_op.body(), while_region.body(), while_op.input(),
+  CreateCall(while_op, while_op.body_func(),
+             /*caller_region=*/while_region.body(), while_op.input(),
              /*use_region_args=*/true);
   while_op.replaceAllUsesWith(while_region.getResults());
   while_op.erase();

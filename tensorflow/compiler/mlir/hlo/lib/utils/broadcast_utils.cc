@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
+#include "mlir-hlo/utils/broadcast_utils.h"
 
 #include <algorithm>
 
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/StandardTypes.h"
 
 namespace mlir {
 namespace hlo {
@@ -58,13 +58,10 @@ Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
   }
 
   int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
-  auto shape_type = shape::ShapeType::get(builder.getContext());
-  Value lhs_shape_v =
-      builder.createOrFold<shape::ShapeOfOp>(loc, shape_type, lhs);
-  Value rhs_shape_v =
-      builder.createOrFold<shape::ShapeOfOp>(loc, shape_type, rhs);
+  Value lhs_shape_v = builder.createOrFold<shape::ShapeOfOp>(loc, lhs);
+  Value rhs_shape_v = builder.createOrFold<shape::ShapeOfOp>(loc, rhs);
   Value result_shape_v = builder.createOrFold<shape::BroadcastOp>(
-      loc, shape_type, lhs_shape_v, rhs_shape_v, nullptr /* error */);
+      loc, lhs_shape_v, rhs_shape_v, nullptr /* error */);
   return builder.createOrFold<shape::ToExtentTensorOp>(
       loc, RankedTensorType::get({result_rank}, builder.getIndexType()),
       result_shape_v);

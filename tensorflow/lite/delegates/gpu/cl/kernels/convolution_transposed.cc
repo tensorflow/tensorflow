@@ -28,25 +28,70 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
-                                              const CLDevice& device,
-                                              bool weights_are_buffer,
-                                              const int3& block_size,
-                                              Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-  args->AddInt("stride_x");
-  args->AddInt("stride_y");
-  args->AddInt("padding_x");
-  args->AddInt("padding_y");
-  args->AddInt("kernel_size_x");
-  args->AddInt("kernel_size_y");
+ConvolutionTransposed::ConvolutionTransposed(
+    const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
+    const CLDevice& device)
+    : GPUOperation(definition),
+      weights_are_buffer_(device.IsMali()),
+      kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
+      stride_(attr.stride.w, attr.stride.h),
+      padding_(attr.padding.prepended.w, attr.padding.prepended.h),
+      block_size_(2, 2, 2) {
+  const bool is_f16 = definition.precision == CalculationsPrecision::F16;
+  if (device.IsMali()) {
+    MaliInfo mali_info = device.GetInfo().mali_info;
+    if (mali_info.IsMidgard()) {
+      block_size_ = is_f16 ? int3(2, 1, 2) : int3(2, 1, 1);
+    } else {
+      block_size_ = is_f16 ? int3(2, 2, 2) : int3(2, 2, 1);
+    }
+  }
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  if (dst_depth == 1 || dst_depth == 3) {
+    if (!device.IsMali()) {
+      block_size_.y *= block_size_.z;
+    }
+    block_size_.z = 1;
+  }
+}
+
+ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
+    : GPUOperation(std::move(operation)),
+      weights_are_buffer_(operation.weights_are_buffer_),
+      kernel_size_(operation.kernel_size_),
+      stride_(operation.stride_),
+      padding_(operation.padding_),
+      block_size_(operation.block_size_) {}
+
+ConvolutionTransposed& ConvolutionTransposed::operator=(
+    ConvolutionTransposed&& operation) {
+  if (this != &operation) {
+    std::swap(weights_are_buffer_, operation.weights_are_buffer_);
+    std::swap(kernel_size_, operation.kernel_size_);
+    std::swap(stride_, operation.stride_);
+    std::swap(padding_, operation.padding_);
+    std::swap(block_size_, operation.block_size_);
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
+    const OperationDef& op_def, const CLDevice& device, bool weights_are_buffer,
+    const int3& block_size) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  AddSrcTensor("src_tensor", src_desc);
+
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+
+  args_.AddInt("stride_x");
+  args_.AddInt("stride_y");
+  args_.AddInt("padding_x");
+  args_.AddInt("padding_y");
+  args_.AddInt("kernel_size_x");
+  args_.AddInt("kernel_size_y");
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   bool image_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER;
@@ -285,61 +330,11 @@ std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
   c += "}\n";
   return c;
 }
-}  // namespace
-
-ConvolutionTransposed::ConvolutionTransposed(
-    const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
-    const CLDevice& device)
-    : GPUOperation(definition),
-      weights_are_buffer_(device.IsMali()),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
-      stride_(attr.stride.w, attr.stride.h),
-      padding_(attr.padding.prepended.w, attr.padding.prepended.h),
-      block_size_(2, 2, 2) {
-  const bool is_f16 = definition.precision == CalculationsPrecision::F16;
-  if (device.IsMali()) {
-    MaliInfo mali_info = device.GetInfo().mali_info;
-    if (mali_info.IsMidgard()) {
-      block_size_ = is_f16 ? int3(2, 1, 2) : int3(2, 1, 1);
-    } else {
-      block_size_ = is_f16 ? int3(2, 2, 2) : int3(2, 2, 1);
-    }
-  }
-  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
-  if (dst_depth == 1 || dst_depth == 3) {
-    if (!device.IsMali()) {
-      block_size_.y *= block_size_.z;
-    }
-    block_size_.z = 1;
-  }
-}
-
-ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
-    : GPUOperation(std::move(operation)),
-      weights_are_buffer_(operation.weights_are_buffer_),
-      kernel_size_(operation.kernel_size_),
-      stride_(operation.stride_),
-      padding_(operation.padding_),
-      block_size_(operation.block_size_) {}
-
-ConvolutionTransposed& ConvolutionTransposed::operator=(
-    ConvolutionTransposed&& operation) {
-  if (this != &operation) {
-    std::swap(weights_are_buffer_, operation.weights_are_buffer_);
-    std::swap(kernel_size_, operation.kernel_size_);
-    std::swap(stride_, operation.stride_);
-    std::swap(padding_, operation.padding_);
-    std::swap(block_size_, operation.block_size_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
 
 absl::Status ConvolutionTransposed::Compile(
     const CreationContext& creation_context) {
   std::string code = GenerateConvolutionTransposedCode(
-      definition_, *creation_context.device, weights_are_buffer_, block_size_,
-      &args_);
+      definition_, *creation_context.device, weights_are_buffer_, block_size_);
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -355,8 +350,6 @@ absl::Status ConvolutionTransposed::Compile(
 }
 
 absl::Status ConvolutionTransposed::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
   RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x));
