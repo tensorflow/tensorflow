@@ -405,7 +405,7 @@ StatusOr<HloInstruction*> MakeSortHlo(
   HloComputation* compare_computation;
   XlaBuilder b("Sort.Compare");
   std::vector<PrimitiveType> operand_types(operands.size());
-  for (int64 i = 0; i < operands.size(); ++i) {
+  for (int64 i = 0, end = operands.size(); i < end; ++i) {
     operand_types[i] = operands[i]->shape().element_type();
   }
   XlaComputation comparator = CreateScalarLtComputation(operand_types, &b);
@@ -497,7 +497,8 @@ StatusOr<HloInstruction*> InsertDegenerateDims(
   int64 operand_dims_idx = 0;
   int64 dims_to_insert_idx = 0;
   for (int64 i = 0; i < output_shape_rank; ++i) {
-    if (dims_to_insert_idx < dims_to_insert.size() &&
+    const int64 dims_to_insert_size = dims_to_insert.size();
+    if (dims_to_insert_idx < dims_to_insert_size &&
         i == dims_to_insert[dims_to_insert_idx]) {
       output_shape_dim_bounds.push_back(1);
       ++dims_to_insert_idx;
