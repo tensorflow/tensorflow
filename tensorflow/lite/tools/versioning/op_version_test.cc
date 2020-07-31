@@ -217,6 +217,12 @@ TEST(OpVersionTest, VersioningSpaceToDepthTest) {
 TEST(OpVersionTest, VersioningSliceTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_SLICE,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_SLICE,
       .input_types = std::vector<TensorType>{TensorType_STRING},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
@@ -587,6 +593,12 @@ TEST(OpVersionTest, VersioningTileOperatorTest) {
 }
 TEST(OpVersionTest, VersioningTransposeTest) {
   OpSignature fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
       .input_types = std::vector<TensorType>{TensorType_BOOL},
   };
