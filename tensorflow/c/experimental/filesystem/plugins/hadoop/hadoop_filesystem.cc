@@ -239,6 +239,12 @@ namespace tf_read_only_memory_region {
 // ----------------------------------------------------------------------------
 namespace tf_hadoop_filesystem {
 
+void Init(TF_Filesystem* filesystem, TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void Cleanup(TF_Filesystem* filesystem) {}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_hadoop_filesystem
