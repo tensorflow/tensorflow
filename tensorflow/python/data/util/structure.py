@@ -97,12 +97,10 @@ def normalize_element(element, element_signature=None):
   with ops.name_scope("normalize_element"):
     # Imported here to avoid circular dependency.
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
-    for i, (t, type_spec) in enumerate(zip(components, flattened_signature)):
+    for i, (t, spec) in enumerate(zip(components, flattened_signature)):
       dtype = None
       try:
-        if type_spec is not None:
-          spec = type_spec
-        else:
+        if spec is None:
           spec = type_spec_from_value(t, use_fallback=False)
         dtype = getattr(spec, "dtype", None)
       except TypeError:
