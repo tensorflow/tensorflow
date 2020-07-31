@@ -295,7 +295,7 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
 
 class TmpDirFileSystem : public NullFileSystem {
  public:
-  Status FileExists(const string& dir) override {
+  Status FileExists(const string& dir,TransactionToken* token) override {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (path.empty()) return errors::NotFound(dir, " not found");
@@ -311,7 +311,7 @@ class TmpDirFileSystem : public NullFileSystem {
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
-  Status CreateDir(const string& dir) override {
+  Status CreateDir(const string& dir,TransactionToken* token) override {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (scheme != "tmpdirfs") {
@@ -328,7 +328,7 @@ class TmpDirFileSystem : public NullFileSystem {
     return status;
   }
 
-  Status IsDirectory(const string& dir) override {
+  Status IsDirectory(const string& dir,TransactionToken* token) override {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     for (const auto& existing_dir : created_directories_)
@@ -336,7 +336,7 @@ class TmpDirFileSystem : public NullFileSystem {
     return errors::NotFound(dir, " not found");
   }
 
-  void FlushCaches() override { flushed_ = true; }
+  void FlushCaches(TransactionToken* token) override { flushed_ = true; }
 
  private:
   bool flushed_ = false;

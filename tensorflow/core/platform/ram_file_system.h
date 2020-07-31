@@ -104,9 +104,8 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
 class RamFileSystem : public FileSystem {
  public:
   Status NewRandomAccessFile(
-      const string& fname,
-      std::unique_ptr<RandomAccessFile>*
-          result /*, TransactionToken* token = nullptr */) override {
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override {
     mutex_lock m(mu_);
     if (fs_.find(fname) == fs_.end()) {
       return errors::NotFound("");
@@ -116,10 +115,8 @@ class RamFileSystem : public FileSystem {
     return Status::OK();
   }
 
-  Status NewWritableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr */) override {
+  Status NewWritableFile(const string& fname, TransactionToken* token,
+                         std::unique_ptr<WritableFile>* result) override {
     mutex_lock m(mu_);
     if (fs_.find(fname) == fs_.end()) {
       fs_[fname] = std::make_shared<std::string>();
@@ -128,10 +125,8 @@ class RamFileSystem : public FileSystem {
         new RamRandomAccessFile(fname, fs_[fname]));
     return Status::OK();
   }
-  Status NewAppendableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr */) override {
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
+                           std::unique_ptr<WritableFile>* result) override {
     mutex_lock m(mu_);
     if (fs_.find(fname) == fs_.end()) {
       fs_[fname] = std::make_shared<std::string>();
@@ -142,22 +137,18 @@ class RamFileSystem : public FileSystem {
   }
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>*
-          result /*, TransactionToken* token = nullptr */) override {
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     return errors::Unimplemented("");
   }
 
-  Status FileExists(
-      const string& fname /*, TransactionToken* token = nullptr */) override {
+  Status FileExists(const string& fname, TransactionToken* token) override {
     FileStatistics stat;
-    return Stat(fname, &stat);
+    return Stat(fname, token, &stat);
   }
 
-  Status GetChildren(
-      const string& dir,
-      std::vector<string>* result /*, TransactionToken* token = nullptr */)
-      override {
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override {
     mutex_lock m(mu_);
     auto it = fs_.lower_bound(dir);
     while (it != fs_.end() && absl::StartsWith(it->first, dir)) {
@@ -168,10 +159,8 @@ class RamFileSystem : public FileSystem {
     return Status::OK();
   }
 
-  Status GetMatchingPaths(
-      const string& pattern,
-      std::vector<string>* results /*, TransactionToken* token = nullptr */)
-      override {
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
+                          std::vector<string>* results) override {
     mutex_lock m(mu_);
     Env* env = Env::Default();
     for (auto it = fs_.begin(); it != fs_.end(); ++it) {
@@ -182,9 +171,8 @@ class RamFileSystem : public FileSystem {
     return Status::OK();
   }
 
-  Status Stat(
-      const string& fname,
-      FileStatistics* stat /*, TransactionToken* token = nullptr */) override {
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override {
     mutex_lock m(mu_);
     auto it = fs_.lower_bound(fname);
     if (it == fs_.end()) {
@@ -204,8 +192,7 @@ class RamFileSystem : public FileSystem {
     return Status::OK();
   }
 
-  Status DeleteFile(
-      const string& fname /*, TransactionToken* token = nullptr */) override {
+  Status DeleteFile(const string& fname, TransactionToken* token) override {
     mutex_lock m(mu_);
     if (fs_.find(fname) != fs_.end()) {
       fs_.erase(fname);
@@ -215,24 +202,21 @@ class RamFileSystem : public FileSystem {
     return errors::NotFound("");
   }
 
-  Status CreateDir(
-      const string& dirname /*, TransactionToken* token = nullptr */) override {
+  Status CreateDir(const string& dirname, TransactionToken* token) override {
     return Status::OK();
   }
 
-  Status RecursivelyCreateDir(
-      const string& dirname /*, TransactionToken* token = nullptr */) override {
+  Status RecursivelyCreateDir(const string& dirname,
+                              TransactionToken* token) override {
     return Status::OK();
   }
 
-  Status DeleteDir(
-      const string& dirname /*, TransactionToken* token = nullptr */) override {
+  Status DeleteDir(const string& dirname, TransactionToken* token) override {
     return Status::OK();
   }
 
-  Status GetFileSize(
-      const string& fname,
-      uint64* file_size /*, TransactionToken* token = nullptr */) override {
+  Status GetFileSize(const string& fname, TransactionToken* token,
+                     uint64* file_size) override {
     mutex_lock m(mu_);
     if (fs_.find(fname) != fs_.end()) {
       *file_size = fs_[fname]->size();
@@ -241,9 +225,8 @@ class RamFileSystem : public FileSystem {
     return errors::NotFound("");
   }
 
-  Status RenameFile(
-      const string& src,
-      const string& target /*, TransactionToken* token = nullptr */) override {
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token) override {
     mutex_lock m(mu_);
     if (fs_.find(src) != fs_.end()) {
       fs_[target] = fs_[src];

@@ -481,7 +481,7 @@ class FileSystem {
 
   /// \brief Starts a new transaction
   virtual tensorflow::Status StartTransaction(TransactionToken** token) {
-    token = nullptr;
+    *token = nullptr;
     return Status::OK();
   }
 
@@ -499,15 +499,15 @@ class FileSystem {
   /// \brief Get token for `path` or start a new transaction and add `path` to
   /// it.
   virtual tensorflow::Status GetTokenOrStartTransaction(
-      const std::string& path, TransactionToken** token) {
-    token = nullptr;
+      const string& path, TransactionToken** token) {
+    *token = nullptr;
     return Status::OK();
   }
 
   /// \brief Return transaction for `path` or nullptr in `token`
   virtual tensorflow::Status GetTransactionForPath(const std::string& path,
                                                    TransactionToken** token) {
-    token = nullptr;
+    *token = nullptr;
     return Status::OK();
   }
 

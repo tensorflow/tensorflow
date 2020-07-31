@@ -32,7 +32,7 @@ static const char* const kPrefix = "ipfs://solarsystem";
 // cannot have children further.
 class InterPlanetaryFileSystem : public NullFileSystem {
  public:
-  Status FileExists(const string& fname) override {
+  Status FileExists(const string& fname, TransactionToken* token) override {
     string parsed_path;
     ParsePath(fname, &parsed_path);
     if (BodyExists(parsed_path)) {
@@ -42,7 +42,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
   }
 
   // Adds the dir to the parent's children list and creates an entry for itself.
-  Status CreateDir(const string& dirname) override {
+  Status CreateDir(const string& dirname, TransactionToken* token) override {
     string parsed_path;
     ParsePath(dirname, &parsed_path);
     // If the directory already exists, throw an error.
@@ -88,7 +88,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     return Status(tensorflow::error::FAILED_PRECONDITION, "Failed to create");
   }
 
-  Status IsDirectory(const string& dirname) override {
+  Status IsDirectory(const string& dirname, TransactionToken* token) override {
     string parsed_path;
     ParsePath(dirname, &parsed_path);
     // Simulate evil_directory has bad permissions by throwing a LOG(FATAL)
@@ -105,7 +105,8 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
   }
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override {
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override {
     TF_RETURN_IF_ERROR(IsDirectory(dir));
     string parsed_path;
     ParsePath(dir, &parsed_path);
@@ -273,7 +274,7 @@ TEST(InterPlanetaryFileSystemTest, HasAtomicMove) {
 class TestFileSystem : public NullFileSystem {
  public:
   // Only allow for a single root directory.
-  Status IsDirectory(const string& dirname) override {
+  Status IsDirectory(const string& dirname, TransactionToken* token) override {
     if (dirname == "." || dirname.empty()) {
       return Status::OK();
     }
@@ -281,7 +282,8 @@ class TestFileSystem : public NullFileSystem {
   }
 
   // Simulating a FS with a root dir and a single file underneath it.
-  Status GetChildren(const string& dir, std::vector<string>* result) override {
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override {
     if (dir == "." || dir.empty()) {
       result->push_back("test");
     }
