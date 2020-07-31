@@ -52,8 +52,6 @@ constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
-bool mli_is_applicable = false;
-
 bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteTensor* filter, const TfLiteTensor* bias,
                      const TfLiteFullyConnectedParams* params) {
@@ -67,14 +65,15 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
 }
 
 TfLiteStatus CalculateOpData(TfLiteContext* context,
-                             TfLiteFusedActivation activation,
+                             const TfLiteFullyConnectedParams* params,
                              TfLiteType data_type, const TfLiteTensor* input,
                              const TfLiteTensor* filter,
                              const TfLiteTensor* bias, TfLiteTensor* output,
                              OpData* data) {
   TfLiteStatus status = kTfLiteOk;
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
-  if (data_type != kTfLiteFloat32 && !mli_is_applicable) {
+  if (data_type != kTfLiteFloat32 &&
+      !IsMliApplicable(context, input, filter, bias, params)) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
@@ -82,7 +81,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
     QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
     data->output_shift = -exponent;
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
-        context, activation, output, &data->output_activation_min,
+        context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
   }
 #endif
@@ -109,13 +108,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  mli_is_applicable = IsMliApplicable(context, input, filter, bias, params);
-
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
 
-  return CalculateOpData(context, params->activation, input->type, input,
+  return CalculateOpData(context, params, input->type, input,
                          filter, bias, output, data);
 }
 
@@ -344,7 +341,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalFloat(context, node, params->activation, input, filter, bias,
                        output);
     case kTfLiteInt8:
-      if (mli_is_applicable) {
+      if (IsMliApplicable(context, input, filter, bias, params)) {
         return EvalMliQuantizedInt8(context, node, params, data, input, filter,
                                     bias, output);
       } else {

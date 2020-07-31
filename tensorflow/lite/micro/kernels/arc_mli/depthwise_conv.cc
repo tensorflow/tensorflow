@@ -46,8 +46,6 @@ constexpr int kOutputTensor = 0;
 // https://www.tensorflow.org/lite/performance/quantization_spec
 constexpr int kDepthwiseConvQuantizedDimension = 3;
 
-bool mli_is_applicable = false;
-
 struct OpData {
   TfLitePaddingValues padding;
 
@@ -110,12 +108,13 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
-  if (data_type != kTfLiteFloat32 && !mli_is_applicable) {
-    const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-    const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-    const TfLiteTensor* bias =
-        GetOptionalInputTensor(context, node, kBiasTensor);
-    TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  if (data_type != kTfLiteFloat32 &&
+      !IsMliApplicable(context, input, filter, bias, params)) {
     int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
 
     return tflite::PopulateConvolutionQuantizationParams(
@@ -147,7 +146,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   const TfLiteType data_type = input->type;
   int width = SizeOfDimension(input, 2);
@@ -165,8 +163,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   data->per_channel_output_shift =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
-
-  mli_is_applicable = IsMliApplicable(context, input, filter, bias, params);
 
   // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {
@@ -500,7 +496,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalFloat(context, node, params, data, input, filter, bias, output);
       break;
     case kTfLiteInt8:
-      if (mli_is_applicable) {
+      if (IsMliApplicable(context, input, filter, bias, params)) {
         EvalMliQuantizedPerChannel(context, node, params, data, input, filter,
                                    bias, output);
       } else {
