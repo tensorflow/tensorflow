@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
@@ -151,6 +152,15 @@ void TpuProgramGroup::Initialize(
   host_transfer_infos_ = host_transfer_infos;
   hlo_metadatas_ = hlo_metadatas;
   RefreshHloMetadatasPtrs();
+}
+
+bool TpuProgramGroup::has_sharding_program() const {
+  for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
+    if (!TpuProgramApiFn()->TpuProgram_HasShardingFn(tpu_program)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 size_t TpuProgramGroup::program_count() const { return tpu_programs_.size(); }
@@ -347,5 +357,18 @@ Status TpuProgramGroup::CompileAndBuild(
   return status.status();
 }
 
+std::vector<XLA_TpuProgram*> TpuProgramGroup::tpu_programs(
+    TpuProgramShardingType sharding_type) const {
+  std::vector<XLA_TpuProgram*> tpu_programs;
+  tpu_programs.reserve(tpu_programs_.size());
+  for (size_t i = 0; i < tpu_programs_.size(); ++i) {
+    if (TpuProgramApiFn()->TpuProgram_HasShardingFn(tpu_programs_[i])) {
+      tpu_programs.push_back(TpuProgramApiFn()->TpuProgram_GetTpuProgramFn(
+          tpu_programs_[i], sharding_type));
+      CHECK_NE(tpu_programs[i], nullptr);
+    }
+  }
+  return tpu_programs;
+}
 }  // namespace tpu
 }  // namespace tensorflow
