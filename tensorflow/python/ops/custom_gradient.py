@@ -139,7 +139,8 @@ def custom_gradient(f=None):
   the same number of variables. We take the function `z = x * y` as an example.
 
   ```python
-  @tf.custom_gradient
+  >>> import tensorflow as tf
+  >>> @tf.custom_gradient
   def bar(x, y):
       def grad(upstream):
           dz_dx = y
@@ -150,18 +151,22 @@ def custom_gradient(f=None):
       
       return z, grad
 
-  x = tf.constant(2.0, dtype=tf.float32)
-  y = tf.constant(3.0, dtype=tf.float32)
+  >>> x = tf.constant(2.0, dtype=tf.float32)
+  >>> y = tf.constant(3.0, dtype=tf.float32)
 
-  with tf.GradientTape(persistent=True) as tape:
+  >>> with tf.GradientTape(persistent=True) as tape:
       tape.watch(x)
       tape.watch(y)
       z = bar(x, y)
 
-  tf.print(z) # Output: 6
-  tf.print(tape.gradient(z, x)) # Output: 3
-  tf.print(tape.gradient(z, y)) # Output: 2
-  tf.print(tape.gradient(x, y)) # Output: None
+  >>> z
+  6
+  >>> tape.gradient(z, x)
+  3
+  >>> tape.gradient(z, y)
+  2
+  >>> tape.gradient(x, y)
+  None
   ```
 
   Nesting custom gradients can lead to unintuitive results. The default
