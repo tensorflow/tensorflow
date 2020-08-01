@@ -40,7 +40,7 @@ class MeanStdDevNormalization : public GPUOperation {
   MeanStdDevNormalization& operator=(const MeanStdDevNormalization&) = delete;
 
  private:
-  std::string GetNormalizationCode(const OperationDef& op_def);
+  std::string GetNormalizationCode();
 };
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
