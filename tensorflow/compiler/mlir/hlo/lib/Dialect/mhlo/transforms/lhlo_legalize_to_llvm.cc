@@ -361,11 +361,10 @@ struct ReshapeMemRefCastOpConverter
 
 }  // namespace
 
-void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
-                                          LLVMTypeConverter *converter,
+void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns) {
   patterns->insert<DynamicMemRefCastOpConverter, ReshapeMemRefCastOpConverter,
-                   StaticMemRefCastOpConverter>(*converter, options);
+                   StaticMemRefCastOpConverter>(*converter);
 }
 
 }  // namespace lmhlo
