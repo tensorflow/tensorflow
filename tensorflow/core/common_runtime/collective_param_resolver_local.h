@@ -241,8 +241,8 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_
       TF_GUARDED_BY(group_mu_);
   mutex instance_mu_;
-  gtl::FlatMap<int32, std::unique_ptr<InstanceRec>> instance_table_
-      TF_GUARDED_BY(instance_mu_);
+  gtl::FlatMap<int32, gtl::FlatMap<int32, std::unique_ptr<InstanceRec>>>
+      instance_table_ TF_GUARDED_BY(instance_mu_);
   mutex status_mu_;
   Status status_ TF_GUARDED_BY(status_mu_);
 };
