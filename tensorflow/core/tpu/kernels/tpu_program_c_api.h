@@ -21,6 +21,9 @@ limitations under the License.
 
 typedef struct XLA_TpuProgram XLA_TpuProgram;
 
+// Enum for choosing sharding/unsharding program from a `XLA_TpuProgram` obj.
+enum TpuProgramShardingType { kInvalid = 0, kMain, kSharding, kUnsharding };
+
 extern "C" {
 
 // Creates a new TPU program.
@@ -64,6 +67,15 @@ TFTPU_CAPI_EXPORT void TpuProgram_GetHloMetadata(
 TFTPU_CAPI_EXPORT void TpuProgram_GetMayModifyVariables(
     const XLA_TpuProgram* tpu_program, bool* may_modify_variables);
 
+// Check if TPU program has sharding.
+TFTPU_CAPI_EXPORT bool TpuProgram_HasSharding(
+    const XLA_TpuProgram* tpu_program);
+
+// Gets TPU program by sharding type. Return value is valid only when the
+// `status.status()` returns `OK`.
+TFTPU_CAPI_EXPORT XLA_TpuProgram* TpuProgram_GetTpuProgram(
+    XLA_TpuProgram* tpu_program, TpuProgramShardingType type);
+
 struct TfTpu_TpuProgramApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_Free);
@@ -76,6 +88,8 @@ struct TfTpu_TpuProgramApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetHostTransferInfo);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetHloMetadata);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetMayModifyVariables);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_HasSharding);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetTpuProgram);
 };
 
 }  // extern "C"

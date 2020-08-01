@@ -39,7 +39,6 @@ class ConvolutionTransposed : public GPUOperation {
  public:
   ConvolutionTransposed() = default;
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 

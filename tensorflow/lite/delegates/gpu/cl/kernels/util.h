@@ -95,6 +95,7 @@ void RearrangeWeightsToOHWIOGroupI4O4(
 // textures on Adreno3xx devices. Using CLK_ADDRESS_NONE is significantly faster
 // than CLK_ADDRESS_CLAMP on Adreno 3xx.
 TextureAddressMode GetFastestZeroMode(const CLDevice& device);
+TextureAddressMode GetFastestZeroMode(const DeviceInfo& device_info);
 
 // Returns float4 mask for last plane(batch of 4 channels)
 // assumes that plane size is 4;

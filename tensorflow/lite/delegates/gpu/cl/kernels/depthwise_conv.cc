@@ -70,7 +70,8 @@ std::string GetSrcValue(int channel_multiplier, const std::string coords) {
 
 DepthwiseConvolution::DepthwiseConvolution(
     const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr, bool weights_are_buffer)
+    const DepthwiseConvolution2DAttributes& attr, bool weights_are_buffer,
+    const DeviceInfo& device_info)
     : GPUOperation(definition),
       weights_are_buffer_(weights_are_buffer),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h, 0, 0),
@@ -79,11 +80,17 @@ DepthwiseConvolution::DepthwiseConvolution(
       dilation_(attr.dilations.w, attr.dilations.h, 0, 0),
       channel_multiplier_(attr.weights.shape.o) {
   work_group_size_ = int3(8, 8, 1);
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateDepthwiseConvolutionCode(definition_, stride_correction,
+                                           channel_multiplier_,
+                                           weights_are_buffer_, device_info);
 }
 
 DepthwiseConvolution::DepthwiseConvolution(
     const OperationDef& definition,
-    const DepthwiseConvolution3DAttributes& attr, bool weights_are_buffer)
+    const DepthwiseConvolution3DAttributes& attr, bool weights_are_buffer,
+    const DeviceInfo& device_info)
     : GPUOperation(definition),
       weights_are_buffer_(weights_are_buffer),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
@@ -94,6 +101,11 @@ DepthwiseConvolution::DepthwiseConvolution(
       dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d, 0),
       channel_multiplier_(attr.weights.shape.o) {
   work_group_size_ = int3(8, 8, 1);
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateDepthwiseConvolutionCode(definition_, stride_correction,
+                                           channel_multiplier_,
+                                           weights_are_buffer_, device_info);
 }
 
 DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
@@ -121,9 +133,9 @@ DepthwiseConvolution& DepthwiseConvolution::operator=(
 
 std::string DepthwiseConvolution::GenerateDepthwiseConvolutionCode(
     const OperationDef& op_def, bool stride_correction, int channel_multiplier,
-    bool weights_are_buffer, const CLDevice& device) {
+    bool weights_are_buffer, const DeviceInfo& device_info) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -270,24 +282,6 @@ std::string DepthwiseConvolution::GenerateDepthwiseConvolutionCode(
   return c;
 }
 
-absl::Status DepthwiseConvolution::Compile(
-    const CreationContext& creation_context) {
-  const bool stride_correction =
-      definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code = GenerateDepthwiseConvolutionCode(
-      definition_, stride_correction, channel_multiplier_, weights_are_buffer_,
-      *creation_context.device);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 absl::Status DepthwiseConvolution::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
   RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
@@ -321,7 +315,8 @@ absl::Status CreateDepthwiseConvolution(
     const DepthwiseConvolution2DAttributes& attr,
     DepthwiseConvolution* result) {
   bool weights_are_buffer = creation_context.device->IsMali();
-  *result = DepthwiseConvolution(definition, attr, weights_are_buffer);
+  *result = DepthwiseConvolution(definition, attr, weights_are_buffer,
+                                 creation_context.device->GetInfo());
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 
@@ -344,7 +339,8 @@ absl::Status CreateDepthwiseConvolution(
     const DepthwiseConvolution3DAttributes& attr,
     DepthwiseConvolution* result) {
   bool weights_are_buffer = creation_context.device->IsMali();
-  *result = DepthwiseConvolution(definition, attr, weights_are_buffer);
+  *result = DepthwiseConvolution(definition, attr, weights_are_buffer,
+                                 creation_context.device->GetInfo());
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 

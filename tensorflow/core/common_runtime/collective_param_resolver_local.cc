@@ -586,25 +586,32 @@ void CollectiveParamResolverLocal::FindInstanceRec(
   InstanceRec* irec = nullptr;
   bool exit_outside_locks = false;
   {
+    bool found_instance = false;
     mutex_lock l(instance_mu_);
-    auto it = instance_table_.find(cp->instance.instance_key);
-    if (it != instance_table_.end()) {
-      irec = it->second.get();
-      {
-        mutex_lock l(irec->in_mu);
-        if (irec->is_init) {
-          exit_outside_locks = true;
-        } else {
-          irec->init_waiters.push_back([this, done](InstanceRec* irec) {
-            CallbackWithStatus(done, irec);
-          });
-          return;
+    auto group_it = instance_table_.find(gr->group.group_key);
+    if (group_it != instance_table_.end()) {
+      auto instance_it = group_it->second.find(cp->instance.instance_key);
+      if (instance_it != group_it->second.end()) {
+        irec = instance_it->second.get();
+        {
+          mutex_lock l(irec->in_mu);
+          if (irec->is_init) {
+            exit_outside_locks = true;
+          } else {
+            irec->init_waiters.push_back([this, done](InstanceRec* irec) {
+              CallbackWithStatus(done, irec);
+            });
+            return;
+          }
         }
+        found_instance = true;
       }
-    } else {
+    }
+    if (!found_instance) {
       // Create new InstanceRec.
       irec = new InstanceRec;
-      instance_table_[cp->instance.instance_key].reset(irec);
+      instance_table_[gr->group.group_key][cp->instance.instance_key].reset(
+          irec);
     }
   }
   Status status;
@@ -890,8 +897,10 @@ void CollectiveParamResolverLocal::StartAbortLocal(const Status& s) {
   std::vector<InstanceRec*> instances;
   {
     mutex_lock l(instance_mu_);
-    for (const auto& item : instance_table_) {
-      instances.push_back(item.second.get());
+    for (const auto& group_entry : instance_table_) {
+      for (const auto& item : group_entry.second) {
+        instances.push_back(item.second.get());
+      }
     }
   }
   for (InstanceRec* ir : instances) {

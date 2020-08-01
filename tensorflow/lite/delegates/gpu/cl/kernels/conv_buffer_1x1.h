@@ -48,7 +48,6 @@ class ConvBuffer1x1 : public GPUOperation {
   ConvBuffer1x1& operator=(const ConvBuffer1x1&) = delete;
 
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
   int3 GetGridSize() const override;
 
   ConvWeightsDescription GetConvWeightsDescription() const {

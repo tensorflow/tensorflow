@@ -31,7 +31,6 @@ class MeanStdDevNormalization : public GPUOperation {
   explicit MeanStdDevNormalization(const OperationDef& definition);
 
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   MeanStdDevNormalization(MeanStdDevNormalization&& kernel) = default;
@@ -41,7 +40,7 @@ class MeanStdDevNormalization : public GPUOperation {
   MeanStdDevNormalization& operator=(const MeanStdDevNormalization&) = delete;
 
  private:
-  std::string GetNormalizationCode(const OperationDef& op_def);
+  std::string GetNormalizationCode();
 };
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(

@@ -144,8 +144,8 @@ class MergePaddingWithAddOperation : public NodeTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    AddAttributes add_attr =
-        absl::any_cast<AddAttributes>(add_node->operation.attributes);
+    ElementwiseAttributes add_attr =
+        absl::any_cast<ElementwiseAttributes>(add_node->operation.attributes);
     const bool is_add_hwc =
         absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(add_attr.param);
     const bool is_add_linear =

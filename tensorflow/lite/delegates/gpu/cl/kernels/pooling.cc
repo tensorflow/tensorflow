@@ -25,23 +25,27 @@ namespace gpu {
 namespace cl {
 
 Pooling::Pooling(const OperationDef& definition,
-                 const Pooling2DAttributes& attr)
+                 const Pooling2DAttributes& attr, const DeviceInfo& device_info)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, 0, 0),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       kernel_size_(attr.kernel.w, attr.kernel.h, 0, 0),
       type_(attr.type),
-      output_indices_(attr.output_indices) {}
+      output_indices_(attr.output_indices) {
+  GenerateCode(device_info);
+}
 
 Pooling::Pooling(const OperationDef& definition,
-                 const Pooling3DAttributes& attr)
+                 const Pooling3DAttributes& attr, const DeviceInfo& device_info)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, attr.strides.d, 0),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
                -attr.padding.prepended.d, 0),
       kernel_size_(attr.kernel.w, attr.kernel.h, attr.kernel.d, 0),
       type_(attr.type),
-      output_indices_(attr.output_indices) {}
+      output_indices_(attr.output_indices) {
+  GenerateCode(device_info);
+}
 
 Pooling::Pooling(Pooling&& kernel)
     : GPUOperation(std::move(kernel)),
@@ -63,11 +67,11 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
   return *this;
 }
 
-std::string Pooling::GetAveragePoolingKernelCode(const OperationDef& op_def,
-                                                 bool stride_correction,
-                                                 const CLDevice& device) {
+std::string Pooling::GetAveragePoolingKernelCode(
+    const OperationDef& op_def, bool stride_correction,
+    const DeviceInfo& device_info) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -344,33 +348,16 @@ std::string Pooling::GetMaxPoolingKernelCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status Pooling::Compile(const CreationContext& creation_context) {
-  std::string code;
+void Pooling::GenerateCode(const DeviceInfo& device_info) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  switch (type_) {
-    case PoolingType::AVERAGE:
-      code = GetAveragePoolingKernelCode(definition_, stride_correction,
-                                         *creation_context.device);
-      break;
-    case PoolingType::MAX:
-      code = GetMaxPoolingKernelCode(definition_, stride_correction,
-                                     output_indices_);
-      break;
-    default:
-      return absl::InvalidArgumentError(
-          "You should create another kernel with this params");
-      break;
+  if (type_ == PoolingType::AVERAGE) {
+    code_ = GetAveragePoolingKernelCode(definition_, stride_correction,
+                                        device_info);
+  } else if (type_ == PoolingType::MAX) {
+    code_ = GetMaxPoolingKernelCode(definition_, stride_correction,
+                                    output_indices_);
   }
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status Pooling::BindArguments() {
@@ -400,13 +387,15 @@ int3 Pooling::GetGridSize() const {
 }
 
 Pooling CreatePooling(const OperationDef& definition,
-                      const Pooling2DAttributes& attr) {
-  return Pooling(definition, attr);
+                      const Pooling2DAttributes& attr,
+                      const DeviceInfo& device_info) {
+  return Pooling(definition, attr, device_info);
 }
 
 Pooling CreatePooling(const OperationDef& definition,
-                      const Pooling3DAttributes& attr) {
-  return Pooling(definition, attr);
+                      const Pooling3DAttributes& attr,
+                      const DeviceInfo& device_info) {
+  return Pooling(definition, attr, device_info);
 }
 
 }  // namespace cl

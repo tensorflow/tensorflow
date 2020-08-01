@@ -103,7 +103,9 @@ class GPUOperation {
 
   virtual absl::Status Compile(const CreationContext& creation_context);
 
-  virtual absl::Status PostCompileCheck() { return absl::OkStatus(); }
+  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info) {
+    return absl::OkStatus();
+  }
 
   const OperationDef& GetDefinition() const { return definition_; }
 

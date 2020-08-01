@@ -156,7 +156,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         SelectAdd(op_def, channels, output->tensor.shape.c, gpu_op);
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
-        auto attr = absl::any_cast<AddAttributes>(node.operation.attributes);
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
         const float* scalar = absl::get_if<float>(&attr.param);
         const auto* linear_tensor =
             absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
@@ -270,18 +271,20 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
                                   inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::LSTM: {
-      SelectLSTM(op_def, gpu_op);
+      SelectLSTM(op_def, creation_context.device->GetInfo(), gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
-      SelectMaxUnpooling(attr, op_def, gpu_op);
+      SelectMaxUnpooling(attr, op_def, creation_context.device->GetInfo(),
+                         gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      return SelectMean(attr, op_def, gpu_op);
+      return SelectMean(attr, op_def, creation_context.device->GetInfo(),
+                        gpu_op);
     }
     case OperationType::MUL: {
       if (inputs.size() == 2) {
@@ -291,7 +294,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
-            absl::any_cast<MultiplyAttributes>(node.operation.attributes);
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
         const float* scalar = absl::get_if<float>(&attr.param);
         const auto* linear_tensor =
             absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
@@ -333,7 +336,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node.operation.attributes);
-      SelectPooling(attr, op_def, gpu_op);
+      SelectPooling(attr, op_def, creation_context.device->GetInfo(), gpu_op);
       return absl::OkStatus();
     }
     case OperationType::PRELU: {

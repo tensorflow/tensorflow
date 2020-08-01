@@ -1693,6 +1693,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     const DataTypeVector& retval_types,
     const std::vector<InferredShape>& retval_shapes, const Graph& graph,
     const Node* replicate_node, FunctionLibraryRuntime* flr,
+    bool allow_parameter_replication_for_spmd,
     std::vector<xla::OpSharding>* arg_sharding, std::vector<bool>* arg_fast_mem,
     std::vector<xla::OpSharding>* retval_sharding,
     std::vector<std::string>* arg_names) {
@@ -1748,8 +1749,9 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   arg_names->resize(args.size());
   arg_fast_mem->resize(args.size());
   CachedFunctionHandles cached_function_handles(flr);
-  const bool use_spmd = UseSpmdForXlaPartitioning(replicate_node) ||
-                        replicate_inputs_outputs_by_default_for_xla_spmd_;
+  const bool use_spmd = (UseSpmdForXlaPartitioning(replicate_node) ||
+                         replicate_inputs_outputs_by_default_for_xla_spmd_) &&
+                        allow_parameter_replication_for_spmd;
   for (int i = 0; i < args.size(); ++i) {
     const Node* n = args[i];
     absl::optional<int64> assigned_core;
@@ -1918,6 +1920,23 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     retvals[i]->AddAttr(kShardingAttribute, sharding->SerializeAsString());
     (*retval_sharding)[i] = *sharding;
   }
+  if (use_spmd &&
+      (absl::c_any_of(*arg_sharding,
+                      [](const xla::OpSharding& s) {
+                        return s.type() == xla::OpSharding::MAXIMAL;
+                      }) ||
+       absl::c_any_of(*retval_sharding, [](const xla::OpSharding& s) {
+         return s.type() == xla::OpSharding::MAXIMAL;
+       }))) {
+    LOG(WARNING) << "XLA SPMD only supports cases where all inputs/outputs "
+                    "exist on every partition (sharded or replicated). Fall "
+                    "back to MPMD.";
+    return AssignArgsAndRetvalsToCores(
+        num_cores_per_replica, params_info, arg_types, arg_shapes, retval_types,
+        retval_shapes, graph, replicate_node, flr,
+        /*allow_parameter_replication_for_spmd=*/false, arg_sharding,
+        arg_fast_mem, retval_sharding, arg_names);
+  }
   return Status::OK();
 }
 
@@ -2017,7 +2036,15 @@ Status DistributedTPURewritePass::BuildCompileNode(
   proto.set_function_library_fingerprint(library_fingerprint);
   proto.set_enable_automatic_model_parallelism(
       enable_cross_replica_sharding_mirrored_variables_);
-  const bool use_spmd = UseSpmdForXlaPartitioning(replicate_node);
+  const bool use_spmd =
+      UseSpmdForXlaPartitioning(replicate_node) && allow_xla_spmd_partition_ &&
+      !absl::c_any_of(arg_sharding,
+                      [](const xla::OpSharding& s) {
+                        return s.type() == xla::OpSharding::MAXIMAL;
+                      }) &&
+      !absl::c_any_of(retval_sharding, [](const xla::OpSharding& s) {
+        return s.type() == xla::OpSharding::MAXIMAL;
+      });
   proto.set_use_spmd_for_xla_partitioning(use_spmd);
 
   // Get and fill padding map.
@@ -3821,8 +3848,9 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
   std::vector<xla::OpSharding> retval_sharding;
   TF_RETURN_IF_ERROR(AssignArgsAndRetvalsToCores(
       num_cores_per_replica, params_info, arg_types, arg_shapes, retval_types,
-      retval_shapes, *computation, replicate_node, flr, &arg_sharding,
-      &arg_fast_mem, &retval_sharding, &arg_names));
+      retval_shapes, *computation, replicate_node, flr,
+      allow_xla_spmd_partition_, &arg_sharding, &arg_fast_mem, &retval_sharding,
+      &arg_names));
 
   VLOG(1) << DumpGraphToFile("distributed_tpu_graph_to_replicate", *computation,
                              flib_def);
@@ -4090,6 +4118,7 @@ Status DistributedTPURewritePass::Run(
 }
 
 bool DistributedTPURewritePass::distribute_vars_ = false;
+bool DistributedTPURewritePass::allow_xla_spmd_partition_ = true;
 bool DistributedTPURewritePass::
     replicate_inputs_outputs_by_default_for_xla_spmd_ = false;
 bool DistributedTPURewritePass::
@@ -4097,10 +4126,12 @@ bool DistributedTPURewritePass::
 bool DistributedTPURewritePass::enable_automatic_model_parallelism_ = false;
 
 /*static*/ void DistributedTPURewritePass::SetDistributedTpuRewritePassOptions(
-    bool distribute_vars, bool replicate_inputs_outputs_by_default_for_xla_spmd,
+    bool distribute_vars, bool allow_xla_spmd_partition,
+    bool replicate_inputs_outputs_by_default_for_xla_spmd,
     bool enable_cross_replica_sharding_mirrored_variables,
     bool enable_automatic_model_parallelism) {
   distribute_vars_ = distribute_vars;
+  allow_xla_spmd_partition_ = allow_xla_spmd_partition;
   replicate_inputs_outputs_by_default_for_xla_spmd_ =
       replicate_inputs_outputs_by_default_for_xla_spmd;
   enable_cross_replica_sharding_mirrored_variables_ =

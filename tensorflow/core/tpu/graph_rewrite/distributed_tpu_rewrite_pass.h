@@ -129,7 +129,7 @@ namespace tensorflow {
 class DistributedTPURewritePass : public GraphOptimizationPass {
  public:
   static void SetDistributedTpuRewritePassOptions(
-      bool distribute_vars,
+      bool distribute_vars, bool allow_xla_spmd_partition,
       bool replicate_inputs_outputs_by_default_for_xla_spmd,
       bool enable_cross_replica_sharding_mirrored_variables,
       bool enable_automatic_model_parallelism);
@@ -308,6 +308,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       const DataTypeVector& retval_types,
       const std::vector<InferredShape>& retval_shapes, const Graph& graph,
       const Node* replicate_node, FunctionLibraryRuntime* flr,
+      bool allow_parameter_replication_for_spmd,
       std::vector<::xla::OpSharding>* arg_sharding,
       std::vector<bool>* arg_fast_mem,
       std::vector<::xla::OpSharding>* retval_sharding,
@@ -581,6 +582,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
  private:
   static bool distribute_vars_;
+  static bool allow_xla_spmd_partition_;
   static bool replicate_inputs_outputs_by_default_for_xla_spmd_;
   static bool enable_cross_replica_sharding_mirrored_variables_;
   static bool enable_automatic_model_parallelism_;

@@ -29,12 +29,13 @@ namespace cl {
 
 class Pooling : public GPUOperation {
  public:
-  Pooling(const OperationDef& definition, const Pooling2DAttributes& attr);
-  Pooling(const OperationDef& definition, const Pooling3DAttributes& attr);
+  Pooling(const OperationDef& definition, const Pooling2DAttributes& attr,
+          const DeviceInfo& device_info);
+  Pooling(const OperationDef& definition, const Pooling3DAttributes& attr,
+          const DeviceInfo& device_info);
 
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Pooling(Pooling&& kernel);
@@ -45,10 +46,12 @@ class Pooling : public GPUOperation {
  private:
   std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
                                           bool stride_correction,
-                                          const CLDevice& device);
+                                          const DeviceInfo& device_info);
   std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
                                       bool stride_correction,
                                       bool output_indices);
+
+  void GenerateCode(const DeviceInfo& device_info);
 
   int4 stride_;
   int4 padding_;
@@ -59,10 +62,12 @@ class Pooling : public GPUOperation {
 };
 
 Pooling CreatePooling(const OperationDef& definition,
-                      const Pooling2DAttributes& attr);
+                      const Pooling2DAttributes& attr,
+                      const DeviceInfo& device_info);
 
 Pooling CreatePooling(const OperationDef& definition,
-                      const Pooling3DAttributes& attr);
+                      const Pooling3DAttributes& attr,
+                      const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

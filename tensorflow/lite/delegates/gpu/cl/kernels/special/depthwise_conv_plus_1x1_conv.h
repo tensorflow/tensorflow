@@ -37,7 +37,6 @@ class DepthwiseConvPlus1x1Conv : public GPUOperation {
  public:
   DepthwiseConvPlus1x1Conv() = default;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   DepthwiseConvPlus1x1Conv(DepthwiseConvPlus1x1Conv&& operation);
@@ -53,7 +52,8 @@ class DepthwiseConvPlus1x1Conv : public GPUOperation {
       DepthwiseConvPlus1x1Conv* result);
   DepthwiseConvPlus1x1Conv(const OperationDef& definition,
                            const DepthwiseConvolution2DAttributes& dw_attr,
-                           const Convolution2DAttributes& conv_attr);
+                           const Convolution2DAttributes& conv_attr,
+                           const DeviceInfo& device_info);
 
   absl::Status UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
                              const Convolution2DAttributes& conv_attr,
@@ -61,10 +61,9 @@ class DepthwiseConvPlus1x1Conv : public GPUOperation {
 
   std::string GenerateCode(const OperationDef& op_def,
                            const DepthwiseConvolution2DAttributes& dw_attr,
-                           int result_depth, const CLDevice& device);
+                           int result_depth, const DeviceInfo& device_info);
 
   DepthwiseConvolution2DAttributes dw_attr_;
-  int result_depth_;
 };
 
 bool IsDepthwiseConvPlus1x1ConvSupported(

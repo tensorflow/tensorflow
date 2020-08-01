@@ -93,7 +93,6 @@ class FullyConnected : public GPUOperation {
     return absl::OkStatus();
   }
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   FullyConnected(FullyConnected&& kernel);
@@ -102,7 +101,7 @@ class FullyConnected : public GPUOperation {
   FullyConnected& operator=(const FullyConnected&) = delete;
 
  private:
-  explicit FullyConnected(const OperationDef& definition);
+  FullyConnected(const OperationDef& definition, const DeviceInfo& device_info);
   friend absl::Status CreateFullyConnected(
       const CreationContext& creation_context, const OperationDef& definition,
       const FullyConnectedAttributes& attr, FullyConnected* result);

@@ -54,6 +54,9 @@ ConvolutionTransposed::ConvolutionTransposed(
     }
     block_size_.z = 1;
   }
+
+  code_ = GenerateConvolutionTransposedCode(definition_, device,
+                                            weights_are_buffer_, block_size_);
 }
 
 ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
@@ -329,24 +332,6 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   }
   c += "}\n";
   return c;
-}
-
-absl::Status ConvolutionTransposed::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateConvolutionTransposedCode(
-      definition_, *creation_context.device, weights_are_buffer_, block_size_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  // options.push_back(CompilerOptions::POWERVR_FP16);
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status ConvolutionTransposed::BindArguments() {
