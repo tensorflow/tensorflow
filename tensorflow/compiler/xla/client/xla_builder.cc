@@ -1728,8 +1728,6 @@ XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
                        const XlaComputation& comparator, int64 dimension,
                        bool is_stable) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    instr.set_is_stable(is_stable);
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(std::vector<Shape> operand_shapes,
                         GetOperandShapes(operands));
@@ -1737,15 +1735,24 @@ XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
                       [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferVariadicOpShape(
                                          HloOpcode::kSort, operand_shape_ptrs));
-    *instr.mutable_shape() = shape.ToProto();
-    if (dimension == -1) {
-      TF_ASSIGN_OR_RETURN(const Shape* keys_shape, GetShapePtr(operands[0]));
-      dimension = keys_shape->rank() - 1;
-    }
-    instr.add_dimensions(dimension);
-    AddCalledComputation(comparator, &instr);
-    return AddInstruction(std::move(instr), HloOpcode::kSort, operands);
+    return SortInternal(shape, operands, comparator, dimension, is_stable);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::SortInternal(const Shape& shape,
+                                         absl::Span<const XlaOp> operands,
+                                         const XlaComputation& comparator,
+                                         int64 dimension, bool is_stable) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_is_stable(is_stable);
+  if (dimension == -1) {
+    TF_ASSIGN_OR_RETURN(const Shape* keys_shape, GetShapePtr(operands[0]));
+    dimension = keys_shape->rank() - 1;
+  }
+  instr.add_dimensions(dimension);
+  AddCalledComputation(comparator, &instr);
+  return AddInstruction(std::move(instr), HloOpcode::kSort, operands);
 }
 
 XlaOp XlaBuilder::ConvertElementType(XlaOp operand,
@@ -1761,14 +1768,19 @@ XlaOp XlaBuilder::ConvertElementType(XlaOp operand,
 XlaOp XlaBuilder::BitcastConvertType(XlaOp operand,
                                      PrimitiveType new_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConvertShape(
                                          *operand_shape, new_element_type));
-    *instr.mutable_shape() = shape.ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kBitcastConvert,
-                          {operand});
+    return BitcastConvertTypeInternal(shape, operand);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::BitcastConvertTypeInternal(const Shape& shape,
+                                                       XlaOp operand) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  return AddInstruction(std::move(instr), HloOpcode::kBitcastConvert,
+                        {operand});
 }
 
 XlaOp XlaBuilder::Clamp(XlaOp min, XlaOp operand, XlaOp max) {
@@ -1892,8 +1904,6 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
 XlaOp XlaBuilder::While(const XlaComputation& condition,
                         const XlaComputation& body, XlaOp init) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
     // Infer shape.
     TF_ASSIGN_OR_RETURN(const auto& body_program_shape, body.GetProgramShape());
     TF_ASSIGN_OR_RETURN(const auto& condition_program_shape,
@@ -1902,12 +1912,20 @@ XlaOp XlaBuilder::While(const XlaComputation& condition,
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferWhileShape(
                                          condition_program_shape,
                                          body_program_shape, *init_shape));
-    *instr.mutable_shape() = shape.ToProto();
-    // Body comes before condition computation in the vector.
-    AddCalledComputation(body, &instr);
-    AddCalledComputation(condition, &instr);
-    return AddInstruction(std::move(instr), HloOpcode::kWhile, {init});
+    return WhileInternal(shape, condition, body, init);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::WhileInternal(const Shape& shape,
+                                          const XlaComputation& condition,
+                                          const XlaComputation& body,
+                                          XlaOp init) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  // Body comes before condition computation in the vector.
+  AddCalledComputation(body, &instr);
+  AddCalledComputation(condition, &instr);
+  return AddInstruction(std::move(instr), HloOpcode::kWhile, {init});
 }
 
 XlaOp XlaBuilder::Gather(XlaOp input, XlaOp start_indices,

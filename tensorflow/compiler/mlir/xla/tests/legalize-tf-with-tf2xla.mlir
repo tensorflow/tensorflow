@@ -257,6 +257,14 @@ func @arg_min(%arg0: tensor<6xf64>) -> tensor<i32> {
   return %1 : tensor<i32>
 }
 
+// CHECK-LABEL: non_max_suppression_v4
+func @non_max_suppression_v4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xi32> {
+  %max_size = mhlo.constant dense<2> : tensor<i32>
+  // CHECK-NOT: tf.NonMaxSuppressionV4
+  %0:2 = "tf.NonMaxSuppressionV4"(%arg0, %arg1, %max_size, %arg2, %arg3) {pad_to_max_output_size = true}: (tensor<3x4xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>, tensor<i32>)
+  return %0#0 : tensor<2xi32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }
