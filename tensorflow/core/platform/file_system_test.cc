@@ -107,7 +107,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
 
   Status GetChildren(const string& dir, TransactionToken* token,
                      std::vector<string>* result) override {
-    TF_RETURN_IF_ERROR(IsDirectory(dir));
+    TF_RETURN_IF_ERROR(IsDirectory(dir, nullptr));
     string parsed_path;
     ParsePath(dir, &parsed_path);
     result->insert(result->begin(), celestial_bodies_[parsed_path].begin(),
@@ -153,7 +153,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
 string Match(InterPlanetaryFileSystem* ipfs, const string& suffix_pattern) {
   std::vector<string> results;
   Status s =
-      ipfs->GetMatchingPaths(ipfs->JoinPath(kPrefix, suffix_pattern), &results);
+      ipfs->GetMatchingPaths(ipfs->JoinPath(kPrefix, suffix_pattern), nullptr, &results);
   if (!s.ok()) {
     return s.ToString();
   } else {
@@ -180,18 +180,18 @@ TEST(InterPlanetaryFileSystemTest, IPFSMatch) {
   // Returns Jupiter's and Earth's moons.
   EXPECT_EQ(Match(&ipfs, "*/*"),
             "Earth/Moon,Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
-  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "Planet0")));
-  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "Planet1")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "Planet0"), nullptr));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "Planet1"), nullptr));
   EXPECT_EQ(Match(&ipfs, "Planet[0-1]"), "Planet0,Planet1");
   EXPECT_EQ(Match(&ipfs, "Planet?"), "Planet0,Planet1");
 }
 
 TEST(InterPlanetaryFileSystemTest, MatchSimple) {
   InterPlanetaryFileSystem ipfs;
-  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-00")));
-  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-0a")));
-  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-01")));
-  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-aaa")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-00"), nullptr));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-0a"), nullptr));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-01"), nullptr));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "match-aaa"), nullptr));
 
   EXPECT_EQ(Match(&ipfs, "match-*"), "match-00,match-01,match-0a,match-aaa");
   EXPECT_EQ(Match(&ipfs, "match-0[0-9]"), "match-00,match-01");
@@ -204,8 +204,8 @@ TEST(InterPlanetaryFileSystemTest, MatchSimple) {
 // that evil_directory isn't accessed.
 TEST(InterPlanetaryFileSystemTest, MatchOnlyNeeded) {
   InterPlanetaryFileSystem ipfs;
-  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "abcd")));
-  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "evil_directory")));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "abcd"), nullptr));
+  TF_EXPECT_OK(ipfs.CreateDir(ipfs.JoinPath(kPrefix, "evil_directory"), nullptr));
 
   EXPECT_EQ(Match(&ipfs, "abcd"), "abcd");
 }
@@ -213,13 +213,13 @@ TEST(InterPlanetaryFileSystemTest, MatchOnlyNeeded) {
 TEST(InterPlanetaryFileSystemTest, MatchDirectory) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/x")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/x"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-0a/abc/x")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-0a/abc/x"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/x")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/x"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-aaa/abc/x")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-aaa/abc/x"), nullptr));
 
   EXPECT_EQ(Match(&ipfs, "match-*/abc/x"),
             "match-00/abc/x,match-01/abc/x,match-0a/abc/x,match-aaa/abc/x");
@@ -234,19 +234,19 @@ TEST(InterPlanetaryFileSystemTest, MatchDirectory) {
 TEST(InterPlanetaryFileSystemTest, MatchMultipleWildcards) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/00")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/00"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/01")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/01"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/09")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-00/abc/09"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/00")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/00"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/04")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/04"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/10")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-01/abc/10"), nullptr));
   TF_EXPECT_OK(
-      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-02/abc/00")));
+      ipfs.RecursivelyCreateDir(ipfs.JoinPath(kPrefix, "match-02/abc/00"), nullptr));
 
   EXPECT_EQ(Match(&ipfs, "match-0[0-1]/abc/0[0-8]"),
             "match-00/abc/00,match-00/abc/01,match-01/abc/00,match-01/abc/04");
@@ -295,10 +295,10 @@ class TestFileSystem : public NullFileSystem {
 TEST(TestFileSystemTest, RootDirectory) {
   TestFileSystem fs;
   std::vector<string> results;
-  auto ret = fs.GetMatchingPaths("./te*", &results);
+  auto ret = fs.GetMatchingPaths("./te*", nullptr, &results);
   EXPECT_EQ(1, results.size());
   EXPECT_EQ("./test", results[0]);
-  ret = fs.GetMatchingPaths("te*", &results);
+  ret = fs.GetMatchingPaths("te*", nullptr, &results);
   EXPECT_EQ(1, results.size());
   EXPECT_EQ("./test", results[0]);
 }
