@@ -46,11 +46,10 @@ $0) {
   float sum = 0.0f;
   for (int S = 0; S < args.src_tensor.Slices(); ++S) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    sum += t.x;
-    // Filter out out-of-bounds reads
-    if (S * 4 + 1 < args.src_tensor.Channels()) sum += t.y;
-    if (S * 4 + 2 < args.src_tensor.Channels()) sum += t.z;
-    if (S * 4 + 3 < args.src_tensor.Channels()) sum += t.w;
+    // Filter out reads beyond the end of the tensor.
+    const int4 is_after_end_of_tensor = (int4)(0, 1, 2, 3) >= (args.src_tensor.Channels() - S * 4);
+    const float4 filtered_t = select(t, (float4)(0.0f), is_after_end_of_tensor);
+    sum += filtered_t.x + filtered_t.y + filtered_t.z + filtered_t.w;
   }
   // Calculate the mean
   const float mean = sum / args.src_tensor.Channels();
@@ -58,12 +57,11 @@ $0) {
   float sum_diff_sq = 0.0f;
   for (int S = 0; S < args.src_tensor.Slices(); ++S) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    float4 diff = t - mean;
-    // Filter out out-of-bounds reads
-    if (S * 4 + 1 >= args.src_tensor.Channels()) diff.y = 0.0f;
-    if (S * 4 + 2 >= args.src_tensor.Channels()) diff.z = 0.0f;
-    if (S * 4 + 3 >= args.src_tensor.Channels()) diff.w = 0.0f;
-    float dotprod = dot(diff, diff);
+    const float4 diff = t - mean;
+    // Filter out reads beyond the end of the tensor.
+    const int4 is_after_end_of_tensor = (int4)(0, 1, 2, 3) >= (args.src_tensor.Channels() - S * 4);
+    const float4 filtered_diff = select(diff, (float4)(0.0f), is_after_end_of_tensor);
+    float dotprod = dot(filtered_diff, filtered_diff);
     sum_diff_sq += dotprod;
   }
   // Calculate 1/stddev (with the 'regulazing constant' as in tensor_utils.cc)
