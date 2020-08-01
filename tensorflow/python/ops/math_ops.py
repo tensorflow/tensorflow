@@ -3848,19 +3848,26 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
 def conj(x, name=None):
   r"""Returns the complex conjugate of a complex number.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  complex numbers that are the complex conjugate of each element in `input`. The
-  complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
+  Given a tensor `x` of complex numbers, this operation returns a tensor of
+  complex numbers that are the complex conjugate of each element in `x`. The
+  complex numbers in `x` must be of the form \\(a + bj\\), where *a* is the
   real part and *b* is the imaginary part.
 
   The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
   For example:
 
-      # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-      tf.math.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+  >>> x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  >>> tf.math.conj(x)
+  <tf.Tensor: shape=(2,), dtype=complex128, numpy=array([-2.25-4.75j,  3.25-5.75j])>
 
   If `x` is real, it is returned unchanged.
+
+  For example:
+
+  >>> x = tf.constant([-2.25, 3.25])
+  >>> tf.math.conj(x)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([-2.25,  3.25], dtype=float32)>
 
   Args:
     x: `Tensor` to conjugate.  Must have numeric or variant type.
@@ -3871,6 +3878,10 @@ def conj(x, name=None):
 
   Raises:
     TypeError: If `x` is not a numeric tensor.
+
+  @compatibility(numpy)
+  Equivalent to numpy.conj.
+  @end_compatibility
   """
   if isinstance(x, ops.Tensor):
     dt = x.dtype
