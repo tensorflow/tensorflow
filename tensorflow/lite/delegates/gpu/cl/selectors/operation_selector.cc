@@ -156,7 +156,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         SelectAdd(op_def, channels, output->tensor.shape.c, gpu_op);
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
-        auto attr = absl::any_cast<AddAttributes>(node.operation.attributes);
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
         const float* scalar = absl::get_if<float>(&attr.param);
         const auto* linear_tensor =
             absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
@@ -293,7 +294,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
-            absl::any_cast<MultiplyAttributes>(node.operation.attributes);
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
         const float* scalar = absl::get_if<float>(&attr.param);
         const auto* linear_tensor =
             absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(

@@ -370,10 +370,6 @@ struct LstmAttributes {
   LstmKernelType kernel_type = LstmKernelType::BASIC;
 };
 
-struct MultiplyAttributes {
-  TensorOrScalar param;
-};
-
 enum class SamplingType {
   UNKNOWN = 0,
   NEAREST = 1,
@@ -477,10 +473,6 @@ struct Slice3DAttributes {
 // @return shape of a tensor after Slice3D operation is applied to the given
 //         input.
 BHWDC CalculateOutputShape(const BHWDC& input, const Slice3DAttributes& attr);
-
-struct AddAttributes {
-  TensorOrScalar param;
-};
 
 struct FullyConnectedAttributes {
   Tensor<OHWI, DataType::FLOAT32> weights;
