@@ -1759,11 +1759,63 @@ void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(TransposeOp op) {
-  // TODO(hinsu): Verify using a custom verifier that,
-  // * Transpose permutation is 1-D of size equal to the rank of the first
-  //   input, if the shapes are partially known. Requires use of a more
-  //   restrictive type than TF_Tensor.
-  // * Result shape dimensions are possible based on the input shape.
+  auto perm_type = op.perm().getType().dyn_cast<RankedTensorType>();
+  if (!perm_type) {
+    return success();
+  }
+
+  if (perm_type.getRank() != 1) {
+    return op.emitOpError()
+           << "expected perm to be a 1-D Tensor, got perm of rank "
+           << perm_type.getRank();
+  }
+
+  if (!perm_type.hasStaticShape()) {
+    return success();
+  }
+
+  auto x_type = op.x().getType().dyn_cast<RankedTensorType>();
+  if (!x_type) {
+    return success();
+  }
+
+  const int64_t x_rank = x_type.getRank();
+  if (x_rank != perm_type.getNumElements()) {
+    return op.emitOpError()
+           << "expected perm to be a 1-D Tensor of size "
+           << "equal to the rank of x, got perm of size "
+           << perm_type.getNumElements() << ", and x of rank " << x_rank;
+  }
+
+  auto y_type = op.y().getType().dyn_cast<RankedTensorType>();
+  if (!y_type) {
+    return success();
+  }
+
+  const int64_t y_rank = y_type.getRank();
+  if (x_rank != y_rank) {
+    return op.emitOpError()
+           << "x should be of the same rank with y, got "
+           << "x of rank " << x_rank << ", and y of rank " << y_rank;
+  }
+
+  DenseIntElementsAttr attr_perm;
+  if (matchPattern(op.perm(), m_Constant(&attr_perm))) {
+    // y.shape[i] should be equal to x.shape[perm[i]]
+    // for i = [0, 1, ..., rank(x) - 1]
+    for (auto e : llvm::enumerate(attr_perm)) {
+      const int64_t y_idx = e.index();
+      const int64_t y_dim = y_type.getDimSize(y_idx);
+      const int64_t x_idx = e.value().getSExtValue();
+      const int64_t x_dim = x_type.getDimSize(x_idx);
+      if (y_dim != x_dim) {
+        return op.emitOpError()
+               << "y.shape[" << y_idx << "] = " << y_dim
+               << " != x.shape[perm[" << x_idx << "]] = " << x_dim;
+      }
+    }
+  }
+
   return success();
 }
 
