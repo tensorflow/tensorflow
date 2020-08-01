@@ -1746,6 +1746,50 @@ def resize_image_with_pad_v2(image,
                                        _resize_fn)
 
 
+@tf_export("image.random_resized_crop", v1=[])
+def random_resized_crop(image, size, min_scale, max_scale,
+                        method=ResizeMethod.BILINEAR,
+                        preserve_aspect_ratio=False,
+                        antialias=False,
+                        seed=None, name=None):
+  """Random scale crop the image and resize it to desired size.
+
+  Args:
+    images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
+      size for the images.
+    min_scale: min range of size of origin size cropped.
+    max_scale: max range of size of origin size cropped.
+    method: An `image.ResizeMethod`, or string equivalent.  Defaults to
+      `bilinear`.
+    preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
+      then `images` will be resized to a size that fits in `size` while
+      preserving the aspect ratio of the original image. Scales up the image if
+      `size` is bigger than the current size of the `image`. Defaults to False.
+    antialias: Whether to use an anti-aliasing filter when downsampling an
+      image.
+    name: A name for this operation (optional).
+
+  Returns:
+    A cropped tensor of the same rank as `value` and shape `size`.
+  """
+  with ops.name_scope(name, "random_resized_crop", [
+      image, min_scale, max_scale, method,
+      preserve_aspect_ratio, antialias, seed]) as name:
+    image = ops.convert_to_tensor(image, name="value")
+    scale = random_ops.random_uniform(
+        shape=[], minval=min_scale, maxval=max_scale, seed=seed)
+    shape = array_ops.shape(image)
+    random_size = math_ops.cast(shape * scale[0], shape.dtype)
+    image = random_ops.random_crop(
+        image, random_size, seed=seed)
+    image = resize_images_v2(
+        image, size, method=method,
+        preserve_aspect_ratio=preserve_aspect_ratio, antialias=antialias)
+    return image
+
+
 @tf_export('image.per_image_standardization')
 @dispatch.add_dispatch_support
 def per_image_standardization(image):
