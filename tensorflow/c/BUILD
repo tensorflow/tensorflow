@@ -213,6 +213,17 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "logging",
+    srcs = ["logging.cc"],
+    hdrs = ["logging.h"],
+    deps = [
+        ":c_api",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:stringprintf",
+    ],
+)
+
 tf_cuda_library(
     name = "tf_status_internal",
     hdrs = [
