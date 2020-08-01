@@ -3859,7 +3859,8 @@ def conj(x, name=None):
 
   >>> x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
   >>> tf.math.conj(x)
-  <tf.Tensor: shape=(2,), dtype=complex128, numpy=array([-2.25-4.75j,  3.25-5.75j])>
+  <tf.Tensor: shape=(2,), dtype=complex128,
+  numpy=array([-2.25-4.75j,  3.25-5.75j])>
 
   If `x` is real, it is returned unchanged.
 
@@ -3867,7 +3868,8 @@ def conj(x, name=None):
 
   >>> x = tf.constant([-2.25, 3.25])
   >>> tf.math.conj(x)
-  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([-2.25,  3.25], dtype=float32)>
+  <tf.Tensor: shape=(2,), dtype=float32,
+  numpy=array([-2.25,  3.25], dtype=float32)>
 
   Args:
     x: `Tensor` to conjugate.  Must have numeric or variant type.
