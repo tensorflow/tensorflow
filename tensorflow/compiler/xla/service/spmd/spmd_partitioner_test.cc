@@ -564,6 +564,59 @@ ENTRY entry {
                                                  op::Constant())))));
 }
 
+TEST_F(SpmdPartitioningTest,
+       ConvWithParallelDimAndNonParallelSpatialDimPartitioned) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[32,12,12,24,32] parameter(0)
+  %lhs.copy = f32[32,12,12,24,32] copy(%lhs),
+    sharding={devices=[2,2,1,1,1]0,1,2,3}
+  %rhs = f32[32,6,6,16,32] parameter(1)
+  %rhs.copy = f32[32,6,6,16,32] copy(%rhs),
+    sharding={devices=[2,2,1,1,1]0,1,2,3}
+  ROOT %conv = f32[32,7,7,24,16] convolution(%lhs.copy, %rhs.copy),
+    dim_labels=012bf_012oi->012bf,
+    window={size=32x6x6 stride=31x1x1 lhs_dilate=32x1x1},
+    sharding={devices=[2,2,1,1,1]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
+                                             op::Reshape(), op::Constant(),
+                                             op::Constant(), op::Constant())),
+                   op::Shape("f32[16,6,12,24,32]"));
+  auto rhs = AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
+                                             op::Reshape(), op::Constant(),
+                                             op::Constant(), op::Constant())),
+                   op::Shape("f32[16,3,6,16,32]"));
+  auto resharded_rhs =
+      AllOf(op::Shape("f32[16,6,6,16,32]"),
+            op::AllReduce(op::DynamicUpdateSlice(
+                op::Broadcast(), rhs, op::Constant(), op::Reshape(),
+                op::Constant(), op::Constant(), op::Constant())));
+
+  auto left_halo = AllOf(op::CollectivePermute(op::Slice(lhs)),
+                         op::Shape("f32[16,2,12,24,32]"));
+  auto right_halo = AllOf(op::CollectivePermute(op::Slice(lhs)),
+                          op::Shape("f32[16,3,12,24,32]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Convolution(
+                op::Select(op::Compare(),
+                           op::DynamicSlice(
+                               op::Concatenate(left_halo, lhs, right_halo),
+                               op::Constant(), op::Add(), op::Constant(),
+                               op::Constant(), op::Constant()),
+                           op::Broadcast()),
+                resharded_rhs),
+            op::Shape("f32[16,4,7,24,16]")));
+}
+
 TEST_F(SpmdPartitioningTest, BroadcastPropagateTiledSharding) {
   const char* const hlo_string = R"(
 HloModule module
