@@ -30,24 +30,23 @@ namespace cl {
 DepthwiseConvPlus1x1Conv::DepthwiseConvPlus1x1Conv(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr)
-    : GPUOperation(definition),
-      dw_attr_(dw_attr),
-      result_depth_(DivideRoundUp(conv_attr.weights.shape.o, 4)) {
+    const Convolution2DAttributes& conv_attr, const DeviceInfo& device_info)
+    : GPUOperation(definition), dw_attr_(dw_attr) {
   work_group_size_ = int3(8, 8, 1);
+  code_ =
+      GenerateCode(definition_, dw_attr_,
+                   DivideRoundUp(conv_attr.weights.shape.o, 4), device_info);
 }
 
 DepthwiseConvPlus1x1Conv::DepthwiseConvPlus1x1Conv(
     DepthwiseConvPlus1x1Conv&& operation)
     : GPUOperation(std::move(operation)),
-      dw_attr_(std::move(operation.dw_attr_)),
-      result_depth_(operation.result_depth_) {}
+      dw_attr_(std::move(operation.dw_attr_)) {}
 
 DepthwiseConvPlus1x1Conv& DepthwiseConvPlus1x1Conv::operator=(
     DepthwiseConvPlus1x1Conv&& operation) {
   if (this != &operation) {
     dw_attr_ = std::move(operation.dw_attr_);
-    std::swap(result_depth_, operation.result_depth_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -147,9 +146,9 @@ absl::Status DepthwiseConvPlus1x1Conv::UploadWeights(
 
 std::string DepthwiseConvPlus1x1Conv::GenerateCode(
     const OperationDef& op_def, const DepthwiseConvolution2DAttributes& dw_attr,
-    int result_depth, const CLDevice& device) {
+    int result_depth, const DeviceInfo& device_info) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -243,21 +242,6 @@ std::string DepthwiseConvPlus1x1Conv::GenerateCode(
   return c;
 }
 
-absl::Status DepthwiseConvPlus1x1Conv::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateCode(definition_, dw_attr_, result_depth_,
-                                  *creation_context.device);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 int3 DepthwiseConvPlus1x1Conv::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
@@ -289,7 +273,8 @@ absl::Status CreateDepthwiseConvPlus1x1Conv(
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr,
     DepthwiseConvPlus1x1Conv* result) {
-  *result = DepthwiseConvPlus1x1Conv(definition, dw_attr, conv_attr);
+  *result = DepthwiseConvPlus1x1Conv(definition, dw_attr, conv_attr,
+                                     creation_context.device->GetInfo());
   RETURN_IF_ERROR(
       result->UploadWeights(dw_attr, conv_attr, creation_context.context));
   return absl::OkStatus();

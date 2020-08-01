@@ -25,7 +25,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-LSTM::LSTM(const OperationDef& definition) : GPUOperation(definition) {}
+LSTM::LSTM(const OperationDef& definition, const DeviceInfo& device_info)
+    : GPUOperation(definition) {
+  code_ = GetLSTMCode(definition_, device_info);
+}
 
 LSTM::LSTM(LSTM&& kernel) : GPUOperation(std::move(kernel)) {}
 
@@ -37,7 +40,7 @@ LSTM& LSTM::operator=(LSTM&& kernel) {
 }
 
 std::string LSTM::GetLSTMCode(const OperationDef& op_def,
-                              const CLDevice& device) {
+                              const DeviceInfo& device_info) {
   AddSrcTensor("intermediate", op_def.src_tensors[0]);
   AddSrcTensor("prev_state", op_def.src_tensors[1]);
   AddDstTensor("new_state", op_def.dst_tensors[0]);
@@ -56,7 +59,8 @@ std::string LSTM::GetLSTMCode(const OperationDef& op_def,
   c += "  FLT4 r1 = args.intermediate.Read(0, 0, Z + state_stride, B);\n";
   c += "  FLT4 r2 = args.intermediate.Read(0, 0, Z + state_stride * 2, B);\n";
   c += "  FLT4 r3 = args.intermediate.Read(0, 0, Z + state_stride * 3, B);\n";
-  if (op_def.precision != CalculationsPrecision::F32 && device.IsAdreno()) {
+  if (op_def.precision != CalculationsPrecision::F32 &&
+      device_info.IsAdreno()) {
     c += "  FLT4 input_gate;\n";
     c += "  FLT4 new_input;\n";
     c += "  FLT4 forget_gate;\n";
@@ -101,15 +105,6 @@ std::string LSTM::GetLSTMCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status LSTM::Compile(const CreationContext& creation_context) {
-  std::string code = GetLSTMCode(definition_, *creation_context.device);
-  RETURN_IF_ERROR(
-      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 int3 LSTM::GetGridSize() const {
   const int grid_x = dst_[0]->Batch();
   const int grid_y = dst_[0]->Slices();
@@ -117,7 +112,9 @@ int3 LSTM::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-LSTM CreateLSTM(const OperationDef& definition) { return LSTM(definition); }
+LSTM CreateLSTM(const OperationDef& definition, const DeviceInfo& device_info) {
+  return LSTM(definition, device_info);
+}
 
 }  // namespace cl
 }  // namespace gpu

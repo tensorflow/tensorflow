@@ -190,9 +190,9 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
       creation_context.device->GetInfo(),
       {{dst_tensors_names_[0], element_wise_code}}, &code_));
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code_, "main_function", *creation_context.context,
+      code_, "main_function", compiler_options_, *creation_context.context,
       *creation_context.device, &kernel_));
-  return PostCompileCheck();
+  return PostCompileCheck(creation_context.device->GetInfo());
 }
 
 ElementwiseOperation::ElementwiseOperation(ElementwiseOperation&& operation)

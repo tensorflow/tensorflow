@@ -26,10 +26,8 @@ namespace cl {
 
 class Transpose : public GPUOperation {
  public:
-  Transpose(const OperationDef& definition, const TransposeAttributes& attr)
-      : GPUOperation(definition), attr_(attr) {}
+  Transpose(const OperationDef& definition, const TransposeAttributes& attr);
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Transpose(Transpose&& operation);

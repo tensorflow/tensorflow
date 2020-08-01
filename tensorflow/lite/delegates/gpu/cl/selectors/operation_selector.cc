@@ -270,18 +270,20 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
                                   inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::LSTM: {
-      SelectLSTM(op_def, gpu_op);
+      SelectLSTM(op_def, creation_context.device->GetInfo(), gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
-      SelectMaxUnpooling(attr, op_def, gpu_op);
+      SelectMaxUnpooling(attr, op_def, creation_context.device->GetInfo(),
+                         gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      return SelectMean(attr, op_def, gpu_op);
+      return SelectMean(attr, op_def, creation_context.device->GetInfo(),
+                        gpu_op);
     }
     case OperationType::MUL: {
       if (inputs.size() == 2) {
@@ -333,7 +335,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node.operation.attributes);
-      SelectPooling(attr, op_def, gpu_op);
+      SelectPooling(attr, op_def, creation_context.device->GetInfo(), gpu_op);
       return absl::OkStatus();
     }
     case OperationType::PRELU: {

@@ -29,14 +29,13 @@ namespace cl {
 class Mean : public GPUOperation {
  public:
   Mean() = default;
-  explicit Mean(const OperationDef& definition) : GPUOperation(definition) {}
+  Mean(const OperationDef& definition, const DeviceInfo& device_info);
 
   absl::Status Tune(const TuningParameters& params) override {
     return absl::OkStatus();
   }
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Mean(Mean&& operation);
@@ -49,7 +48,7 @@ class Mean : public GPUOperation {
                                 const int3& work_group_size);
 };
 
-Mean CreateMean(const OperationDef& definition);
+Mean CreateMean(const OperationDef& definition, const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

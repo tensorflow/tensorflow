@@ -28,7 +28,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectLSTM(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
+void SelectLSTM(const OperationDef& op_def, const DeviceInfo& device_info,
+                std::unique_ptr<GPUOperation>* ptr);
 
 void SelectReLU(const CreationContext& creation_context,
                 const ReLUAttributes& attr, const OperationDef& op_def,
@@ -40,10 +41,12 @@ absl::Status SelectPReLU(const PReLUAttributes& attr,
                          std::unique_ptr<GPUOperation>* ptr);
 
 void SelectPooling(const Pooling2DAttributes& attr, const OperationDef& op_def,
+                   const DeviceInfo& device_info,
                    std::unique_ptr<GPUOperation>* ptr);
 
 void SelectMaxUnpooling(const MaxUnpooling2DAttributes& attr,
                         const OperationDef& op_def,
+                        const DeviceInfo& device_info,
                         std::unique_ptr<GPUOperation>* ptr);
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
@@ -70,6 +73,7 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
 absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
+                        const DeviceInfo& device_info,
                         std::unique_ptr<GPUOperation>* ptr);
 
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,

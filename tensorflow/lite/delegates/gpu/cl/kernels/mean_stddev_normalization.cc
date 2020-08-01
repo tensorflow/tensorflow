@@ -26,7 +26,9 @@ namespace gpu {
 namespace cl {
 
 MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition)
-    : GPUOperation(definition) {}
+    : GPUOperation(definition) {
+  code_ = GetNormalizationCode(definition_);
+}
 
 std::string MeanStdDevNormalization::GetNormalizationCode(
     const OperationDef& op_def) {
@@ -68,16 +70,6 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   c += "  }\n";
   c += "}\n";
   return c;
-}
-
-absl::Status MeanStdDevNormalization::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GetNormalizationCode(definition_);
-  RETURN_IF_ERROR(
-      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 int3 MeanStdDevNormalization::GetGridSize() const {

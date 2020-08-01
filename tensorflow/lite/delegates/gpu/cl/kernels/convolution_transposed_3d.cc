@@ -38,7 +38,19 @@ ConvolutionTransposed3D::ConvolutionTransposed3D(
       stride_(attr.stride.w, attr.stride.h, attr.stride.d),
       padding_(attr.padding.prepended.w, attr.padding.prepended.h,
                attr.padding.prepended.d),
-      block_size_(2, 2, 1, 2) {}
+      block_size_(2, 2, 1, 2) {
+  code_ = GenerateConvolutionTransposed3DCode(definition_, device,
+                                              weights_are_buffer_, block_size_);
+  if (device.IsPowerVR() && block_size_.y != 1) {
+    bool is_texture3d = definition_.src_tensors[0].storage_type ==
+                        TensorStorageType::TEXTURE_3D;
+    bool is_texture_array = definition_.src_tensors[0].storage_type ==
+                            TensorStorageType::TEXTURE_ARRAY;
+    if (is_texture3d || is_texture_array) {
+      compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+    }
+  }
+}
 
 ConvolutionTransposed3D::ConvolutionTransposed3D(
     ConvolutionTransposed3D&& operation)
@@ -354,32 +366,6 @@ std::string ConvolutionTransposed3D::GenerateConvolutionTransposed3DCode(
   }
   c += "}\n";
   return c;
-}
-
-absl::Status ConvolutionTransposed3D::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateConvolutionTransposed3DCode(
-      definition_, *creation_context.device, weights_are_buffer_, block_size_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (creation_context.device->IsPowerVR() && block_size_.y != 1) {
-    bool is_texture3d = definition_.src_tensors[0].storage_type ==
-                        TensorStorageType::TEXTURE_3D;
-    bool is_texture_array = definition_.src_tensors[0].storage_type ==
-                            TensorStorageType::TEXTURE_ARRAY;
-    if (is_texture3d || is_texture_array) {
-      options.push_back(CompilerOptions::CL_OPT_DISABLE);
-    }
-  }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status ConvolutionTransposed3D::BindArguments() {
