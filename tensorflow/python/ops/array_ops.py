@@ -5871,3 +5871,55 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     input = reshape(input, [-1])
     axis = 0
   return repeat_with_axis(input, repeats, axis, name)
+
+@tf_export(v1=["mask_fill"])
+@dispatch.add_dispatch_support
+def mask_fill(tensor, mask, name="mask_fill", value=0):
+  """Apply boolean mask fill to tensor.
+  
+  In general, an array `tesnsor` is updated to the `value` where 
+  corresponding index have `True` or `1` entry in `mask` array.
+
+  Examples:
+
+  ```python
+  tensor = [0, 1, 2, 3]
+  mask = np.array([True, False, True, False])
+  value = 5
+  tf.mask_fill(tensor, mask, value)  # [5, 1, 5, 3]
+  ```
+
+  Args:
+    tensor:  1-D Tensor.
+    mask:  1-D boolean Tensor, K <= N and K must be known statically.
+    name:  A name for this operation (optional).
+    value:  A 0-D int Tensor representing the value to fill in `tensor`. By
+      default, value is 0.
+
+  Returns:
+    1-dimensional tensor updatd by entries in `tensor` corresponding
+    to `True` values in `mask` to the `value`.
+
+  Raises:
+    ValueError:  If shapes do not conform.
+  """
+
+  def mask__fill_1d(tensor, mask, value):
+    """Mask tensor along dimension 0 with a 1-D mask."""
+    return tensor * (1 - tf.cast(mask, tf.int32)) + value * tf.cast(mask, tf.int32)
+
+  with ops.name_scope(name, values=[tensor, mask]):
+    tensor = ops.convert_to_tensor(tensor, name="tensor")
+    mask = ops.convert_to_tensor(mask, name="mask")
+
+    shape_mask = mask.get_shape()
+    ndims_mask = shape_mask.ndims
+    shape_tensor = tensor.get_shape()
+    if ndims_mask == 0:
+      raise ValueError("mask cannot be scalar.")
+    if ndims_mask is None:
+      raise ValueError(
+          "Number of mask dimensions must be specified, even if some dimensions"
+          " are None.  E.g. shape=[None] is ok, but shape=None is not.")
+    return mask_fill_1d(tensor, mask, value)
+
