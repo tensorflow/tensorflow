@@ -2976,7 +2976,7 @@ tf_cc_tests(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/framework:tensor_testutil.h",
+        "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
