@@ -152,6 +152,7 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java"],
     javacopts = JAVACOPTS,
     tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
         "v1only",
     ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
@@ -197,6 +198,9 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.DataTypeTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -223,6 +227,9 @@ java_test(
         "src/testdata/with_custom_op.lite",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -249,6 +256,9 @@ java_test(
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.InterpreterTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -321,6 +331,9 @@ java_test(
         "src/testdata/string.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.TensorTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -345,6 +358,7 @@ java_test(
     # Add customized libtensorflowlite_jni.so to java_path
     jvm_flags = ["-Djava.library.path=third_party/tensorflow/lite/testing"],
     tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
         "v1only",
     ],
     test_class = "org.tensorflow.lite.InterpreterCustomizedAndroidBuildTest",
@@ -401,6 +415,9 @@ filegroup(
     srcs = select({
         "//conditions:default": [":libtensorflowlite_jni.so"],
     }),
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
 )
 
 cc_library(
