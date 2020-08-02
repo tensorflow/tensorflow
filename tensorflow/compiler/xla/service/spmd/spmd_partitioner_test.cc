@@ -1489,6 +1489,50 @@ ENTRY entry {
                     op::Shape("f32[1,1,512,64]")));
 }
 
+TEST_F(SpmdPartitioningTest,
+       ConvolutionLhsTiledRhsTiled_UnevenDilatedRHSPartitioned) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[8,28,28,8] parameter(0)
+  %lhs.copy = f32[8,28,28,8] copy(%lhs), sharding={devices=[1,4,1,1]0,1,2,3}
+  %rhs = f32[8,14,14,64] parameter(1)
+  %rhs.copy = f32[8,14,14,64] copy(%rhs), sharding={devices=[1,4,1,1]0,1,2,3}
+  ROOT %conv = f32[1,1,8,64] convolution(%lhs.copy, %rhs.copy),
+    window={size=14x14 pad=0_-1x0_-1 rhs_dilate=2x2},
+    dim_labels=f01b_i01o->01bf, sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(), op::Reshape(),
+                                op::Constant(), op::Constant())),
+      op::Shape("f32[8,7,28,8]"));
+  auto rhs = AllOf(op::Pad(op::Parameter(), op::Constant()),
+                   op::Shape("f32[8,16,14,64]"));
+  auto selected_rhs = AllOf(
+      op::Select(op::Compare(),
+                 op::Copy(op::DynamicSlice(rhs, op::Constant(), op::Reshape(),
+                                           op::Constant(), op::Constant())),
+                 op::Broadcast()),
+      op::Shape("f32[8,4,14,64]"));
+  auto right_halo =
+      AllOf(op::CollectivePermute(op::Slice(lhs)), op::Shape("f32[8,2,28,8]"));
+  auto selected_lhs =
+      AllOf(op::DynamicSlice(
+                op::Pad(op::Concatenate(lhs, right_halo), op::Constant()),
+                op::Constant(), op::Reshape(), op::Constant(), op::Constant()),
+            op::Shape("f32[8,7,28,8]"));
+  EXPECT_THAT(root,
+              AllOf(op::AllReduce(op::Convolution(selected_lhs, selected_rhs)),
+                    op::Shape("f32[1,1,8,64]")));
+}
+
 TEST_F(SpmdPartitioningTest, ConvolutionLhsTiledRhsTiledWithPadding) {
   const char* const hlo_string = R"(
 HloModule module
