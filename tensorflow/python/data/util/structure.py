@@ -78,10 +78,10 @@ def normalize_element(element, element_signature=None):
 
   Args:
     element: A nested structure of individual components.
-    dtypes: (Optional.) A nested structure of `tf.DType` objects corresponding
-      to each component of `element`. If specified, it will be used to set the
-      exact type of output tensor when converting input components which
-      are not tensors themselves (e.g. numpy arrays, native python types, etc.)
+    element_signature: (Optional.) A nested structure of `tf.DType` objects corresponding
+      to each component of `element`. If specified, it will be used to set the exact type 
+      of output tensor when converting input components which are not tensors themselves 
+      (e.g. numpy arrays, native python types, etc.)
 
   Returns:
     A nested structure of `Tensor`, `Dataset`, `SparseTensor`, `RaggedTensor`,
