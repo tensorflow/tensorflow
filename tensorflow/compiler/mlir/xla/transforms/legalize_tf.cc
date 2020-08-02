@@ -4423,6 +4423,8 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
+    Builder builder(rewriter.getContext());
+    auto loc = op.getLoc();
     auto data_type = op.data().getType().template dyn_cast<RankedTensorType>();
     if (!data_type) return failure();
     int64_t data_rank = data_type.getRank();
@@ -4448,10 +4450,27 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
     // Broadccast the initial value for reduction. This will become the
     // 'operand' parameter to scatter to for the final scatter op.
     Value init = ConcreteClass::GetInitialValue(data_type.getElementType(),
-                                                op.getLoc(), &rewriter);
-    auto broadcasted_init = rewriter.create<mhlo::BroadcastOp>(
-        op.getLoc(), output_type, init,
-        GetI64ElementsAttr(output_shape, &rewriter));
+                                                loc, &rewriter);
+    ArrayRef<int64_t> data_shape = data_type.getShape();
+    llvm::SmallVector<Value, 4> shape_values;
+    shape_values.reserve(output_shape.size());
+    shape_values.push_back(rewriter.create<mlir::ConstantOp>(
+        loc, builder.getIndexAttr(output_shape[0])));
+    for (int i = segment_ids_rank; i < data_shape.size(); ++i) {
+      if (output_shape[i - segment_ids_rank + 1] == ShapedType::kDynamicSize) {
+        Value dim = rewriter.create<mlir::DimOp>(loc, op.data(), i);
+        shape_values.push_back(dim);
+      } else {
+        shape_values.push_back(rewriter.create<mlir::ConstantOp>(
+            loc, builder.getIndexAttr(output_shape[i - segment_ids_rank + 1])));
+      }
+    }
+    Value shape_value = rewriter.create<TensorFromElementsOp>(loc, shape_values);
+    auto dims = DenseIntElementsAttr::get(
+        RankedTensorType::get({0}, builder.getIntegerType(64)),
+        SmallVector<int64_t, 1>{});
+    auto broadcasted_init = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+        loc, output_type, init, shape_value, dims);
 
     // Parameters for the generated scatter op.
     SmallVector<int64_t, 1> inserted_window_dims(1, 0);
@@ -4466,7 +4485,7 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
         rewriter.getI64IntegerAttr(index_vector_dim), rewriter.getContext());
 
     auto scatter =
-        rewriter.create<ScatterOp>(op.getLoc(), op.getType(), broadcasted_init,
+        rewriter.create<ScatterOp>(loc, op.getType(), broadcasted_init,
                                    op.segment_ids(), op.data(), dims_attr);
     BuildReduceBody<ReductionOp>(data_type.getElementType(),
                                  &scatter.update_computation(), &rewriter);

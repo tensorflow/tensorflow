@@ -3520,7 +3520,10 @@ func @assert(%arg0: tensor<i1>, %arg1: tensor<*xf32>) {
 func @unsorted_segment_sum(%data: tensor<8x16x64xf32>, %segment_ids : tensor<8x16xi32>) -> (tensor<4x64xf32>) {
   %num_segments = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[ZERO:%.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: [[INIT:%.*]] = "mhlo.broadcast"([[ZERO]]) {broadcast_sizes = dense<[4, 64]> : tensor<2xi64>} : (tensor<f32>) -> tensor<4x64xf32>
+  // CHECK: [[FOUR:%.*]] = constant 4 : index
+  // CHECK: [[SIXFOUR:%.*]] = constant 64 : index
+  // CHECK: [[SHAPES:%.*]] = tensor_from_elements([[FOUR]], [[SIXFOUR]]) : tensor<2xindex>
+  // CHECK: [[INIT:%.*]] = "mhlo.dynamic_broadcast_in_dim"([[ZERO]], [[SHAPES]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<2xindex>) -> tensor<4x64xf32>
   // CHECK: [[SCATTER:%.*]] = "mhlo.scatter"([[INIT]], [[SI]], [[DATA]]) ( {
   // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
   // CHECK:   [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]] : tensor<f32>
@@ -3531,13 +3534,37 @@ func @unsorted_segment_sum(%data: tensor<8x16x64xf32>, %segment_ids : tensor<8x1
   return %0: tensor<4x64xf32>
 }
 
+// CHECK-LABEL: @dynamic_unsorted_segment_sum
+// CHECK-SAME: [[DATA:%.*]]: tensor<?x?x?xf32>
+// CHECK-SAME: [[SI:%.*]]: tensor<?x?xi32>
+func @dynamic_unsorted_segment_sum(%data: tensor<?x?x?xf32>, %segment_ids : tensor<?x?xi32>) -> (tensor<?x?xf32>) {
+  %num_segments = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: [[ZERO:%.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[FOUR:%.*]] = constant 4 : index
+  // CHECK: [[TWO:%.*]] = constant 2 : index
+  // CHECK: [[DIM:%.*]] = dim %arg0, [[TWO]] : tensor<?x?x?xf32>
+  // CHECK: [[SHAPES:%.*]] = tensor_from_elements([[FOUR]], [[DIM]]) : tensor<2xindex>
+  // CHECK: [[INIT:%.*]] = "mhlo.dynamic_broadcast_in_dim"([[ZERO]], [[SHAPES]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<2xindex>) -> tensor<4x?xf32>
+  // CHECK: [[SCATTER:%.*]] = "mhlo.scatter"([[INIT]], [[SI]], [[DATA]]) ( {
+  // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+  // CHECK:   [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]] : tensor<f32>
+  // CHECK:   "mhlo.return"([[ADD]])
+  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x?xf32>, tensor<?x?xi32>, tensor<?x?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: return [[SCATTER]]
+  %0 = "tf.UnsortedSegmentSum"(%data, %segment_ids, %num_segments) : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<i32>) -> (tensor<?x?xf32>)
+  return %0: tensor<?x?xf32>
+}
+
 // CHECK-LABEL: @unsorted_segment_prod
 // CHECK-SAME: [[DATA:%.*]]: tensor<8x?x64xf32>
 // CHECK-SAME: [[SI:%.*]]: tensor<?x16xi32>
 func @unsorted_segment_prod(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x16xi32>) -> (tensor<4x?xf32>) {
   %num_segments = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[ONE:%.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK: [[INIT:%.*]] = "mhlo.broadcast"([[ONE]]) {broadcast_sizes = dense<[4, 64]> : tensor<2xi64>} : (tensor<f32>) -> tensor<4x64xf32>
+  // CHECK: [[FOUR:%.*]] = constant 4 : index
+  // CHECK: [[SIXFOUR:%.*]] = constant 64 : index
+  // CHECK: [[SHAPES:%.*]] = tensor_from_elements([[FOUR]], [[SIXFOUR]]) : tensor<2xindex>
+  // CHECK: [[INIT:%.*]] = "mhlo.dynamic_broadcast_in_dim"([[ONE]], [[SHAPES]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<2xindex>) -> tensor<4x64xf32>
   // CHECK: [[SCATTER:%.*]] = "mhlo.scatter"([[INIT]], [[SI]], [[DATA]]) ( {
   // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
   // CHECK:   [[MUL:%.*]] = mhlo.multiply [[LHS]], [[RHS]] : tensor<f32>
