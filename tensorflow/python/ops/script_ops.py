@@ -39,7 +39,6 @@ from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import dispatch
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -71,7 +70,7 @@ def _maybe_copy_to_context_device(tensor, device_name):
 class EagerFunc(object):
   """A wrapper for a function owned by an EagerPyFunc."""
 
-  def __init__(self, func, Tout, is_grad_func):
+  def __init__(self, func, Tout, is_grad_func, use_tape_cache=True):
     """Constructs an EagerFunc.
 
     Args:
@@ -80,10 +79,14 @@ class EagerFunc(object):
         None.
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
+      use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
+        NOTE(lithuak): see the note for `_eager_py_func`.
+        This parameter should be removed once the #35084 issue is fixed.
     """
     self._func = func
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
+    self._use_tape_cache = use_tape_cache
 
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
@@ -147,7 +150,8 @@ class EagerFunc(object):
         else:
           outputs = _maybe_copy_to_context_device(
               self._convert(ret, dtype=self._out_dtypes[0]), device_name)
-    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    if self._use_tape_cache:
+      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
     return outputs
 
 
@@ -277,7 +281,8 @@ def _internal_py_func(func,
                       stateful=None,
                       eager=False,
                       is_grad_func=False,
-                      name=None):
+                      name=None,
+                      use_tape_cache=True):
   """See documentation for py_func and eager_py_func."""
   if not callable(func):
     raise ValueError("Expected func to be callable, got func of type {}".format(
@@ -293,7 +298,7 @@ def _internal_py_func(func,
     Tout = [Tout]
 
   if eager:
-    func = EagerFunc(func, Tout, is_grad_func)
+    func = EagerFunc(func, Tout, is_grad_func, use_tape_cache=use_tape_cache)
 
   # Tying the registered function's lifetime with the current default graph is
   # not reliable. For example, Estimator-based binaries may switch graphs in
@@ -370,8 +375,25 @@ def _EagerPyFuncGrad(op, *dy):
         is_grad_func=True)
 
 
+# NOTE(lithuak): this function as a layer of indirection was added with one
+# specific purpose: as a workaround for github issue #35084.
+# It does all the same as `eager_py_func` used to do with one difference:
+# it can be used to instruct underlying EagerFunc not to use `tape_cache`
+# to avoid memory leak. When the issue #35084 is fixed - this function should
+# be removed, its body should be moved back to become the body of
+# `eager_py_func` and all the call sites should be reverted to
+# using `eager_py_func` without `use_tape_cache` argument of any value.
+def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
+                               name=name, use_tape_cache=use_tape_cache)
+
+  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
+                           name=name, use_tape_cache=use_tape_cache)
+
+
 @tf_export("py_function")
-@dispatch.add_dispatch_support
 def eager_py_func(func, inp, Tout, name=None):
   """Wraps a python function into a TensorFlow op that executes it eagerly.
 
@@ -451,12 +473,8 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
-  if ops.executing_eagerly_outside_functions():
-    with ops.device(context.context().host_address_space()):
-      return _internal_py_func(
-          func=func, inp=inp, Tout=Tout, eager=True, name=name)
-
-  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
+  return _eager_py_func(func=func, inp=inp, Tout=Tout,
+                        name=name, use_tape_cache=True)
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):
@@ -553,7 +571,6 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     stateful argument making all functions stateful.
     """)
 @tf_export(v1=["py_func"])
-@dispatch.add_dispatch_support
 def py_func(func, inp, Tout, stateful=True, name=None):
   return py_func_common(func, inp, Tout, stateful, name=name)
 
@@ -562,7 +579,6 @@ py_func.__doc__ = "%s" % py_func_common.__doc__
 
 
 @tf_export("numpy_function")
-@dispatch.add_dispatch_support
 def numpy_function(func, inp, Tout, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
