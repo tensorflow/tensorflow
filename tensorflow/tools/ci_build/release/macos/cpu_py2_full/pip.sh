@@ -17,33 +17,32 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-# Install latest bazel
-update_bazel_macos
-which bazel
-bazel version
-set_bazel_outdir
+install_bazelisk
+
+# Pick a more recent version of xcode
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Install macos pip dependencies
 install_macos_pip_deps sudo
 
-# Export required variables for running pip.sh
+# Export required variables for running pip_new.sh
 export OS_TYPE="MACOS"
 export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python2'
+export TF_BUILD_BOTH_CPU_PACKAGES=1
 
 # Run configure.
-export TF_NEED_CUDA=0
-export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=opt --config=v2"
+export TF_BUILD_FLAGS="--config=release_cpu_macos"
 export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
 export TF_TEST_TARGETS="//tensorflow/python/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS='-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py2,-v1only,-gpu,-tpu,-benchmark-test'
-export IS_NIGHTLY=0 # Not nightly
+#export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
 export TF_PROJECT_NAME="tensorflow"
 export TF_PIP_TEST_ROOT="pip_test"
 

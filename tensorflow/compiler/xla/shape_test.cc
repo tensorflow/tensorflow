@@ -45,13 +45,13 @@ class ShapeTest : public ::testing::Test {
       ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
   const Shape nested_tuple_ =
       ShapeUtil::MakeTupleShape({tuple_, matrix_, token_});
-  const Shape dyanmic_matrix_ =
+  const Shape dynamic_matrix_ =
       ShapeUtil::MakeShape(S32, {5, 2}, {true, false});
 };
 
 TEST_F(ShapeTest, ShapeToFromProto) {
   for (const Shape& shape : {opaque_, token_, scalar_, matrix_, matrix2_,
-                             tuple_, nested_tuple_, dyanmic_matrix_}) {
+                             tuple_, nested_tuple_, dynamic_matrix_}) {
     Shape shape_copy(shape.ToProto());
     EXPECT_TRUE(ShapeUtil::Equal(shape, shape_copy))
         << shape << " != " << shape_copy;
@@ -215,7 +215,7 @@ TEST_F(ShapeTest, ProgramShapeToString) {
 TEST_F(ShapeTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
       {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_, tuple_,
-       nested_tuple_, dyanmic_matrix_}));
+       nested_tuple_, dynamic_matrix_}));
 }
 
 }  // namespace

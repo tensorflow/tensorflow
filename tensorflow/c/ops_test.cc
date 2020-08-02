@@ -133,7 +133,7 @@ TEST(OpsTest, TestShapeInference_VectorizeFunction) {
 
 TEST(OpsTest, AttributeAccessors) {
   TF_OpDefinitionBuilder* builder =
-      TF_NewOpDefinitionBuilder("AttributeAccesorsOp");
+      TF_NewOpDefinitionBuilder("AttributeAccessorsOp");
   TF_OpDefinitionBuilderAddAttr(builder, "foo1: int >= 2");
   TF_OpDefinitionBuilderAddAttr(builder, "foo2: string=\"my string\"");
   TF_OpDefinitionBuilderSetIsCommutative(builder, true);
@@ -151,7 +151,7 @@ TEST(OpsTest, AttributeAccessors) {
   op_list.ParseFromArray(op_list_buffer->data, op_list_buffer->length);
   bool found = false;
   for (const auto& op : op_list.op()) {
-    if (op.name() == "AttributeAccesorsOp") {
+    if (op.name() == "AttributeAccessorsOp") {
       ASSERT_TRUE(op.is_commutative());
       ASSERT_TRUE(op.is_aggregate());
       ASSERT_TRUE(op.allows_uninitialized_input());
@@ -314,6 +314,17 @@ TEST(OpsTest, ShapeInferenceSubshape) {
       c.DebugString(*reinterpret_cast<shape_inference::ShapeHandle*>(handle)));
   TF_DeleteStatus(status);
   TF_DeleteShapeHandle(handle);
+}
+
+TEST(OpsTest, ShapeInferenceScalarShape) {
+  NodeDef def;
+  shape_inference::InferenceContext c(0, def, MakeOpDef(0, 0), {S({})}, {}, {},
+                                      {});
+  TF_ShapeHandle* TF_scalar_shape = TF_ShapeInferenceContextScalar(C_CTX(&c));
+  shape_inference::ShapeHandle* scalar_shape =
+      reinterpret_cast<shape_inference::ShapeHandle*>(TF_scalar_shape);
+  ASSERT_EQ("[]", c.DebugString(*scalar_shape));
+  TF_DeleteShapeHandle(TF_scalar_shape);
 }
 
 }  // namespace

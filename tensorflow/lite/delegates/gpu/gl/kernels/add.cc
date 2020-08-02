@@ -34,19 +34,27 @@ namespace {
 
 class Add : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto attr = absl::any_cast<AddAttributes>(ctx.node->operation.attributes);
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
+    const auto& attr =
+        absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
     auto adds = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
     auto scalar = absl::get_if<float>(&attr.param);
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+
+    const auto* hwc_tensor =
+        absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+    if (hwc_tensor) {
+      return absl::UnimplementedError(
+          "Add does not support HWC constant tensor");
+    }
 
     if (!adds && !scalar) {
       // check if it is a broadcast
-      if (inputs.size() == 2 &&
-          inputs[0]->tensor.shape != inputs[1]->tensor.shape &&
-          inputs[1]->tensor.shape.h == 1 && inputs[1]->tensor.shape.w == 1 &&
-          inputs[0]->tensor.shape.c == inputs[1]->tensor.shape.c) {
+      if (ctx.input_shapes.size() == 2 &&
+          ctx.input_shapes[0] != ctx.input_shapes[1] &&
+          ctx.input_shapes[1][1] == 1 && ctx.input_shapes[1][2] == 1 &&
+          ctx.input_shapes[0][3] == ctx.input_shapes[1][3]) {
+        // TODO(b/147771327): investigate why input_data_1[gid.z] worked before
         *generated_code = {
             /*parameters=*/{},
             /*objects=*/{},
@@ -54,18 +62,18 @@ class Add : public NodeShader {
             /*workload=*/uint3(),
             /*workgroup=*/uint3(),
             /*source_code=*/
-            "value_0 = $input_data_1[gid.z]$ + $input_data_0[gid.x, gid.y, "
-            "gid.z]$;",
+            "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ + "
+            "          $input_data_1[0, 0, gid.z]$;",
             /*input=*/IOStructure::ONLY_DEFINITIONS,
             /*output=*/IOStructure::AUTO,
         };
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::string code = "value_0 = value_0";
-      for (int index = 1; index < inputs.size(); ++index) {
-        if (inputs[index]->tensor.shape != inputs[0]->tensor.shape) {
-          return InvalidArgumentError("Shapes are not equal");
+      for (int index = 1; index < ctx.input_shapes.size(); ++index) {
+        if (ctx.input_shapes[index] != ctx.input_shapes[0]) {
+          return absl::InvalidArgumentError("Shapes are not equal");
         }
         absl::StrAppend(&code, " + value_", index);
       }
@@ -80,7 +88,7 @@ class Add : public NodeShader {
           /*input=*/IOStructure::AUTO,
           /*output=*/IOStructure::AUTO,
       };
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (scalar) {
@@ -95,14 +103,14 @@ class Add : public NodeShader {
           /*output=*/IOStructure::AUTO,
       };
     } else {
-      auto shape = inputs[0]->tensor.shape;
       *generated_code = {
           /*parameters=*/{},
           /*objects=*/{{"add_buffer", MakeReadonlyObject(adds->data)}},
           /*shared_variables=*/{},
           // Declare workload explicitly because shader depends on gid.z.
           /*workload=*/
-          uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4)),
+          uint3(ctx.input_shapes[0][2], ctx.input_shapes[0][1],
+                DivideRoundUp(ctx.input_shapes[0][3], 4)),
           /*workgroup=*/uint3(),
           /*source_code=*/"value_0 += $add_buffer[gid.z]$;",
           /*input=*/IOStructure::AUTO,
@@ -110,7 +118,7 @@ class Add : public NodeShader {
       };
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

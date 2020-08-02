@@ -134,10 +134,10 @@ class ClientLibrary {
 
   tensorflow::mutex service_mutex_;  // Guards the singleton creation state.
   std::unordered_map<se::Platform::Id, std::unique_ptr<LocalInstance>>
-      local_instances_ GUARDED_BY(service_mutex_);
+      local_instances_ TF_GUARDED_BY(service_mutex_);
 
   std::unordered_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>
-      compile_only_instances_ GUARDED_BY(service_mutex_);
+      compile_only_instances_ TF_GUARDED_BY(service_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ClientLibrary);
 };

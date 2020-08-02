@@ -87,6 +87,40 @@ Status DecodeImageShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+Status DecodeImageV2ShapeFn(InferenceContext* c) {
+  ShapeHandle unused;
+  int32 channels;
+  bool expand_animations;
+  DimensionHandle channels_dim;
+
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+  TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
+  TF_RETURN_IF_ERROR(c->GetAttr("expand_animations", &expand_animations));
+
+  if (channels == 0) {
+    channels_dim = c->UnknownDim();
+  } else {
+    if (channels < 0) {
+      return errors::InvalidArgument("channels must be non-negative, got ",
+                                     channels);
+    }
+    channels_dim = c->MakeDim(channels);
+  }
+
+  // `expand_animations` set to true will return 4-D shapes for GIF. 3-D shapes
+  // will be returned for jpg, png, and bmp. `expand_animations` set to false
+  // will always return 3-D shapes for all (jpg, png, bmp, gif).
+  if (expand_animations) {
+    c->set_output(0, c->UnknownShape());
+    return Status::OK();
+  } else {
+    c->set_output(0,
+                  c->MakeShape({InferenceContext::kUnknownDim,
+                                InferenceContext::kUnknownDim, channels_dim}));
+    return Status::OK();
+  }
+}
+
 Status EncodeImageShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &unused));
@@ -228,7 +262,9 @@ REGISTER_OP("ResizeArea")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, half, float, double,"
+        "bfloat16}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn);
 
@@ -237,7 +273,9 @@ REGISTER_OP("ResizeBicubic")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, half, float, double,"
+        "bfloat16}")
     .Attr("align_corners: bool = false")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
@@ -262,7 +300,7 @@ REGISTER_OP("ResizeBilinear")
     .Output("resized_images: float")
     .Attr(
         "T: {int8, uint8, int16, uint16, int32, int64, bfloat16, half, "
-        "float, double}")
+        "float, double, bfloat16}")
     .Attr("align_corners: bool = false")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
@@ -337,7 +375,9 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: T")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, half, float,"
+        "double, bfloat16}")
     .Attr("align_corners: bool = false")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
@@ -405,6 +445,17 @@ REGISTER_OP("RandomCrop")
       return Status::OK();
     });
 // TODO(shlens): Support variable rank in RandomCrop.
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DecodeImage")
+    .Input("contents: string")
+    // Setting `channels` to 0 means using the inherent number of channels in
+    // the image.
+    .Attr("channels: int = 0")
+    .Attr("dtype: {uint8, uint16, float32} = DT_UINT8")
+    .Output("image: dtype")
+    .Attr("expand_animations: bool = true")
+    .SetShapeFn(DecodeImageV2ShapeFn);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("DecodeJpeg")
@@ -750,6 +801,41 @@ REGISTER_OP("ExtractGlimpse")
                                    c->Dim(input, 3));
     });
 
+REGISTER_OP("ExtractGlimpseV2")
+    .Input("input: float")
+    .Input("size: int32")
+    .Input("offsets: float")
+    .Output("glimpse: float")
+    .Attr("centered: bool = true")
+    .Attr("normalized: bool = true")
+    .Attr("uniform_noise: bool = true")
+    .Attr("noise: string = 'uniform'")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      ShapeHandle offsets;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &offsets));
+
+      DimensionHandle batch_dim;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(input, 0), c->Dim(offsets, 0), &batch_dim));
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(offsets, 1), 2, &unused));
+
+      bool uniform_noise = false;
+      TF_RETURN_IF_ERROR(c->GetAttr("uniform_noise", &uniform_noise));
+      string noise;
+      TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
+      if (uniform_noise && (!noise.empty() && noise != "uniform")) {
+        return errors::InvalidArgument(
+            "The uniform_noise and noise should not be specified at the same "
+            "time");
+      }
+
+      return SetOutputToSizedImage(c, batch_dim, 1 /* size_input_idx */,
+                                   c->Dim(input, 3));
+    });
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("CropAndResize")
@@ -1021,4 +1107,22 @@ REGISTER_OP("GenerateBoundingBoxProposals")
       c->set_output(1, prob_shape);
       return Status::OK();
     });
+
+// TODO(ringwalt): Add a "fill_constant" argument for constant mode (default 0).
+// V2 op supports output_shape. V1 op is in contrib.
+REGISTER_OP("ImageProjectiveTransformV2")
+    .Input("images: dtype")
+    .Input("transforms: float32")
+    .Input("output_shape: int32")
+    .Attr("dtype: {uint8, int32, int64, float16, float32, float64}")
+    .Attr("interpolation: string")
+    .Attr("fill_mode: string = 'CONSTANT'")
+    .Output("transformed_images: dtype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      return SetOutputToSizedImage(c, c->Dim(input, 0), 2 /* size_input_idx */,
+                                   c->Dim(input, 3));
+    });
+
 }  // namespace tensorflow

@@ -37,7 +37,6 @@ class Environment {
   explicit Environment(CLDevice&& device, CLContext&& context,
                        CLCommandQueue&& queue,
                        ProfilingCommandQueue&& profiling_queue);
-
   // Move only
   Environment(Environment&& environment);
   Environment& operator=(Environment&& environment);
@@ -56,7 +55,13 @@ class Environment {
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
   bool IsSupported(CalculationsPrecision precision) const;
   std::vector<TensorStorageType> GetSupportedStorages() const;
+  // returns storage types that support zero clamping when reading OOB in HW
+  // (Height/Width) dimensions.
+  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
+      const;
   bool IsSupported(TensorStorageType storage_type) const;
+
+  absl::Status Init();
 
   void SetHighPerformance() const;
   void SetDefaultPerformance() const;
@@ -71,11 +76,10 @@ class Environment {
 };
 
 TensorStorageType GetFastestStorageType(const CLDevice& gpu);
+TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
+    const CLDevice& gpu);
 
-Status CreateEnvironment(Environment* result);
-Status CreateGLCompatibleEnvironment(cl_context_properties egl_context,
-                                     cl_context_properties egl_display,
-                                     Environment* result);
+absl::Status CreateEnvironment(Environment* result);
 
 }  // namespace cl
 }  // namespace gpu

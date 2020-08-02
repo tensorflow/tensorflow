@@ -18,11 +18,13 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 
 namespace tensorflow {
 
-UnboundedWorkQueue::UnboundedWorkQueue(Env* env, const string& thread_name)
-    : env_(env), thread_name_(thread_name) {}
+UnboundedWorkQueue::UnboundedWorkQueue(Env* env, const string& thread_name,
+                                       const ThreadOptions& thread_options)
+    : env_(env), thread_name_(thread_name), thread_options_(thread_options) {}
 
 UnboundedWorkQueue::~UnboundedWorkQueue() {
   {
@@ -71,6 +73,11 @@ void UnboundedWorkQueue::Schedule(WorkFunction fn) {
 }
 
 void UnboundedWorkQueue::PooledThreadFunc() {
+  // If specified, make sure the thread runs on the correct NUMA node.
+  if (thread_options_.numa_node != port::kNUMANoAffinity) {
+    port::NUMASetThreadNodeAffinity(thread_options_.numa_node);
+  }
+
   while (true) {
     WorkFunction fn;
     {

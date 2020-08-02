@@ -79,7 +79,7 @@ void ConditionalAccumulatorBase::TryTakeGrad(int num_required,
       if (!already_cancelled) {
         takegrad_attempts_.emplace_back(
             num_required, callback, ctx, cm, token,
-            [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+            [this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
               if (counter_ >= attempt->elements_requested) {
                 bool successful_take_grad = TakeGradLockedHelper(
                     attempt->context, attempt->done_callback);

@@ -205,12 +205,11 @@ class TensorCord {
    public:
     CordRep(absl::string_view view, CordRepReleaser releaser,
             void* arg = nullptr)
-        : is_inline_(false), rep_{.external = {view, releaser, arg}} {}
+        : is_inline_(false), rep_(view, releaser, arg) {}
 
     // **WARNING** Only use this constructor if
     //    view.size() < CordRep::kMaxInlineSize.
-    explicit CordRep(absl::string_view view)
-        : is_inline_(true), rep_{.internal = InlineFromView(view)} {}
+    explicit CordRep(absl::string_view view) : is_inline_(true), rep_(view) {}
 
     ~CordRep() override;
 
@@ -231,6 +230,10 @@ class TensorCord {
       absl::string_view view;
       CordRepReleaser releaser;
       void* arg;
+
+      ExternalRep(absl::string_view view_, CordRepReleaser releaser_,
+                  void* arg_)
+          : view(view_), releaser(releaser_), arg(arg_) {}
     };
 
     // We save the size in the first byte, so subtract 1.
@@ -242,19 +245,21 @@ class TensorCord {
     // string itself.
     using InlineRep = std::array<char, sizeof(ExternalRep)>;
 
-    static InlineRep InlineFromView(absl::string_view view) {
-      DCHECK_LT(view.size(), kMaxInlineSize);
-      InlineRep rep;
-      *reinterpret_cast<uint8*>(rep.data()) = view.size();
-      std::memcpy(static_cast<char*>(rep.data() + 1), view.data(), view.size());
-      return rep;
-    }
-
     // Member variables.
     const bool is_inline_;
-    const union {
+    const union _rep_union {
       InlineRep internal;
       ExternalRep external;
+
+      _rep_union(absl::string_view view, CordRepReleaser releaser, void* arg)
+          : external(view, releaser, arg) {}
+
+      explicit _rep_union(absl::string_view view) {
+        DCHECK_LT(view.size(), kMaxInlineSize);
+        *reinterpret_cast<uint8*>(internal.data()) = view.size();
+        std::memcpy(static_cast<char*>(internal.data() + 1), view.data(),
+                    view.size());
+      }
     } rep_;
   };
 

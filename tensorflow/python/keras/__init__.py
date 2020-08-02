@@ -15,7 +15,7 @@
 """Implementation of the Keras API meant to be a high-level API for TensorFlow.
 
 Detailed documentation and user guides are available at
-[keras.io](https://keras.io).
+[tensorflow.org](https://www.tensorflow.org/guide/keras).
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -32,13 +32,6 @@ from tensorflow.python.keras.engine.training import Model
 
 from tensorflow.python.util.tf_export import keras_export
 
-if tf2.enabled():
-  __version__ = '2.3.0-tf'
-else:
-  __version__ = '2.2.4-tf'
+__version__ = '2.4.0'
 
 keras_export('keras.__version__').export_constant(__name__, '__version__')
-
-del absolute_import
-del division
-del print_function

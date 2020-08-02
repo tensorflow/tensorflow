@@ -72,26 +72,34 @@ class DecodeRawOpTest(test.TestCase):
         [[0x01020304]],
         parsing_ops.decode_raw(
             ["\x01\x02\x03\x04"], dtypes.int32, little_endian=False))
+    self.assertAllEqual([[1 + 2j]],
+                        parsing_ops.decode_raw([b"\x00\x00\x80?\x00\x00\x00@"],
+                                               dtypes.complex64,
+                                               little_endian=True))
+    self.assertAllEqual([[1 + 2j]],
+                        parsing_ops.decode_raw([b"?\x80\x00\x00@\x00\x00\x00"],
+                                               dtypes.complex64,
+                                               little_endian=False))
 
   def testToFloat16(self):
     result = np.matrix([[1, -2, -3, 4]], dtype="<f2")
     self.assertAllEqual(
-        result, parsing_ops.decode_raw([result.tostring()], dtypes.float16))
+        result, parsing_ops.decode_raw([result.tobytes()], dtypes.float16))
 
   def testToBool(self):
     result = np.matrix([[True, False, False, True]], dtype="<b1")
-    self.assertAllEqual(
-        result, parsing_ops.decode_raw([result.tostring()], dtypes.bool))
+    self.assertAllEqual(result,
+                        parsing_ops.decode_raw([result.tobytes()], dtypes.bool))
 
   def testToComplex64(self):
     result = np.matrix([[1 + 1j, 2 - 2j, -3 + 3j, -4 - 4j]], dtype="<c8")
     self.assertAllEqual(
-        result, parsing_ops.decode_raw([result.tostring()], dtypes.complex64))
+        result, parsing_ops.decode_raw([result.tobytes()], dtypes.complex64))
 
   def testToComplex128(self):
     result = np.matrix([[1 + 1j, 2 - 2j, -3 + 3j, -4 - 4j]], dtype="<c16")
     self.assertAllEqual(
-        result, parsing_ops.decode_raw([result.tostring()], dtypes.complex128))
+        result, parsing_ops.decode_raw([result.tobytes()], dtypes.complex128))
 
   def testEmptyStringInput(self):
     for num_inputs in range(3):

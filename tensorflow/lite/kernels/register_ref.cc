@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/kernels/register_ref.h"
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -132,6 +136,9 @@ TfLiteRegistration* Register_MIRROR_PAD();
 TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_HARD_SWISH_REF();
 TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
+TfLiteRegistration* Register_SELECT_V2();
+TfLiteRegistration* Register_SEGMENT_SUM();
+TfLiteRegistration* Register_BATCH_MATMUL_REF();
 
 namespace {
 
@@ -284,6 +291,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE());
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH_REF());
+  AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
+  AddBuiltin(BuiltinOperator_SEGMENT_SUM, Register_SEGMENT_SUM());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

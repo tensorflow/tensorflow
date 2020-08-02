@@ -143,11 +143,10 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         s = Status::OK();
         *end_of_sequence = true;
 
-        // NOTE(mrry): We ignore any tensors returned by the
-        // finalize function.
+        // NOTE(mrry): We ignore any tensors returned by the finalize function.
         std::vector<Tensor> ignored;
-        TF_RETURN_IF_ERROR(
-            instantiated_finalize_func_->RunInstantiated(state_, &ignored));
+        TF_RETURN_IF_ERROR(instantiated_finalize_func_->RunWithBorrowedArgs(
+            ctx, state_, &ignored));
         finalized_ = true;
       }
       return s;
@@ -159,11 +158,23 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      return errors::Unimplemented(
+          "GeneratorDataset does not support checkpointing.");
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      return errors::Unimplemented(
+          "GeneratorDataset does not support checkpointing.");
+    }
+
    private:
     mutex mu_;
-    bool initialized_ GUARDED_BY(mu_) = false;
-    bool finalized_ GUARDED_BY(mu_) = false;
-    std::vector<Tensor> state_ GUARDED_BY(mu_);
+    bool initialized_ TF_GUARDED_BY(mu_) = false;
+    bool finalized_ TF_GUARDED_BY(mu_) = false;
+    std::vector<Tensor> state_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_init_func_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_next_func_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_finalize_func_;

@@ -3,6 +3,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_mobile",
     "tf_cc_test",
     "tf_kernel_library",
 )
@@ -10,14 +11,6 @@ load(
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
-)
-
-# TODO(mrry): Remove this empty forwarding library.
-cc_library(
-    name = "dataset",
-    srcs = [],
-    hdrs = ["dataset.h"],
-    deps = ["//tensorflow/core:framework"],
 )
 
 cc_library(
@@ -33,12 +26,12 @@ cc_library(
         ":map_dataset_op",
         ":name_utils",
         ":range_dataset_op",
-        ":serialization_utils",
         ":take_dataset_op",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -46,7 +39,8 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/kernels:ops_testutil",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -60,7 +54,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -68,6 +64,7 @@ tf_cc_test(
     name = "dataset_utils_test",
     srcs = ["dataset_utils_test.cc"],
     deps = [
+        ":dataset_test_base",
         ":dataset_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
@@ -121,6 +118,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+        "//tensorflow/core/kernels/data:serialization_utils",
     ],
 )
 
@@ -155,14 +153,19 @@ cc_library(
         ":dataset_utils",
         ":single_threaded_executor",
         ":stats_utils",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
-        "@com_google_absl//absl/time",
-    ],
+        "//tensorflow/core/profiler/lib:traceme",
+    ] + if_not_mobile([
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+    ]),
 )
 
 cc_library(
@@ -170,9 +173,10 @@ cc_library(
     srcs = ["single_threaded_executor.cc"],
     hdrs = ["single_threaded_executor.h"],
     deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/common_runtime:entry",
+        "//tensorflow/core/common_runtime:local_executor_params",
     ],
     alwayslink = 1,
 )
@@ -468,6 +472,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 
@@ -479,6 +485,7 @@ tf_cc_test(
         ":dataset_test_base",
         ":dataset_utils",
         ":iterator_ops",
+        ":name_utils",
         ":parallel_map_dataset_op",
         ":range_dataset_op",
         ":stats_utils",
@@ -606,6 +613,9 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -613,6 +623,7 @@ tf_cc_test(
     name = "parallel_interleave_dataset_op_test",
     size = "small",
     srcs = ["parallel_interleave_dataset_op_test.cc"],
+    tags = ["notsan"],  # TODO(b/147147071): Remove this tag once bug fix lands.
     deps = [
         ":captured_function",
         ":dataset_test_base",
@@ -669,6 +680,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 
@@ -903,10 +916,9 @@ tf_cc_test(
     srcs = ["tensor_dataset_op_test.cc"],
     deps = [
         ":dataset_test_base",
+        ":dataset_utils",
         ":tensor_dataset_op",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1124,6 +1136,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1190,6 +1203,7 @@ tf_kernel_library(
     hdrs = ["cache_dataset_ops.h"],
     deps = [
         ":cache_ops",
+        ":dataset_utils",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1209,6 +1223,7 @@ tf_cc_test(
         ":iterator_ops",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -1228,6 +1243,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:platform_port",
     ],
 )
 

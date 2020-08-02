@@ -279,7 +279,10 @@ class InplaceOpBase : public OpKernel {
                     i.shape().DebugString(), " vs. ", v.shape().DebugString()));
 
     Tensor y = x;  // This creates an alias intentionally.
-    OP_REQUIRES_OK(ctx, DoCompute(ctx, i, v, &y));
+    // Skip processing if tensors are empty.
+    if (x.NumElements() > 0 || v.NumElements() > 0) {
+      OP_REQUIRES_OK(ctx, DoCompute(ctx, i, v, &y));
+    }
     ctx->set_output(0, y);
   }
 

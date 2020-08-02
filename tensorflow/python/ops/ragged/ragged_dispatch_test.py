@@ -32,6 +32,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_dispatch
@@ -139,14 +140,14 @@ BINARY_INT_OPS = [
 ]
 
 
+# pylint: disable=g-complex-comprehension
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
-                               parameterized.TestCase):
+class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def assertSameShape(self, x, y):
     """Checks that x and y have the same shape (including ragged shapes)."""
-    if isinstance(x, ragged_tensor.RaggedTensor):
-      self.assertIsInstance(y, ragged_tensor.RaggedTensor)
+    if ragged_tensor.is_ragged(x):
+      self.assertTrue(ragged_tensor.is_ragged(y))
       self.assertEqual(x.ragged_rank, y.ragged_rank)
       for (x_splits, y_splits) in zip(x.nested_row_splits, y.nested_row_splits):
         self.assertAllEqual(x_splits, y_splits)
@@ -231,21 +232,24 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           {'op': array_ops.check_numerics,
            'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
            'message': 'check-numerics'},
+          {'op': nn_ops.dropout,
+           'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'rate': 0.5,
+           'seed': 1},
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
-    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
-    dense_x = x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
+    dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
     expected_flat_values = array_ops.reshape(op(dense_x, **extra_args), [-1])
 
     # Check that the result has the expected shape.
     self.assertSameShape(x, result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -350,8 +354,6 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       )  # pyformat: disable
   def testBinaryElementwiseOp(self, x, y, op=math_ops.add, **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', ())
-    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
-    y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y)
     if 'x' in use_kwargs and 'y' in use_kwargs:
       result = op(x=x, y=y, **extra_args)
     elif 'y' in use_kwargs:
@@ -360,8 +362,8 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       result = op(x, y, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
-    dense_x = x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
-    dense_y = y.flat_values if isinstance(y, ragged_tensor.RaggedTensor) else y
+    dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
+    dense_y = y.flat_values if ragged_tensor.is_ragged(y) else y
     expected_flat_values = array_ops.reshape(
         op(dense_x, dense_y, **extra_args), [-1])
 
@@ -369,7 +371,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     self.assertSameShape(y, result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -415,9 +417,6 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
   def testListValuedElementwiseOp(self, inputs, op=math_ops.add_n,
                                   **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', False)
-    inputs = [
-        ragged_tensor.convert_to_tensor_or_ragged_tensor(x) for x in inputs
-    ]
     if use_kwargs:
       result = op(inputs=inputs, **extra_args)
     else:
@@ -425,8 +424,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
 
     # Run the wrapped op on the dense values, for comparison.
     dense_inputs = [
-        x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
-        for x in inputs
+        x.flat_values if ragged_tensor.is_ragged(x) else x for x in inputs
     ]
     expected_flat_values = array_ops.reshape(
         op(dense_inputs, **extra_args), [-1])
@@ -435,7 +433,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     self.assertSameShape(inputs[0], result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -447,8 +445,8 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     x = ragged_factory_ops.constant([[1, 2], [3]])
     y = ragged_tensor.RaggedTensor.from_row_splits(
         array_ops.placeholder_with_default([1, 2, 3], shape=None), x.row_splits)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Unable to broadcast: unknown rank'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Unable to broadcast: unknown rank'):
       math_ops.add(x, y)
 
   @parameterized.parameters([
@@ -476,7 +474,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
   def testElementwiseOpShapeMismatch(self):
     x = ragged_factory_ops.constant([[1, 2, 3], [4, 5]])
     y = ragged_factory_ops.constant([[1, 2, 3], [4, 5, 6]])
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       self.evaluate(math_ops.add(x, y))
 
   def testBinaryOpSparseAndRagged(self):
@@ -549,7 +547,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               'depth':
                   4,
               'axis':
-                  1
+                  -1
           },
           expected=ragged_factory_ops.constant_value(
               [[[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], [[1, 0, 0, 0]]],
@@ -764,7 +762,12 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               'tensor': ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]]),
               'axis': [0, -1]
           },
-          expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]]))
+          expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]])),
+      dict(
+          op=string_ops.string_format,
+          kwargs={'template': 'Hi {}',
+                  'inputs': [ragged_factory_ops.constant_value([[1, 2], [3]])]},
+          expected='Hi [[1, 2], [3]]'),
   ])
   def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
                          kwargs=None):
@@ -776,6 +779,21 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         self.assertAllEqual(r, e)
     else:
       self.assertAllEqual(result, expected)
+
+  def testUnaryElementwiseOpsPreserveUniformRowLength(self):
+    # Unary elementwise op
+    rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        uniform_row_length=2)
+    self.assertAllEqual(rt.uniform_row_length,
+                        array_ops.zeros_like(rt).uniform_row_length)
+
+    # Unary-list elementwise op
+    rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        uniform_row_length=2)
+    self.assertAllEqual(rt.uniform_row_length,
+                        math_ops.add_n([rt, rt]).uniform_row_length)
 
   def test_ragged_op_list(self):
     # Ops that should be listed as supported in both v1 and v2.
@@ -805,13 +823,14 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         'math.unsorted_segment_mean', 'math.unsorted_segment_min',
         'math.unsorted_segment_prod', 'math.unsorted_segment_sqrt_n',
         'math.unsorted_segment_sum', 'one_hot', 'ones_like', 'rank', 'realdiv',
-        'reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
+        'math.reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
         'strings.join', 'strings.length', 'strings.reduce_join',
         'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',
         'strings.substr', 'strings.to_hash_bucket_fast',
         'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
         'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse'
+        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse',
+        'nn.dropout', 'strings.format', 'print'
     ]
 
     # Ops that should be listed as supported in v1 only.
@@ -823,15 +842,15 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
 
     v1_ragged_ops = ragged_dispatch.ragged_op_list(tf_version=1)
     for element in supported_ops + supported_ops_v1:
-      self.assertIn(element, v1_ragged_ops)
+      self.assertIn('`tf.' + element + '`', v1_ragged_ops)
     for element in supported_ops_v2:
-      self.assertNotIn(element, v1_ragged_ops)
+      self.assertNotIn('`tf.' + element + '`', v1_ragged_ops)
 
     v2_ragged_ops = ragged_dispatch.ragged_op_list(tf_version=2)
     for element in supported_ops + supported_ops_v2:
-      self.assertIn(element, v2_ragged_ops)
+      self.assertIn('`tf.' + element + '`', v2_ragged_ops)
     for element in supported_ops_v1:
-      self.assertNotIn(element, v2_ragged_ops)
+      self.assertNotIn('`tf.' + element + '`', v2_ragged_ops)
 
 
 if __name__ == '__main__':

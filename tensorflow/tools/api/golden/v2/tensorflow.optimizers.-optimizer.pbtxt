@@ -25,7 +25,7 @@ tf_class {
   }
   member_method {
     name: "apply_gradients"
-    argspec: "args=[\'self\', \'grads_and_vars\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'experimental_aggregate_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_config"
@@ -57,7 +57,7 @@ tf_class {
   }
   member_method {
     name: "minimize"
-    argspec: "args=[\'self\', \'loss\', \'var_list\', \'grad_loss\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'loss\', \'var_list\', \'grad_loss\', \'name\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "set_weights"

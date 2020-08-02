@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
+
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
@@ -24,7 +25,7 @@ namespace xla {
 namespace llvm_ir {
 
 bool MayBeImplementedAsInPlaceDynamicUpdateSlice(const HloInstruction* instr) {
-  // Today we can't emit a dynamic-update-slice if the DUS node is parallized;
+  // Today we can't emit a dynamic-update-slice if the DUS node is parallelized;
   // the emitter will not emit correct code.  It's possible to change this, but
   // then ParallelTaskAssigner would have to somehow know whether a node *will*
   // be emitted as an in-place DUS, and it can't, because it doesn't have a

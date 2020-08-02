@@ -19,8 +19,8 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/brain/tfrc/...",
-        "//learning/brain/tfrc/tpu_gcs_file_system/...",
         "//tensorflow/...",
+        "//third_party/gstpufs/...",
     ],
 )
 
@@ -35,7 +35,10 @@ cc_library(
     name = "file_block_cache",
     hdrs = ["file_block_cache.h"],
     copts = tf_copts(),
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:stringpiece",
+    ],
 )
 
 cc_library(
@@ -47,6 +50,7 @@ cc_library(
     deps = [
         ":file_block_cache",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:stringpiece",
     ],
 )
 
@@ -89,12 +93,17 @@ cc_library(
         ":google_auth_provider",
         ":http_request",
         ":ram_file_block_cache",
-        ":retrying_file_system",
-        ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:retrying_file_system",
+        "//tensorflow/core/platform:retrying_utils",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/profiler/lib:traceme",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
@@ -121,12 +130,17 @@ cc_library(
         ":google_auth_provider",
         ":http_request",
         ":ram_file_block_cache",
-        ":retrying_file_system",
-        ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:retrying_file_system",
+        "//tensorflow/core/platform:retrying_utils",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/profiler/lib:traceme",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
@@ -139,6 +153,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:stringpiece",
     ],
 )
 
@@ -151,6 +166,10 @@ cc_library(
         ":http_request",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:scanner",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/util:env_var",
         "@curl",
     ],
 )
@@ -167,6 +186,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stringpiece",
         "@curl",
     ],
 )
@@ -182,9 +204,13 @@ cc_library(
     deps = [
         ":compute_engine_metadata_client",
         ":oauth_client",
-        ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:base64",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:retrying_utils",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
     ],
@@ -202,9 +228,9 @@ cc_library(
     deps = [
         ":curl_http_request",
         ":http_request",
-        ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:retrying_utils",
     ],
 )
 
@@ -222,6 +248,9 @@ cc_library(
         ":compute_engine_metadata_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:str_util",
     ],
 )
 
@@ -250,36 +279,11 @@ cc_library(
         ":http_request",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:base64",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "@boringssl//:crypto",
         "@jsoncpp_git//:jsoncpp",
-    ],
-)
-
-cc_library(
-    name = "retrying_utils",
-    srcs = [
-        "retrying_utils.cc",
-    ],
-    hdrs = [
-        "retrying_utils.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "retrying_file_system",
-    hdrs = [
-        "retrying_file_system.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":retrying_utils",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -322,6 +326,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
@@ -335,6 +340,8 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:str_util",
     ],
 )
 
@@ -348,6 +355,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:str_util",
     ],
 )
 
@@ -361,6 +369,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:str_util",
     ],
 )
 
@@ -373,6 +382,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
     ],
 )
 
@@ -391,6 +401,10 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:base64",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/platform:scanner",
         "@boringssl//:crypto",
     ],
 )
@@ -411,6 +425,8 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -443,37 +459,11 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "retrying_file_system_test",
-    size = "small",
-    srcs = ["retrying_file_system_test.cc"],
-    deps = [
-        ":retrying_file_system",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "time_util_test",
     size = "small",
     srcs = ["time_util_test.cc"],
     deps = [
         ":time_util",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "retrying_utils_test",
-    size = "small",
-    srcs = ["retrying_utils_test.cc"],
-    deps = [
-        ":retrying_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

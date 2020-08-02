@@ -65,7 +65,11 @@ TEST_F(QuantizationUtilsTest, NumElements) {
 
   tensor.shape = {};
   EXPECT_EQ(kTfLiteOk, NumElements(tensor, &num_elements));
+  // Scalars with empty shape have 1 element.
   EXPECT_EQ(num_elements, 1);
+
+  tensor.shape = {1, 2, 3, -1};
+  EXPECT_EQ(kTfLiteError, NumElements(tensor, &num_elements));
 }
 
 TEST_F(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {
@@ -697,7 +701,7 @@ TEST_F(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
   model->buffers.push_back(std::move(buffer));
 
   // Call and verify.
-  EXPECT_EQ(SymmetricPerLayerBiasQuantize(
+  EXPECT_EQ(SymmetricPerLayerBiasQuantize<int32_t>(
                 model.get(), model->subgraphs[0]->tensors[0].get(),
                 input_scale * weight_scale, &error_reporter_),
             kTfLiteOk);
@@ -755,7 +759,7 @@ TEST_F(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   model->buffers.push_back(std::move(buffer));
 
   // Call and verify.
-  EXPECT_EQ(SymmetricPerChannelBiasQuantize(
+  EXPECT_EQ(SymmetricPerChannelBiasQuantize<int32_t>(
                 model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
                 weight_scales.data(), 2, &error_reporter_),
             kTfLiteOk);

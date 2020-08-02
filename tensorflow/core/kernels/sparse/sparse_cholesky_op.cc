@@ -75,7 +75,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
   explicit CSRSparseCholeskyCPUOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* ctx) final {
-    // Extract inputs and valididate shapes and types.
+    // Extract inputs and validate shapes and types.
     const CSRSparseMatrix* input_matrix;
     OP_REQUIRES_OK(ctx, ExtractVariantFromInput(ctx, 0, &input_matrix));
     const Tensor& input_permutation_indices = ctx->input(1);

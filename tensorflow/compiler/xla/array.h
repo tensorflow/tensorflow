@@ -403,7 +403,8 @@ class Array {
 
   // Returns the size of the dimension at the given index.
   int64 dim(int64 n) const {
-    CHECK(n < sizes_.size());
+    const int64 sizes_size = sizes_.size();
+    CHECK(n < sizes_size);
     return sizes_[n];
   }
 
@@ -427,7 +428,7 @@ class Array {
     if (sizes_.size() != other.sizes_.size()) {
       return false;
     }
-    for (int64 i = 0; i < sizes_.size(); ++i) {
+    for (int64 i = 0, end = sizes_.size(); i < end; ++i) {
       if (sizes_[i] != other.sizes_[i]) {
         return false;
       }
@@ -574,6 +575,12 @@ class Array {
   std::vector<int64> sizes_;
   std::unique_ptr<T[]> values_;
 };
+
+// Specialization of FillRandom() method for complex64 type. Uses real part of
+// the stddev parameter as the standard deviation value.
+template <>
+void Array<complex64>::FillRandom(const complex64& stddev, const double mean,
+                                  const int seed);
 
 }  // namespace xla
 

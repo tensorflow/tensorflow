@@ -131,9 +131,9 @@ std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
     const auto& src_shape = buffers.find(input_id)->second;
     BHWC dst_shape = CalculateOutputShape(src_shape, params);
     const uint3 groups_size{16, 16, 1};
-    int groups_x = IntegralDivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(dst_shape.h, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(dst_shape.c, 4);
+    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shape.c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

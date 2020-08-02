@@ -21,7 +21,6 @@ limitations under the License.
 #include <array>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -82,7 +81,7 @@ bool IsDim0SliceAligned(const TensorShape& s, int64 start, int64 end_or_size) {
 }
 
 // Returns <suffix> sanitized to have only [a-zA-Z0-9-_].
-string SanitizeThreadSuffix(string suffix);
+std::string SanitizeThreadSuffix(std::string suffix);
 
 // Helper to compute 'strides' given a tensor 'shape'. I.e.,
 // strides[i] = prod(shape.dim_size[(i+1):])

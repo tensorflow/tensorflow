@@ -98,9 +98,9 @@ void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
 
 StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
     absl::string_view hlo) {
-  HloModuleConfig config;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnVerifiedModule(hlo, config));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
   return backend().compiler()->RunHloPasses(
       std::move(module), backend().default_stream_executor(),
       backend().default_stream_executor()->GetAllocator());

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/path.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -36,7 +36,11 @@ string RocmRoot() {
 }
 
 string RocdlRoot() {
+#if TENSORFLOW_COMPILER_IS_HIP_CLANG
+  return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "lib");
+#else
   return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "hcc/lib");
+#endif
 }
 
 }  // namespace tensorflow

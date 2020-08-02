@@ -133,6 +133,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     dynamic_dimension_inference_ = dynamic_dimension_inference;
   }
 
+  DynamicDimensionInference* dynamic_dimension_inference() {
+    return dynamic_dimension_inference_;
+  }
+
   // Enable the fast path for certain operations like dot or convolution.
   void set_use_fast_path(bool value) { use_fast_path_ = value; }
 
@@ -160,6 +164,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const Array2D<float>& lhs, const Array2D<float>& rhs);
   static std::unique_ptr<Array2D<double>> MatmulArray2D(
       const Array2D<double>& lhs, const Array2D<double>& rhs);
+  static std::unique_ptr<Array2D<std::complex<float>>> MatmulArray2D(
+      const Array2D<std::complex<float>>& lhs,
+      const Array2D<std::complex<float>>& rhs);
+  static std::unique_ptr<Array2D<std::complex<double>>> MatmulArray2D(
+      const Array2D<std::complex<double>>& lhs,
+      const Array2D<std::complex<double>>& rhs);
   static std::unique_ptr<Array2D<int32>> MatmulArray2D(
       const Array2D<int32>& lhs, const Array2D<int32>& rhs);
 
@@ -218,6 +228,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCopy(HloInstruction* copy) override;
 
+  Status HandleCopyStart(HloInstruction* copy_start) override;
+
+  Status HandleCopyDone(HloInstruction* copy_done) override;
+
   Status HandleConditional(HloInstruction* conditional) override;
 
   Status HandleCall(HloInstruction* call) override;
@@ -249,7 +263,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleCustomCall(HloInstruction* custom_call) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
-  // expanded in a semantic-preserving way into other HLOs by adding exanpsion
+  // expanded in a semantic-preserving way into other HLOs by adding expansion
   // HLO pass to the HLO optimization pass during compilation, which can then be
   // handled by the evaluator.
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
@@ -300,7 +314,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   //
   // TODO(b/35950897): have better memory management here to free instructions
   // that are no longer a parent for any other subsequent instruction in
-  // post-orderring.
+  // post-ordering.
   //
   // Must be cleared for each evaluation.
   //

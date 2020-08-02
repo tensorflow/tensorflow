@@ -1,0 +1,11 @@
+path: "tensorflow.experimental.dlpack"
+tf_module {
+  member_method {
+    name: "from_dlpack"
+    argspec: "args=[\'dlcapsule\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_dlpack"
+    argspec: "args=[\'tf_tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+}

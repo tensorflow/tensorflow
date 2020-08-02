@@ -22,13 +22,14 @@ namespace toco {
 namespace tflite {
 namespace {
 
+// TODO(b/150701120): port the tests to tools/versioning/op_version_test.cc.
 TEST(OpVersionTest, MinimumVersionForSameOpVersions) {
   Model model;
   // Float convolutional kernel is introduced since '1.5.0'.
   std::unique_ptr<ConvOperator> conv(new ConvOperator());
-  const string conv_input = "conv_input";
-  const string conv_filter = "conv_filter";
-  const string conv_output = "conv_output";
+  const std::string conv_input = "conv_input";
+  const std::string conv_filter = "conv_filter";
+  const std::string conv_output = "conv_output";
   conv->inputs.push_back(conv_input);
   conv->inputs.push_back(conv_filter);
   conv->outputs.push_back(conv_output);
@@ -43,8 +44,8 @@ TEST(OpVersionTest, MinimumVersionForSameOpVersions) {
 
   // Float softmax kernel is introduced since '1.5.0'.
   std::unique_ptr<SoftmaxOperator> softmax(new SoftmaxOperator());
-  const string softmax_input = "softmax_input";
-  const string softmax_output = "softmax_output";
+  const std::string softmax_input = "softmax_input";
+  const std::string softmax_output = "softmax_output";
   softmax->inputs.push_back(softmax_input);
   softmax->outputs.push_back(softmax_output);
   array_map[softmax_input] = std::unique_ptr<Array>(new Array);
@@ -59,9 +60,9 @@ TEST(OpVersionTest, MinimumVersionForMultipleOpVersions) {
   Model model;
   // Dilated DepthWiseConvolution is introduced since '1.12.0'.
   std::unique_ptr<DepthwiseConvOperator> conv(new DepthwiseConvOperator());
-  const string conv_input = "conv_input";
-  const string conv_filter = "conv_filter";
-  const string conv_output = "conv_output";
+  const std::string conv_input = "conv_input";
+  const std::string conv_filter = "conv_filter";
+  const std::string conv_output = "conv_output";
   conv->inputs.push_back(conv_input);
   conv->inputs.push_back(conv_filter);
   conv->outputs.push_back(conv_output);
@@ -76,10 +77,10 @@ TEST(OpVersionTest, MinimumVersionForMultipleOpVersions) {
   // FullyConnected op with kShuffled4x16Int8 weight format is introduced from
   // '1.10.0'.
   std::unique_ptr<FullyConnectedOperator> fc(new FullyConnectedOperator());
-  const string fc_input = "fc_input";
-  const string fc_weights = "fc_weights";
-  const string fc_bias = "fc_bias";
-  const string fc_output = "fc_output";
+  const std::string fc_input = "fc_input";
+  const std::string fc_weights = "fc_weights";
+  const std::string fc_bias = "fc_bias";
+  const std::string fc_output = "fc_output";
   fc->inputs.push_back(fc_input);
   fc->inputs.push_back(fc_weights);
   fc->inputs.push_back(fc_bias);
@@ -120,10 +121,10 @@ TEST(OpVersionTest, MinimumVersionForMixedOpVersions) {
   // FullyConnected op with kShuffled4x16Int8 weight format is introduced from
   // '1.10.0'.
   std::unique_ptr<FullyConnectedOperator> fc(new FullyConnectedOperator());
-  const string fc_input = "fc_input";
-  const string fc_weights = "fc_weights";
-  const string fc_bias = "fc_bias";
-  const string fc_output = "fc_output";
+  const std::string fc_input = "fc_input";
+  const std::string fc_weights = "fc_weights";
+  const std::string fc_bias = "fc_bias";
+  const std::string fc_output = "fc_output";
   fc->inputs.push_back(fc_input);
   fc->inputs.push_back(fc_weights);
   fc->inputs.push_back(fc_bias);
@@ -136,18 +137,6 @@ TEST(OpVersionTest, MinimumVersionForMixedOpVersions) {
   model.operators.push_back(std::move(fc));
 
   EXPECT_EQ(GetMinimumRuntimeVersionForModel(model), "1.10.0");
-}
-
-TEST(OpVersionTest, CompareVersionString) {
-  EXPECT_TRUE(CompareVersion("1.9", "1.13"));
-  EXPECT_FALSE(CompareVersion("1.13", "1.13"));
-  EXPECT_TRUE(CompareVersion("1.14", "1.14.1"));
-  EXPECT_FALSE(CompareVersion("1.14.1", "1.14"));
-  EXPECT_FALSE(CompareVersion("1.14.1", "1.9"));
-  EXPECT_FALSE(CompareVersion("1.0.9", "1.0.8"));
-  EXPECT_FALSE(CompareVersion("2.1.0", "1.2.0"));
-  EXPECT_TRUE(CompareVersion("", "1.13"));
-  EXPECT_FALSE(CompareVersion("", ""));
 }
 
 }  // namespace

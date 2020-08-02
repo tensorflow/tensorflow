@@ -44,11 +44,21 @@ public class HelloTFLite : MonoBehaviour {
   }
 
   void Start () {
-    interpreter = new Interpreter(model.bytes);
-    Debug.LogFormat(
-        "InputCount: {0}, OutputCount: {1}",
-        interpreter.GetInputTensorCount(),
-        interpreter.GetOutputTensorCount());
+    Debug.LogFormat("TensorFlow Lite Verion: {0}", Interpreter.GetVersion());
+
+    var options = new Interpreter.Options() {
+      threads = 2,
+    };
+    interpreter = new Interpreter(model.bytes, options);
+
+    int inputCount = interpreter.GetInputTensorCount();
+    int outputCount = interpreter.GetOutputTensorCount();
+    for (int i = 0; i < inputCount; i++) {
+      Debug.LogFormat("Input {0}: {1}", i, interpreter.GetInputTensorInfo(i));
+    }
+    for (int i = 0; i < inputCount; i++) {
+      Debug.LogFormat("Output {0}: {1}", i, interpreter.GetOutputTensorInfo(i));
+    }
   }
 
   void Update () {

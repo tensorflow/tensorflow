@@ -18,6 +18,16 @@ echo "bazel clean --expunge" >> tensorflow/tools/ci_build/linux/libtensorflow.sh
 
 # Install latest bazel
 source tensorflow/tools/ci_build/release/common.sh
-update_bazel_macos
+install_bazelisk
+
+# Pick a version of xcode
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
+
+# Update the version string to nightly
+./tensorflow/tools/ci_build/update_version.py --nightly
 
 tensorflow/tools/ci_build/osx/libtensorflow_cpu.sh
+
+# Copy the nightly version update script
+cp tensorflow/tools/ci_build/builds/libtensorflow_nightly_symlink.sh lib_package

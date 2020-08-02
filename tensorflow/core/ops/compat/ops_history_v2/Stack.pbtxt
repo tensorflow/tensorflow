@@ -1,0 +1,20 @@
+op {
+  name: "Stack"
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+  }
+  attr {
+    name: "stack_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}

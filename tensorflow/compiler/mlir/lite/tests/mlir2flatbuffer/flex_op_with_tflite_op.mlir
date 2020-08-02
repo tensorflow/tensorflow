@@ -89,6 +89,12 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:  }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:  }, {
+// CHECK-NEXT:    data: [ 49, 46, 55, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:  } ],
+// CHECK-NEXT:  metadata: [ {
+// CHECK-NEXT:  name: "min_runtime_version",
+// CHECK-NEXT:  buffer: 6
 // CHECK-NEXT:  } ]
 // CHECK-NEXT:}
 

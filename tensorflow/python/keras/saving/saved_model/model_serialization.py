@@ -20,11 +20,11 @@ from __future__ import print_function
 
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import constants
-from tensorflow.python.keras.saving.saved_model import network_serialization
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.saving.saved_model import save_impl
 
 
-class ModelSavedModelSaver(network_serialization.NetworkSavedModelSaver):
+class ModelSavedModelSaver(layer_serialization.LayerSavedModelSaver):
   """Model SavedModel serialization."""
 
   @property
@@ -33,6 +33,10 @@ class ModelSavedModelSaver(network_serialization.NetworkSavedModelSaver):
 
   def _python_properties_internal(self):
     metadata = super(ModelSavedModelSaver, self)._python_properties_internal()
+    # Network stateful property is dependent on the child layers.
+    metadata.pop('stateful')
+    metadata['is_graph_network'] = self.obj._is_graph_network  # pylint: disable=protected-access
+
     metadata.update(
         saving_utils.model_metadata(
             self.obj, include_optimizer=True, require_config=False))

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_platform.h"
 
+#include "absl/base/call_once.h"
 #include "absl/base/const_init.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -76,8 +77,8 @@ CudaPlatform::~CudaPlatform() {}
 void CudaPlatform::InspectNumaNodes() {
   // To get NUMA node information, we need to create all executors, so we can
   // examine their device descriptions to see their bus assignments.
-  static std::once_flag once;
-  std::call_once(once, [&] {
+  static absl::once_flag once;
+  absl::call_once(once, [&] {
     StreamExecutorConfig config;
     for (int i = 0; i < VisibleDeviceCount(); i++) {
       config.ordinal = i;
@@ -138,7 +139,7 @@ int CudaPlatform::VisibleDeviceCount() const {
   return GpuDriver::GetDeviceCount();
 }
 
-const string& CudaPlatform::Name() const { return name_; }
+const std::string& CudaPlatform::Name() const { return name_; }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaPlatform::DescriptionForDevice(int ordinal) const {

@@ -36,6 +36,12 @@ class AutoShardPolicy(enum.IntEnum):
   DATA = 2
 
 
+class ExternalStatePolicy(enum.Enum):
+  WARN = 0
+  IGNORE = 1
+  FAIL = 2
+
+
 @tf_export("data.experimental.DistributeOptions")
 class DistributeOptions(options.OptionsBase):
   """Represents options for distributed data processing.
@@ -70,14 +76,6 @@ class DistributeOptions(options.OptionsBase):
       "by FILE, and fall back to sharding by DATA if we cannot find a set of "
       "files to shard.",
       default_factory=lambda: AutoShardPolicy.AUTO)
-
-  _make_stateless = options.create_option(
-      name="_make_stateless",
-      ty=bool,
-      docstring=
-      "Determines whether the input pipeline should be rewritten to not "
-      "contain stateful transformations (so that its graph can be moved "
-      "between devices).")
 
   num_devices = options.create_option(
       name="num_devices",

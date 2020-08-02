@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 
 #include <stdio.h>
+
 #include <utility>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_timeline.h"
 
@@ -30,7 +33,7 @@ namespace {
 const char* const kProfilePrefix = "Profile:\n";
 
 bool CreateRunMetadataNode(const string& name, NodeDef* def) {
-  // TODO(xpan): Better solution than blacklisting this 2 nodes. They
+  // TODO(xpan): Better solution than denylisting this 2 nodes. They
   // actually cost some resources, maybe include them. Some nodes, such
   // as _SOURCE appear in multiple devices, which breaks tfprof's assumption.
   if (name == "RecvTensor" || name == "_SOURCE" ||
@@ -55,7 +58,6 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
       ckpt_reader_(std::move(ckpt_reader)) {
   CHECK(graph) << "Must at least have GraphDef";
 
-  printf("Parsing Inputs...\n");
   AddGraph(std::move(graph));
   if (run_meta && run_meta->has_step_stats()) {
     AddRunMeta(0, std::move(run_meta));
@@ -80,13 +82,13 @@ TFStats::TFStats(const string& filename,
   string str;
   Status s = ReadFileToString(Env::Default(), filename, &str);
   if (!s.ok()) {
-    fprintf(stderr, "Failed to read profile: %s", s.ToString().c_str());
+    absl::FPrintF(stderr, "Failed to read profile: %s", s.ToString());
     return;
   }
 
   ProfileProto profile;
   if (!profile.ParseFromString(str)) {
-    fprintf(stderr, "Failed to parse profile\n");
+    absl::FPrintF(stderr, "Failed to parse profile\n");
     return;
   }
   for (const auto& entry : profile.id_to_string()) {
@@ -163,7 +165,7 @@ const GraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
     }
     return graph_view_->Show(prefix, opts);
   } else {
-    fprintf(stderr, "Unknown command: %s\n", cmd.c_str());
+    absl::FPrintF(stderr, "Unknown command: %s\n", cmd);
     return empty_graph_node_;
   }
 }
@@ -178,14 +180,14 @@ const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
 
   if (cmd == kCmds[2]) {
     if (!has_code_traces()) {
-      fprintf(stderr, "No code trace information\n");
+      absl::FPrintF(stderr, "No code trace information\n");
       return empty_multi_graph_node_;
     }
     return code_view_->Show(prefix, opts);
   } else if (cmd == kCmds[3]) {
     return op_view_->Show(prefix, opts);
   } else {
-    fprintf(stderr, "Unknown command: %s\n", cmd.c_str());
+    absl::FPrintF(stderr, "Unknown command: %s\n", cmd);
     return empty_multi_graph_node_;
   }
 }
@@ -212,11 +214,11 @@ void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
       // if not :src_output, then it's the first one (further verify?)
       auto prefix_pos = node_input.find(":");
       if (prefix_pos != node_input.npos) {
-        std::vector<string> input_parts = str_util::Split(node_input, ":");
-        CHECK(input_parts.size() == 2)
+        std::vector<string> input_parts = absl::StrSplit(node_input, ':');
+        DCHECK(input_parts.size() == 2)
             << "Unknown NodeDef.input format: " << node_input;
         node_input = input_parts[0];
-        CHECK(strings::safe_strto32(input_parts[1], &output_idx))
+        DCHECK(absl::SimpleAtoi(input_parts[1], &output_idx))
             << "Failed to parse integer: " << output_idx;
       }
       if (node_input.substr(0, 1) == "^") {
@@ -263,7 +265,7 @@ void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
 
 void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
   if (!run_meta || !run_meta->has_step_stats()) {
-    fprintf(stderr, "Invalid RunMetadata for step %lld\n", step);
+    absl::FPrintF(stderr, "Invalid RunMetadata for step %d\n", step);
     return;
   }
   if (steps_.find(step) == steps_.end()) {
@@ -349,18 +351,18 @@ void TFStats::WriteProfile(const string& filename) {
   SerializeToString(&content);
   Status s = WriteStringToFile(Env::Default(), filename, content);
   if (!s.ok()) {
-    fprintf(stderr, "%s\n", s.ToString().c_str());
+    absl::FPrintF(stderr, "%s\n", s.ToString());
   }
 }
 
 bool TFStats::Validate(const Options& opts) const {
   if (opts.step >= 0 && steps_.find(opts.step) == steps_.end()) {
-    fprintf(stderr,
-            "Options -step=%lld not found.\nAvailable steps: ", opts.step);
+    absl::FPrintF(stderr,
+                  "Options -step=%d not found.\nAvailable steps: ", opts.step);
     for (int64 s : steps_) {
-      fprintf(stderr, "%lld ", s);
+      absl::FPrintF(stderr, "%d ", s);
     }
-    fprintf(stderr, "\n");
+    absl::FPrintF(stderr, "\n");
     return false;
   }
   return true;

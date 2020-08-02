@@ -60,8 +60,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = {'a': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
@@ -83,8 +82,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     y = np.random.randint(20, size=(100, 1))
     y = np_utils.to_categorical(y, num_classes=20)
@@ -147,8 +145,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = {'a': np.random.random((10, 1)), 'b': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
@@ -169,8 +166,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     y = np.random.randint(20, size=(100, 1))
     y = np_utils.to_categorical(y, num_classes=20)
@@ -208,7 +204,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         loss_weights=loss_weights)
 
     data = ({'a': np.arange(10), 'b': np.arange(10)}, np.arange(10, 20))
-    print(model.fit(*data, epochs=1))
+    model.fit(*data, epochs=1)
 
   # TODO(kaftan) seems to throw an error when enabled.
   @keras_parameterized.run_all_keras_modes
@@ -243,7 +239,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         'b': np.arange(10),
         'c': np.arange(10)
     }], np.arange(10, 100))
-    print(model.fit(*data_list, epochs=1))
+    model.fit(*data_list, epochs=1)
 
     data_bloated_list = ([{
         'a': np.arange(10),
@@ -254,7 +250,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         'b': np.arange(10),
         'c': np.arange(10)
     }], np.arange(10, 100))
-    print(model.fit(*data_bloated_list, epochs=1))
+    model.fit(*data_bloated_list, epochs=1)
 
     data_dict = ({
         'fc1': {
@@ -266,7 +262,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
             'c': np.arange(10)
         }
     }, np.arange(10, 100))
-    print(model.fit(*data_dict, epochs=1))
+    model.fit(*data_dict, epochs=1)
 
     data_bloated_dict = ({
         'fc1': {
@@ -280,7 +276,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
             'c': np.arange(10)
         }
     }, np.arange(10, 100))
-    print(model.fit(*data_bloated_dict, epochs=1))
+    model.fit(*data_bloated_dict, epochs=1)
 
   @keras_parameterized.run_all_keras_modes
   def test_string_input(self):

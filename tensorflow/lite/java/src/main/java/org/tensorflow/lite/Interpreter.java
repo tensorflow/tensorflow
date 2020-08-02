@@ -73,6 +73,9 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p><b>WARNING:</b>Instances of a {@code Interpreter} is <b>not</b> thread-safe. A {@code
  * Interpreter} owns resources that <b>must</b> be explicitly freed by invoking {@link #close()}
+ *
+ * <p>The TFLite library is built against NDK API 19. It may work for Android API levels below 19,
+ * but is not guaranteed.
  */
 public final class Interpreter implements AutoCloseable {
 
@@ -98,8 +101,11 @@ public final class Interpreter implements AutoCloseable {
     /**
      * Sets whether to allow float16 precision for FP32 calculation when possible. Defaults to false
      * (disallow).
-     * WARNING: This is an experimental API and subject to change.
+     *
+     * @deprecated Prefer using {@link
+     *     org.tensorflow.lite.nnapi.NnApiDelegate.Options#setAllowFp16(boolean enable)}.
      */
+    @Deprecated
     public Options setAllowFp16PrecisionForFp32(boolean allow) {
       this.allowFp16PrecisionForFp32 = allow;
       return this;
@@ -131,10 +137,37 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Experimental: Enable an optimized set of floating point CPU kernels (provided by XNNPACK).
+     *
+     * <p>Enabling this flag will enable use of a new, highly optimized set of CPU kernels provided
+     * via the XNNPACK delegate. Currently, this is restricted to a subset of floating point
+     * operations. Eventually, we plan to enable this by default, as it can provide significant
+     * peformance benefits for many classes of floating point models. See
+     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
+     * for more details.
+     *
+     * <p>Things to keep in mind when enabling this flag:
+     *
+     * <ul>
+     *   <li>Startup time and resize time may increase.
+     *   <li>Baseline memory consumption may increase.
+     *   <li>Compatibility with other delegates (e.g., GPU) has not been fully validated.
+     *   <li>Quantized models will not see any benefit.
+     * </ul>
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      this.useXNNPACK = useXNNPACK;
+      return this;
+    }
+
     int numThreads = -1;
     Boolean useNNAPI;
     Boolean allowFp16PrecisionForFp32;
     Boolean allowBufferHandleOutput;
+    Boolean useXNNPACK;
     final List<Delegate> delegates = new ArrayList<>();
   }
 
@@ -142,6 +175,8 @@ public final class Interpreter implements AutoCloseable {
    * Initializes a {@code Interpreter}
    *
    * @param modelFile: a File of a pre-trained TF Lite model.
+   * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
+   *     model.
    */
   public Interpreter(@NonNull File modelFile) {
     this(modelFile, /*options = */ null);
@@ -165,6 +200,8 @@ public final class Interpreter implements AutoCloseable {
    *
    * @param modelFile: a file of a pre-trained TF Lite model
    * @param options: a set of options for customizing interpreter behavior
+   * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
+   *     model.
    */
   public Interpreter(@NonNull File modelFile, Options options) {
     wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), options);
@@ -176,6 +213,9 @@ public final class Interpreter implements AutoCloseable {
    * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
    * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
    * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   *
+   * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
+   *     direct {@link Bytebuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer) {
     this(byteBuffer, /* options= */ null);
@@ -216,8 +256,11 @@ public final class Interpreter implements AutoCloseable {
    * {@link #Options}.
    *
    * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
-   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
-   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   * {@code ByteBuffer} can be either a {@link MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@link ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   *
+   * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
+   *     direct {@link Bytebuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer, Options options) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
@@ -238,6 +281,8 @@ public final class Interpreter implements AutoCloseable {
    *   <li>{@link LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
+   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
+   *
    * @param input an array or multidimensional array, or a {@link Buffer} of primitive types
    *     including int, float, long, and byte. {@link Buffer} is the preferred way to pass large
    *     input data for primitive types, whereas string types require using the (multi-dimensional)
@@ -251,6 +296,8 @@ public final class Interpreter implements AutoCloseable {
    *     that it is set the appropriate write position. A null value is allowed only if the caller
    *     is using a {@link Delegate} that allows buffer handle interop, and such a buffer has been
    *     bound to the output {@link Tensor}. See {@link Options#setAllowBufferHandleOutput()}.
+   * @throws IllegalArgumentException if {@code input} or {@code output} is null or empty, or if
+   *     error occurs when running the inference.
    */
   public void run(Object input, Object output) {
     Object[] inputs = {input};
@@ -274,6 +321,8 @@ public final class Interpreter implements AutoCloseable {
    *   <li>{@link LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
+   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
+   *
    * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
    * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
    * such a buffer has been bound to the corresponding input or output {@link Tensor}(s).
@@ -289,6 +338,8 @@ public final class Interpreter implements AutoCloseable {
    *     Buffer}s of primitive types including int, float, long, and byte. It only needs to keep
    *     entries for the outputs to be used. When a {@link Buffer} is used, the caller must ensure
    *     that it is set the appropriate write position.
+   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} is null or empty, or if
+   *     error occurs when running the inference.
    */
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
@@ -297,13 +348,55 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
+   * Expicitly updates allocations for all tensors, if necessary.
+   *
+   * <p>This will propagate shapes and memory allocations for all dependent tensors using the input
+   * tensor shape(s) as given.
+   *
+   * <p>Note: This call is *purely optional*. Tensor allocation will occur automatically during
+   * execution if any input tensors have been resized. This call is most useful in determining the
+   * shapes for any output tensors before executing the graph, e.g.,
+   * <pre>{@code
+   * interpreter.resizeInput(0, new int[]{1, 4, 4, 3}));
+   * interpreter.allocateTensors();
+   * FloatBuffer input = FloatBuffer.allocate(interpreter.getInputTensor(0),numElements());
+   * // Populate inputs...
+   * FloatBuffer output = FloatBuffer.allocate(interpreter.getOutputTensor(0).numElements());
+   * interpreter.run(input, output)
+   * // Process outputs...
+   * }</pre>
+   *
+   * @throws IllegalStateException if the graph's tensors could not be successfully allocated.
+   */
+  public void allocateTensors() {
+    checkNotClosed();
+    wrapper.allocateTensors();
+  }
+
+  /**
    * Resizes idx-th input of the native model to the given dims.
    *
-   * <p>IllegalArgumentException will be thrown if it fails to resize.
+   * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
+   *     model inputs; or if error occurs when resizing the idx-th input.
    */
   public void resizeInput(int idx, @NonNull int[] dims) {
     checkNotClosed();
-    wrapper.resizeInput(idx, dims);
+    wrapper.resizeInput(idx, dims, false);
+  }
+
+  /**
+   * Resizes idx-th input of the native model to the given dims.
+   *
+   * <p>When `strict` is True, only unknown dimensions can be resized. Unknown dimensions are
+   * indicated as `-1` in the array returned by `Tensor.shapeSignature()`.
+   *
+   * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
+   *     model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
+   *     occurs when attempting to resize a tensor with fixed dimensions when `struct` is True.
+   */
+  public void resizeInput(int idx, @NonNull int[] dims, boolean strict) {
+    checkNotClosed();
+    wrapper.resizeInput(idx, dims, strict);
   }
 
   /** Gets the number of input tensors. */
@@ -315,8 +408,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets index of an input given the op name of the input.
    *
-   * <p>IllegalArgumentException will be thrown if the op name does not exist in the model file used
-   * to initialize the {@link Interpreter}.
+   * @throws IllegalArgumentException if {@code opName} does not match any input in the model used
+   *     to initialize the {@link Interpreter}.
    */
   public int getInputIndex(String opName) {
     checkNotClosed();
@@ -326,7 +419,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets the Tensor associated with the provdied input index.
    *
-   * <p>IllegalArgumentException will be thrown if the provided index is invalid.
+   * @throws IllegalArgumentException if {@code inputIndex} is negtive or is not smaller than the
+   *     number of model inputs.
    */
   public Tensor getInputTensor(int inputIndex) {
     checkNotClosed();
@@ -342,8 +436,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets index of an output given the op name of the output.
    *
-   * <p>IllegalArgumentException will be thrown if the op name does not exist in the model file used
-   * to initialize the {@link Interpreter}.
+   * @throws IllegalArgumentException if {@code opName} does not match any output in the model used
+   *     to initialize the {@link Interpreter}.
    */
   public int getOutputIndex(String opName) {
     checkNotClosed();
@@ -353,7 +447,15 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets the Tensor associated with the provdied output index.
    *
-   * <p>IllegalArgumentException will be thrown if the provided index is invalid.
+   * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
+   * is executed. If you need updated details *before* running inference (e.g., after resizing an
+   * input tensor, which may invalidate output tensor shapes), use {@link #allocateTensors()} to
+   * explicitly trigger allocation and shape propagation. Note that, for graphs with output shapes
+   * that are dependent on input *values*, the output shape may not be fully determined until
+   * running inference.
+   *
+   * @throws IllegalArgumentException if {@code outputIndex} is negtive or is not smaller than the
+   *     number of model outputs.
    */
   public Tensor getOutputTensor(int outputIndex) {
     checkNotClosed();
@@ -363,8 +465,7 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Returns native inference timing.
    *
-   * <p>IllegalArgumentException will be thrown if the model is not initialized by the {@link
-   * Interpreter}.
+   * @throws IllegalArgumentException if the model is not initialized by the {@link Interpreter}.
    */
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
@@ -403,6 +504,8 @@ public final class Interpreter implements AutoCloseable {
    * interaction between Interpeter creation and delegate application.
    *
    * <p>WARNING: This is an experimental API and subject to change.
+   *
+   * @throws IllegalArgumentException if error occurs when modifying graph with {@code delegate}.
    */
   public void modifyGraphWithDelegate(Delegate delegate) {
     checkNotClosed();
@@ -421,6 +524,11 @@ public final class Interpreter implements AutoCloseable {
     wrapper.resetVariableTensors();
   }
 
+  int getExecutionPlanLength() {
+    checkNotClosed();
+    return wrapper.getExecutionPlanLength();
+  }
+
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {
@@ -430,6 +538,8 @@ public final class Interpreter implements AutoCloseable {
     }
   }
 
+  // for Object.finalize, see https://bugs.openjdk.java.net/browse/JDK-8165641
+  @SuppressWarnings("deprecation")
   @Override
   protected void finalize() throws Throwable {
     try {

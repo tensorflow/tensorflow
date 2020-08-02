@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/window_util.h"
 
-// This macro is required to make MSVC defines math constants in math.h
-#define _USE_MATH_DEFINES
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

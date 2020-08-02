@@ -49,7 +49,7 @@ class Shape {
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
   int64 rank() const {
-    CHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
+    DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
     return dimensions_.size();
   }
 
@@ -63,6 +63,8 @@ class Shape {
   // shapes are traversed recursively.
   bool is_static() const;
 
+  bool is_dynamic() const { return !is_static(); }
+
   // Returns true if the given dimension is dynamically-sized.
   bool is_dynamic_dimension(int dimension) const {
     return dynamic_dimensions_.at(dimension);
@@ -75,6 +77,10 @@ class Shape {
 
   absl::Span<const bool> dynamic_dimensions() const {
     return dynamic_dimensions_;
+  }
+
+  absl::Span<bool> mutable_dynamic_dimensions() {
+    return absl::MakeSpan(dynamic_dimensions_);
   }
 
   // Add dimension_upper_bound().
@@ -127,6 +133,19 @@ class Shape {
   Layout* mutable_layout() { return &layout_; }
   void clear_layout() { layout_.Clear(); }
 
+  // Recursively clear dynamic dimension of a shape.
+  void clear_dynamic_dimensions() {
+    if (!IsTuple()) {
+      for (int64 i = 0; i < dynamic_dimensions_.size(); ++i) {
+        dynamic_dimensions_[i] = false;
+      }
+      return;
+    }
+    for (auto& subshape : tuple_shapes_) {
+      subshape.clear_dynamic_dimensions();
+    }
+  }
+
   void Swap(Shape* other) {
     using std::swap;
     swap(*this, *other);
@@ -134,7 +153,7 @@ class Shape {
 
   void Clear() {
     element_type_ = PRIMITIVE_TYPE_INVALID;
-    dimensions_.clear();
+    clear_dimensions();
     tuple_shapes_.clear();
     clear_layout();
   }

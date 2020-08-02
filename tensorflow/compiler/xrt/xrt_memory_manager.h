@@ -87,7 +87,7 @@ class XRTMemoryManager : public ResourceBase {
     return Status::OK();
   }
 
-  // Releases an handle by dropping the refences count held on the
+  // Releases an handle by dropping the references count held on the
   // XRTTupleAllocation by the XRTMemoryManager. Existing XRTTupleAllocation
   // references will continue to be valid.
   Status Release(int64 handle);

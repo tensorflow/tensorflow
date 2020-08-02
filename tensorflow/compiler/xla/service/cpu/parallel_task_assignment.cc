@@ -142,24 +142,29 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
   //    in-place will only touch the updated elements).
   // TODO(b/27458679) Parallelize instructions which are skipped here.
   auto opcode = instruction->opcode();
-  if (opcode == HloOpcode::kParameter || opcode == HloOpcode::kConstant ||
-      opcode == HloOpcode::kCall || opcode == HloOpcode::kCustomCall ||
-      opcode == HloOpcode::kDot || opcode == HloOpcode::kSelectAndScatter ||
-      opcode == HloOpcode::kGetTupleElement || opcode == HloOpcode::kBitcast ||
-      opcode == HloOpcode::kFft || opcode == HloOpcode::kInfeed ||
-      opcode == HloOpcode::kOutfeed || opcode == HloOpcode::kRng ||
-      opcode == HloOpcode::kSort ||
-      (opcode == HloOpcode::kConvolution &&
-       PotentiallyImplementedAsEigenConvolution(*instruction,
-                                                target_machine_features_)) ||
-      (opcode == HloOpcode::kFusion && !instruction->IsLoopFusion()) ||
-      llvm_ir::MayBeImplementedAsInPlaceDynamicUpdateSlice(instruction) ||
-      instruction->shape().IsTuple()) {
+  if (llvm_ir::MayBeImplementedAsInPlaceDynamicUpdateSlice(instruction) ||
+      instruction->shape().IsTuple() || opcode == HloOpcode::kRng) {
     return 1;
   }
 
-  // Consult 'cost_model_' to compute target parallel task count.
-  return cost_model_->GetParallelTaskCount(instruction);
+  // Only allow known good instructions.
+  if (instruction->IsElementwise() || instruction->IsLoopFusion() ||
+      opcode == HloOpcode::kBroadcast || opcode == HloOpcode::kConcatenate ||
+      opcode == HloOpcode::kDynamicSlice ||
+      opcode == HloOpcode::kDynamicUpdateSlice ||
+      opcode == HloOpcode::kGather || opcode == HloOpcode::kIota ||
+      opcode == HloOpcode::kPad || opcode == HloOpcode::kReduce ||
+      opcode == HloOpcode::kReduceWindow || opcode == HloOpcode::kReshape ||
+      opcode == HloOpcode::kReverse || opcode == HloOpcode::kSlice ||
+      opcode == HloOpcode::kTranspose ||
+      (opcode == HloOpcode::kConvolution &&
+       !PotentiallyImplementedAsEigenConvolution(*instruction,
+                                                 target_machine_features_))) {
+    // Consult 'cost_model_' to compute target parallel task count.
+    return cost_model_->GetParallelTaskCount(instruction);
+  }
+
+  return 1;
 }
 
 StatusOr<bool> ParallelTaskAssigner::Run(HloModule* module) {
@@ -193,7 +198,7 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
                                             computation->instructions().end());
   for (auto* instruction : instructions) {
     // Assign parallel tasks to sub-computations for While and Call HLOs.
-    // TODO(b/27458679) Evaluate alternative intra-op parallelsim placement,
+    // TODO(b/27458679) Evaluate alternative intra-op parallelism placement,
     // and support other callable computations like reduce.
     if (instruction->opcode() == HloOpcode::kWhile) {
       changed |= AssignParallelTasksHelper(module, instruction->while_body(),

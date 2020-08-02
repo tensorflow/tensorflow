@@ -18,7 +18,7 @@ limitations under the License.
 #include <complex>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/string_util.h"
@@ -76,12 +76,12 @@ class VectorOfTensors {
 
 // A list of quantized tensors in a format that can be used by kernels like
 // split and concatenation.
-class VectorOfQuantizedTensors : public VectorOfTensors<uint8> {
+class VectorOfQuantizedTensors : public VectorOfTensors<uint8_t> {
  public:
   // Build with the tensors in 'tensor_list'.
   VectorOfQuantizedTensors(const TfLiteContext& context,
                            const TfLiteIntArray& tensor_list)
-      : VectorOfTensors<uint8>(context, tensor_list) {
+      : VectorOfTensors<uint8_t>(context, tensor_list) {
     for (int i = 0; i < tensor_list.size; ++i) {
       TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
       zero_point_.push_back(t->params.zero_point);
@@ -90,10 +90,10 @@ class VectorOfQuantizedTensors : public VectorOfTensors<uint8> {
   }
 
   const float* scale() const { return scale_.data(); }
-  const int32* zero_point() const { return zero_point_.data(); }
+  const int32_t* zero_point() const { return zero_point_.data(); }
 
  private:
-  std::vector<int32> zero_point_;
+  std::vector<int32_t> zero_point_;
   std::vector<float> scale_;
 };
 
@@ -119,6 +119,8 @@ class SequentialTensorWriter {
   T* output_ptr_;
 };
 
+// String ops are not yet supported on platforms w/ static memory.
+#ifndef TF_LITE_STATIC_MEMORY
 template <>
 class SequentialTensorWriter<string> {
  public:
@@ -138,6 +140,7 @@ class SequentialTensorWriter<string> {
   TfLiteTensor* output_;
   DynamicBuffer buffer_;
 };
+#endif  // TF_LITE_STATIC_MEMORY
 
 }  // namespace tflite
 

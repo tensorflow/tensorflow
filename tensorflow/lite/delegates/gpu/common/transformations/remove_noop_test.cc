@@ -35,12 +35,12 @@ TEST(RemoveSingleInputAdd, Smoke) {
   ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
 
   auto add_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   add_node->operation.type = ToString(OperationType::ADD);
-  add_node->operation.attributes = AddAttributes();
+  add_node->operation.attributes = ElementwiseAttributes();
 
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
   ASSERT_EQ(2, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
@@ -56,21 +56,48 @@ TEST(RemoveSingleInputAdd, Smoke) {
   ASSERT_EQ(output, graph.values()[1]);
 }
 
-TEST(RemoveSingleInputAdd, DoNotTrigger_Tensor) {
+TEST(RemoveSingleInputAdd, DoNotTrigger_TensorHWC) {
   GraphFloat32 graph;
   auto input = graph.NewValue();
   auto first_node = graph.NewNode();
   ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
 
   auto add_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   add_node->operation.type = ToString(OperationType::ADD);
-  AddAttributes attr;
+  ElementwiseAttributes attr;
+  attr.param = Tensor<HWC, DataType::FLOAT32>();
+  add_node->operation.attributes = attr;
+
+  Value* temp;
+  ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
+  ASSERT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(3, graph.values().size());
+
+  auto transformation = NewRemoveSingleInputAdd();
+  ModelTransformer transformer(&graph, nullptr);
+  transformer.Apply("noop", transformation.get());
+
+  EXPECT_EQ(2, graph.nodes().size());
+  ASSERT_EQ(3, graph.values().size());
+}
+
+TEST(RemoveSingleInputAdd, DoNotTrigger_LinearTensor) {
+  GraphFloat32 graph;
+  auto input = graph.NewValue();
+  auto first_node = graph.NewNode();
+  ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
+
+  auto add_node = graph.NewNode();
+  Value* output;
+  ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
+  add_node->operation.type = ToString(OperationType::ADD);
+  ElementwiseAttributes attr;
   attr.param = Tensor<Linear, DataType::FLOAT32>();
   add_node->operation.attributes = attr;
 
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
   ASSERT_EQ(2, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
@@ -90,14 +117,14 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Scalar) {
   ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
 
   auto add_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   add_node->operation.type = ToString(OperationType::ADD);
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   attr.param = 0.5f;
   add_node->operation.attributes = attr;
 
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
   ASSERT_EQ(2, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
@@ -119,11 +146,11 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Multiple) {
   ASSERT_TRUE(graph.AddConsumer(node_b->id, input->id).ok());
 
   auto add_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   add_node->operation.type = ToString(OperationType::ADD);
 
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, node_a, add_node, &temp).ok());
   ASSERT_TRUE(ConnectTwoNodes(&graph, node_b, add_node, &temp).ok());
   ASSERT_EQ(3, graph.nodes().size());
@@ -144,16 +171,16 @@ TEST(RemoveDegenerateUpsampling, Smoke) {
   ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
 
   auto node_to_remove = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, node_to_remove, &output).ok());
   output->tensor.shape = BHWC(1, 5, 5, 1);
-  node_to_remove->operation.type = ToString(OperationType::UPSAMPLE_2D);
-  Upsample2DAttributes attr;
+  node_to_remove->operation.type = ToString(OperationType::RESIZE);
+  Resize2DAttributes attr;
   attr.new_shape = HW(5, 5);
-  attr.type = UpsamplingType::BILINEAR;
+  attr.type = SamplingType::BILINEAR;
   node_to_remove->operation.attributes = attr;
 
-  Value<TensorRef<BHWC>>* link;
+  Value* link;
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, node_to_remove, &link).ok());
   link->tensor.shape = output->tensor.shape;
   ASSERT_EQ(2, graph.nodes().size());
@@ -175,10 +202,10 @@ TEST(RemoveIdentityReshape, Smoke) {
   Node* simple_node = graph.NewNode();
   Node* producer_node = graph.NewNode();
   Node* consumer_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
-  Value<TensorRef<BHWC>>* value0 = graph.NewValue();
-  Value<TensorRef<BHWC>>* value1 = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
+  Value* value0 = graph.NewValue();
+  Value* value1 = graph.NewValue();
 
   value0->tensor.shape = BHWC(1, 1, 1, 11);
   simple_node->operation.type = ToString(OperationType::RESHAPE);

@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -29,7 +29,8 @@ def make_softmax_tests(options):
 
   test_parameters = [{
       "dtype": [tf.float32],
-      "input_shape": [[1, 3, 4, 3], [2, 3]],
+      "input_shape": [[1, 3, 4, 3], [2, 3], [3], [1, 4], [1, 1, 5],
+                      [1, 1, 1, 6]],
       "dim": [-1, 0],
       "fully_quantize": [False, True],
   }, {

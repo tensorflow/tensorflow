@@ -66,13 +66,13 @@ class FilteredPassManager : public llvm::legacy::PassManager {
   explicit FilteredPassManager(bool disable_expensive_passes)
       : disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
-    if (disable_expensive_passes_) {
-      llvm::StringRef PassName = p->getPassName();
-      if (PassName.contains("Unroll loops")) {
-        return;
-      }
+    bool pass_disabled =
+        disable_expensive_passes_ && p->getPassName().contains("Unroll loops");
+    if (!pass_disabled) {
+      llvm::legacy::PassManager::add(p);
+    } else {
+      delete p;
     }
-    llvm::legacy::PassManager::add(p);
   }
 
  private:
@@ -197,11 +197,6 @@ void CompilerFunctor::AddTargetInfoPasses(
       absl::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       VectorFunctionsForTargetLibraryInfoImpl());
-
-  // TODO(b/136651482): Disable pow(f) so LLVM doesn't transform it into powi.
-  // It would be better to provide our own powi.
-  target_library_info_impl->setUnavailable(llvm::LibFunc_pow);
-  target_library_info_impl->setUnavailable(llvm::LibFunc_powf);
 
   passes->add(
       new llvm::TargetLibraryInfoWrapperPass(*target_library_info_impl));

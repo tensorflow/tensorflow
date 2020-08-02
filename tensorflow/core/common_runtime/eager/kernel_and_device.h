@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -59,20 +60,23 @@ class EagerKernelArgs : public FunctionArgsInterface {
  public:
   EagerKernelArgs() {}
 
+  explicit EagerKernelArgs(int count) : tensor_args_(count) {}
+
   explicit EagerKernelArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
       : tensor_args_(std::move(tensor_args)) {}
 
   ~EagerKernelArgs() override{};
 
-  bool HasRemoteInputs() const override { return false; };
+  bool HasRemoteOrPackedInputs() const override { return false; };
+  TensorValue* MutableInput(int i) { return &tensor_args_[i]; }
 
-  Status GetLocalArg(const int index, Tensor* val) const override;
+  Status GetLocalArg(const FunctionArgIndex& index, Tensor* val) const override;
 
   std::vector<Tensor> GetLocalTensors() const override;
 
-  const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const override {
+  const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const {
     return &tensor_args_;
-  };
+  }
 
  protected:
   gtl::InlinedVector<TensorValue, 4> tensor_args_;
@@ -89,11 +93,16 @@ class EagerKernelArgs : public FunctionArgsInterface {
 // https://www.tensorflow.org/code/tensorflow/core/kernels/ops_testutil.h
 class KernelAndDevice : public core::RefCounted {
  public:
+  struct Context {
+    bool log_device_placement = false;
+  };
+
   // Populates this with a kernel appropriate for 'ndef'.
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  virtual Status Init(const NodeDef& ndef, GraphCollector* graph_collector) = 0;
+  virtual Status Init(const Context& ctx, const NodeDef& ndef,
+                      GraphCollector* graph_collector) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
   // primitive operations from KernelAndDevice perspective.
@@ -117,14 +126,23 @@ class KernelAndDevice : public core::RefCounted {
 
   // TODO(ashankar): Handle list-valued inputs.
   virtual Status Run(
-      const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-      CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
-
-  virtual Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
+
+  // Execute kernel asynchronously when applicable. Different from `Run` which
+  // blocks the caller thread and waits for the execution of the op/function,
+  // `RunAsync` could return before finishing the execution. The `done` callback
+  // will be triggered once the op/function execution finishes.
+  // Currently, calling RunAsync on ops might not honor the asynchronicity when
+  // it is called on an instance with only sync implementation, execute the
+  // kernel synchronously and then call the callback with the return status
+  // from sync execution.
+  virtual void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
   virtual Device* OutputDevice(int idx) const = 0;
@@ -143,9 +161,9 @@ class KernelAndDevice : public core::RefCounted {
   // returns.
   Device* device() const { return device_; }
 
+  virtual const DataTypeVector& input_dtypes() const = 0;
   virtual const DataTypeVector& output_dtypes() const = 0;
 
-  virtual DataType input_type(int i) const = 0;
   virtual int num_inputs() const = 0;
   virtual int num_outputs() const = 0;
   virtual const string& name() const = 0;
@@ -166,25 +184,23 @@ class KernelAndDevice : public core::RefCounted {
 class KernelAndDeviceOp final : public KernelAndDevice {
  public:
   KernelAndDeviceOp(
-      tensorflow::Rendezvous* rendez, bool log_memory,
+      tensorflow::Rendezvous* rendezvous, bool log_memory,
       FunctionLibraryRuntime* flr,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
-      Device* host_cpu_device, const bool compile_with_xla = false)
+      Device* host_cpu_device)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
-        rendez_(rendez),
+        rendezvous_(rendezvous),
         log_memory_(log_memory),
-        compile_with_xla_(compile_with_xla) {}
+        step_container_(0, [this](const string& name) {
+          device_->resource_manager()->Cleanup(name).IgnoreError();
+        }) {}
 
   ~KernelAndDeviceOp() override {}
 
-  Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
-
-  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
+  Status Init(const Context& ctx, const NodeDef& ndef,
+              GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
@@ -192,13 +208,25 @@ class KernelAndDeviceOp final : public KernelAndDevice {
              const absl::optional<EagerRemoteFunctionParams>&
                  remote_func_params) override;
 
+  void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) override {
+    // Trivial async implementation on top of the sync version
+    done(Run(step_container, inputs, outputs, cancellation_manager,
+             remote_func_params));
+  }
+
   const OpKernel* kernel() const override { return kernel_.get(); }
 
   Device* InputDevice(int i) const override;
   Device* OutputDevice(int idx) const override;
   Device* OutputResourceDevice(int idx) const override;
 
-  DataType input_type(int i) const override;
+  const DataTypeVector& input_dtypes() const override {
+    return kernel_->input_types();
+  }
   const DataTypeVector& output_dtypes() const override {
     return kernel_->output_types();
   }
@@ -208,16 +236,19 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
  private:
   std::unique_ptr<OpKernel> kernel_;
-  Rendezvous* const rendez_;
+  gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
+  std::vector<Device*> input_devices_;
+  gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
+  Rendezvous* const rendezvous_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
-  const bool compile_with_xla_;
+  ScopedStepContainer step_container_;
 };
 
 // Represents a multi-device function. Functions can also be run using
 // various function-calling kernels including CallOp and PartitionedCallOp.
 // In such cases, KernelAndDeviceOp is used.
-class KernelAndDeviceFunc final : public KernelAndDevice {
+class KernelAndDeviceFunc : public KernelAndDevice {
  public:
   // `flr` can be nullptr.
   // `pflr` must not be nullptr.
@@ -225,6 +256,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
+      absl::flat_hash_map<string, const std::vector<string>*> composite_devices,
       std::unordered_map<int, DtypeAndPartialTensorShape>
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
@@ -237,29 +269,42 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
         pflr_(pflr),
         handle_(kInvalidHandle),
         input_devices_(std::move(input_devices)),
+        composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
         rendezvous_creator_(std::move(rendezvous_creator)),
-        get_op_id_(std::move(get_op_id)) {}
+        get_op_id_(std::move(get_op_id)),
+        step_container_(0, [this](const string& name) {
+          // TODO(b/139809335): This does not properly clean up remote resources
+          const std::vector<Device*> devices =
+              pflr_->device_mgr()->ListDevices();
+          for (Device* device : devices) {
+            device->resource_manager()->Cleanup(name).IgnoreError();
+          }
+        }) {}
 
-  virtual ~KernelAndDeviceFunc();
+  ~KernelAndDeviceFunc() override;
 
   bool IsFunction() override { return true; };
 
-  Status InstantiateFunc(const NodeDef& ndef, GraphCollector* graph_collector);
+  Status InstantiateFunc(const Context& ctx, const NodeDef& ndef,
+                         GraphCollector* graph_collector);
 
-  Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
+  Status Init(const Context& ctx, const NodeDef& ndef,
+              GraphCollector* graph_collector) override;
 
-  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
              CancellationManager* cancellation_manager,
              const absl::optional<EagerRemoteFunctionParams>&
                  remote_func_params) override;
+
+  void RunAsync(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      StatusCallback done) override;
 
   const OpKernel* kernel() const override { return nullptr; }
 
@@ -267,7 +312,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   Device* OutputDevice(int idx) const override;
   Device* OutputResourceDevice(int idx) const override;
 
-  DataType input_type(int i) const override;
+  const DataTypeVector& input_dtypes() const override { return input_dtypes_; }
   const DataTypeVector& output_dtypes() const override {
     return output_dtypes_;
   }
@@ -286,6 +331,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
+  // Maps from a CompositeDevice name to a list of physical device names.
+  absl::flat_hash_map<string, const std::vector<string>*> composite_devices_;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_dtypes_and_shapes_;
 
@@ -295,6 +342,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::function<int64()> get_op_id_;
+
+  ScopedStepContainer step_container_;
 };
 
 }  // namespace tensorflow

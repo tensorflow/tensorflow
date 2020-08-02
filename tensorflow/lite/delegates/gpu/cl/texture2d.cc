@@ -21,8 +21,9 @@ namespace cl {
 namespace {
 
 // Creates new 4-channel 2D texture with cl_channel_type elements
-Status CreateTexture2D(int width, int height, cl_channel_type type, void* data,
-                       CLContext* context, Texture2D* result) {
+absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
+                             void* data, CLContext* context,
+                             Texture2D* result) {
   cl_image_desc desc;
   desc.image_type = CL_MEM_OBJECT_IMAGE2D;
   desc.image_width = width;
@@ -47,16 +48,50 @@ Status CreateTexture2D(int width, int height, cl_channel_type type, void* data,
   cl_mem texture = CreateImage2DLegacy(context->context(), flags, &format,
                                        &desc, data, &error_code);
   if (error_code != CL_SUCCESS) {
-    return UnknownError(
-        absl::StrCat("Failed to create Texture2D (clCreateImage)",
+    return absl::UnknownError(
+        absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                      CLErrorCodeToString(error_code)));
   }
 
   *result = Texture2D(texture, width, height, type);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
+
+GPUResources Texture2DDescriptor::GetGPUResources() const {
+  GPUResources resources;
+  GPUImage2DDescriptor desc;
+  desc.data_type = element_type;
+  desc.access_type = access_type_;
+  resources.images2d.push_back({"tex2d", desc});
+  return resources;
+}
+
+absl::Status Texture2DDescriptor::PerformSelector(
+    const std::string& selector, const std::vector<std::string>& args,
+    const std::vector<std::string>& template_args, std::string* result) const {
+  if (selector == "Read") {
+    return PerformReadSelector(args, result);
+  } else {
+    return absl::NotFoundError(absl::StrCat(
+        "TensorLinearDescriptor don't have selector with name - ", selector));
+  }
+}
+
+absl::Status Texture2DDescriptor::PerformReadSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  if (args.size() != 2) {
+    return absl::NotFoundError(
+        absl::StrCat("Texture2DDescriptor Read require two arguments, but ",
+                     args.size(), " was passed"));
+  }
+  const std::string read =
+      element_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
+  *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0],
+                         ", " + args[1] + "))");
+  return absl::OkStatus();
+}
 
 Texture2D::Texture2D(cl_mem texture, int width, int height,
                      cl_channel_type type)
@@ -94,21 +129,33 @@ void Texture2D::Release() {
   }
 }
 
+absl::Status Texture2D::GetGPUResources(
+    const GPUObjectDescriptor* obj_ptr,
+    GPUResourcesWithValue* resources) const {
+  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(obj_ptr);
+  if (!texture_desc) {
+    return absl::InvalidArgumentError("Expected Texture2DDescriptor on input.");
+  }
+
+  resources->images2d.push_back({"tex2d", texture_});
+  return absl::OkStatus();
+}
+
 // Creates new 4-channel 2D texture with f32 elements
-Status CreateTexture2DRGBA32F(int width, int height, CLContext* context,
-                              Texture2D* result) {
+absl::Status CreateTexture2DRGBA32F(int width, int height, CLContext* context,
+                                    Texture2D* result) {
   return CreateTexture2D(width, height, CL_FLOAT, nullptr, context, result);
 }
 
 // Creates new 4-channel 2D texture with f16 elements
-Status CreateTexture2DRGBA16F(int width, int height, CLContext* context,
-                              Texture2D* result) {
+absl::Status CreateTexture2DRGBA16F(int width, int height, CLContext* context,
+                                    Texture2D* result) {
   return CreateTexture2D(width, height, CL_HALF_FLOAT, nullptr, context,
                          result);
 }
 
-Status CreateTexture2DRGBA(DataType type, int width, int height,
-                           CLContext* context, Texture2D* result) {
+absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
+                                 CLContext* context, Texture2D* result) {
   if (type == DataType::FLOAT32) {
     return CreateTexture2D(width, height, CL_FLOAT, nullptr, context, result);
   } else {
@@ -117,8 +164,9 @@ Status CreateTexture2DRGBA(DataType type, int width, int height,
   }
 }
 
-Status CreateTexture2DRGBA(DataType type, int width, int height, void* data,
-                           CLContext* context, Texture2D* result) {
+absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
+                                 void* data, CLContext* context,
+                                 Texture2D* result) {
   if (type == DataType::FLOAT32) {
     return CreateTexture2D(width, height, CL_FLOAT, data, context, result);
   } else {

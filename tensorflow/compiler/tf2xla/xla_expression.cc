@@ -121,6 +121,9 @@ xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
                       handle().builder()->IsConstant(handle()));
   if (!is_constant) return {absl::nullopt};
 
+  if (!client)
+    return errors::InvalidArgument("client is required to resolve constant");
+
   TF_ASSIGN_OR_RETURN(xla::XlaComputation constant_graph,
                       handle().builder()->BuildConstantSubGraph(
                           handle(), dynamic_dimension_is_minus_one));
@@ -158,6 +161,25 @@ xla::StatusOr<TensorShape> XlaExpression::GetShape() const {
       return errors::InvalidArgument(
           "GetShape() called on invalid XlaExpression");
   }
+}
+
+const XlaExpression* XlaExpression::CastExpressionFromTensor(
+    const Tensor& tensor) {
+  const XlaExpression* expression =
+      reinterpret_cast<const XlaExpression*>(tensor.tensor_data().data());
+  CHECK(expression->kind() != XlaExpression::Kind::kInvalid)
+      << expression->HumanString();
+  return expression;
+}
+
+// Assigns an XlaExpression to a tensor on an XLA compilation device.
+void XlaExpression::AssignExpressionToTensor(const XlaExpression& value,
+                                             Tensor* tensor) {
+  const XlaExpression* expression =
+      reinterpret_cast<const XlaExpression*>(tensor->tensor_data().data());
+  CHECK(expression->kind() == XlaExpression::Kind::kInvalid)
+      << expression->HumanString();
+  *const_cast<XlaExpression*>(expression) = value;
 }
 
 }  // namespace tensorflow

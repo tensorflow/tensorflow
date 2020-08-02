@@ -7,7 +7,7 @@ load(
     "tf_kernel_library",
 )
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
 
@@ -18,6 +18,8 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["quantile_ops.cc"])
 
 tf_proto_library(
     name = "boosted_trees_proto",

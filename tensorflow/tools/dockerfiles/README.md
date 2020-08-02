@@ -41,8 +41,12 @@ more info.
 # CPU-based images
 $ docker run -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
 
-# GPU-based images (set up nvidia-docker2 first)
+# GPU-based images,
+# 1) On Docker versions earlier than 19.03 (set up nvidia-docker2 first)
 $ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
+
+# 2) On Docker versions including and after 19.03 (with nvidia-container-toolkit)
+$ docker run --gpus all -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
 
 # Images with Jupyter run on port 8888 and need a volume for your notebooks
 # You can change $(PWD) to the full path to a directory if your notebooks

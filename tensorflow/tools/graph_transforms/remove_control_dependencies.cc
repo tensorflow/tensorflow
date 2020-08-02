@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
 namespace graph_transforms {
 
-// Remove control depdencies in preparation for inference.
+// Remove control dependencies in preparation for inference.
 // In the tensorflow graph, control dependencies are represented as extra
 // inputs which are referenced with "^tensor_name".
 // See node_def.proto for more details.

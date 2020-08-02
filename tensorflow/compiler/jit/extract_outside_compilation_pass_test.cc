@@ -422,19 +422,6 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
   EXPECT_EQ(fld.Find("host_graph"), nullptr);
 }
 
-REGISTER_OP("XlaSendToHost")
-    .Input("input: Tinput")
-    .Attr("Tinput: type")
-    .Attr("key: string")
-    .SetIsStateful();
-
-REGISTER_OP("XlaRecvFromHost")
-    .Output("output: Toutput")
-    .Attr("Toutput: type")
-    .Attr("shape: shape")
-    .Attr("key: string")
-    .SetIsStateful();
-
 TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
   // Build the XLA computation func.
   // "const0" (bool)
@@ -941,7 +928,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest,
   // "const0"
   // "identity0" = "const0" (outside compilation cluster "0")
   // "identity1" = "const0" "^identity0" (outside compilation cluster "1",
-  //                                      control depdent on cluster "0")
+  //                                      control dependent on cluster "0")
   // "identity2" = "identity1"
   FunctionDefLibrary fdl;
   {

@@ -48,7 +48,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
   }
   tuple_shapes_.reserve(shape_proto.tuple_shapes_size());
   for (const ShapeProto& element_shape : shape_proto.tuple_shapes()) {
-    *add_tuple_shapes() = Shape(element_shape);
+    tuple_shapes_.emplace_back(element_shape);
   }
   if (shape_proto.has_layout()) {
     *mutable_layout() = Layout::CreateFromProto(shape_proto.layout());

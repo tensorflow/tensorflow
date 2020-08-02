@@ -53,9 +53,11 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
       const HloCustomCallInstruction* instr);
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+#endif
 
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr,

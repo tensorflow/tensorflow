@@ -16,11 +16,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_scope.h"
 
 #include <stdio.h>
+
 #include <utility>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
@@ -80,7 +81,7 @@ void TFScope::Build() {
 const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
   root_->ResetTotalStats();
   if (opts.output_type == kOutput[3]) {
-    fprintf(stderr, "Only 'code' view supports pprof output now.\n");
+    absl::FPrintF(stderr, "Only 'code' view supports pprof output now.\n");
     return root_;
   }
 
@@ -171,9 +172,8 @@ std::vector<ScopeNode*> TFScope::PrintScope(const std::vector<ScopeNode*> roots,
         }
       }
 
-      node->formatted_str =
-          strings::Printf("%s%s\n", string(last_ident, ' ').c_str(),
-                          FormatNode(node, opts).c_str());
+      node->formatted_str = absl::StrFormat(
+          "%s%s\n", std::string(last_ident, ' '), FormatNode(node, opts));
 
       if (opts.select.find(kShown[4]) != opts.select.end()) {
         std::unique_ptr<TFProfTensor> tfprof_tensor;

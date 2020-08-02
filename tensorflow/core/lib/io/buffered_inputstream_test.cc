@@ -30,9 +30,41 @@ static std::vector<int> BufferSizes() {
           12, 13, 14, 15, 16, 17, 18, 19, 20, 65536};
 }
 
+// This class will only return OutOfRange error once to make sure that
+// BufferedInputStream is able to cache the error.
+class ReadOnceInputStream : public InputStreamInterface {
+ public:
+  ReadOnceInputStream() : start_(true) {}
+
+  virtual Status ReadNBytes(int64 bytes_to_read, tstring* result) {
+    if (bytes_to_read < 11) {
+      return errors::InvalidArgument("Not reading all bytes: ", bytes_to_read);
+    }
+    if (start_) {
+      *result = "0123456789";
+      start_ = false;
+      return errors::OutOfRange("Out of range.");
+    }
+    return errors::InvalidArgument(
+        "Redudant call to ReadNBytes after an OutOfRange error.");
+  }
+
+  int64 Tell() const override { return start_ ? 0 : 10; }
+
+  // Resets the stream to the beginning.
+  Status Reset() override {
+    start_ = true;
+    return Status::OK();
+  }
+
+ private:
+  bool start_;
+};
+
 TEST(BufferedInputStream, ReadLine_Empty) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, ""));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
@@ -48,7 +80,8 @@ TEST(BufferedInputStream, ReadLine_Empty) {
 
 TEST(BufferedInputStream, ReadLine1) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(
       WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
   std::unique_ptr<RandomAccessFile> file;
@@ -73,7 +106,8 @@ TEST(BufferedInputStream, ReadLine1) {
 
 TEST(BufferedInputStream, ReadLine_NoTrailingNewLine) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
@@ -97,7 +131,8 @@ TEST(BufferedInputStream, ReadLine_NoTrailingNewLine) {
 
 TEST(BufferedInputStream, ReadLine_EmptyLines) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(
       WriteStringToFile(env, fname, "line one\n\n\nline two\nline three"));
   std::unique_ptr<RandomAccessFile> file;
@@ -126,7 +161,8 @@ TEST(BufferedInputStream, ReadLine_EmptyLines) {
 
 TEST(BufferedInputStream, ReadLine_CRLF) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname,
                                  "line one\r\n\r\n\r\nline two\r\nline three"));
   std::unique_ptr<RandomAccessFile> file;
@@ -155,7 +191,8 @@ TEST(BufferedInputStream, ReadLine_CRLF) {
 
 TEST(BufferedInputStream, ReadNBytes) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffer_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
@@ -190,9 +227,36 @@ TEST(BufferedInputStream, ReadNBytes) {
   }
 }
 
+TEST(BufferedInputStream, OutOfRangeCache) {
+  for (auto buf_size : BufferSizes()) {
+    if (buf_size < 11) {
+      continue;
+    }
+    ReadOnceInputStream input_stream;
+    tstring read;
+    BufferedInputStream in(&input_stream, buf_size);
+    EXPECT_EQ(0, in.Tell());
+    TF_ASSERT_OK(in.ReadNBytes(3, &read));
+    EXPECT_EQ(read, "012");
+    EXPECT_EQ(3, in.Tell());
+    TF_ASSERT_OK((in.ReadNBytes(7, &read)));
+    EXPECT_EQ(read, "3456789");
+    EXPECT_EQ(10, in.Tell());
+    Status s = in.ReadNBytes(5, &read);
+    // Make sure the read is failing with OUT_OF_RANGE error. If it is failing
+    // with other errors, it is not caching the OUT_OF_RANGE properly.
+    EXPECT_EQ(error::OUT_OF_RANGE, s.code()) << s;
+    EXPECT_EQ(read, "");
+    // Empty read shouldn't cause an error even at the end of the file.
+    TF_ASSERT_OK(in.ReadNBytes(0, &read));
+    EXPECT_EQ(read, "");
+  }
+}
+
 TEST(BufferedInputStream, SkipNBytes) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
@@ -229,7 +293,8 @@ TEST(BufferedInputStream, SkipNBytes) {
 
 TEST(BufferedInputStream, ReadNBytesRandomAccessFile) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffer_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
@@ -264,7 +329,8 @@ TEST(BufferedInputStream, ReadNBytesRandomAccessFile) {
 
 TEST(BufferedInputStream, SkipNBytesRandomAccessFile) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
@@ -299,7 +365,8 @@ TEST(BufferedInputStream, SkipNBytesRandomAccessFile) {
 
 TEST(BufferedInputStream, Seek) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
@@ -329,7 +396,8 @@ TEST(BufferedInputStream, Seek) {
 
 TEST(BufferedInputStream, ReadAll_Empty) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   const string expected = "";
   TF_ASSERT_OK(WriteStringToFile(env, fname, expected));
   std::unique_ptr<RandomAccessFile> file;
@@ -346,7 +414,8 @@ TEST(BufferedInputStream, ReadAll_Empty) {
 
 TEST(BufferedInputStream, ReadAll_Text) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   const string expected = "line one\nline two\nline three";
   TF_ASSERT_OK(WriteStringToFile(env, fname, expected));
   std::unique_ptr<RandomAccessFile> file;
@@ -365,7 +434,8 @@ void BM_BufferedReaderSmallReads(const int iters, const int buff_size,
                                  const int file_size) {
   testing::StopTiming();
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
 
   const string file_elem = "0123456789";
   std::unique_ptr<WritableFile> write_file;

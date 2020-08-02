@@ -23,7 +23,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.framework import resource_handle_pb2
-from tensorflow.python import pywrap_tensorflow_internal
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -71,8 +71,7 @@ class TensorHandle(object):
     if not self._resource_handle:
       self._resource_handle = resource_handle_pb2.ResourceHandleProto()
       self._resource_handle.device = self._handle.split(";")[-1]
-      self._resource_handle.container = (
-          pywrap_tensorflow_internal.TENSOR_HANDLE_KEY)
+      self._resource_handle.container = (pywrap_tf_session.TENSOR_HANDLE_KEY)
       self._resource_handle.name = self._handle
     return self._resource_handle
 

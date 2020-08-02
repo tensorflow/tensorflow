@@ -26,7 +26,7 @@ namespace reference_ops {
 // TODO(ycling): Refactoring. Remove BroadcastLogical and use the more
 // generalized and efficient BroadcastBinaryFunction.
 //
-// Also appears to duplicte MinimumMaximum.
+// Also appears to duplicate MinimumMaximum.
 //
 // R: Result type. T1: Input 1 type. T2: Input 2 type.
 template <typename R, typename T1, typename T2>

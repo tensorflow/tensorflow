@@ -14,17 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/c_api.h"
-
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -1260,11 +1260,10 @@ TEST_F(CApiFunctionTest, GraphToFunctionDefWithPlaceholderAttr) {
   NodeWithPlaceholderAttrHelper(func_graph.get(), s.get(), "node3", "v2",
                                 &node3);
 
-  TF_Output inputs[] = {};
   TF_Output outputs[] = {{node1, 0}, {node2, 0}, {node3, 0}};
   func_ = TF_GraphToFunction(
       func_graph.get(), "func", /*append_hash_to_fn_name=*/false, -1,
-      /*opers=*/nullptr, 0, inputs, 3, outputs,
+      /*opers=*/nullptr, 0, nullptr, 3, outputs,
       /*output_names=*/nullptr,
       /*opts=*/nullptr, /*description=*/nullptr, s.get());
   ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
@@ -1300,10 +1299,9 @@ TEST_F(CApiFunctionTest, GraphToFunctionDefWithArgAttr) {
                      &node);
 
   TF_Output inputs[] = {{node, 0}};
-  TF_Output outputs[] = {};
   func_ = TF_GraphToFunction(
       func_graph.get(), "func", /*append_hash_to_fn_name=*/false, -1,
-      /*opers=*/nullptr, 1, inputs, 0, outputs,
+      /*opers=*/nullptr, 1, inputs, 0, nullptr,
       /*output_names=*/nullptr,
       /*opts=*/nullptr, /*description=*/nullptr, s.get());
   ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
@@ -1603,11 +1601,10 @@ void DefineStatefulFunction(const char* name, TF_Function** func) {
   TF_Operation* random =
       RandomUniform(shape, TF_FLOAT, func_graph.get(), s.get());
 
-  TF_Output inputs[] = {};
   TF_Output outputs[] = {{random, 0}};
   *func = TF_GraphToFunction(func_graph.get(), name,
                              /*append_hash_to_fn_name=*/false, -1,
-                             /*opers=*/nullptr, 0, inputs, 1, outputs,
+                             /*opers=*/nullptr, 0, nullptr, 1, outputs,
                              /*output_names=*/nullptr,
                              /*opts=*/nullptr, "", s.get());
   ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());

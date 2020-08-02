@@ -1,0 +1,43 @@
+path: "tensorflow.keras.applications.efficientnet"
+tf_module {
+  member_method {
+    name: "EfficientNetB0"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB1"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB2"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB3"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB4"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB5"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB6"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB7"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "decode_predictions"
+    argspec: "args=[\'preds\', \'top\'], varargs=None, keywords=None, defaults=[\'5\'], "
+  }
+  member_method {
+    name: "preprocess_input"
+    argspec: "args=[\'x\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

@@ -34,14 +34,14 @@ END
   attr {
     name: "T"
     description: <<END
-The quantized type of input tensor that needs to be converted. 
+The quantized type of input tensor that needs to be converted.
 END
   }
   attr {
     name: "clip_value_max"
     description: <<END
 The maximum value of the output that needs to be clipped.
-Example: set this to 6 for Relu6. 
+Example: set this to 6 for Relu6.
 END
   }
   summary: "Computes requantization range per channel."

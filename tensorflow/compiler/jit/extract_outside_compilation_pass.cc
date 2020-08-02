@@ -95,7 +95,7 @@ Status GetArgDataTypes(const std::vector<Node*>& arg_nodes,
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "T", &dtype));
     (*recv_at_host_dtypes)[index] = dtype;
   }
-  for (int i = 0; i < recv_at_host_dtypes->size(); i++) {
+  for (int i = 0, end = recv_at_host_dtypes->size(); i < end; i++) {
     if ((*recv_at_host_dtypes)[i] == DT_INVALID) {
       return errors::Internal("Cannot get datatype for input ", i);
     }
@@ -160,7 +160,7 @@ xla::StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
     }
 
     // Rewrite dst nodes because their input changed.
-    for (int i = 0; i < out_edge_info.size(); i++) {
+    for (int i = 0, end = out_edge_info.size(); i < end; i++) {
       const OutEdgeInfo edge = out_edge_info[i];
       if (edge.dst_input == Graph::kControlSlot) {
         continue;
@@ -174,7 +174,7 @@ xla::StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
 
       // Other edges might have `dst` as dst node as well. Update those edges
       // with `dst_replace`.
-      for (int j = i + 1; j < out_edge_info.size(); j++) {
+      for (int j = i + 1, end = out_edge_info.size(); j < end; j++) {
         if (out_edge_info[j].dst == dst) {
           out_edge_info[j].dst = dst_replace;
         }
@@ -196,7 +196,7 @@ Status GetRetDataTypes(const std::vector<Node*>& ret_nodes,
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "T", &dtype));
     (*send_from_host_dtypes)[index] = dtype;
   }
-  for (int i = 0; i < send_from_host_dtypes->size(); i++) {
+  for (int i = 0, end = send_from_host_dtypes->size(); i < end; i++) {
     if ((*send_from_host_dtypes)[i] == DT_INVALID) {
       return errors::Internal("Cannot get datatype for output ", i);
     }
@@ -226,7 +226,8 @@ xla::StatusOr<Node*> BuildSendFromHostNode(
   for (auto* n : ret_nodes) {
     int index;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-    if (index < 0 || index >= send_from_host_dtypes.size()) {
+    const int num_dtypes = send_from_host_dtypes.size();
+    if (index < 0 || index >= num_dtypes) {
       return errors::Internal("Invalid _Retval index: ", index);
     }
     for (auto edge : n->in_edges()) {
@@ -321,7 +322,7 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
                             host_compute_builder.node_name());
 
   // Copy all attributes.
-  for (auto attr : call_node->attrs()) {
+  for (const auto& attr : call_node->attrs()) {
     host_compute_builder.Attr(attr.first, attr.second);
   }
 
@@ -346,7 +347,7 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
   xla_token_input_nodes.emplace_back(kXlaTokenArgNodeName);
   auto cluster_deps_it = cluster_deps.find(original_oc_name);
   if (cluster_deps_it != cluster_deps.end()) {
-    for (auto dep : cluster_deps_it->second) {
+    for (const auto& dep : cluster_deps_it->second) {
       xla_token_input_nodes.emplace_back(host_compute_node_name(dep));
     }
   }
@@ -361,7 +362,8 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
       continue;
     }
 
-    if (e->dst_input() < 0 || e->dst_input() >= input_dtypes.size()) {
+    const int input_dtypes_size = input_dtypes.size();
+    if (e->dst_input() < 0 || e->dst_input() >= input_dtypes_size) {
       return errors::Internal("Invalid dst_input: ", e->dst_input());
     }
     inputs[e->dst_input()] = NodeDefBuilder::NodeOut{
@@ -372,39 +374,6 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
   NodeDef new_def;
   TF_RETURN_IF_ERROR(host_compute_builder.Finalize(&new_def));
   return new_def;
-}
-
-TF_ATTRIBUTE_NOINLINE Status
-ValidateOutsideCompilationCallNode(Node* call_node) {
-  // DT_INT64 as input/output for outside compilation is not supported yet:
-  // b/120809951.
-  for (const Edge* e : call_node->in_edges()) {
-    if (e->IsControlEdge()) {
-      continue;
-    }
-    DataType dtype = e->src()->output_type(e->src_output());
-    if (dtype == DT_INT64) {
-      return errors::Unimplemented(
-          "int64 input for outside compilation is not supported yet: "
-          "b/120809951. Please cast output of node ",
-          e->src()->DebugString(),
-          " to int32 before feeding it into outside compilation.");
-    }
-  }
-  for (const Edge* e : call_node->out_edges()) {
-    if (e->IsControlEdge()) {
-      continue;
-    }
-    DataType dtype = e->dst()->input_type(e->dst_input());
-    if (dtype == DT_INT64) {
-      return errors::Unimplemented(
-          "int64 output for outside compilation is not supported yet: "
-          "b/120809951. Please cast input of node ",
-          e->dst()->DebugString(),
-          " to int32 before returning it from outside compilation.");
-    }
-  }
-  return Status::OK();
 }
 
 // Replace outside compilation function call node with XlaHostCompute node.
@@ -533,7 +502,7 @@ void AddEdgesFromOutsideCompilationNodes(
     const std::vector<DataType>& data_types,
     const std::vector<Node*>& outside_compilation_nodes, Graph* g, Node* n) {
   // Add edges from outside compilation nodes to While node.
-  for (int i = original_arg_count; i < data_types.size(); i++) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; i++) {
     Node* outside_compilation_node =
         outside_compilation_nodes[i - original_arg_count];
     g->AddEdge(outside_compilation_node, 0, n, i + arg_to_input_edge_offset);
@@ -652,7 +621,7 @@ Status PostprocessLiftedArgsForWhile(
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
       std::back_inserter(lifted_arg_nodes),
       [](const std::pair<Node*, Node*>& pair) { return pair.first; });
-  for (int i = original_arg_count; i < data_types.size(); i++) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; i++) {
     TF_ASSIGN_OR_RETURN(Node * arg_node,
                         AddOutsideCompilationInputArgToFunctionBody(
                             *body_function_body, i, data_types[i]));
@@ -681,7 +650,7 @@ Status PostprocessLiftedArgsForWhile(
                                              AttrSlice(&cond_func.attr()), fld,
                                              &cond_function_body));
 
-  for (int i = original_arg_count; i < data_types.size(); i++) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; i++) {
     xla::StatusOr<Node*> arg_node_or =
         AddOutsideCompilationInputArgToFunctionBody(*cond_function_body, i,
                                                     data_types[i]);
@@ -792,7 +761,7 @@ Status PostprocessLiftedArgsForIf(
                                       data_types, outside_compilation_nodes, g,
                                       n);
 
-  for (int i = original_arg_count; i < data_types.size(); ++i) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; ++i) {
     TF_ASSIGN_OR_RETURN(Node * then_branch_arg_node,
                         AddOutsideCompilationInputArgToFunctionBody(
                             *then_branch_function_body, i, data_types[i]));
@@ -870,7 +839,7 @@ Status PostprocessLiftedArgsForCall(
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
       std::back_inserter(lifted_arg_nodes),
       [](const std::pair<Node*, Node*>& pair) { return pair.first; });
-  for (int i = original_arg_count; i < data_types.size(); ++i) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; ++i) {
     TF_ASSIGN_OR_RETURN(
         Node * arg_node,
         AddOutsideCompilationInputArgToFunctionBody(*fbody, i, data_types[i]));
@@ -888,7 +857,7 @@ Status PostprocessLiftedArgsForCall(
   // We need to recreate the node. Otherwise TF will not know n->num_inputs()
   // has increased.
   NodeDef node_def = n->def();
-  for (int i = original_arg_count; i < data_types.size(); i++) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; i++) {
     Node* outside_compilation_node =
         lifted_arg_nodes_and_outside_compilation_nodes[i - original_arg_count]
             .second;
@@ -1837,7 +1806,9 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
       continue;
     }
 
-    TF_RET_CHECK(e->dst_input() >= 0 && e->dst_input() < inputs.size());
+    const bool input_size_check =
+        e->dst_input() < static_cast<int>(inputs.size());
+    TF_RET_CHECK(e->dst_input() >= 0 && input_size_check);
     inputs[e->dst_input()] =
         NodeDefBuilder::NodeOut{e->src()->name(), e->src_output(),
                                 e->src()->output_type(e->src_output())};
@@ -2130,6 +2101,53 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
   return Status::OK();
 }
 
+Status CopyOutsideCompilationConstNodes(
+    Graph* g, const string& outside_compilation_attr_name) {
+  for (Node* n : g->op_nodes()) {
+    if (!n->IsConstant() ||
+        !HasNodeAttr(n->def(), outside_compilation_attr_name)) {
+      continue;
+    }
+
+    std::vector<const Edge*> out_edges(n->out_edges().begin(),
+                                       n->out_edges().end());
+    bool has_non_oc_output = false;
+    for (const Edge* e : out_edges) {
+      if (!e->IsControlEdge() &&
+          !HasNodeAttr(e->dst()->def(), outside_compilation_attr_name)) {
+        has_non_oc_output = true;
+        break;
+      }
+    }
+    if (!has_non_oc_output) {
+      continue;
+    }
+
+    NodeDef copy_def = n->def();
+    copy_def.set_name(g->NewName(n->name()));
+    copy_def.mutable_attr()->erase(outside_compilation_attr_name);
+    Status s;
+    Node* copy_node = g->AddNode(copy_def, &s);
+    TF_RETURN_IF_ERROR(s);
+    for (const Edge* e : n->in_edges()) {
+      if (e->IsControlEdge()) {
+        g->AddControlEdge(e->src(), copy_node);
+      }
+    }
+    for (const Edge* e : out_edges) {
+      if (!e->IsControlEdge() &&
+          !HasNodeAttr(e->dst()->def(), outside_compilation_attr_name)) {
+        Node* dst = e->dst();
+        int dst_input = e->dst_input();
+        g->RemoveEdge(e);
+        g->AddEdge(copy_node, 0, dst, dst_input);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace
 
 Status RewriteOutsideCompilationSubgraphFn::operator()(
@@ -2279,6 +2297,10 @@ Status ExtractOutsideCompilationForFunction(
   std::vector<string> outside_compilation_host_graphs;
   std::vector<string> shape_inference_graphs_to_rewrite;
   if (*has_outside_compilation) {
+    // Copy outside compilation Const nodes with non outside compilation users.
+    TF_RETURN_IF_ERROR(CopyOutsideCompilationConstNodes(
+        fbody->graph, outside_compilation_attr_name));
+
     // Find dependencies between outside compilation clusters.
     TF_ASSIGN_OR_RETURN(auto cluster_deps,
                         OutsideCompilationClusterDependencies(
@@ -2333,7 +2355,6 @@ Status ExtractOutsideCompilationForFunction(
     }
     std::map<string, Node*> host_compute_nodes;
     for (Node* n : outside_compilation_nodes) {
-      TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
       auto host_compute_node_or = ReplaceOutsideCompilationCallNode(
           graph_out.get(), n, host_compute_core, *cluster_deps);
       TF_RETURN_IF_ERROR(host_compute_node_or.status());
@@ -2342,7 +2363,7 @@ Status ExtractOutsideCompilationForFunction(
     }
     // For XlaHostCompute nodes with dependencies, add control edges between
     // them so XlaCompiler can handle them in correct order.
-    for (auto iter : host_compute_nodes) {
+    for (const auto& iter : host_compute_nodes) {
       Node* host_compute_node = iter.second;
       std::vector<string> token_input_node_names;
       TF_RETURN_IF_ERROR(GetNodeAttr(host_compute_node->def(),
@@ -2403,6 +2424,7 @@ Status ExtractOutsideCompilationForFunction(
     auto updated_fdef = absl::make_unique<FunctionDef>();
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*g, new_func_name, updated_fdef.get()));
+    updated_fdef->mutable_signature()->set_is_stateful(true);
     const FunctionDef* original_fdef = fld->Find(func_name);
     if (original_fdef) {
       for (const auto& attr : original_fdef->attr()) {
@@ -2462,7 +2484,7 @@ Status ExtractOutsideCompilation(
 
       TF_RETURN_IF_ERROR(fld->RemoveFunction(host_graph_func_name));
 
-      for (auto shape_inference_graph_name : shape_inference_graphs) {
+      for (const auto& shape_inference_graph_name : shape_inference_graphs) {
         TF_RETURN_IF_ERROR(RewriteShapeInferenceGraph(
             shape_inference_graph_name, g, pivot_node, fld));
       }

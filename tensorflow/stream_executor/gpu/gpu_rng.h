@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_RNG_H_
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/rng.h"
 
@@ -80,7 +80,7 @@ class GpuRng : public rng::RngSupport {
   // This is a stateful operation, as the handle can only have one stream set at
   // a given time, so it is usually performed right before enqueuing work to do
   // with random number generation.
-  bool SetStream(Stream* stream) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream* stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Guards the gpu rng library handle for this device.
   absl::Mutex mu_;
@@ -90,31 +90,31 @@ class GpuRng : public rng::RngSupport {
   GpuExecutor* parent_;
 
   // gpu rng library handle on the device.
-  GpuRngHandle rng_ GUARDED_BY(mu_);
+  GpuRngHandle rng_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(GpuRng);
 };
 
 template <typename T>
-string TypeString();
+std::string TypeString();
 
 template <>
-string TypeString<float>() {
+std::string TypeString<float>() {
   return "float";
 }
 
 template <>
-string TypeString<double>() {
+std::string TypeString<double>() {
   return "double";
 }
 
 template <>
-string TypeString<std::complex<float>>() {
+std::string TypeString<std::complex<float>>() {
   return "std::complex<float>";
 }
 
 template <>
-string TypeString<std::complex<double>>() {
+std::string TypeString<std::complex<double>>() {
   return "std::complex<double>";
 }
 

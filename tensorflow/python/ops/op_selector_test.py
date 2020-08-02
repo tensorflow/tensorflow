@@ -166,7 +166,7 @@ class SelectTest(test.TestCase):
               self.a.op, self.b.op, self.c.op, self.d.op, self.f.op, self.h.op
           ]))
 
-      # Vanially backward search via self.h.op includes everything excpet e.op.
+      # Vanially backward search via self.h.op includes everything except e.op.
       ops = op_selector.get_backward_walk_ops(seed_ops, inclusive=True)
       self.assertEqual(
           set(ops),

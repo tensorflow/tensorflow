@@ -21,6 +21,8 @@ limitations under the License.
 namespace tensorflow {
 namespace table {
 
+class Cache;
+
 // DB contents are stored in a set of blocks, each of which holds a
 // sequence of key,value pairs.  Each block may be compressed before
 // being stored in a file.  The following enum describes which
@@ -60,6 +62,12 @@ struct Options {
   // incompressible, the kSnappyCompression implementation will
   // efficiently detect that and will switch to uncompressed mode.
   CompressionType compression = kSnappyCompression;
+
+  // Control over blocks (user data is stored in a set of blocks, and
+  // a block is the unit of reading from disk).
+
+  // If non-null, use the specified cache for blocks.
+  Cache* block_cache = nullptr;
 };
 
 }  // namespace table

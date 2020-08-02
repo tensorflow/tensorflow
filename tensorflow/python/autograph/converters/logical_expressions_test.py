@@ -27,62 +27,59 @@ from tensorflow.python.platform import test
 
 class LogicalExpressionTest(converter_testing.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_equals(self):
 
-    def test_fn(a, b):
+    def f(a, b):
       return a == b
 
-    with self.converted(test_fn, logical_expressions, {}) as result:
-      with self.cached_session() as sess:
-        self.assertTrue(sess.run(result.test_fn(constant_op.constant(1), 1)))
-        self.assertFalse(sess.run(result.test_fn(constant_op.constant(1), 2)))
+    tr = self.transform(f, logical_expressions)
+
+    self.assertTrue(self.evaluate(tr(constant_op.constant(1), 1)))
+    self.assertFalse(self.evaluate(tr(constant_op.constant(1), 2)))
 
   @test_util.run_deprecated_v1
   def test_bool_ops(self):
 
-    def test_fn(a, b, c):
+    def f(a, b, c):
       return (a or b) and (a or b or c) and not c
 
-    with self.converted(test_fn, logical_expressions, {}) as result:
-      with self.cached_session() as sess:
-        self.assertTrue(
-            sess.run(result.test_fn(constant_op.constant(True), False, False)))
-        self.assertFalse(
-            sess.run(result.test_fn(constant_op.constant(True), False, True)))
+    tr = self.transform(f, logical_expressions)
 
-  @test_util.run_deprecated_v1
+    self.assertTrue(self.evaluate(tr(constant_op.constant(True), False, False)))
+    self.assertFalse(self.evaluate(tr(constant_op.constant(True), False, True)))
+
   def test_comparison(self):
 
-    def test_fn(a, b, c, d):
+    def f(a, b, c, d):
       return a < b == c > d
 
-    with self.converted(test_fn, logical_expressions, {}) as result:
-      with self.cached_session() as sess:
-        # Note: having just the first constant a tensor tests that the
-        # operations execute in the correct order. If anything other than
-        # a < b executed first, the result would be a Python scalar and not a
-        # Tensor. This is valid as long as the dispat is automatic based on
-        # type.
-        self.assertTrue(
-            sess.run(result.test_fn(constant_op.constant(1), 2, 2, 1)))
-        self.assertFalse(
-            sess.run(result.test_fn(constant_op.constant(1), 2, 2, 3)))
+    tr = self.transform(f, logical_expressions)
+
+    # Note: having just the first constant a tensor tests that the
+    # operations execute in the correct order. If anything other than
+    # a < b executed first, the result would be a Python scalar and not a
+    # Tensor. This is valid as long as the dispat is automatic based on
+    # type.
+    self.assertTrue(self.evaluate(tr(constant_op.constant(1), 2, 2, 1)))
+    self.assertFalse(self.evaluate(tr(constant_op.constant(1), 2, 2, 3)))
 
   def test_default_ops(self):
 
-    def test_fn(a, b):
+    def f(a, b):
       return a in b
 
-    with self.converted(test_fn, logical_expressions, {}) as result:
-      self.assertTrue(result.test_fn('a', ('a',)))
+    tr = self.transform(f, logical_expressions)
+
+    self.assertTrue(tr('a', ('a',)))
 
   def test_unary_ops(self):
-    def test_fn(a):
+
+    def f(a):
       return ~a, -a, +a
 
-    with self.converted(test_fn, logical_expressions, {}) as result:
-      self.assertEqual(result.test_fn(1), (-2, -1, 1))
+    tr = self.transform(f, logical_expressions)
+
+    self.assertEqual(tr(1), (-2, -1, 1))
 
 
 if __name__ == '__main__':

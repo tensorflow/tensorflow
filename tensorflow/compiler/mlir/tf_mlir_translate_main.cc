@@ -21,10 +21,12 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "mlir/Support/TranslateClParser.h"  // TF:local_config_mlir
+#include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/ToolUtilities.h"  // from @llvm-project
+#include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -41,9 +43,24 @@ static llvm::cl::opt<std::string> output_filename(
     llvm::cl::init("-"));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> import_saved_model(
-    "savedmodel-to-mlir",
-    llvm::cl::desc("Import a saved model to its MLIR representation"),
+static llvm::cl::opt<bool> splitInputFile(
+    "split-input-file",
+    llvm::cl::desc("Split the input file into pieces and process each chunk "
+                   "independently"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> import_saved_model_object_graph(
+    "savedmodel-objectgraph-to-mlir",
+    llvm::cl::desc(
+        "Import a saved model's object graph to its MLIR representation"),
+    llvm::cl::value_desc("dir"));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> import_saved_model_signature_defs(
+    "savedmodel-signaturedefs-to-mlir",
+    llvm::cl::desc(
+        "Import a saved model's SignatureDefs to to their MLIR representation"),
     llvm::cl::value_desc("dir"));
 
 // NOLINTNEXTLINE
@@ -66,13 +83,15 @@ int main(int argc, char** argv) {
   // Add flags for all the registered translations.
   llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
       requested_translation("", llvm::cl::desc("Translation to perform"));
-
+  mlir::registerAsmPrinterCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
 
-  if (!import_saved_model && !requested_translation) {
+  if (!import_saved_model_object_graph && !import_saved_model_signature_defs &&
+      !requested_translation) {
     llvm::errs() << "error: need to specify one translation to perform\n";
     return 1;
-  } else if (import_saved_model && requested_translation) {
+  } else if (import_saved_model_object_graph &&
+             import_saved_model_signature_defs && requested_translation) {
     llvm::errs()
         << "error: cannot specify more than one translation to perform\n";
     return 1;
@@ -85,20 +104,27 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  mlir::MLIRContext context;
+  std::unordered_set<std::string> tags = absl::StrSplit(saved_model_tags, ',');
+  std::vector<std::string> exported_names_vector =
+      absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
+  absl::Span<std::string> exported_names(exported_names_vector);
 
-  if (import_saved_model) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
-    std::vector<std::string> exported_names =
-        absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
+  if (import_saved_model_object_graph) {
+    mlir::MLIRContext context;
 
-    auto module = tensorflow::SavedModelToMlirImport(
-        input_filename, tags, absl::Span<std::string>(exported_names),
-        &context);
-    if (!module) return 1;
+    auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
+        input_filename, tags, exported_names, &context);
+    if (!module_or.status().ok()) return 1;
 
-    module->print(output->os());
+    module_or.ConsumeValueOrDie()->print(output->os());
+  } else if (import_saved_model_signature_defs) {
+    mlir::MLIRContext context;
+
+    auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, exported_names, &context);
+    if (!module_or.status().ok()) return 1;
+
+    module_or.ConsumeValueOrDie()->print(output->os());
   } else {
     auto input = mlir::openInputFile(input_filename, &error_message);
 
@@ -107,12 +133,23 @@ int main(int argc, char** argv) {
       return 1;
     }
 
-    llvm::SourceMgr source_mgr;
-    source_mgr.AddNewSourceBuffer(std::move(input), llvm::SMLoc());
-    mlir::SourceMgrDiagnosticHandler diagnostic_handler(source_mgr, &context);
+    // Processes the memory buffer with a new MLIRContext.
+    auto processBuffer = [&](std::unique_ptr<llvm::MemoryBuffer> ownedBuffer,
+                             llvm::raw_ostream& os) {
+      llvm::SourceMgr sourceMgr;
+      sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
+      mlir::MLIRContext context;
+      mlir::SourceMgrDiagnosticHandler diagnostic_handler(sourceMgr, &context);
+      return (*requested_translation)(sourceMgr, os, &context);
+    };
 
-    if (failed((*requested_translation)(source_mgr, output->os(), &context)))
-      return 1;
+    if (splitInputFile) {
+      if (failed(mlir::splitAndProcessBuffer(std::move(input), processBuffer,
+                                             output->os())))
+        return 1;
+    } else {
+      if (failed(processBuffer(std::move(input), output->os()))) return 1;
+    }
   }
 
   output->keep();

@@ -1,66 +1,66 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
+load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
+
+# For platform specific build config
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_profiler_client_deps",
+)
 
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_cuda_library(
+cc_library(
     name = "capture_profile",
-    srcs = [
-        "capture_profile.cc",
+    srcs = ["capture_profile.cc"],
+    hdrs = ["capture_profile.h"],
+    visibility = [
+        "//tensorflow/python/profiler/internal:__pkg__",
     ],
-    hdrs = [
-        "capture_profile.h",
-    ],
-    visibility = ["//visibility:public"],
     deps = [
-        ":dump_tpu_profile",
-        "//tensorflow:grpc++",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:grpc_services",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/profiler:protos_all_cc",
+        ":save_profile",
         "@com_google_absl//absl/strings",
-    ],
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
+    ] + tf_profiler_client_deps(),
 )
 
 cc_library(
-    name = "dump_tpu_profile",
-    srcs = ["dump_tpu_profile.cc"],
-    hdrs = ["dump_tpu_profile.h"],
-    visibility = ["//visibility:public"],
+    name = "save_profile",
+    srcs = ["save_profile.cc"],
+    hdrs = ["save_profile.h"],
+    visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        ":trace_events_to_json",
         "//tensorflow/core:framework",
-        "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler:op_profile_proto_cc",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
 cc_library(
-    name = "trace_events_to_json",
-    srcs = ["trace_events_to_json.cc"],
-    hdrs = ["trace_events_to_json.h"],
+    name = "profiler_client_impl",
+    srcs = ["profiler_client.cc"],
+    hdrs = ["profiler_client.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@jsoncpp_git//:jsoncpp",
+        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        tf_grpc_cc_dependency(),
     ],
+    alwayslink = True,
 )
 
-tf_cc_test(
-    name = "trace_events_to_json_test",
-    srcs = ["trace_events_to_json_test.cc"],
-    deps = [
-        ":trace_events_to_json",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler:protos_all_cc",
-        "@jsoncpp_git//:jsoncpp",
-    ],
+tf_pybind_cc_library_wrapper(
+    name = "profiler_client_headers",
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
+    deps = [":profiler_client_impl"],
 )

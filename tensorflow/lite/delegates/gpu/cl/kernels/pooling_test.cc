@@ -49,10 +49,11 @@ TEST_F(OpenCLOperationTest, AveragePooling) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Pooling operation = CreatePooling(op_def, attr);
+      Pooling operation =
+          CreatePooling(op_def, attr, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {3.0f, 4.0f}));
@@ -78,10 +79,11 @@ TEST_F(OpenCLOperationTest, AveragePoolingNonEmptyPadding) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Pooling operation = CreatePooling(op_def, attr);
+      Pooling operation =
+          CreatePooling(op_def, attr, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 2, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -108,10 +110,11 @@ TEST_F(OpenCLOperationTest, MaxPooling) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Pooling operation = CreatePooling(op_def, attr);
+      Pooling operation =
+          CreatePooling(op_def, attr, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {8.0f, 7.0f}));
@@ -138,12 +141,13 @@ TEST_F(OpenCLOperationTest, MaxPoolingIndices) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       TensorFloat32 dst_tensor_ind;
-      Pooling operation = CreatePooling(op_def, attr);
+      Pooling operation =
+          CreatePooling(op_def, attr, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
                                     {BHWC(1, 1, 1, 2), BHWC(1, 1, 1, 2)},
                                     {&dst_tensor, &dst_tensor_ind}));

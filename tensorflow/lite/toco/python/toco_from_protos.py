@@ -21,7 +21,7 @@ import argparse
 import sys
 
 # We need to import pywrap_tensorflow prior to the toco wrapper.
-# pylint: disable=invalud-import-order,g-bad-import-order
+# pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
 from tensorflow.python.platform import app
@@ -40,7 +40,7 @@ def execute(unused_args):
   with open(FLAGS.model_input_file, "rb") as input_file:
     input_str = input_file.read()
 
-  debug_info_str = ""
+  debug_info_str = None
   if FLAGS.debug_proto_file:
     with open(FLAGS.debug_proto_file, "rb") as debug_info_file:
       debug_info_str = debug_info_file.read()

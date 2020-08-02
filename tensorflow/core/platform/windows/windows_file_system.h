@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/platform.h"
 
 #ifdef PLATFORM_WINDOWS
@@ -33,38 +33,73 @@ class WindowsFileSystem : public FileSystem {
   ~WindowsFileSystem() {}
 
   Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+      const string& fname,
+      std::unique_ptr<RandomAccessFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status NewWritableFile(const string& fname,
-                         std::unique_ptr<WritableFile>* result) override;
+  Status NewWritableFile(
+      const string& fname,
+      std::unique_ptr<WritableFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status NewAppendableFile(const string& fname,
-                           std::unique_ptr<WritableFile>* result) override;
+  Status NewAppendableFile(
+      const string& fname,
+      std::unique_ptr<WritableFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
+      std::unique_ptr<ReadOnlyMemoryRegion>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(
+      const string& dir,
+      std::vector<string>* result /*, TransactionToken* token = nullptr */)
+      override;
 
-  Status GetMatchingPaths(const string& pattern,
-                          std::vector<string>* result) override;
+  Status GetMatchingPaths(
+      const string& pattern,
+      std::vector<string>* result /*, TransactionToken* token = nullptr */)
+      override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  bool Match(
+      const string& filename,
+      const string& pattern /*, TransactionToken* token = nullptr */) override;
 
-  Status DeleteFile(const string& fname) override;
+  Status Stat(
+      const string& fname,
+      FileStatistics* stat /*, TransactionToken* token = nullptr */) override;
 
-  Status CreateDir(const string& name) override;
+  Status DeleteFile(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status DeleteDir(const string& name) override;
+  Status CreateDir(
+      const string& name /*, TransactionToken* token = nullptr */) override;
 
-  Status GetFileSize(const string& fname, uint64* size) override;
+  Status DeleteDir(
+      const string& name /*, TransactionToken* token = nullptr */) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status GetFileSize(
+      const string& fname,
+      uint64* size /*, TransactionToken* token = nullptr */) override;
 
-  string TranslateName(const string& name) const override { return name; }
+  Status IsDirectory(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
+
+  Status RenameFile(
+      const string& src,
+      const string& target /*, TransactionToken* token = nullptr */) override;
+
+  string TranslateName(
+      const string& name /*, TransactionToken* token = nullptr */)
+      const override {
+    return name;
+  }
+
+  char Separator() const override { return '\\'; };
 };
 
 class LocalWinFileSystem : public WindowsFileSystem {

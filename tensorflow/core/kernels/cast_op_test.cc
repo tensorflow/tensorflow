@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -40,7 +41,7 @@ static Graph* Cast(int num) {
 
 class CastOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType src, DataType dst, bool trunc = false) {
+  void MakeOp(DataType src, DataType dst, bool trunc) {
     if (trunc) {
       TF_EXPECT_OK(NodeDefBuilder("cast_op", "Cast")
                        .Input(FakeInput(src))
@@ -60,10 +61,10 @@ class CastOpTest : public OpsTestBase {
   }
 
   template <typename INPUT, typename OUTPUT>
-  void CheckCast(bool trunc = false) {
+  void CheckCast(bool trunc) {
     DataType in_type = DataTypeToEnum<INPUT>::v();
     DataType out_type = DataTypeToEnum<OUTPUT>::v();
-    MakeOp(in_type, out_type);
+    MakeOp(in_type, out_type, trunc);
     AddInputFromArray<INPUT>(TensorShape({1, 2, 2, 1}),
                              {INPUT(1), INPUT(2), INPUT(3), INPUT(4)});
     TF_ASSERT_OK(RunOpKernel());
@@ -74,9 +75,11 @@ class CastOpTest : public OpsTestBase {
   }
 };
 
-#define TEST_CAST(in, out)                                              \
-  TEST_F(CastOpTest, TestCast##_##in##_##out) { CheckCast<in, out>(); } \
-  TEST_F(CastOpTest, TestCast2##_##in##_##out) { CheckCast<in, out>(true); }
+#define TEST_CAST(in, out)                                                   \
+  TEST_F(CastOpTest, TestCast##_##in##_##out) { CheckCast<in, out>(false); } \
+  TEST_F(CastOpTest, TestCastTruncate_##_##in##_##out) {                     \
+    CheckCast<in, out>(true);                                                \
+  }
 
 #define TEST_ALL_CASTS_FROM(in) \
   TEST_CAST(in, uint8);         \

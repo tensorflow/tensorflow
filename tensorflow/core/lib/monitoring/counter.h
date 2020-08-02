@@ -100,7 +100,7 @@ class Counter {
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
   template <typename... Labels>
-  CounterCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
+  CounterCell* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
 
   Status GetStatus() { return status_; }
 
@@ -136,7 +136,7 @@ class Counter {
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
   using LabelArray = std::array<string, NumLabels>;
-  std::map<LabelArray, CounterCell> cells_ GUARDED_BY(mu_);
+  std::map<LabelArray, CounterCell> cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Counter);
 };
@@ -164,7 +164,7 @@ Counter<NumLabels>* Counter<NumLabels>::New(
 template <int NumLabels>
 template <typename... Labels>
 CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
-    LOCKS_EXCLUDED(mu_) {
+    TF_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(sizeof...(Labels) == NumLabels,

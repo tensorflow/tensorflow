@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import threading
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import ops
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -98,8 +100,7 @@ def get_replica_context():
      will return the default `ReplicaContext` object);
   2. switches to cross-replica context (in which case this will return
      `None`) when entering a `with tf.distribute.Strategy.scope():` block;
-  3. switches to a (non-default) replica context inside
-     `strategy.experimental_run_v2(fn, ...)`;
+  3. switches to a (non-default) replica context inside `strategy.run(fn, ...)`;
   4. if `fn` calls `get_replica_context().merge_call(merge_fn, ...)`, then
      inside `merge_fn` you are back in the cross-replica context (and again
      this function will return `None`).
@@ -120,7 +121,7 @@ def get_replica_context():
       tf.print("Replica id: ", replica_context.replica_id_in_sync_group,
                " of ", replica_context.num_replicas_in_sync)
 
-    strategy.experimental_run_v2(f)
+    strategy.run(f)
   ```
 
   Returns:
@@ -165,7 +166,7 @@ def in_cross_replica_context():
     def f():
       assert not tf.distribute.in_cross_replica_context()
 
-    strategy.experimental_run_v2(f)
+    strategy.run(f)
   ```
 
   Returns:
@@ -267,6 +268,20 @@ def experimental_set_strategy(strategy):
 
 
 # ------------------------------------------------------------------------------
+# Internal helpers.
+
+
+@contextlib.contextmanager
+def enter_or_assert_strategy(strategy):
+  if not has_strategy():
+    with strategy.scope():
+      yield
+  else:
+    _assert_strategy(strategy)
+    yield
+
+
+# ------------------------------------------------------------------------------
 # Defaults that are used when no tf.distribute.Strategy is explicitly created.
 # We create them lazily in a function so that we can workaround the circular
 # dependency on distribute_lib. See lazy loader at the top of this file.
@@ -284,6 +299,17 @@ _default_replica_context_lock = threading.Lock()
 _default_replica_mode_lock = threading.Lock()
 
 
+def _assert_strategy(strategy):
+  if not has_strategy():
+    raise RuntimeError('Need to be inside "with strategy.scope()" for %s' %
+                       (strategy,))
+  current_strategy = get_strategy()
+  if current_strategy is not strategy:
+    raise RuntimeError(
+        "Mixing different tf.distribute.Strategy objects: %s is not %s" %
+        (current_strategy, strategy))
+
+
 def _get_default_strategy():
   if _defaults["strategy"] is None:
     # Avoid race condition causing two defaults to be created
@@ -293,7 +319,11 @@ def _get_default_strategy():
         # Make sure distribute_lib module is loaded by accessing some member.
         _ = distribute_lib._creating_default_strategy_singleton
         distribute_lib._creating_default_strategy_singleton = True
-        _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
+        if tf2.enabled():
+          _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
+        else:
+          _defaults["strategy"] = (
+              distribute_lib._DefaultDistributionStrategyV1())
         distribute_lib._creating_default_strategy_singleton = False
         # pylint: enable=protected-access
   return _defaults["strategy"]
@@ -304,8 +334,10 @@ def _get_default_replica_context():
     # Avoid race condition causing two defaults to be created
     with _default_replica_context_lock:
       if _defaults["replica_context"] is None:
-        _defaults["replica_context"] = distribute_lib.ReplicaContext(
+        # pylint: disable=protected-access
+        _defaults["replica_context"] = distribute_lib._DefaultReplicaContext(
             _get_default_strategy(), replica_id_in_sync_group=0)
+        # pylint: enable=protected-access
   return _defaults["replica_context"]
 
 

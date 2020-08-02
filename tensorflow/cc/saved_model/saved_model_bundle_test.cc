@@ -40,6 +40,10 @@ constexpr char kTestDataInitOpV2[] =
     "cc/saved_model/testdata/half_plus_two_v2/00000123";
 constexpr char kTestDataV2DebugInfo[] =
     "cc/saved_model/testdata/x_plus_y_v2_debuginfo";
+constexpr char kTestFuzzGeneratedNegativeShape[] =
+    "cc/saved_model/testdata/fuzz_generated/negative_shape";
+constexpr char kTestFuzzGeneratedConstWithNoValue[] =
+    "cc/saved_model/testdata/fuzz_generated/const_with_no_value";
 
 class LoaderTest : public ::testing::Test {
  protected:
@@ -254,6 +258,30 @@ TEST_F(LoaderTest, SavedModelV2DebugInfo) {
 
   // This SavedModel has debug info, so we should have loaded it.
   EXPECT_NE(bundle.debug_info.get(), nullptr);
+}
+
+TEST_F(LoaderTest, NegativeShapeDimension) {
+  SavedModelBundle bundle;
+  RunOptions run_options;
+  SessionOptions session_options;
+
+  const string export_dir = io::JoinPath(testing::TensorFlowSrcRoot(),
+                                         kTestFuzzGeneratedNegativeShape);
+  Status st = LoadSavedModel(session_options, run_options, export_dir,
+                             {kSavedModelTagServe}, &bundle);
+  EXPECT_FALSE(st.ok());
+}
+
+TEST_F(LoaderTest, ConstNoValue) {
+  SavedModelBundle bundle;
+  RunOptions run_options;
+  SessionOptions session_options;
+
+  const string export_dir = io::JoinPath(testing::TensorFlowSrcRoot(),
+                                         kTestFuzzGeneratedConstWithNoValue);
+  Status st = LoadSavedModel(session_options, run_options, export_dir,
+                             {kSavedModelTagServe}, &bundle);
+  EXPECT_FALSE(st.ok());
 }
 
 }  // namespace

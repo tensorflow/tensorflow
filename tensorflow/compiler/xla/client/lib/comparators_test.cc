@@ -73,7 +73,7 @@ void BuildComparatorAndComparisons(ComparatorsTest* test,
     }
   }
 
-  // Concantenate the comparison results.
+  // Concatenate the comparison results.
   ConcatInDim(test->builder(), all_comparisons, 0);
 
   // If we use less-than comparisons, we expect the comparison to result in true

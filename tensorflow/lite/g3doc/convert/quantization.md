@@ -12,7 +12,7 @@ has latency benefits, but prioritizes size reduction.
 
 During conversion, set the `optimizations` flag to optimize for size:
 
-```
+```python
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 tflite_quant_model = converter.convert()
@@ -26,7 +26,7 @@ quantized. To do this, we need to measure the dynamic range of activations and
 inputs with a representative data set. You can simply create an input data
 generator and provide it to our converter.
 
-```
+```python
 import tensorflow as tf
 
 def representative_dataset_gen():
@@ -40,7 +40,7 @@ converter.representative_dataset = representative_dataset_gen
 tflite_quant_model = converter.convert()
 ```
 
-# During training: Quantizing models for integer-only execution.
+# During training: Quantizing models for integer-only execution
 
 Quantizing models for integer-only execution gets a model with even faster
 latency, smaller size, and integer-only accelerators compatible model.
@@ -52,21 +52,28 @@ compatible with 2.0 semantics is in progress.
 
 Convert the graph:
 
-```
+```python
 converter = tf.compat.v1.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.inference_type = tf.lite.constants.QUANTIZED_UINT8
 input_arrays = converter.get_input_arrays()
-converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean, std_dev
+converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean_value, std_dev
 tflite_model = converter.convert()
 ```
 
-For fully integer models, the inputs are uint8. The `mean` and `std_dev values`
-specify how those uint8 values map to the float input values used while training
-the model.
+For fully integer models, the inputs are uint8. When the `inference_type` is set
+to `QUANTIZED_UINT8` as above, the real_input_value is standardised using the
+[standard-score](https://en.wikipedia.org/wiki/Standard_score) as follows:
+
+real_input_value = (quantized_input_value - mean_value) / std_dev_value
+
+The `mean_value` and `std_dev values` specify how those uint8 values map to the
+float input values used while training the model. For more details, please see
+the
+[TFLiteConverter](https://www.tensorflow.org/api_docs/python/tf/compat/v1/lite/TFLiteConverter)
 
 `mean` is the integer value from 0 to 255 that maps to floating point 0.0f.
-`std_dev` is 255 / (float_max - float_min)
+`std_dev` is 255 / (float_max - float_min).
 
 For most users, we recommend using post-training quantization. We are working on
-new tools for post-training and during training quantization that we hope will
+new tools for post-training and training-time quantization that we hope will
 simplify generating quantized models.

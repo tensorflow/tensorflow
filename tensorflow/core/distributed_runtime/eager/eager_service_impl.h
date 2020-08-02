@@ -87,7 +87,7 @@ class EagerServiceImpl {
   Status CreateMasterContext(const tensorflow::uint64 context_id,
                              EagerContext* context);
 
-  static const uint64 kInvalidStreamId = 0;
+  static constexpr uint64 kInvalidStreamId = 0;
 
   // Used by both Enqueue and StreamingEnqueue RPCs.
   Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response,
@@ -95,6 +95,11 @@ class EagerServiceImpl {
 
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
                        WaitQueueDoneResponse* response);
+
+  void RunComponentFunction(CallOptions* call_opts,
+                            const RunComponentFunctionRequest* request,
+                            RunComponentFunctionResponse* response,
+                            StatusCallback done);
 
   Status KeepAlive(const KeepAliveRequest* request,
                    KeepAliveResponse* response);
@@ -143,9 +148,8 @@ class EagerServiceImpl {
 
     bool IsStale() {
       mutex_lock l(last_accessed_mu_);
-      return (destroy_after_micros_ > 0 &&
-              (env_->env->NowMicros() - last_accessed_micros_) >
-                  destroy_after_micros_);
+      const int64 time_passed = env_->env->NowMicros() - last_accessed_micros_;
+      return (destroy_after_micros_ > 0 && time_passed > destroy_after_micros_);
     }
 
    private:
@@ -155,7 +159,7 @@ class EagerServiceImpl {
     const WorkerEnv* const env_;  // Not owned.
 
     mutex last_accessed_mu_;
-    int64 last_accessed_micros_ GUARDED_BY(last_accessed_mu_);
+    int64 last_accessed_micros_ TF_GUARDED_BY(last_accessed_mu_);
     int64 destroy_after_micros_;
 
     const bool is_master_;
@@ -186,6 +190,9 @@ class EagerServiceImpl {
 
     void Abort(Status status) override {}
 
+    // Remote node deletions are best effort
+    bool Fatal() const override { return false; }
+
     string DebugString() const override {
       string out = "[ClientTensorHandleDeleteNode]";
       strings::StrAppend(&out, " op_id: ", handle_to_delete_->op_id);
@@ -205,18 +212,21 @@ class EagerServiceImpl {
                    QueueResponse* queue_response);
   Status SendTensor(const SendTensorOp& send_tensor,
                     EagerContext* eager_context);
+  Status SendPackedHandle(const SendPackedHandleOp& send_packed_handle,
+                          EagerContext* eager_context);
   Status RegisterFunction(const RegisterFunctionOp& register_function,
                           EagerContext* eager_context);
   Status CleanupFunction(const CleanupFunctionOp& cleanup_function);
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;
-  std::unordered_map<uint64, ServerContext*> contexts_ GUARDED_BY(contexts_mu_);
+  std::unordered_map<uint64, ServerContext*> contexts_
+      TF_GUARDED_BY(contexts_mu_);
 
   std::unique_ptr<Thread> gc_thread_;
   mutex gc_thread_shutdown_mu_;
   condition_variable gc_thread_cv_;
-  bool shutting_down_ GUARDED_BY(gc_thread_shutdown_mu_) = false;
+  bool shutting_down_ TF_GUARDED_BY(gc_thread_shutdown_mu_) = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EagerServiceImpl);
 };

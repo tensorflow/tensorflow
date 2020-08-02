@@ -18,12 +18,16 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/base/call_once.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -44,20 +48,21 @@ using se::rocm::ScopedActivateExecutorContext;
 int NcclManager::instance_count = 0;
 #endif
 
-#define NCCL_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    ncclResult_t nccl_status = (__VA_ARGS__);                   \
-    if (nccl_status != ncclSuccess) {                           \
-      return errors::Internal(ncclGetErrorString(nccl_status)); \
-    }                                                           \
+#define NCCL_RETURN_IF_ERROR(...)                                        \
+  do {                                                                   \
+    ncclResult_t nccl_status = (__VA_ARGS__);                            \
+    if (nccl_status != ncclSuccess) {                                    \
+      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status), \
+                              ". Set NCCL_DEBUG=WARN for detail.");      \
+    }                                                                    \
   } while (0)
 
-#define CUDA_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    cudaError_t cuda_status = (__VA_ARGS__);                    \
-    if (cuda_status != cudaSuccess) {                           \
-      return errors::Internal(cudaGetErrorString(cuda_status)); \
-    }                                                           \
+#define CUDA_RETURN_IF_ERROR(...)                                         \
+  do {                                                                    \
+    cudaError_t cuda_status = (__VA_ARGS__);                              \
+    if (cuda_status != cudaSuccess) {                                     \
+      return errors::Internal("CUDA: ", cudaGetErrorString(cuda_status)); \
+    }                                                                     \
   } while (0)
 
 // Contains data for a single stream used for nccl communication; this includes
@@ -85,8 +90,8 @@ struct NcclManager::NcclStream : public core::RefCounted {
   mutex mu;
   condition_variable cv;
   // Has (collective, participant_idx) pairs.
-  std::deque<std::pair<Collective*, int>> pending_launches_ GUARDED_BY(mu);
-  bool shutdown_requested GUARDED_BY(mu) = false;
+  std::deque<std::pair<Collective*, int>> pending_launches_ TF_GUARDED_BY(mu);
+  bool shutdown_requested TF_GUARDED_BY(mu) = false;
 };
 
 struct NcclManager::CommunicatorMember {
@@ -113,6 +118,10 @@ struct NcclManager::Communicator {
 };
 
 namespace {
+
+static constexpr DataTypeSet kValidDataTypes =
+    ToSet(DT_HALF) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) |
+    ToSet(DT_INT64);
 
 ncclDataType_t ToNcclType(DataType t) {
   switch (t) {
@@ -206,6 +215,10 @@ struct NcclManager::Collective : public core::RefCounted {
   // Guarded by the mutex of the containing Communicator.
   int available_participants = 0;
   bool multi_node_ready = false;
+  // trace_context is used by tracing system to associate collective
+  // scheduling and execution (cooperative kernel launch), which happen
+  // on different threads.
+  uint64 trace_context = 0;
 
   Status status;
 };
@@ -237,8 +250,8 @@ NcclManager* NcclManager::instance() {
 #if TENSORFLOW_USE_ROCM
   // singleton does not count against total instances
   // see comment above in Collective constructor concerning ROCm platform
-  static std::once_flag once;
-  std::call_once(once, [] { --NcclManager::instance_count; });
+  static absl::once_flag once;
+  absl::call_once(once, [] { --NcclManager::instance_count; });
 #endif
   return instance;
 }
@@ -445,6 +458,7 @@ void NcclManager::AddReduceSend(std::unique_ptr<Participant> participant,
 void NcclManager::AddReduceRecv(std::unique_ptr<Participant> participant,
                                 const Context& context,
                                 ncclRedOp_t reduction_op) {
+  participant->root = true;
   AddParticipant(std::move(participant), context, kReduce, reduction_op);
 }
 
@@ -547,6 +561,13 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
           collective->root_rank, " but new participant has root_rank ",
           context.source_rank);
     }
+    if (collective->status.ok() &&
+        !kValidDataTypes.Contains(collective->data_type)) {
+      collective->status = errors::Internal(
+          "Collective ", collective->collective_key,
+          " expected data types compatible with NCCL but instead got ",
+          DataTypeString(collective->data_type));
+    }
 
     if (context.source_rank >= 0) {
       collective->root_rank = context.source_rank;
@@ -576,6 +597,10 @@ bool NcclManager::CheckReady(const string& collective_key,
 }
 
 void NcclManager::RunCollective(Collective* collective) {
+  // For TraceMeConsumer in Connection::RPCDone().
+  tensorflow::profiler::TraceMeProducer traceme("Schedule Collective");
+  collective->trace_context = traceme.GetContextId();
+
   static mutex collective_mu(LINKER_INITIALIZED);
 
   Status status = collective->status;
@@ -642,6 +667,20 @@ void NcclManager::RunCollective(Collective* collective) {
   collective->Unref();
 }
 
+namespace {
+// For tracing purpose.
+size_t ComputeBufferSize(const NcclManager::Participant* p,
+                         DataType data_type) {
+  size_t num_elements = 0;
+  if (p->output) {
+    num_elements += p->output->NumElements();
+  } else if (p->input) {
+    num_elements += p->input->NumElements();
+  }
+  return num_elements * DataTypeSize(data_type);
+}
+}  // namespace
+
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 #if TENSORFLOW_USE_ROCM
   se::Stream* comm_stream = nccl_stream->stream;
@@ -671,6 +710,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
     // Launch the nccl kernel.
     Collective* collective = next_launch.first;
+    tensorflow::profiler::TraceMeConsumer traceme("Run Collective",
+                                                  collective->trace_context);
+
     ncclDataType_t data_type = ToNcclType(collective->data_type);
     int p_idx = next_launch.second;
     Participant* p = collective->participants[p_idx].get();
@@ -686,7 +728,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclAllReduce");
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclAllReduce",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "all_reduce"}});
+        });
         nccl_result = ncclAllReduce(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, collective->reduction_op,
                                     nccl_comm, *cu_stream);
@@ -703,6 +750,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         if (p->output) {
           recvbuff = const_cast<char*>(p->output->tensor_data().data());
           num_elements = p->output->NumElements();
+        } else {
+          // Operate in-place if no output (for the src node).
+          recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
           p->done_callback(errors::Internal(
@@ -715,7 +765,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclBroadcast");
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclBroadcast",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "broadcast"}});
+        });
         nccl_result =
             ncclBroadcast(sendbuff, recvbuff, num_elements, data_type,
                           collective->root_rank, nccl_comm, *cu_stream);
@@ -726,7 +781,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         void* recvbuff =
             p->output ? const_cast<char*>(p->output->tensor_data().data())
                       : nullptr;
-        profiler::TraceMe trace_me("ncclReduce");
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "buffer_size",
+              {{"output_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "reduce"}});
+        });
         nccl_result = ncclReduce(sendbuff, recvbuff, p->input->NumElements(),
                                  data_type, collective->reduction_op,
                                  collective->root_rank, nccl_comm, *cu_stream);
@@ -743,7 +803,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " recvcount " << p->output->NumElements() << " nccl_comm "
                 << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclAllGather");
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclAllGather",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "all_gather"}});
+        });
         nccl_result = ncclAllGather(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, nccl_comm, *cu_stream);
         break;

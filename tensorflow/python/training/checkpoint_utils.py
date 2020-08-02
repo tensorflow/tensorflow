@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context
@@ -86,13 +87,27 @@ def load_variable(ckpt_dir_or_file, name):
 
 @tf_export("train.list_variables")
 def list_variables(ckpt_dir_or_file):
-  """Returns list of all variables in the checkpoint.
+  """Lists the checkpoint keys and shapes of variables in a checkpoint.
+
+  Checkpoint keys are paths in a checkpoint graph.
+
+  Example usage:
+
+    ```python
+  import tensorflow as tf
+  import os
+  ckpt_directory = "/tmp/training_checkpoints/ckpt"
+  ckpt = tf.train.Checkpoint(optimizer=optimizer, model=model)
+  manager = tf.train.CheckpointManager(ckpt, ckpt_directory, max_to_keep=3)
+  train_and_checkpoint(model, manager)
+  tf.train.list_variables(manager.latest_checkpoint)
+  ```
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
 
   Returns:
-    List of tuples `(name, shape)`.
+    List of tuples `(key, shape)`.
   """
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
@@ -330,7 +345,7 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
               ))
         var_name = var.name
       else:
-        var_name = ",".join([v.name for v in var])
+        var_name = ",".join(v.name for v in var)
       _set_variable_or_list_initializer(var, ckpt_file, tensor_name_in_ckpt)
       logging.debug("Initialize variable %s from checkpoint %s with %s",
                     var_name, ckpt_dir_or_file, tensor_name_in_ckpt)

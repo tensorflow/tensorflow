@@ -18,49 +18,56 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
 
 class FuncOp;
+class ModuleOp;
 class Operation;
 template <typename T>
-class OpPassBase;
+class OperationPass;
+class Pass;
 
-namespace xla_hlo {
+namespace mhlo {
 
-/// Lowers from TF dialect to HLO dialect.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass();
+/// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
+/// false, emits an error if there is any operation that can't be legalized.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
+    bool allow_partial_conversion = false, bool legalize_chlo = true);
+
+/// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
+/// specified device type.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+    llvm::StringRef device_type);
+
+/// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
+void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
+                                          OwningRewritePatternList& patterns);
+
+/// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
+/// list.
+void PopulateLegalizeTfPatterns(MLIRContext* context,
+                                OwningRewritePatternList* patterns);
+
+/// Lowers from TF dialect's control flow to HLO dialect's control flow.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
 
 /// Converts the provided Operation as well as all nested operations into HLO
-/// dialect using the conversion patterns registered by the HLO dialect.
-LogicalResult legalizeTF(Operation* op);
+/// dialect using the conversion patterns registered by the HLO dialect. When
+/// allow_partial_conversion is false, emits an error if there is any operation
+/// that can't be legalized.
+LogicalResult legalizeTF(Operation* op, bool allow_partial_conversion = false,
+                         bool legalize_chlo = true);
 
-/// Lowers HLO control flow ops to the Standard dialect.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeControlFlowPass();
+// Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
+// ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 
-/// Lowers from HLO dialect to Standard dialect.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
-
-// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
-// buffers if necessary.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
-
-}  // namespace xla_hlo
-
-namespace xla_lhlo {
-
-// Lowers from LHLO dialect to Affine dialect.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
-
-// Lowers from LHLO dialect to Linalg dialect.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
-
-// Fuses linalg ops obtained after LHLO lowering.
-std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
-
-}  // namespace xla_lhlo
+}  // namespace mhlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_

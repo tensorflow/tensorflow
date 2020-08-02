@@ -33,7 +33,7 @@
         <scala.test.version>2.2.6</scala.test.version>
         <maven.compiler.version>3.0</maven.compiler.version>
         <java.version>1.8</java.version>
-        <spark.version>2.3.1</spark.version>
+        <spark.version>2.4.5</spark.version>
         <yarn.api.version>2.7.3</yarn.api.version>
         <junit.version>4.11</junit.version>
     </properties>

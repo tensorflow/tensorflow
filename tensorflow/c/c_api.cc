@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
@@ -53,19 +54,18 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/validate.h"
-#include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/coding.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
@@ -458,7 +458,7 @@ static void TF_Run_Helper(
           EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
       continue;
     }
-    c_outputs[i] = TF_TensorFromTensor(src, status);
+    c_outputs[i] = TF_TensorFromTensor(src, &status->status);
     if (!status->status.ok()) return;
   }
 }
@@ -589,14 +589,16 @@ void TF_DeleteDeviceList(TF_DeviceList* list) { delete list; }
 
 TF_DeviceList* TF_SessionListDevices(TF_Session* session, TF_Status* status) {
   TF_DeviceList* response = new TF_DeviceList;
-  status->status = session->session->ListDevices(&response->response);
+  if (session && session->session)
+    status->status = session->session->ListDevices(&response->response);
   return response;
 }
 
 TF_DeviceList* TF_DeprecatedSessionListDevices(TF_DeprecatedSession* session,
                                                TF_Status* status) {
   TF_DeviceList* response = new TF_DeviceList;
-  status->status = session->session->ListDevices(&response->response);
+  if (session && session->session)
+    status->status = session->session->ListDevices(&response->response);
   return response;
 }
 
@@ -774,7 +776,7 @@ extern "C" {
 static TF_OperationDescription* TF_NewOperationLocked(TF_Graph* graph,
                                                       const char* op_type,
                                                       const char* oper_name)
-    EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
   return new TF_OperationDescription(graph, op_type, oper_name);
 }
 
@@ -1032,7 +1034,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
 
 static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
                                               TF_Status* status)
-    EXCLUSIVE_LOCKS_REQUIRED(desc->graph->mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(desc->graph->mu) {
   Node* ret = nullptr;
 
   if (desc->graph->name_map.count(desc->node_builder.node_name())) {
@@ -1384,6 +1386,7 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
     cpp_type v;                                                              \
     status->status =                                                         \
         tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &v);          \
+    if (!status->status.ok()) return;                                        \
     *value = static_cast<c_type>(v);                                         \
   }                                                                          \
   void func##List(TF_Operation* oper, const char* attr_name, c_type* values, \
@@ -1493,7 +1496,7 @@ void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
   Tensor t;
   status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &t);
   if (!status->status.ok()) return;
-  *value = TF_TensorFromTensor(t, status);
+  *value = TF_TensorFromTensor(t, &status->status);
 }
 
 void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
@@ -1504,7 +1507,7 @@ void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
   if (!status->status.ok()) return;
   const auto len = std::min(max_values, static_cast<int>(ts.size()));
   for (int i = 0; i < len; ++i) {
-    values[i] = TF_TensorFromTensor(ts[i], status);
+    values[i] = TF_TensorFromTensor(ts[i], &status->status);
   }
 }
 
@@ -1706,7 +1709,7 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
                                       const TF_ImportGraphDefOptions* opts,
                                       TF_ImportGraphDefResults* tf_results,
                                       TF_Status* status)
-    EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
   const int last_node_id = graph->graph.num_node_ids();
   tensorflow::ImportGraphDefResults results;
   status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
@@ -2178,6 +2181,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     }
     return new_session;
   } else {
+    LOG(ERROR) << status->status;
     DCHECK_EQ(nullptr, session);
     return nullptr;
   }
@@ -2398,7 +2402,7 @@ unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
       graph->graph.versions().producer(), &evaluated, &result_tensor);
   if (evaluated) {
     DCHECK(status->status.ok());
-    *result = TF_TensorFromTensor(result_tensor, status);
+    *result = TF_TensorFromTensor(result_tensor, &status->status);
     if (!status->status.ok()) evaluated = false;
   }
   return evaluated;

@@ -339,7 +339,7 @@ def _path_from(from_op, tensor, sources):
   if isinstance(from_op, ops.Tensor):
     from_op = from_op.op
 
-  visited_ops = set([x.op for x in sources])
+  visited_ops = set(x.op for x in sources)
   ops_to_visit = [_as_operation(tensor)]
   some_op_output = {}
   while ops_to_visit:
@@ -354,7 +354,7 @@ def _path_from(from_op, tensor, sources):
       while path_op != final_op:
         path_op = some_op_output[path_op]
         path.append(path_op)
-      return " <- ".join(["%s (%s)" % (x.name, x.type) for x in reversed(path)])
+      return " <- ".join("%s (%s)" % (x.name, x.type) for x in reversed(path))
     else:
       for inp in graph_inputs(op):
         if inp not in visited_ops and inp not in sources:

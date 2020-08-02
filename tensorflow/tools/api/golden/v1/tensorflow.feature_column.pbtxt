@@ -26,7 +26,7 @@ tf_module {
   }
   member_method {
     name: "embedding_column"
-    argspec: "args=[\'categorical_column\', \'dimension\', \'combiner\', \'initializer\', \'ckpt_to_load_from\', \'tensor_name_in_ckpt\', \'max_norm\', \'trainable\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'True\'], "
+    argspec: "args=[\'categorical_column\', \'dimension\', \'combiner\', \'initializer\', \'ckpt_to_load_from\', \'tensor_name_in_ckpt\', \'max_norm\', \'trainable\', \'use_safe_embedding_lookup\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'True\', \'True\'], "
   }
   member_method {
     name: "indicator_column"
@@ -70,7 +70,7 @@ tf_module {
   }
   member_method {
     name: "shared_embedding_columns"
-    argspec: "args=[\'categorical_columns\', \'dimension\', \'combiner\', \'initializer\', \'shared_embedding_collection_name\', \'ckpt_to_load_from\', \'tensor_name_in_ckpt\', \'max_norm\', \'trainable\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\'], "
+    argspec: "args=[\'categorical_columns\', \'dimension\', \'combiner\', \'initializer\', \'shared_embedding_collection_name\', \'ckpt_to_load_from\', \'tensor_name_in_ckpt\', \'max_norm\', \'trainable\', \'use_safe_embedding_lookup\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'True\'], "
   }
   member_method {
     name: "weighted_categorical_column"

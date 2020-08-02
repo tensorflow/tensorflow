@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -66,16 +67,16 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   mutable tensorflow::mutex count_mutex_;
 
   // Global counts of allocations and deallocations.
-  int64 allocation_count_ GUARDED_BY(count_mutex_) = 0;
-  int64 deallocation_count_ GUARDED_BY(count_mutex_) = 0;
+  int64 allocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
+  int64 deallocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
 
   // Per-device counts of allocations and deallocations.
-  std::map<int, int64> device_allocation_count_ GUARDED_BY(count_mutex_);
-  std::map<int, int64> device_deallocation_count_ GUARDED_BY(count_mutex_);
+  std::map<int, int64> device_allocation_count_ TF_GUARDED_BY(count_mutex_);
+  std::map<int, int64> device_deallocation_count_ TF_GUARDED_BY(count_mutex_);
 };
 
 // A base class for tests which exercise the LocalClient interface.
-class LocalClientTestBase : public ::testing::Test {
+class LocalClientTestBase : public ManifestCheckingTest {
  protected:
   struct EigenThreadPoolWrapper;
   explicit LocalClientTestBase(se::Platform* platform = nullptr);

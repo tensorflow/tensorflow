@@ -26,7 +26,7 @@ tf_module {
   }
   member_method {
     name: "experimental_connect_to_cluster"
-    argspec: "args=[\'cluster_spec_or_resolver\', \'job_name\', \'task_index\', \'protocol\', \'make_master_device_default\'], varargs=None, keywords=None, defaults=[\'localhost\', \'0\', \'None\', \'True\'], "
+    argspec: "args=[\'cluster_spec_or_resolver\', \'job_name\', \'task_index\', \'protocol\', \'make_master_device_default\', \'cluster_device_filters\'], varargs=None, keywords=None, defaults=[\'localhost\', \'0\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "experimental_connect_to_host"
@@ -39,6 +39,10 @@ tf_module {
   member_method {
     name: "experimental_run_functions_eagerly"
     argspec: "args=[\'run_eagerly\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "functions_run_eagerly"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_logical_device_configuration"
@@ -59,6 +63,10 @@ tf_module {
   member_method {
     name: "list_physical_devices"
     argspec: "args=[\'device_type\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "run_functions_eagerly"
+    argspec: "args=[\'run_eagerly\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_logical_device_configuration"

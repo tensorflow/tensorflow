@@ -23,15 +23,15 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -108,7 +108,7 @@ class Env {
   /// The ownership of the returned RandomAccessFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewRandomAccessFile(const string& fname,
+  Status NewRandomAccessFile(const std::string& fname,
                              std::unique_ptr<RandomAccessFile>* result);
 
   /// \brief Creates an object that writes to a new file with the specified
@@ -124,7 +124,7 @@ class Env {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewWritableFile(const string& fname,
+  Status NewWritableFile(const std::string& fname,
                          std::unique_ptr<WritableFile>* result);
 
   /// \brief Creates an object that either appends to an existing file, or
@@ -139,7 +139,7 @@ class Env {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewAppendableFile(const string& fname,
+  Status NewAppendableFile(const std::string& fname,
                            std::unique_ptr<WritableFile>* result);
 
   /// \brief Creates a readonly region of memory with the file context.
@@ -154,10 +154,10 @@ class Env {
   /// and the object should be deleted when is not used. The memory region
   /// object shouldn't live longer than the Env object.
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
+      const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  Status FileExists(const string& fname);
+  Status FileExists(const std::string& fname);
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
@@ -169,21 +169,22 @@ class Env {
   /// directory. The names are relative to "dir".
   ///
   /// Original contents of *results are dropped.
-  Status GetChildren(const string& dir, std::vector<string>* result);
+  Status GetChildren(const std::string& dir, std::vector<string>* result);
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
   /// allowed in pattern are described in FileSystem::GetMatchingPaths.
-  virtual bool MatchPath(const string& path, const string& pattern) = 0;
+  virtual bool MatchPath(const std::string& path,
+                         const std::string& pattern) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
   ///
   /// More details about `pattern` in FileSystem::GetMatchingPaths.
-  virtual Status GetMatchingPaths(const string& pattern,
+  virtual Status GetMatchingPaths(const std::string& pattern,
                                   std::vector<string>* results);
 
   /// Deletes the named file.
-  Status DeleteFile(const string& fname);
+  Status DeleteFile(const std::string& fname);
 
   /// \brief Deletes the specified directory and all subdirectories and files
   /// underneath it. This is accomplished by traversing the directory tree
@@ -209,7 +210,7 @@ class Env {
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
   ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
   ///                    implemented
-  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+  Status DeleteRecursively(const std::string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs);
 
   /// \brief Creates the specified directory and all the necessary
@@ -217,19 +218,19 @@ class Env {
   ///  * OK - successfully created the directory and sub directories, even if
   ///         they were already created.
   ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
-  Status RecursivelyCreateDir(const string& dirname);
+  Status RecursivelyCreateDir(const std::string& dirname);
 
   /// \brief Creates the specified directory. Typical return codes
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory already exists.
   ///  * PERMISSION_DENIED - dirname is not writable.
-  Status CreateDir(const string& dirname);
+  Status CreateDir(const std::string& dirname);
 
   /// Deletes the specified directory.
-  Status DeleteDir(const string& dirname);
+  Status DeleteDir(const std::string& dirname);
 
   /// Obtains statistics for the given path.
-  Status Stat(const string& fname, FileStatistics* stat);
+  Status Stat(const std::string& fname, FileStatistics* stat);
 
   /// \brief Returns whether the given path is a directory or not.
   /// Typical return codes (not guaranteed exhaustive):
@@ -238,45 +239,57 @@ class Env {
   ///  * NOT_FOUND - The path entry does not exist.
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
-  Status IsDirectory(const string& fname);
+  Status IsDirectory(const std::string& fname);
+
+  /// \brief Returns whether the given path is on a file system
+  /// that has atomic move capabilities. This can be used
+  /// to determine if there needs to be a temp location to safely write objects.
+  /// The second boolean argument has_atomic_move contains this information.
+  ///
+  /// Returns one of the following status codes (not guaranteed exhaustive):
+  ///  * OK - The path is on a recognized file system,
+  ///         so has_atomic_move holds the above information.
+  ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in
+  ///  TF
+  Status HasAtomicMove(const std::string& path, bool* has_atomic_move);
 
   /// Stores the size of `fname` in `*file_size`.
-  Status GetFileSize(const string& fname, uint64* file_size);
+  Status GetFileSize(const std::string& fname, uint64* file_size);
 
   /// \brief Renames file src to target. If target already exists, it will be
   /// replaced.
-  Status RenameFile(const string& src, const string& target);
+  Status RenameFile(const std::string& src, const std::string& target);
 
   /// \brief Copy the src to target.
-  Status CopyFile(const string& src, const string& target);
+  Status CopyFile(const std::string& src, const std::string& target);
 
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
-  string GetExecutablePath();
+  std::string GetExecutablePath();
 
   /// Creates a local unique temporary file name. Returns true if success.
-  bool LocalTempFilename(string* filename);
+  bool LocalTempFilename(std::string* filename);
 
   /// Creates a local unique file name that starts with |prefix| and ends with
   /// |suffix|. Returns true if success.
-  bool CreateUniqueFileName(string* prefix, const string& suffix);
+  bool CreateUniqueFileName(std::string* prefix, const std::string& suffix);
 
   /// \brief Return the runfiles directory if running under bazel. Returns
   /// the directory the executable is located in if not running under bazel.
-  virtual string GetRunfilesDir() = 0;
+  virtual std::string GetRunfilesDir() = 0;
 
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
   /// \brief Returns the number of nano-seconds since the Unix epoch.
-  virtual uint64 NowNanos() const { return env_time_->NowNanos(); }
+  virtual uint64 NowNanos() const { return EnvTime::NowNanos(); }
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() const { return env_time_->NowMicros(); }
+  virtual uint64 NowMicros() const { return EnvTime::NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  virtual uint64 NowSeconds() const { return env_time_->NowSeconds(); }
+  virtual uint64 NowSeconds() const { return EnvTime::NowSeconds(); }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64 micros) = 0;
@@ -287,7 +300,7 @@ class Env {
   /// Caller takes ownership of the result and must delete it eventually
   /// (the deletion will block until fn() stops running).
   virtual Thread* StartThread(const ThreadOptions& thread_options,
-                              const string& name,
+                              const std::string& name,
                               std::function<void()> fn) TF_MUST_USE_RESULT = 0;
 
   // Returns the thread id of calling thread.
@@ -297,7 +310,7 @@ class Env {
   virtual int32 GetCurrentThreadId() = 0;
 
   // Copies current thread name to "name". Returns true if success.
-  virtual bool GetCurrentThreadName(string* name) = 0;
+  virtual bool GetCurrentThreadName(std::string* name) = 0;
 
   // \brief Schedules the given closure on a thread-pool.
   //
@@ -337,8 +350,8 @@ class Env {
   // "name" should be name of the library.
   // "version" should be the version of the library or NULL
   // returns the name that LoadLibrary() can use
-  virtual string FormatLibraryFileName(const string& name,
-                                       const string& version) = 0;
+  virtual std::string FormatLibraryFileName(const std::string& name,
+                                            const std::string& version) = 0;
 
   // Returns a possible list of local temporary directories.
   virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
@@ -346,7 +359,6 @@ class Env {
  private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
-  EnvTime* env_time_ = EnvTime::Default();
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -362,7 +374,7 @@ class EnvWrapper : public Env {
   /// Returns the target to which this Env forwards all calls
   Env* target() const { return target_; }
 
-  Status GetFileSystemForFile(const string& fname,
+  Status GetFileSystemForFile(const std::string& fname,
                               FileSystem** result) override {
     return target_->GetFileSystemForFile(fname, result);
   }
@@ -371,12 +383,12 @@ class EnvWrapper : public Env {
     return target_->GetRegisteredFileSystemSchemes(schemes);
   }
 
-  Status RegisterFileSystem(const string& scheme,
+  Status RegisterFileSystem(const std::string& scheme,
                             FileSystemRegistry::Factory factory) override {
     return target_->RegisterFileSystem(scheme, factory);
   }
 
-  bool MatchPath(const string& path, const string& pattern) override {
+  bool MatchPath(const std::string& path, const std::string& pattern) override {
     return target_->MatchPath(path, pattern);
   }
 
@@ -384,12 +396,13 @@ class EnvWrapper : public Env {
   void SleepForMicroseconds(int64 micros) override {
     target_->SleepForMicroseconds(micros);
   }
-  Thread* StartThread(const ThreadOptions& thread_options, const string& name,
+  Thread* StartThread(const ThreadOptions& thread_options,
+                      const std::string& name,
                       std::function<void()> fn) override {
     return target_->StartThread(thread_options, name, fn);
   }
   int32 GetCurrentThreadId() override { return target_->GetCurrentThreadId(); }
-  bool GetCurrentThreadName(string* name) override {
+  bool GetCurrentThreadName(std::string* name) override {
     return target_->GetCurrentThreadName(name);
   }
   void SchedClosure(std::function<void()> closure) override {
@@ -405,12 +418,12 @@ class EnvWrapper : public Env {
                               void** symbol) override {
     return target_->GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
-  string FormatLibraryFileName(const string& name,
-                               const string& version) override {
+  std::string FormatLibraryFileName(const std::string& name,
+                                    const std::string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
 
-  string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
+  std::string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override {
@@ -432,6 +445,15 @@ class Thread {
   TF_DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
+/// \brief Cross-platform setenv.
+///
+/// Since setenv() is not available on windows, we provide an
+/// alternative with platform specific implementations here.
+int setenv(const char* name, const char* value, int overwrite);
+
+/// Cross-platform unsetenv.
+int unsetenv(const char* name);
+
 /// \brief Options to configure a Thread.
 ///
 /// Note that the options are all hints, and the
@@ -446,44 +468,45 @@ struct ThreadOptions {
 
 /// A utility routine: copy contents of `src` in file system `src_fs`
 /// to `target` in file system `target_fs`.
-Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
-                          FileSystem* target_fs, const string& target);
+Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
+                          FileSystem* target_fs, const std::string& target);
 
 /// A utility routine: reads contents of named file into `*data`
-Status ReadFileToString(Env* env, const string& fname, string* data);
+Status ReadFileToString(Env* env, const std::string& fname, std::string* data);
 
 /// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
-Status WriteStringToFile(Env* env, const string& fname,
+Status WriteStringToFile(Env* env, const std::string& fname,
                          const StringPiece& data);
 
 /// Write binary representation of "proto" to the named file.
-Status WriteBinaryProto(Env* env, const string& fname,
-                        const ::tensorflow::protobuf::MessageLite& proto);
+Status WriteBinaryProto(Env* env, const std::string& fname,
+                        const protobuf::MessageLite& proto);
 
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into `*proto`.
-Status ReadBinaryProto(Env* env, const string& fname,
-                       ::tensorflow::protobuf::MessageLite* proto);
+Status ReadBinaryProto(Env* env, const std::string& fname,
+                       protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
-Status WriteTextProto(Env* env, const string& fname,
-                      const ::tensorflow::protobuf::Message& proto);
+Status WriteTextProto(Env* env, const std::string& fname,
+                      const protobuf::Message& proto);
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
-Status ReadTextProto(Env* env, const string& fname,
-                     ::tensorflow::protobuf::Message* proto);
+inline Status ReadTextProto(Env* /* env */, const std::string& /* fname */,
+                            protobuf::MessageLite* /* proto */) {
+  return errors::Unimplemented("Can't parse text protos with protolite.");
+}
+Status ReadTextProto(Env* env, const std::string& fname,
+                     protobuf::Message* proto);
 
 /// Read contents of named file and parse as either text or binary encoded proto
 /// data and store into `*proto`.
-Status ReadTextOrBinaryProto(Env* env, const string& fname,
-#if !defined(TENSORFLOW_LITE_PROTOS)
-                             ::tensorflow::protobuf::Message* proto
-#else
-                             ::tensorflow::protobuf::MessageLite* proto
-#endif
-);
+Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
+                             protobuf::Message* proto);
+Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
+                             protobuf::MessageLite* proto);
 
 // START_SKIP_DOXYGEN
 
@@ -494,7 +517,7 @@ namespace register_file_system {
 
 template <typename Factory>
 struct Register {
-  Register(Env* env, const string& scheme) {
+  Register(Env* env, const std::string& scheme) {
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
         .IgnoreError();

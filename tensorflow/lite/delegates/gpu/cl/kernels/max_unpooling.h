@@ -28,11 +28,14 @@ namespace cl {
 class MaxUnpooling : public GPUOperation {
  public:
   MaxUnpooling(const OperationDef& definition,
-               const MaxUnpooling2DAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+               const MaxUnpooling2DAttributes& attr,
+               const DeviceInfo& device_info);
+  MaxUnpooling(const OperationDef& definition,
+               const MaxUnpooling3DAttributes& attr,
+               const DeviceInfo& device_info);
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   MaxUnpooling(MaxUnpooling&& kernel);
@@ -41,19 +44,21 @@ class MaxUnpooling : public GPUOperation {
   MaxUnpooling& operator=(const MaxUnpooling&) = delete;
 
  private:
-  Status BindArguments();
-  int3 GetGridSize() const;
+  std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
+                                        const DeviceInfo& device_info);
 
-  int2 stride_;
-  int2 padding_;
-  int2 kernel_size_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
+  int4 stride_;
+  int4 padding_;
+  int4 kernel_size_;
 };
 
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
-                                const MaxUnpooling2DAttributes& attr);
+                                const MaxUnpooling2DAttributes& attr,
+                                const DeviceInfo& device_info);
+
+MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
+                                const MaxUnpooling3DAttributes& attr,
+                                const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

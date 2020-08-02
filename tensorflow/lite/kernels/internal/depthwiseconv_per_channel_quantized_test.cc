@@ -139,7 +139,6 @@ void PickReasonableMultiplier(
   }
 }
 
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
 // The reference implementation & the fast kernel have different rounding
 // mechanism, so we loosely compare the difference.
 void CompareRoundingResults(int flat_size, const int depth_multiplier,
@@ -164,9 +163,8 @@ void CompareRoundingResults(int flat_size, const int depth_multiplier,
 
   // The tolerance that we apply to means is tight, but we allow for a rounding
   // difference in one pixel, and loosen by another 1% for float comparison.
-  float mean_tolerance =
-      std::max(1e-5f, 1.01f / flat_size * std::sqrt(1.f * depth_multiplier));
-  mean_tolerance = 500.f;
+  const float mean_tolerance =
+      std::max(1e-2f, 1.01f / flat_size * std::sqrt(1.f * depth_multiplier));
   const int diff_mean_tolerance = 256;
   const int diff_median_tolerance = 225;
 
@@ -187,7 +185,6 @@ void CompareRoundingResults(int flat_size, const int depth_multiplier,
               std::abs(min_diff) <= diff_mean_tolerance &&
               std::abs(max_diff) <= diff_mean_tolerance);
 }
-#endif
 
 bool GenerateValidShapeConfigurations(
     int filter_width, int filter_height, int depth_multiplier,
@@ -293,7 +290,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
   // It's hard to come up with a right multiplier, random guess basically makes
   // all the results saturated and becomes meaningfulless, so we first use
   // reference impl to poke the min/max value of the accumulation, then use that
-  // value as a guided suggestion for us to populate meaningful mulitplier &
+  // value as a guided suggestion for us to populate meaningful multiplier &
   // shift.
   PickReasonableMultiplier(
       params, output_activation_min, output_activation_max, output_depth,
@@ -308,7 +305,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
       dilation_width_factor, dilation_height_factor, pad_width, pad_height,
       depth_multiplier, output_shape_inference, 0, output_shift.data()));
 
-  // The following tests compare referene impl and Neon general impl agrees,
+  // The following tests compare reference impl and Neon general impl agrees,
   // and reference impl loosely agrees with fast kernel since they use different
   // rounding strategy.
   reference_integer_ops::DepthwiseConvPerChannel(
@@ -325,7 +322,11 @@ void TryTestOneDepthwiseConv3x3Filter() {
       /*thread_start=*/0,
       /*thread_end=*/output_shape_inference.Dims(1), /*thread_dim=*/1);
 
-  EXPECT_EQ(reference_output_data, neon_output_data);
+  // We have changed our rounding strategy to the ARM rounding-right-shift
+  // instruction: breaking tie upward as it's much simpler.
+  // So we allow some difference for the neon output VS. the reference output.
+  CompareRoundingResults(output_buffer_size, depth_multiplier,
+                         reference_output_data.data(), neon_output_data.data());
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
   std::vector<std::int8_t> fast_kernel_output_data(output_buffer_size);
@@ -345,7 +346,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
 }
 
 TEST(QuantizedDepthwiseConvPerChannelTest, FastKernelTest) {
-  for (int i = 0; i < 30; ++i) {
+  for (int i = 0; i < 60; ++i) {
     TryTestOneDepthwiseConv3x3Filter();
   }
 }

@@ -138,6 +138,9 @@ class BufferInfo {
 // Align to 64-bytes, to mimic tensorflow::Allocator::kAllocatorAlignment.
 constexpr size_t kAlign = 64;
 
+// The minimum alignment of buffers passed to XLA:CPU.
+constexpr size_t kMinAlign = 16;
+
 // When declaring variables that will be passed to an XLA instance as input via
 // set_arg_data(), be it a regular input or a resource variable in the graph,
 // the C++ variables must be aligned.

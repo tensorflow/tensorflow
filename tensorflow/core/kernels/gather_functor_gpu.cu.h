@@ -92,20 +92,25 @@ struct GatherFunctor<GPUDevice, T, Index> {
     const int64 indices_size = indices.size();
     const int64 slice_size = params.dimension(2);
 
-    GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
     if (is_axis_zero) {
+      GpuLaunchConfig config = GetGpuLaunchConfig(
+          out_size, d, &GatherOpKernel<T, Index, true>,
+          /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
       TF_CHECK_OK(GpuLaunchKernel(
           GatherOpKernel<T, Index, true>, config.block_count,
           config.thread_per_block, 0, d.stream(), params.data(), indices.data(),
           out.data(), gather_dim_size, indices_size, slice_size, out_size));
     } else {
+      GpuLaunchConfig config = GetGpuLaunchConfig(
+          out_size, d, &GatherOpKernel<T, Index, false>,
+          /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
       TF_CHECK_OK(GpuLaunchKernel(
           GatherOpKernel<T, Index, false>, config.block_count,
           config.thread_per_block, 0, d.stream(), params.data(), indices.data(),
           out.data(), gather_dim_size, indices_size, slice_size, out_size));
     }
     // TODO(fpmc): enable indices validation on GPU.
-    // Right now checking for indicies out of bound in the kernel would
+    // Right now checking for indices out of bound in the kernel would
     // require copying code between GPU/CPU, and thus slow.
     return -1;
   }

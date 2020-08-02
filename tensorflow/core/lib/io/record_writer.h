@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #if !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/lib/io/snappy/snappy_compression_options.h"
+#include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #endif  // IS_SLIM_BUILD
@@ -34,17 +36,22 @@ class WritableFile;
 
 namespace io {
 
-class RecordWriterOptions {
+struct RecordWriterOptions {
  public:
-  enum CompressionType { NONE = 0, ZLIB_COMPRESSION = 1 };
+  enum CompressionType {
+    NONE = 0,
+    ZLIB_COMPRESSION = 1,
+    SNAPPY_COMPRESSION = 2
+  };
   CompressionType compression_type = NONE;
 
   static RecordWriterOptions CreateRecordWriterOptions(
       const string& compression_type);
 
-// Options specific to zlib compression.
 #if !defined(IS_SLIM_BUILD)
+  // Options specific to compression.
   tensorflow::io::ZlibCompressionOptions zlib_options;
+  tensorflow::io::SnappyCompressionOptions snappy_options;
 #endif  // IS_SLIM_BUILD
 };
 
@@ -55,8 +62,8 @@ class RecordWriter {
   //  uint32    masked crc of length
   //  byte      data[length]
   //  uint32    masked crc of data
-  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static const size_t kFooterSize = sizeof(uint32);
+  static constexpr size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
+  static constexpr size_t kFooterSize = sizeof(uint32);
 
   // Create a writer that will append data to "*dest".
   // "*dest" must be initially empty.
@@ -70,7 +77,7 @@ class RecordWriter {
   // implicit Close() call in the destructor.
   ~RecordWriter();
 
-  Status WriteRecord(StringPiece slice);
+  Status WriteRecord(StringPiece data);
 
 #if defined(PLATFORM_GOOGLE)
   Status WriteRecord(const absl::Cord& data);

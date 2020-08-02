@@ -35,7 +35,7 @@ inline int Clamp(const int v, const int lo, const int hi) {
 inline void StridedSlicePadIndices(tflite::StridedSliceParams* p,
                                    int dim_count) {
   // Add indices and mask bits to fully include extra dimensions
-  TFLITE_CHECK_LE(dim_count, 4);
+  TFLITE_CHECK_LE(dim_count, 5);
   TFLITE_CHECK_GE(dim_count, p->start_indices_count);
   TFLITE_CHECK_EQ(p->start_indices_count, p->stop_indices_count);
   TFLITE_CHECK_EQ(p->stop_indices_count, p->strides_count);
@@ -76,6 +76,10 @@ inline int StartForAxis(const tflite::StridedSliceParams& params,
   const auto begin_mask = params.begin_mask;
   const auto* start_indices = params.start_indices;
   const auto* strides = params.strides;
+  const int axis_size = input_shape.Dims(axis);
+  if (axis_size == 0) {
+    return 0;
+  }
   // Begin with the specified index.
   int start = start_indices[axis];
 
@@ -93,7 +97,6 @@ inline int StartForAxis(const tflite::StridedSliceParams& params,
   }
 
   // Handle negative indices
-  int axis_size = input_shape.Dims(axis);
   if (start < 0) {
     start += axis_size;
   }
@@ -116,6 +119,10 @@ inline int StopForAxis(const tflite::StridedSliceParams& params,
   const auto shrink_axis_mask = params.shrink_axis_mask;
   const auto* stop_indices = params.stop_indices;
   const auto* strides = params.strides;
+  const int axis_size = input_shape.Dims(axis);
+  if (axis_size == 0) {
+    return 0;
+  }
 
   // Begin with the specified index
   const bool shrink_axis = shrink_axis_mask & (1 << axis);
@@ -142,7 +149,6 @@ inline int StopForAxis(const tflite::StridedSliceParams& params,
   }
 
   // Handle negative indices
-  const int axis_size = input_shape.Dims(axis);
   if (stop < 0) {
     stop += axis_size;
   }

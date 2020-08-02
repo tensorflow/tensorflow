@@ -1,7 +1,8 @@
 path: "tensorflow.Tensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
-  is_instance: "<class \'tensorflow.python.framework.tensor_like._TensorLike\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "OVERLOADABLE_OPERATORS"
@@ -53,6 +54,10 @@ tf_class {
   }
   member_method {
     name: "get_shape"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ref"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

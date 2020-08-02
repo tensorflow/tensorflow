@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -92,6 +93,10 @@ class AdaptiveSharedBatchScheduler
     // for num_batch_threads allows for large in_flight_batches_limit_, which
     // will harm latency for some time once load increases again.
     int64 num_batch_threads = port::MaxParallelism();
+    // You can pass a ThreadPoolInterface directly rather than the above two
+    // parameters.  If given, the above two parameers are ignored.  Ownership of
+    // the threadpool is not transferred.
+    thread::ThreadPoolInterface* thread_pool = nullptr;
     // Lower bound for in_flight_batches_limit_. As discussed above, can be used
     // to minimize the damage caused by the random walk under low load.
     int64 min_in_flight_batches_limit = 1;
@@ -154,14 +159,14 @@ class AdaptiveSharedBatchScheduler
                        BatchProcessor callback, bool is_express);
 
   // Schedules batch if in_flight_batches_limit_ is not met.
-  void MaybeScheduleNextBatch() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void MaybeScheduleNextBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Schedules the earliest closed batch in batches_
   // if batch_thread_pool_ has an idle thead.
   // Batches scheduled this way are called express batches.
   // Express batches are not limited by in_flight_batches_limit_, and
   // their latencies will not affect in_flight_batches_limit_.
-  void MaybeScheduleClosedBatch() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void MaybeScheduleClosedBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Notifies scheduler of non-empty batch which is eligible for processing.
   void AddBatch(const internal::ASBSBatch<TaskType>* batch,
@@ -176,11 +181,11 @@ class AdaptiveSharedBatchScheduler
 
   // Collection of batches added by AddBatch, ordered by age. Owned by scheduler
   // until they are released for processing.
-  std::vector<const internal::ASBSBatch<TaskType>*> batches_ GUARDED_BY(mu_);
+  std::vector<const internal::ASBSBatch<TaskType>*> batches_ TF_GUARDED_BY(mu_);
 
   // Unowned queues and callbacks added by AddQueue.
   std::unordered_map<const internal::ASBSQueue<TaskType>*, BatchProcessor>
-      queues_and_callbacks_ GUARDED_BY(mu_);
+      queues_and_callbacks_ TF_GUARDED_BY(mu_);
 
   mutex mu_;
 
@@ -190,12 +195,12 @@ class AdaptiveSharedBatchScheduler
   // Limit on number of batches which can be concurrently processed.
   // Non-integer values correspond to probabilistic limits - i.e. a value of 3.2
   // results in an actual cap of 3 80% of the time, and 4 20% of the time.
-  double in_flight_batches_limit_ GUARDED_BY(mu_);
+  double in_flight_batches_limit_ TF_GUARDED_BY(mu_);
 
   // Number of regular batches currently being processed.
-  int64 in_flight_batches_ GUARDED_BY(mu_) = 0;
+  int64 in_flight_batches_ TF_GUARDED_BY(mu_) = 0;
   // Number of express batches currently being processed.
-  int64 in_flight_express_batches_ GUARDED_BY(mu_) = 0;
+  int64 in_flight_express_batches_ TF_GUARDED_BY(mu_) = 0;
 
   // RNG engine and distribution.
   std::default_random_engine rand_engine_;
@@ -203,21 +208,21 @@ class AdaptiveSharedBatchScheduler
 
   // Fields controlling the dynamic adjustment of in_flight_batches_limit_.
   // Number of batches since the last in_flight_batches_limit_ adjustment.
-  int64 batch_count_ GUARDED_BY(mu_) = 0;
+  int64 batch_count_ TF_GUARDED_BY(mu_) = 0;
   // Sum of processing latency for batches counted by batch_count_.
-  int64 batch_latency_sum_ GUARDED_BY(mu_) = 0;
+  int64 batch_latency_sum_ TF_GUARDED_BY(mu_) = 0;
   // Average batch latency for previous value of in_flight_batches_limit_.
-  double last_avg_latency_ms_ GUARDED_BY(mu_) = 0;
+  double last_avg_latency_ms_ TF_GUARDED_BY(mu_) = 0;
   // Did last_avg_latency_ms_ decrease from the previous last_avg_latency_ms_?
-  bool last_latency_decreased_ GUARDED_BY(mu_) = false;
+  bool last_latency_decreased_ TF_GUARDED_BY(mu_) = false;
   // Current direction (+-) to adjust in_flight_batches_limit_
-  int step_direction_ GUARDED_BY(mu_) = 1;
+  int step_direction_ TF_GUARDED_BY(mu_) = 1;
   // Max adjustment size (as a fraction of in_flight_batches_limit_).
   constexpr static double kMaxStepSizeMultiplier = 0.125;  // 1/8;
   // Min adjustment size (as a fraction of in_flight_batches_limit_).
   constexpr static double kMinStepSizeMultiplier = 0.0078125;  // 1/128
   // Current adjustment size (as a fraction of in_flight_batches_limit_).
-  double step_size_multiplier_ GUARDED_BY(mu_) = kMaxStepSizeMultiplier;
+  double step_size_multiplier_ TF_GUARDED_BY(mu_) = kMaxStepSizeMultiplier;
 
   TF_DISALLOW_COPY_AND_ASSIGN(AdaptiveSharedBatchScheduler);
 };
@@ -260,9 +265,9 @@ class ASBSQueue : public BatchScheduler<TaskType> {
   std::shared_ptr<AdaptiveSharedBatchScheduler<TaskType>> scheduler_;
   const QueueOptions options_;
   // Owned by scheduler_.
-  ASBSBatch<TaskType>* current_batch_ GUARDED_BY(mu_) = nullptr;
-  int64 num_enqueued_batches_ GUARDED_BY(mu_) = 0;
-  int64 num_enqueued_tasks_ GUARDED_BY(mu_) = 0;
+  ASBSBatch<TaskType>* current_batch_ TF_GUARDED_BY(mu_) = nullptr;
+  int64 num_enqueued_batches_ TF_GUARDED_BY(mu_) = 0;
+  int64 num_enqueued_tasks_ TF_GUARDED_BY(mu_) = 0;
   mutable mutex mu_;
   TF_DISALLOW_COPY_AND_ASSIGN(ASBSQueue);
 };
@@ -356,8 +361,12 @@ AdaptiveSharedBatchScheduler<TaskType>::AdaptiveSharedBatchScheduler(
       rand_double_(0.0, 1.0) {
   std::random_device device;
   rand_engine_.seed(device());
-  batch_thread_pool_.reset(new thread::ThreadPool(
-      GetEnv(), options.thread_pool_name, options.num_batch_threads));
+  if (options.thread_pool == nullptr) {
+    batch_thread_pool_.reset(new thread::ThreadPool(
+        GetEnv(), options.thread_pool_name, options.num_batch_threads));
+  } else {
+    batch_thread_pool_.reset(new thread::ThreadPool(options.thread_pool));
+  }
 }
 
 template <typename TaskType>
@@ -409,7 +418,7 @@ template <typename TaskType>
 void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatch() {
   if (batches_.empty() || in_flight_batches_ >= in_flight_batches_limit_)
     return;
-  // Non-integer limit handled probabilistially.
+  // Non-integer limit handled probabilistically.
   if (in_flight_batches_limit_ - in_flight_batches_ < 1 &&
       rand_double_(rand_engine_) >
           in_flight_batches_limit_ - in_flight_batches_) {

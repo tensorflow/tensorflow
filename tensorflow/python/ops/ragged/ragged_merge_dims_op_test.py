@@ -204,28 +204,28 @@ class RaggedMergeDimsOpTest(test_util.TensorFlowTestCase,
           'outer_axis': {},
           'inner_axis': 1,
           'exception': TypeError,
-          'message': 'axis must be an int',
+          'message': 'outer_axis must be an int',
       },
       {
           'rt': [[1]],
           'outer_axis': 1,
           'inner_axis': {},
           'exception': TypeError,
-          'message': 'axis must be an int',
+          'message': 'inner_axis must be an int',
       },
       {
           'rt': [[1]],
           'outer_axis': 1,
           'inner_axis': 3,
           'exception': ValueError,
-          'message': 'axis=3 out of bounds: expected -2<=axis<2',
+          'message': 'inner_axis=3 out of bounds: expected -2<=inner_axis<2',
       },
       {
           'rt': [[1]],
           'outer_axis': 1,
           'inner_axis': -3,
           'exception': ValueError,
-          'message': 'axis=-3 out of bounds: expected -2<=axis<2',
+          'message': 'inner_axis=-3 out of bounds: expected -2<=inner_axis<2',
       },
       {
           'rt': [[1]],
@@ -264,7 +264,7 @@ class RaggedMergeDimsOpTest(test_util.TensorFlowTestCase,
                                message=None,
                                ragged_rank=None):
     x = ragged_factory_ops.constant(rt, ragged_rank=ragged_rank)
-    with self.assertRaisesRegexp(exception, message):
+    with self.assertRaisesRegex(exception, message):
       self.evaluate(x.merge_dims(outer_axis, inner_axis))
 
 

@@ -17,15 +17,17 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -44,6 +46,17 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
   switch (type.getKind()) {
     case mlir::StandardTypes::BF16:
       return PrimitiveType::BF16;
+    case mlir::StandardTypes::Complex: {
+      mlir::Type element_ty = type.cast<mlir::ComplexType>().getElementType();
+      switch (element_ty.getKind()) {
+        case mlir::StandardTypes::F32:
+          return PrimitiveType::C64;
+        case mlir::StandardTypes::F64:
+          return PrimitiveType::C128;
+        default:
+          return PrimitiveType::PRIMITIVE_TYPE_INVALID;
+      }
+    }
     case mlir::StandardTypes::F16:
       return PrimitiveType::F16;
     case mlir::StandardTypes::F32:
@@ -52,17 +65,18 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
       return PrimitiveType::F64;
     case mlir::StandardTypes::Integer: {
       const auto integer = type.cast<IntegerType>();
+      bool is_unsigned = integer.isUnsigned();
       switch (integer.getWidth()) {
         case 1:
           return PrimitiveType::PRED;
         case 8:
-          return PrimitiveType::S8;
+          return is_unsigned ? PrimitiveType::U8 : PrimitiveType::S8;
         case 16:
-          return PrimitiveType::S16;
+          return is_unsigned ? PrimitiveType::U16 : PrimitiveType::S16;
         case 32:
-          return PrimitiveType::S32;
+          return is_unsigned ? PrimitiveType::U32 : PrimitiveType::S32;
         case 64:
-          return PrimitiveType::S64;
+          return is_unsigned ? PrimitiveType::U64 : PrimitiveType::S64;
         default:
           return PrimitiveType::PRIMITIVE_TYPE_INVALID;
       }
@@ -131,11 +145,37 @@ Shape TypeToShape(mlir::Type type) {
       // For the primitive type case, the shape of the memref is similar to the
       // vector type case (i.e., it is, modulo the layout, the same dimensions
       // and primitive type).
-      // Currently we only return shapes for identity affine maps.
-      // TODO(andydavis) Map affine map layout function to XLA layout.
-      if (m.getAffineMaps().empty() ||
-          (m.getAffineMaps().size() == 1 && m.getAffineMaps()[0].isIdentity()))
+      if (m.getAffineMaps().empty())
         return ShapeUtil::MakeShape(primitive_type, span);
+
+      if (m.getAffineMaps().size() == 1) {
+        llvm::SmallVector<int64_t, 4> strides;
+        int64_t offset;
+        if (failed(mlir::getStridesAndOffset(m, strides, offset))) return {};
+
+        llvm::SmallVector<std::pair<int64_t, int>, 4> strides_with_indices;
+        for (const auto& e : llvm::enumerate(strides)) {
+          strides_with_indices.push_back({e.value(), e.index()});
+        }
+        std::sort(strides_with_indices.begin(), strides_with_indices.end());
+
+        llvm::SmallVector<int64, 4> minor_to_major;
+        int64_t stride = 1;
+        for (const auto& pr : strides_with_indices) {
+          minor_to_major.push_back(pr.second);
+
+          // Either the affine map is not perfectly strided, or the dimensions
+          // recovered from strides don't match the actual dimensions in shapes.
+          if (stride != pr.first) return {};
+
+          stride *= m.getShape()[pr.second];
+        }
+
+        llvm::SmallVector<int64, 4> dimensions(m.getShape().begin(),
+                                               m.getShape().end());
+        return ::xla::ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions,
+                                                     minor_to_major);
+      }
       break;
     }
     case mlir::StandardTypes::RankedTensor: {
@@ -165,6 +205,8 @@ Shape TypeToShape(mlir::Type type) {
       }
       return ShapeUtil::MakeTupleShape(shapes);
     }
+    case mlir::mhlo::HLOTypes::Token:
+      return ShapeUtil::MakeTokenShape();
     default:
       break;
   }

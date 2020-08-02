@@ -66,7 +66,7 @@ void PopulateTensorFromExtra(const RecvBufRespExtra& extra,
                              Tensor* cpu_tensor) {
   char* head = reinterpret_cast<char*>(DMAHelper::base(cpu_tensor));
   for (const auto& tensor_content_chunk : extra.tensor_content()) {
-    memcpy(head, tensor_content_chunk.data(),
+    memcpy(head, std::string(tensor_content_chunk).data(),
            tensor_content_chunk.size());
     head += tensor_content_chunk.size();
   }
@@ -109,7 +109,8 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
       for (const auto& chunk : extra.tensor_content()) {
         num_bytes += chunk.size();
       }
-      if (num_bytes != to_tensor->TotalBytes()) {
+      const int64 total_bytes = to_tensor->TotalBytes();
+      if (num_bytes != total_bytes) {
         done(errors::Internal("RecvBufResponse returned ", num_bytes,
                               " bytes where to_tensor expected ",
                               to_tensor->TotalBytes()));
@@ -129,6 +130,10 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         }
         AllocatorAttributes cpu_attr;
         cpu_attr.set_gpu_compatible(true);
+        ScopedMemoryDebugAnnotation op_annotation(
+            "CollectiveRemoteAccessDistributed::RecvFromPeer"
+            "::recv_buf_callback",
+            step_id_, "dynamic", to_tensor->dtype(), &to_tensor->shape());
         Tensor* cpu_tensor = new Tensor(cpu_dev->GetAllocator(cpu_attr),
                                         to_tensor->dtype(), to_tensor->shape());
         PopulateTensorFromExtra(extra, cpu_tensor);

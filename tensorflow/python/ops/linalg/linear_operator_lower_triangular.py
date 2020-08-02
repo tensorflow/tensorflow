@@ -198,7 +198,7 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
-    return linear_operator_util.matrix_triangular_solve_with_broadcast(
+    return linalg.triangular_solve(
         self._get_tril(), rhs, lower=True, adjoint=adjoint)
 
   def _to_dense(self):

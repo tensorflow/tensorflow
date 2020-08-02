@@ -56,6 +56,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
             constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+            dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
     graph = tf_optimizer.OptimizeGraph(config, mg)
 
@@ -90,7 +91,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
 
       self.assertEqual(len(graph.node), graph_size + 2)
       self.assertTrue(
-          set([node.name for node in graph.node]) > set(
+          set(node.name for node in graph.node) > set(
               ['a', 'b', 'c', 'd', 'swap_in_d_0', 'swap_out_d_0']))
       for node in graph.node:
         if node.name == 'swap_in_d_0':

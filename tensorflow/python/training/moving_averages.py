@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import dtypes
@@ -46,8 +47,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   `zero_debias` optionally enables scaling by the mathematically correct
   debiasing factor of
     1 - decay ** num_updates
-  See `ADAM: A Method for Stochastic Optimization` Section 3 for more details
-  (https://arxiv.org/abs/1412.6980).
+  See Section 3 of (Kingma et al., 2015) for more details.
 
   The names of the debias shadow variables, by default, include both the scope
   they were created in and the scope of the variables they debias. They are also
@@ -72,14 +72,18 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     value: A tensor with the same shape as 'variable'.
     decay: A float Tensor or float value.  The moving average decay.
     zero_debias: A python bool. If true, assume the variable is 0-initialized
-      and unbias it, as in https://arxiv.org/abs/1412.6980. See docstring in
+      and unbias it, as in (Kingma et al., 2015). See docstring in
         `_zero_debias` for more details.
     name: Optional name of the returned operation.
 
   Returns:
     A tensor which if evaluated will compute and return the new moving average.
-  """
 
+  References:
+    Adam - A Method for Stochastic Optimization:
+      [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)
+      ([pdf](https://arxiv.org/pdf/1412.6980.pdf))
+  """
   with ops.name_scope(name, "AssignMovingAvg",
                       [variable, value, decay]) as scope:
     decay = ops.convert_to_tensor(1.0 - decay, name="decay")
@@ -93,7 +97,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       if zero_debias:
         return _zero_debias(strategy, v, value, decay)
       else:
-        return strategy.extended.update(v, update_fn, args=(value,))
+        return _update(strategy, v, update_fn, args=(value,))
 
     replica_context = distribution_strategy_context.get_replica_context()
     if replica_context:
@@ -171,7 +175,21 @@ def weighted_moving_average(value,
     if truediv:
       return math_ops.truediv(numerator, denominator, name=scope.name)
     else:
-      return math_ops.div(numerator, denominator, name=scope.name)
+      return math_ops.divide(numerator, denominator, name=scope.name)
+
+
+def _update(strategy, var, update_fn, args):
+  """Applies updates depending on the context."""
+  assert distribution_strategy_context.in_cross_replica_context(), (
+      "_update can only be called in cross-replica context")
+  if distribute_lib.get_update_replica_id() is not None:
+    # Call update_fn on var to delegate the implementation. We expect `var` will
+    # do the right thing in update context, e.g, if `var` is a MirroredVariable,
+    # it should pick its component variable based on `update_replica_id` and
+    # only update that.
+    return update_fn(var, *args)
+  else:
+    return strategy.extended.update(var, update_fn, args)
 
 
 def _zero_debias(strategy, unbiased_var, value, decay):
@@ -180,7 +198,7 @@ def _zero_debias(strategy, unbiased_var, value, decay):
   All exponential moving averages initialized with Tensors are initialized to 0,
   and therefore are biased to 0. Variables initialized to 0 and used as EMAs are
   similarly biased. This function creates the debias updated amount according to
-  a scale factor, as in https://arxiv.org/abs/1412.6980.
+  a scale factor, as in (Kingma et al., 2015).
 
   To demonstrate the bias the results from 0-initialization, take an EMA that
   was initialized to `0` with decay `b`. After `t` timesteps of seeing the
@@ -204,7 +222,14 @@ def _zero_debias(strategy, unbiased_var, value, decay):
     decay: A Tensor representing `1-decay` for the EMA.
 
   Returns:
-    Operation which updates unbiased_var to the debiased moving average value.
+    The amount that the unbiased variable should be updated. Computing this
+    tensor will also update the shadow variables appropriately.
+
+  References:
+    Adam - A Method for Stochastic Optimization:
+      [Kingma et al., 2015](https://arxiv.org/abs/1412.6980)
+      ([pdf](https://arxiv.org/pdf/1412.6980.pdf))
+
   """
   with variable_scope.variable_scope(
       unbiased_var.name[:-len(":0")], values=[unbiased_var, value, decay]):
@@ -252,8 +277,8 @@ def _zero_debias(strategy, unbiased_var, value, decay):
     return state_ops.assign(
         v, update_biased / bias_factor, name=ops.get_name_scope() + "/")
 
-  return strategy.extended.update(
-      unbiased_var, update_fn, args=(value, biased_var, local_step))
+  return _update(
+      strategy, unbiased_var, update_fn, args=(value, biased_var, local_step))
 
 
 @tf_export("train.ExponentialMovingAverage")
@@ -422,30 +447,30 @@ class ExponentialMovingAverage(object):
         raise TypeError("The variables must be half, float, or double: %s" %
                         var.name)
 
-      if var.experimental_ref() not in self._averages:
+      if var.ref() not in self._averages:
         # For variables: to lower communication bandwidth across devices we keep
         # the moving averages on the same device as the variables. For other
         # tensors, we rely on the existing device allocation mechanism.
-        if isinstance(var, variables.Variable):
-          if ops.executing_eagerly_outside_functions():
-            init_value = var.read_value()
+        with ops.init_scope():
+          if isinstance(var, variables.Variable):
+            avg = slot_creator.create_slot(
+                var,
+                var.initialized_value(),
+                self.name,
+                colocate_with_primary=True)
+            # NOTE(mrry): We only add `tf.Variable` objects to the
+            # `MOVING_AVERAGE_VARIABLES` collection.
+            ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
           else:
-            init_value = var.initialized_value()
-          avg = slot_creator.create_slot(
-              var, init_value, self.name, colocate_with_primary=True)
-          # NOTE(mrry): We only add `tf.Variable` objects to the
-          # `MOVING_AVERAGE_VARIABLES` collection.
-          ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
-        else:
-          avg = slot_creator.create_zeros_slot(
-              var,
-              self.name,
-              colocate_with_primary=(var.op.type in [
-                  "Variable", "VariableV2", "VarHandleOp"
-              ]))
-          if self._zero_debias:
-            zero_debias_true.add(avg.experimental_ref())
-        self._averages[var.experimental_ref()] = avg
+            avg = slot_creator.create_zeros_slot(
+                var,
+                self.name,
+                colocate_with_primary=(var.op.type in [
+                    "Variable", "VariableV2", "VarHandleOp"
+                ]))
+            if self._zero_debias:
+              zero_debias_true.add(avg.ref())
+        self._averages[var.ref()] = avg
 
     with ops.name_scope(self.name) as scope:
       decay = ops.convert_to_tensor(self._decay, name="decay")
@@ -456,8 +481,8 @@ class ExponentialMovingAverage(object):
                                  (1.0 + num_updates) / (10.0 + num_updates))
       updates = []
       for var in var_list:
-        avg = self._averages[var.experimental_ref()]
-        zero_debias = avg.experimental_ref() in zero_debias_true
+        avg = self._averages[var.ref()]
+        zero_debias = avg.ref() in zero_debias_true
         updates.append(assign_moving_average(avg, var, decay, zero_debias))
       return control_flow_ops.group(*updates, name=scope)
 
@@ -471,7 +496,7 @@ class ExponentialMovingAverage(object):
       A `Variable` object or `None` if the moving average of `var`
       is not maintained.
     """
-    return self._averages.get(var.experimental_ref(), None)
+    return self._averages.get(var.ref(), None)
 
   def average_name(self, var):
     """Returns the name of the `Variable` holding the average for `var`.
@@ -495,8 +520,8 @@ class ExponentialMovingAverage(object):
       by the `ExponentialMovingAverage class` to hold the moving average of
       `var`.
     """
-    if var.experimental_ref() in self._averages:
-      return self._averages[var.experimental_ref()].op.name
+    if var.ref() in self._averages:
+      return self._averages[var.ref()].op.name
     return ops.get_default_graph().unique_name(
         var.op.name + "/" + self.name, mark_as_used=False)
 
@@ -543,7 +568,7 @@ class ExponentialMovingAverage(object):
     for v in moving_avg_variables:
       name_map[self.average_name(v)] = v
     # Make sure we restore variables without moving averages as well.
-    moving_avg_variable_names = set([v.name for v in moving_avg_variables])
+    moving_avg_variable_names = set(v.name for v in moving_avg_variables)
     for v in list(set(variables.global_variables())):
       if v.name not in moving_avg_variable_names and v.op.name not in name_map:
         name_map[v.op.name] = v

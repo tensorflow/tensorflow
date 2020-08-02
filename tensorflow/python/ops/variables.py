@@ -21,6 +21,7 @@ import enum  # pylint: disable=g-bad-import-order
 import itertools
 import functools
 import os
+
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -46,6 +47,7 @@ from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.types import core
 
 
 def default_variable_creator(_, **kwds):
@@ -263,6 +265,7 @@ class VariableMetaclass(type):
 
 
 @tf_export("Variable", v1=[])
+# TODO(mdan): This should subclass core.Tensor, and not all its subclasses?
 class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   """See the [variable guide](https://tensorflow.org/guide/variable).
 
@@ -583,8 +586,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the assignment has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -601,8 +604,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the addition has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -619,8 +622,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         value of the variable; if False will return the assign op.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the subtraction has completed.
+      The updated variable. If `read_value` is false, instead returns None in
+      Eager mode and the assign op in graph mode.
     """
     raise NotImplementedError
 
@@ -633,8 +636,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -650,8 +652,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered addition has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -668,8 +669,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered maximization has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -686,8 +686,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered minimization has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -703,8 +702,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered multiplication has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -720,8 +718,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered division has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -737,8 +734,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -784,8 +780,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
 
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
@@ -835,8 +830,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -883,8 +877,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered addition has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -931,8 +924,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       name: the name of the operation.
 
     Returns:
-      A `Tensor` that will hold the new value of this variable after
-      the scattered assignment has completed.
+      The updated variable.
     """
     raise NotImplementedError
 
@@ -1086,8 +1078,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
   def __hash__(self):
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      raise TypeError("Variable is unhashable if Tensor equality is enabled. "
-                      "Instead, use tensor.experimental_ref() as the key.")
+      raise TypeError("Variable is unhashable. "
+                      "Instead, use tensor.ref() as the key.")
     else:
       return id(self)
 
@@ -1219,56 +1211,48 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def _get_save_slice_info(self):
     return self._save_slice_info
 
+  @deprecated(None, "Use ref() instead.")
   def experimental_ref(self):
-    # tf.Tensor also has the same experimental_ref() API.  If you update the
-    # documenation here, please update tf.Tensor.experimental_ref() as well.
+    return self.ref()
+
+  def ref(self):
+    # tf.Tensor also has the same ref() API.  If you update the
+    # documentation here, please update tf.Tensor.ref() as well.
     """Returns a hashable reference object to this Variable.
 
-    Warning: Experimental API that could be changed or removed.
-
-    The primary usecase for this API is to put variables in a set/dictionary.
+    The primary use case for this API is to put variables in a set/dictionary.
     We can't put variables in a set/dictionary as `variable.__hash__()` is no
     longer available starting Tensorflow 2.0.
 
-    ```python
-    import tensorflow as tf
+    The following will raise an exception starting 2.0
 
-    x = tf.Variable(5)
-    y = tf.Variable(10)
-    z = tf.Variable(10)
+    >>> x = tf.Variable(5)
+    >>> y = tf.Variable(10)
+    >>> z = tf.Variable(10)
+    >>> variable_set = {x, y, z}
+    Traceback (most recent call last):
+      ...
+    TypeError: Variable is unhashable. Instead, use tensor.ref() as the key.
+    >>> variable_dict = {x: 'five', y: 'ten'}
+    Traceback (most recent call last):
+      ...
+    TypeError: Variable is unhashable. Instead, use tensor.ref() as the key.
 
-    # The followings will raise an exception starting 2.0
-    # TypeError: Variable is unhashable if Variable equality is enabled.
-    variable_set = {x, y, z}
-    variable_dict = {x: 'five', y: 'ten'}
-    ```
+    Instead, we can use `variable.ref()`.
 
-    Instead, we can use `variable.experimental_ref()`.
-
-    ```python
-    variable_set = {x.experimental_ref(),
-                    y.experimental_ref(),
-                    z.experimental_ref()}
-
-    print(x.experimental_ref() in variable_set)
-    ==> True
-
-    variable_dict = {x.experimental_ref(): 'five',
-                     y.experimental_ref(): 'ten',
-                     z.experimental_ref(): 'ten'}
-
-    print(variable_dict[y.experimental_ref()])
-    ==> ten
-    ```
+    >>> variable_set = {x.ref(), y.ref(), z.ref()}
+    >>> x.ref() in variable_set
+    True
+    >>> variable_dict = {x.ref(): 'five', y.ref(): 'ten', z.ref(): 'ten'}
+    >>> variable_dict[y.ref()]
+    'ten'
 
     Also, the reference object provides `.deref()` function that returns the
     original Variable.
 
-    ```python
-    x = tf.Variable(5)
-    print(x.experimental_ref().deref())
-    ==> <tf.Variable 'Variable:0' shape=() dtype=int32, numpy=5>
-    ```
+    >>> x = tf.Variable(5)
+    >>> x.ref().deref()
+    <tf.Variable 'Variable:0' shape=() dtype=int32, numpy=5>
     """
     return object_identity.Reference(self)
 
@@ -1324,9 +1308,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     @property
     def spec(self):
       """Computes the spec string used for saving."""
-      full_shape_str = " ".join(["%d" % d for d in self.full_shape]) + " "
+      full_shape_str = " ".join("%d" % d for d in self.full_shape) + " "
       sl_spec = ":".join(
-          ["%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape)])
+          "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape))
       return full_shape_str + sl_spec
 
     def to_proto(self, export_scope=None):
@@ -1569,7 +1553,7 @@ class VariableV1(Variable):
 
 
 # TODO(apassos): do not repeat all comments here
-class RefVariable(VariableV1):
+class RefVariable(VariableV1, core.Tensor):
   """Ref-based implementation of variables."""
 
   def __init__(
@@ -2483,6 +2467,72 @@ class RefVariable(VariableV1):
     return gen_state_ops.scatter_nd_update(
         self._variable, indices, updates, use_locking=True, name=name)
 
+  def scatter_nd_max(self, indices, updates, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered addition has completed.
+    """
+    return gen_state_ops.scatter_nd_max(
+        self._variable, indices, updates, use_locking=True, name=name)
+
+  def scatter_nd_min(self, indices, updates, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered addition has completed.
+    """
+    return gen_state_ops.scatter_nd_min(
+        self._variable, indices, updates, use_locking=True, name=name)
+
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
@@ -3050,7 +3100,6 @@ class PartitionedVariable(object):
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(RefVariable,
                                         RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
-ops.register_dense_tensor_like_type(RefVariable)
 
 
 @tf_export(v1=["global_variables"])

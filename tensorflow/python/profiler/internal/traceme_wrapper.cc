@@ -13,16 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
-#include "tensorflow/core/profiler/internal/python_traceme.h"
+#include "tensorflow/python/profiler/internal/traceme_wrapper.h"
 
-namespace py = pybind11;
+#include "pybind11/attr.h"
+#include "pybind11/pybind11.h"
+
+namespace py = ::pybind11;
+
+using ::tensorflow::profiler::TraceMeWrapper;
 
 PYBIND11_MODULE(_pywrap_traceme, m) {
-  py::class_<tensorflow::profiler::PythonTraceMe> traceme_class(
-      m, "PythonTraceMe");
-  traceme_class.def(py::init<const std::string&>())
-      .def("Enter", &tensorflow::profiler::PythonTraceMe::Enter)
-      .def("Exit", &tensorflow::profiler::PythonTraceMe::Exit)
-      .def_static("IsEnabled", &tensorflow::profiler::PythonTraceMe::IsEnabled);
+  py::class_<TraceMeWrapper>(m, "TraceMe", py::module_local())
+      .def(py::init<const py::str&, const py::kwargs&>())
+      .def("SetMetadata", &TraceMeWrapper::SetMetadata)
+      .def("Stop", &TraceMeWrapper::Stop);
 };

@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_EVENT_SPAN_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_EVENT_SPAN_H_
 
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/logging.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -30,55 +33,165 @@ namespace profiler {
 // has a higher priority than a smaller number when used in execution-time
 // breakdown.
 enum EventType {
-  // Invalid type.
-  INVALID_BREAKDOWN_TYPE = 0,
-  // Both host and device are idle.
-  BOTH_IDLE = 1,
-  // Host is compiling.
-  HOST_COMPILE = 2,
-  // Host-to-host communication.
-  HOST_TO_HOST = 3,
-  // Host-to-device communication.
-  HOST_TO_DEVICE = 4,
-  // Host is preparing to launch a computation on device.
-  HOST_PREPARE = 5,
+  // No event associated with the time. It could be that the machine was idle or
+  // executing some events which were not traced.
+  UNKNOWN_TIME = 0,
   // Host is computing.
-  HOST_COMPUTE = 6,
+  HOST_COMPUTE = 10,
+  // Host is compiling.
+  HOST_COMPILE = 20,
+  // Host-to-host communication.
+  HOST_TO_HOST = 30,
+  // Host-to-device communication.
+  HOST_TO_DEVICE = 40,
+  // Host is preparing to launch a computation on device.
+  HOST_PREPARE = 50,
   // Host is waiting for input.
-  HOST_WAIT_INPUT = 7,
+  HOST_WAIT_INPUT = 60,
   // Device-to-device communication.
-  DEVICE_TO_DEVICE = 8,
+  DEVICE_TO_DEVICE = 70,
   // Device-to-host communication.
-  DEVICE_TO_HOST = 9,
-  // Device is computing.
-  DEVICE_COMPUTE = 10,
+  DEVICE_TO_HOST = 80,
+  // Collective Ops such as All-Reduce.
+  DEVICE_COLLECTIVES = 90,
+  // Device is computing with 32-bit precision.
+  DEVICE_COMPUTE_32 = 100,
+  // Device is computing with 16-bit precision.
+  DEVICE_COMPUTE_16 = 110,
   // Device is waiting for another device.
-  DEVICE_WAIT_DEVICE = 11,
+  DEVICE_WAIT_DEVICE = 120,
   // Device is waiting for host.
-  DEVICE_WAIT_HOST = 12
+  DEVICE_WAIT_HOST = 130,
+  LAST_EVENT_TYPE = DEVICE_WAIT_HOST
 };
 
+// Contains the type and timespan of an event.
 struct EventTypeSpan {
   EventType type;  // type of this event.
   Timespan span;   // timespan of this event.
   EventTypeSpan(EventType t, Timespan s) : type(t), span(s) {}
+  // Equality test.
+  bool operator==(const EventTypeSpan& other) const {
+    return type == other.type && span == other.span;
+  }
+  // Inequality test.
+  bool operator!=(const EventTypeSpan& other) const {
+    return !(*this == other);
+  }
 };
 
-// Map from step-number to the events happened in that step.
-using StepEvents =
-    absl::flat_hash_map<int64 /*step number*/, std::vector<EventTypeSpan>>;
+enum class StepMarkerType {
+  // "TraceContext" TraceMe events.
+  kExplicitHostStepMarker,
+  // Identified by group_events (e.g., FunctionRun, SessionRun).
+  kImplicitHostStepMarker,
+  // Derived from the result of group_events. A device step marker starts with
+  // the first device event of the group and ends with the last event of the
+  // group.
+  kDeviceStepMarker,
+};
+
+// Record of an event that is used as a step marker.
+struct StepMarker {
+  StepMarkerType type;
+  std::string event_name;  // name of this event.
+  Timespan span;           // timespan of this event.
+  StepMarker(StepMarkerType step_marker_type, absl::string_view name,
+             Timespan s)
+      : type(step_marker_type), event_name(name), span(s) {}
+  // Equality test.
+  bool operator==(const StepMarker& other) const {
+    return type == other.type && event_name == other.event_name &&
+           span == other.span;
+  }
+  // Inequality test.
+  bool operator!=(const StepMarker& other) const { return !(*this == other); }
+};
+
+// Details of a step. Note that this could be the result of combining the
+// StepDetails of the same step executed on different cores.
+class StepDetails {
+ public:
+  const std::vector<StepMarker>& Markers() const { return markers_; }
+  const std::vector<EventTypeSpan>& Events() const { return events_; }
+  const absl::flat_hash_map<uint32, AllReduceDbResult>& Collectives() const {
+    return collectives_;
+  }
+  // Returns the step time.
+  Timespan StepTime() const;
+  std::vector<StepMarker>* MutableMarkers() { return &markers_; }
+  std::vector<EventTypeSpan>* MutableEvents() { return &events_; }
+  absl::flat_hash_map<uint32, AllReduceDbResult>* MutableCollectives() {
+    return &collectives_;
+  }
+  // Adds a step-marker to this step.
+  void AddMarker(const StepMarker& m);
+  // Adds an EventTypeSpan to this step.
+  void AddEvent(const EventTypeSpan& e);
+  // Adds a collective op to this step.
+  void AddCollectiveOpEvent(uint64 core_id, const AllReduceInfo& e);
+  // Appends the step-markers from another step to this step.
+  void AppendMarkers(const std::vector<StepMarker>& other_markers);
+  // Appends the events from another step to this step.
+  void AppendEvents(const std::vector<EventTypeSpan>& other_events);
+  // Appends the collectives from another step to this step.
+  void AppendCollectives(
+      const absl::flat_hash_map<uint32, AllReduceDbResult>& collectives);
+  // Equality test.
+  bool operator==(const StepDetails& other) const;
+  // Inequality test.
+  bool operator!=(const StepDetails& other) const { return !(*this == other); }
+  // Returns a string that prints the content of this object.
+  std::string DebugString() const;
+
+ private:
+  // All step-markers found for marking this step in the traces. There could be
+  // multiple step-markers for a single step for different reasons. One such
+  // reason is that there may be one step-marker for the same step on each core;
+  // so after combining the StepDetails from multiple cores, there would be
+  // multiple step-markers for the same step.
+  std::vector<StepMarker> markers_;
+  // All events belonging to this step.
+  std::vector<EventTypeSpan> events_;
+  // Collective operation related events such as all-reduce etc.
+  absl::flat_hash_map<uint32, AllReduceDbResult> collectives_;
+};
+
+// Map from step_id to the events happened in that step.
+using StepEvents = absl::flat_hash_map<int64 /*step_id*/, StepDetails>;
+
+// Equality test for StepEvents.
+bool operator==(const StepEvents& a, const StepEvents& b);
 
 // Returns the event type of the given CPU event.
-EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id);
+EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id,
+                           bool has_device);
 
-// Returns the event type of the given GPU event.
-EventType ClassifyGpuEvent(absl::string_view event_name);
+// Returns the event type of the given GPU event and tensor shapes.
+EventType ClassifyGpuEvent(absl::string_view event_name,
+                           absl::string_view tensor_shapes);
+
+// Returns the name of the given EventType.
+std::string PrintEventType(EventType event_type);
+
+// Returns a string that prints the given EventTypeSpan.
+std::string PrintEventTypeSpan(const EventTypeSpan& event_type_span);
+
+// Returns a string that prints the given StepMarker.
+std::string PrintStepMarker(const StepMarker& step_marker);
+
+// Returns a string that prints the given StepEvents.
+std::string PrintStepEvents(const StepEvents& step_events);
 
 // Combines the src StepEvents into dst.
 void CombineStepEvents(const StepEvents& src, StepEvents* dst);
 
-// Converts from overlapped step-events to non-overlapped step-events.
+// Converts from overlapped step-events to non-overlapped step events.
 StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events);
+
+// Returns the precision stats of the given non-overlapped step events.
+PrecisionStats ComputePrecisionStats(
+    const StepEvents& nonoverlapped_step_events);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -1,0 +1,113 @@
+op {
+  name: "ImageSummary"
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  attr {
+    name: "max_images"
+    type: "int"
+    default_value {
+      i: 3
+    }
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_FLOAT
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "bad_color"
+    type: "tensor"
+    default_value {
+      tensor {
+        dtype: DT_UINT8
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        int_val: 255
+        int_val: 0
+        int_val: 0
+        int_val: 255
+      }
+    }
+  }
+}
+op {
+  name: "ImageSummary"
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  attr {
+    name: "max_images"
+    type: "int"
+    default_value {
+      i: 3
+    }
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "bad_color"
+    type: "tensor"
+    default_value {
+      tensor {
+        dtype: DT_UINT8
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        int_val: 255
+        int_val: 0
+        int_val: 0
+        int_val: 255
+      }
+    }
+  }
+}

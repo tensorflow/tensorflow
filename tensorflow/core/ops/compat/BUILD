@@ -39,6 +39,9 @@ tf_cc_test(
         "ops_history_v*/*.pbtxt",
         "ops_history.v*.pbtxt",
     ]),
+    tags = [
+        "no_windows",  # TODO(b/150030420): Issues with the path separator
+    ],
     deps = [
         ":op_compatibility_lib",
         "//tensorflow/core:framework",

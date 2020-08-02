@@ -61,7 +61,7 @@ class GpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~GpuExecutable() override;
 
-  int64 SizeOfGeneratedCodeInBytes() override;
+  int64 SizeOfGeneratedCodeInBytes() const override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -82,9 +82,9 @@ class GpuExecutable : public Executable {
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream
   // doesn't match the compute capability passed to this object's constructor.
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
@@ -92,11 +92,6 @@ class GpuExecutable : public Executable {
   }
 
  private:
-  StatusOr<ScopedShapedBuffer> Execute(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile, bool block_host_until_done);
-
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
   // clients, such as Tensorflow, that use a single stream of execution for
@@ -120,18 +115,28 @@ class GpuExecutable : public Executable {
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
 
-  // Computes annotations for each thunk and store them in thunk_annotations_.
-  void ComputeThunkAnnotations();
-
-  // GpuExecutable check with either AMD's ISA version, or Nvdia's major minor
+  // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
 
-  // The LLVM IR, in string format, of the unoptimized module generated for this
-  // GpuExecutable. We save a string instead of an llvm::Module* because leaving
-  // llvm::Module* in a singleton can cause the heap checker to emit false
-  // positives.
+  StatusOr<BufferAllocations> GenerateBufferAllocations(
+      absl::Span<ExecutionInput const> arguments,
+      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+      se::DeviceMemoryAllocator* const memory_allocator,
+      se::StreamExecutor* executor);
+
+  StatusOr<se::DeviceMemoryBase> BufferForAllocation(
+      absl::Span<ExecutionInput const> arguments,
+      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+      const BufferAllocation& allocation,
+      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+      int64 arg_idx);
+
+  // The LLVM IR, in string format, of the unoptimized module generated for
+  // this GpuExecutable. We save a string instead of an llvm::Module* because
+  // leaving llvm::Module* in a singleton can cause the heap checker to emit
+  // false positives.
   //
   // This string should be modified only before ExecuteOnStream.
   string ir_module_string_;
@@ -156,17 +161,13 @@ class GpuExecutable : public Executable {
   // memory for every output/temp buffers.
   const std::shared_ptr<const BufferAssignment> assignment_;
 
-  // Maps a thunk to a string describing the thunk.  This is useful when
-  // constructing ScopeAnnotation objects.
-  absl::flat_hash_map<Thunk*, string> thunk_annotations_;
-
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.
   tensorflow::mutex module_handle_mutex_;
   std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
-      module_handles_ GUARDED_BY(module_handle_mutex_);
+      module_handles_ TF_GUARDED_BY(module_handle_mutex_);
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
-      module_globals_ GUARDED_BY(module_handle_mutex_);
+      module_globals_ TF_GUARDED_BY(module_handle_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

@@ -51,7 +51,7 @@ class CompilationCache {
   using CacheKey = int64;
 
   absl::flat_hash_map<CacheKey, std::shared_ptr<Executable>> cache_
-      GUARDED_BY(mutex_);
+      TF_GUARDED_BY(mutex_);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(CompilationCache);

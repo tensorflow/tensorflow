@@ -29,6 +29,10 @@ class WhileUtil {
     // The new while operation that has the requested values live in.
     HloInstruction* new_while_instr;
 
+    // The new tuple instruction that replaced the original while instruction
+    // with the same shape.
+    HloInstruction* replacement_instr;
+
     // The i'th element of `while_body_live_in_values` is an instruction in the
     // while body that holds the i'th *newly added* live in value at runtime.
     std::vector<HloInstruction*> while_body_live_in_values;

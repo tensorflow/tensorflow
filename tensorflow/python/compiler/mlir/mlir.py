@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow as import_graphdef
+from tensorflow.python import pywrap_mlir
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -38,4 +38,4 @@ def convert_graph_def(graph_def, pass_pipeline='tf-standard-pipeline'):
     Raises a RuntimeError on error.
 
   """
-  return import_graphdef.import_graphdef(graph_def, pass_pipeline)
+  return pywrap_mlir.import_graphdef(graph_def, pass_pipeline)

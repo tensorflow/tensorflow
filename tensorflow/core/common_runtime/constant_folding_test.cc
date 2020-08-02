@@ -631,6 +631,13 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
   }
 }
 
+// Disabling the following test on the ROCm platform because it relies on the
+// "topK" operator being supported on the ROCm platform (which is currently not
+// the case)
+// TODO(rocm) :
+// re-enable this test once support for "topK" operator is available on ROCm
+
+#ifndef TENSORFLOW_USE_ROCM
 TEST_F(ConstantFoldingTest, NoReplacePartialOutput) {
   Graph g(OpRegistry::Global());
   {
@@ -655,6 +662,7 @@ TEST_F(ConstantFoldingTest, NoReplacePartialOutput) {
       &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
 }
+#endif  // TENSORFLOW_USE_ROCM
 
 namespace {
 
@@ -696,7 +704,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   ::tensorflow::Tensor data_tensor_;
 };
 
-// A test TF environent that checks that the environment was used.
+// A test TF environment that checks that the environment was used.
 class TestTFEnvironment : public ::tensorflow::EnvWrapper {
  public:
   using tf_base = ::tensorflow::EnvWrapper;

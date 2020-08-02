@@ -21,7 +21,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_KERNELS_FULLY_CONNECTED_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace ops {
@@ -29,6 +29,8 @@ namespace builtin {
 TfLiteRegistration* Register_FULLY_CONNECTED_REF();
 TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT();
 TfLiteRegistration* Register_FULLY_CONNECTED_PIE();
+TfLiteRegistration* Register_FULLY_CONNECTED_SPARSE_REF();
+TfLiteRegistration* Register_FULLY_CONNECTED_SPARSE_OPT();
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

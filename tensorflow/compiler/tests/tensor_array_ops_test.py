@@ -44,11 +44,11 @@ def _make_converter(dtype):
     return np.asarray(x).astype(dtype.as_numpy_dtype)
   return _converter
 
+
 # This lets me define `fn` repeatedly to pass to xla.compile.
 #
 # pylint: disable=function-redefined
-
-
+@test_util.run_v1_only("b/")  # Support TF2 list operations
 @test_util.with_control_flow_v2
 class TensorArrayTest(xla_test.XLATestCase):
 
@@ -164,7 +164,8 @@ class TensorArrayTest(xla_test.XLATestCase):
             dtype=tf_dtype, tensor_array_name="foo", size=3)
 
         # Unpack a matrix into vectors.
-        w1 = ta.unstack(convert([[1.0, 1.1], [2.0, 2.1], [3.0, 3.1]]))
+        w1 = ta.unstack(
+            convert([[1.0, 1.03125], [2.0, 2.03125], [3.0, 3.03125]]))
         r0 = w1.read(0)
         r1 = w1.read(1)
         r2 = w1.read(2)
@@ -172,9 +173,9 @@ class TensorArrayTest(xla_test.XLATestCase):
 
       d0, d1, d2 = self.evaluate(xla.compile(fn))
 
-      self.assertAllEqual(convert([1.0, 1.1]), d0)
-      self.assertAllEqual(convert([2.0, 2.1]), d1)
-      self.assertAllEqual(convert([3.0, 3.1]), d2)
+      self.assertAllEqual(convert([1.0, 1.03125]), d0)
+      self.assertAllEqual(convert([2.0, 2.03125]), d1)
+      self.assertAllEqual(convert([3.0, 3.03125]), d2)
 
       def fn():
         # Reset ta because we're going to change the shape, else shape
@@ -392,9 +393,8 @@ class TensorArrayTest(xla_test.XLATestCase):
       # Test writing the wrong datatype.
       # TODO(b/129870929): Remove InvalidArgumentError/second regexp after all
       # callers provide proper init dtype.
-      with self.assertRaisesRegexp(
-          (ValueError, errors.InvalidArgumentError),
-          r"("
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), r"("
           r"conversion requested dtype float32 for Tensor with dtype int32"
           r"|"
           r"TensorArray dtype is float but op has dtype int32"
@@ -508,7 +508,7 @@ class TensorArrayTest(xla_test.XLATestCase):
         return w2_grad.read(2)
 
       # Assert that aggregation works correctly
-      self.assertAllEqual(c(12.00), xla.compile(fn)[0].eval())
+      self.assertAllEqual(c(12.00), xla.compile(fn)[0])
 
       def fn():
         ta = tensor_array_ops.TensorArray(
@@ -801,7 +801,7 @@ class TensorArrayTest(xla_test.XLATestCase):
   #     state0_grad = gradients_impl.gradients([vout], [state0], [grad_val])[0]
   #     var_grad = gradients_impl.gradients([vout], [var], [grad_val])[0]
 
-  #     variables.global_variables_initializer().run()
+  #     self.evaluate(variables.global_variables_initializer())
   #     state0_t, var_t, v0_t, vout_t, v0_grad_t, var_grad_t, state0_grad_t = (
   #         self.evaluate([state0, var, v0, vout, v0_grad, var_grad, state0_grad])
   #     )
@@ -1150,7 +1150,7 @@ class TensorArrayTest(xla_test.XLATestCase):
 
         return [read0, read1, size0, size1, v0, v1]
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       read0_v, read1_v, size0_v, size1_v, v0, v1 = self.evaluate(
           xla.compile(fn))

@@ -272,7 +272,7 @@ class Call : public UntypedCall<Service> {
   Tag cancelled_tag_{this, Tag::kCancelled};
 
   mutex mu_;
-  std::function<void()> cancel_callback_ GUARDED_BY(mu_);
+  std::function<void()> cancel_callback_ TF_GUARDED_BY(mu_);
 };
 
 // Lifetime of a server-side bidirectional streaming call:

@@ -42,20 +42,33 @@ class EagerClusterFunctionLibraryRuntime
 
   ~EagerClusterFunctionLibraryRuntime() override{};
 
+  // Register a partition (i.e., component function) of a multi-device function
+  // on the remote target specified in `options.target`. This should be
+  // triggered as part of instantiating a multi-device function in
+  // ProcessFunctionLibraryRuntime.
   void Instantiate(const string& function_name,
                    const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
                    const FunctionLibraryRuntime::InstantiateOptions& options,
                    FunctionLibraryRuntime::LocalHandle* handle,
                    FunctionLibraryRuntime::DoneCallback done) override;
 
+  // Execute the component function specified by `handle` on its instantiated
+  // remote target. This should be triggered as part of driving a multi-device
+  // function execution in ProcessFunctionLibraryRuntime. Running the component
+  // function remotely is purely asynchronous, and multiple component functions
+  // with the same remote target are not executed in any particular ordering.
+  // The main function side must wait for all component functions to finish
+  // (i.e., the done callbacks triggered) before finishing its execution.
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
+  // The component function inputs `args` can be RemoteTensorHandles, which will
+  // be lazily resolved remotely where the inputs are actually consumed.
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           std::vector<eager::RemoteTensorHandle>* args,
+           gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
@@ -70,16 +83,20 @@ class EagerClusterFunctionLibraryRuntime
 
   struct FunctionData {
     const string target;
-    EagerClient* eager_client = nullptr;
+    core::RefCountPtr<EagerClient> eager_client;
     std::unique_ptr<EagerOperation> op;
 
     FunctionData(const string& target, EagerClient* eager_client,
                  std::unique_ptr<EagerOperation> op)
-        : target(target), eager_client(eager_client), op(std::move(op)) {}
+        : target(target),
+          eager_client(core::RefCountPtr<EagerClient>(eager_client)),
+          op(std::move(op)) {
+      eager_client->Ref();
+    }
   };
 
   mutable mutex mu_;
-  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
+  std::vector<FunctionData> function_data_ TF_GUARDED_BY(mu_);
 };
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(

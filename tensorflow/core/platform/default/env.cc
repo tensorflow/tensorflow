@@ -18,6 +18,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -37,6 +38,8 @@ limitations under the License.
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/ram_file_system.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -46,30 +49,53 @@ namespace {
 mutex name_mutex(tensorflow::LINKER_INITIALIZED);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
-    EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
   static auto* thread_name_registry = new std::map<std::thread::id, string>();
   return *thread_name_registry;
 }
 
-class StdThread : public Thread {
+// We use the pthread API instead of std::thread so we can control stack sizes.
+class PThread : public Thread {
  public:
-  // thread_options is ignored.
-  StdThread(const ThreadOptions& thread_options, const string& name,
-            std::function<void()> fn)
-      : thread_(fn) {
-    mutex_lock l(name_mutex);
-    GetThreadNameRegistry().emplace(thread_.get_id(), name);
+  PThread(const ThreadOptions& thread_options, const std::string& name,
+          std::function<void()> fn) {
+    ThreadParams* params = new ThreadParams;
+    params->name = name;
+    params->fn = std::move(fn);
+    pthread_attr_t attributes;
+    pthread_attr_init(&attributes);
+    if (thread_options.stack_size != 0) {
+      pthread_attr_setstacksize(&attributes, thread_options.stack_size);
+    }
+    int ret = pthread_create(&thread_, &attributes, &ThreadFn, params);
+    // There is no mechanism for the thread creation API to fail, so we CHECK.
+    CHECK_EQ(ret, 0) << "Thread creation via pthread_create() failed.";
+    pthread_attr_destroy(&attributes);
   }
 
-  ~StdThread() override {
-    std::thread::id thread_id = thread_.get_id();
-    thread_.join();
-    mutex_lock l(name_mutex);
-    GetThreadNameRegistry().erase(thread_id);
-  }
+  ~PThread() override { pthread_join(thread_, nullptr); }
 
  private:
-  std::thread thread_;
+  struct ThreadParams {
+    std::string name;
+    std::function<void()> fn;
+  };
+  static void* ThreadFn(void* params_arg) {
+    std::unique_ptr<ThreadParams> params(
+        reinterpret_cast<ThreadParams*>(params_arg));
+    {
+      mutex_lock l(name_mutex);
+      GetThreadNameRegistry().emplace(std::this_thread::get_id(), params->name);
+    }
+    params->fn();
+    {
+      mutex_lock l(name_mutex);
+      GetThreadNameRegistry().erase(std::this_thread::get_id());
+    }
+    return nullptr;
+  }
+
+  pthread_t thread_;
 };
 
 class PosixEnv : public Env {
@@ -105,19 +131,12 @@ class PosixEnv : public Env {
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
-    return new StdThread(thread_options, name, fn);
+    return new PThread(thread_options, name, fn);
   }
 
   int32 GetCurrentThreadId() override {
-#ifdef __APPLE__
-    uint64_t tid64;
-    pthread_threadid_np(nullptr, &tid64);
-    return static_cast<int32>(tid64);
-#elif defined(__FreeBSD__)
-    return pthread_getthreadid_np();
-#else
-    return static_cast<int32>(pthread_self());
-#endif
+    static thread_local int32 current_thread_id = GetCurrentThreadIdInternal();
+    return current_thread_id;
   }
 
   bool GetCurrentThreadName(string* name) override {
@@ -126,7 +145,7 @@ class PosixEnv : public Env {
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {
-        *name = thread_name->second;
+        *name = strings::StrCat(thread_name->second, "/", GetCurrentThreadId());
         return true;
       }
     }
@@ -206,6 +225,20 @@ class PosixEnv : public Env {
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override;
+
+  int32 GetCurrentThreadIdInternal() {
+#ifdef __APPLE__
+    uint64_t tid64;
+    pthread_threadid_np(nullptr, &tid64);
+    return static_cast<int32>(tid64);
+#elif defined(__FreeBSD__)
+    return pthread_getthreadid_np();
+#elif defined(__NR_gettid)
+    return static_cast<int32>(syscall(__NR_gettid));
+#else
+    return std::hash<std::thread::id>()(std::this_thread::get_id());
+#endif
+  }
 };
 
 }  // namespace
@@ -213,6 +246,8 @@ class PosixEnv : public Env {
 #if defined(PLATFORM_POSIX) || defined(__APPLE__) || defined(__ANDROID__)
 REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
+REGISTER_FILE_SYSTEM("ram", RamFileSystem);
+
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;
   return default_env;
@@ -257,5 +292,11 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
     }
   }
 }
+
+int setenv(const char* name, const char* value, int overwrite) {
+  return ::setenv(name, value, overwrite);
+}
+
+int unsetenv(const char* name) { return ::unsetenv(name); }
 
 }  // namespace tensorflow

@@ -18,15 +18,20 @@ limitations under the License.
 
 namespace stream_executor {
 
-string AllocatorStats::DebugString() const {
+std::string AllocatorStats::DebugString() const {
   return absl::StrFormat(
-      "Limit:        %20lld\n"
-      "InUse:        %20lld\n"
-      "MaxInUse:     %20lld\n"
-      "NumAllocs:    %20lld\n"
-      "MaxAllocSize: %20lld\n",
+      "Limit:            %20lld\n"
+      "InUse:            %20lld\n"
+      "MaxInUse:         %20lld\n"
+      "NumAllocs:        %20lld\n"
+      "MaxAllocSize:     %20lld\n"
+      "Reserved:         %20lld\n"
+      "PeakReserved:     %20lld\n"
+      "LargestFreeBlock: %20lld\n",
       this->bytes_limit ? *this->bytes_limit : 0, this->bytes_in_use,
-      this->peak_bytes_in_use, this->num_allocs, this->largest_alloc_size);
+      this->peak_bytes_in_use, this->num_allocs, this->largest_alloc_size,
+      this->bytes_reserved, this->peak_bytes_reserved,
+      this->largest_free_block_bytes);
 }
 
 }  // namespace stream_executor

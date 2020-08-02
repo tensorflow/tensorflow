@@ -17,12 +17,11 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
+install_bazelisk
 
-# Install latest bazel
-update_bazel_macos
-which bazel
-
-set_bazel_outdir
+# Pick a version of xcode
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
 
 sudo pip3.5 install --upgrade pip
 
@@ -36,13 +35,12 @@ sudo pip install twine
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.
-export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.5)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
-bazel build --config=opt --config=v2 tensorflow/tools/pip_package:build_pip_package
+bazel build --config=release_cpu_macos tensorflow/tools/pip_package:build_pip_package
 mkdir pip_pkg
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 
@@ -53,6 +51,17 @@ done
 
 # Upload the built packages to pypi.
 for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
-  echo "Uploading package: ${f}"
-  twine upload -r pypi-warehouse "${f}" || echo
+  # test the whl pip package
+  chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
+  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${f}
+  RETVAL=$?
+
+  # Upload the PIP package if whl test passes.
+  if [ ${RETVAL} -eq 0 ]; then
+    echo "Basic PIP test PASSED, Uploading package: ${f}"
+    twine upload -r pypi-warehouse "${f}" || echo
+  else
+    echo "Basic PIP test FAILED, will not upload ${f} package"
+    return 1
+  fi
 done

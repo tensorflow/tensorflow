@@ -57,7 +57,7 @@ class WorkerInterface {
                                     StatusCallback done) = 0;
 
   virtual void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
-                             MutableRunGraphResponseWrapper* repsonse,
+                             MutableRunGraphResponseWrapper* response,
                              StatusCallback done) = 0;
 
   virtual void RunGraphAsync(CallOptions* opts, const RunGraphRequest* request,

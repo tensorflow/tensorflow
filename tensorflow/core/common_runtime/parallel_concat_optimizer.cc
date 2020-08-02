@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/graph_optimizer.h"
-
-#include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -117,7 +113,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     return Status::OK();
   }
 };
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       ParallelConcatRemovePass);
 
 }  // namespace

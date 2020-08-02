@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
+#include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -181,7 +181,7 @@ REGISTER_OP("LookupTableFindV2")
 
       return Status::OK();
     });
-WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableFindV2");
+ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableFindV2");
 // TODO(b/72710477): Update this.
 
 REGISTER_OP("LookupTableInsert")
@@ -231,13 +231,13 @@ REGISTER_OP("LookupTableSize")
     .Input("table_handle: Ref(string)")
     .Output("size: int64")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs);
-WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSize");
+ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSize");
 
 REGISTER_OP("LookupTableSizeV2")
     .Input("table_handle: resource")
     .Output("size: int64")
     .SetShapeFn(ScalarAndTwoElementVectorInputsAndScalarOutputs);
-WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSizeV2");
+ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSizeV2");
 
 REGISTER_OP("LookupTableExport")
     .Input("table_handle: Ref(string)")
@@ -501,6 +501,16 @@ REGISTER_OP("InitializeTableFromTextFileV2")
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
 
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
+      return Status::OK();
+    });
+
+REGISTER_OP("InitializeTableFromDataset")
+    .Input("table_handle: resource")
+    .Input("dataset: variant")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
       return Status::OK();
     });

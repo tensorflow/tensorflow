@@ -42,6 +42,9 @@
 #include "src/FixedPoint/MatMatProductAVX2.h"
 #include "src/FixedPoint/TypeCastingAVX2.h"
 
+#elif defined EIGEN_VECTORIZE_AVX
+#include "src/FixedPoint/PacketMathAVX.h"
+
 #elif defined EIGEN_VECTORIZE_NEON
 #define EIGEN_USE_OPTIMIZED_INT8_UINT8_MAT_MAT_PRODUCT
 #include "src/FixedPoint/MatMatProductNEON.h"

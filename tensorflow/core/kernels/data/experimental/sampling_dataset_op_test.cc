@@ -70,7 +70,7 @@ class SamplingDatasetParams : public DatasetParams {
   int64 seed2_tensor_ = kRandomSeed2;
 };
 
-class SamplingDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class SamplingDatasetOpTest : public DatasetOpsTestBase {};
 
 SamplingDatasetParams OneHundredPercentSampleParams() {
   return SamplingDatasetParams(RangeDatasetParams(0, 3, 1),

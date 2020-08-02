@@ -21,13 +21,13 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.feature_column import dense_features_v2
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.feature_column import dense_features_v2
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.premade import linear
@@ -52,8 +52,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer=['sgd', 'adam'],
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(inputs, output, epochs=5)
     self.assertTrue(wide_deep_model.built)
 
@@ -73,14 +72,13 @@ class WideDeepModelTest(keras_parameterized.TestCase):
           optimizer=[linear_opt, dnn_opt],
           loss='mse',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       self.evaluate(variables.global_variables_initializer())
       wide_deep_model.fit(inputs, output, epochs=1)
       self.assertAllClose(
-          [[0.3]],
+          [[0.6]],
           self.evaluate(wide_deep_model.linear_model.dense_layers[0].kernel))
-      self.assertAllClose([[0.9]],
+      self.assertAllClose([[1.8]],
                           self.evaluate(
                               wide_deep_model.dnn_model.layers[0].kernel))
 
@@ -94,8 +92,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer=['sgd', 'adam'],
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(inputs, output, epochs=5)
 
   def test_wide_deep_model_with_multi_outputs(self):
@@ -112,15 +109,15 @@ class WideDeepModelTest(keras_parameterized.TestCase):
       wide_deep_model = wide_deep.WideDeepModel(linear_model, dnn_model)
       inp_np = np.asarray([[1.]])
       out1, out2 = wide_deep_model(inp_np)
-      # output should be 0.5 * (0.5 + 0.1), and 0.5 * (0.3 - 0.5)
-      self.assertAllClose([[0.3]], out1)
-      self.assertAllClose([[-0.1]], out2)
+      # output should be (0.5 + 0.1), and (0.3 - 0.5)
+      self.assertAllClose([[0.6]], out1)
+      self.assertAllClose([[-0.2]], out2)
 
       wide_deep_model = wide_deep.WideDeepModel(
           linear_model, dnn_model, activation='relu')
       out1, out2 = wide_deep_model(inp_np)
-      # output should be relu(0.5 * (0.5 + 0.1)), and relu(0.5 * (0.3 - 0.5))
-      self.assertAllClose([[0.3]], out1)
+      # output should be relu((0.5 + 0.1)), and relu((0.3 - 0.5))
+      self.assertAllClose([[0.6]], out1)
       self.assertAllClose([[0.]], out2)
 
   def test_wide_deep_model_with_single_optimizer(self):
@@ -135,8 +132,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(inputs, output, epochs=5)
     self.assertTrue(wide_deep_model.built)
 
@@ -160,8 +156,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit([linear_input_np, dnn_input_np, input_b_np], output_np, epochs=5)
 
   def test_wide_deep_model_with_sub_model_trained(self):
@@ -178,22 +173,19 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     dnn_model.compile(
         optimizer='adam',
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     linear_model.fit(linear_inp, output, epochs=50)
     dnn_model.fit(dnn_inp, output, epochs=50)
     wide_deep_model.compile(
         optimizer=['sgd', 'adam'],
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(inputs, output, epochs=50)
 
   # This test is an example for cases where linear and dnn model accepts
@@ -221,8 +213,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
     combined.compile(
         opt,
         'mse', [],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     combined.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
 
   # This test is an example for cases where linear and dnn model accepts
@@ -255,11 +246,8 @@ class WideDeepModelTest(keras_parameterized.TestCase):
     wide_deep_model.compile(
         opt,
         'mse', [],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
-    self.assertEqual(3, linear_model.inputs[0].shape[1])
-    self.assertEqual(5, dnn_model.inputs[0].shape[1])
 
   def test_config(self):
     linear_model = linear.LinearModel(units=1)

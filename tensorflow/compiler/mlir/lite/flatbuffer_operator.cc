@@ -17,14 +17,44 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+
+namespace {
+
+using ::tensorflow::Status;
+using ::tensorflow::errors::InvalidArgument;
+using ::xla::StatusOr;
+
+StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
+                                          mlir::Builder builder,
+                                          mlir::Location loc) {
+  auto padding = tflite::Padding::Padding_VALID;
+  if (pad_params == TfLitePadding::kTfLitePaddingSame) {
+    padding = tflite::Padding_SAME;
+  } else if (pad_params == TfLitePadding::kTfLitePaddingValid) {
+    padding = tflite::Padding_VALID;
+  } else {
+    return InvalidArgument(
+        absl::StrCat("Invalid padding type", std::to_string(pad_params)));
+  }
+
+  const char* option_name = tflite::EnumNamePadding(padding);
+  return builder.getStringAttr(option_name);
+}
+
+}  // namespace
 
 // TODO(jpienaar): This is a placeholder. This should be done in more efficient
 // way when part of the translation of module.
@@ -210,6 +240,25 @@ static mlir::Attribute BuildTFL_PaddingAttr(tflite::Padding value,
                                             mlir::Builder builder) {
   const char* option_name = tflite::EnumNamePadding(value);
   return builder.getStringAttr(option_name);
+}
+
+Status mlir::CustomOptionsToAttributes(
+    const std::string& custom_code, const std::vector<uint8_t>& custom_options,
+    mlir::Builder builder, mlir::Location loc,
+    llvm::SmallVectorImpl<mlir::NamedAttribute>* attributes) {
+  attributes->emplace_back(
+      builder.getNamedAttr("custom_code", builder.getStringAttr(custom_code)));
+  std::string content;
+  content.assign(reinterpret_cast<const char*>(custom_options.data()),
+                 custom_options.size());
+  ShapedType type = RankedTensorType::get(
+      {static_cast<int64_t>(custom_options.size())}, builder.getIntegerType(8));
+  attributes->emplace_back(builder.getNamedAttr(
+      "custom_option",
+      OpaqueElementsAttr::get(builder.getContext()->getRegisteredDialect("tfl"),
+                              type, content)));
+
+  return Status::OK();
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen

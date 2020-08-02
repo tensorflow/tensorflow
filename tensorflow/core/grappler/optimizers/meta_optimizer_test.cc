@@ -722,12 +722,13 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
 
   GraphDef output;
+  GraphDef original = item.graph;
   const Status status =
-      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+      RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
   // Make sure the graph was reverted to the original regardless of when the
   // optimizer timed out.
-  CompareGraphs(item.graph, output);
+  CompareGraphs(original, output);
 }
 
 TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
@@ -744,11 +745,12 @@ TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
 
   GraphDef output;
+  const int original_node_size = item.graph.node_size();
   const Status status =
-      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+      RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
   // The meta optimizer should manage to finish one iteration.
-  EXPECT_EQ(item.graph.node_size() + 1, output.node_size());
+  EXPECT_EQ(original_node_size + 1, output.node_size());
 }
 
 TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
@@ -764,11 +766,12 @@ TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
   rewriter_config.set_meta_optimizer_timeout_ms(2500);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   GraphDef output;
+  const int original_node_size = item.graph.node_size();
   const Status status =
-      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+      RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   TF_EXPECT_OK(status);
   // The meta optimizer should manage to finish two iterations.
-  EXPECT_EQ(item.graph.node_size() + 2, output.node_size());
+  EXPECT_EQ(original_node_size + 2, output.node_size());
 }
 
 TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnValidGraph) {

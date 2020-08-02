@@ -26,10 +26,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
-                           const CreationContext& creation_context,
-                           const OperationDef& op_def,
-                           std::unique_ptr<GPUOperation>* ptr);
+absl::Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
+                                 const CreationContext& creation_context,
+                                 const OperationDef& op_def,
+                                 std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl
 }  // namespace gpu

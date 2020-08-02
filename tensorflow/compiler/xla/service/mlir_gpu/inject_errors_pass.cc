@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/inject_errors_pass.h"
 
-#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 
 namespace mlir {
 namespace {
 
 struct InjectErrorsForTestingPass
-    : public FunctionPass<InjectErrorsForTestingPass> {
+    : public PassWrapper<InjectErrorsForTestingPass, FunctionPass> {
   void runOnFunction() override {
     getFunction().getBody().walk([&](Operation *op) {
       op->emitError() << "failed for testing: " << op->getName();
@@ -31,7 +31,7 @@ struct InjectErrorsForTestingPass
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createInjectErrorsForTestingPass() {
+std::unique_ptr<OperationPass<FuncOp>> createInjectErrorsForTestingPass() {
   return std::make_unique<InjectErrorsForTestingPass>();
 }
 

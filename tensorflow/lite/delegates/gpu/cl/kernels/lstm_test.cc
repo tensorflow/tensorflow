@@ -61,13 +61,13 @@ TEST_F(OpenCLOperationTest, LSTM) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 new_state;
       TensorFloat32 new_activ;
-      LSTM operation = CreateLSTM(op_def);
+      LSTM operation = CreateLSTM(op_def, env_.GetDevicePtr()->GetInfo());
       ASSERT_OK(ExecuteGPUOperation(
           {src_tensor, prev_state}, creation_context_, &operation,
           {BHWC(1, 1, 1, 4), BHWC(1, 1, 1, 4)}, {&new_state, &new_activ}));

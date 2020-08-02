@@ -130,7 +130,7 @@ class ThreadSafeHistogram {
 
  private:
   mutable mutex mu_;
-  Histogram histogram_ GUARDED_BY(mu_);
+  Histogram histogram_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace histogram

@@ -17,25 +17,15 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#if GOOGLE_CUDA
-#include "third_party/cub/device/device_histogram.cuh"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/hipcub/hipcub.hpp"
-#endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bincount_op.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-#if GOOGLE_CUDA
-namespace gpuprim = ::cub;
-#elif TENSORFLOW_USE_ROCM
-namespace gpuprim = ::hipcub;
-#endif
 
 namespace tensorflow {
 
@@ -43,12 +33,13 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
-template <typename T>
-struct BincountFunctor<GPUDevice, T> {
+template <typename Tidx, typename T>
+struct BincountFunctor<GPUDevice, Tidx, T, false> {
   static Status Compute(OpKernelContext* context,
-                        const typename TTypes<int32, 1>::ConstTensor& arr,
+                        const typename TTypes<Tidx, 1>::ConstTensor& arr,
                         const typename TTypes<T, 1>::ConstTensor& weights,
-                        typename TTypes<T, 1>::Tensor& output) {
+                        typename TTypes<T, 1>::Tensor& output,
+                        const Tidx num_bins) {
     if (weights.size() != 0) {
       return errors::InvalidArgument(
           "Weights should not be passed as it should be "
@@ -59,11 +50,11 @@ struct BincountFunctor<GPUDevice, T> {
     }
     // In case weight.size() == 0, use CUB
     size_t temp_storage_bytes = 0;
-    const int32* d_samples = arr.data();
+    const Tidx* d_samples = arr.data();
     T* d_histogram = output.data();
     int num_levels = output.size() + 1;
-    int32 lower_level = 0;
-    int32 upper_level = output.size();
+    Tidx lower_level = Tidx(0);
+    Tidx upper_level = num_bins;
     int num_samples = arr.size();
     const gpuStream_t& stream = GetGpuStream(context);
 
@@ -110,10 +101,142 @@ struct BincountFunctor<GPUDevice, T> {
   }
 };
 
+template <typename Tidx, typename T>
+__global__ void BincountReduceKernel(const Tidx* in, T* out, const int nthreads,
+                                     const Tidx num_bins) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
+    Tidx bin = ldg(in + index);
+    if (bin < num_bins) {
+      out[bin] = T(1);
+    }
+  }
+}
+
+template <typename Tidx, typename T>
+struct BincountFunctor<GPUDevice, Tidx, T, true> {
+  static Status Compute(OpKernelContext* context,
+                        const typename TTypes<Tidx, 1>::ConstTensor& arr,
+                        const typename TTypes<T, 1>::ConstTensor& weights,
+                        typename TTypes<T, 1>::Tensor& output,
+                        const Tidx num_bins) {
+    const int nthreads = arr.dimension(0);
+
+    auto d = context->eigen_gpu_device();
+    GpuLaunchConfig config = GetGpuLaunchConfig(nthreads, d);
+    return GpuLaunchKernel(BincountReduceKernel<Tidx, T>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), arr.data(),
+                           output.data(), nthreads, num_bins);
+    return Status::OK();
+  }
+};
+
+template <typename Tidx, typename T, bool binary_count>
+__global__ void BincountColReduceKernel(const Tidx* in, const T* weights,
+                                        const int weights_size, T* out,
+                                        const int num_rows, const int num_cols,
+                                        const Tidx num_bins) {
+  const int nthreads = num_rows * num_cols;
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
+    Tidx bin = ldg(in + index);
+    if (bin < num_bins) {
+      int row = index / num_cols;
+      int offset = row * num_bins + bin;
+      if (binary_count) {
+        out[offset] = T(1);
+      } else {
+        T value = (weights_size == 0) ? T(1) : ldg(weights + index);
+        GpuAtomicAdd(out + offset, value);
+      }
+    }
+  }
+}
+
+template <typename Tidx, typename T, bool binary_count>
+__global__ void BincountColReduceSharedKernel(const Tidx* in, const T* weights,
+                                              const int weights_size, T* out,
+                                              const int num_rows,
+                                              const int num_cols,
+                                              const Tidx num_bins) {
+  const int out_size = num_rows * num_bins;
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, shared_col_mem);
+  T* shared_col_bins = reinterpret_cast<T*>(shared_col_mem);
+  for (unsigned int binIdx = threadIdx.x; binIdx < out_size;
+       binIdx += blockDim.x) {
+    shared_col_bins[binIdx] = T(0);
+  }
+  __syncthreads();
+  const int nthreads = num_rows * num_cols;
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
+    Tidx bin = ldg(in + index);
+    if (bin < num_bins) {
+      int row = index / num_cols;
+      int offset = row * num_bins + bin;
+      if (binary_count) {
+        shared_col_bins[offset] = T(1);
+      } else {
+        T value = (weights_size == 0) ? T(1) : ldg(weights + index);
+        GpuAtomicAdd(shared_col_bins + offset, value);
+      }
+    }
+  }
+  __syncthreads();
+  for (unsigned int binIdx = threadIdx.x; binIdx < out_size;
+       binIdx += blockDim.x) {
+    if (binary_count) {
+      // out[binIdx] = out[binIdx] & shared_col_bins[binIdx];
+      if (shared_col_bins[binIdx]) {
+        out[binIdx] = shared_col_bins[binIdx];
+      }
+    } else {
+      GpuAtomicAdd(out + binIdx, shared_col_bins[binIdx]);
+    }
+  }
+}
+
+template <typename Tidx, typename T, bool binary_count>
+struct BincountReduceFunctor<GPUDevice, Tidx, T, binary_count> {
+  static Status Compute(OpKernelContext* context,
+                        const typename TTypes<Tidx, 2>::ConstTensor& in,
+                        const typename TTypes<T, 2>::ConstTensor& weights,
+                        typename TTypes<T, 2>::Tensor& out,
+                        const Tidx num_bins) {
+    const int num_rows = in.dimension(0);
+    const int num_cols = in.dimension(1);
+
+    auto d = context->eigen_gpu_device();
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_rows * num_cols, d);
+
+    // Use half of maximum shared memory, approximately 6 * 1024 inputs.
+    int smem_max = d.sharedMemPerBlock() / 2;
+    int smem_usage = out.size() * sizeof(T);
+    if (smem_usage < smem_max) {
+      return GpuLaunchKernel(
+          BincountColReduceSharedKernel<Tidx, T, binary_count>,
+          config.block_count, config.thread_per_block, smem_usage, d.stream(),
+          in.data(), weights.data(), weights.size(), out.data(), num_rows,
+          num_cols, num_bins);
+    } else {
+      return GpuLaunchKernel(
+          BincountColReduceKernel<Tidx, T, binary_count>, config.block_count,
+          config.thread_per_block, 0, d.stream(), in.data(), weights.data(),
+          weights.size(), out.data(), num_rows, num_cols, num_bins);
+    }
+
+    return Status::OK();
+  }
+};
+
 }  // end namespace functor
 
-#define REGISTER_GPU_SPEC(type) \
-  template struct functor::BincountFunctor<GPUDevice, type>;
+#define REGISTER_GPU_SPEC(T)                                                  \
+  template struct functor::BincountFunctor<GPUDevice, int32, T, true>;        \
+  template struct functor::BincountFunctor<GPUDevice, int64, T, true>;        \
+  template struct functor::BincountFunctor<GPUDevice, int32, T, false>;       \
+  template struct functor::BincountFunctor<GPUDevice, int64, T, false>;       \
+  template struct functor::BincountReduceFunctor<GPUDevice, int32, T, true>;  \
+  template struct functor::BincountReduceFunctor<GPUDevice, int64, T, true>;  \
+  template struct functor::BincountReduceFunctor<GPUDevice, int32, T, false>; \
+  template struct functor::BincountReduceFunctor<GPUDevice, int64, T, false>;
 
 TF_CALL_int32(REGISTER_GPU_SPEC);
 TF_CALL_float(REGISTER_GPU_SPEC);

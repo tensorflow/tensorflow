@@ -58,7 +58,7 @@ Status GetTensorProperties(const GraphOptimizerContext& ctx,
 
   const auto& output_properties =
       ctx.graph_properties->GetOutputProperties(tensor_id.node());
-  auto num_outputs = output_properties.size();
+  int num_outputs = output_properties.size();
 
   if (num_outputs == 0 || tensor_id.index() > num_outputs - 1) {
     return errors::InvalidArgument(
@@ -84,11 +84,14 @@ NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const string& name,
 }
 
 NodeDef* AddEmptyNode(const GraphOptimizerContext& ctx, const string& name) {
-  CHECK(!ctx.node_map->NodeExists(name))
-      << "Node " << name << " already exists in a graph";
+  std::string new_name = name;
+  for (int count = 0; ctx.node_map->NodeExists(new_name); ++count) {
+    LOG(WARNING) << name << " already exists in the graph.";
+    new_name = absl::StrCat(name, "_", count);
+  }
   NodeDef* new_node = ctx.optimized_graph->add_node();
-  new_node->set_name(name);
-  ctx.node_map->AddNode(name, new_node);
+  new_node->set_name(new_name);
+  ctx.node_map->AddNode(new_name, new_node);
   return new_node;
 }
 

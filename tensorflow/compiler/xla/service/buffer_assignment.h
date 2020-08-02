@@ -673,8 +673,7 @@ class BufferAssigner {
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
   absl::flat_hash_map<LogicalBuffer::Color,
-                      absl::flat_hash_set<const HloValue*>,
-                      LogicalBuffer::Color::Hasher>
+                      absl::flat_hash_set<const HloValue*>>
   SplitBuffersByColor(const absl::flat_hash_set<const HloValue*>& buffers);
 
   // If true, allocate buffers for constant instructions.

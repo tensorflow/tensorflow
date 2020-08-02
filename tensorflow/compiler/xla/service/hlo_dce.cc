@@ -21,8 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -35,7 +37,8 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> HloDCE::RunOnComputation(HloComputation* computation) {
+StatusOr<bool> HloDCE::RunOnComputation(
+    HloComputation* computation, bool remove_cross_partition_collective_ops) {
   bool changed = false;
   VLOG(3) << "Before dce:";
   XLA_VLOG_LINES(3, computation->ToString());
@@ -44,10 +47,14 @@ StatusOr<bool> HloDCE::RunOnComputation(HloComputation* computation) {
   // computation's instruction while simultaneously removing instructions.
   std::vector<HloInstruction*> dead_roots;
   for (auto* instruction : computation->instructions()) {
+    auto maybe_collective_op = DynCast<HloAllReduceInstruction>(instruction);
     if (instruction != computation->root_instruction() &&
         instruction->user_count() == 0 &&
         computation->IsSafelyRemovable(instruction) &&
-        !instruction->HasSideEffect()) {
+        (!instruction->HasSideEffect() ||
+         (remove_cross_partition_collective_ops &&
+          (maybe_collective_op != nullptr &&
+           !maybe_collective_op->constrain_layout())))) {
       dead_roots.push_back(instruction);
     }
   }
@@ -74,8 +81,9 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
 
   // Run DCE on each computation.
   for (auto* computation : module->MakeComputationPostOrder()) {
-    TF_ASSIGN_OR_RETURN(bool changed_for_computation,
-                        RunOnComputation(computation));
+    TF_ASSIGN_OR_RETURN(
+        bool changed_for_computation,
+        RunOnComputation(computation, remove_cross_partition_collective_ops_));
     changed |= changed_for_computation;
   }
 

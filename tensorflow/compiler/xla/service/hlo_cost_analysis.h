@@ -76,14 +76,18 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleFft(const HloInstruction* fft) override;
   Status HandleTriangularSolve(const HloInstruction* hlo) override;
   Status HandleCholesky(const HloInstruction* hlo) override;
+  Status HandleAllGather(const HloInstruction* hlo) override;
   Status HandleAllReduce(const HloInstruction* crs) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;
   Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
+  Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;
   Status HandleReplicaId(const HloInstruction* hlo) override;
   Status HandlePartitionId(const HloInstruction* hlo) override;
   Status HandleInfeed(const HloInstruction* infeed) override;
   Status HandleOutfeed(const HloInstruction* outfeed) override;
   Status HandleRng(const HloInstruction* random) override;
+  Status HandleRngBitGenerator(const HloInstruction* random) override;
   Status HandleRngGetAndUpdateState(const HloInstruction* random) override;
   Status HandleReverse(const HloInstruction* reverse) override;
   Status HandleSort(const HloInstruction* sort) override;
@@ -149,7 +153,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // if the HLO was not found to have a cost in the analysis.
   //
   // Note that the cost for sub HLO instructions are also returned if asked. For
-  // example, body and condidition of a while, fused instructions within a
+  // example, body and condition of a while, fused instructions within a
   // fusion, or the add instruction of a reduce.
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
@@ -159,6 +163,14 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   int64 output_bytes_accessed(const HloInstruction& hlo,
                               ShapeIndex index = {}) const;
   float optimal_seconds(const HloInstruction& hlo) const;
+
+  // Get bytes read/written by this HLO. If memory_space is provided, it returns
+  // the bytes read/written from/to the given memory space only.
+  int64 GetBytesRead(const HloInstruction& hlo,
+                     absl::optional<int64> memory_space = absl::nullopt) const;
+  int64 GetBytesWritten(
+      const HloInstruction& hlo,
+      absl::optional<int64> memory_space = absl::nullopt) const;
 
   const Properties& properties() const { return properties_sum_; }
   const float property(const string& key) const {

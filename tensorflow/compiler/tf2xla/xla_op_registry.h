@@ -229,11 +229,11 @@ class XlaOpRegistry {
   };
 
   // Map from compilation device names to a description of the backend.
-  std::unordered_map<string, Backend> backends_ GUARDED_BY(mutex_);
+  std::unordered_map<string, Backend> backends_ TF_GUARDED_BY(mutex_);
 
   // Map from Tensorflow device names to the corresponding JIT device metadata.
   std::unordered_map<string, DeviceRegistration> compilation_devices_
-      GUARDED_BY(mutex_);
+      TF_GUARDED_BY(mutex_);
 
   // A description of a Tensorflow operator that can be compiled to XLA.
   struct OpRegistration {
@@ -258,10 +258,10 @@ class XlaOpRegistry {
     // Mapping from attribute name to a list of supported types.
     std::unordered_map<string, std::set<DataType>> type_constraints;
 
-    // An optional whitelist of devices. If there is no whitelist, all devices
+    // An optional allowlist of devices. If there is no allowlist, all devices
     // are permitted.
-    bool has_device_whitelist = false;
-    std::unordered_set<string> device_whitelist;
+    bool has_device_allowlist = false;
+    std::unordered_set<string> device_allowlist;
 
     // Names of arguments that must be compile-time constants.
     std::unordered_set<string> compile_time_constant_inputs;
@@ -270,6 +270,8 @@ class XlaOpRegistry {
     // operands and not their values.
     bool is_metadata_op = false;
 
+    std::string label;
+
     // Factory used to build OpKernels that perform symbolic execution.
     Factory factory;
   };
@@ -277,8 +279,8 @@ class XlaOpRegistry {
   // Returns true if registrations x and y can both be added to the registry.
   // This is always the case if they refer to different ops. If they refer to
   // the same op name, they must: have the same values for compilation_only,
-  // allow_resource_types and allow_variant_types; use a device_whitelist; and
-  // their whitelists must not intersect.
+  // allow_resource_types and allow_variant_types; use a device_allowlist; and
+  // their allowlists must not intersect.
   static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
 
   static Status CompileTimeConstantInputs(const NodeDef& node_def,
@@ -290,7 +292,7 @@ class XlaOpRegistry {
   // Registrations present under the same key must satisfy IsCompatible above,
   // and this is checked during registration.
   std::unordered_map<string, std::vector<std::unique_ptr<OpRegistration>>> ops_
-      GUARDED_BY(mutex_);
+      TF_GUARDED_BY(mutex_);
 
   // Have we already registered the JIT kernels on the JIT devices?
   bool jit_kernels_registered_ = false;
@@ -299,7 +301,7 @@ class XlaOpRegistry {
   // registrations created by RegisterCompilationKernels() and
   // RegisterDeviceKernels().
   std::vector<std::unique_ptr<kernel_factory::OpKernelRegistrar>>
-      kernel_registrars_ GUARDED_BY(mutex_);
+      kernel_registrars_ TF_GUARDED_BY(mutex_);
 };
 
 // REGISTER_XLA_OP() registers an XLA OpKernel by name, for example:
@@ -317,7 +319,7 @@ class XlaOpRegistrationBuilder {
   // Starts an operator registration chain.
   static XlaOpRegistrationBuilder Name(absl::string_view name);
 
-  // Specifies a whitelist of devices on which the operator may run.
+  // Specifies a allowlist of devices on which the operator may run.
   XlaOpRegistrationBuilder& Device(absl::string_view devices);
   XlaOpRegistrationBuilder& Device(absl::Span<const absl::string_view> devices);
 
@@ -349,6 +351,9 @@ class XlaOpRegistrationBuilder {
   // Mark this op as a "metadata" op, one that only looks at the shapes of its
   // operands and not their values.
   XlaOpRegistrationBuilder& IsMetadataOp();
+
+  // Specifies a particular value for the "_kernel" attr.
+  XlaOpRegistrationBuilder& Label(std::string label);
 
   std::unique_ptr<XlaOpRegistry::OpRegistration> Build(
       XlaOpRegistry::Factory factory);

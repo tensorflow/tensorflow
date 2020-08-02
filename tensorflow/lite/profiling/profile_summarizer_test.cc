@@ -141,7 +141,7 @@ TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
   summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
-  ASSERT_TRUE(output.find("SimpleOpEval:Profile") != std::string::npos)
+  ASSERT_TRUE(output.find("SimpleOpEval/Profile") != std::string::npos)
       << output;
 }
 
@@ -178,18 +178,17 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {6, 9});
 
-  ProfileSummarizer summarizer;
   auto events = profiler.GetProfileEvents();
   EXPECT_EQ(2, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 0; });
+      [](auto event) { return event->extra_event_metadata == 0; });
   int event_count_of_subgraph_one = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 1; });
+      [](auto event) { return event->extra_event_metadata == 1; });
   int event_count_of_subgraph_two = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 2; });
+      [](auto event) { return event->extra_event_metadata == 2; });
   EXPECT_EQ(1, event_count_of_subgraph_zero);
   EXPECT_EQ(1, event_count_of_subgraph_one);
   EXPECT_EQ(0, event_count_of_subgraph_two);
@@ -206,18 +205,17 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {5, 14});
 
-  ProfileSummarizer summarizer;
   auto events = profiler.GetProfileEvents();
   EXPECT_EQ(2, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 0; });
+      [](auto event) { return event->extra_event_metadata == 0; });
   int event_count_of_subgraph_one = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 1; });
+      [](auto event) { return event->extra_event_metadata == 1; });
   int event_count_of_subgraph_two = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 2; });
+      [](auto event) { return event->extra_event_metadata == 2; });
   EXPECT_EQ(1, event_count_of_subgraph_zero);
   EXPECT_EQ(0, event_count_of_subgraph_one);
   EXPECT_EQ(1, event_count_of_subgraph_two);

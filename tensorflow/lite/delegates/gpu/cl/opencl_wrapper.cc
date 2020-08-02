@@ -15,7 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 
+#if defined(_WIN32)
+#define __WINDOWS__
+#endif
+
+#ifdef __WINDOWS__
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
+
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -24,42 +34,78 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+#ifdef __ANDROID__
 #define LoadFunction(function)                                                 \
   if (is_pixel) {                                                              \
     function = reinterpret_cast<PFN_##function>(loadOpenCLPointer(#function)); \
   } else {                                                                     \
     function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));  \
   }
+#elif defined(__WINDOWS__)
+#define LoadFunction(function) \
+  function =                   \
+      reinterpret_cast<PFN_##function>(GetProcAddress(libopencl, #function));
+#else
+#define LoadFunction(function) \
+  function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));
+#endif
 
-Status LoadOpenCL() {
+#ifdef __WINDOWS__
+void LoadOpenCLFunctions(HMODULE libopencl);
+#else
+void LoadOpenCLFunctions(void* libopencl, bool is_pixel);
+#endif
+
+absl::Status LoadOpenCL() {
+#ifdef __WINDOWS__
+  HMODULE libopencl = LoadLibraryA("OpenCL.dll");
+  if (libopencl) {
+    LoadOpenCLFunctions(libopencl);
+    return absl::OkStatus();
+  } else {
+    DWORD error_code = GetLastError();
+    return absl::UnknownError(absl::StrCat(
+        "Can not open OpenCL library on this device, error code - ",
+        error_code));
+  }
+#else
   void* libopencl = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
   if (libopencl) {
     LoadOpenCLFunctions(libopencl, false);
-    return OkStatus();
-  } else {
-    // Pixel phone?
-    libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
-    if (libopencl) {
-      typedef void (*enableOpenCL_t)();
-      enableOpenCL_t enableOpenCL =
-          reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
-      enableOpenCL();
-      LoadOpenCLFunctions(libopencl, true);
-      return OkStatus();
-    } else {
-      return UnknownError(
-          absl::StrCat("OpenCL library not loaded - ", dlerror()));
-    }
+    return absl::OkStatus();
   }
+  // record error
+  std::string error(dlerror());
+#ifdef __ANDROID__
+  // Pixel phone?
+  libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
+  if (libopencl) {
+    typedef void (*enableOpenCL_t)();
+    enableOpenCL_t enableOpenCL =
+        reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
+    enableOpenCL();
+    LoadOpenCLFunctions(libopencl, true);
+    return absl::OkStatus();
+  }
+#endif
+  return absl::UnknownError(
+      absl::StrCat("Can not open OpenCL library on this device - ", error));
+#endif
 }
 
+#ifdef __WINDOWS__
+void LoadOpenCLFunctions(HMODULE libopencl) {
+#else
 void LoadOpenCLFunctions(void* libopencl, bool is_pixel) {
+#ifdef __ANDROID__
   typedef void* (*loadOpenCLPointer_t)(const char* name);
   loadOpenCLPointer_t loadOpenCLPointer;
   if (is_pixel) {
     loadOpenCLPointer = reinterpret_cast<loadOpenCLPointer_t>(
         dlsym(libopencl, "loadOpenCLPointer"));
   }
+#endif
+#endif
 
   LoadFunction(clGetPlatformIDs);
   LoadFunction(clGetPlatformInfo);
@@ -171,6 +217,11 @@ void LoadOpenCLFunctions(void* libopencl, bool is_pixel) {
 
   // cl_khr_egl_event extension
   LoadFunction(clCreateEventFromEGLSyncKHR);
+
+  // EGL sharing
+  LoadFunction(clCreateFromEGLImageKHR);
+  LoadFunction(clEnqueueAcquireEGLObjectsKHR);
+  LoadFunction(clEnqueueReleaseEGLObjectsKHR);
 }
 
 // No OpenCL support, do not set function addresses
@@ -277,12 +328,19 @@ PFN_clCreateCommandQueue clCreateCommandQueue;
 PFN_clCreateSampler clCreateSampler;
 PFN_clEnqueueTask clEnqueueTask;
 
+// OpenGL sharing
 PFN_clCreateFromGLBuffer clCreateFromGLBuffer;
 PFN_clCreateFromGLTexture clCreateFromGLTexture;
 PFN_clEnqueueAcquireGLObjects clEnqueueAcquireGLObjects;
 PFN_clEnqueueReleaseGLObjects clEnqueueReleaseGLObjects;
 
+// cl_khr_egl_event extension
 PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
+
+// EGL sharing
+PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
+PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
+PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
 
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_format* image_format,
@@ -295,6 +353,22 @@ cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
     return clCreateImage2D(context, flags, image_format,
                            image_desc->image_width, image_desc->image_height,
                            image_desc->image_row_pitch, host_ptr, errcode_ret);
+  }
+}
+
+cl_mem CreateImage3DLegacy(cl_context context, cl_mem_flags flags,
+                           const cl_image_format* image_format,
+                           const cl_image_desc* image_desc, void* host_ptr,
+                           cl_int* errcode_ret) {
+  if (clCreateImage) {  // clCreateImage available since OpenCL 1.2
+    return clCreateImage(context, flags, image_format, image_desc, host_ptr,
+                         errcode_ret);
+  } else {
+    return clCreateImage3D(context, flags, image_format,
+                           image_desc->image_width, image_desc->image_height,
+                           image_desc->image_depth, image_desc->image_row_pitch,
+                           image_desc->image_slice_pitch, host_ptr,
+                           errcode_ret);
   }
 }
 }  // namespace cl

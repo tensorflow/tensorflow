@@ -45,6 +45,10 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
 
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst);
 
+// Get sharding inforamtion from node.
+xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
+    const NodeDef& node_def);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_SHARDING_UTIL_H_

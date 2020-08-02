@@ -13,7 +13,7 @@ existing ops. In addition, it guarantees the following:
     reads a new model that contains a new version of an op which isn't
     supported, it should report the error.
 
-## Example: Adding Dilation into Convolution
+## Example: Adding dilation into convolution
 
 The remainder of this document explains op versioning in TFLite by showing how
 to add dilation parameters to the convolution operation.
@@ -25,7 +25,7 @@ Knowledge of dilation is not required to understand this document. Note that:
 *   Old convolution kernels that don't support dilation are equivalent to
     setting the dilation factors to 1.
 
-### Change FlatBuffer Schema
+### Change FlatBuffer schema
 
 To add new parameters into an op, change the options table in
 `lite/schema/schema.fbs`.
@@ -63,11 +63,14 @@ table Conv2DOptions {
 }
 ```
 
-### Change C Structures and Kernel Implementation
+The file `lite/schema/schema_generated.h` should be re-generated for the new
+schema.
 
-In TensorFlow Lite, the kernel implementation is decoupled from
-FlatBuffer definition. The kernels read the parameter from C structures defined
-in `lite/builtin_op_data.h`.
+### Change C structures and kernel implementation
+
+In TensorFlow Lite, the kernel implementation is decoupled from FlatBuffer
+definition. The kernels read the parameter from C structures defined in
+`lite/c/builtin_op_data.h`.
 
 The original convolution parameter is as follows:
 
@@ -85,8 +88,9 @@ supported starting from which version. The result is seen below:
 
 ```
 typedef struct {
-  // Parameters supported by version 1: TfLitePadding padding; int
-  stride_width;
+  // Parameters supported by version 1:
+  TfLitePadding padding;
+  int stride_width;
   int stride_height;
   TfLiteFusedActivation activation;
 
@@ -99,9 +103,10 @@ typedef struct {
 Please also change the kernel implementation to read the newly added parameters
 from the C structures. The details are omitted here.
 
-### Change the FlatBuffer Reading Code
+### Change the FlatBuffer reading code
 
-The logic to read FlatBuffer and produce C structure is in `lite/model.cc`.
+The logic to read FlatBuffer and produce C structure is in
+`lite/core/api/flatbuffer_conversions.cc`.
 
 Update the file to handle the new parameters, as shown below:
 
@@ -127,7 +132,7 @@ reads an old model file where dilation factors are missing, it will use 1 as
 the default value, and the new kernel will work consistently with the old
 kernel.
 
-### Change Kernel Registration
+### Change kernel registration
 
 The MutableOpResolver (defined in `lite/op_resolver.h`) provides a few functions
 to register op kernels. The minimum and maximum version are 1 by default:
@@ -161,8 +166,8 @@ execute the op. In this example, it means:
 *   Populate version=1 when dilation factors are all 1.
 *   Populate version=2 otherwise.
 
-To do this, you need to override `GetVersion` function for the operator class in
-`lite/toco/tflite/operator.cc`.
+To do this, you need to override `GetBuiltinOperatorVersion` function for the
+operator class in `lite/tools/versioning/op_version.cc`.
 
 For ops with only one version, the `GetVersion` function is defined as:
 
@@ -187,29 +192,30 @@ int GetVersion(const Operator& op) const override {
 ### Update the operator version map
 
 The last step is to add the new version info into the operator version map. This
-step is required because we need generate the model's minimum required runtime
-version based on this version map.
+step is required because we need to generate the model's minimum required
+runtime version based on this version map.
 
 To do this, you need to add a new map entry in `lite/toco/tflite/op_version.cc`.
 
-In this example, it means you need to add the following into `op_version_map`:
+In this example, you need to add the following entry into `op_version_map`:
+
 ```
 {{OperatorType::kConv, 3}, "kPendingReleaseOpVersion"}
 ```
 (`kPendingReleaseOpVersion` will be replaced with the appropriate release
 version in the next stable release.)
 
-### Delegation Implementation
+### Delegation implementation
 
 TensorFlow Lite provides a delegation API which enables delegating ops to
-hardware backends. In Delegate's `Prepare` function, check if the version
-is supported for every node in Delegation code.
+hardware backends. In the delegate's `Prepare` function, check if the version is
+supported for every node in Delegation code.
 
 ```
 const int kMinVersion = 1;
 TfLiteNode* node;
-TfLiteRegistration;
-context->GetNodeAndRegistration(context, node_index, &node, &registration);
+TfLiteRegistration* registration = nullptr;
+TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(context, node_index, &node, &registration));
 
 if (registration->version > kMinVersion) {
   // Reject the node if the version isn't supported.

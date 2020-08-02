@@ -63,7 +63,7 @@ class TFRecordDatasetParams : public DatasetParams {
   int64 buffer_size_;
 };
 
-class TFRecordDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class TFRecordDatasetOpTest : public DatasetOpsTestBase {};
 
 Status CreateTestFiles(const std::vector<tstring>& filenames,
                        const std::vector<std::vector<string>>& contents,

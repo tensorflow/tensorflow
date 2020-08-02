@@ -37,7 +37,7 @@ class RandomDatasetOp : public DatasetOpKernel {
   explicit RandomDatasetOp(OpKernelConstruction* ctx);
 
  protected:
-  virtual void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
 
  private:
   class Dataset;

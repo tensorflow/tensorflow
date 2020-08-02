@@ -89,7 +89,8 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
     input_names.push_back(key_string);
 
     inputs_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
-    s = PyArrayToTF_Tensor(value, &inputs_safe.back());
+    s = NdarrayToTensor(nullptr /*ctx*/, value, &inputs_safe.back(),
+                        true /*convert_to_string*/);
     if (!s.ok()) {
       Set_TF_Status_from_Status(out_status, s);
       return;
@@ -367,7 +368,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
   // cleaned up properly.
   //
   // Memory management:
-  // PyArrayToTF_Tensor() creates a new ndarray PyObject from the input
+  // NdarrayToTensor() creates a new ndarray PyObject from the input
   // ndarray. We manage the new ndarray's lifetime in order to keep the
   // underlying data buffer alive (the new ndarray also guarantees a contiguous
   // data buffer). The new ndarray's data buffer is used to create the
@@ -382,7 +383,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
   std::vector<Safe_TF_TensorPtr> input_vals_safe;
   for (PyObject* ndarray : input_ndarrays) {
     input_vals_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
-    s = PyArrayToTF_Tensor(ndarray, &input_vals_safe.back());
+    s = NdarrayToTensor(nullptr, ndarray, &input_vals_safe.back(), true);
     if (!s.ok()) {
       Set_TF_Status_from_Status(out_status, s);
       return;

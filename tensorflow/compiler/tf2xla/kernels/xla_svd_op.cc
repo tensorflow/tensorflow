@@ -32,7 +32,7 @@ class XlaSvdOp : public XlaOpKernel {
                    ctx->GetAttr("precision_config", &precision_config_attr));
     OP_REQUIRES(ctx,
                 precision_config_.ParsePartialFromString(precision_config_attr),
-                errors::InvalidArgument("Error parsing precison config."));
+                errors::InvalidArgument("Error parsing precision config."));
     if (precision_config_.operand_precision_size() == 0) {
       precision_config_.mutable_operand_precision()->Add(
           xla::PrecisionConfig::HIGHEST);

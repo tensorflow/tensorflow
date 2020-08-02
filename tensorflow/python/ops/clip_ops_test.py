@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -32,30 +34,38 @@ class ClipOpsTest(test.TestCase):
     super(ClipOpsTest, self).__init__(method_name)
 
   def _testClipTensorByNorm(self, inputs, max_norm, expected):
-    with self.cached_session() as sess:
-      input_op = constant_op.constant(inputs)
-      clipped = clip_ops.clip_by_norm(input_op, max_norm)
-      check_op = numerics.add_check_numerics_ops()
-      result, _ = self.evaluate([clipped, check_op])
+    input_op = constant_op.constant(inputs)
+    clipped = clip_ops.clip_by_norm(input_op, max_norm)
+    check_op = numerics.add_check_numerics_ops()
+    result, _ = self.evaluate([clipped, check_op])
     self.assertAllClose(result, expected)
+
+  def _testClipTensorByGlobalNorm(self, inputs, max_norm, expected):
+    clipped = clip_ops.clip_by_global_norm(inputs, max_norm)
+    result, _ = self.evaluate(clipped)
+    self.assertAllClose(result, expected)
+
+  def _testNonFiniteClippingByGlobalNorm(self, inputs, max_norm):
+    clipped = clip_ops.clip_by_global_norm(inputs, max_norm)
+    result, _ = self.evaluate(clipped)
+    self.assertTrue(np.all(np.isnan(result)))
 
   def _testClipIndexedSlicesByNorm(self, values, indices, shape, max_norm,
                                    axes):
-    with self.cached_session() as sess:
-      values = constant_op.constant(values)
-      indices = constant_op.constant(indices)
-      shape = constant_op.constant(shape)
-      # IndexedSlices mode
-      indixed_slices = ops.IndexedSlices(values, indices, shape)
-      clipped = clip_ops.clip_by_norm(indixed_slices, max_norm, axes)
-      # clipped should be IndexedSlices
-      self.assertIsInstance(clipped, ops.IndexedSlices)
-      clipped = ops.convert_to_tensor(clipped)
+    values = constant_op.constant(values)
+    indices = constant_op.constant(indices)
+    shape = constant_op.constant(shape)
+    # IndexedSlices mode
+    indexed_slices = ops.IndexedSlices(values, indices, shape)
+    clipped = clip_ops.clip_by_norm(indexed_slices, max_norm, axes)
+    # clipped should be IndexedSlices
+    self.assertIsInstance(clipped, ops.IndexedSlices)
+    clipped = ops.convert_to_tensor(clipped)
 
-      # Tensor mode
-      dense_tensor = ops.convert_to_tensor(indixed_slices)
-      dense_clipped = clip_ops.clip_by_norm(dense_tensor, max_norm, axes)
-      result, expected = self.evaluate([clipped, dense_clipped])
+    # Tensor mode
+    dense_tensor = ops.convert_to_tensor(indexed_slices)
+    dense_clipped = clip_ops.clip_by_norm(dense_tensor, max_norm, axes)
+    result, expected = self.evaluate([clipped, dense_clipped])
     self.assertAllClose(result, expected)
 
   @test_util.run_deprecated_v1
@@ -63,9 +73,33 @@ class ClipOpsTest(test.TestCase):
     # Simple example
     self._testClipTensorByNorm([[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]], 4.0,
                                [[-2.4, 0.0, 0.0], [3.2, 0.0, 0.0]])
+    # No clipping.
+    self._testClipTensorByNorm([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], 4.0,
+                               [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
     # Zero norm
     self._testClipTensorByNorm([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], 4.0,
                                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+
+  @test_util.run_deprecated_v1
+  def testClipTensorByGlobalNorm(self):
+    # Simple example
+    self._testClipTensorByGlobalNorm([[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]], 4.0,
+                                     [[-2.4, 0.0, 0.0], [3.2, 0.0, 0.0]])
+    # No clipping.
+    self._testClipTensorByGlobalNorm([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], 4.0,
+                                     [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    # Zero norm.
+    self._testClipTensorByGlobalNorm([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], 4.0,
+                                     [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+
+  @test_util.run_deprecated_v1
+  def testGlobalClipWithNonfinite(self):
+    self._testNonFiniteClippingByGlobalNorm(
+        [[-3.0, 0.0, 0.0], [float("inf"), 0.0, 0.0]], 4.0)
+    self._testNonFiniteClippingByGlobalNorm(
+        [[-3.0, 0.0, 0.0], [float("-inf"), 0.0, 0.0]], 4.0)
+    self._testNonFiniteClippingByGlobalNorm(
+        [[-3.0, 0.0, 0.0], [float("nan"), 0.0, 0.0]], 4.0)
 
   def testClipIndexedSlicesByNorm(self):
     values = [[[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]],

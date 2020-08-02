@@ -422,7 +422,7 @@ TEST_F(CropAndResizeOpTest, TestWithSharding) {
   //  ... (altogether 999 lines)
   //  0, 1, 2, ..., 998
   AddInput<float>(TensorShape({1, kLength, kLength, 1}),
-                  [](int i) -> float { return i % kLength; });
+                  [=](int i) -> float { return i % kLength; });
   AddInputFromArray<float>(TensorShape({2, 4}),
                            {0, 0, 0.5, 0.5, 0.5, 0.5, 1, 1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
@@ -436,7 +436,7 @@ TEST_F(CropAndResizeOpTest, TestWithSharding) {
   //  ... (altogether 500 lines)
   //  0, 1, 2, ..., 499
   Tensor result1(allocator(), DT_FLOAT, TensorShape({1, kHalf, kHalf, 1}));
-  test::FillFn<float>(&result1, [](int i) -> float { return i % kHalf; });
+  test::FillFn<float>(&result1, [=](int i) -> float { return i % kHalf; });
 
   // Result 2:
   //  499, 500, 501, ..., 998
@@ -444,7 +444,7 @@ TEST_F(CropAndResizeOpTest, TestWithSharding) {
   //  499, 500, 501, ..., 998
   Tensor result2(allocator(), DT_FLOAT, TensorShape({1, kHalf, kHalf, 1}));
   test::FillFn<float>(&result2,
-                      [](int i) -> float { return i % kHalf + kHalf - 1; });
+                      [=](int i) -> float { return i % kHalf + kHalf - 1; });
 
   // Expected result is the concat of the two tensors.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, kHalf, kHalf, 1}));

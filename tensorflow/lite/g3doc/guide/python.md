@@ -12,58 +12,111 @@ using the model provided with the example linked below.)
 
 ## Install just the TensorFlow Lite interpreter
 
-To quickly start executing TensorFlow Lite models with Python, you can install
-just the TensorFlow Lite interpreter, instead of all TensorFlow packages.
+To quickly run TensorFlow Lite models with Python, you can install just the
+TensorFlow Lite interpreter, instead of all TensorFlow packages.
 
 This interpreter-only package is a fraction the size of the full TensorFlow
 package and includes the bare minimum code required to run inferences with
-TensorFlow Lite—it includes only the [`tf.lite.Interpreter`](
-https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter) Python class.
-This small package is ideal when all you want to do is execute `.tflite` models
-and avoid wasting disk space with the large TensorFlow library.
+TensorFlow Lite—it includes only the
+[`tf.lite.Interpreter`](https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter)
+Python class. This small package is ideal when all you want to do is execute
+`.tflite` models and avoid wasting disk space with the large TensorFlow library.
 
 Note: If you need access to other Python APIs, such as the [TensorFlow Lite
 Converter](../convert/python_api.md), you must install the [full TensorFlow
 package](https://www.tensorflow.org/install/).
 
-To install just the interpreter, download the appropriate Python wheel for your
-system from the following table, and then install it with the `pip install`
-command.
+To install, run `pip3 install` and pass it the appropriate Python wheel URL from
+the following table.
 
-For example, if you're setting up a Raspberry Pi (using Raspbian Buster, which
-has Python 3.7), install the Python wheel as follows (after you click to
-download the `.whl` file below):
+For example, if you have Raspberry Pi that's running Raspbian Buster (which has
+Python 3.7), install the Python wheel as follows:
 
 <pre class="devsite-terminal devsite-click-to-copy">
-pip3 install tflite_runtime-1.14.0-cp37-cp37m-linux_armv7l.whl
+pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl
 </pre>
 
 <table>
-<tr><th></th><th>ARM 32</th><th>ARM 64</th><th>x86-64</th></tr>
-<tr><th style="white-space:nowrap">Python 3.5</th>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp35-cp35m-linux_armv7l.whl"
-    >tflite_runtime-1.14.0-cp35-cp35m-linux_armv7l.whl</a></td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp35-cp35m-linux_aarch64.whl"
-    >tflite_runtime-1.14.0-cp35-cp35m-linux_aarch64.whl</a></td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp35-cp35m-linux_x86_64.whl"
-    >tflite_runtime-1.14.0-cp35-cp35m-linux_x86_64.whl</a></td>
+<tr><th>Platform</th><th>Python</th><th>URL</th></tr>
+<tr>
+  <td style="white-space:nowrap" rowspan="3">Linux (ARM 32)</td>
+  <td style="white-space:nowrap">3.5</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_armv7l.whl</td>
 </tr>
-<tr><th>Python 3.6</th>
-  <td>N/A</td>
-  <td>N/A</td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp36-cp36m-linux_x86_64.whl"
-    >tflite_runtime-1.14.0-cp36-cp36m-linux_x86_64.whl</a></td>
+<tr>
+  <!-- ARM 32 -->
+  <td style="white-space:nowrap">3.6</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_armv7l.whl</td>
 </tr>
-<tr><th>Python 3.7</th>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp37-cp37m-linux_armv7l.whl"
-    >tflite_runtime-1.14.0-cp37-cp37m-linux_armv7l.whl</a></td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp37-cp37m-linux_aarch64.whl"
-    >tflite_runtime-1.14.0-cp37-cp37m-linux_aarch64.whl</a></td>
-  <td><a href="https://dl.google.com/coral/python/tflite_runtime-1.14.0-cp37-cp37m-linux_x86_64.whl"
-    >tflite_runtime-1.14.0-cp37-cp37m-linux_x86_64.whl</a></td>
+<tr>
+  <!-- ARM 32 -->
+  <td style="white-space:nowrap">3.7</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl</td>
 </tr>
-</table>
+<tr>
+  <td style="white-space:nowrap" rowspan="3">Linux (ARM 64)</td>
+  <td style="white-space:nowrap">3.5</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_aarch64.whl</td>
+</tr>
+<tr>
+  <!-- ARM 64 -->
+  <td style="white-space:nowrap">3.6</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_aarch64.whl</td>
+</tr>
+<tr>
+  <!-- ARM 64 -->
+  <td style="white-space:nowrap">3.7</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_aarch64.whl</td>
+</tr>
+<tr>
+  <td style="white-space:nowrap" rowspan="3">Linux (x86-64)</td>
+  <td style="white-space:nowrap">3.5</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_x86_64.whl</td>
+</tr>
+<tr>
+  <!-- x86-64 -->
+  <td style="white-space:nowrap">3.6</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_x86_64.whl</td>
+</tr>
+<tr>
+  <!-- x86-64 -->
+  <td style="white-space:nowrap">3.7</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_x86_64.whl</td>
+</tr>
 
+<tr>
+  <td style="white-space:nowrap" rowspan="3">macOS 10.14</td>
+  <td style="white-space:nowrap">3.5</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-macosx_10_14_x86_64.whl</td>
+</tr>
+<tr>
+  <!-- Mac -->
+  <td style="white-space:nowrap">3.6</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-macosx_10_14_x86_64.whl</td>
+</tr>
+<tr>
+  <!-- Mac -->
+  <td style="white-space:nowrap">3.7</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-macosx_10_14_x86_64.whl</td>
+</tr>
+
+<tr>
+  <td style="white-space:nowrap" rowspan="3">Windows 10</td>
+  <td style="white-space:nowrap">3.5</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-win_amd64.whl</td>
+</tr>
+<tr>
+  <!-- Win -->
+  <td style="white-space:nowrap">3.6</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-win_amd64.whl</td>
+</tr>
+<tr>
+  <!-- Win -->
+  <td style="white-space:nowrap">3.7</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-win_amd64.whl</td>
+</tr>
+
+</table>
 
 ## Run an inference using tflite_runtime
 
@@ -107,12 +160,15 @@ models.
 
 ## Learn more
 
+For more details about the `Interpreter` API, read
+[Load and run a model in Python](inference.md#load-and-run-a-model-in-python).
+
 If you have a Raspberry Pi, try the
 [classify_picamera.py example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/raspberry_pi)
 to perform image classification with the Pi Camera and TensorFlow Lite.
 
-For more details about the `Interpreter` API, read [Load and run a model
-in Python](inference.md#load-and-run-a-model-in-python).
+If you're using a Coral ML accelerator, check out the
+[Coral examples on GitHub](https://github.com/google-coral/tflite/tree/master/python/examples).
 
 To convert other TensorFlow models to TensorFlow Lite, read about the
 the [TensorFlow Lite Converter](../convert/).

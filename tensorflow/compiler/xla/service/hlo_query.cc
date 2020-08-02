@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -113,6 +115,53 @@ bool ContainsInstrWithOpcode(const HloComputation* comp,
     for (const HloComputation* subcomp : instr->called_computations()) {
       if (ContainsInstrWithOpcode(subcomp, opcodes)) {
         return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
+  for (auto computation : module.computations()) {
+    for (auto hlo : computation->instructions()) {
+      if (hlo->opcode() == HloOpcode::kAllReduce &&
+          DynCast<HloAllReduceInstruction>(hlo)->constrain_layout()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+int64 NextChannelId(const HloModule& module) {
+  int64 next_channel_id = 1;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* hlo : comp->instructions()) {
+      const HloChannelInstruction* channel_instr =
+          DynCast<HloChannelInstruction>(hlo);
+      if (channel_instr && channel_instr->channel_id()) {
+        next_channel_id =
+            std::max(next_channel_id, *channel_instr->channel_id() + 1);
+      }
+    }
+  }
+  return next_channel_id;
+}
+
+bool HasX64TransformedHostTransfer(const HloModule& module) {
+  for (auto computation : module.computations()) {
+    for (auto hlo : computation->instructions()) {
+      if (hlo->opcode() == HloOpcode::kSend) {
+        auto send = DynCast<HloSendInstruction>(hlo);
+        if (send->is_host_transfer() && send->operand(0)->shape().IsTuple()) {
+          return true;
+        }
+      } else if (hlo->opcode() == HloOpcode::kRecv) {
+        auto recv = DynCast<HloRecvInstruction>(hlo);
+        if (recv->is_host_transfer() &&
+            recv->shape().tuple_shapes(0).IsTuple()) {
+          return true;
+        }
       }
     }
   }

@@ -20,8 +20,8 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python import tf2
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors

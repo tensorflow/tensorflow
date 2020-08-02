@@ -31,13 +31,13 @@ namespace tensorflow {
 class SessionState {
  public:
   // Get a tensor from the session state.
-  Status GetTensor(const string& handle, Tensor* tensor);
+  Status GetTensor(const std::string& handle, Tensor* tensor);
 
   // Store a tensor in the session state.
-  Status AddTensor(const string& handle, const Tensor& tensor);
+  Status AddTensor(const std::string& handle, const Tensor& tensor);
 
-  // Delete a tensdor from the session state.
-  Status DeleteTensor(const string& handle);
+  // Delete a tensor from the session state.
+  Status DeleteTensor(const std::string& handle);
 
   int64 GetNewId();
 
@@ -60,32 +60,30 @@ class TensorStore {
   struct TensorAndKey {
     Tensor tensor;
     int64 id;
-    string device_name;
+    std::string device_name;
 
-    string GetHandle(const string& tensor_name) {
+    std::string GetHandle(const std::string& tensor_name) {
       return strings::StrCat(tensor_name, ";", id, ";", device_name);
     }
   };
 
   // Add the named tensor to the tensor store for this run.
-  Status AddTensor(const string& name, const TensorAndKey& tk);
+  Status AddTensor(const std::string& name, const TensorAndKey& tk);
 
   // Save the tensors in the tensor store of this run to the session.
   Status SaveTensors(const std::vector<string>& output_names,
                      SessionState* session_state);
 
   // Returns true if no tensors have been added to this store.
-  bool empty() {
-    mutex_lock l(lock_);
-    return tensors_.empty();
-  }
+  bool empty() TF_NO_THREAD_SAFETY_ANALYSIS { return !dirty_; }
 
  private:
   mutex lock_;
+  std::atomic<bool> dirty_ TF_GUARDED_BY(lock_){false};
 
   // The tensors that will be saved to session state when this run completes.
   // A map from tensor string name to tensor.
-  std::unordered_map<string, TensorAndKey> tensors_ GUARDED_BY(lock_);
+  std::unordered_map<string, TensorAndKey> tensors_ TF_GUARDED_BY(lock_);
 };
 
 }  // namespace tensorflow

@@ -108,7 +108,7 @@ def _ragged_tensor_to_tensor_grad(op, grad):
 
 
 def _rank_ignoring_leading_dims_with_size_1(value):
-  """Returns `rank(value)`, ignorning any leading dimesions with size 1."""
+  """Returns `rank(value)`, ignoring any leading dimensions with size 1."""
   # Compute the result using static shape, if possible.
   if value.shape.rank is not None:
     ndims = value.shape.rank

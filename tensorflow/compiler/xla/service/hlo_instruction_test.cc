@@ -1545,7 +1545,7 @@ TEST_F(HloInstructionTest, StringifyScatter) {
       "to_apply=%Scatter.update");
 }
 
-TEST_F(HloInstructionTest, CanonnicalStringificationFusion) {
+TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
   // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
@@ -1587,7 +1587,7 @@ TEST_F(HloInstructionTest, CanonnicalStringificationFusion) {
   EXPECT_EQ(fusion->ToString(options), expected_fusion);
 }
 
-TEST_F(HloInstructionTest, CanonnicalStringificationWhile) {
+TEST_F(HloInstructionTest, CanonicalStringificationWhile) {
   // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
@@ -1643,7 +1643,7 @@ TEST_F(HloInstructionTest, CanonnicalStringificationWhile) {
   EXPECT_EQ(loop->ToString(options), expected_loop);
 }
 
-TEST_F(HloInstructionTest, CanonnicalStringificationConditional) {
+TEST_F(HloInstructionTest, CanonicalStringificationConditional) {
   // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});

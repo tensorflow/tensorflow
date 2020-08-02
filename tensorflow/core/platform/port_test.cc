@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <condition_variable>
 
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace port {
@@ -83,9 +83,9 @@ TEST(ConditionalCriticalSections, AwaitWithDeadline_Timeout) {
   mutex m;
   m.lock();
   time_t start = time(nullptr);
-  bool result = m.AwaitWithDeadline(
-      Condition(&always_false),
-      EnvTime::Default()->NowNanos() + 3 * EnvTime::kSecondsToNanos);
+  bool result =
+      m.AwaitWithDeadline(Condition(&always_false),
+                          EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos);
   time_t finish = time(nullptr);
   m.unlock();
   EXPECT_EQ(result, false);
@@ -107,9 +107,8 @@ TEST(ConditionalCriticalSections, AwaitWithDeadline_Woken) {
     woken = true;
     m.unlock();
   });
-  bool result =
-      m.AwaitWithDeadline(Condition(&woken), EnvTime::Default()->NowNanos() +
-                                                 3 * EnvTime::kSecondsToNanos);
+  bool result = m.AwaitWithDeadline(
+      Condition(&woken), EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos);
   time_t finish = time(nullptr);
   m.unlock();
   EXPECT_EQ(result, true);

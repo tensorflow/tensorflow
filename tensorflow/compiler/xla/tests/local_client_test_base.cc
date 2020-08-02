@@ -194,9 +194,10 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     argument_layouts[i] = &arguments[i]->on_host_shape();
   }
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<LocalExecutable> executable,
+      auto executables,
       local_client_->Compile(computation, argument_layouts, build_options));
-  TF_ASSIGN_OR_RETURN(auto ret, executable->Run(arguments, run_options));
+  TF_RET_CHECK(executables.size() == 1);
+  TF_ASSIGN_OR_RETURN(auto ret, executables[0]->Run(arguments, run_options));
 
   auto device_ordinal =
       build_options.device_ordinal() == -1 ? 0 : build_options.device_ordinal();

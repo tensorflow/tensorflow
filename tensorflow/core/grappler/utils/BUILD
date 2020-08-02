@@ -1,11 +1,21 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_protos_grappler",
 )
 
 package(
     licenses = ["notice"],  # Apache 2.0
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "topological_sort.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 cc_library(
@@ -178,12 +188,12 @@ cc_library(
     hdrs = ["functions.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu_base_no_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:core_cpu_base_no_ops",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",

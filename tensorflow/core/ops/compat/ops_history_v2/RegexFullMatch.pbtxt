@@ -1,0 +1,15 @@
+op {
+  name: "RegexFullMatch"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "pattern"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_BOOL
+  }
+}

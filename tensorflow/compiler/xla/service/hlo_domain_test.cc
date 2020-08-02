@@ -617,7 +617,7 @@ ENTRY entry {
   auto tuple0 = FindInstruction(module.get(), "tuple.0");
   tuple0->clear_sharding();
 
-  // Insert the following instructons above and below tuple.0, to emulate other
+  // Insert the following instructions above and below tuple.0, to emulate other
   // passes effects:
   //                 COPY.0
   //             \    /

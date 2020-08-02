@@ -6,7 +6,9 @@ load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_IN
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow:tensorflow_py",
+    ],
     licenses = ["notice"],  # Apache 2.0 License
 )
 
@@ -15,6 +17,7 @@ keras_packages = [
     "tensorflow.python.keras",
     "tensorflow.python.keras.activations",
     "tensorflow.python.keras.applications.densenet",
+    "tensorflow.python.keras.applications.efficientnet",
     "tensorflow.python.keras.applications.imagenet_utils",
     "tensorflow.python.keras.applications.inception_resnet_v2",
     "tensorflow.python.keras.applications.inception_v3",
@@ -39,12 +42,16 @@ keras_packages = [
     "tensorflow.python.keras.datasets.mnist",
     "tensorflow.python.keras.datasets.reuters",
     "tensorflow.python.keras.engine.base_layer",
+    "tensorflow.python.keras.engine.data_adapter",
     "tensorflow.python.keras.engine.input_layer",
     "tensorflow.python.keras.engine.input_spec",
     "tensorflow.python.keras.engine.sequential",
     "tensorflow.python.keras.engine.training",
     "tensorflow.python.keras.estimator",
+    "tensorflow.python.keras.feature_column.sequence_feature_column",
     "tensorflow.python.keras.initializers",
+    "tensorflow.python.keras.initializers.initializers_v1",
+    "tensorflow.python.keras.initializers.initializers_v2",
     "tensorflow.python.keras.layers.advanced_activations",
     "tensorflow.python.keras.layers.convolutional",
     "tensorflow.python.keras.layers.convolutional_recurrent",
@@ -57,6 +64,7 @@ keras_packages = [
     "tensorflow.python.keras.layers.noise",
     "tensorflow.python.keras.layers.normalization",
     "tensorflow.python.keras.layers.normalization_v2",
+    "tensorflow.python.keras.layers.preprocessing",
     "tensorflow.python.keras.layers.pooling",
     "tensorflow.python.keras.layers.recurrent",
     "tensorflow.python.keras.layers.recurrent_v2",
@@ -64,10 +72,10 @@ keras_packages = [
     "tensorflow.python.keras.layers.wrappers",
     "tensorflow.python.keras.losses",
     "tensorflow.python.keras.metrics",
+    "tensorflow.python.keras.mixed_precision.experimental.get_layer_policy",
     "tensorflow.python.keras.mixed_precision.experimental.loss_scale_optimizer",
     "tensorflow.python.keras.mixed_precision.experimental.policy",
     "tensorflow.python.keras.models",
-    "tensorflow.python.keras.ops",
     "tensorflow.python.keras.optimizer_v2.adadelta",
     "tensorflow.python.keras.optimizer_v2.adagrad",
     "tensorflow.python.keras.optimizer_v2.adam",

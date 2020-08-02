@@ -33,7 +33,7 @@ except ImportError:
   from distutils.spawn import find_executable as which
 # pylint: enable=g-import-not-at-top
 
-_DEFAULT_CUDA_VERSION = '10.1'
+_DEFAULT_CUDA_VERSION = '10'
 _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
@@ -49,8 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '0.27.1'
-_TF_MAX_BAZEL_VERSION = '1.1.0'
+_TF_MIN_BAZEL_VERSION = '3.1.0'
+_TF_MAX_BAZEL_VERSION = '3.99.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -144,17 +144,19 @@ def write_to_bazelrc(line):
 
 
 def write_action_env_to_bazelrc(var_name, var):
-  write_to_bazelrc('build --action_env %s="%s"' % (var_name, str(var)))
+  write_to_bazelrc('build --action_env {}="{}"'.format(var_name, str(var)))
 
 
-def run_shell(cmd, allow_non_zero=False):
+def run_shell(cmd, allow_non_zero=False, stderr=None):
+  if stderr is None:
+    stderr = sys.stdout
   if allow_non_zero:
     try:
-      output = subprocess.check_output(cmd)
+      output = subprocess.check_output(cmd, stderr=stderr)
     except subprocess.CalledProcessError as e:
       output = e.output
   else:
-    output = subprocess.check_output(cmd)
+    output = subprocess.check_output(cmd, stderr=stderr)
   return output.decode('UTF-8').strip()
 
 
@@ -169,10 +171,12 @@ def get_python_path(environ_cp, python_bin_path):
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
   try:
+    stderr = open(os.devnull, 'wb')
     library_paths = run_shell([
         python_bin_path, '-c',
         'import site; print("\\n".join(site.getsitepackages()))'
-    ]).split('\n')
+    ],
+                              stderr=stderr).split('\n')
   except subprocess.CalledProcessError:
     library_paths = [
         run_shell([
@@ -201,7 +205,7 @@ def setup_python(environ_cp):
   # Get PYTHON_BIN_PATH, default is the current running python.
   default_python_bin_path = sys.executable
   ask_python_bin_path = ('Please specify the location of python. [Default is '
-                         '%s]: ') % default_python_bin_path
+                         '{}]: ').format(default_python_bin_path)
   while True:
     python_bin_path = get_from_env_or_user_or_default(environ_cp,
                                                       'PYTHON_BIN_PATH',
@@ -211,9 +215,10 @@ def setup_python(environ_cp):
     if os.path.isfile(python_bin_path) and os.access(python_bin_path, os.X_OK):
       break
     elif not os.path.exists(python_bin_path):
-      print('Invalid python path: %s cannot be found.' % python_bin_path)
+      print('Invalid python path: {} cannot be found.'.format(python_bin_path))
     else:
-      print('%s is not executable.  Is it the python binary?' % python_bin_path)
+      print('{} is not executable.  Is it the python binary?'.format(
+          python_bin_path))
     environ_cp['PYTHON_BIN_PATH'] = ''
 
   # Convert python path to Windows style before checking lib and version
@@ -232,7 +237,7 @@ def setup_python(environ_cp):
       default_python_lib_path = python_lib_paths[0]
       python_lib_path = get_input(
           'Please input the desired Python library path to use.  '
-          'Default is [%s]\n' % python_lib_paths[0])
+          'Default is [{}]\n'.format(python_lib_paths[0]))
       if not python_lib_path:
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
@@ -248,7 +253,7 @@ def setup_python(environ_cp):
   # Set-up env variables used by python_configure.bzl
   write_action_env_to_bazelrc('PYTHON_BIN_PATH', python_bin_path)
   write_action_env_to_bazelrc('PYTHON_LIB_PATH', python_lib_path)
-  write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
+  write_to_bazelrc('build --python_path=\"{}"'.format(python_bin_path))
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
 
   # If choosen python_lib_path is from a path specified in the PYTHONPATH
@@ -262,7 +267,7 @@ def setup_python(environ_cp):
   with open(
       os.path.join(_TF_WORKSPACE_ROOT, 'tools', 'python_bin_path.sh'),
       'w') as f:
-    f.write('export PYTHON_BIN_PATH="%s"' % python_bin_path)
+    f.write('export PYTHON_BIN_PATH="{}"'.format(python_bin_path))
 
 
 def reset_tf_configure_bazelrc():
@@ -316,11 +321,12 @@ def get_var(environ_cp,
       Raise the error to avoid infinitely looping.
   """
   if not question:
-    question = 'Do you wish to build TensorFlow with %s support?' % query_item
+    question = 'Do you wish to build TensorFlow with {} support?'.format(
+        query_item)
   if not yes_reply:
-    yes_reply = '%s support will be enabled for TensorFlow.' % query_item
+    yes_reply = '{} support will be enabled for TensorFlow.'.format(query_item)
   if not no_reply:
-    no_reply = 'No %s' % yes_reply
+    no_reply = 'No {}'.format(yes_reply)
 
   yes_reply += '\n'
   no_reply += '\n'
@@ -364,7 +370,7 @@ def get_var(environ_cp,
         print(no_reply)
         var = False
     else:
-      print('Invalid selection: %s' % user_input_origin)
+      print('Invalid selection: {}'.format(user_input_origin))
   return var
 
 
@@ -474,14 +480,14 @@ def check_bazel_version(min_version, max_version):
   """
   if which('bazel') is None:
     print('Cannot find bazel. Please install bazel.')
-    sys.exit(0)
-  curr_version = run_shell(
-      ['bazel', '--batch', '--bazelrc=/dev/null', 'version'])
+    sys.exit(1)
 
-  for line in curr_version.split('\n'):
-    if 'Build label: ' in line:
-      curr_version = line.split('Build label: ')[1]
-      break
+  stderr = open(os.devnull, 'wb')
+  curr_version = run_shell(['bazel', '--version'],
+                           allow_non_zero=True,
+                           stderr=stderr)
+  if curr_version.startswith('bazel '):
+    curr_version = curr_version.split('bazel ')[1]
 
   min_version_int = convert_version_to_int(min_version)
   curr_version_int = convert_version_to_int(curr_version)
@@ -818,7 +824,7 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
   android_ndk_api_level = prompt_loop_or_load_from_env(
       environ_cp,
       var_name='ANDROID_NDK_API_LEVEL',
-      var_default='18',  # 18 is required for GPU acceleration.
+      var_default='21',  # 21 is required for ARM64 support.
       ask_for_var=('Please specify the (min) Android NDK API level to use. '
                    '[Available levels: %s]') % api_levels,
       check_success=valid_api_level,
@@ -1005,17 +1011,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
       default_cuda_compute_capabilities = native_cuda_compute_capabilities
 
     ask_cuda_compute_capabilities = (
-        'Please specify a list of comma-separated '
-        'CUDA compute capabilities you want to '
-        'build with.\nYou can find the compute '
-        'capability of your device at: '
-        'https://developer.nvidia.com/cuda-gpus.\nPlease'
-        ' note that each additional compute '
-        'capability significantly increases your '
-        'build time and binary size, and that '
-        'TensorFlow only supports compute '
-        'capabilities >= 3.5 [Default is: %s]: ' %
-        default_cuda_compute_capabilities)
+        'Please specify a list of comma-separated CUDA compute capabilities '
+        'you want to build with.\nYou can find the compute capability of your '
+        'device at: https://developer.nvidia.com/cuda-gpus. Each capability '
+        'can be specified as "x.y" or "compute_xy" to include both virtual and'
+        ' binary GPU code, or as "sm_xy" to only include the binary '
+        'code.\nPlease note that each additional compute capability '
+        'significantly increases your build time and binary size, and that '
+        'TensorFlow only supports compute capabilities >= 3.5 [Default is: '
+        '%s]: ' % default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
         ask_cuda_compute_capabilities, default_cuda_compute_capabilities)
@@ -1027,8 +1031,23 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
-        print('Invalid compute capability: %s' % compute_capability)
-        all_valid = False
+        # We now support sm_35,sm_50,sm_60,compute_70.
+        sm_compute_match = re.match('(sm|compute)_?([0-9]+[0-9]+)',
+                                    compute_capability)
+        if not sm_compute_match:
+          print('Invalid compute capability: %s' % compute_capability)
+          all_valid = False
+        else:
+          ver = int(sm_compute_match.group(2))
+          if ver < 30:
+            print(
+                'ERROR: TensorFlow only supports small CUDA compute'
+                ' capabilities of sm_30 and higher. Please re-specify the list'
+                ' of compute capabilities excluding version %s.' % ver)
+            all_valid = False
+          if ver < 35:
+            print('WARNING: XLA does not support CUDA compute capabilities '
+                  'lower than sm_35. Disable XLA when running on older GPUs.')
       else:
         ver = float(m.group(0))
         if ver < 3.0:
@@ -1151,33 +1170,47 @@ def set_trisycl_include_dir(environ_cp):
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR', trisycl_include_dir)
 
 
-def system_specific_test_config(env):
+def system_specific_test_config(environ_cp):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
   write_to_bazelrc('test --test_size_filters=small,medium')
-  write_to_bazelrc(
-      'test --test_tag_filters=-benchmark-test,-no_oss,-oss_serial')
-  write_to_bazelrc('test --build_tag_filters=-benchmark-test,-no_oss')
+
+  # Each instance of --test_tag_filters or --build_tag_filters overrides all
+  # previous instances, so we need to build up a complete list and write a
+  # single list of filters for the .bazelrc file.
+
+  # Filters to use with both --test_tag_filters and --build_tag_filters
+  test_and_build_filters = ['-benchmark-test', '-no_oss']
+  # Additional filters for --test_tag_filters beyond those in
+  # test_and_build_filters
+  test_only_filters = ['-oss_serial']
   if is_windows():
-    if env.get('TF_NEED_CUDA', None) == '1':
-      write_to_bazelrc(
-          'test --test_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
-      write_to_bazelrc(
-          'test --build_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+    test_and_build_filters.append('-no_windows')
+    if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
+        (environ_cp.get('TF_NEED_ROCM', None) == '1')):
+      test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
-      write_to_bazelrc('test --test_tag_filters=-no_windows,-gpu')
-      write_to_bazelrc('test --build_tag_filters=-no_windows,-gpu')
+      test_and_build_filters.append('-gpu')
   elif is_macos():
-    write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
-    write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
+    test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
   elif is_linux():
-    if env.get('TF_NEED_CUDA', None) == '1':
-      write_to_bazelrc('test --test_tag_filters=-no_gpu')
-      write_to_bazelrc('test --build_tag_filters=-no_gpu')
+    if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
+        (environ_cp.get('TF_NEED_ROCM', None) == '1')):
+      test_and_build_filters.append('-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:
-      write_to_bazelrc('test --test_tag_filters=-gpu')
-      write_to_bazelrc('test --build_tag_filters=-gpu')
+      test_and_build_filters.append('-gpu')
+
+  # Disable tests with "v1only" tag in "v2" Bazel config, but not in "v1" config
+  write_to_bazelrc('test:v1 --test_tag_filters=%s' %
+                   ','.join(test_and_build_filters + test_only_filters))
+  write_to_bazelrc('test:v1 --build_tag_filters=%s' %
+                   ','.join(test_and_build_filters))
+  write_to_bazelrc(
+      'test:v2 --test_tag_filters=%s' %
+      ','.join(test_and_build_filters + test_only_filters + ['-v1only']))
+  write_to_bazelrc('test:v2 --build_tag_filters=%s' %
+                   ','.join(test_and_build_filters + ['-v1only']))
 
 
 def set_system_libs_flag(environ_cp):
@@ -1197,21 +1230,41 @@ def set_system_libs_flag(environ_cp):
     write_to_bazelrc('build --define=INCLUDEDIR=%s' % environ_cp['INCLUDEDIR'])
 
 
+def is_reduced_optimize_huge_functions_available(environ_cp):
+  """Check to see if the system supports /d2ReducedOptimizeHugeFunctions.
+
+  The above compiler flag is a new compiler flag introduced to the Visual Studio
+  compiler in version 16.4 (available in Visual Studio 2019, Preview edition
+  only, as of 2019-11-19). TensorFlow needs this flag to massively reduce
+  compile times, but until 16.4 is officially released, we can't depend on it.
+
+  See also
+  https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+
+  Because it's very annoying to check this manually (to check the MSVC installed
+  versions, you need to use the registry, and it's not clear if Bazel will be
+  using that install version anyway), we expect enviroments who know they may
+  use this flag to export TF_VC_VERSION=16.4
+
+  TODO(angerson, gunan): Remove this function when TensorFlow's minimum VS
+  version is upgraded to 16.4.
+
+  Arguments:
+    environ_cp: Environment of the current execution
+
+  Returns:
+    boolean, whether or not /d2ReducedOptimizeHugeFunctions is available on this
+    machine.
+  """
+  return float(environ_cp.get('TF_VC_VERSION', '0')) >= 16.4
+
+
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
-  # The non-monolithic build is not supported yet
-  write_to_bazelrc('build --config monolithic')
-  # Suppress warning messages
-  write_to_bazelrc('build --copt=-w --host_copt=-w')
-  # Fix winsock2.h conflicts
-  write_to_bazelrc(
-      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN '
-      '--copt=-DNOGDI --host_copt=-DNOGDI')
-  # Output more verbose information when something goes wrong
-  write_to_bazelrc('build --verbose_failures')
-  # The host and target platforms are the same in Windows build. So we don't
-  # have to distinct them. This avoids building the same targets twice.
-  write_to_bazelrc('build --distinct_host_configuration=false')
+  if is_reduced_optimize_huge_functions_available(environ_cp):
+    write_to_bazelrc(
+        'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'
+    )
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1329,8 +1382,13 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
-                                              _TF_MAX_BAZEL_VERSION)
+  try:
+    current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
+                                                _TF_MAX_BAZEL_VERSION)
+  except subprocess.CalledProcessError as e:
+    print('Error checking bazel version: ', e.output.decode('UTF-8').strip())
+    raise e
+
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
@@ -1348,16 +1406,14 @@ def main():
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
     environ_cp['TF_NEED_MPI'] = '0'
-    environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
 
-  xla_enabled_by_default = is_linux() or is_macos()
-  set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                xla_enabled_by_default, 'xla')
+  if environ_cp.get('TF_ENABLE_XLA', '1') == '1':
+    write_to_bazelrc('build --config=xla')
 
   set_action_env_var(
       environ_cp,
@@ -1381,6 +1437,10 @@ def main():
       environ_cp.get('LD_LIBRARY_PATH') != '1'):
     write_action_env_to_bazelrc('LD_LIBRARY_PATH',
                                 environ_cp.get('LD_LIBRARY_PATH'))
+
+  if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
+    write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
+    write_action_env_to_bazelrc('ROCM_ROOT', environ_cp.get('ROCM_PATH'))
 
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
@@ -1488,7 +1548,7 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
-  system_specific_test_config(os.environ)
+  system_specific_test_config(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False)
   if environ_cp.get('TF_CONFIGURE_IOS') == '1':

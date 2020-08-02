@@ -49,7 +49,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 
-WHITELIST_COLLECTIONS = [
+ALLOWLIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,
     ops.GraphKeys.LOCAL_VARIABLES,
     ops.GraphKeys.TRAINABLE_VARIABLES,
@@ -77,7 +77,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   Returns:
     Identical structure that has TensorSpec objects instead of Tensors and
-    UknownArgument instead of any unsupported types.
+    UnknownArgument instead of any unsupported types.
   """
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
@@ -94,13 +94,13 @@ def convert_structure_to_signature(structure, arg_names=None):
         # of the function argument.
         name = user_specified_name
       else:
-        name = "/".join([str(p) for p in path])
+        name = "/".join(str(p) for p in path)
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, composite_tensor.CompositeTensor):
       # TODO(b/133606651) Do we need to inject arg_name?
       return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, resource_variable_ops.BaseResourceVariable):
-      name = "/".join([str(p) for p in path])
+      name = "/".join(str(p) for p in path)
       return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, (
         int,
@@ -172,9 +172,9 @@ class FuncGraph(ops.Graph):
       name: the name of the function.
       collections: a dictionary of collections this FuncGraph should start
         with. If not specified (None), the FuncGraph will read (but not write
-        to) the outer graph's collections that are not whitelisted, and both
-        read and write to the outer graph's collections that are whitelisted.
-        The current whitelisted collections are the global variables, the
+        to) the outer graph's collections that are not allowlisted, and both
+        read and write to the outer graph's collections that are allowlisted.
+        The current allowlisted collections are the global variables, the
         local variables, and the trainable variables.
         Defaults to None.
       capture_by_value: An optional boolean. If True, the func graph will
@@ -241,10 +241,10 @@ class FuncGraph(ops.Graph):
 
     if collections is None:
       for collection_name in graph.get_all_collection_keys():
-        if collection_name not in WHITELIST_COLLECTIONS:
+        if collection_name not in ALLOWLIST_COLLECTIONS:
           self._collections[collection_name] = graph.get_collection(
               collection_name)
-      for collection_name in WHITELIST_COLLECTIONS:
+      for collection_name in ALLOWLIST_COLLECTIONS:
         self._collections[collection_name] = graph.get_collection_ref(
             collection_name)
     else:
@@ -365,35 +365,33 @@ class FuncGraph(ops.Graph):
     @tf_contextlib.contextmanager
     def inner_cm():
       """Context manager for copying distribute.Strategy scope information."""
-      graph = ops.get_default_graph()
       # pylint: disable=protected-access
       # TODO(b/112906995, nareshmodi): distribution strategy depends on
       # inheriting this stack from the default graph even in eager mode. Maybe
       # it should be part of the eager context? This would also allow us to
       # remove a get_default_graph() call from the function cache lookup.
+      graph = ops.get_default_graph()
       old_strategy_stack = self._distribution_strategy_stack
       self._distribution_strategy_stack = list(
           graph._distribution_strategy_stack)
-      uses_distribution_strategy = (
-          self._distribution_strategy_stack and
-          self._distribution_strategy_stack[-1].strategy.extended
-          ._retrace_functions_for_each_device)
+
       # We ignore device placements from any outer scopes while tracing the
       # function when possible, to avoid hard-coding them in the function
       # graph. "Default" placements come from the PartitionedCallOp's placement,
       # so that the same trace of the Python function may be placed on several
       # different devices and saved functions may be placed on new devices when
       # restored.
+      # However, we need to preserve the outer device stack in the following
+      # cases in non eager context:
+      # 1. device stack is callable
+      # 2. When using distribution strategy with legacy graph mode.
       old_device_stack = self._device_function_stack
-      if context.executing_eagerly():
-        if uses_distribution_strategy:
-          self._device_function_stack = self._device_function_stack.copy()
-          self._add_device_to_stack(context.context().device_name)
-      else:
-        if (uses_distribution_strategy or
-            device_stack_has_callable(graph._device_function_stack)):
-          # Hard-code devices from device functions in the function body
-          self._device_function_stack = graph._device_function_stack.copy()
+      if (not context.executing_eagerly() and
+          (device_stack_has_callable(graph._device_function_stack) or
+           (self._distribution_strategy_stack and
+            not ops.executing_eagerly_outside_functions()))):
+        # Hard-code devices from device functions in the function body
+        self._device_function_stack = graph._device_function_stack.copy()
 
       old_creator_stack = self._variable_creator_stack
       self._variable_creator_stack = graph._variable_creator_stack
@@ -648,6 +646,13 @@ class FuncGraph(ops.Graph):
     if capture is None:
       placeholder = _create_substitute_placeholder(
           tensor, name=name, dtype=tensor.dtype, shape=shape)
+      # Record the composite device as an attribute to the placeholder.
+      # This attribute would be propogated into the arg_attr of the FunctionDef.
+      # Currently, a packed eager tensor is always placed on a CompositeDevice.
+      if isinstance(tensor, ops.EagerTensor) and tensor.is_packed:
+        placeholder.op._set_attr(  # pylint: disable=protected-access
+            "_composite_device",
+            attr_value_pb2.AttrValue(s=compat.as_bytes(tensor.device)))
       self.add_capture(tensor, placeholder)
     else:
       placeholder = capture[1]
@@ -837,9 +842,9 @@ def func_graph_from_py_func(name,
       set, returning an Operation triggers an error.
     collections: a dictionary of collections this FuncGraph should start
       with. If not specified (None), the FuncGraph will read (but not write to)
-      the outer graph's collections that are not whitelisted, and both
-      read and write to the outer graph's collections that are whitelisted.
-      The current whitelisted collections are the global variables, the
+      the outer graph's collections that are not allowlisted, and both
+      read and write to the outer graph's collections that are allowlisted.
+      The current allowlisted collections are the global variables, the
       local variables, and the trainable variables.
       Defaults to None.
     capture_by_value: An optional boolean. If True, the func graph will capture
@@ -937,7 +942,7 @@ def func_graph_from_py_func(name,
           x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
-              "To be compatible with tf.contrib.eager.defun, Python functions "
+              "To be compatible with tf.eager.defun, Python functions "
               "must return zero or more Tensors; in compilation of %s, found "
               "return value of type %s, which is not a Tensor." %
               (str(python_func), type(x)))
@@ -975,6 +980,9 @@ def func_graph_from_py_func(name,
         python_func = tf_decorator.rewrap(python_func, original_func,
                                           converted_func)
 
+      else:
+        _, original_func = tf_decorator.unwrap(python_func)
+
       func_outputs = python_func(*func_args, **func_kwargs)
 
       # invariant: `func_outputs` contains only Tensors, CompositeTensors,
@@ -982,8 +990,8 @@ def func_graph_from_py_func(name,
       func_outputs = nest.map_structure(convert, func_outputs,
                                         expand_composites=True)
 
-      check_mutation(func_args_before, func_args)
-      check_mutation(func_kwargs_before, func_kwargs)
+      check_mutation(func_args_before, func_args, original_func)
+      check_mutation(func_kwargs_before, func_kwargs, original_func)
     finally:
       current_scope.set_use_resource(default_use_recource)
 
@@ -1020,6 +1028,8 @@ def func_graph_from_py_func(name,
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)
+    func_graph.collective_manager_ids_used = (
+        deps_control_manager.collective_manager_ids_used)
 
   return func_graph
 
@@ -1048,13 +1058,15 @@ def device_stack_has_callable(device_stack):
              for spec in device_stack.peek_objs())
 
 
-def check_mutation(n1, n2):
+def check_mutation(n1, n2, func):
   """Check if two list of arguments are exactly the same."""
-  errmsg = ("Function to be traced should not modify structure of input "
-            "arguments. Check if your function has list and dictionary "
-            "operations that alter input arguments, "
-            "such as `list.pop`, `list.append`")
+  func_name = getattr(func, "__name__", func)
+
+  errmsg = ("{}() should not modify its Python input arguments."
+            " Check if it modifies any lists or dicts passed as"
+            " arguments. Modifying a copy is allowed.".format(func_name))
   try:
+    # TODO(mdan): Compare more robustly so that argument names can be reported.
     nest.assert_same_structure(n1, n2, expand_composites=True)
   except ValueError:
     raise ValueError(errmsg)
@@ -1183,16 +1195,9 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
     arg_value = nest.map_structure(_get_composite_tensor_spec, arg_value)
 
     flattened = nest.flatten(arg_value, expand_composites=True)
-    tensor_specs = [
-        arg for arg in flattened if isinstance(arg, tensor_spec.DenseSpec)
-    ]
-    specified_names = [arg.name for arg in tensor_specs if arg.name]
-    if specified_names and len(specified_names) < len(tensor_specs):
-      raise ValueError("If specifying TensorSpec names for nested structures, "
-                       "either zero or all names have to be specified.")
 
     for arg in flattened:
-      # We have a shape entry for each arg, regadless of whether it's a real
+      # We have a shape entry for each arg, regardless of whether it's a real
       # Tensor or not.  For non-tensor entries it should be None.
       shape = next(shapes_iter)
       if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):
@@ -1274,3 +1279,7 @@ def dismantle_func_graph(func_graph):
   """
   func_graph.clear_captures()
   ops.dismantle_graph(func_graph)
+
+
+def override_func_graph_name_scope(func_graph, name_scope):
+  func_graph._name_stack = name_scope  # pylint: disable=protected-access

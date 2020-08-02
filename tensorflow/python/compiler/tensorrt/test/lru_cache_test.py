@@ -70,8 +70,8 @@ class LRUCacheTest(trt_test.TfTrtIntegrationTestBase):
     return ["TRTEngineOp_0"]
 
   def ShouldRunTest(self, run_params):
-    return (run_params.dynamic_engine and
-            not trt_test.IsQuantizationMode(run_params.precision_mode))
+    return (run_params.dynamic_engine and not trt_test.IsQuantizationMode(
+        run_params.precision_mode)), "test dynamic engine and non-INT8"
 
 
 if __name__ == "__main__":

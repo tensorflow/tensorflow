@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 
+#include <algorithm>
+#include <utility>
+
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 
 namespace tensorflow {
@@ -71,30 +74,51 @@ Status PartitionFunctionGraph(
 }
 
 Status UpdateArgAndRetvalMetadata(
-    Graph* subgraph, const string& device_type, std::vector<int>* arg_indices,
-    std::vector<int>* ret_indices,
+    Graph* subgraph, const string& device_type,
+    std::vector<FunctionArgIndex>* arg_indices, std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
     std::vector<AllocatorAttributes>* ret_alloc_attrs) {
-  std::vector<std::pair<Node*, int>> arg_nodes;
+  std::vector<std::pair<Node*, FunctionArgIndex>> arg_nodes;
   std::vector<std::pair<Node*, int>> ret_nodes;
   const AttrValue* attr_value;
 
   // Find the Arg and Retval nodes, along with their corresponding indices
   // in the original function.
   for (Node* node : subgraph->op_nodes()) {
-    string node_type = node->type_string();
     if (node->IsArg()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
-      arg_indices->push_back(index);
-      arg_nodes.push_back(std::make_pair(node, index));
+      int sub_index = -1;
+      if (node->attrs().Find("sub_index", &attr_value).ok()) {
+        sub_index = static_cast<int>(attr_value->i());
+      }
+      arg_nodes.emplace_back(node, FunctionArgIndex(index, sub_index));
     } else if (node->IsRetval()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
-      ret_indices->push_back(index);
-      ret_nodes.push_back(std::make_pair(node, index));
+      ret_nodes.emplace_back(node, index);
     }
   }
+
+  // Sort the nodes by index so that the order is stable.
+  //
+  // In particular, this enables calling a single-partition function with
+  // the same signature as the original unpartitioned function.
+  auto arg_comparator = [](std::pair<Node*, FunctionArgIndex> a,
+                           std::pair<Node*, FunctionArgIndex> b) {
+    return std::tie(a.second.index, a.second.sub_index) <
+           std::tie(b.second.index, b.second.sub_index);
+  };
+  std::sort(arg_nodes.begin(), arg_nodes.end(), arg_comparator);
+  auto ret_comparator = [](std::pair<Node*, int> a, std::pair<Node*, int> b) {
+    return a.second < b.second;
+  };
+  std::sort(ret_nodes.begin(), ret_nodes.end(), ret_comparator);
+
+  arg_indices->reserve(arg_nodes.size());
+  for (const auto& pair : arg_nodes) arg_indices->push_back(pair.second);
+  ret_indices->reserve(ret_nodes.size());
+  for (const auto& pair : ret_nodes) ret_indices->push_back(pair.second);
 
   for (int i = 0; i < arg_nodes.size(); ++i) {
     Node* arg = arg_nodes[i].first;
@@ -128,16 +152,6 @@ Status UpdateArgAndRetvalMetadata(
   }
 
   return Status::OK();
-}
-
-std::vector<Tensor> GetArgsForIndices(const std::vector<int>& indices,
-                                      gtl::ArraySlice<Tensor> arguments) {
-  std::vector<Tensor> args;
-  args.reserve(indices.size());
-  for (int i : indices) {
-    args.push_back(arguments[i]);
-  }
-  return args;
 }
 
 string FunctionNameGenerator::GetName() {

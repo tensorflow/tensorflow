@@ -47,6 +47,12 @@ func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // CHECK-EMPTY:
   // CHECK-NEXT:   }, {
   // CHECK-EMPTY:
+  // CHECK-NEXT:   }, {
+  // CHECK-NEXT:     data: [ 49, 46, 53, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+  // CHECK-NEXT:   } ],
+  // CHECK-NEXT:   metadata: [ {
+  // CHECK-NEXT:   name: "min_runtime_version",
+  // CHECK-NEXT:   buffer: 3
   // CHECK-NEXT:   } ]
   // CHECK-NEXT: }
 

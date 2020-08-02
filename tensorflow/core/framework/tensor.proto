@@ -1,14 +1,16 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/resource_handle.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "TensorProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/resource_handle.proto";
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/types.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/tensor_go_proto";
 
 // Protocol buffer representing a tensor.
 message TensorProto {
@@ -81,7 +83,7 @@ message TensorProto {
 
   // DT_UINT64
   repeated uint64 uint64_val = 17 [packed = true];
-};
+}
 
 // Protocol buffer representing the serialization format of DT_VARIANT tensors.
 message VariantTensorDataProto {

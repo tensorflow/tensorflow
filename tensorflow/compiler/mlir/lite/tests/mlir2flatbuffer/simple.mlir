@@ -1,5 +1,5 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s --check-prefix=STRIP
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck %s --check-prefix=STRIP
 
 func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
   attributes {tf.entry_function = {inputs = "input", outputs = "SameNameAsOutput"}} {
@@ -97,6 +97,12 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:     data: [ 10, 0, 0, 0 ]
 // CHECK-NEXT:   }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:   }, {
+// CHECK-NEXT:     data: [ 49, 46, 54, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:   } ],
+// CHECK-NEXT:   metadata: [ {
+// CHECK-NEXT:   name: "min_runtime_version",
+// CHECK-NEXT:   buffer: 6
 // CHECK-NEXT:   } ]
 // CHECK-NEXT: }
 

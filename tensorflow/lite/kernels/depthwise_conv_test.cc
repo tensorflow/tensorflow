@@ -12,23 +12,32 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
+#include <stddef.h>
+
 #include <cstdint>
 #include <initializer_list>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
 namespace ops {
 namespace builtin {
 
+TfLiteRegistration* Register_DEPTHWISE_CONV_2D_UINT8();
 TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_REF();
 TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT();
 TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_NEON_OPT();
@@ -70,7 +79,11 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
               input.scale * filter.per_channel_quantization_scales[i];
           bias_zero_points[i] = 0;
         }
-        TensorData bias{TensorType_INT32,
+        tflite::TensorType bias_type = TensorType_INT32;
+        if (input.type == TensorType_INT16) {
+          bias_type = TensorType_INT64;
+        }
+        TensorData bias{bias_type,
                         {bias_size},
                         /*min=*/0,
                         /*max=*/0,
@@ -610,10 +623,18 @@ class QuantizedDepthwiseConvolutionOpModel
   }
 };
 
+const auto kQuantizedKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_DEPTHWISE_CONVOLUTION_REF()},
+    {"GenericOptimized",
+     ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT()},
+    {"NeonOptimized", ops::builtin::Register_DEPTHWISE_CONVOLUTION_NEON_OPT()},
+    {"Uint8", ops::builtin::Register_DEPTHWISE_CONV_2D_UINT8()},
+});
+
 class QuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMap;
+    return *kQuantizedKernelMap;
   }
 };
 
@@ -699,7 +720,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleTestQuantized) {
                              }));
 }
 
-TEST_P(QuantizedDepthwiseConvolutionOpTest,
+TEST_P(DepthwiseConvolutionOpTest,
        SimpleTestQuantizedFilterMultiplierGreaterThan1) {
   QuantizedDepthwiseConvolutionOpModel quant_op(
       GetRegistration(), {TensorType_UINT8, {1, 3, 2, 2}, -63.5, 64},
@@ -737,7 +758,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
               ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
 }
 
-TEST_P(QuantizedDepthwiseConvolutionOpTest,
+TEST_P(DepthwiseConvolutionOpTest,
        SimpleTestQuantizedOutputMultiplierGreaterThan1) {
   QuantizedDepthwiseConvolutionOpModel quant_op(
       GetRegistration(), {TensorType_UINT8, {1, 3, 2, 2}, -128.5, 128},
@@ -1607,7 +1628,53 @@ class PerChannelQuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
   }
 };
 
-TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimpleTest) {
+TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimplePerTensorTest) {
+  PerChannelQuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
+       {1, 2, 2, 4},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{1},
+       /*per_channel_quantization_offsets=*/{0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_VALID);
+  m.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      /*filter data*/
+      {
+          // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
+          // depth multiplier = 2
+          1, 2, 3, 4,  // y = 0, x = 0
+          3, 4, 5, 6,  // y = 0, x = 1
+          7, 8, 5, 6,  // y = 1, x = 0
+          3, 4, 1, 2,  // y = 1, x = 1
+      });
+  m.SetBias({3, -2, 4, 6});
+
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray(ArrayFloatNear({43, 48, 18, 22, 3, -4, -28, -36})));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({85, 95, 35, 43, 5, -9, -57, -73}));
+}
+
+TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimplePerAxisTest) {
   PerChannelQuantizedDepthwiseConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,
@@ -1761,7 +1828,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
        0,
        /*per_channel_quantization=*/true,
        /*per_channel_quantization_scales=*/
-       {1, 2, 3, 4, 4, 3, 2, 1},
+       {0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1},
        /*per_channel_quantization_offsets=*/{0, 0, 0, 0, 0, 0, 0, 0},
        /*channel_index=*/3},
       {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_VALID);
@@ -1781,7 +1848,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
   // Invoke and verify output.
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 36, 54, 0, 0})));
+              ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 47, 54, 0, 0})));
 }
 
 TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
@@ -1797,7 +1864,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
        0,
        /*per_channel_quantization=*/true,
        /*per_channel_quantization_scales=*/
-       {1, 2, 3, 4, 4, 3, 2, 1},
+       {0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1},
        /*per_channel_quantization_offsets=*/{0, 0, 0, 0, 0, 0, 0, 0},
        /*channel_index=*/3},
       {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_SAME);
@@ -1816,15 +1883,15 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
 
   // Invoke and verify output.
   m.Invoke();
-  EXPECT_THAT(
-      m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({
-          // array of 9 x 8 => [1, 3, 3, 8]
-          4,  8,  0, 0, 16, 24, 0, 0, 6,  12, 0, 0, 24, 36, 0, 0, 4,  8,  0, 0,
-          16, 24, 0, 0, 6,  12, 0, 0, 24, 36, 0, 0, 9,  18, 0, 0, 36, 54, 0, 0,
-          6,  12, 0, 0, 24, 36, 0, 0, 4,  8,  0, 0, 16, 24, 0, 0, 6,  12, 0, 0,
-          24, 36, 0, 0, 4,  8,  0, 0, 16, 24, 0, 0,
-      })));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({
+                  // array of 9 x 8 => [1, 3, 3, 8]
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  9, 18, 0, 0, 47, 54, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0,
+              })));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1833,7 +1900,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 INSTANTIATE_TEST_SUITE_P(
     QuantizedDepthwiseConvolutionOpTest, QuantizedDepthwiseConvolutionOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kQuantizedKernelMap)));
 
 INSTANTIATE_TEST_SUITE_P(
     PerChannelQuantizedDepthwiseConvolutionOpTest,

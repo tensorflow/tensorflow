@@ -23,7 +23,7 @@ namespace orc_jit_memory_mapper {
 
 static tensorflow::mutex mapper_instance_mutex(tensorflow::LINKER_INITIALIZED);
 static llvm::SectionMemoryManager::MemoryMapper* mapper_instance
-    GUARDED_BY(mapper_instance_mutex) = nullptr;
+    TF_GUARDED_BY(mapper_instance_mutex) = nullptr;
 
 llvm::SectionMemoryManager::MemoryMapper* GetInstance() {
   tensorflow::mutex_lock lock(mapper_instance_mutex);

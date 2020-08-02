@@ -62,7 +62,7 @@ class CreatePythonApiTest(test.TestCase):
     del sys.modules[_MODULE_NAME]
 
   def testFunctionImportIsAdded(self):
-    imports, _ = create_python_api.get_api_init_text(
+    imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
         api_name='tensorflow',
@@ -97,7 +97,7 @@ class CreatePythonApiTest(test.TestCase):
                      msg='compat.v1 in %s' % str(imports.keys()))
 
   def testClassImportIsAdded(self):
-    imports, _ = create_python_api.get_api_init_text(
+    imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
         api_name='tensorflow',
@@ -116,7 +116,7 @@ class CreatePythonApiTest(test.TestCase):
         msg='%s not in %s' % (expected_import, str(imports)))
 
   def testConstantIsAdded(self):
-    imports, _ = create_python_api.get_api_init_text(
+    imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
         api_name='tensorflow',
@@ -132,7 +132,7 @@ class CreatePythonApiTest(test.TestCase):
                     msg='%s not in %s' % (expected, str(imports)))
 
   def testCompatModuleIsAdded(self):
-    imports, _ = create_python_api.get_api_init_text(
+    imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
         api_name='tensorflow',
@@ -144,7 +144,7 @@ class CreatePythonApiTest(test.TestCase):
                     msg='compat.v1.test not in %s' % str(imports.keys()))
 
   def testNestedCompatModulesAreAdded(self):
-    imports, _ = create_python_api.get_api_init_text(
+    imports, _, _ = create_python_api.get_api_init_text(
         packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
         api_name='tensorflow',

@@ -30,6 +30,7 @@ from source.
     sudo apt-get install python swig python-numpy # Linux
     brew install swig                             # OS X with homebrew
     ```
+- [Protocol buffer compiler (protoc) 3.x](https://github.com/google/protobuf/releases/)
 
 ### Build
 
@@ -74,6 +75,7 @@ from source.
 4.  Build and test:
 
     ```sh
+    go generate github.com/tensorflow/tensorflow/tensorflow/go/op
     go test github.com/tensorflow/tensorflow/tensorflow/go
     ```
 

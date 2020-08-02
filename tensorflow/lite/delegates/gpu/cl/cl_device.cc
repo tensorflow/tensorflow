@@ -105,8 +105,18 @@ OpenCLVersion ParseCLVersion(const std::string& version) {
     } else {
       return OpenCLVersion::CL_1_0;
     }
+  } else if (major == 2) {
+    if (minor == 2) {
+      return OpenCLVersion::CL_2_2;
+    } else if (minor == 1) {
+      return OpenCLVersion::CL_2_1;
+    } else {
+      return OpenCLVersion::CL_2_0;
+    }
+  } else if (major == 3) {
+    return OpenCLVersion::CL_3_0;
   } else {
-    return OpenCLVersion::CL_2_0;
+    return OpenCLVersion::CL_1_0;
   }
 }
 
@@ -128,6 +138,12 @@ Vendor ParseVendor(const std::string& device_name,
   } else if (d_name.find("nvidia") != std::string::npos ||
              v_name.find("nvidia") != std::string::npos) {
     return Vendor::NVIDIA;
+  } else if (d_name.find("advanced micro devices") != std::string::npos ||
+             v_name.find("advanced micro devices") != std::string::npos) {
+    return Vendor::AMD;
+  } else if (d_name.find("intel") != std::string::npos ||
+             v_name.find("intel") != std::string::npos) {
+    return Vendor::INTEL;
   } else {
     return Vendor::UNKNOWN;
   }
@@ -135,7 +151,7 @@ Vendor ParseVendor(const std::string& device_name,
 
 // check that gpu_version belong to range min_version-max_version
 // min_version is included and max_version is excluded.
-bool isGPUVersionInRange(int gpu_version, int min_version, int max_version) {
+bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
   return gpu_version >= min_version && gpu_version < max_version;
 }
 }  // namespace
@@ -174,6 +190,24 @@ int GetAdrenoGPUVersion(const std::string& gpu_version) {
   return -1;
 }
 
+MaliGPU GetMaliGPUVersion(const std::string& device_name) {
+  const std::map<std::string, MaliGPU> kMapping = {
+      {"T604", MaliGPU::T604}, {"T622", MaliGPU::T622}, {"T624", MaliGPU::T624},
+      {"T628", MaliGPU::T628}, {"T658", MaliGPU::T658}, {"T678", MaliGPU::T678},
+      {"T720", MaliGPU::T720}, {"T760", MaliGPU::T760}, {"T820", MaliGPU::T820},
+      {"T830", MaliGPU::T830}, {"T860", MaliGPU::T860}, {"T880", MaliGPU::T880},
+      {"G31", MaliGPU::G31},   {"G51", MaliGPU::G51},   {"G71", MaliGPU::G71},
+      {"G52", MaliGPU::G52},   {"G72", MaliGPU::G72},   {"G76", MaliGPU::G76},
+      {"G57", MaliGPU::G57},   {"G77", MaliGPU::G77},
+  };
+  for (const auto& v : kMapping) {
+    if (device_name.find(v.first) != std::string::npos) {
+      return v.second;
+    }
+  }
+  return MaliGPU::UNKNOWN;
+}
+
 std::string VendorToString(Vendor v) {
   switch (v) {
     case Vendor::QUALCOMM:
@@ -184,6 +218,10 @@ std::string VendorToString(Vendor v) {
       return "PowerVR";
     case Vendor::NVIDIA:
       return "NVIDIA";
+    case Vendor::AMD:
+      return "AMD";
+    case Vendor::INTEL:
+      return "Intel";
     case Vendor::UNKNOWN:
       return "unknown vendor";
   }
@@ -199,6 +237,12 @@ std::string OpenCLVersionToString(OpenCLVersion version) {
       return "1.2";
     case OpenCLVersion::CL_2_0:
       return "2.0";
+    case OpenCLVersion::CL_2_1:
+      return "2.1";
+    case OpenCLVersion::CL_2_2:
+      return "2.2";
+    case OpenCLVersion::CL_3_0:
+      return "3.0";
   }
 }
 
@@ -252,30 +296,113 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
   }
 }
 
-DeviceInfo::DeviceInfo(cl_device_id id)
-    : adreno_info(GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION)) {
+MaliInfo::MaliInfo(const std::string& device_name)
+    : gpu_version(GetMaliGPUVersion(device_name)) {}
+
+bool MaliInfo::IsMaliT6xx() const {
+  return gpu_version == MaliGPU::T604 || gpu_version == MaliGPU::T622 ||
+         gpu_version == MaliGPU::T624 || gpu_version == MaliGPU::T628 ||
+         gpu_version == MaliGPU::T658 || gpu_version == MaliGPU::T678;
+}
+
+bool MaliInfo::IsMaliT7xx() const {
+  return gpu_version == MaliGPU::T720 || gpu_version == MaliGPU::T760;
+}
+
+bool MaliInfo::IsMaliT8xx() const {
+  return gpu_version == MaliGPU::T820 || gpu_version == MaliGPU::T830 ||
+         gpu_version == MaliGPU::T860 || gpu_version == MaliGPU::T880;
+}
+
+bool MaliInfo::IsMidgard() const {
+  return IsMaliT6xx() || IsMaliT7xx() || IsMaliT8xx();
+}
+
+bool MaliInfo::IsBifrostGen1() const {
+  return gpu_version == MaliGPU::G31 || gpu_version == MaliGPU::G51 ||
+         gpu_version == MaliGPU::G71;
+}
+
+bool MaliInfo::IsBifrostGen2() const {
+  return gpu_version == MaliGPU::G52 || gpu_version == MaliGPU::G72;
+}
+
+bool MaliInfo::IsBifrostGen3() const { return gpu_version == MaliGPU::G76; }
+
+bool MaliInfo::IsBifrost() const {
+  return IsBifrostGen1() || IsBifrostGen2() || IsBifrostGen3();
+}
+
+bool MaliInfo::IsValhall() const {
+  return gpu_version == MaliGPU::G57 || gpu_version == MaliGPU::G77;
+}
+
+DeviceInfo::DeviceInfo(cl_device_id id) {
   const auto device_name = GetDeviceInfo<std::string>(id, CL_DEVICE_NAME);
   const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
+  const auto opencl_c_version =
+      GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
   vendor = ParseVendor(device_name, vendor_name);
-  cl_version = ParseCLVersion(
-      GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION));
+  if (vendor == Vendor::QUALCOMM) {
+    adreno_info = AdrenoInfo(opencl_c_version);
+  } else if (vendor == Vendor::MALI) {
+    mali_info = MaliInfo(device_name);
+  }
+  cl_version = ParseCLVersion(opencl_c_version);
   extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
   supports_fp16 = false;
+  supports_image3d_writes = false;
   for (const auto& ext : extensions) {
     if (ext == "cl_khr_fp16") {
       supports_fp16 = true;
     }
+    if (ext == "cl_khr_3d_image_writes") {
+      supports_image3d_writes = true;
+    }
   }
+
+  f32_config =
+      GetDeviceInfo<cl_device_fp_config>(id, CL_DEVICE_SINGLE_FP_CONFIG);
+  supports_fp32_rtn = f32_config & CL_FP_ROUND_TO_NEAREST;
+
+  if (supports_fp16) {
+    auto status = GetDeviceInfo<cl_device_fp_config>(
+        id, CL_DEVICE_HALF_FP_CONFIG, &f16_config);
+    // AMD supports cl_khr_fp16 but CL_DEVICE_HALF_FP_CONFIG is empty.
+    if (status.ok() && vendor != Vendor::AMD) {
+      supports_fp16_rtn = f16_config & CL_FP_ROUND_TO_NEAREST;
+    } else {  // happens on PowerVR
+      f16_config = f32_config;
+      supports_fp16_rtn = supports_fp32_rtn;
+    }
+  } else {
+    f16_config = 0;
+    supports_fp16_rtn = false;
+  }
+
   if (vendor == Vendor::POWERVR && !supports_fp16) {
     // PowerVR doesn't have full support of fp16 and so doesn't list this
     // extension. But it can support fp16 in MADs and as buffers/textures types,
     // so we will use it.
     supports_fp16 = true;
+    f16_config = f32_config;
+    supports_fp16_rtn = supports_fp32_rtn;
+  }
+
+  if (!supports_image3d_writes &&
+      ((vendor == Vendor::QUALCOMM &&
+        IsGPUVersionInRange(adreno_info.gpu_version, 400, 500)) ||
+       vendor == Vendor::NVIDIA)) {
+    // in local tests Adreno 430 can write in image 3d, at least on small sizes,
+    // but it doesn't have cl_khr_3d_image_writes in list of available
+    // extensions
+    // The same for NVidia
+    supports_image3d_writes = true;
   }
   compute_units_count = GetDeviceInfo<cl_uint>(id, CL_DEVICE_MAX_COMPUTE_UNITS);
-  image2d_max_width = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
-  image2d_max_height = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_WIDTH);
+  image2d_max_width = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_WIDTH);
+  image2d_max_height = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
   buffer_max_size = GetDeviceInfo<cl_ulong>(id, CL_DEVICE_MAX_MEM_ALLOC_SIZE);
   if (cl_version >= OpenCLVersion::CL_1_2) {
     image_buffer_max_size =
@@ -283,6 +410,9 @@ DeviceInfo::DeviceInfo(cl_device_id id)
     image_array_max_layers =
         GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE_MAX_ARRAY_SIZE);
   }
+  image3d_max_width = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE3D_MAX_WIDTH);
+  image3d_max_height = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
+  image3d_max_depth = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE3D_MAX_DEPTH);
   GetDeviceWorkDimsSizes(id, &max_work_group_sizes);
 }
 
@@ -293,6 +423,46 @@ bool DeviceInfo::SupportsTextureArray() const {
 bool DeviceInfo::SupportsImageBuffer() const {
   return cl_version >= OpenCLVersion::CL_1_2;
 }
+
+bool DeviceInfo::SupportsImage3D() const {
+  if (vendor == Vendor::MALI) {
+    // On Mali T880 read_imageh doesn't compile with image3d_t
+    return false;
+  }
+  return supports_image3d_writes;
+}
+
+bool DeviceInfo::IsAdreno() const { return vendor == Vendor::QUALCOMM; }
+
+bool DeviceInfo::IsAdreno3xx() const {
+  return IsAdreno() && IsGPUVersionInRange(adreno_info.gpu_version, 300, 400);
+}
+
+bool DeviceInfo::IsAdreno4xx() const {
+  return IsAdreno() && IsGPUVersionInRange(adreno_info.gpu_version, 400, 500);
+}
+
+bool DeviceInfo::IsAdreno5xx() const {
+  return IsAdreno() && IsGPUVersionInRange(adreno_info.gpu_version, 500, 600);
+}
+
+bool DeviceInfo::IsAdreno6xx() const {
+  return IsAdreno() && IsGPUVersionInRange(adreno_info.gpu_version, 600, 700);
+}
+
+bool DeviceInfo::IsAdreno6xxOrHigher() const {
+  return IsAdreno() && adreno_info.gpu_version >= 600;
+}
+
+bool DeviceInfo::IsPowerVR() const { return vendor == Vendor::POWERVR; }
+
+bool DeviceInfo::IsNvidia() const { return vendor == Vendor::NVIDIA; }
+
+bool DeviceInfo::IsMali() const { return vendor == Vendor::MALI; }
+
+bool DeviceInfo::IsAMD() const { return vendor == Vendor::AMD; }
+
+bool DeviceInfo::IsIntel() const { return vendor == Vendor::INTEL; }
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
     : id_(id), platform_id_(platform_id), info_(id) {}
@@ -347,41 +517,72 @@ bool CLDevice::SupportsImageBuffer() const {
   return info_.SupportsImageBuffer();
 }
 
+bool CLDevice::SupportsImage3D() const { return info_.SupportsImage3D(); }
+
+bool CLDevice::SupportsFP32RTN() const { return info_.supports_fp32_rtn; }
+
+bool CLDevice::SupportsFP16RTN() const { return info_.supports_fp16_rtn; }
+
 std::string CLDevice::GetPlatformVersion() const {
   return GetPlatformInfo(platform_id_, CL_PLATFORM_VERSION);
 }
 
-bool CLDevice::IsAdreno() const { return info_.vendor == Vendor::QUALCOMM; }
-
-bool CLDevice::IsAdreno3xx() const {
-  return IsAdreno() &&
-         isGPUVersionInRange(info_.adreno_info.gpu_version, 300, 400);
+bool CLDevice::IsCL20OrHigher() const {
+  return info_.cl_version != OpenCLVersion::CL_1_0 &&
+         info_.cl_version != OpenCLVersion::CL_1_1 &&
+         info_.cl_version != OpenCLVersion::CL_1_2;
 }
 
-bool CLDevice::IsAdreno4xx() const {
-  return IsAdreno() &&
-         isGPUVersionInRange(info_.adreno_info.gpu_version, 400, 500);
+bool CLDevice::SupportsSubGroupWithSize(int sub_group_size) const {
+  if (IsIntel()) {
+    if (SupportsExtension("cl_intel_required_subgroup_size")) {
+      size_t sub_groups_count;
+      cl_int error =
+          clGetDeviceInfo(id_, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
+                          nullptr, &sub_groups_count);
+      if (error != CL_SUCCESS) {
+        return false;
+      }
+      std::vector<size_t> sub_group_sizes(sub_groups_count);
+      error = clGetDeviceInfo(id_, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
+                              sizeof(size_t) * sub_groups_count,
+                              sub_group_sizes.data(), nullptr);
+      if (error != CL_SUCCESS) {
+        return false;
+      }
+      for (int i = 0; i < sub_groups_count; ++i) {
+        if (sub_group_sizes[i] == sub_group_size) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
-bool CLDevice::IsAdreno5xx() const {
-  return IsAdreno() &&
-         isGPUVersionInRange(info_.adreno_info.gpu_version, 500, 600);
-}
+bool CLDevice::IsAdreno() const { return info_.IsAdreno(); }
 
-bool CLDevice::IsAdreno6xx() const {
-  return IsAdreno() &&
-         isGPUVersionInRange(info_.adreno_info.gpu_version, 600, 700);
-}
+bool CLDevice::IsAdreno3xx() const { return info_.IsAdreno3xx(); }
+
+bool CLDevice::IsAdreno4xx() const { return info_.IsAdreno4xx(); }
+
+bool CLDevice::IsAdreno5xx() const { return info_.IsAdreno5xx(); }
+
+bool CLDevice::IsAdreno6xx() const { return info_.IsAdreno6xx(); }
 
 bool CLDevice::IsAdreno6xxOrHigher() const {
-  return IsAdreno() && info_.adreno_info.gpu_version >= 600;
+  return info_.IsAdreno6xxOrHigher();
 }
 
-bool CLDevice::IsPowerVR() const { return info_.vendor == Vendor::POWERVR; }
+bool CLDevice::IsPowerVR() const { return info_.IsPowerVR(); }
 
-bool CLDevice::IsNvidia() const { return info_.vendor == Vendor::NVIDIA; }
+bool CLDevice::IsNvidia() const { return info_.IsNvidia(); }
 
-bool CLDevice::IsMali() const { return info_.vendor == Vendor::MALI; }
+bool CLDevice::IsMali() const { return info_.IsMali(); }
+
+bool CLDevice::IsAMD() const { return info_.IsAMD(); }
+
+bool CLDevice::IsIntel() const { return info_.IsIntel(); }
 
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;
@@ -391,27 +592,28 @@ void CLDevice::DisableOneLayerTextureArray() {
   info_.adreno_info.support_one_layer_texture_array = false;
 }
 
-Status CreateDefaultGPUDevice(CLDevice* result) {
+absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   cl_uint num_platforms;
   clGetPlatformIDs(0, nullptr, &num_platforms);
   if (num_platforms == 0) {
-    return UnknownError("No supported OpenCL platform.");
+    return absl::UnknownError("No supported OpenCL platform.");
   }
   std::vector<cl_platform_id> platforms(num_platforms);
   clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
 
+  cl_platform_id platform_id = platforms[0];
   cl_uint num_devices;
-  clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
+  clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
   if (num_devices == 0) {
-    return UnknownError("No GPU on current platform.");
+    return absl::UnknownError("No GPU on current platform.");
   }
 
   std::vector<cl_device_id> devices(num_devices);
-  clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, num_devices, devices.data(),
+  clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices, devices.data(),
                  nullptr);
 
-  *result = CLDevice(devices[0], platforms[0]);
-  return OkStatus();
+  *result = CLDevice(devices[0], platform_id);
+  return absl::OkStatus();
 }
 
 }  // namespace cl

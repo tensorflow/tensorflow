@@ -80,6 +80,7 @@ REGISTER_OP("VarHandleOp")
     .Attr("shared_name: string = ''")
     .Attr("dtype: type")
     .Attr("shape: shape")
+    .Attr("allowed_devices: list(string) = []")
     .Output("resource: resource")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_BFLOAT16_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_BFLOAT16_H_
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {

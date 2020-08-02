@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 32.
+// Next ID to use: 33.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -222,4 +222,8 @@ message TocoFlags {
   // Full filepath of the folder to dump conversion logs. This includes a global
   // view of the conversion process, and user can choose to submit those logs.
   optional string conversion_summary_dir = 31;
+
+  // String representing the custom ops OpDefs that are included in the
+  // GraphDef.
+  repeated string custom_opdefs = 32;
 }

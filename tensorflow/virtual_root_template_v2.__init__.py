@@ -100,6 +100,8 @@ for _m in _top_level_modules:
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
 
+_major_api_version = 2
+
 # These should not be visible in the main tf module.
 try:
   del core
@@ -124,16 +126,6 @@ except NameError:
 try:
   del examples
 except NameError:
-  pass
-
-# TODO(mihaimaruseac): Revisit all of this once we release 2.1
-# Manually patch keras and estimator so tf.keras and tf.estimator work
-keras = _sys.modules["tensorflow.keras"]
-if not _root_estimator: estimator = _sys.modules["tensorflow.estimator"]
-# Also import module aliases
-try:
-  from tensorflow_core import losses, metrics, initializers, optimizers
-except ImportError:
   pass
 
 # LINT.ThenChange(//tensorflow/virtual_root_template_v1.__init__.py.oss)

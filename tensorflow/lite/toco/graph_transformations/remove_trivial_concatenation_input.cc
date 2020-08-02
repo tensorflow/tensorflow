@@ -41,9 +41,9 @@ namespace toco {
   if (concat_op->type != OperatorType::kConcatenation) {
     return ::tensorflow::Status::OK();
   }
-  std::vector<string> trivial_inputs;
-  std::vector<string> nontrivial_inputs;
-  for (const string& input : concat_op->inputs) {
+  std::vector<std::string> trivial_inputs;
+  std::vector<std::string> nontrivial_inputs;
+  for (const std::string& input : concat_op->inputs) {
     const auto& input_array = model->GetArray(input);
     const bool is_trivial =
         input_array.has_shape() && input_array.shape().dimensions_count() == 0;
@@ -60,7 +60,7 @@ namespace toco {
 
   // Drop trivial inputs.
   concat_op->inputs = nontrivial_inputs;
-  for (const string& input : trivial_inputs) {
+  for (const std::string& input : trivial_inputs) {
     DeleteArrayIfUnusedOutsideOfOp(input, concat_op, model);
   }
   *modified = true;

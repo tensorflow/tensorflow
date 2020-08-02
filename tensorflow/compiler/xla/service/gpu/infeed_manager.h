@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INFEED_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
+#include "absl/base/thread_annotations.h"
 #include "tensorflow/compiler/xla/service/gpu/xfeed_queue.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -75,7 +76,7 @@ class InfeedManager : public XfeedQueue<ShapeTree<InfeedBuffer>> {
 
   // Cached host to device stream for queuing infeed data.
   std::unique_ptr<se::Stream> host_to_device_stream_
-      GUARDED_BY(host_to_device_stream_mu_);
+      ABSL_GUARDED_BY(host_to_device_stream_mu_);
 
   // Executor that the host_to_device_stream belongs to. Not owned.
   se::StreamExecutor* host_to_device_executor_ = nullptr;

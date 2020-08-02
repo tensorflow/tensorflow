@@ -306,7 +306,7 @@ class Supervisor(object):
     @end_compatibility
     """
     if context.executing_eagerly():
-      raise RuntimeError("Supervisors are compatible with eager execution.")
+      raise RuntimeError("Supervisors are incompatible with eager execution.")
     # Set default values of arguments.
     if graph is None:
       graph = ops.get_default_graph()

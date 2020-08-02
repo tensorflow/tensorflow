@@ -66,7 +66,7 @@ Status EventsWriter::InitIfNeeded() {
 
   filename_ =
       strings::Printf("%s.out.tfevents.%010lld.%s%s", file_prefix_.c_str(),
-                      static_cast<int64>(time_in_seconds),
+                      static_cast<long long>(time_in_seconds),
                       port::Hostname().c_str(), file_suffix_.c_str());
 
   // Reset recordio_writer (which has a reference to recordio_file_) so final

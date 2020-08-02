@@ -24,6 +24,7 @@
 #   - Msys2
 #   - Anaconda3
 # * Bazel windows executable copied as "bazel.exe" and included in PATH.
+# change
 
 # All commands shall pass, and all should be visible.
 set -x
@@ -120,6 +121,10 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
   else
     EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
   fi
+else
+  if [[ -v PROJECT_NAME  ]]; then
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME}"
+  fi
 fi
 
 # Enable short object file path to avoid long path issue on Windows.
@@ -131,12 +136,12 @@ fi
 
 run_configure_for_cpu_build
 
-bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
+bazel build ${EXTRA_BUILD_FLAGS}  \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu \
   --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
-bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
+bazel build --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 
@@ -154,7 +159,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
 fi
 
 # Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
 # NUMBER_OF_PROCESSORS is predefined on Windows

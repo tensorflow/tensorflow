@@ -14,14 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/add.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
+#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -29,7 +40,6 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 namespace add {
-
 // This file has three implementation of Add.
 enum KernelType {
   kReference,
@@ -80,7 +90,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
   output->type = input2->type;
 
   const bool requires_broadcast = !HaveSameShapes(input1, input2);
@@ -118,15 +128,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplierSmallerThanOneExp(
         real_output_multiplier, &data->output_multiplier, &data->output_shift);
 
-    if (output->type == kTfLiteUInt8) {
-      CalculateActivationRangeUint8(params->activation, output,
-                                    &data->output_activation_min,
-                                    &data->output_activation_max);
-    } else {
-      CalculateActivationRangeInt8(params->activation, output,
-                                   &data->output_activation_min,
-                                   &data->output_activation_max);
-    }
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   } else if (output->type == kTfLiteInt16) {
     // 16bit -> 16bit special quantized path, supporting only a rather
     // narrow case of quantization parameters: zero_points must all be 0
@@ -164,9 +168,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, data->input1_shift <= 0);
     TF_LITE_ENSURE(context, data->input2_shift <= 0);
 
-    CalculateActivationRangeQuantized(context, params->activation, output,
-                                      &data->output_activation_min,
-                                      &data->output_activation_max);
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   }
 
   return context->ResizeTensor(context, output, output_size);
@@ -319,9 +323,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                       EvalAddQuantized<kernel_type>(context, node, params, data,
                                                     input1, input2, output));
   } else {
-    context->ReportError(context,
-                         "Inputs and outputs not all float|uint8|int16 types.");
-    return kTfLiteError;
+    TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Add");
   }
 
   return kTfLiteOk;

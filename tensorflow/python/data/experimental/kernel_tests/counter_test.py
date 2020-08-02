@@ -17,35 +17,33 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class CounterTest(test_base.DatasetTestBase):
+class CounterTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def testCounter(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(start=3, step=4, expected_output=[[3, 7, 11]]) +
+          combinations.combine(start=0, step=-1, expected_output=[[0, -1, -2]]))
+  )
+  def testCounter(self, start, step, expected_output):
     """Test dataset construction using `count`."""
-    dataset = counter.Counter(start=3, step=4)
+    dataset = counter.Counter(start, step)
     self.assertEqual(
         [], dataset_ops.get_legacy_output_shapes(dataset).as_list())
     self.assertEqual(dtypes.int64, dataset_ops.get_legacy_output_types(dataset))
     get_next = self.getNext(dataset)
-
-    negative_dataset = counter.Counter(start=0, step=-1)
-    negative_get_next = self.getNext(negative_dataset)
-
-    self.assertEqual(3, self.evaluate(get_next()))
-    self.assertEqual(3 + 4, self.evaluate(get_next()))
-    self.assertEqual(3 + 2 * 4, self.evaluate(get_next()))
-
-    self.assertEqual(0, self.evaluate(negative_get_next()))
-    self.assertEqual(-1, self.evaluate(negative_get_next()))
-    self.assertEqual(-2, self.evaluate(negative_get_next()))
+    for expected in expected_output:
+      self.assertEqual(expected, self.evaluate(get_next()))
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 
+#include "tensorflow/lite/c/common.h"
+
 #ifdef __cplusplus
 extern "C" {
 #else
@@ -44,6 +46,8 @@ typedef struct {
   // Allows to quantify tensors, downcast values, process in float16 etc.
   bool allow_precision_loss;
   TFLGpuDelegateWaitType wait_type;
+  // Allows execution of integer quantized models
+  bool enable_quantization;
 } TFLGpuDelegateOptions;
 
 // Creates a new delegate instance that need to be destroyed with
@@ -51,10 +55,11 @@ typedef struct {
 // When `options` is set to `nullptr`, the following default values are used:
 // .precision_loss_allowed = false,
 // .wait_type = kPassive,
-TfLiteDelegate* TFLGpuDelegateCreate(const TFLGpuDelegateOptions* options);
+TFL_CAPI_EXPORT extern TfLiteDelegate* TFLGpuDelegateCreate(
+    const TFLGpuDelegateOptions* options);
 
 // Destroys a delegate created with `TFLGpuDelegateCreate` call.
-void TFLGpuDelegateDelete(TfLiteDelegate* delegate);
+TFL_CAPI_EXPORT extern void TFLGpuDelegateDelete(TfLiteDelegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
+#include "absl/base/attributes.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/types.h"
 

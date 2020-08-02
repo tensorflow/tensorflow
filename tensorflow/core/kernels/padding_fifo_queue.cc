@@ -98,7 +98,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, allow_small_batch,
-           this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+           this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32 queue_size = queues_[0].size();
             if (closed_ && queue_size < attempt->elements_requested) {
               // If we don't have enough for a full dequeue, we have

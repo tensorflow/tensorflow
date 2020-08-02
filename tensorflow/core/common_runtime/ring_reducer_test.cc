@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
@@ -94,7 +93,7 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
   }
 
   mutex mu_;
-  int fail_after_ GUARDED_BY(mu_);
+  int fail_after_ TF_GUARDED_BY(mu_);
 };
 
 std::unique_ptr<OpKernel> GetKernel(const NodeDef& node,
@@ -138,7 +137,7 @@ class RingReducerTest : public ::testing::Test {
  protected:
   RingReducerTest() : device_type_(DEVICE_CPU) {}
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   void InitGPUDevices() {
     auto device_factory = DeviceFactory::GetFactory("GPU");
     CHECK(device_factory);
@@ -157,7 +156,7 @@ class RingReducerTest : public ::testing::Test {
 
   void Init(int num_workers, int num_devices, DataType dtype,
             const DeviceType& device_type, int num_subdivs, int fail_after) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     InitGPUDevices();
 #endif
     device_type_ = device_type;
@@ -331,16 +330,13 @@ class RingReducerTest : public ::testing::Test {
           CHECK(actual.CopyFrom(*inst, inst->shape()));
           VLOG(1) << "actual " << actual.SummarizeValue(100);
         } else if (device_type_ == DEVICE_GPU) {
-          Notification note;
           Device* dev = instances_[di]->device_;
           auto* dev_info = dev->tensorflow_gpu_device_info();
           CHECK(dev_info);
-          dev_info->default_context->CopyDeviceTensorToCPU(
-              inst, "" /*tensor_name*/, dev, &actual, [&note](const Status& s) {
-                CHECK(s.ok());
-                note.Notify();
-              });
-          note.WaitForNotification();
+          CHECK(dev_info->default_context
+                    ->CopyDeviceTensorToCPUSync(inst, "" /*tensor_name*/, dev,
+                                                &actual)
+                    .ok());
         }
 
         auto alias = actual.template unaligned_flat<T>();
@@ -397,12 +393,13 @@ class RingReducerTest : public ::testing::Test {
     cp->instance.impl_details.subdiv_permutations.clear();
     cp->subdiv_rank.clear();
     // Create a stub ring reducer only for testing param initialization.
-    RingReducer reducer;
-    TF_CHECK_OK(reducer.InitializeCollectiveParams(cp));
+    RingReducer* reducer = new RingReducer;
+    core::ScopedUnref unref(reducer);
+    TF_CHECK_OK(reducer->InitializeCollectiveParams(cp));
     EXPECT_EQ(expected_subdiv_perms,
               cp->instance.impl_details.subdiv_permutations);
     EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
-    reducer.group_size_tensor_ready_.Notify();  // To unblock destructor.
+    reducer->group_size_tensor_ready_.Notify();  // To unblock destructor.
   }
 
   class DeviceInstance {
@@ -458,13 +455,9 @@ class RingReducerTest : public ::testing::Test {
         init_f(&cpu_tensor);
         auto* dev_info = device_->tensorflow_gpu_device_info();
         CHECK(dev_info);
-        Notification note;
-        dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &tensor_, [&note](const Status& s) {
-              CHECK(s.ok());
-              note.Notify();
-            });
-        note.WaitForNotification();
+        CHECK(dev_info->default_context
+                  ->CopyCPUTensorToDeviceSync(&cpu_tensor, device_, &tensor_)
+                  .ok());
       } else {
         LOG(FATAL) << "Unsupported device_type " << device_type_;
       }
@@ -514,14 +507,15 @@ class RingReducerTest : public ::testing::Test {
       // Prepare a RingReducer instance.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      RingReducer reducer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                &ctx, &op_params, col_params_, exec_key,
-                                kStepId, &tensor_, &tensor_);
-      TF_CHECK_OK(reducer.InitializeCollectiveContext(&col_ctx));
+      RingReducer* reducer = new RingReducer;
+      core::ScopedUnref unref(reducer);
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
+          col_params_, exec_key, kStepId, &tensor_, &tensor_);
+      TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-reduce.
-      reducer.Run([this](Status s) { status_ = s; });
+      reducer->Run([this](Status s) { status_ = s; });
       if (status_.ok()) {
         CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
       }
@@ -556,7 +550,7 @@ class RingReducerTest : public ::testing::Test {
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
-  int32 reduce_counter_ GUARDED_BY(mu_) = 0;
+  int32 reduce_counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
@@ -683,7 +677,7 @@ TEST_F(RingReducerTest, AutomaticSubdivUpperBound) {
     }                                                                         \
   }
 
-#ifndef GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 // Success tests
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 1, 0)
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 2, 0)
@@ -710,7 +704,7 @@ DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 7)
 DEF_TEST(FLOAT, CPU, 2, 8, 2, 9408, 11)
 #endif
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // GPU tests.  So long as the device names are all in a single tasks we
 // bypass inter-worker routing code and can fake multiple GPUs with a single
 // GPU, from the perspective of the RingReducer logic.  So these tests

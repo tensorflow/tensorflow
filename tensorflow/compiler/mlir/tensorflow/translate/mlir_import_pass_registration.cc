@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       MlirImportPass);
 
 }  // namespace tensorflow

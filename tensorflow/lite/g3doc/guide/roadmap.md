@@ -1,81 +1,87 @@
-# TensorFlow Lite 2019 Roadmap
+# TensorFlow Lite Roadmap
 
-**Updated: August 29, 2019**
+**Updated: April 18, 2020**
 
-The following represents a high level overview of our 2019 plan. You should be
-conscious that this roadmap may change at anytime relative to a range of factors
-and the order below does not reflect any type of priority. As a matter of
-principle, we typically prioritize issues that the majority of our users are
-asking for and so this list fundamentally reflects that.
+The following represents a high level overview of our 2020 plan. You should be
+aware that this roadmap may change at any time and the order below does not
+reflect any type of priority. As a matter of principle, we typically prioritize
+issues based on the number of users affected.
 
 We break our roadmap into four key segments: usability, performance,
 optimization and portability. We strongly encourage you to comment on our
-roadmap and provide us feedback in the TF Lite discussion groups and forums.
+roadmap and provide us feedback in the
+[TF Lite discussion group](https://groups.google.com/a/tensorflow.org/g/tflite).
 
 ## Usability
 
-*   **New model converter**
-    *   New MLIR-based TensorFlow Lite convertor that better handles graph
-    conversion (e.g., control flow, conditionals, etc...)
-    *   Improved diagnostics and debugging of model conversion failures
 *   **Expanded ops coverage**
     *   Prioritized op additions based on user feedback
 *   **Improvements to using TensorFlow ops in TensorFlow Lite**
     *   Pre-built libraries available via Bintray (Android) and Cocoapods (iOS)
     *   Smaller binary size when using select TF ops via op stripping
 *   **LSTM / RNN support**
-    *   Full support of conversion for LSTMs and RNNs
-*   **Pre-and-post processing support**
-    *   New support library for model-specific pre-and-post processing
-    *   Utilities for common platform-specific functionality, e.g., loading a
-    model efficiently from assets, or converting a Bitmap to a tensor
+    *   Full LSTM and RNN conversion support, including support in Keras
+*   **Pre-and-post processing support libraries and codegen tool**
+    *   Ready-to-use API building blocks for common ML tasks
+    *   Support more models (e.g. NLP) and more platforms (e.g. iOS)
+*   **Android Studio Integration**
+    *   Drag & drop TFLite models into Android Studio to generate model binding
+        classes
 *   **Control Flow & Training on-device**
-    *   Support for control flow related ops
     *   Support for training on-device, focused on personalization and transfer
-    learning
-*   **Graph visualization tooling**
-    *   Provide enhanced graph visualization tooling
+        learning
+*   **Visualization tooling with TensorBoard**
+    *   Provide enhanced tooling with TensorBoard
+*   **Model Maker**
+    *   Support more tasks, including object detection and BERT-based NLP tasks
 *   **More models and examples**
-    *   More models on the support section of the site
-    *   Additional examples to demonstrate model usage as well as new features
-    and APIs, covering different platforms.
-    *   Model customization libraries and tutorials to let beginners to
-    customize those models easily.
+    *   More examples to demonstrate model usage as well as new features and
+        APIs, covering different platforms.
 
 ## Performance
 
 *   **Better tooling**
-    *   Simpler benchmarking and profiling tools for understanding available
-    accelerators and performance tradeoffs
     *   Public dashboard for tracking performance gains with each release
 *   **Improved CPU performance**
-    *   Continued optimization of float and quantized kernels
+    *   New highly optimized floating-point kernel library for convolutional
+        models
     *   First-class x86 support
 *   **Updated NN API support**
-    *   Full support for new Android Q NN API features, ops and types
+    *   Full support for new Android R NN API features, ops and types
 *   **GPU backend optimizations**
-    *   OpenCL and Vulkan support on Android
-    *   Metal and Objective-C CocoaPods for Metal acceleration
+    *   Vulkan support on Android
+    *   Support integer quantized models
 *   **Hexagon DSP backend**
-    *   Initial release of DSP acceleration for pre-Android P devices
+    *   Per-channel quantization support for all models created through
+        post-training quantization
+    *   Dynamic input batch size support
+    *   Better op coverage, including LSTM
+*   **Core ML backend**
+    *   Optimizing start-up time
+    *   Dynamic quantized models support
+    *   Float16 quantized models support
+    *   Better op coverage
 
 ## Optimization
 
 *   **Quantization**
-    *   Post training quantization for hybrid kernels -- [Launched](https://medium.com/tensorflow/introducing-the-model-optimization-toolkit-for-tensorflow-254aca1ba0a3){:.external}
-    *   Post training quantization for (8b) fixed-point kernels -- [Launched](https://medium.com/tensorflow/tensorflow-model-optimization-toolkit-post-training-integer-quantization-b4964a1ea9ba){:.external}
-    *   Training with quantization for (8b) fixed-point kernels
-    *   Extend post and during training APIs to (8b) fixed-point RNNs
-    *   Training with quantization for low bit-width (< 8b) fixed-point kernels
+
+    *   Post-training quantization for (8b) fixed-point RNNs
+    *   During-training quantization for (8b) fixed-point RNNs
+    *   Quality and performance improvements for post-training dynamic-range
+        quantization
+
 *   **Pruning / sparsity**
-    *   Magnitude based weight pruning during training -- [Launched](https://medium.com/tensorflow/tensorflow-model-optimization-toolkit-pruning-api-42cac9157a6a){:.external}
-    *   Support for sparse model execution
+
+    *   Sparse model execution support in TensorFlow Lite -
+        [WIP](https://github.com/tensorflow/model-optimization/issues/173)
+    *   Weight clustering API
 
 ## Portability
 
 *   **Microcontroller Support**
-    *   Add support for a range of 32-bit MCU architecture use cases for Speech
-    and Image Classification
+    *   Add support for a range of 32-bit MCU architecture use cases for speech
+        and image classification
     *   Sample code and models for vision and audio data
     *   Full TF Lite op support on microcontrollers
     *   Support for more platforms, including CircuitPython support

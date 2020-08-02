@@ -25,9 +25,9 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
-from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_callbacks
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
@@ -217,12 +217,14 @@ def _MakeFunc(v, arg_name):
   """Ensure v is a func."""
   if isinstance(v, attr_value_pb2.NameAttrList):
     return v
-  fn_attr = attr_value_pb2.NameAttrList()
   if isinstance(v, compat.bytes_or_text_types):
-    fn_attr.name = v
+    fn_attr = attr_value_pb2.NameAttrList(name=v)
   elif hasattr(v, "add_to_graph"):
     v.add_to_graph(ops.get_default_graph())
-    fn_attr.name = v.name
+    if hasattr(v, "_as_name_attr_list"):
+      fn_attr = v._as_name_attr_list  # pylint: disable=protected-access
+    else:
+      fn_attr = attr_value_pb2.NameAttrList(name=v.name)
   else:
     raise TypeError("Don't know how to convert {} to a func for "
                     "argument {}".format(v, arg_name))
@@ -335,6 +337,7 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
   # on the other.  Handling this will require restructuring this code
   # significantly.
   default_type_attr_map = {}
+  allowed_list_attr_map = {}
   for attr_def in op_def.attr:
     if attr_def.type != "type":
       continue
@@ -342,6 +345,8 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
     if attr_def.HasField("default_value"):
       default_type_attr_map[key] = dtypes.as_dtype(
           attr_def.default_value.type)
+    if attr_def.HasField("allowed_values"):
+      allowed_list_attr_map[key] = attr_def.allowed_values.list.type
 
   # Requires that op_def has passed validation (using the C++
   # ValidateOpDef() from ../framework/op_def_util.h).
@@ -449,6 +454,7 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         # arguments to that type.
         dtype = None
         default_dtype = None
+        allowed_list = None
         if input_arg.type != types_pb2.DT_INVALID:
           dtype = input_arg.type
         elif input_arg.type_attr in attrs:
@@ -458,14 +464,41 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
           # so we prefer the attr's default, so code that adds a new attr
           # with a default is backwards compatible.
           default_dtype = default_type_attr_map[input_arg.type_attr]
+          allowed_list = allowed_list_attr_map.get(input_arg.type_attr)
 
         try:
-          values = ops.convert_to_tensor(
-              values,
-              name=input_arg.name,
-              dtype=dtype,
-              as_ref=input_arg.is_ref,
-              preferred_dtype=default_dtype)
+          # First see if we can get a valid dtype with the default conversion
+          # and see if it matches an allowed dtypes. Some ops like ConcatV2 may
+          # not list allowed dtypes, in which case we should skip this.
+          if dtype is None and allowed_list:
+            inferred = None
+            try:
+              inferred = ops.convert_to_tensor(
+                  values, name=input_arg.name, as_ref=input_arg.is_ref)
+            except TypeError as err:
+              # When converting a python object such as a list of Dimensions, we
+              # need a dtype to be specified, thus tensor conversion may throw
+              # an exception which we will ignore and try again below.
+              pass
+
+            # If we did not match an allowed dtype, try again with the default
+            # dtype. This could be because we have an empty tensor and thus we
+            # picked the wrong type.
+            if inferred is not None and inferred.dtype in allowed_list:
+              values = inferred
+            else:
+              values = ops.convert_to_tensor(
+                  values,
+                  name=input_arg.name,
+                  as_ref=input_arg.is_ref,
+                  preferred_dtype=default_dtype)
+          else:
+            values = ops.convert_to_tensor(
+                values,
+                name=input_arg.name,
+                dtype=dtype,
+                as_ref=input_arg.is_ref,
+                preferred_dtype=default_dtype)
         except TypeError as err:
           if dtype is None:
             raise err

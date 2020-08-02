@@ -30,12 +30,10 @@ namespace boosted_trees {
 struct SplitCandidate {
   SplitCandidate() {}
 
-  // Index in the list of the feature ids.
-  int64 feature_idx = 0;
-
   // Index in the tensor of node_ids for the feature with idx feature_idx.
   int64 candidate_idx = 0;
 
+  int64 feature_id = 0;
   float gain = 0.0;
   int32 threshold = 0.0;
   int32 dimension_id = 0;
@@ -56,20 +54,20 @@ static bool GainIsLarger(const float g1, const float g2) {
   return g1 - g2 >= kTolerance;
 }
 
-static void MultiDimLogitSolveForWeightAndGain(Eigen::MatrixXf hessian_and_reg,
-                                               Eigen::VectorXf g,
-                                               Eigen::VectorXf* weight,
-                                               float* gain) {
+static void MultiDimLogitSolveForWeightAndGain(
+    const Eigen::MatrixXf& hessian_and_reg, const Eigen::VectorXf& g,
+    Eigen::VectorXf* weight, float* gain) {
   *weight = -hessian_and_reg.colPivHouseholderQr().solve(g);
   *gain = -g.transpose() * (*weight);
 }
 
-static void CalculateWeightsAndGains(const Eigen::VectorXf g,
-                                     const Eigen::VectorXf h, const float l1,
+// Used in stats_ops.cc to determine weights/gains for each feature split.
+static void CalculateWeightsAndGains(const Eigen::VectorXf& g,
+                                     const Eigen::VectorXf& h, const float l1,
                                      const float l2, Eigen::VectorXf* weight,
                                      float* gain) {
   const float kEps = 1e-15;
-  int32 logits_dim = g.size();
+  const int32 logits_dim = g.size();
   if (logits_dim == 1) {
     // The formula for weight is -(g+l1*sgn(w))/(H+l2), for gain it is
     // (g+l1*sgn(w))^2/(h+l2).

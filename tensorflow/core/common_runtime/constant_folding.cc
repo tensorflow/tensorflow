@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/constant_folding.h"
+
 #include <algorithm>
 #include <atomic>
 #include <set>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/constant_folding.h"
-
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -44,6 +44,8 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+const char kScopedAllocatorAttrName[] = "_scoped_allocator";
 
 // Test to see if the Op is one that turns into a constant when its
 // inputs' shapes are known.
@@ -254,6 +256,15 @@ bool IsConstantFoldable(
   // TODO(phawkins): allow constant-folding for functions; functions may
   // be arbitrarily expensive to execute.
   if (!KernelDefAvailable(DeviceType(DEVICE_CPU), n->def())) {
+    return false;
+  }
+  // Do not constant fold nodes which will be allocated by ScopedAllocator.
+  // This is because the constant-folding graph will not contain the
+  // `_ScopedAllocator` node, and that is necessary to be able to run a node
+  // that will use this allocator.
+  if (n->attrs().Find(kScopedAllocatorAttrName) != nullptr) {
+    VLOG(2) << "Skip node [" << n->DebugString()
+            << "] for constant folding due to scoped allocator";
     return false;
   }
   return true;

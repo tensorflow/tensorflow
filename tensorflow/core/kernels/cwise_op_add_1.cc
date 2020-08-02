@@ -47,7 +47,7 @@ REGISTER_KERNEL_BUILDER(Name("AddV2")
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_KERNEL(type)                          \
   REGISTER(BinaryOp, SYCL, "Add", functor::add, type); \
-  REEGISTER(BinaryOp, SYCL, "AddV2", functor::add, type);
+  REGISTER(BinaryOp, SYCL, "AddV2", functor::add, type);
 
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 

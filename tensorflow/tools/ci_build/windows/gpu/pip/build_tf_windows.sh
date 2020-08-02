@@ -120,6 +120,10 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
   else
     EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
   fi
+else
+  if [[ -v PROJECT_NAME  ]]; then
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME}"
+  fi
 fi
 
 # Enable short object file path to avoid long path issue on Windows.
@@ -134,9 +138,8 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build --announce_rc --config=opt --define=no_tensorflow_py_deps=true \
+bazel build --config=release_gpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
-  ${EXTRA_BUILD_FLAGS} \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
@@ -154,7 +157,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
 fi
 
 # Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow_gpu-*.whl)
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
 TF_GPU_COUNT=${TF_GPU_COUNT:-4}

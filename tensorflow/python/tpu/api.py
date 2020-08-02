@@ -27,5 +27,7 @@ from tensorflow.python.tpu import bfloat16
 from tensorflow.python.tpu import feature_column_v2
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding
+from tensorflow.python.tpu import tpu_embedding_v2
+from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_optimizer
 # pylint: enable=unused-import

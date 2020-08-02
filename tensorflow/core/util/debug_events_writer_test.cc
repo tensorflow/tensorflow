@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -67,32 +68,33 @@ class DebugEventsWriterTest : public ::testing::Test {
   }
 
   void SetUp() override {
-    dump_root_ = io::JoinPath(testing::TmpDir(),
-                              strings::Printf("%010lld", env()->NowMicros()));
+    dump_root_ = io::JoinPath(
+        testing::TmpDir(),
+        strings::Printf("%010lld", static_cast<long long>(env()->NowMicros())));
+    tfdbg_run_id_ = "test_tfdbg_run_id";
   }
 
   void TearDown() override {
     if (env()->IsDirectory(dump_root_).ok()) {
       int64 undeleted_files = 0;
       int64 undeleted_dirs = 0;
-      ASSERT_TRUE(
-          env()
-              ->DeleteRecursively(dump_root_, &undeleted_files, &undeleted_dirs)
-              .ok());
+      TF_ASSERT_OK(env()->DeleteRecursively(dump_root_, &undeleted_files,
+                                            &undeleted_dirs));
       ASSERT_EQ(0, undeleted_files);
       ASSERT_EQ(0, undeleted_dirs);
     }
   }
 
   string dump_root_;
+  string tfdbg_run_id_;
 };
 
 TEST_F(DebugEventsWriterTest, GetDebugEventsWriterSameRootGivesSameObject) {
   // Test the per-dump_root_ singleton pattern.
-  DebugEventsWriter* writer_1 =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
-  DebugEventsWriter* writer_2 =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer_1 = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
+  DebugEventsWriter* writer_2 = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   EXPECT_EQ(writer_1, writer_2);
 }
 
@@ -103,8 +105,8 @@ TEST_F(DebugEventsWriterTest, ConcurrentGetDebugEventsWriterSameDumpRoot) {
   std::vector<DebugEventsWriter*> writers;
   mutex mu;
   auto fn = [this, &writers, &mu]() {
-    DebugEventsWriter* writer =
-        DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+    DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+        dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
     {
       mutex_lock l(mu);
       writers.push_back(writer);
@@ -131,8 +133,9 @@ TEST_F(DebugEventsWriterTest, ConcurrentGetDebugEventsWriterDiffDumpRoots) {
   auto fn = [this, &counter, &writers, &mu]() {
     const string new_dump_root =
         io::JoinPath(dump_root_, strings::Printf("%ld", counter.fetch_add(1)));
-    DebugEventsWriter* writer =
-        DebugEventsWriter::GetDebugEventsWriter(new_dump_root);
+    DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+        new_dump_root, tfdbg_run_id_,
+        DebugEventsWriter::kDefaultCyclicBufferSize);
     {
       mutex_lock l(mu);
       writers.push_back(writer);
@@ -151,17 +154,17 @@ TEST_F(DebugEventsWriterTest, ConcurrentGetDebugEventsWriterDiffDumpRoots) {
 
 TEST_F(DebugEventsWriterTest, GetDebugEventsWriterDifferentRoots) {
   // Test the DebugEventsWriters for different directories are different.
-  DebugEventsWriter* writer_1 =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer_1 = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   const string dump_root_2 = io::JoinPath(dump_root_, "subdirectory");
-  DebugEventsWriter* writer_2 =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_2);
+  DebugEventsWriter* writer_2 = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_2, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   EXPECT_NE(writer_1, writer_2);
 }
 
 TEST_F(DebugEventsWriterTest, GetAndInitDebugEventsWriter) {
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
   TF_ASSERT_OK(writer->Close());
 
@@ -174,6 +177,8 @@ TEST_F(DebugEventsWriterTest, GetAndInitDebugEventsWriter) {
   const string file_version = actuals[0].debug_metadata().file_version();
   EXPECT_EQ(file_version.find(DebugEventsWriter::kVersionPrefix), 0);
   EXPECT_GT(file_version.size(), strlen(DebugEventsWriter::kVersionPrefix));
+  // Check the tfdbg run ID.
+  EXPECT_EQ(actuals[0].debug_metadata().tfdbg_run_id(), "test_tfdbg_run_id");
 
   // Verify that the .source_files file has been created and is empty.
   ReadDebugEventProtos(writer, DebugEventFileType::SOURCE_FILES, &actuals);
@@ -182,22 +187,22 @@ TEST_F(DebugEventsWriterTest, GetAndInitDebugEventsWriter) {
 }
 
 TEST_F(DebugEventsWriterTest, CallingCloseWithoutInitIsOkay) {
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, CallingCloseTwiceIsOkay) {
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Close());
   TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, ConcurrentInitCalls) {
   // Test that concurrent calls to Init() works correctly.
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
 
   thread::ThreadPool* thread_pool =
       new thread::ThreadPool(Env::Default(), "test_pool", 4);
@@ -218,6 +223,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentInitCalls) {
   const string file_version = actuals[0].debug_metadata().file_version();
   EXPECT_EQ(file_version.find(DebugEventsWriter::kVersionPrefix), 0);
   EXPECT_GT(file_version.size(), strlen(DebugEventsWriter::kVersionPrefix));
+  EXPECT_EQ(actuals[0].debug_metadata().tfdbg_run_id(), "test_tfdbg_run_id");
 
   // Verify that the .source_files file has been created and is empty.
   ReadDebugEventProtos(writer, DebugEventFileType::SOURCE_FILES, &actuals);
@@ -227,14 +233,15 @@ TEST_F(DebugEventsWriterTest, ConcurrentInitCalls) {
 
 TEST_F(DebugEventsWriterTest, InitTwiceDoesNotCreateNewMetadataFile) {
   // Test that Init() is idempotent.
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   std::vector<DebugEvent> actuals;
   ReadDebugEventProtos(writer, DebugEventFileType::METADATA, &actuals);
   EXPECT_EQ(actuals.size(), 1);
   EXPECT_GT(actuals[0].debug_metadata().tensorflow_version().length(), 0);
+  EXPECT_EQ(actuals[0].debug_metadata().tfdbg_run_id(), "test_tfdbg_run_id");
   EXPECT_GE(actuals[0].debug_metadata().file_version().size(), 0);
 
   string metadata_path_1 =
@@ -248,12 +255,13 @@ TEST_F(DebugEventsWriterTest, InitTwiceDoesNotCreateNewMetadataFile) {
   ReadDebugEventProtos(writer, DebugEventFileType::METADATA, &actuals);
   EXPECT_EQ(actuals.size(), 1);
   EXPECT_GT(actuals[0].debug_metadata().tensorflow_version().length(), 0);
+  EXPECT_EQ(actuals[0].debug_metadata().tfdbg_run_id(), "test_tfdbg_run_id");
   EXPECT_GE(actuals[0].debug_metadata().file_version().size(), 0);
 }
 
 TEST_F(DebugEventsWriterTest, WriteSourceFile) {
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   SourceFile* source_file_1 = new SourceFile();
@@ -263,7 +271,7 @@ TEST_F(DebugEventsWriterTest, WriteSourceFile) {
   source_file_1->add_lines("");
   source_file_1->add_lines("print(tf.constant([42.0]))");
   source_file_1->add_lines("");
-  writer->WriteSourceFile(source_file_1);
+  TF_ASSERT_OK(writer->WriteSourceFile(source_file_1));
 
   SourceFile* source_file_2 = new SourceFile();
   source_file_2->set_file_path("/home/tf_programs/train.py");
@@ -271,7 +279,7 @@ TEST_F(DebugEventsWriterTest, WriteSourceFile) {
   source_file_2->add_lines("import tensorflow.keras as keras");
   source_file_2->add_lines("");
   source_file_2->add_lines("model = keras.Sequential()");
-  writer->WriteSourceFile(source_file_2);
+  TF_ASSERT_OK(writer->WriteSourceFile(source_file_2));
 
   TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   TF_ASSERT_OK(writer->Close());
@@ -313,8 +321,8 @@ TEST_F(DebugEventsWriterTest, WriteSourceFile) {
 }
 
 TEST_F(DebugEventsWriterTest, WriteStackFramesFile) {
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   StackFrameWithId* stack_frame_1 = new StackFrameWithId();
@@ -336,8 +344,8 @@ TEST_F(DebugEventsWriterTest, WriteStackFramesFile) {
   file_line_col->set_func("my_func");
   file_line_col->set_code("  x = x ** 2.0");
 
-  writer->WriteStackFrameWithId(stack_frame_1);
-  writer->WriteStackFrameWithId(stack_frame_2);
+  TF_ASSERT_OK(writer->WriteStackFrameWithId(stack_frame_1));
+  TF_ASSERT_OK(writer->WriteStackFrameWithId(stack_frame_2));
   TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   TF_ASSERT_OK(writer->Close());
 
@@ -375,19 +383,19 @@ TEST_F(DebugEventsWriterTest, WriteStackFramesFile) {
 }
 
 TEST_F(DebugEventsWriterTest, WriteGraphOpCreationAndDebuggedGraph) {
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   GraphOpCreation* graph_op_creation = new GraphOpCreation();
   graph_op_creation->set_op_type("MatMul");
   graph_op_creation->set_op_name("Dense_1/MatMul");
-  writer->WriteGraphOpCreation(graph_op_creation);
+  TF_ASSERT_OK(writer->WriteGraphOpCreation(graph_op_creation));
 
   DebuggedGraph* debugged_graph = new DebuggedGraph();
   debugged_graph->set_graph_id("deadbeaf");
   debugged_graph->set_graph_name("my_func_graph");
-  writer->WriteDebuggedGraph(debugged_graph);
+  TF_ASSERT_OK(writer->WriteDebuggedGraph(debugged_graph));
 
   TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   TF_ASSERT_OK(writer->Close());
@@ -415,8 +423,8 @@ TEST_F(DebugEventsWriterTest, WriteGraphOpCreationAndDebuggedGraph) {
 
 TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheSameFile) {
   const size_t kConcurrentWrites = 100;
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   thread::ThreadPool* thread_pool =
@@ -428,7 +436,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheSameFile) {
     SourceFile* source_file = new SourceFile();
     source_file->set_file_path(file_path);
     source_file->set_host_name("localhost.localdomain");
-    writer->WriteSourceFile(source_file);
+    TF_ASSERT_OK(writer->WriteSourceFile(source_file));
   };
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
     thread_pool->Schedule(fn);
@@ -456,8 +464,8 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheSameFile) {
 
 TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
   const size_t kConcurrentWrites = 100;
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   thread::ThreadPool* thread_pool =
@@ -469,7 +477,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
     SourceFile* source_file = new SourceFile();
     source_file->set_file_path(file_path);
     source_file->set_host_name("localhost.localdomain");
-    writer->WriteSourceFile(source_file);
+    TF_ASSERT_OK(writer->WriteSourceFile(source_file));
     TF_ASSERT_OK(writer->FlushNonExecutionFiles());
   };
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
@@ -498,8 +506,8 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
 
 TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
   const int32 kConcurrentWrites = 30;
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   thread::ThreadPool* thread_pool =
@@ -512,16 +520,16 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
       source_file->set_file_path(
           strings::Printf("/home/tf_programs/program_%.2d.py", index));
       source_file->set_host_name("localhost.localdomain");
-      writer->WriteSourceFile(source_file);
+      TF_ASSERT_OK(writer->WriteSourceFile(source_file));
     } else if (index % 3 == 1) {
       StackFrameWithId* stack_frame = new StackFrameWithId();
       stack_frame->set_id(strings::Printf("e%.2d", index));
-      writer->WriteStackFrameWithId(stack_frame);
+      TF_ASSERT_OK(writer->WriteStackFrameWithId(stack_frame));
     } else {
       GraphOpCreation* op_creation = new GraphOpCreation();
       op_creation->set_op_type("Log");
       op_creation->set_op_name(strings::Printf("Log_%.2d", index));
-      writer->WriteGraphOpCreation(op_creation);
+      TF_ASSERT_OK(writer->WriteGraphOpCreation(op_creation));
     }
   };
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
@@ -576,8 +584,8 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
 TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferNoFlush) {
   // Verify that no writing to disk happens until the flushing method is called.
   const size_t kCyclicBufferSize = 10;
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, kCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   // First, try writing and flushing more debug events than the capacity
@@ -586,20 +594,23 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferNoFlush) {
     Execution* execution = new Execution();
     execution->set_op_type("Log");
     execution->add_input_tensor_ids(i);
-    writer->WriteExecution(execution);
+    TF_ASSERT_OK(writer->WriteExecution(execution));
   }
 
   std::vector<DebugEvent> actuals;
   // Before FlushExecutionFiles() is called, the file should be empty.
   ReadDebugEventProtos(writer, DebugEventFileType::EXECUTION, &actuals);
   EXPECT_EQ(actuals.size(), 0);
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
   // Verify that writing to disk happens when the flushing method is called.
   const size_t kCyclicBufferSize = 10;
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, kCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   // First, try writing and flushing more debug events than the capacity
@@ -608,7 +619,7 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
     Execution* execution = new Execution();
     execution->set_op_type("Log");
     execution->add_input_tensor_ids(i);
-    writer->WriteExecution(execution);
+    TF_ASSERT_OK(writer->WriteExecution(execution));
   }
 
   TF_ASSERT_OK(writer->FlushExecutionFiles());
@@ -634,7 +645,7 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
     Execution* execution = new Execution();
     execution->set_op_type("Abs");
     execution->add_input_tensor_ids(counter.fetch_add(1));
-    writer->WriteExecution(execution);
+    TF_ASSERT_OK(writer->WriteExecution(execution));
   };
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     thread_pool->Schedule(fn);
@@ -670,8 +681,8 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
 TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   // Check no writing to disk happens before the flushing method is called.
   const size_t kCyclicBufferSize = 10;
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, kCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   // First, try writing and flushing more debug events than the capacity
@@ -679,7 +690,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
-    writer->WriteGraphExecutionTrace(trace);
+    TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
 
   std::vector<DebugEvent> actuals;
@@ -687,12 +698,40 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
                        &actuals);
   EXPECT_EQ(actuals.size(), 0);
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
+}
+
+TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithoutPreviousInitCall) {
+  const size_t kCyclicBufferSize = -1;
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, kCyclicBufferSize);
+  // NOTE(cais): `writer->Init()` is not called here before
+  // WriteGraphExecutionTrace() is called. This test checks that this is okay
+  // and the `GraphExecutionTrace` gets written correctly even without `Init()`
+  // being called first. This scenario can happen when a TF Graph with tfdbg
+  // debug ops are executed on a remote TF server.
+
+  GraphExecutionTrace* trace = new GraphExecutionTrace();
+  trace->set_tfdbg_context_id(strings::Printf("graph_0"));
+  TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
+  TF_ASSERT_OK(writer->FlushExecutionFiles());
+
+  std::vector<DebugEvent> actuals;
+  ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
+                       &actuals);
+  EXPECT_EQ(actuals.size(), 1);
+  EXPECT_EQ(actuals[0].graph_execution_trace().tfdbg_context_id(), "graph_0");
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   const size_t kCyclicBufferSize = 10;
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, kCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   // First, try writing and flushing more debug events than the capacity
@@ -700,7 +739,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
-    writer->WriteGraphExecutionTrace(trace);
+    TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
 
   TF_ASSERT_OK(writer->FlushExecutionFiles());
@@ -725,7 +764,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(
         strings::Printf("new_graph_%.2ld", counter.fetch_add(1)));
-    writer->WriteGraphExecutionTrace(trace);
+    TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   };
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     thread_pool->Schedule(fn);
@@ -756,10 +795,54 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   EXPECT_EQ(actuals.size(), 0);
 }
 
-TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
+TEST_F(DebugEventsWriterTest, RegisterDeviceAndGetIdTrace) {
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
+  TF_ASSERT_OK(writer->Init());
+
+  // Register and get some device IDs in a concurrent fashion.
+  thread::ThreadPool* thread_pool =
+      new thread::ThreadPool(Env::Default(), "test_pool", 8);
+  int device_ids[8];
+  for (int i = 0; i < 8; ++i) {
+    thread_pool->Schedule([i, &writer, &device_ids]() {
+      const string device_name = strings::Printf(
+          "/job:localhost/replica:0/task:0/device:GPU:%d", i % 4);
+      device_ids[i] = writer->RegisterDeviceAndGetId(device_name);
+    });
+  }
+  delete thread_pool;
+  TF_ASSERT_OK(writer->FlushNonExecutionFiles());
+  TF_ASSERT_OK(writer->Close());
+
+  // There should be only 4 unique device IDs, because there are only 4 unique
+  // device names.
+  EXPECT_EQ(device_ids[0], device_ids[4]);
+  EXPECT_EQ(device_ids[1], device_ids[5]);
+  EXPECT_EQ(device_ids[2], device_ids[6]);
+  EXPECT_EQ(device_ids[3], device_ids[7]);
+  // Assert that the four device IDs are all unique.
+  EXPECT_EQ(absl::flat_hash_set<int>(device_ids, device_ids + 8).size(), 4);
+
+  std::vector<DebugEvent> actuals;
+  ReadDebugEventProtos(writer, DebugEventFileType::GRAPHS, &actuals);
+  // Due to the `% 4`, there are only 4 unique device names, even though there
+  // are 8 threads each calling `RegisterDeviceAndGetId`.
+  EXPECT_EQ(actuals.size(), 4);
+  for (const DebugEvent& actual : actuals) {
+    const string& device_name = actual.debugged_device().device_name();
+    int device_index = -1;
+    CHECK(absl::SimpleAtoi(device_name.substr(strlen(
+                               "/job:localhost/replica:0/task:0/device:GPU:")),
+                           &device_index));
+    EXPECT_EQ(actual.debugged_device().device_id(), device_ids[device_index]);
+  }
+}
+
+TEST_F(DebugEventsWriterTest, DisableCyclicBufferBehavior) {
   const size_t kCyclicBufferSize = 0;  // A value <= 0 disables cyclic behavior.
-  DebugEventsWriter* writer =
-      DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, kCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
 
   const size_t kNumEvents = 20;
@@ -768,7 +851,7 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
     Execution* execution = new Execution();
     execution->set_op_type("Log");
     execution->add_input_tensor_ids(i);
-    writer->WriteExecution(execution);
+    TF_ASSERT_OK(writer->WriteExecution(execution));
   }
   TF_ASSERT_OK(writer->FlushExecutionFiles());
 
@@ -784,7 +867,7 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
   for (size_t i = 0; i < kNumEvents; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
-    writer->WriteGraphExecutionTrace(trace);
+    TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
   TF_ASSERT_OK(writer->FlushExecutionFiles());
 
@@ -795,6 +878,9 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
     EXPECT_EQ(actuals[i].graph_execution_trace().tfdbg_context_id(),
               strings::Printf("graph_%.2ld", i));
   }
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 }  // namespace tfdbg

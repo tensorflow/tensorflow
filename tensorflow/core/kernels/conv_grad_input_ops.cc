@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,7 +57,7 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
@@ -76,7 +76,7 @@ template <typename T>
 void Col2im(const T* col_data, const int depth, const int height,
             const int width, const int filter_h, const int filter_w,
             const int pad_t, const int pad_l, const int pad_b, const int pad_r,
-            const int stride_h, const int stride_w, T* im_data) {
+            const int stride_h, const int stride_w, T* __restrict im_data) {
   int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
   int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
   int h_pad = -pad_t;
@@ -87,7 +87,6 @@ void Col2im(const T* col_data, const int depth, const int height,
       for (int ih = h_pad; ih < h_pad + filter_h; ++ih) {
         for (int iw = w_pad; iw < w_pad + filter_w; ++iw) {
           if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-            // TODO(andydavis) Vectorize this loop (if compiler does not).
             for (int i = 0; i < depth; ++i) {
               im_patch_data[i] += col_data[i];
             }
@@ -290,9 +289,9 @@ struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
     desc.filter_format =
         LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;  // LIBXSMM_DNN_TENSOR_FORMAT_RSCK;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE_OVERWRITE;
-    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
-
+    desc.options = LIBXSMM_DNN_CONV_OPTION_OVERWRITE;
+    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
     auto input_ptr = input_backward.data();
     auto filter_ptr = kernel.data();
     auto output_ptr = output_backward.data();
@@ -398,8 +397,8 @@ class Conv2DBackpropInputOp : public OpKernel {
     int stride_w = GetTensorDim(strides_, data_format_, 'W');
     OP_REQUIRES(
         context, (stride_n == 1 && stride_c == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+        errors::Unimplemented("Current implementation does not yet support "
+                              "strides in the batch and depth dimensions."));
     OP_REQUIRES(context, stride_h > 0 && stride_w > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
@@ -412,10 +411,10 @@ class Conv2DBackpropInputOp : public OpKernel {
     int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
     int dilation_h = GetTensorDim(dilations_, data_format_, 'H');
     int dilation_w = GetTensorDim(dilations_, data_format_, 'W');
-    OP_REQUIRES(context, (dilation_n == 1 && dilation_c == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilations in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (dilation_n == 1 && dilation_c == 1),
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
     OP_REQUIRES(
         context, dilation_h > 0 && dilation_w > 0,
         errors::InvalidArgument("Dilated rates should be larger than 0."));
@@ -450,14 +449,12 @@ class Conv2DBackpropInputOp : public OpKernel {
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(input_sizes.shape()),
-        errors::InvalidArgument(
-            "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
-            input_sizes.dims()));
+
     TensorShape input_shape;
-    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                input_sizes.vec<int32>(), &input_shape));
+    OP_REQUIRES_OK(context,
+                   Conv2DBackpropComputeInputShape(input_sizes, filter.shape(),
+                                                   out_backprop.shape(),
+                                                   data_format_, &input_shape));
 
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -520,8 +517,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                                         "specify 4 dimensions"));
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+        errors::Unimplemented("Current implementation does not yet support "
+                              "strides in the batch and depth dimensions."));
     OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
@@ -530,10 +527,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, dilations_.size() == 4,
                 errors::InvalidArgument("Sliding window dilations field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, (dilations_[0] == 1 && dilations_[3] == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilations in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (dilations_[0] == 1 && dilations_[3] == 1),
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
     // TODO(yangzihao): Add a CPU implementation for dilated convolution.
     OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
                 errors::InvalidArgument(
@@ -549,14 +546,12 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(input_sizes.shape()),
-        errors::InvalidArgument(
-            "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
-            input_sizes.dims()));
+
     TensorShape input_shape;
-    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                input_sizes.vec<int32>(), &input_shape));
+    OP_REQUIRES_OK(context,
+                   Conv2DBackpropComputeInputShape(input_sizes, filter.shape(),
+                                                   out_backprop.shape(),
+                                                   data_format_, &input_shape));
 
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
@@ -565,6 +560,16 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                        input_shape, filter.shape(), out_backprop.shape(),
                        /*dilations=*/{1, 1, 1, 1}, strides_, padding_,
                        explicit_paddings_, data_format_, &dims));
+
+    OP_REQUIRES(context, dims.in_depth == filter.shape().dim_size(2),
+                errors::InvalidArgument("Computed input depth ", dims.in_depth,
+                                        " doesn't match filter input depth ",
+                                        filter.shape().dim_size(2)));
+    OP_REQUIRES(
+        context, dims.out_depth == filter.shape().dim_size(3),
+        errors::InvalidArgument("Computed output depth ", dims.out_depth,
+                                " doesn't match filter output depth ",
+                                filter.shape().dim_size(3)));
 
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -1143,6 +1148,12 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       device_id,                           // device_id
       conv_desc.group_count()              // group_count
   };
+#if TENSORFLOW_USE_ROCM
+  // cudnn_use_autotune is applicable only the CUDA flow
+  // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+  // if we do not have a cached algorithm_config for this conv_parameters
+  cudnn_use_autotune = true;
+#endif
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
@@ -1162,7 +1173,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
         &algorithms));
     std::vector<tensorflow::AutotuneResult> results;
-    for (auto profile_algorithm : algorithms) {
+    for (const auto& profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
@@ -1199,29 +1210,67 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         CheckRedzones(rz_allocator, &result);
       }
     }
+#elif TENSORFLOW_USE_ROCM
+    DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
+    std::vector<ProfileResult> algorithms;
+    OP_REQUIRES(
+        ctx,
+        stream->parent()->GetMIOpenConvolveAlgorithms(
+            se::dnn::ConvolutionKind::BACKWARD_DATA,
+            se::dnn::ToDataType<T>::value, stream, input_desc, in_backprop_ptr,
+            filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+            &scratch_allocator, &algorithms),
+        errors::Unknown(
+            "Failed to get convolution algorithm. This is probably "
+            "because MIOpen failed to initialize, so try looking to "
+            "see if a warning log message was printed above."));
+
+    std::vector<tensorflow::AutotuneResult> results;
+    if (algorithms.size() == 1) {
+      auto profile_result = algorithms[0];
+      results.emplace_back();
+      auto& result = results.back();
+      result.mutable_conv()->set_algorithm(
+          profile_result.algorithm().algo_id());
+      result.mutable_conv()->set_tensor_ops_enabled(
+          profile_result.algorithm().tensor_ops_enabled());
+
+      result.set_scratch_bytes(profile_result.scratch_size());
+      *result.mutable_run_time() = proto_utils::ToDurationProto(
+          absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+    } else {
+      for (auto miopen_algorithm : algorithms) {
+        auto profile_algorithm = miopen_algorithm.algorithm();
+        ProfileResult profile_result;
+        bool miopen_launch_status = true;
+        miopen_launch_status =
+            stream
+                ->ThenConvolveBackwardDataWithAlgorithm(
+                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm,
+                                    miopen_algorithm.scratch_size()),
+                    &profile_result)
+                .ok();
+
+        if (miopen_launch_status && profile_result.is_valid()) {
+          results.emplace_back();
+          auto& result = results.back();
+          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+          result.mutable_conv()->set_tensor_ops_enabled(
+              profile_algorithm.tensor_ops_enabled());
+          result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+          *result.mutable_run_time() = proto_utils::ToDurationProto(
+              absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+        }
+      }
+    }
+#endif
     LogConvAutotuneResults(
         se::dnn::ConvolutionKind::BACKWARD_DATA, se::dnn::ToDataType<T>::value,
         in_backprop_ptr, filter_ptr, out_backprop_ptr, input_desc, filter_desc,
         output_desc, conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
-#elif TENSORFLOW_USE_ROCM
-    // MIOpen has its own Find and autotuner so use it here, passing
-    // default AlgorithmConfig to force a search
-    DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
-    ProfileResult best_result;
-    bool miopen_find_status =
-        stream
-            ->ThenConvolveBackwardDataWithAlgorithm(
-                filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                AlgorithmConfig(), &best_result)
-            .ok();
-    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
-                errors::NotFound("Failed to find backwards-data algorithm!"));
-
-    algorithm_config.set_algorithm(best_result.algorithm());
-    algorithm_config.set_scratch_size(best_result.scratch_size());
-#endif
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                algorithm_config);
   }

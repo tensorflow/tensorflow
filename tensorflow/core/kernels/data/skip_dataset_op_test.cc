@@ -59,7 +59,7 @@ class SkipDatasetParams : public DatasetParams {
   int64 count_;
 };
 
-class SkipDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class SkipDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: skip fewer than input size.
 SkipDatasetParams SkipDatasetParams1() {

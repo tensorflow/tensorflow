@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <numeric>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -301,6 +303,40 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
   return bounds;
 }
 
+ConvertedDimensionNumbers ConvertDimensionNumbers(
+    absl::Span<const int64> from_dimensions, absl::Span<const int64> from_sizes,
+    absl::Span<const int64> to_sizes) {
+  ConvertedDimensionNumbers dimensions;
+  auto common_factors = CommonFactors(from_sizes, to_sizes);
+  for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+    bool any_present = false;
+    bool all_present = true;
+    for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+         ++d) {
+      const bool present = absl::c_linear_search(from_dimensions, d);
+      any_present |= present;
+      all_present &= present;
+    }
+    if (all_present) {
+      for (int64 d = common_factors[i].second; d < common_factors[i + 1].second;
+           ++d) {
+        dimensions.to_dimensions.push_back(d);
+      }
+      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+           ++d) {
+        dimensions.transformed_from_dimensions.push_back(d);
+      }
+    } else if (any_present) {
+      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+           ++d) {
+        if (absl::c_linear_search(from_dimensions, d)) {
+          dimensions.untransformed_from_dimensions.push_back(d);
+        }
+      }
+    }
+  }
+  return dimensions;
+}
 string SanitizeFileName(string file_name) {
   for (char& c : file_name) {
     if (c == '/' || c == '\\' || c == '[' || c == ']' || c == ' ') {
@@ -330,33 +366,26 @@ string SanitizeFileName(string file_name) {
 // [2] T. J. Dekker, A floating point technique for extending the available
 //     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
 std::pair<float, float> SplitF64ToF32(double x) {
+  const float x_f32 = static_cast<float>(x);
   // Early return if x is an infinity or NaN.
   if (!std::isfinite(x)) {
-    return std::make_pair(static_cast<float>(x), 0.0f);
+    return std::make_pair(x_f32, 0.0f);
   }
-
-  // Following [1], the splitter is chosen as 2^{s} + 1, so that the most
-  // significant (p - s) bits comprise the mantissa of 'hi'.
-  static_assert(std::numeric_limits<double>::radix == 2,
-                "Double is not Binary FP");
-  constexpr double kSplitter = (1 << (std::numeric_limits<double>::digits -
-                                      std::numeric_limits<float>::digits)) +
-                               1;
 
   // Only values within the range of F32 are supported, unless it is infinity.
   // Small values with large negative exponents would be rounded to zero.
-  CHECK(std::isfinite(static_cast<float>(x))) << x;
+  CHECK(std::isfinite(x_f32)) << x;
 
-  // The value of '(shifted - x)' should algebraically be exactly 2^{29} * x
-  // but it can a bit smaller, because of rounding to 53 bits in computation of
-  // (2^29 + 1) * x'. This overestimates the value of 'hi' by a multiple of
-  // 2^{-29} (assuming exponent was 0), and makes 'lo' negative. An extra bit is
-  // squeezed into the 'sign' bit of 'lo' to represent 25 bits of significand.
-  const double shifted = kSplitter * x;
-  // TODO(anudhyan): Write a test to ensure that compiler is not optimizing away
-  // the following computation to 'hi = x;'.
-  const float hi = shifted - (shifted - x);
-  const float lo = x - hi;
+  // The high float is simply the double rounded to the nearest float. Because
+  // we are rounding to nearest with ties to even, the error introduced in
+  // rounding is less than half an ULP in the high ULP.
+  const float hi = x_f32;
+  // We can compute the low term using Sterbenz' lemma: If a and b are two
+  // positive floating point numbers and a/2 ≤ b ≤ 2a, then their difference can
+  // be computed exactly.
+  // Note: the difference is computed exactly but is rounded to the nearest
+  // float which will introduce additional error.
+  const float lo = static_cast<float>(x - static_cast<double>(hi));
   return std::make_pair(hi, lo);
 }
 

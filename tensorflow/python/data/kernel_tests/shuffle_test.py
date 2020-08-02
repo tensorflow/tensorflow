@@ -35,12 +35,14 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
-  def testShuffleDataset(self):
+  def testBasic(self):
     components = (
         np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
         np.array([9.0, 10.0, 11.0, 12.0])
@@ -160,7 +162,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="graph"),
+          test_base.graph_only_combinations(),
           combinations.combine(reshuffle=[True, False]),
           combinations.combine(graph_seed=38, op_seed=None) +
           combinations.combine(graph_seed=None, op_seed=42) +
@@ -188,7 +190,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   # TODO(b/117581999): enable this test for eager-mode.
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="graph"),
+          test_base.graph_only_combinations(),
           combinations.combine(
               reshuffle=[True, False], initializable=[True, False])))
   def testMultipleIterators(self, reshuffle, initializable):
@@ -243,16 +245,14 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(tf_api_version=2, mode="eager"),
           combinations.combine(reshuffle=[True, False], seed=[None, 42])))
   def testReshuffleIterationEpochs(self, reshuffle, seed):
+    # TensorFlow unit tests set the global graph seed. We unset it here so that
+    # we can control determinism via the `seed` parameter.
+    random_seed.set_random_seed(None)
     dataset = dataset_ops.Dataset.range(10).shuffle(
         10, seed=seed, reshuffle_each_iteration=reshuffle)
 
-    first_epoch = []
-    for elem in dataset:
-      first_epoch.append(elem.numpy())
-
-    second_epoch = []
-    for elem in dataset:
-      second_epoch.append(elem.numpy())
+    first_epoch = self.getDatasetOutput(dataset)
+    second_epoch = self.getDatasetOutput(dataset)
 
     self.assertEqual(first_epoch == second_epoch, not reshuffle)
 
@@ -278,7 +278,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="eager"),
+          test_base.eager_only_combinations(),
           combinations.combine(reshuffle=[True, False], seed=[None, 42])))
   def testReshuffleSeparateTransformations(self, reshuffle, seed):
     dataset = dataset_ops.Dataset.range(10)
@@ -330,6 +330,42 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Second time around, we get an EOF because the cached dataset is empty.
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(reshuffle=[True, False])))
+  def testRerandomizeOnReplicate(self, reshuffle):
+    random_seed.set_random_seed(None)
+    # When no seeds are fixed, each instantiation of the shuffle dataset should
+    # produce elements in a different order.
+    num_elements = 100
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.shuffle(num_elements, reshuffle_each_iteration=reshuffle)
+
+    shuffle_1 = self.getDatasetOutput(dataset)
+    dataset = self.graphRoundTrip(dataset, allow_stateful=True)
+    shuffle_2 = self.getDatasetOutput(dataset)
+
+    self.assertCountEqual(shuffle_1, shuffle_2)
+    self.assertNotEqual(shuffle_1, shuffle_2)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeShuffleBuffer(self):
+    # Tensor of size 100M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
+    dataset = dataset.repeat()
+    # Shuffle 25 tensors to exceed the 2GB protocol buffer limit
+    dataset = dataset.shuffle(25)
+
+    iterator = iter(dataset)
+    next(iterator)  # request an element to fill the shuffle buffer
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
+    ckpt.restore(manager.latest_checkpoint)
 
 
 if __name__ == "__main__":

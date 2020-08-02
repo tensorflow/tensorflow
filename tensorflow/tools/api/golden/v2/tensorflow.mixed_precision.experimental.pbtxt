@@ -12,8 +12,4 @@ tf_module {
     name: "LossScale"
     mtype: "<type \'type\'>"
   }
-  member {
-    name: "LossScaleGradientTape"
-    mtype: "<type \'type\'>"
-  }
 }

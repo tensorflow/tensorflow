@@ -23,7 +23,7 @@ from tensorflow.python import data
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import ops
 from tensorflow.python.keras.utils import multi_gpu_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
@@ -38,16 +38,13 @@ def check_if_compatible_devices(gpus=2):
     return False
   return True
 
-@test_util.run_all_in_deprecated_graph_mode_only
+
 class TestMultiGPUModel(test.TestCase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     super(TestMultiGPUModel, self).__init__(methodName)
     gpu_devices = config.list_physical_devices('GPU')
-    xla_gpu_devices = config.list_physical_devices('XLA_GPU')
-    # NOTE: XLA devices don't support the set_logical_device_configuration
-    # codepaths.
-    if len(gpu_devices) == 1 and not xla_gpu_devices:
+    if len(gpu_devices) == 1:
       # A GPU is available, simulate 2 instead.
       config.set_logical_device_configuration(gpu_devices[0], [
           context.LogicalDeviceConfiguration(500),
@@ -164,7 +161,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       self.skipTest('multi gpu only')
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       input_shape = (num_samples,) + shape
       x_train = np.random.randint(0, 255, input_shape)
       y_train = np.random.randint(0, num_classes, (input_shape[0],))

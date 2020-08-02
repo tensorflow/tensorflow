@@ -393,7 +393,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         and caused the preparation of this run-end CLI (if any).
       passed_filter_exclude_node_names: (None or str) Regular expression used
         with the tensor filter to exclude ops with names matching the regular
-        expresssion.
+        expression.
     """
 
     if tf_error:
@@ -552,9 +552,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     run_start_response = framework.OnRunStartResponse(
         action,
         debug_urls,
-        node_name_regex_whitelist=parsed.node_name_filter,
-        op_type_regex_whitelist=parsed.op_type_filter,
-        tensor_dtype_regex_whitelist=parsed.tensor_dtype_filter)
+        node_name_regex_allowlist=parsed.node_name_filter,
+        op_type_regex_allowlist=parsed.op_type_filter,
+        tensor_dtype_regex_allowlist=parsed.tensor_dtype_filter)
 
     if parsed.till_filter_pass:
       # For the run-till-filter-pass (run -f) mode, use the DEBUG_RUN

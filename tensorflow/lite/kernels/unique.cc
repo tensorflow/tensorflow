@@ -13,12 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <map>
+#include <memory>
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -65,6 +71,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
   // increase in the binary size.
   std::map<T, int> unique_values;
   TfLiteTensor* output_indexes = GetOutput(context, node, 1);
+  std::vector<T> output_values;
   I* indexes = GetTensorData<I>(output_indexes);
   const T* data = GetTensorData<T>(input);
   const int num_elements = NumElements(input);
@@ -77,6 +84,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
       const int unique_index = unique_values.size();
       unique_values[data[i]] = unique_index;
       indexes[i] = unique_index;
+      output_values.push_back(data[i]);
     }
   }
   // Allocate output tensor.
@@ -88,8 +96,8 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
       context->ResizeTensor(context, unique_output, shape.release()));
   // Set the values in the output tensor.
   T* output_unique_values = GetTensorData<T>(unique_output);
-  for (int i = 0; i < unique_values.size(); ++i) {
-    output_unique_values[i] = data[indexes[i]];
+  for (int i = 0; i < output_values.size(); ++i) {
+    output_unique_values[i] = output_values[i];
   }
   return kTfLiteOk;
 }

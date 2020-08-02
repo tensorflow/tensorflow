@@ -110,8 +110,9 @@ class SparseTensorsMap : public ResourceBase {
   string name_;
 
   mutex mu_;
-  int64 counter_ GUARDED_BY(mu_);
-  std::unordered_map<int64, PersistentSparseTensor> sp_tensors_ GUARDED_BY(mu_);
+  int64 counter_ TF_GUARDED_BY(mu_);
+  std::unordered_map<int64, PersistentSparseTensor> sp_tensors_
+      TF_GUARDED_BY(mu_);
 };
 
 class SparseTensorAccessingOp : public OpKernel {
@@ -157,7 +158,7 @@ class SparseTensorAccessingOp : public OpKernel {
   ContainerInfo cinfo_;
 
   mutex mu_;
-  SparseTensorsMap* sparse_tensors_map_ PT_GUARDED_BY(mu_);
+  SparseTensorsMap* sparse_tensors_map_ TF_PT_GUARDED_BY(mu_);
 };
 
 class AddSparseToTensorsMapOp : public SparseTensorAccessingOp {

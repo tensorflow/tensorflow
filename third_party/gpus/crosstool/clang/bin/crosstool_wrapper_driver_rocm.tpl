@@ -121,6 +121,23 @@ def GetHipccOptions(argv):
   return ''
 
 
+def system(cmd):
+  """Invokes cmd with os.system().
+
+  Args:
+    cmd: The command.
+
+  Returns:
+    The exit code if the process exited with exit() or -signal
+    if the process was terminated by a signal.
+  """
+  retv = os.system(cmd)
+  if os.WIFEXITED(retv):
+    return os.WEXITSTATUS(retv)
+  else:
+    return -os.WTERMSIG(retv)
+
+
 def InvokeHipcc(argv, log=False):
   """Call hipcc with arguments assembled from argv.
 
@@ -173,6 +190,13 @@ def InvokeHipcc(argv, log=False):
   out = ' -o ' + out_file[0]
 
   hipccopts = ' '
+  # In hip-clang environment, we need to make sure that hip header is included
+  # before some standard math header like <complex> is included in any source.
+  # Otherwise, we get build error.
+  # Also we need to retain warning about uninitialised shared variable as
+  # warning only, even when -Werror option is specified.
+  if HIPCC_IS_HIPCLANG:
+    hipccopts += ' --include=hip/hip_runtime.h '
   hipccopts += ' ' + hipcc_compiler_options
   # Use -fno-gpu-rdc by default for early GPU kernel finalization
   # This flag would trigger GPU kernels be generated at compile time, instead
@@ -208,7 +232,7 @@ def InvokeHipcc(argv, log=False):
         + cmd
   if log: Log(cmd)
   if VERBOSE: print(cmd)
-  return os.system(cmd)
+  return system(cmd)
 
 
 def main():
@@ -251,6 +275,8 @@ def main():
     gpu_linker_flags.append('-L' + HIP_RUNTIME_PATH)
     gpu_linker_flags.append('-Wl,-rpath=' + HIP_RUNTIME_PATH)
     gpu_linker_flags.append('-l' + HIP_RUNTIME_LIBRARY)
+    if HIPCC_IS_HIPCLANG:
+      gpu_linker_flags.append("-lrt")
 
     if VERBOSE: print(' '.join([CPU_COMPILER] + gpu_linker_flags))
     return subprocess.call([CPU_COMPILER] + gpu_linker_flags)

@@ -71,9 +71,9 @@ class RecentRequestIds {
   // next_index_ indexes into circular_buffer_, and points to the next storage
   // space to use. When the buffer is full, next_index_ points at the oldest
   // request_id.
-  int next_index_ GUARDED_BY(mu_) = 0;
-  std::vector<int64> circular_buffer_ GUARDED_BY(mu_);
-  std::unordered_set<int64> set_ GUARDED_BY(mu_);
+  int next_index_ TF_GUARDED_BY(mu_) = 0;
+  std::vector<int64> circular_buffer_ TF_GUARDED_BY(mu_);
+  std::unordered_set<int64> set_ TF_GUARDED_BY(mu_);
 };
 
 // Implementation details

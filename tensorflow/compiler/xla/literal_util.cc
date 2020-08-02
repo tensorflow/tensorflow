@@ -67,7 +67,7 @@ Literal ConvertType(LiteralSlice literal) {
               primitive_util::NativeToPrimitiveType<FromNativeT>()) {
             auto src = literal.data<FromNativeT>(shape_index);
             auto dest = result.data<ToNativeT>(shape_index);
-            for (int64 i = 0; i < src.size(); ++i) {
+            for (int64 i = 0, end = src.size(); i < end; ++i) {
               dest[i] = static_cast<ToNativeT>(src[i]);
             }
           } else {
@@ -93,9 +93,29 @@ Literal ConvertType(LiteralSlice literal) {
   return ConvertType<bfloat16, float>(bf16_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertBF16ToF64(
+    const LiteralSlice& bf16_literal) {
+  return ConvertType<bfloat16, double>(bf16_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertF32ToBF16(
     const LiteralSlice& f32_literal) {
   return ConvertType<float, bfloat16>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToF64(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, double>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF64ToBF16(
+    const LiteralSlice& f64_literal) {
+  return ConvertType<double, bfloat16>(f64_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF64ToF32(
+    const LiteralSlice& f64_literal) {
+  return ConvertType<double, float>(f64_literal);
 }
 
 /* static */ Literal LiteralUtil::CreateToken() {
@@ -309,7 +329,7 @@ Literal ConvertType(LiteralSlice literal) {
 
 /* static */ Literal LiteralUtil::CreateR1U8(absl::string_view value) {
   Literal literal(ShapeUtil::MakeShape(U8, {static_cast<int64>(value.size())}));
-  for (int i = 0; i < value.size(); ++i) {
+  for (int i = 0, end = value.size(); i < end; ++i) {
     literal.Set<uint8>({i}, value[i]);
   }
   return literal;
@@ -325,7 +345,7 @@ Literal ConvertType(LiteralSlice literal) {
     absl::Span<const int64> new_dimensions,
     absl::Span<const int64> minor_to_major, const LiteralSlice& literal) {
   int64 new_num_elements = 1;
-  for (int64 i = 0; i < new_dimensions.size(); ++i) {
+  for (int64 i = 0, end = new_dimensions.size(); i < end; ++i) {
     new_num_elements *= new_dimensions[i];
   }
   CHECK_EQ(ShapeUtil::ElementsIn(literal.shape()), new_num_elements);
@@ -452,7 +472,7 @@ Literal ConvertType(LiteralSlice literal) {
     element_shapes.push_back(element->shape());
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes));
-  for (int i = 0; i < elements.size(); ++i) {
+  for (int i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(literal.CopyFrom(*elements[i], /*dest_shape_index=*/{i}));
   }
   return literal;
@@ -465,7 +485,7 @@ Literal ConvertType(LiteralSlice literal) {
     element_shapes.push_back(element.shape());
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes));
-  for (int i = 0; i < elements.size(); ++i) {
+  for (int i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(literal.CopyFrom(elements[i], /*dest_shape_index=*/{i}));
   }
   return literal;
@@ -479,7 +499,7 @@ Literal ConvertType(LiteralSlice literal) {
     element_shapes.push_back(element.shape());
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes));
-  for (int64 i = 0; i < elements.size(); ++i) {
+  for (int64 i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(
         literal.MoveFrom(std::move(elements[i]), /*dest_shape_index=*/{i}));
   }

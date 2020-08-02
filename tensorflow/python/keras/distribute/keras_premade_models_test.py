@@ -22,13 +22,13 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.eager import test
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adagrad
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.premade import linear
 from tensorflow.python.keras.premade import wide_deep
+from tensorflow.python.platform import test
 
 
 def strategy_combinations_eager_data_fn():
@@ -64,7 +64,7 @@ class KerasPremadeModelsTest(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       model = linear.LinearModel()
       opt = gradient_descent.SGD(learning_rate=0.1)
-      model.compile(opt, 'mse', experimental_run_tf_function=True)
+      model.compile(opt, 'mse')
       if data_fn == get_numpy:
         inputs, output = get_numpy()
         hist = model.fit(inputs, output, epochs=5)
@@ -78,12 +78,11 @@ class KerasPremadeModelsTest(test.TestCase, parameterized.TestCase):
       linear_model = linear.LinearModel(units=1)
       dnn_model = sequential.Sequential([core.Dense(units=1)])
       wide_deep_model = wide_deep.WideDeepModel(linear_model, dnn_model)
-      linear_opt = gradient_descent.SGD(learning_rate=0.1)
-      dnn_opt = adagrad.Adagrad(learning_rate=0.2)
+      linear_opt = gradient_descent.SGD(learning_rate=0.05)
+      dnn_opt = adagrad.Adagrad(learning_rate=0.1)
       wide_deep_model.compile(
           optimizer=[linear_opt, dnn_opt],
-          loss='mse',
-          experimental_run_tf_function=True)
+          loss='mse')
       if data_fn == get_numpy:
         inputs, output = get_numpy()
         hist = wide_deep_model.fit(inputs, output, epochs=5)

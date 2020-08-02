@@ -20,12 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/cub/device/device_radix_sort.cuh"
-#include "third_party/cub/device/device_segmented_radix_sort.cuh"
-#include "third_party/cub/device/device_select.cuh"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/non_max_suppression_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -309,7 +307,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
       tensorflow::OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("post_nms_topn", &post_nms_topn_));
-    OP_REQUIRES(context, post_nms_topn_ <= 0,
+    OP_REQUIRES(context, post_nms_topn_ > 0,
                 errors::InvalidArgument("post_nms_topn can't be 0 or less"));
     bbox_xform_clip_default_ = log(1000.0 / 16.);
   }

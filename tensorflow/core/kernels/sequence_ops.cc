@@ -36,13 +36,23 @@ class RangeOp : public OpKernel {
     const Tensor& start_in = context->input(0);
     const Tensor& limit_in = context->input(1);
     const Tensor& delta_in = context->input(2);
-    OP_REQUIRES(context, IsLegacyScalar(start_in.shape()),
+    // TODO(rmlarsen): Disallow legacy use of length-1 vectors as scalars.
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsScalar(start_in.shape()) ||
+                    (TensorShapeUtils::IsVector(start_in.shape()) &&
+                     start_in.shape().dim_size(0) == 1),
                 errors::InvalidArgument("start must be a scalar, not shape ",
                                         start_in.shape().DebugString()));
-    OP_REQUIRES(context, IsLegacyScalar(limit_in.shape()),
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsScalar(limit_in.shape()) ||
+                    (TensorShapeUtils::IsVector(limit_in.shape()) &&
+                     limit_in.shape().dim_size(0) == 1),
                 errors::InvalidArgument("limit must be a scalar, not shape ",
                                         limit_in.shape().DebugString()));
-    OP_REQUIRES(context, IsLegacyScalar(delta_in.shape()),
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsScalar(delta_in.shape()) ||
+                    (TensorShapeUtils::IsVector(delta_in.shape()) &&
+                     delta_in.shape().dim_size(0) == 1),
                 errors::InvalidArgument("delta must be a scalar, not shape ",
                                         delta_in.shape().DebugString()));
     const T start = start_in.scalar<T>()();

@@ -57,6 +57,7 @@ class DatasetSerializationTestBase(test.TestCase):
 
   def tearDown(self):
     self._delete_ckpt()
+    super(DatasetSerializationTestBase, self).tearDown()
 
   # TODO(b/72657739): Remove sparse_tensor argument, which is to test the
   # (deprecated) saveable `SparseTensorSliceDataset`, once the API

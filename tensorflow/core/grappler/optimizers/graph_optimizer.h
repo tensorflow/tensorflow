@@ -17,9 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
 
 #include <string>
+
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -54,6 +57,12 @@ class GraphOptimizer {
   // case the content of *optimized_graph is undefined.
   virtual Status Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) = 0;
+
+  // Subclasses may define a version of Optimize that consumes item.
+  virtual Status Optimize(Cluster* cluster, GrapplerItem&& item,
+                          GraphDef* optimized_graph) {
+    return Optimize(cluster, item, optimized_graph);
+  }
 
   // Method invoked by the framework so that it can provide feedback
   // on how well the "optimized_graph" (produced as *optimized_graph from a

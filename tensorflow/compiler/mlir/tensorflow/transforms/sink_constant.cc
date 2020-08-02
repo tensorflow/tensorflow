@@ -19,11 +19,11 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -39,21 +39,20 @@ namespace {
 using ::mlir::TF::ConstOp;
 
 class ExecutorConstantSinking
-    : public mlir::FunctionPass<ExecutorConstantSinking> {
+    : public mlir::PassWrapper<ExecutorConstantSinking, FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([](tf_device::LaunchOp launch) {
-      LLVM_DEBUG(llvm::dbgs() << "Visit " << *launch.getOperation() << "\n");
+    getFunction().walk([](tf_device::ClusterOp cluster) {
+      LLVM_DEBUG(llvm::dbgs() << "Visit " << *cluster.getOperation() << "\n");
       // For each launch op, we find the values used that come from a constant
       // defined above and sink these constants in the region body.
       // The sunk_constant map keeps a mapping from a ConstOp defined above to
       // a sunk clone of it. This allows for reusing a sunk constant with
       // multiple uses in the region.
-      llvm::DenseMap<Value *, TF::ConstOp> sunk_constant;
-      Region &body = launch.body();
+      llvm::DenseMap<Value, TF::ConstOp> sunk_constant;
+      Region &body = cluster.body();
       visitUsedValuesDefinedAbove(body, [&](OpOperand *use) {
-        Value *constant = use->get();
-        auto const_op =
-            dyn_cast_or_null<TF::ConstOp>(constant->getDefiningOp());
+        Value constant = use->get();
+        auto const_op = dyn_cast_or_null<TF::ConstOp>(constant.getDefiningOp());
         if (!const_op) return;
 
         // We found a constant, try to insert it in the map and re-use its
@@ -62,13 +61,13 @@ class ExecutorConstantSinking
         if (!map_entry.second) {
           // This constant has already been cloned into the region, reuse it.
           use->set(map_entry.first->getSecond().getResult());
-          LLVM_DEBUG(llvm::dbgs() << "Re-use sunk constant " << *use->get()
-                                  << "\n     in " << *use->get() << "\n");
-          if (constant->use_empty()) const_op.erase();
+          LLVM_DEBUG(llvm::dbgs() << "Re-use sunk constant " << use->get()
+                                  << "\n     in " << use->get() << "\n");
+          if (constant.use_empty()) const_op.erase();
           return;
         }
-        if (constant->hasOneUse()) {
-          LLVM_DEBUG(llvm::dbgs() << "Moved constant " << *constant << "\n");
+        if (constant.hasOneUse()) {
+          LLVM_DEBUG(llvm::dbgs() << "Moved constant " << constant << "\n");
           const_op.getOperation()->moveBefore(&body.begin()->front());
           return;
         }
@@ -76,8 +75,8 @@ class ExecutorConstantSinking
         body.begin()->getOperations().insert(body.begin()->begin(),
                                              map_entry.first->getSecond());
         use->set(map_entry.first->getSecond().getResult());
-        LLVM_DEBUG(llvm::dbgs() << "Sunk cloned constant " << *use->get()
-                                << "\n     in " << *use->get() << "\n");
+        LLVM_DEBUG(llvm::dbgs() << "Sunk cloned constant " << use->get()
+                                << "\n     in " << use->get() << "\n");
       });
     });
   }
@@ -85,12 +84,12 @@ class ExecutorConstantSinking
 
 static mlir::PassRegistration<ExecutorConstantSinking> pass(
     "tf-device-constant-sinking",
-    "Sink constants implicitly captured in a tf_device.launch region. This "
+    "Sink constants implicitly captured in a tf_device.cluster region. This "
     "reduces the number of arguments when outlining later.");
 
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorConstantSinkingPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorConstantSinkingPass() {
   return std::make_unique<ExecutorConstantSinking>();
 }
 

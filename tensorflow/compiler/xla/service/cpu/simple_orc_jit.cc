@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <list>
 #include <utility>
 
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_pow.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
@@ -56,9 +58,8 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   llvm::StringMap<bool> host_features;
   if (llvm::sys::getHostCPUFeatures(host_features)) {
     for (auto& feature : host_features) {
-      if (feature.second) {
-        result.push_back(feature.first());
-      }
+      result.push_back((feature.second ? '+' : '-') +
+                       std::string(feature.first()));
     }
   }
   return result;
@@ -93,8 +94,8 @@ SimpleOrcJIT::SimpleOrcJIT(
       data_layout_(target_machine_->createDataLayout()),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
           execution_session_,
-          [this](const std::string& name) -> llvm::JITSymbol {
-            return this->ResolveRuntimeSymbol(name);
+          [this](llvm::StringRef name) -> llvm::JITSymbol {
+            return this->ResolveRuntimeSymbol(std::string(name));
           },
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
@@ -163,6 +164,7 @@ void SimpleOrcJIT::NotifyObjectFinalized(
   uint64_t key = static_cast<uint64_t>(
       reinterpret_cast<uintptr_t>(object.getData().data()));
   gdb_jit_event_listener_->notifyObjectLoaded(key, object, object_info);
+  size_of_generated_code_in_bytes_ += object.getData().size();
 }
 
 void SimpleOrcJIT::NotifyObjectFreed(const llvm::object::ObjectFile& object) {
@@ -186,13 +188,25 @@ void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::VModuleKeyT key) {
 }
 
 llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
+#ifdef _WIN32
+  // The symbol lookup of ObjectLinkingLayer uses the SymbolRef::SF_Exported
+  // flag to decide whether a symbol will be visible or not, when we call
+  // IRCompileLayer::findSymbolIn with ExportedSymbolsOnly set to true.
+  //
+  // But for Windows COFF objects, this flag is currently never set.
+  // For a potential solution see: https://reviews.llvm.org/rL258665
+  // For now, we allow non-exported symbols on Windows as a workaround.
+  const bool exported_symbols_only = false;
+#else
+  const bool exported_symbols_only = true;
+#endif
+
   // Resolve symbol from last module to first, allowing later redefinitions of
   // symbols shadow earlier ones.
   for (auto& key :
        llvm::make_range(module_keys_.rbegin(), module_keys_.rend())) {
     if (auto symbol =
-            compile_layer_.findSymbolIn(key, name,
-                                        /*ExportedSymbolsOnly=*/true)) {
+            compile_layer_.findSymbolIn(key, name, exported_symbols_only)) {
       return symbol;
     }
   }
@@ -200,11 +214,18 @@ llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
   return nullptr;
 }
 
+#if defined(PLATFORM_WINDOWS)
+// This function is used by compiler-generated code on windows, but it's not
+// declared anywhere. The signature does not matter, we just need the address.
+extern "C" void __chkstk(size_t);
+#endif
+
 namespace {
 // Register some known symbols with the CustomCallTargetRegistry.
 bool RegisterKnownJITSymbols() {
   xla::CustomCallTargetRegistry* registry =
       xla::CustomCallTargetRegistry::Global();
+  registry->Register("printf", reinterpret_cast<void*>(&printf), "Host");
 
 #define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
   do {                                                                       \
@@ -219,6 +240,8 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireOutfeedBufferForPopulation);
   REGISTER_CPU_RUNTIME_SYMBOL(AllReduce);
+  REGISTER_CPU_RUNTIME_SYMBOL(CollectivePermute);
+  REGISTER_CPU_RUNTIME_SYMBOL(AllToAll);
   REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);
@@ -227,6 +250,8 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulS32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF64);
@@ -238,6 +263,8 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulS32);
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
@@ -250,6 +277,10 @@ bool RegisterKnownJITSymbols() {
                      "Host");
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee),
                      "Host");
+  registry->Register("__truncdfhf2", reinterpret_cast<void*>(__truncdfhf2),
+                     "Host");
+  registry->Register("__powisf2", reinterpret_cast<void*>(__powisf2), "Host");
+  registry->Register("__powidf2", reinterpret_cast<void*>(__powidf2), "Host");
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 
@@ -348,6 +379,10 @@ bool RegisterKnownJITSymbols() {
 #ifdef MEMORY_SANITIZER
   registry->Register("__msan_unpoison",
                      reinterpret_cast<void*>(__msan_unpoison), "Host");
+#endif
+
+#if defined(PLATFORM_WINDOWS)
+  registry->Register("__chkstk", reinterpret_cast<void*>(__chkstk), "Host");
 #endif
 
   return true;

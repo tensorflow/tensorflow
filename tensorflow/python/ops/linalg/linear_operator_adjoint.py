@@ -219,3 +219,6 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     if not self.operator.is_self_adjoint:
       eigvals = math_ops.conj(eigvals)
     return eigvals
+
+  def _cond(self):
+    return self.operator.cond()

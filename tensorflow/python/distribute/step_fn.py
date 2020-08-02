@@ -55,7 +55,7 @@ class StandardInputStep(Step):
     self._iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
 
   def initialize(self):
-    return self._iterator.initialize()
+    return self._iterator.initializer
 
 
 class StandardSingleLossStep(StandardInputStep):

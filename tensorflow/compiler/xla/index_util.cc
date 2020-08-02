@@ -143,7 +143,8 @@ namespace xla {
 /* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
                                            absl::Span<const int64> index) {
   int64 rank = shape.rank();
-  if (rank != index.size()) {
+  const int64 index_size = index.size();
+  if (rank != index_size) {
     return false;
   }
   for (int64 d = 0; d < rank; ++d) {
@@ -157,7 +158,8 @@ namespace xla {
 /* static */ int IndexUtil::CompareIndices(absl::Span<const int64> lhs,
                                            absl::Span<const int64> rhs) {
   int64 rank = lhs.size();
-  CHECK_EQ(rhs.size(), rank);
+  const int64 rhs_rank = rhs.size();
+  CHECK_EQ(rhs_rank, rank);
   for (int64 dim = 0; dim < rank; ++dim) {
     if (lhs[dim] < rhs[dim]) {
       return -1;

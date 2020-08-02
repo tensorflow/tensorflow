@@ -31,20 +31,13 @@ import random
 import re
 import tempfile
 import threading
+import time
 import unittest
 
 from absl.testing import parameterized
 import numpy as np
 import six
 
-_portpicker_import_error = None
-try:
-  import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _error:
-  _portpicker_import_error = _error
-  portpicker = None
-
-# pylint: disable=g-import-not-at-top
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
@@ -52,11 +45,12 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import _pywrap_stacktrace_handler
 from tensorflow.python import _pywrap_util_port
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.client import session
 from tensorflow.python.compat.compat import forward_compatibility_horizon
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
@@ -64,20 +58,24 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import gpu_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -86,9 +84,9 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.util.compat import collections_abc
 
 
 # If the below import is made available through the BUILD rule, then this
@@ -99,9 +97,32 @@ def is_xla_enabled():
 
 
 try:
-  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top
-except:
+  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
   pass
+
+
+# Uses the same mechanism as above to selectively enable MLIR compilation.
+def is_mlir_bridge_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
+  pass
+
+
+# Uses the same mechanism as above to selectively enable TFRT.
+def is_tfrt_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
+  pass
+
 
 def _get_object_count_by_type():
   return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
@@ -205,7 +226,7 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False,
     _strip_hash_table_shared_name(actual)
     _strip_hash_table_shared_name(expected)
 
-  diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
+  diff = pywrap_tf_session.EqualGraphDefWrapper(actual.SerializeToString(),
                                                 expected.SerializeToString())
   if diff:
     raise AssertionError(compat.as_str(diff))
@@ -288,6 +309,10 @@ def IsGoogleCudaEnabled():
 
 def IsBuiltWithROCm():
   return _pywrap_util_port.IsBuiltWithROCm()
+
+
+def IsBuiltWithXLA():
+  return _pywrap_util_port.IsBuiltWithXLA()
 
 
 def IsBuiltWithNvcc():
@@ -435,6 +460,38 @@ def skip_if(condition):
     return wrapper
 
   return real_skip_if
+
+
+@contextlib.contextmanager
+def skip_if_error(test_obj, error_type, messages=None):
+  """Context manager to skip cases not considered failures by the tests.
+
+  Note that this does not work if used in setUpClass/tearDownClass.
+  Usage in setUp/tearDown works fine just like regular test methods.
+
+  Args:
+    test_obj: A test object provided as `self` in the test methods; this object
+      is usually an instance of `unittest.TestCase`'s subclass and should have
+      `skipTest` method.
+    error_type: The error type to skip. Note that if `messages` are given, both
+      `error_type` and `messages` need to match for the test to be skipped.
+    messages: Optional, a string or list of strings. If `None`, the test will be
+      skipped if `error_type` matches what is raised; otherwise, the test is
+      skipped if any of the `messages` is contained in the message of the error
+      raised, and `error_type` matches the error raised.
+
+  Yields:
+    Nothing.
+  """
+  if messages:
+    messages = nest.flatten(messages)
+  try:
+    yield
+  except error_type as e:
+    if not messages or any(message in str(e) for message in messages):
+      test_obj.skipTest("Skipping error: {}: {}".format(type(e), str(e)))
+    else:
+      raise
 
 
 def enable_c_shapes(fn):
@@ -638,7 +695,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
 
         # There should be no new Python objects hanging around.
         obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
-        # In some cases (specifacally on MacOS), new_count is somehow
+        # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
         # have assertLessEqual
@@ -681,7 +738,7 @@ def assert_no_new_tensors(f):
         return isinstance(obj,
                           (ops.Tensor, variables.Variable,
                            tensor_shape.Dimension, tensor_shape.TensorShape))
-      except ReferenceError:
+      except (ReferenceError, AttributeError):
         # If the object no longer exists, we don't care about it.
         return False
 
@@ -718,34 +775,34 @@ def assert_no_new_tensors(f):
 
 def _find_reference_cycle(objects, idx):
 
-  def get_ignore_reason(obj, blacklist):
+  def get_ignore_reason(obj, denylist):
     """Tests whether an object should be omitted from the dependency graph."""
-    if len(blacklist) > 100:
+    if len(denylist) > 100:
       return "<depth limit>"
     if tf_inspect.isframe(obj):
       if "test_util.py" in tf_inspect.getframeinfo(obj)[0]:
         return "<test code>"
-    for b in blacklist:
+    for b in denylist:
       if b is obj:
         return "<test code>"
-    if obj is blacklist:
+    if obj is denylist:
       return "<test code>"
     return None
 
   # Note: this function is meant to help with diagnostics. Its output is purely
   # a human-readable representation, so you may freely modify it to suit your
   # needs.
-  def describe(obj, blacklist, leaves_only=False):
+  def describe(obj, denylist, leaves_only=False):
     """Returns a custom human-readable summary of obj.
 
     Args:
       obj: the value to describe.
-      blacklist: same as blacklist in get_ignore_reason.
+      denylist: same as denylist in get_ignore_reason.
       leaves_only: boolean flag used when calling describe recursively. Useful
         for summarizing collections.
     """
-    if get_ignore_reason(obj, blacklist):
-      return "{}{}".format(get_ignore_reason(obj, blacklist), type(obj))
+    if get_ignore_reason(obj, denylist):
+      return "{}{}".format(get_ignore_reason(obj, denylist), type(obj))
     if tf_inspect.isframe(obj):
       return "frame: {}".format(tf_inspect.getframeinfo(obj))
     elif tf_inspect.ismodule(obj):
@@ -755,10 +812,10 @@ def _find_reference_cycle(objects, idx):
         return "{}, {}".format(type(obj), id(obj))
       elif isinstance(obj, list):
         return "list({}): {}".format(
-            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+            id(obj), [describe(e, denylist, leaves_only=True) for e in obj])
       elif isinstance(obj, tuple):
         return "tuple({}): {}".format(
-            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+            id(obj), [describe(e, denylist, leaves_only=True) for e in obj])
       elif isinstance(obj, dict):
         return "dict({}): {} keys".format(id(obj), len(obj.keys()))
       elif tf_inspect.isfunction(obj):
@@ -767,8 +824,8 @@ def _find_reference_cycle(objects, idx):
       else:
         return "{}, {}".format(type(obj), id(obj))
 
-  def build_ref_graph(obj, graph, reprs, blacklist):
-    """Builds a reference graph as <referrer> -> <list of refferents>.
+  def build_ref_graph(obj, graph, reprs, denylist):
+    """Builds a reference graph as <referrer> -> <list of referents>.
 
     Args:
       obj: The object to start from. The graph will be built by recursively
@@ -777,21 +834,21 @@ def _find_reference_cycle(objects, idx):
         references, the graph holds object IDs rather than actual objects.
       reprs: Auxiliary structure that maps object IDs to their human-readable
         description.
-      blacklist: List of objects to ignore.
+      denylist: List of objects to ignore.
     """
     referrers = gc.get_referrers(obj)
-    blacklist = blacklist + (referrers,)
+    denylist = denylist + (referrers,)
 
     obj_id = id(obj)
     for r in referrers:
-      if get_ignore_reason(r, blacklist) is None:
+      if get_ignore_reason(r, denylist) is None:
         r_id = id(r)
         if r_id not in graph:
           graph[r_id] = []
         if obj_id not in graph[r_id]:
           graph[r_id].append(obj_id)
-          build_ref_graph(r, graph, reprs, blacklist)
-          reprs[r_id] = describe(r, blacklist)
+          build_ref_graph(r, graph, reprs, denylist)
+          reprs[r_id] = describe(r, denylist)
 
   def find_cycle(el, graph, reprs, path):
     """Finds and prints a single cycle in the dependency graph."""
@@ -1019,6 +1076,21 @@ def build_as_function_and_v1_graph(func=None):
   return decorator
 
 
+def run_in_async_and_sync_mode(f):
+  """Execute the test in async mode and sync mode."""
+
+  @parameterized.named_parameters([("Async", True), ("", False)])
+  @functools.wraps(f)
+  def decorator(self, async_mode, *args, **kwargs):
+    if async_mode:
+      with context.execution_mode(context.ASYNC):
+        f(self, *args, **kwargs)
+    else:
+      with context.execution_mode(context.SYNC):
+        f(self, *args, **kwargs)
+  return decorator
+
+
 def eager_lazy_remote_copy_on_and_off(f):
   """Execute the test method w/o lazy tensor copy for function remote inputs."""
 
@@ -1037,7 +1109,6 @@ def eager_lazy_remote_copy_on_and_off(f):
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
-                                 reset_test=True,
                                  assert_no_eager_garbage=False):
   """Execute the decorated test with and without enabling eager execution.
 
@@ -1079,8 +1150,6 @@ def run_in_graph_and_eager_modes(func=None,
     config: An optional config_pb2.ConfigProto to use to configure the session
       when executing graphs.
     use_gpu: If True, attempt to run as many operations as possible on GPU.
-    reset_test: If True, tearDown and SetUp the test case between the two
-      executions of the test (once with and once without eager execution).
     assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
       collector and asserts that no extra garbage has been created when running
       the test with eager execution enabled. This will fail if there are
@@ -1124,21 +1193,19 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly = assert_no_new_tensors(
             assert_no_garbage_created(run_eagerly))
 
-      if reset_test:
-        # This decorator runs the wrapped test twice.
-        # Reset the test environment between runs.
-        self.tearDown()
-        self._tempdir = None
+      # This decorator runs the wrapped test twice.
+      # Reset the test environment between runs.
+      self.tearDown()
+      self._tempdir = None
       # Create a new graph for the eagerly executed version of this test for
       # better isolation.
       graph_for_eager_test = ops.Graph()
       with graph_for_eager_test.as_default(), context.eager_mode():
-        if reset_test:
-          self.setUp()
+        self.setUp()
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
-    return decorated
+    return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)
@@ -1149,7 +1216,7 @@ def run_in_graph_and_eager_modes(func=None,
 def py_func_if_in_function(f):
 
   def decorated(*args, **kwds):
-    if not ops.get_default_graph()._building_function:
+    if not ops.inside_function():
       return f(*args, **kwds)
 
     tensor_args = []
@@ -1396,7 +1463,7 @@ def run_gpu_only(func=None):
 def run_cuda_only(func=None):
   """Execute the decorated test only if a GPU is available.
 
-  This function is intended to be applied to tests that require the precense
+  This function is intended to be applied to tests that require the presence
   of a CUDA GPU. If a CUDA GPU is absent, it will simply be skipped.
 
   Args:
@@ -1494,28 +1561,12 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   Returns:
     True if a GPU device of the requested kind is available.
   """
-
-  def compute_capability_from_device_desc(device_desc):
-    # TODO(jingyue): The device description generator has to be in sync with
-    # this file. Another option is to put compute capability in
-    # DeviceAttributes, but I avoided that to keep DeviceAttributes
-    # target-independent. Reconsider this option when we have more things like
-    # this to keep in sync.
-    # LINT.IfChange
-    match = re.search(r"compute capability: (\d+)\.(\d+)", device_desc)
-    # LINT.ThenChange(//tensorflow/core/\
-    #                 common_runtime/gpu/gpu_device.cc)
-    if not match:
-      return 0, 0
-    return int(match.group(1)), int(match.group(2))
-
   try:
     for local_device in device_lib.list_local_devices():
       if local_device.device_type == "GPU":
-        if (min_cuda_compute_capability is None or
-            compute_capability_from_device_desc(
-                local_device.physical_device_desc) >=
-            min_cuda_compute_capability):
+        gpu_info = gpu_util.compute_capability_from_device_desc(local_device)
+        cc = gpu_info.compute_capability or (0, 0)
+        if not min_cuda_compute_capability or cc >= min_cuda_compute_capability:
           return True
       if local_device.device_type == "SYCL" and not cuda_only:
         return True
@@ -1601,7 +1652,7 @@ class FakeEagerSession(object):
     self._test_case = test_case
 
   def run(self, fetches, *args, **kwargs):
-    """Evalaute `fetches`.
+    """Evaluate `fetches`.
 
     Fail if additional args are specified.
 
@@ -1645,14 +1696,14 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
-def use_deterministic_cudnn(func):
+def disable_cudnn_autotune(func):
   """Disable autotuning during the call to this function.
 
   Some tests want to base assertions on a graph being isomorphic with a copy.
   To ensure this, this decorator disables autotuning.
 
   Args:
-    func: Function to run with CUDNN autotuning turned off.
+    func: Function to run with CuDNN autotuning turned off.
 
   Returns:
     Decorated function.
@@ -1661,10 +1712,25 @@ def use_deterministic_cudnn(func):
   def decorator(f):
 
     def decorated(self, *args, **kwargs):
-      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
-      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
+      os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = "--xla_gpu_autotune_level=0"
+      if original_xla_flags:
+        new_xla_flags = original_xla_flags + " " + new_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+
       result = f(self, *args, **kwargs)
-      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+
+      if (original_tf_cudnn_use_autotune is None):
+        del os.environ["TF_CUDNN_USE_AUTOTUNE"]
+      else:
+        os.environ["TF_CUDNN_USE_AUTOTUNE"] = original_tf_cudnn_use_autotune
+      if (original_xla_flags is None):
+        del os.environ["XLA_FLAGS"]
+      else:
+        os.environ["XLA_FLAGS"] = original_xla_flags
+
       return result
 
     return decorated
@@ -1697,10 +1763,10 @@ def enable_tf_xla_constant_folding(description):
     def decorator(f):
 
       def decorated(self, *args, **kwargs):
-        original_var = pywrap_tensorflow.TF_GetXlaConstantFoldingDisabled()
-        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(False)
+        original_var = pywrap_tf_session.TF_GetXlaConstantFoldingDisabled()
+        pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(False)
         result = f(self, *args, **kwargs)
-        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(original_var)
+        pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(original_var)
         return result
 
       return decorated
@@ -1713,18 +1779,15 @@ def enable_tf_xla_constant_folding(description):
   return enable_tf_xla_constant_folding_impl
 
 
-# The description is just for documentation purposes.
-def disable_xla(description):
+# Updates test function by selectively disabling it.
+def _disable_test(execute_func):
 
-  def disable_xla_impl(func):
-    """Execute the test method only if xla is not enabled."""
+  def disable_test_impl(func):
 
     def decorator(func):
 
       def decorated(self, *args, **kwargs):
-        if is_xla_enabled():
-          return
-        else:
+        if execute_func:
           return func(self, *args, **kwargs)
 
       return decorated
@@ -1734,7 +1797,51 @@ def disable_xla(description):
 
     return decorator
 
-  return disable_xla_impl
+  return disable_test_impl
+
+
+# The description is just for documentation purposes.
+def disable_xla(description):  # pylint: disable=unused-argument
+  """Execute the test method only if xla is not enabled."""
+  execute_func = not is_xla_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_mlir_bridge(description):  # pylint: disable=unused-argument
+  """Execute the test method only if MLIR bridge is not enabled."""
+  execute_func = not is_mlir_bridge_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_tfrt(unused_description):
+
+  def disable_tfrt_impl(cls_or_func):
+    """Execute the test only if tfrt is not enabled."""
+
+    if tf_inspect.isclass(cls_or_func):
+      if is_tfrt_enabled():
+        return None
+      else:
+        return cls_or_func
+    else:
+      def decorator(func):
+
+        def decorated(self, *args, **kwargs):
+          if is_tfrt_enabled():
+            return
+          else:
+            return func(self, *args, **kwargs)
+
+        return decorated
+
+      if cls_or_func is not None:
+        return decorator(cls_or_func)
+
+      return decorator
+
+  return disable_tfrt_impl
 
 
 def for_all_test_methods(decorator, *args, **kwargs):
@@ -1766,27 +1873,9 @@ def for_all_test_methods(decorator, *args, **kwargs):
 
 # The description is just for documentation purposes.
 def no_xla_auto_jit(description):  # pylint: disable=unused-argument
-
-  def no_xla_auto_jit_impl(func):
-    """This test is not intended to be run with XLA auto jit enabled."""
-
-    def decorator(func):
-
-      def decorated(self, *args, **kwargs):
-        if is_xla_enabled():
-          # Skip test if using XLA is forced.
-          return
-        else:
-          return func(self, *args, **kwargs)
-
-      return decorated
-
-    if func is not None:
-      return decorator(func)
-
-    return decorator
-
-  return no_xla_auto_jit_impl
+  """This test is not intended to be run with XLA auto jit enabled."""
+  execute_func = not is_xla_enabled()
+  return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.
@@ -1802,9 +1891,9 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
           # Update the global XLABuildOpsPassFlags to enable lazy compilation,
           # which allows the compiler to fall back to TF classic. Remember the
           # old value so that we can reset it.
-          old_value = pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(True)
+          old_value = pywrap_tf_session.TF_SetXlaEnableLazyCompilation(True)
           result = func(self, *args, **kwargs)
-          pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(old_value)
+          pywrap_tf_session.TF_SetXlaEnableLazyCompilation(old_value)
           return result
         else:
           return func(self, *args, **kwargs)
@@ -1838,17 +1927,21 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
-      pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
-      pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
-      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
+      pywrap_tf_session.TF_SetXlaAutoJitMode("2")
+      pywrap_tf_session.TF_SetXlaMinClusterSize(1)
+      pywrap_tf_session.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tf_session.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
-      pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
+      pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
+
+    if is_mlir_bridge_enabled():
+      context.context().enable_mlir_bridge = True
 
     self._threads = []
     self._tempdir = None
     self._cached_session = None
+    self._test_start_time = None
 
   def setUp(self):
     self._ClearCachedSession()
@@ -1872,7 +1965,15 @@ class TensorFlowTestCase(googletest.TestCase):
     if self.id().endswith(".test_session"):
       self.skipTest("Not a test.")
 
+    self._test_start_time = time.time()
+
   def tearDown(self):
+    # If a subclass overrides setUp and doesn't call the parent class's setUp,
+    # then we may not have set the start time.
+    if self._test_start_time is not None:
+      logging.info("time(%s): %ss", self.id(),
+                   round(time.time() - self._test_start_time, 2))
+
     for thread in self._threads:
       thread.check_termination()
 
@@ -2032,7 +2133,9 @@ class TensorFlowTestCase(googletest.TestCase):
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
               dense_shape=tensor.dense_shape.numpy())
-        return tensor.numpy()
+        # Convert tensors and composite tensors to numpy arrays.
+        return nest.map_structure(lambda t: t.numpy(), tensor,
+                                  expand_composites=True)
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
 
@@ -2063,7 +2166,7 @@ class TensorFlowTestCase(googletest.TestCase):
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
-    """Returns a TensorFlow Session for use in executing tests.
+    """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
 
@@ -2345,8 +2448,8 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
-    # If a is a tensor then convert it to ndarray
-    if isinstance(a, ops.Tensor):
+    # If a is tensor-like then convert it to ndarray
+    if tensor_util.is_tensor(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:
@@ -2408,7 +2511,7 @@ class TensorFlowTestCase(googletest.TestCase):
                                path=None,
                                msg=None):
     path = path or []
-    path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
+    path_str = (("[" + "][".join(str(p) for p in path) + "]") if path else "")
     msg = msg if msg else ""
 
     # Check if a and/or b are namedtuples.
@@ -2476,6 +2579,13 @@ class TensorFlowTestCase(googletest.TestCase):
 
     `a` and `b` can be arbitrarily nested structures. A layer of a nested
     structure can be a `dict`, `namedtuple`, `tuple` or `list`.
+
+    Note: the implementation follows
+    [`numpy.allclose`](https://docs.scipy.org/doc/numpy/reference/generated/numpy.allclose.html)
+    (and numpy.testing.assert_allclose). It checks whether two arrays are
+    element-wise equal within a tolerance. The relative difference
+    (`rtol * abs(b)`) and the absolute difference `atol` are added together
+    to compare against the absolute difference between `a` and `b`.
 
     Args:
       a: The expected numpy `ndarray`, or anything that can be converted into a
@@ -2583,7 +2693,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if (b.ndim <= 3 or b.size < 500):
       self.assertEqual(
           a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-          " Contents: %s. \n%s." % (a.shape, b.shape, b, msg))
+          " Contents: %r. \n%s." % (a.shape, b.shape, b, msg))
     else:
       self.assertEqual(
           a.shape, b.shape, "Shape mismatch: expected %s, got %s."
@@ -2606,8 +2716,28 @@ class TensorFlowTestCase(googletest.TestCase):
       else:
         # np.where is broken for scalars
         x, y = a, b
-      msgs.append("not equal lhs = {}".format(x))
-      msgs.append("not equal rhs = {}".format(y))
+      msgs.append("not equal lhs = %r" % x)
+      msgs.append("not equal rhs = %r" % y)
+
+      # Handle mixed string types as a result of PY2to3 migration. That is, the
+      # mixing between bytes (b-prefix strings, PY2 default) and unicodes
+      # (u-prefix strings, PY3 default).
+      if six.PY3:
+        if (a.dtype.kind != b.dtype.kind and
+            {a.dtype.kind, b.dtype.kind}.issubset({"U", "S", "O"})):
+          a_list = []
+          b_list = []
+          # OK to flatten `a` and `b` because they are guaranteed to have the
+          # same shape.
+          for out_list, flat_arr in [(a_list, a.flat), (b_list, b.flat)]:
+            for item in flat_arr:
+              if isinstance(item, str):
+                out_list.append(item.encode("utf-8"))
+              else:
+                out_list.append(item)
+          a = np.array(a_list)
+          b = np.array(b_list)
+
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   @py_func_if_in_function
@@ -2620,10 +2750,10 @@ class TensorFlowTestCase(googletest.TestCase):
       msg: Optional message to report on failure.
     """
     try:
-      self.assertAllEqual(a, b, msg)
+      self.assertAllEqual(a, b)
     except AssertionError:
       return
-    raise AssertionError("The two values are equal at all elements")
+    raise AssertionError("The two values are equal at all elements. %s" % msg)
 
   @py_func_if_in_function
   def assertAllGreater(self, a, comparison_target):
@@ -2925,8 +3055,8 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
-  # Fix Python 3 compatibility issues
-  if six.PY3:
+  # Fix Python 3+ compatibility issues
+  if not six.PY2:
     # pylint: disable=invalid-name
 
     # Silence a deprecation warning
@@ -3090,8 +3220,7 @@ def create_local_cluster(num_workers,
   Raises:
     ImportError: if portpicker module was not found at load time
   """
-  if _portpicker_import_error:
-    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+  import portpicker  # pylint: disable=g-import-not-at-top
   worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
@@ -3149,3 +3278,56 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
+
+
+@contextlib.contextmanager
+def _fake_gradient_tape_context_manager():
+  """tf.gradients(...) implemented as tf.GradientTape context manager interface.
+
+  This is useful to test tf.gradients() in tests that uses tf.GradientTape().
+
+  Yields:
+    gradient tape instance that's implemented by tf.gradients() underneath.
+  """
+  try:
+    class FakeGradientTape:
+
+      def watch(self, x):
+        pass
+
+      def gradient(self, y, x):
+        result = gradients_impl.gradients(y, x)
+
+        # Unlike `tape.gradient()`, `tf.gradients()` returns a list for a single
+        # element. So unpack if needed to match `tape.gradient()` behavior.
+        if not isinstance(x, (list, tuple)):
+          assert len(result) == 1
+          return result[0]
+
+        return result
+
+    yield FakeGradientTape()
+  finally:
+    pass
+
+
+class AbstractGradientTape:
+  """Abstract GradientTape context manager that has multiple implementations.
+
+  This is useful to test both tf.GradientTape() and tf.gradients() without
+  duplicating tests.
+  """
+
+  def __init__(self, use_tape, persistent=False):
+    self._use_tape = use_tape
+    self._persistent = persistent
+
+  def __enter__(self):
+    if self._use_tape:
+      self._tape_impl = backprop.GradientTape(persistent=self._persistent)
+    else:
+      self._tape_impl = _fake_gradient_tape_context_manager()
+    return self._tape_impl.__enter__()
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    self._tape_impl.__exit__(exc_type, exc_val, exc_tb)

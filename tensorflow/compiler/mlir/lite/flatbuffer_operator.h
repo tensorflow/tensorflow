@@ -23,12 +23,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "llvm/Analysis/AssumeBundleQueries.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
@@ -43,15 +45,31 @@ llvm::Optional<tflite::BuiltinOperator> GetBuiltinOpCode(Operation *mlir_op);
 llvm::Optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
     Operation *mlir_op, uint32_t opcode_index,
     const std::vector<int32_t> &operands, const std::vector<int32_t> &results,
+    const std::vector<int32_t> &intermediates,
     flatbuffers::FlatBufferBuilder *fbb);
 
-// Populate the array of mlir::NamedAttributes corresponding to the given
+// Populates the array of mlir::NamedAttributes corresponding to the given
 // tflite::FlatbufferOptionsUnion.
 // We use an out parameter per LLVM convention
 void BuiltinOptionsToAttributes(
     tflite::BuiltinOptionsUnion op_union, mlir::Builder builder,
     // NOLINTNEXTLINE
     llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes);
+
+// While the last several tensors could be optional tensors for an tfl op, the
+// number of input operands could vary. This function gets the min/max number of
+// operands from tflite op name.
+llvm::MinMax OperandNumbersMinMax(llvm::StringRef op_name);
+
+// Populates the `custom_code` and `custom_options` to attributes.
+// `custom_code` is used to identify CustomOp.
+// `custom_options` are opaque attribute used to store infomations for this
+// custom op.
+tensorflow::Status CustomOptionsToAttributes(
+    const std::string &custom_code, const std::vector<uint8_t> &custom_options,
+    mlir::Builder builder,
+    // NOLINTNEXTLINE
+    Location loc, llvm::SmallVectorImpl<mlir::NamedAttribute> *attributes);
 
 }  // namespace mlir
 

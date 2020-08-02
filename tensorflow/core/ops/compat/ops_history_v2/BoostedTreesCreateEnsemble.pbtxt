@@ -1,0 +1,16 @@
+op {
+  name: "BoostedTreesCreateEnsemble"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "stamp_token"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "tree_ensemble_serialized"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

@@ -229,6 +229,43 @@ TEST_F(DebugStripperTest, StripPrintFromGraph) {
   test::ExpectTensorEqual<float>(expected[0], optimized[0]);
 }
 
+TEST_F(DebugStripperTest, StripPrintV2FromGraph) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Const(s.WithOpName("x"), string("Hello"), {});
+  Operation print = ops::PrintV2(s.WithOpName("PrintV2"), x);
+  Output y =
+      ops::Identity(s.WithOpName("y").WithControlDependencies({print}), x);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  DebugStripper optimizer;
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "x") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(0, node.input_size());
+    } else if (node.name() == "PrintV2") {
+      EXPECT_EQ("NoOp", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^x", node.input(0));
+      EXPECT_EQ(0, node.attr_size());
+    } else if (node.name() == "y") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^PrintV2", node.input(1));
+    }
+  }
+
+  EXPECT_EQ(3, output.node_size());
+
+  Tensor expected = EvaluateNodes(item.graph, {"y"}, {})[0];
+  Tensor optimized = EvaluateNodes(output, {"y"}, {})[0];
+  EXPECT_EQ(expected.scalar<tstring>()(), optimized.scalar<tstring>()());
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

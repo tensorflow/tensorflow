@@ -54,8 +54,8 @@ RUN /install/install_latest_clang.sh
 RUN /install/install_bazel.sh
 
 # Install python 3.6.
-RUN add-apt-repository ppa:jonathonf/python-3.6 && \
-    apt-get update && apt-get install -y \
+RUN yes "" | add-apt-repository ppa:deadsnakes/ppa
+RUN apt-get update && apt-get install -y \
     python3.6 python3.6-dev python3-pip python3.6-venv && \
     rm -rf /var/lib/apt/lists/* && \
     python3.6 -m pip install pip --upgrade && \
@@ -63,10 +63,22 @@ RUN add-apt-repository ppa:jonathonf/python-3.6 && \
 
 RUN /install/install_pip_packages.sh
 
+# Install python 3.8.
+RUN apt-get update && apt-get install -y python3.8 python3.8-dev python3.8-venv
+RUN rm -rf /var/lib/apt/lists/*
+# Have to download get-pip.py due to a pip circular issue
+# https://stackoverflow.com/questions/58758447/how-to-fix-module-platform-has-no-attribute-linux-distribution-when-instal
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+RUN python3.8 get-pip.py
+RUN python3.8 -m pip install --upgrade pip setuptools wheel
+
 # TODO(klimek): Figure out a better way to get the right include paths
 # forwarded when we install new packages.
 RUN ln -s "/usr/include/x86_64-linux-gnu/python3.6m" "/dt7/usr/include/x86_64-linux-gnu/python3.6m"
 RUN ln -s "/usr/include/x86_64-linux-gnu/python3.6m" "/dt8/usr/include/x86_64-linux-gnu/python3.6m"
+
+RUN ln -s "/usr/include/x86_64-linux-gnu/python3.8" "/dt7/usr/include/x86_64-linux-gnu/python3.8"
+RUN ln -s "/usr/include/x86_64-linux-gnu/python3.8" "/dt8/usr/include/x86_64-linux-gnu/python3.8"
 
 # Make apt work with python 3.6.
 RUN cp /usr/lib/python3/dist-packages/apt_pkg.cpython-35m-x86_64-linux-gnu.so \

@@ -20,7 +20,7 @@ namespace {
 
 constexpr char kNodeName[] = "prefetch_dataset";
 
-class PrefetchDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class PrefetchDatasetOpTest : public DatasetOpsTestBase {};
 
 class PrefetchDatasetParams : public DatasetParams {
  public:

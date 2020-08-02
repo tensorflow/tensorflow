@@ -1,7 +1,7 @@
 # Description: Operations defined for Cloud TPUs
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
@@ -32,6 +32,7 @@ py_test(
         "no_oss_py2",
         "no_oss_py35",
         "no_pip",
+        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -178,6 +179,8 @@ py_library(
         ":feature_column_v2",
         ":preempted_hook_py",
         ":tpu_embedding",
+        ":tpu_embedding_v2",
+        ":tpu_embedding_v2_utils",
         ":tpu_lib",
     ],
 )
@@ -257,29 +260,29 @@ tf_py_test(
     name = "datasets_test",
     size = "medium",
     srcs = ["datasets_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        ":datasets",
-    ],
     grpc_enabled = True,
     shard_count = 4,
     tags = ["no_oss"],
+    deps = [
+        ":datasets",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 tf_py_test(
     name = "tpu_test",
     size = "small",
     srcs = ["tpu_test.py"],
-    additional_deps = [
+    tags = [
+        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
+    deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
-    ],
-    tags = [
-        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
-        "no_windows",  # TODO: needs investigation on Windows
     ],
 )
 
@@ -287,7 +290,7 @@ tf_py_test(
     name = "tpu_sharding_test",
     size = "small",
     srcs = ["tpu_sharding_test.py"],
-    additional_deps = [
+    deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -298,7 +301,7 @@ tf_py_test(
     name = "bfloat16_test",
     size = "small",
     srcs = ["bfloat16_test.py"],
-    additional_deps = [
+    deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -309,7 +312,7 @@ tf_py_test(
     name = "tpu_infeed_test",
     size = "small",
     srcs = ["tpu_infeed_test.py"],
-    additional_deps = [
+    deps = [
         ":tpu",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
@@ -320,7 +323,7 @@ tf_py_test(
     name = "topology_test",
     size = "medium",
     srcs = ["topology_test.py"],
-    additional_deps = [
+    deps = [
         ":tpu",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -395,9 +398,9 @@ tf_py_test(
     srcs = [
         "feature_column_test.py",
     ],
-    additional_deps = [
+    main = "feature_column_test.py",
+    deps = [
         ":feature_column",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -408,8 +411,8 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/feature_column:feature_column_py",
+        "//third_party/py/numpy",
     ],
-    main = "feature_column_test.py",
 )
 
 tf_py_test(
@@ -417,9 +420,9 @@ tf_py_test(
     srcs = [
         "feature_column_v2_test.py",
     ],
-    additional_deps = [
+    main = "feature_column_v2_test.py",
+    deps = [
         ":feature_column_v2",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -430,13 +433,144 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/feature_column:feature_column_py",
+        "//third_party/py/numpy",
     ],
-    main = "feature_column_v2_test.py",
+)
+
+py_library(
+    name = "tpu_embedding_v2_utils",
+    srcs = ["tpu_embedding_v2_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_embedding_v2",
+    srcs = ["tpu_embedding_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding_v2_utils",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/tpu:tpu_py",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "@six_archive//:six",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_embedding_v2_test",
+    srcs = [
+        "tpu_embedding_v2_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding",
+        ":tpu_embedding_v2",
+        ":tpu_strategy_util",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/training/tracking:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_embedding_v2_correctness_test",
+    srcs = [
+        "tpu_embedding_v2_correctness_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding",
+        ":tpu_embedding_v2",
+        ":tpu_strategy_util",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/training/tracking:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "tpu_embedding_v2_cpu_test",
+    srcs = [
+        "tpu_embedding_v2_cpu_test.py",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_embedding_v2",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_outside_compilation_test",
+    srcs = [
+        "tpu_outside_compilation_test.py",
+    ],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+# NOTE this target should only be depended on by the tpu_test_wrapper macro.
+py_library(
+    name = "tpu_test_deps",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/python:client_testlib"],
 )
 
 tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],
+    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core:protos_all",
     ],

@@ -140,8 +140,8 @@ inline void Conv(const Eigen::ThreadPoolDevice& device,
                  float* output_data, const RuntimeShape& im2col_shape,
                  float* im2col_data) {
   // Nest profiling under "Conv", to aggregate with other kernels.
-  gemmlowp::ScopedProfilingLabel label("Conv");
-  gemmlowp::ScopedProfilingLabel inner_label("Multithreaded EigenTensor");
+  ruy::profiler::ScopeLabel label("Conv");
+  ruy::profiler::ScopeLabel inner_label("Multithreaded EigenTensor");
 
   // im2col data should not be generated for the multi-thread supporting case.
   TFLITE_DCHECK(!im2col_data);

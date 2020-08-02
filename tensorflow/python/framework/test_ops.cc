@@ -690,4 +690,29 @@ REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_CPU),
                         DevicePlacementOp);
 REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_GPU),
                         DevicePlacementOp);
+
+// An op which returns the dtype of the tensor it was passed in. It expects
+// DT_UINT8.
+REGISTER_OP("DtypeWithDefaultOp")
+    .Input("in: T")
+    .Attr("T: type = DT_UINT8")
+    .Output("dtype: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+class DTypeWithDefaultOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& input = ctx->input(0);
+    Tensor* output;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("dtype", TensorShape({}), &output));
+    output->scalar<tstring>()() = tensorflow::DataTypeString(input.dtype());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("DtypeWithDefaultOp").Device(DEVICE_CPU),
+                        DTypeWithDefaultOp);
 }  // end namespace tensorflow

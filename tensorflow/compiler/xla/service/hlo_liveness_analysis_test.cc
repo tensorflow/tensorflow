@@ -136,7 +136,7 @@ TEST_F(HloLivenessAnalysisTest, NestedTupleAtEntryRoot) {
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.3"), {}));
 }
 
-// Tests that GTE at entry root of Tuple instruction only propgates liveness
+// Tests that GTE at entry root of Tuple instruction only propagates liveness
 // to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfTuple) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -158,7 +158,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfTuple) {
   EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "constant.2"), {}));
 }
 
-// Tests that GTE at entry root of nested Tuple instruction only propgates
+// Tests that GTE at entry root of nested Tuple instruction only propagates
 // liveness to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -196,7 +196,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
 }
 
 // Tests that GTE of GTE (at entry root) of nested Tuple instruction only
-// propgates liveness to the live elements in tuple.
+// propagates liveness to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfGteOfNestedTuple) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule SimpleModule

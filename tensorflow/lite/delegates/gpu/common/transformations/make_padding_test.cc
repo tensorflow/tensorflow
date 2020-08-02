@@ -38,7 +38,7 @@ TEST(MakePadding, Smoke) {
   attr.axis = Axis::HEIGHT;
   concat_node->operation.attributes = attr;
 
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, concat_node, &output).ok());
   output->tensor.shape = BHWC(1, 7, 3, 5);
 
@@ -50,7 +50,7 @@ TEST(MakePadding, Smoke) {
       std::vector<float>(const_attr.tensor.shape.DimensionsProduct(), 0);
   const_node->operation.attributes = const_attr;
 
-  Value<TensorRef<BHWC>>* const_link;
+  Value* const_link;
   ASSERT_TRUE(
       ConnectTwoNodes(&graph, const_node, concat_node, &const_link).ok());
   const_link->tensor.shape = const_attr.tensor.shape;

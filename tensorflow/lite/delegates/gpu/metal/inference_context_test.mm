@@ -17,6 +17,8 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
+#include <string>
+
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -170,9 +172,9 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
   std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2.2f, 3.3f, 4.4f}, outputs[outputBufferID].data, 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testImmutableShaderOutput {
@@ -187,9 +189,9 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
   std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1, 4, 9, 16, 25, 36, 49}, outputs[outputBufferID].data, 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testUniformShaderOutput {
@@ -203,9 +205,9 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
   std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2, 4, 6}, outputs[outputBufferID].data, 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testUniformAndImmutableShaderOutput {
@@ -222,9 +224,9 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   std::map<ValueId, TensorFloat32> inputs{{inputBufferID, input}};
   std::map<ValueId, TensorFloat32> outputs{{outputBufferID, {}}};
   auto status = RunGraph(graph, _device, inputs, &outputs);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({2, 6, 12, 20, 26, 38, 52}, outputs[outputBufferID].data, 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end

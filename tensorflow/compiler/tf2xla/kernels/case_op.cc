@@ -21,13 +21,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
 XlaCaseOp::XlaCaseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &branches_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &unpruned_branches_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &output_types_));
   if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
@@ -41,39 +42,29 @@ XlaCaseOp::XlaCaseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
   }
 }
 
-namespace {
+std::pair<std::vector<NameAttrList>, xla::XlaOp>
+XlaCaseOp::GetPrunedBranchesAndIndex(XlaOpKernelContext* ctx) {
+  xla::Literal branch_index_literal;
+  bool branch_index_is_constant =
+      ctx->ConstantInput(0, &branch_index_literal).ok();
 
-Status ConvertCompileTimeConstArgumentsToConst(
-    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args) {
-  for (int i = 0; i < args->size(); i++) {
-    XlaCompiler::Argument& arg = (*args)[i];
-    const XlaExpression& expression = ctx->InputExpression(i + 1);
-    // If the input tensor is a compile time constant build a kConstant type
-    // argument.
-    if (arg.kind == XlaCompiler::Argument::kParameter) {
-      // NOTE: We can not simply check that this is Kind::kConstant because
-      // this could be the output of a MetadataOnly op e.g. Size.
-      xla::StatusOr<absl::optional<Tensor>> maybe_constant =
-          expression.ResolveConstant(ctx->compiler()->client());
-      if (maybe_constant.ok() && maybe_constant.ValueOrDie().has_value()) {
-        arg.kind = XlaCompiler::Argument::kConstant;
-        arg.type = expression.dtype();
-        arg.constant_value = std::move(maybe_constant.ValueOrDie().value());
-        arg.shape = expression.GetShape().ValueOrDie();
-      }
-    }
+  if (!branch_index_is_constant) {
+    return {unpruned_branches_, ctx->Input(0)};
   }
-  return Status::OK();
-}
 
-}  // namespace
+  int32 branch_index = branch_index_literal.Get<int32>({});
+  if (branch_index < 0 || branch_index >= unpruned_branches_.size()) {
+    branch_index = unpruned_branches_.size() - 1;
+  }
+
+  std::vector<NameAttrList> pruned_branch = {unpruned_branches_[branch_index]};
+  return {pruned_branch, xla::ZerosLike(ctx->Input(0))};
+}
 
 // TODO(b/35949885): There is duplication here with the handling of the
 // while_op/if_op. Refactor the common code out/rework.
 void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
-  xla::XlaBuilder* b = ctx->builder();
-  int num_branches = branches_.size();
-  OP_REQUIRES(ctx, num_branches >= 1,
+  OP_REQUIRES(ctx, !unpruned_branches_.empty(),
               errors::InvalidArgument("Must provide at least one case branch"));
   OP_REQUIRES(ctx, input_type(0) == DT_INT32,
               errors::InvalidArgument(
@@ -81,6 +72,18 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->InputShape(0)),
               errors::InvalidArgument(
                   "branch_index argument must be scalar for XLA compilation"));
+
+  xla::XlaBuilder* b = ctx->builder();
+
+  // We opportunistically prune out branches if the branch index is a
+  // compile-time constant.  This is important in the context of the DeviceIndex
+  // ops (and other such ops that may come later) since we may have a Case with
+  // trivially unselected branches that cannot be compiled into HLO.
+  std::vector<NameAttrList> branches;
+  xla::XlaOp branch_index;
+  std::tie(branches, branch_index) = GetPrunedBranchesAndIndex(ctx);
+
+  int num_branches = branches.size();
 
   VLOG(1) << "Building Case: " << input_types_.size() << " inputs";
 
@@ -116,40 +119,56 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   if (propagate_compile_time_consts_) {
+    std::vector<std::vector<bool>> case_branch_must_be_const_nodes(
+        num_branches);
+    std::vector<const FunctionBody*> case_bodies(num_branches);
+    for (int branch_idx = 0; branch_idx < num_branches; branch_idx++) {
+      OP_REQUIRES_OK(ctx, FindMustBeConstNodes(
+                              ctx, branches[branch_idx],
+                              &case_branch_must_be_const_nodes[branch_idx],
+                              &case_bodies[branch_idx]));
+    }
+
     // Replaces `kParameter` type args in `arguments` with `kConstant` if
     // the op input corresponding to that arg is a compile-time const. This
     // is necessary to propagate compile time consts to ops in the branch
     // functions.
-    // Note: Propagating "all" compile-time constants may not be necessary. We
-    // should ideally only propagate consts which are required to be compile
-    // time constants in the branch functions. But that would require calling
-    // BackwardsConstAnalysis here which would be expensive. However, if we
-    // start hitting memory issues we should revisit this.
-    OP_REQUIRES_OK(ctx,
-                   ConvertCompileTimeConstArgumentsToConst(ctx, &arguments));
+    auto arg_is_parameter = [&](int arg_idx) {
+      if (arguments[arg_idx].kind != XlaCompiler::Argument::kParameter) {
+        return false;
+      }
+      for (int branch_idx = 0; branch_idx < num_branches; branch_idx++) {
+        if (!case_branch_must_be_const_nodes
+                [branch_idx]
+                [case_bodies[branch_idx]->arg_nodes[arg_idx]->id()]) {
+          return false;
+        }
+      }
+      return true;
+    };
+    ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
+                                            /*xla_expression_offset=*/1,
+                                            arg_is_parameter);
   }
 
   // Compile each branch of the conditional.
   XlaCompiler::CompileOptions options;
   options.use_tuple_arg = true;
-  options.resolve_compile_time_constants = false;
   options.return_updated_values_for_all_resources = true;
   options.is_entry_computation = false;
   options.add_token_input_output = has_token_input_output_;
   XlaCompiler* compiler = ctx->compiler();
 
   std::vector<XlaCompiler::CompilationResult> branch_results(num_branches);
-  std::vector<XlaCompiler::CompilationResult*> branch_results_p(num_branches);
   for (int j = 0; j < num_branches; ++j) {
     OP_REQUIRES_OK(ctx,
-                   compiler->CompileFunction(options, branches_[j], arguments,
+                   compiler->CompileFunction(options, branches[j], arguments,
                                              &branch_results[j]));
-    branch_results_p[j] = &branch_results[j];
   }
 
   bool has_tensor_array_gradients = false;
-  for (XlaCompiler::CompilationResult* result : branch_results_p) {
-    for (const XlaCompiler::ResourceUpdate& update : result->resource_updates) {
+  for (XlaCompiler::CompilationResult& result : branch_results) {
+    for (const XlaCompiler::ResourceUpdate& update : result.resource_updates) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx,
                      ctx->GetResourceInput(update.input_index + 1, &resource));
@@ -180,7 +199,7 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     for (int j = 0; j < num_branches; ++j) {
       branch_results[j] = {};
       OP_REQUIRES_OK(ctx,
-                     compiler->CompileFunction(options, branches_[j], arguments,
+                     compiler->CompileFunction(options, branches[j], arguments,
                                                &branch_results[j]));
     }
   }
@@ -286,7 +305,7 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   auto input_tuple = xla::Tuple(b, inputs);
 
   xla::XlaOp outputs =
-      xla::Conditional(ctx->Input(0), absl::MakeSpan(result_computations),
+      xla::Conditional(branch_index, absl::MakeSpan(result_computations),
                        std::vector<xla::XlaOp>(num_branches, input_tuple));
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
@@ -351,6 +370,8 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
 }
 
 REGISTER_XLA_OP(Name("Case").AllowResourceTypes().AllowVariantTypes(),
+                XlaCaseOp);
+REGISTER_XLA_OP(Name("StatelessCase").AllowResourceTypes().AllowVariantTypes(),
                 XlaCaseOp);
 
 }  // namespace tensorflow

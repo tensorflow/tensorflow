@@ -315,6 +315,30 @@ Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   return Status::OK();
 }
 
+Status TuplePointsToAnalysis::HandleCopyStart(HloInstruction* copy_start) {
+  // CopyStart forwards its aliased operand to {1}.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(copy_start);
+  const PointsToSet& operand_points_to_set =
+      GetPointsToSet(copy_start->operand(0));
+
+  points_to_set.ForEachMutableElement(
+      [&](const ShapeIndex& target_index, PointsToSet::BufferList* buffers) {
+        if (target_index == ShapeIndex({1})) {
+          *buffers = operand_points_to_set.element(/*index=*/{});
+        } else {
+          buffers->push_back(
+              &logical_buffer_analysis_->GetBuffer(copy_start, target_index));
+        }
+      });
+
+  for (HloInstruction* tuple :
+       operand_points_to_set.tuple_sources(/*index=*/{})) {
+    points_to_set.add_tuple_source(/*index=*/{1}, tuple);
+  }
+
+  return Status::OK();
+}
+
 Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
   // CopyDone forwards its aliased operand.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(copy_done);

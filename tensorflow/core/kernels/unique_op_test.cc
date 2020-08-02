@@ -18,9 +18,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -74,11 +76,14 @@ static void BM_Unique_INT32(int iters, int dim, int max_int) {
                   .Input(test::graph::Constant(g, input))
                   .Attr("T", DT_INT32)
                   .Finalize(g, &node));
+  FixupSourceAndSinkEdges(g);
 
   testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(int32));
   testing::UseRealTime();
   testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR")
+      .Run(iters);
 }
 
 static void BM_Unique_INT32_Repeat(int iters, int dim, int max_int) {
@@ -94,12 +99,15 @@ static void BM_Unique_INT32_Repeat(int iters, int dim, int max_int) {
                   .Input(test::graph::Constant(g, input))
                   .Attr("T", DT_INT32)
                   .Finalize(g, &node));
+  FixupSourceAndSinkEdges(g);
 
   testing::BytesProcessed(static_cast<int64>(iters) * dim * 200 *
                           sizeof(int32));
   testing::UseRealTime();
   testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR")
+      .Run(iters);
 }
 
 TensorProto GetRandomStringsTensorProto(int dim, int max_str_len) {
@@ -131,11 +139,14 @@ static void BM_Unique_STRING(int iters, int dim) {
                   .Input(test::graph::Constant(g, input))
                   .Attr("T", DT_STRING)
                   .Finalize(g, &node));
+  FixupSourceAndSinkEdges(g);
 
   testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(tstring));
   testing::UseRealTime();
   testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
+                  "SINGLE_THREADED_EXECUTOR")
+      .Run(iters);
 }
 
 BENCHMARK(BM_Unique_INT32)

@@ -97,8 +97,8 @@ Status RaggedComponentsFromVariant(const Tensor& encoded_variant,
     }
     if (values_tensor->dtype() != value_dtype) {
       return errors::InvalidArgument(
-          "Expected values Tensor dtype: ", value_dtype,
-          ", found: ", values_tensor->dtype());
+          "Expected values Tensor dtype: ", DataTypeString(value_dtype),
+          ", found: ", DataTypeString(values_tensor->dtype()));
     }
     if (values_tensor->dims() < 1) {
       return errors::InvalidArgument(
@@ -308,8 +308,6 @@ TF_CALL_tstring(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_quint16(REGISTER_KERNELS);
 TF_CALL_qint16(REGISTER_KERNELS);
-TF_CALL_uint32(REGISTER_KERNELS);
-TF_CALL_uint64(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 #undef REGISTER_KERNELS_WITH_SPLIT_TYPE
 }  // namespace tensorflow

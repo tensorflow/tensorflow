@@ -28,10 +28,23 @@ OP_CALLBACK_SKIP_OPS = (
     b"Exit",
     b"Identity",
     b"If",
+    b"LoopCond",
     b"Merge",
     b"NextIteration",
     b"StatelessIf",
     b"StatefulPartitionedCall",
     b"Switch",
     b"While",
+    # NOTE(b/154097452): On TPUs, debugger ops are colocated with RemoteCall
+    # ops. This exclusion prevents an error due to no OpKernel for those
+    # debugger ops.
+    b"RemoteCall",
+    # TPU-specific ops begin.
+    b"TPUReplicatedInput",
+    b"TPUReplicateMetadata",
+    b"TPUCompilationResult",
+    b"TPUReplicatedOutput",
+    b"ConfigureDistributedTPU",
+    # Other special ops used by TensorFlow internally.
+    b"DestroyResourceOp",
 )

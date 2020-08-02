@@ -226,9 +226,9 @@ struct ParseSingleExampleAttrs {
     return FinishInit();
   }
 
-  std::vector<string> sparse_keys;
+  std::vector<tstring> sparse_keys;
   std::vector<DataType> sparse_types;
-  std::vector<string> dense_keys;
+  std::vector<tstring> dense_keys;
   std::vector<DataType> dense_types;
   std::vector<PartialTensorShape> dense_shapes;
   std::vector<bool> variable_length;
@@ -302,10 +302,10 @@ struct ParseSequenceExampleAttrs {
   int64 num_feature_list_sparse;
   int64 num_feature_list_dense;
   int64 num_feature_list_ragged;
-  std::vector<string> context_sparse_keys;
-  std::vector<string> context_dense_keys;
-  std::vector<string> feature_list_sparse_keys;
-  std::vector<string> feature_list_dense_keys;
+  std::vector<tstring> context_sparse_keys;
+  std::vector<tstring> context_dense_keys;
+  std::vector<tstring> feature_list_sparse_keys;
+  std::vector<tstring> feature_list_dense_keys;
   std::vector<DataType> context_sparse_types;
   std::vector<DataType> context_dense_types;
   std::vector<TensorShape> context_dense_shapes;

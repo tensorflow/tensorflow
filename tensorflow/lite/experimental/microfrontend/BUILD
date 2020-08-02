@@ -27,6 +27,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "audio_microfrontend_op_lib",
+    srcs = ["ops/audio_microfrontend_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/lite/experimental/microfrontend/lib:frontend",
+    ],
+    alwayslink = 1,
+)
+
 cc_test(
     name = "audio_microfrontend_test",
     size = "small",
@@ -92,9 +103,9 @@ tf_py_test(
     name = "audio_microfrontend_op_test",
     size = "small",
     srcs = ["python/kernel_tests/audio_microfrontend_op_test.py"],
-    additional_deps = [
+    tags = ["no_pip"],
+    deps = [
         ":audio_microfrontend_py",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["no_pip"],
 )

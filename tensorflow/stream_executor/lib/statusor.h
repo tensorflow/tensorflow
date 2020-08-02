@@ -92,7 +92,8 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   typedef internal_statusor::StatusOrData<T> Base;
 
  public:
-  typedef T element_type;
+  typedef T element_type;  // DEPRECATED: use `value_type`.
+  typedef T value_type;
 
   // Constructs a new StatusOr with Status::UNKNOWN status.  This is marked
   // 'explicit' to try to catch cases like 'return {};', where people think
@@ -194,6 +195,27 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   const T&& ValueOrDie() const &&;
   T&& ValueOrDie() &&;
 
+  // Returns a reference to the current value.
+  //
+  // REQUIRES: this->ok() == true, otherwise the behavior is undefined.
+  //
+  // Use this->ok() or `operator bool()` to verify that there is a current
+  // value. Alternatively, see ValueOrDie() for a similar API that guarantees
+  // CHECK-failing if there is no current value.
+  const T& operator*() const&;
+  T& operator*() &;
+  const T&& operator*() const&&;
+  T&& operator*() &&;
+
+  // Returns a pointer to the current value.
+  //
+  // REQUIRES: this->ok() == true, otherwise the behavior is undefined.
+  //
+  // Use this->ok() or `operator bool()` to verify that there is a current
+  // value.
+  const T* operator->() const;
+  T* operator->();
+
   T ConsumeValueOrDie() { return std::move(ValueOrDie()); }
 
   // Ignores any errors. This method does nothing except potentially suppress
@@ -273,7 +295,9 @@ const Status& StatusOr<T>::status() const & {
 }
 template <typename T>
 Status StatusOr<T>::status() && {
-  return ok() ? Status::OK() : std::move(this->status_);
+  // Note that we copy instead of moving the status here so that
+  // ~StatusOrData() can call ok() without invoking UB.
+  return ok() ? Status::OK() : this->status_;
 }
 
 template <typename T>
@@ -296,6 +320,42 @@ const T&& StatusOr<T>::ValueOrDie() const && {
 
 template <typename T>
 T&& StatusOr<T>::ValueOrDie() && {
+  this->EnsureOk();
+  return std::move(this->data_);
+}
+
+template <typename T>
+const T* StatusOr<T>::operator->() const {
+  this->EnsureOk();
+  return &this->data_;
+}
+
+template <typename T>
+T* StatusOr<T>::operator->() {
+  this->EnsureOk();
+  return &this->data_;
+}
+
+template <typename T>
+const T& StatusOr<T>::operator*() const& {
+  this->EnsureOk();
+  return this->data_;
+}
+
+template <typename T>
+T& StatusOr<T>::operator*() & {
+  this->EnsureOk();
+  return this->data_;
+}
+
+template <typename T>
+const T&& StatusOr<T>::operator*() const&& {
+  this->EnsureOk();
+  return std::move(this->data_);
+}
+
+template <typename T>
+T&& StatusOr<T>::operator*() && {
   this->EnsureOk();
   return std::move(this->data_);
 }

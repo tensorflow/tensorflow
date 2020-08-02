@@ -26,7 +26,7 @@ BASEDIR=tensorflow/lite
 CROSSTOOL="//external:android/crosstool"
 HOST_CROSSTOOL="@bazel_tools//tools/cpp:toolchain"
 
-BUILD_OPTS="--cxxopt=--std=c++11 -c opt"
+BUILD_OPTS="-c opt"
 CROSSTOOL_OPTS="--crosstool_top=$CROSSTOOL --host_crosstool_top=$HOST_CROSSTOOL"
 
 test -d $BASEDIR || (echo "Aborting: not at top-level build directory"; exit 1)

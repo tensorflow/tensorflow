@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 import numpy as np
 
 from tensorflow.lite.python import lite
@@ -84,7 +85,6 @@ class EvaluateFrozenGraph(test.TestCase):
     model_coverage.test_frozen_graph(filename, ['inputA', 'inputB'],
                                      ['add', 'Mean'])
 
-  @test_util.run_in_graph_and_eager_modes
   def testFunctions(self):
     """Tests functions."""
 
@@ -179,18 +179,21 @@ class EvaluateKerasModel(test.TestCase):
       os.close(fd)
     return keras_file
 
+  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testFloat(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file)
 
+  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testPostTrainingQuantize(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file, post_training_quantize=True)
 
+  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testTargetOps(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)

@@ -248,9 +248,8 @@ bool HloComputation::HasSideEffect() const {
   return false;
 }
 
-bool HloComputation::ContainsInstruction(
-    const HloInstruction* instruction) const {
-  return instruction_iterators_.contains(instruction);
+bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
+  return inst->IsMarkedAsDead();
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
@@ -314,6 +313,9 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   auto inst_it = instruction_iterators_.find(instruction);
   TF_RET_CHECK(inst_it != instruction_iterators_.end());
   (*inst_it->second)->set_parent(nullptr);
+  to_be_deleted_.emplace_back(inst_it->second->release());
+  to_be_deleted_.back()->DetachFromOperandsAndUsers();
+  to_be_deleted_.back()->MarkAsDead();
   instructions_.erase(inst_it->second);
   instruction_iterators_.erase(inst_it);
   return Status::OK();
@@ -340,8 +342,8 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
 
   if (parent() && parent()->has_entry_computation() &&
       parent()->entry_computation() == this) {
-    if (!Shape::Equal()(new_root_instruction->shape(),
-                        root_instruction_->shape())) {
+    if (!Shape::Equal().IgnoreLayout()(new_root_instruction->shape(),
+                                       root_instruction_->shape())) {
       // Rebuild input output alias config now that we have a new output shape.
       parent()->input_output_alias_config() =
           HloInputOutputAliasConfig(new_root_instruction->shape());
@@ -471,6 +473,12 @@ HloComputation::ComputeChannelDependencies() const {
   return channel_dependency_group;
 }
 
+static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
+  return absl::c_all_of(instruction->users(), [](HloInstruction* user) {
+    return user->opcode() == HloOpcode::kTrace;
+  });
+}
+
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   auto channel_dependency_group = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
@@ -484,7 +492,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // instructions to the post order at the end (necessarily they have no
       // users).
       trace_instructions.push_back(instruction.get());
-    } else if (instruction->users().empty()) {
+    } else if (HasOnlyTraceUsers(instruction.get())) {
       ComputeInstructionPostOrder(channel_dependency_group, &post_order,
                                   instruction.get(), &visited);
     }
@@ -537,7 +545,11 @@ string HloComputation::ToString(
     if (options.print_percent()) {
       s << "%";
     }
-    s << PrintName(name(), options.print_ids()) << " ";
+    if (options.print_ids() || !IsEntryComputation()) {
+      // Exclude entry computation's name because it includes and leads to
+      // non-deterministic fingerprint.
+      s << PrintName(name(), options.print_ids()) << " ";
+    }
   }
 
   if (options.print_program_shape()) {
@@ -640,16 +652,17 @@ HloComputationProto HloComputation::ToProto() const {
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     const HloComputationProto& proto,
-    const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
+    const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+    bool prohibit_empty_literal) {
   absl::flat_hash_map<int64, HloInstruction*> instruction_map;
   absl::flat_hash_map<HloInstruction*, int64> to_proto_id;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
   int64 parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloInstruction> instruction,
-        HloInstruction::CreateFromProto(instruction_proto, instruction_map,
-                                        computation_map));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
+                        HloInstruction::CreateFromProto(
+                            instruction_proto, instruction_map, computation_map,
+                            prohibit_empty_literal));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }
@@ -842,7 +855,7 @@ bool HloComputation::Equal(const HloComputation& other,
       continue;
     }
     visited.emplace(pair);
-    // TODO(b/123082518): Avoid recursively invoking == becasue it may
+    // TODO(b/123082518): Avoid recursively invoking == because it may
     // cause a stack overflow with deeply nested subcomputations.
     bool identical_ignoring_operands = pair.first->Identical(
         *pair.second,
@@ -990,11 +1003,15 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
-    HloCloneContext* context, const string& suffix) {
+    HloCloneContext* context, const string& suffix,
+    const HloInstruction* new_root) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
     context_ptr = absl::make_unique<HloCloneContext>(parent(), suffix);
     context = context_ptr.get();
+  }
+  if (new_root == nullptr) {
+    new_root = root_instruction();
   }
 
   // Look up instr in the replacements map, and return either the replacement,
@@ -1002,12 +1019,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   //
   // Note: This can return null, indicating that instr should not be present in
   // the new computation.
-  auto replace = [&](HloInstruction* instr) {
+  auto replace = [&](const HloInstruction* instr) {
     auto it = replacements.find(instr);
-    if (it == replacements.end()) {
-      return instr;
-    }
-    return it->second.get();
+    return it != replacements.end() ? it->second.get() : instr;
   };
 
   VLOG(1) << "Cloning " << name() << " --> " << suffix << "\n";
@@ -1020,11 +1034,11 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   // The postorder we want here is simpler than what MakeInstructionPostOrder()
   // does -- we only care about operand dependencies -- so let's just do it
   // ourselves.
-  std::vector<HloInstruction*> postorder;
-  absl::flat_hash_map<HloInstruction*, VisitState> visited;
+  std::vector<const HloInstruction*> postorder;
+  absl::flat_hash_map<const HloInstruction*, VisitState> visited;
   for (const auto& instr : instructions_) {
-    std::vector<HloInstruction*> dfs_stack;
-    HloInstruction* new_instr = replace(instr.get());
+    std::vector<const HloInstruction*> dfs_stack;
+    const HloInstruction* new_instr = replace(instr.get());
     if (!new_instr) {
       continue;
     }
@@ -1046,7 +1060,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
 
       visited.insert({cur, kVisiting});
       for (HloInstruction* operand : cur->operands()) {
-        HloInstruction* new_operand = replace(operand);
+        const HloInstruction* new_operand = replace(operand);
         if (new_operand) {
           dfs_stack.emplace_back(new_operand);
         }
@@ -1084,8 +1098,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     builder.AddInstruction(std::move(instr));
   }
   auto result = builder.Build(
-      /*root_instruction=*/context->GetInstruction(
-          replace(root_instruction())));
+      /*root_instruction=*/context->GetInstruction(replace(new_root)));
 
   // Clone control dependencies.
   for (auto instr : postorder) {

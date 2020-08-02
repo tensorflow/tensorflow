@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,14 +27,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
-from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -45,7 +41,7 @@ cholesky = linalg_ops.cholesky
 cholesky_solve = linalg_ops.cholesky_solve
 det = linalg_ops.matrix_determinant
 slogdet = gen_linalg_ops.log_matrix_determinant
-tf_export('linalg.slogdet')(slogdet)
+tf_export('linalg.slogdet')(dispatch.add_dispatch_support(slogdet))
 diag = array_ops.matrix_diag
 diag_part = array_ops.matrix_diag_part
 eigh = linalg_ops.self_adjoint_eig
@@ -55,7 +51,7 @@ eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
 logm = gen_linalg_ops.matrix_logarithm
 lu = gen_linalg_ops.lu
-tf_export('linalg.logm')(logm)
+tf_export('linalg.logm')(dispatch.add_dispatch_support(logm))
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr
@@ -234,6 +230,7 @@ def _matrix_exp_pade13(matrix):
 
 
 @tf_export('linalg.expm')
+@dispatch.add_dispatch_support
 def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the matrix exponential of one or more square matrices.
 
@@ -278,16 +275,16 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
         math_ops.reduce_sum(
             math_ops.abs(matrix),
             axis=array_ops.size(array_ops.shape(matrix)) - 2),
-        axis=-1)
+        axis=-1)[..., array_ops.newaxis, array_ops.newaxis]
     const = lambda x: constant_op.constant(x, l1_norm.dtype)
 
     def _nest_where(vals, cases):
       assert len(vals) == len(cases) - 1
       if len(vals) == 1:
-        return array_ops.where(
+        return array_ops.where_v2(
             math_ops.less(l1_norm, const(vals[0])), cases[0], cases[1])
       else:
-        return array_ops.where(
+        return array_ops.where_v2(
             math_ops.less(l1_norm, const(vals[0])), cases[0],
             _nest_where(vals[1:], cases[1:]))
 
@@ -298,11 +295,9 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
       u3, v3 = _matrix_exp_pade3(matrix)
       u5, v5 = _matrix_exp_pade5(matrix)
-      u7, v7 = _matrix_exp_pade7(matrix / math_ops.pow(
-          constant_op.constant(2.0, dtype=matrix.dtype),
-          math_ops.cast(
-              squarings,
-              matrix.dtype))[..., array_ops.newaxis, array_ops.newaxis])
+      u7, v7 = _matrix_exp_pade7(
+          matrix /
+          math_ops.cast(math_ops.pow(const(2.0), squarings), matrix.dtype))
       conds = (4.258730016922831e-001, 1.880152677804762e+000)
       u = _nest_where(conds, (u3, u5, u7))
       v = _nest_where(conds, (v3, v5, v7))
@@ -315,11 +310,9 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       u5, v5 = _matrix_exp_pade5(matrix)
       u7, v7 = _matrix_exp_pade7(matrix)
       u9, v9 = _matrix_exp_pade9(matrix)
-      u13, v13 = _matrix_exp_pade13(matrix / math_ops.pow(
-          constant_op.constant(2.0, dtype=matrix.dtype),
-          math_ops.cast(
-              squarings,
-              matrix.dtype))[..., array_ops.newaxis, array_ops.newaxis])
+      u13, v13 = _matrix_exp_pade13(
+          matrix /
+          math_ops.cast(math_ops.pow(const(2.0), squarings), matrix.dtype))
       conds = (1.495585217958292e-002, 2.539398330063230e-001,
                9.504178996162932e-001, 2.097847961257068e+000)
       u = _nest_where(conds, (u3, u5, u7, u9, u13))
@@ -336,7 +329,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     c = lambda i, r: math_ops.less(i, max_squarings)
 
     def b(i, r):
-      return i + 1, array_ops.where(
+      return i + 1, array_ops.where_v2(
           math_ops.less(i, squarings), math_ops.matmul(r, r), r)
 
     _, result = control_flow_ops.while_loop(c, b, [i, result])
@@ -347,7 +340,104 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     return array_ops.reshape(result, batch_shape.concatenate(result.shape[-2:]))
 
 
+@tf_export('linalg.banded_triangular_solve', v1=[])
+def banded_triangular_solve(
+    bands,
+    rhs,
+    lower=True,
+    adjoint=False,  # pylint: disable=redefined-outer-name
+    name=None):
+  r"""Solve triangular systems of equations with a banded solver.
+
+  `bands` is a tensor of shape `[..., K, M]`, where `K` represents the number
+  of bands stored. This corresponds to a batch of `M` by `M` matrices, whose
+  `K` subdiagonals (when `lower` is `True`) are stored.
+
+  This operator broadcasts the batch dimensions of `bands` and the batch
+  dimensions of `rhs`.
+
+
+  Examples:
+
+  Storing 2 bands of a 3x3 matrix.
+  Note that first element in the second row is ignored due to
+  the 'LEFT_RIGHT' padding.
+
+  >>> x = [[2., 3., 4.], [1., 2., 3.]]
+  >>> x2 = [[2., 3., 4.], [10000., 2., 3.]]
+  >>> y = tf.zeros([3, 3])
+  >>> z = tf.linalg.set_diag(y, x, align='LEFT_RIGHT', k=(-1, 0))
+  >>> z
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+  array([[2., 0., 0.],
+         [2., 3., 0.],
+         [0., 3., 4.]], dtype=float32)>
+  >>> soln = tf.linalg.banded_triangular_solve(x, tf.ones([3, 1]))
+  >>> soln
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[0.5 ],
+         [0.  ],
+         [0.25]], dtype=float32)>
+  >>> are_equal = soln == tf.linalg.banded_triangular_solve(x2, tf.ones([3, 1]))
+  >>> tf.reduce_all(are_equal).numpy()
+  True
+  >>> are_equal = soln == tf.linalg.triangular_solve(z, tf.ones([3, 1]))
+  >>> tf.reduce_all(are_equal).numpy()
+  True
+
+  Storing 2 superdiagonals of a 4x4 matrix. Because of the 'LEFT_RIGHT' padding
+  the last element of the first row is ignored.
+
+  >>> x = [[2., 3., 4., 5.], [-1., -2., -3., -4.]]
+  >>> y = tf.zeros([4, 4])
+  >>> z = tf.linalg.set_diag(y, x, align='LEFT_RIGHT', k=(0, 1))
+  >>> z
+  <tf.Tensor: shape=(4, 4), dtype=float32, numpy=
+  array([[-1.,  2.,  0.,  0.],
+         [ 0., -2.,  3.,  0.],
+         [ 0.,  0., -3.,  4.],
+         [ 0.,  0., -0., -4.]], dtype=float32)>
+  >>> soln = tf.linalg.banded_triangular_solve(x, tf.ones([4, 1]), lower=False)
+  >>> soln
+  <tf.Tensor: shape=(4, 1), dtype=float32, numpy=
+  array([[-4.       ],
+         [-1.5      ],
+         [-0.6666667],
+         [-0.25     ]], dtype=float32)>
+  >>> are_equal = (soln == tf.linalg.triangular_solve(
+  ...   z, tf.ones([4, 1]), lower=False))
+  >>> tf.reduce_all(are_equal).numpy()
+  True
+
+
+  Args:
+    bands: A `Tensor` describing the bands of the left hand side, with shape
+      `[..., K, M]`. The `K` rows correspond to the diagonal to the `K - 1`-th
+      diagonal (the diagonal is the top row) when `lower` is `True` and
+      otherwise the `K - 1`-th superdiagonal to the diagonal (the diagonal is
+      the bottom row) when `lower` is `False`. The bands are stored with
+      'LEFT_RIGHT' alignment, where the superdiagonals are padded on the right
+      and subdiagonals are padded on the left. This is the alignment cuSPARSE
+      uses.  See  `tf.linalg.set_diag` for more details.
+    rhs: A `Tensor` of shape [..., M] or [..., M, N] and with the same dtype as
+      `diagonals`. Note that if the shape of `rhs` and/or `diags` isn't known
+      statically, `rhs` will be treated as a matrix rather than a vector.
+    lower: An optional `bool`. Defaults to `True`. Boolean indicating whether
+      `bands` represents a lower or upper triangular matrix.
+    adjoint: An optional `bool`. Defaults to `False`. Boolean indicating whether
+      to solve with the matrix's block-wise adjoint.
+    name:  A name to give this `Op` (optional).
+
+  Returns:
+    A `Tensor` of shape [..., M] or [..., M, N] containing the solutions.
+  """
+  with ops.name_scope(name, 'banded_triangular_solve', [bands, rhs]):
+    return gen_linalg_ops.banded_triangular_solve(
+        bands, rhs, lower=lower, adjoint=adjoint)
+
+
 @tf_export('linalg.tridiagonal_solve')
+@dispatch.add_dispatch_support
 def tridiagonal_solve(diagonals,
                       rhs,
                       diagonals_format='compact',
@@ -438,7 +528,9 @@ def tridiagonal_solve(diagonals,
 
   Raises:
     ValueError: An unsupported type is provided as input, or when the input
-    tensors have incorrect shapes.
+      tensors have incorrect shapes.
+    UnimplementedError: Whenever `partial_pivoting` is true and the backend is
+      XLA.
 
   [1] Nicholas J. Higham (2002). Accuracy and Stability of Numerical Algorithms:
   Second Edition. SIAM. p. 175. ISBN 978-0-89871-802-7.
@@ -490,14 +582,8 @@ def tridiagonal_solve(diagonals,
           'Expected last two dimensions of diagonals to be same, got {} and {}'
           .format(m1, m2))
     m = m1 or m2
-    diagonals = gen_array_ops.matrix_diag_part_v2(
-        diagonals, k=(-1, 1), padding_value=0.)
-    # matrix_diag_part pads at the end. Because the subdiagonal has the
-    # convention of having the padding in the front, we need to rotate the last
-    # Tensor.
-    superdiag, d, subdiag = array_ops.unstack(diagonals, num=3, axis=-2)
-    subdiag = manip_ops.roll(subdiag, shift=1, axis=-1)
-    diagonals = array_ops.stack((superdiag, d, subdiag), axis=-2)
+    diagonals = array_ops.matrix_diag_part(
+        diagonals, k=(-1, 1), padding_value=0., align='LEFT_RIGHT')
     return _tridiagonal_solve_compact_format(
         diagonals, rhs, transpose_rhs, conjugate_rhs, partial_pivoting, name)
 
@@ -549,13 +635,11 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
     rhs = math_ops.conj(rhs)
 
   check_num_lhs_matches_num_rhs()
-  result = linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
-  if transpose_rhs and not compat.forward_compatible(2019, 10, 18):
-    return array_ops.matrix_transpose(result)
-  return result
+  return linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
 
 
 @tf_export('linalg.tridiagonal_matmul')
+@dispatch.add_dispatch_support
 def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   r"""Multiplies tridiagonal matrix by matrix.
 
@@ -618,20 +702,11 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
       raise ValueError(
           'Expected last two dimensions of diagonals to be same, got {} and {}'
           .format(m1, m2))
-
-    maindiag = array_ops.matrix_diag_part(diagonals)
-    superdiag = gen_array_ops.matrix_diag_part_v2(
-        diagonals, k=1, padding_value=0.)
-    superdiag = array_ops.concat(
-        [superdiag,
-         array_ops.zeros_like(
-             superdiag[..., 0])[..., array_ops.newaxis]],
-        axis=-1)
-    subdiag = gen_array_ops.matrix_diag_part_v2(
-        diagonals, k=-1, padding_value=0.)
-    subdiag = array_ops.concat([
-        array_ops.zeros_like(subdiag[..., 0])[..., array_ops.newaxis],
-        subdiag], axis=-1)
+    diags = array_ops.matrix_diag_part(
+        diagonals, k=(-1, 1), padding_value=0., align='LEFT_RIGHT')
+    superdiag = diags[..., 0, :]
+    maindiag = diags[..., 1, :]
+    subdiag = diags[..., 2, :]
   else:
     raise ValueError('Unrecognized diagonals_format: %s' % diagonals_format)
 
@@ -662,6 +737,7 @@ def _maybe_validate_matrix(a, validate_args):
 
 
 @tf_export('linalg.matrix_rank')
+@dispatch.add_dispatch_support
 def matrix_rank(a, tol=None, validate_args=False, name=None):
   """Compute the matrix rank of one or more matrices.
 
@@ -700,6 +776,7 @@ def matrix_rank(a, tol=None, validate_args=False, name=None):
 
 
 @tf_export('linalg.pinv')
+@dispatch.add_dispatch_support
 def pinv(a, rcond=None, validate_args=False, name=None):
   """Compute the Moore-Penrose pseudo-inverse of one or more matrices.
 
@@ -829,6 +906,7 @@ def pinv(a, rcond=None, validate_args=False, name=None):
 
 
 @tf_export('linalg.lu_solve')
+@dispatch.add_dispatch_support
 def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
   """Solves systems of linear eqns `A X = RHS`, given LU factorizations.
 
@@ -919,14 +997,14 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
         band_part(lower_upper, num_lower=-1, num_upper=0),
         array_ops.ones(
             array_ops.shape(lower_upper)[:-1], dtype=lower_upper.dtype))
-    return linear_operator_util.matrix_triangular_solve_with_broadcast(
+    return triangular_solve(
         lower_upper,  # Only upper is accessed.
-        linear_operator_util.matrix_triangular_solve_with_broadcast(
-            lower, permuted_rhs),
+        triangular_solve(lower, permuted_rhs),
         lower=False)
 
 
 @tf_export('linalg.lu_matrix_inverse')
+@dispatch.add_dispatch_support
 def lu_matrix_inverse(lower_upper, perm, validate_args=False, name=None):
   """Computes the inverse given the LU decomposition(s) of one or more matrices.
 
@@ -991,6 +1069,7 @@ def lu_matrix_inverse(lower_upper, perm, validate_args=False, name=None):
 
 
 @tf_export('linalg.lu_reconstruct')
+@dispatch.add_dispatch_support
 def lu_reconstruct(lower_upper, perm, validate_args=False, name=None):
   """The reconstruct one or more matrices from their LU decomposition(s).
 

@@ -34,6 +34,7 @@ from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as framework_device_lib
@@ -114,7 +115,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             'CPU': 2, 'GPU': 0
         })) as sess:
       inp = constant_op.constant(10.0, name='W1')
-      self.assertAllEqual(inp.eval(), 10.0)
+      self.assertAllEqual(inp, 10.0)
 
       num_cpu_devices = 0
       num_gpu_devices = 0
@@ -132,7 +133,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session(
         config=config_pb2.ConfigProto(use_per_session_threads=True)):
       inp = constant_op.constant(10.0, name='W1')
-      self.assertAllEqual(inp.eval(), 10.0)
+      self.assertAllEqual(inp, 10.0)
 
   def testSessionInterOpThreadPool(self):
     config_pb = config_pb2.ConfigProto()
@@ -808,7 +809,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(
           dtype=np.float32, shape=shape, name='placeholder1')
       self.assertAllEqual(sp.dense_shape.eval(session=s), shape)
-      self.assertAllEqual(tensor_util.constant_value(sp.dense_shape), shape)
+      self.assertAllEqual(tensor_util.constant_value(sp.shape), shape)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
       sp_shape = array_ops.identity(sp.dense_shape)
@@ -1234,11 +1235,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(sess.graph_def.node), 1)
       d = constant_op.constant(6.0, name='d')
       self.assertEqual(len(sess.graph_def.node), 2)
-      self.assertAllEqual(c.eval(), 5.0)
-      self.assertAllEqual(d.eval(), 6.0)
+      self.assertAllEqual(c, 5.0)
+      self.assertAllEqual(d, 6.0)
       e = constant_op.constant(7.0, name='e')
       self.assertEqual(len(sess.graph_def.node), 3)
-      self.assertAllEqual(e.eval(), 7.0)
+      self.assertAllEqual(e, 7.0)
 
   def testUseAfterClose(self):
     with session.Session() as sess:
@@ -1268,11 +1269,11 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testUseEmptyGraph(self):
     with session.Session() as sess:
-      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
+      with self.assertRaisesRegex(RuntimeError, 'The Session graph is empty.'):
         sess.run([])
-      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
+      with self.assertRaisesRegex(RuntimeError, 'The Session graph is empty.'):
         sess.run(())
-      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
+      with self.assertRaisesRegex(RuntimeError, 'The Session graph is empty.'):
         sess.run({})
 
   @test_util.run_v1_only('b/120545219')
@@ -1298,10 +1299,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[2, 3])
       c = math_ops.matmul(a, b)
-      self.assertAllEqual([[4.0, 4.0, 4.0]], c.eval())
+      self.assertAllEqual([[4.0, 4.0, 4.0]], c)
       d = constant_op.constant([1.0, 2.0, 3.0], shape=[3, 1])
       e = math_ops.matmul(c, d)
-      self.assertAllEqual([[24.0]], e.eval())
+      self.assertAllEqual([[24.0]], e)
       sess.close()
 
   @test_util.run_v1_only('b/120545219')
@@ -1515,11 +1516,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       feed_t = array_ops.placeholder(dtype=dtypes.float32)
       out_t = array_ops.identity(feed_t)
       feed_val = constant_op.constant(5.0)
-      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+      with self.assertRaisesRegex(TypeError, 'cannot be a tf.Tensor object'):
         sess.run(out_t, feed_dict={feed_t: feed_val})
-      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+      with self.assertRaisesRegex(TypeError, 'cannot be a tf.Tensor object'):
         out_t.eval(feed_dict={feed_t: feed_val})
-      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+      with self.assertRaisesRegex(TypeError, 'cannot be a tf.Tensor object'):
         out_t.op.run(feed_dict={feed_t: feed_val})
 
   def testFeedPrecisionLossError(self):
@@ -1531,11 +1532,11 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       out_t = constant_op.constant(1.0)
 
-      with self.assertRaisesRegexp(TypeError,
-                                   'is not compatible with Tensor type'):
+      with self.assertRaisesRegex(TypeError,
+                                  'is not compatible with Tensor type'):
         sess.run(out_t, feed_dict={feed_int_implicit_int32: largest_int64})
-      with self.assertRaisesRegexp(TypeError,
-                                   'is not compatible with Tensor type'):
+      with self.assertRaisesRegex(TypeError,
+                                  'is not compatible with Tensor type'):
         sess.run(out_t, feed_dict={feed_int_explicit_int32: largest_int64})
 
   def testStringFetch(self):
@@ -1548,7 +1549,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             [compat.as_bytes(str(i)) for i in xrange(size)],
             dtype=np.object).reshape(shape) if size > 0 else []
         c = constant_op.constant(c_list)
-        self.assertAllEqual(c.eval(), c_list)
+        self.assertAllEqual(c, c_list)
 
   def testStringFeed(self):
     with session.Session() as sess:
@@ -1597,7 +1598,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertEqual(c_list[i], out[i].decode('utf-8'))
 
   def testInvalidTargetFails(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.NotFoundError,
         'No session factory registered for the given session options'):
       session.Session('INVALID_TARGET')
@@ -1661,7 +1662,7 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testFeedDictKeyException(self):
     with session.Session() as sess:
       a = constant_op.constant(1.0, dtypes.float32, name='a')
-      with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
+      with self.assertRaisesRegex(TypeError, 'Cannot interpret feed_dict'):
         sess.run(a, feed_dict={'a': [2.0]})
 
   def testPerStepTrace(self):
@@ -1716,10 +1717,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       new_shape = constant_op.constant([2, 2])
       reshaped_tensor = array_ops.reshape(some_tensor, new_shape)
 
-      with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
+      with self.assertRaisesRegex(ValueError, 'Cannot feed value of shape'):
         sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           'Input to reshape is a tensor with 4 values, '
           'but the requested shape has 21'):
@@ -1793,7 +1794,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     sess2_controller = sess2.as_default()
     sess2_controller.__enter__()
 
-    with self.assertRaisesRegexp(AssertionError, 'Nesting violated'):
+    with self.assertRaisesRegex(AssertionError, 'Nesting violated'):
       sess1_controller.__exit__(None, None, None)
 
     ops._default_session_stack.reset()
@@ -1817,17 +1818,17 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testReentry(self):
     sess = session.Session()
-    with self.assertRaisesRegexp(RuntimeError, 'not re-entrant'):
+    with self.assertRaisesRegex(RuntimeError, 'not re-entrant'):
       with sess:
         with sess:
           pass
 
   def testInvalidArgument(self):
-    with self.assertRaisesRegexp(TypeError, 'target must be a string'):
+    with self.assertRaisesRegex(TypeError, 'target must be a string'):
       session.Session(37)
-    with self.assertRaisesRegexp(TypeError, 'config must be a tf.ConfigProto'):
+    with self.assertRaisesRegex(TypeError, 'config must be a tf.ConfigProto'):
       session.Session(config=37)
-    with self.assertRaisesRegexp(TypeError, 'graph must be a tf.Graph'):
+    with self.assertRaisesRegex(TypeError, 'graph must be a tf.Graph'):
       session.Session(graph=37)
 
   @test_util.run_v1_only('b/120545219')
@@ -1911,12 +1912,15 @@ class SessionTest(test_util.TensorFlowTestCase):
       def __str__(self):
         return self._output
 
+    context.set_log_device_placement(True)
     if context.executing_eagerly():
-      context.set_log_device_placement(True)
       with CaptureStderr() as log:
         a = constant_op.constant(1)
         b = constant_op.constant(2)
         c = a + b
+        # Ensure if the same kernel with the same arguments is executed then its
+        # execution is logged.
+        d = a + b
     else:
       # Passing the config to the server, but not the session should still
       # result in logging device placement.
@@ -1925,12 +1929,32 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(1)
       b = constant_op.constant(2)
       c = a + b
+      d = a + b
       with session.Session(server.target) as sess:
         with CaptureStderr() as log:
-          sess.run(c)
+          c, d = sess.run([c, d])
 
+    self.assertEqual(c, 3)
+    self.assertEqual(d, 3)
     # Ensure that we did log device placement.
-    self.assertTrue('/replica:0/task:0/device:CPU:0' in str(log), str(log))
+    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    self.assertEqual(len(add_executions), 2)
+
+    @def_function.function
+    def fn():
+      a = constant_op.constant(1)
+      b = constant_op.constant(2)
+      c = a + b
+      d = a + b
+      return c, d
+
+    with CaptureStderr() as log:
+      c, d = self.evaluate(fn())
+    self.assertEqual(c, 3)
+    self.assertEqual(d, 3)
+    # Ensure that we did log device placement.
+    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    self.assertEqual(len(add_executions), 2)
 
   @test_util.run_v1_only('b/120545219')
   def testLocalMasterSessionTimeout(self):
@@ -2037,7 +2061,7 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testAutoConvertAndCheckData(self):
     with self.cached_session() as sess:
       a = array_ops.placeholder(dtype=dtypes.string)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           TypeError, r'Type of feed value 1 with type <(\w+) \'int\'> is not'):
         sess.run(a, feed_dict={a: 1})
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+
 import numpy as np
 
 from tensorflow.python.client import session
@@ -220,7 +221,7 @@ class TridiagonalMulOpTest(test.TestCase):
                                               vec,
                                               diagonals_format='sequence')
 
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(x1),

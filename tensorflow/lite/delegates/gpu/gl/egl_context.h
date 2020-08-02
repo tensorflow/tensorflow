@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_EGL_CONTEXT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_EGL_CONTEXT_H_
 
-#include <vector>
-
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_egl.h"
 
@@ -63,9 +61,9 @@ class EglContext {
 
   // Make this EglContext the current EGL context on this thread, replacing
   // the existing current.
-  Status MakeCurrent(EGLSurface read, EGLSurface write);
+  absl::Status MakeCurrent(EGLSurface read, EGLSurface write);
 
-  Status MakeCurrentSurfaceless() {
+  absl::Status MakeCurrentSurfaceless() {
     return MakeCurrent(EGL_NO_SURFACE, EGL_NO_SURFACE);
   }
 
@@ -88,14 +86,16 @@ class EglContext {
 
 // It uses the EGL_KHR_no_config_context extension to create a no config context
 // since most modern hardware supports the extension.
-Status CreateConfiglessContext(EGLDisplay display, EGLContext shared_context,
-                               EglContext* egl_context);
+absl::Status CreateConfiglessContext(EGLDisplay display,
+                                     EGLContext shared_context,
+                                     EglContext* egl_context);
 
-Status CreateSurfacelessContext(EGLDisplay display, EGLContext shared_context,
-                                EglContext* egl_context);
+absl::Status CreateSurfacelessContext(EGLDisplay display,
+                                      EGLContext shared_context,
+                                      EglContext* egl_context);
 
-Status CreatePBufferContext(EGLDisplay display, EGLContext shared_context,
-                            EglContext* egl_context);
+absl::Status CreatePBufferContext(EGLDisplay display, EGLContext shared_context,
+                                  EglContext* egl_context);
 
 }  // namespace gl
 }  // namespace gpu

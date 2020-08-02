@@ -16,39 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_ASM_COMPILER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_ASM_COMPILER_H_
 
-#include <string>
+#include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
-// Compilation options for compiling ptxas.
-struct GpuAsmOpts {
-  // Disable Cuda ptxas optimizations.
-  bool disable_gpuasm_optimizations;
-
-  // Cuda directory which would be searched first.
-  std::string preferred_cuda_dir;
-
-  explicit GpuAsmOpts(bool disable_gpuasm_optimizations = false,
-                      absl::string_view preferred_cuda_dir = "")
-      : disable_gpuasm_optimizations(disable_gpuasm_optimizations),
-        preferred_cuda_dir(preferred_cuda_dir) {}
-
-  using PtxOptionsTuple = std::tuple<bool, std::string>;
-
-  PtxOptionsTuple ToTuple() {
-    return std::make_tuple(disable_gpuasm_optimizations, preferred_cuda_dir);
-  }
-};
 
 // Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array.
+// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
+// capabilities of the device associated with 'device_ordinal'.
 //
-// compile_ptx_options is used to query for the CUDA location in case it is
+// 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
 port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
+                                                 const char* ptx_contents,
+                                                 GpuAsmOpts options);
+
+// Compiles the given PTX string using ptxas and returns the resulting machine
+// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
+// capabilities provided by 'cc_major' and 'cc_minor'.
+//
+// 'options' is used to query for the CUDA location in case it is
+// customized in a passed flag, and for controlling ptxas optimizations.
+port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
                                                  const char* ptx_contents,
                                                  GpuAsmOpts options);
 

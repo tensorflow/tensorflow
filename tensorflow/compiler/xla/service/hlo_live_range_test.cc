@@ -144,7 +144,7 @@ TEST_F(HloLiveRangeTest, MultiplyAdd) {
 }
 
 TEST_F(HloLiveRangeTest, LiveOutBuffers) {
-  // If a buffer is live out, its life range is extened to the end of
+  // If a buffer is live out, its life range is extended to the end of
   // computation.
   auto builder = HloComputation::Builder(TestName());
   auto paramA = builder.AddInstruction(
@@ -181,7 +181,7 @@ TEST_F(HloLiveRangeTest, LiveOutBuffers) {
 }
 
 TEST_F(HloLiveRangeTest, InstructionScheduledAfterRoot) {
-  // If a buffer is live out, its life range is extened to the end of
+  // If a buffer is live out, its life range is extended to the end of
   // computation.
   auto builder = HloComputation::Builder(TestName());
   auto paramA = builder.AddInstruction(
@@ -237,8 +237,7 @@ TEST_F(HloLiveRangeTest, AliasedParameter) {
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, mul, paramY));
   module_->AddEntryComputation(builder.Build());
   // Set up alias of the first parameter.
-  TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      {}, 0, {}, HloInputOutputAliasConfig::kUserAlias));
+  TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias({}, 0, {}));
 
   HloSchedule schedule(module_.get());
 

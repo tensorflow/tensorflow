@@ -13,20 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/jit/defs.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/port.h"
 
 namespace tensorflow {
@@ -71,9 +82,8 @@ class UnaryOpsCompositionTest : public OpsTestBase {
     DeviceContext* device_context =
         device_->tensorflow_gpu_device_info()->default_context;
 
-    TF_CHECK_OK(BlockingCopy([&](StatusCallback cb) {
-      device_context->CopyCPUTensorToDevice(&input_on_host, device_, input, cb);
-    }));
+    TF_CHECK_OK(device_context->CopyCPUTensorToDeviceSync(&input_on_host,
+                                                          device_, input));
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -83,26 +93,11 @@ class UnaryOpsCompositionTest : public OpsTestBase {
     Tensor* output = GetOutput(0);
     Tensor output_on_host(cpu_allocator, output->dtype(), output->shape());
 
-    TF_CHECK_OK(BlockingCopy([&](StatusCallback cb) {
-      device_context->CopyDeviceTensorToCPU(output, "output 0", device_,
-                                            &output_on_host, cb);
-    }));
+    TF_CHECK_OK(device_context->CopyDeviceTensorToCPUSync(
+        output, "output 0", device_, &output_on_host));
 
     test::ExpectClose(expected_tensor, output_on_host, /*atol=*/1e-5,
                       /*rtol=*/1e-5);
-  }
-
- private:
-  template <typename CopyFnTy>
-  Status BlockingCopy(CopyFnTy copy_fn) {
-    Notification n;
-    Status status;
-    copy_fn([&](Status s) {
-      status = s;
-      n.Notify();
-    });
-    n.WaitForNotification();
-    return status;
   }
 };
 

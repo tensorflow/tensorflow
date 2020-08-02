@@ -21,6 +21,9 @@ from __future__ import print_function
 from tensorflow.python.util.tf_export import tf_export
 
 
+_VALID_DEVICE_TYPES = frozenset({"CPU", "GPU", "TPU", "CUSTOM"})
+
+
 # ==============================================================================
 # == Global Implementation Details =============================================
 # ==============================================================================
@@ -57,11 +60,26 @@ class DeviceSpecV2(object):
   ```python
   # Place the operations on device "GPU:0" in the "ps" job.
   device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
-  with tf.device(device_spec):
+  with tf.device(device_spec.to_string()):
     # Both my_var and squared_var will be placed on /job:ps/device:GPU:0.
     my_var = tf.Variable(..., name="my_variable")
     squared_var = tf.square(my_var)
   ```
+
+  With eager execution disabled (by default in TensorFlow 1.x and by calling
+  disable_eager_execution() in TensorFlow 2.x), the following syntax
+  can be used:
+ 
+  ```python
+  tf.compat.v1.disable_eager_execution()
+ 
+  # Same as previous
+  device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
+  # No need of .to_string() method.
+  with tf.device(device_spec):
+    my_var = tf.Variable(..., name="my_variable")
+    squared_var = tf.square(my_var)
+   ```
 
   If a `DeviceSpec` is partially specified, it will be merged with other
   `DeviceSpec`s according to the scope in which it is defined. `DeviceSpec`
@@ -69,10 +87,11 @@ class DeviceSpecV2(object):
   outer scopes.
 
   ```python
-  with tf.device(DeviceSpec(job="train", )):
-    with tf.device(DeviceSpec(job="ps", device_type="GPU", device_index=0):
+  gpu0_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
+  with tf.device(DeviceSpec(job="train").to_string()):
+    with tf.device(gpu0_spec.to_string()):
       # Nodes created here will be assigned to /job:ps/device:GPU:0.
-    with tf.device(DeviceSpec(device_type="GPU", device_index=1):
+    with tf.device(DeviceSpec(device_type="GPU", device_index=1).to_string()):
       # Nodes created here will be assigned to /job:train/device:GPU:1.
   ```
 
@@ -193,7 +212,7 @@ class DeviceSpecV2(object):
   def make_merged_spec(self, dev):
     """Returns a new DeviceSpec which incorporates `dev`.
 
-    When combining specs, `dev` will take precidence over the current spec.
+    When combining specs, `dev` will take precedence over the current spec.
     So for instance:
     ```
     first_spec = tf.DeviceSpec(job=0, device_type="CPU")
@@ -234,7 +253,7 @@ class DeviceSpecV2(object):
         job=self.job, replica=self.replica, task=self.task,
         device_type=self.device_type, device_index=self.device_index)
 
-    # Explicitly provided kwargs take precidence.
+    # Explicitly provided kwargs take precedence.
     init_kwargs.update(kwargs)
     return self.__class__(**init_kwargs)
 
@@ -309,8 +328,7 @@ class DeviceSpecV2(object):
           replica = y[1]
         elif ly == 2 and y[0] == "task":
           task = y[1]
-        elif ((ly == 1 or ly == 2) and
-              ((y[0].upper() == "GPU") or (y[0].upper() == "CPU"))):
+        elif ((ly == 1 or ly == 2) and (y[0].upper() in _VALID_DEVICE_TYPES)):
           if device_type is not None:
             raise ValueError("Cannot specify multiple device types: %s" % spec)
           device_type = y[0].upper()

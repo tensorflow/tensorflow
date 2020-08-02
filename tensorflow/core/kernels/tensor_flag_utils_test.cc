@@ -308,15 +308,15 @@ TEST(SparseUtils, FindConfigValueForKey) {
 TEST(SparseUtils, GetLinearBucket) {
   EXPECT_EQ(11, GetLinearBucket(11, 5));
   EXPECT_EQ(11, GetLinearBucket(12, 5));
-  EXPECT_EQ(1, GetLinearBucket(4ll, 5ll));
+  EXPECT_EQ(1, GetLinearBucket(int64{4}, int64{5}));
 }
 
 TEST(SparseUtils, GetPowerBucket) {
   EXPECT_EQ(6, GetPowerBucket(11, 5));
   EXPECT_EQ(6, GetPowerBucket(12, 5));
   EXPECT_EQ(1332, GetPowerBucket(1335, 11));
-  EXPECT_EQ(5, GetPowerBucket(5ll, 4ll));
-  EXPECT_EQ(1, GetPowerBucket(4ll, 1ll));
+  EXPECT_EQ(5, GetPowerBucket(int64{5}, int64{4}));
+  EXPECT_EQ(1, GetPowerBucket(int64{4}, int64{1}));
 }
 
 }  // namespace

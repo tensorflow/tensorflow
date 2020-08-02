@@ -22,7 +22,9 @@ public class OvicDetectionResult {
   // Top K classes and probabilities.
   public final ArrayList<BoundingBox> detections;
   // Latency (ms).
-  public Long latency = -1L;
+  public Long latencyMilli = -1L;
+  // Latency (ns).
+  public Long latencyNano = -1L;
   // id of the image.
   public int id = -1;
   // Number of valid detections (separately maintained, maybe different from detections.size()).
@@ -37,9 +39,10 @@ public class OvicDetectionResult {
     }
   }
 
-  public void resetTo(Long latency, int id) {
+  public void resetTo(Long latencyMilli, Long latencyNano, int id) {
     count = 0;
-    this.latency = latency;
+    this.latencyMilli = latencyMilli;
+    this.latencyNano = latencyNano;
     this.id = id;
   }
 
@@ -64,7 +67,8 @@ public class OvicDetectionResult {
 
   @Override
   public String toString() {
-    String textToShow = latency + "ms";
+    String textToShow = latencyMilli + "ms";
+    textToShow += "\n" + latencyNano + "ns";
     int k = 0;
     for (BoundingBox box : detections) {
       textToShow +=

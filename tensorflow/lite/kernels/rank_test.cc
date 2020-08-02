@@ -13,13 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdint.h>
+
 #include <initializer_list>
+#include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -43,6 +47,9 @@ class RankOpModel : public SingleOpModel {
 
   std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+  TfLiteAllocationType GetOutputAllocationType() const {
+    return interpreter_->tensor(interpreter_->outputs()[0])->allocation_type;
+  }
 
  private:
   int input_;
@@ -51,6 +58,13 @@ class RankOpModel : public SingleOpModel {
 
 TEST(RankOpTest, InputTypeFloat) {
   RankOpModel model({1, 3, 1, 3, 5}, TensorType_FLOAT32);
+  ASSERT_EQ(model.GetOutputAllocationType(), kTfLitePersistentRo);
+
+  // Unlike most ops, Rank populates outputs in Prepare().
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({5}));
+  EXPECT_TRUE(model.GetOutputShape().empty());
+
+  // Invoke is superfluous and shouldn't change the output.
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({5}));
@@ -59,7 +73,6 @@ TEST(RankOpTest, InputTypeFloat) {
 
 TEST(RankOpTest, InputTypeInt) {
   RankOpModel model({1, 3, 1, 3, 5}, TensorType_INT32);
-  model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({5}));
   EXPECT_TRUE(model.GetOutputShape().empty());
@@ -67,7 +80,6 @@ TEST(RankOpTest, InputTypeInt) {
 
 TEST(RankOpTest, ScalarTensor) {
   RankOpModel model({}, TensorType_FLOAT32);
-  model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0}));
   EXPECT_TRUE(model.GetOutputShape().empty());
@@ -75,7 +87,6 @@ TEST(RankOpTest, ScalarTensor) {
 
 TEST(RankOpTest, EmptyTensor) {
   RankOpModel model({1, 0}, TensorType_FLOAT32);
-  model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({2}));
   EXPECT_TRUE(model.GetOutputShape().empty());

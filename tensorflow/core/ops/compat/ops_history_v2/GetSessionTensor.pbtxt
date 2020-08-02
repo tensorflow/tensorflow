@@ -1,0 +1,31 @@
+op {
+  name: "GetSessionTensor"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+}
+op {
+  name: "GetSessionTensor"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
+}

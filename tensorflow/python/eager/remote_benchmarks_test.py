@@ -84,7 +84,7 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
     self._cached_server2 = server_lib.Server.create_local_server()
     self._cached_server_target2 = self._cached_server2.target[len("grpc://"):]
 
-  def _run(self, func, num_iters=1000, execution_mode=None):
+  def _run(self, func, num_iters=1000, execution_mode=context.ASYNC):
     total_time = run_benchmark(func, num_iters, execution_mode)
     mean_us = total_time * 1e6 / num_iters
     self.report_benchmark(

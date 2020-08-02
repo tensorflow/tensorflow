@@ -147,11 +147,11 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
       const int32 first_dim_size,                                 \
       const GpuDeviceArrayStruct<int32>& input_indices,           \
       const GpuDeviceArrayStruct<const T*>& input_ptrs, T* output);
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
-TF_CALL_int64(REGISTER_GPU);
+
 TF_CALL_int32(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 template <class T>
@@ -196,7 +196,7 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
 
       // data_flat index
       int32 idx = 0;
-      // sum of indices_inputs[i].NumElements() for compute indicies_flat value.
+      // sum of indices_inputs[i].NumElements() for compute indices_flat value.
       int32 base_size = 0;
       for (int i = 0; i < indices_inputs.size(); ++i) {
         auto indices_vec = indices_inputs[i].flat<int32>();
@@ -357,11 +357,10 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_DYNAMIC_STITCH);
                               .HostMemory("merged"),     \
                           ParallelDynamicStitchOpCPU<type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
-TF_CALL_complex64(REGISTER_DYNAMIC_STITCH_GPU);
-TF_CALL_complex128(REGISTER_DYNAMIC_STITCH_GPU);
-TF_CALL_int64(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_int32(REGISTER_DYNAMIC_STITCH_GPU);
+TF_CALL_int64(REGISTER_DYNAMIC_STITCH_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

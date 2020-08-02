@@ -291,8 +291,10 @@ class FileWriter(SummaryToEventTransformer):
 
   When constructed with a `tf.compat.v1.Session` parameter, a `FileWriter`
   instead forms a compatibility layer over new graph-based summaries
-  (`tf.contrib.summary`) to facilitate the use of new summary writing with
+  to facilitate the use of new summary writing with
   pre-existing code that expects a `FileWriter` instance.
+
+  This class is not thread-safe.
   """
 
   def __init__(self,
@@ -326,15 +328,11 @@ class FileWriter(SummaryToEventTransformer):
     ```
 
     The `session` argument to the constructor makes the returned `FileWriter` a
-    compatibility layer over new graph-based summaries (`tf.contrib.summary`).
+    compatibility layer over new graph-based summaries (`tf.summary`).
     Crucially, this means the underlying writer resource and events file will
-    be shared with any other `FileWriter` using the same `session` and `logdir`,
-    and with any `tf.contrib.summary.SummaryWriter` in this session using the
-    the same shared resource name (which by default scoped to the logdir). If
-    no such resource exists, one will be created using the remaining arguments
-    to this constructor, but if one already exists those arguments are ignored.
+    be shared with any other `FileWriter` using the same `session` and `logdir`.
     In either case, ops will be added to `session.graph` to control the
-    underlying file writer resource. See `tf.contrib.summary` for more details.
+    underlying file writer resource.
 
     Args:
       logdir: A string. Directory where event file will be written.
@@ -351,14 +349,17 @@ class FileWriter(SummaryToEventTransformer):
       RuntimeError: If called with eager execution enabled.
 
     @compatibility(eager)
-    `FileWriter` is not compatible with eager execution. To write TensorBoard
-    summaries under eager execution, use `tf.contrib.summary` instead.
+      `v1.summary.FileWriter` is not compatible with eager execution.
+      To write TensorBoard summaries under eager execution,
+      use `tf.summary.create_file_writer` or
+      a `with v1.Graph().as_default():` context.
     @end_compatibility
     """
     if context.executing_eagerly():
       raise RuntimeError(
-          "tf.summary.FileWriter is not compatible with eager execution. "
-          "Use tf.contrib.summary instead.")
+          "v1.summary.FileWriter is not compatible with eager execution. "
+          "Use `tf.summary.create_file_writer`,"
+          "or a `with v1.Graph().as_default():` context")
     if session is not None:
       event_writer = EventFileWriterV2(
           session, logdir, max_queue, flush_secs, filename_suffix)

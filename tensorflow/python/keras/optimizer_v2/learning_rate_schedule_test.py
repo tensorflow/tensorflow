@@ -19,16 +19,18 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+
 from absl.testing import parameterized
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
-# Import resource_variable_ops for the variables-to-tensor implicit conversion.
-from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -41,12 +43,13 @@ def _maybe_serialized(lr_decay, serialize_and_deserialize):
     return lr_decay
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+# @parameterized.named_parameters(
+#     ("NotSerialized", False),
+#     ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testContinuous(self, serialize):
     self.evaluate(variables.global_variables_initializer())
     step = 5
@@ -55,10 +58,9 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = .05 * 0.96**(5.0 / 10.0)
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testStaircase(self, serialize):
     if context.executing_eagerly():
-      step = resource_variable_ops.ResourceVariable(0)
+      step = variables.Variable(0)
       self.evaluate(variables.global_variables_initializer())
       decayed_lr = learning_rate_schedule.ExponentialDecay(
           .1, 3, 0.96, staircase=True)
@@ -78,30 +80,30 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(step.assign(100))
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_deprecated_v1
   def testVariables(self, serialize):
-    step = variables.Variable(1)
-    assign_1 = step.assign(1)
-    assign_2 = step.assign(2)
-    assign_100 = step.assign(100)
-    decayed_lr = learning_rate_schedule.ExponentialDecay(
-        .1, 3, 0.96, staircase=True)
-    decayed_lr = _maybe_serialized(decayed_lr, serialize)
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
+    with ops.Graph().as_default():
+      step = variables.Variable(1)
+      assign_1 = step.assign(1)
+      assign_2 = step.assign(2)
+      assign_100 = step.assign(100)
+      decayed_lr = learning_rate_schedule.ExponentialDecay(
+          .1, 3, 0.96, staircase=True)
+      decayed_lr = _maybe_serialized(decayed_lr, serialize)
 
-    self.evaluate(variables.global_variables_initializer())
-    # No change to learning rate
-    self.evaluate(assign_1.op)
-    self.assertAllClose(self.evaluate(decayed_lr(step)), .1, 1e-6)
-    self.evaluate(assign_2.op)
-    self.assertAllClose(self.evaluate(decayed_lr(step)), .1, 1e-6)
-    # Decayed learning rate
-    self.evaluate(assign_100.op)
-    expected = .1 * 0.96**(100 // 3)
-    self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
+      self.evaluate(variables.global_variables_initializer())
+      # No change to learning rate
+      self.evaluate(assign_1.op)
+      self.assertAllClose(self.evaluate(decayed_lr(step)), .1, 1e-6)
+      self.evaluate(assign_2.op)
+      self.assertAllClose(self.evaluate(decayed_lr(step)), .1, 1e-6)
+      # Decayed learning rate
+      self.evaluate(assign_100.op)
+      expected = .1 * 0.96**(100 // 3)
+      self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testPiecewiseConstant(self, serialize):
-    x = resource_variable_ops.ResourceVariable(-999)
+    x = variables.Variable(-999)
     decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
         [100, 110, 120], [1.0, 0.1, 0.01, 0.001])
     decayed_lr = _maybe_serialized(decayed_lr, serialize)
@@ -140,11 +142,9 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
       minimize()
       self.assertAllEqual(v.read_value(), -1.0)
 
-  @test_util.run_in_graph_and_eager_modes
   def testPiecewiseConstantEdgeCases(self, serialize):
     # Test casting boundaries from int32 to int64.
-    x_int64 = resource_variable_ops.ResourceVariable(
-        0, dtype=variables.dtypes.int64)
+    x_int64 = variables.Variable(0, dtype=dtypes.int64)
     boundaries, values = [1, 2, 3], [0.4, 0.5, 0.6, 0.7]
     decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
         boundaries, values)
@@ -162,12 +162,13 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(decayed_lr(x_int64)), 0.7, 1e-6)
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+# @parameterized.named_parameters(
+#     ("NotSerialized", False),
+#     ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class LinearDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testHalfWay(self, serialize):
     step = 5
     lr = 0.05
@@ -177,7 +178,6 @@ class LinearDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = lr * 0.5
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testEnd(self, serialize):
     step = 10
     lr = 0.05
@@ -187,7 +187,6 @@ class LinearDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = end_lr
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testHalfWayWithEnd(self, serialize):
     step = 5
     lr = 0.05
@@ -197,7 +196,6 @@ class LinearDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = (lr + end_lr) * 0.5
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeyondEnd(self, serialize):
     step = 15
     lr = 0.05
@@ -207,7 +205,6 @@ class LinearDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = end_lr
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeyondEndWithCycle(self, serialize):
     step = 15
     lr = 0.05
@@ -219,13 +216,14 @@ class LinearDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+# @parameterized.named_parameters(
+#     ("NotSerialized", False),
+#     ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class SqrtDecayTestV2(test_util.TensorFlowTestCase,
                       parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testHalfWay(self, serialize):
     step = 5
     lr = 0.05
@@ -237,7 +235,6 @@ class SqrtDecayTestV2(test_util.TensorFlowTestCase,
     expected = lr * 0.5**power
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testEnd(self, serialize):
     step = 10
     lr = 0.05
@@ -249,7 +246,6 @@ class SqrtDecayTestV2(test_util.TensorFlowTestCase,
     expected = end_lr
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testHalfWayWithEnd(self, serialize):
     step = 5
     lr = 0.05
@@ -261,7 +257,6 @@ class SqrtDecayTestV2(test_util.TensorFlowTestCase,
     expected = (lr - end_lr) * 0.5**power + end_lr
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeyondEnd(self, serialize):
     step = 15
     lr = 0.05
@@ -273,7 +268,6 @@ class SqrtDecayTestV2(test_util.TensorFlowTestCase,
     expected = end_lr
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeyondEndWithCycle(self, serialize):
     step = 15
     lr = 0.05
@@ -286,13 +280,14 @@ class SqrtDecayTestV2(test_util.TensorFlowTestCase,
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+# @parameterized.named_parameters(
+#     ("NotSerialized", False),
+#     ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class PolynomialDecayTestV2(test_util.TensorFlowTestCase,
                             parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testBeginWithCycle(self, serialize):
     lr = 0.001
     decay_steps = 10
@@ -304,17 +299,18 @@ class PolynomialDecayTestV2(test_util.TensorFlowTestCase,
     self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+# @parameterized.named_parameters(
+#     ("NotSerialized", False),
+#     ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class InverseDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testDecay(self, serialize):
     initial_lr = 0.1
     k = 10
     decay_rate = 0.96
-    step = resource_variable_ops.ResourceVariable(0)
+    step = variables.Variable(0)
     decayed_lr = learning_rate_schedule.InverseTimeDecay(initial_lr, k,
                                                          decay_rate)
     decayed_lr = _maybe_serialized(decayed_lr, serialize)
@@ -325,12 +321,11 @@ class InverseDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
       self.evaluate(step.assign_add(1))
 
-  @test_util.run_in_graph_and_eager_modes
   def testStaircase(self, serialize):
     initial_lr = 0.1
     k = 10
     decay_rate = 0.96
-    step = resource_variable_ops.ResourceVariable(0)
+    step = variables.Variable(0)
     decayed_lr = learning_rate_schedule.InverseTimeDecay(
         initial_lr, k, decay_rate, staircase=True)
     decayed_lr = _maybe_serialized(decayed_lr, serialize)
@@ -342,9 +337,8 @@ class InverseDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(step.assign_add(1))
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class CosineDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def np_cosine_decay(self, step, decay_steps, alpha=0.0):
@@ -353,7 +347,6 @@ class CosineDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     decay = 0.5 * (1.0 + math.cos(math.pi * completed_fraction))
     return (1.0 - alpha) * decay + alpha
 
-  @test_util.run_in_graph_and_eager_modes
   def testDecay(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -364,7 +357,6 @@ class CosineDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
       expected = self.np_cosine_decay(step, num_training_steps)
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testAlpha(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -378,9 +370,8 @@ class CosineDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class CosineDecayRestartsTestV2(test_util.TensorFlowTestCase,
                                 parameterized.TestCase):
 
@@ -396,7 +387,6 @@ class CosineDecayRestartsTestV2(test_util.TensorFlowTestCase,
     decay = fac * 0.5 * (1.0 + math.cos(math.pi * completed_fraction))
     return (1.0 - alpha) * decay + alpha
 
-  @test_util.run_in_graph_and_eager_modes
   def testDecay(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -407,7 +397,6 @@ class CosineDecayRestartsTestV2(test_util.TensorFlowTestCase,
       expected = self.np_cosine_decay_restarts(step, num_training_steps)
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testAlpha(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -420,7 +409,6 @@ class CosineDecayRestartsTestV2(test_util.TensorFlowTestCase,
           step, num_training_steps, alpha=alpha)
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testMMul(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -433,7 +421,6 @@ class CosineDecayRestartsTestV2(test_util.TensorFlowTestCase,
           step, num_training_steps, m_mul=m_mul)
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testTMul(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -447,9 +434,8 @@ class CosineDecayRestartsTestV2(test_util.TensorFlowTestCase,
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class LinearCosineDecayTestV2(test_util.TensorFlowTestCase,
                               parameterized.TestCase):
 
@@ -465,7 +451,6 @@ class LinearCosineDecayTestV2(test_util.TensorFlowTestCase,
     cosine_decayed = 0.5 * (1.0 + math.cos(math.pi * fraction))
     return (alpha + linear_decayed) * cosine_decayed + beta
 
-  @test_util.run_in_graph_and_eager_modes
   def testDefaultDecay(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -476,7 +461,6 @@ class LinearCosineDecayTestV2(test_util.TensorFlowTestCase,
       expected = self.np_linear_cosine_decay(step, num_training_steps)
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes
   def testNonDefaultDecay(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -493,13 +477,11 @@ class LinearCosineDecayTestV2(test_util.TensorFlowTestCase,
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
 
-@parameterized.named_parameters(
-    ("NotSerialized", False),
-    ("Serialized", True))
+@combinations.generate(combinations.combine(serialize=[False, True],
+                                            mode=["graph", "eager"]))
 class NoisyLinearCosineDecayTestV2(test_util.TensorFlowTestCase,
                                    parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testDefaultNoisyLinearCosine(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0
@@ -511,7 +493,6 @@ class NoisyLinearCosineDecayTestV2(test_util.TensorFlowTestCase,
       # Cannot be deterministically tested
       self.evaluate(decayed_lr(step))
 
-  @test_util.run_in_graph_and_eager_modes
   def testNonDefaultNoisyLinearCosine(self, serialize):
     num_training_steps = 1000
     initial_lr = 1.0

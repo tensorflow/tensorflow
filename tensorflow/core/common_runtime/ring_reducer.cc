@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -350,6 +349,8 @@ bool RingReducer::RunAsyncParts() {
   return !aborted;
 }
 
+namespace {
 REGISTER_COLLECTIVE(RingReduce, RingReducer);
+}  // namespace
 
 }  // namespace tensorflow

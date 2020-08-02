@@ -45,6 +45,18 @@ const char kModulePrefix[] = R"(
       ROOT mul.1 = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
     })";
 
+static int64 CountMultiOutputFusions(const HloModule* module) {
+  int multi_output_fusion_count = 0;
+  for (auto* computation : module->MakeNonfusionComputations()) {
+    for (auto* instr : computation->instructions()) {
+      if (instr->IsMultiOutputFusion()) {
+        multi_output_fusion_count++;
+      }
+    }
+  }
+  return multi_output_fusion_count;
+}
+
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
   // Fusion with reduce instruction root and a sibling reduce instruction
   // sharing the same input param.
@@ -657,15 +669,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
                     .ValueOrDie();
   ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
   SCOPED_TRACE(module->ToString());
-  int multi_output_fusion_count = 0;
-  for (auto* computation : module->MakeNonfusionComputations()) {
-    for (auto* instr : computation->instructions()) {
-      if (instr->IsMultiOutputFusion()) {
-        multi_output_fusion_count++;
-      }
-    }
-  }
-  EXPECT_EQ(1, multi_output_fusion_count);
+  EXPECT_EQ(1, CountMultiOutputFusions(module.get()));
 }
 
 TEST_F(MultiOutputFusionTest, PreferFuseProducerIntoFusionConsumer) {
@@ -789,6 +793,60 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDUS) {
     })")
                     .ValueOrDie();
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
+// Check that we don't fuse too many reductions together.
+TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY computation {
+      zero = f32[] constant(0)
+      param0 = f32[64,64] parameter(0)
+      param1 = f32[64,64] parameter(1)
+      param2 = f32[64,64] parameter(2)
+      param3 = f32[64,64] parameter(3)
+      param4 = f32[64,64] parameter(4)
+      param5 = f32[64,64] parameter(5)
+      param6 = f32[64,64] parameter(6)
+      param7 = f32[64,64] parameter(7)
+      param8 = f32[64,64] parameter(8)
+      param9 = f32[64,64] parameter(9)
+      add0 = f32[64,64] add(param0, param1)
+      add1 = f32[64,64] add(param1, param2)
+      add2 = f32[64,64] add(param2, param3)
+      add3 = f32[64,64] add(param3, param4)
+      add4 = f32[64,64] add(param4, param5)
+      add5 = f32[64,64] add(param5, param6)
+      add6 = f32[64,64] add(param6, param7)
+      add7 = f32[64,64] add(param7, param8)
+      add8 = f32[64,64] add(param8, param9)
+      add9 = f32[64,64] add(param9, param0)
+      out0 = f32[64] reduce(f32[64,64] add0, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out1 = f32[64] reduce(f32[64,64] add1, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out2 = f32[64] reduce(f32[64,64] add2, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out3 = f32[64] reduce(f32[64,64] add3, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out4 = f32[64] reduce(f32[64,64] add4, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out5 = f32[64] reduce(f32[64,64] add5, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out6 = f32[64] reduce(f32[64,64] add6, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out7 = f32[64] reduce(f32[64,64] add7, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out8 = f32[64] reduce(f32[64,64] add8, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      out9 = f32[64] reduce(f32[64,64] add9, f32[] zero), dimensions={0},
+        to_apply=scalar_add_computation
+      ROOT out = (f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64]) tuple(f32[64] out0, f32[64] out1, f32[64] out2, f32[64] out3, f32[64] out4, f32[64] out5, f32[64] out6, f32[64] out7, f32[64] out8, f32[64] out9)
+    }
+  )"))
+                    .ValueOrDie();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ConsumeValueOrDie());
+
+  EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
 }
 
 }  // namespace gpu

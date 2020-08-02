@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import abc
 import atexit
-import collections
 from collections import OrderedDict
 import functools
 import multiprocessing.pool
@@ -41,7 +40,6 @@ from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -49,13 +47,14 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -229,7 +228,7 @@ class SliceAggregator(Aggregator):
   There is, however, some scheduling and context switching overhead which will
   offset the gains from pipelining the slice assignment. Below a given threshold
   it is faster to simply assign in the main thread rather than enqueue the
-  assigmnet in a side thread. The exact threshold will vary from system to
+  assignment in a side thread. The exact threshold will vary from system to
   system, but the time is not very sensitive to the exact transition so a value
   of 2 ** 14 was chosen which should be reasonable on most systems.
   """
@@ -253,7 +252,7 @@ class SliceAggregator(Aggregator):
     shape = (self.num_samples,) + batch_element.shape[1:]
     dtype = batch_element.dtype
     if isinstance(batch_element, ops.EagerTensor):
-      dtype = dtype.as_numpy_dtype()
+      dtype = dtype.as_numpy_dtype
 
     self.results = np.empty(shape=shape, dtype=dtype)
 
@@ -616,7 +615,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, collections.Mapping):
+  if isinstance(x_weight, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
@@ -863,7 +862,7 @@ def collect_per_output_metric_info(metrics,
               [metrics_module.clone_metric(m) for m in metrics])
       else:
         nested_metrics = [metrics]
-  elif isinstance(metrics, collections.Mapping):
+  elif isinstance(metrics, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys('metrics', metrics, output_names)
     nested_metrics = []
     for name in output_names:
@@ -998,11 +997,10 @@ def standardize_weights(y,
       weight_vector[:] = np.nan
       weight_vector[keys] = values
 
-      y_classes = smart_cond.smart_cond(
+      y_classes = control_flow_util.smart_cond(
           len(y.shape.as_list()) == 2 and K.shape(y)[1] > 1,
           lambda: K.argmax(y, axis=1),
-          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64)
-      )
+          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64))
       class_sample_weight = array_ops.gather(weight_vector, y_classes)
       gen_array_ops.check_numerics(
           class_sample_weight,
@@ -1010,8 +1008,8 @@ def standardize_weights(y,
           'an appropriate class weight could not be determined.')
       class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
       if sample_weight is not None:
-        sample_weight = math_ops.cast(ops.convert_to_tensor(sample_weight),
-                                      K.floatx())
+        sample_weight = math_ops.cast(
+            ops.convert_to_tensor_v2(sample_weight), K.floatx())
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1049,11 +1047,21 @@ def has_symbolic_tensors(ls):
 
 
 def has_tensors(ls):
+  """Returns true if `ls` contains tensors."""
+  # Note: at some point in time ragged tensors didn't count as tensors, so this
+  # returned false for ragged tensors. Making this return true fails some tests
+  # which would then require a steps_per_epoch argument.
   if isinstance(ls, (list, tuple)):
-    return any(tensor_util.is_tensor(v) for v in ls)
+    return any(
+        tensor_util.is_tensor(v) and
+        not isinstance(v, ragged_tensor.RaggedTensor) for v in ls)
   if isinstance(ls, dict):
-    return any(tensor_util.is_tensor(v) for _, v in six.iteritems(ls))
-  return tensor_util.is_tensor(ls)
+    return any(
+        tensor_util.is_tensor(v) and
+        not isinstance(v, ragged_tensor.RaggedTensor)
+        for _, v in six.iteritems(ls))
+  return tensor_util.is_tensor(ls) and not isinstance(
+      ls, ragged_tensor.RaggedTensor)
 
 
 def get_metric_name(metric, weighted=False):
@@ -1147,7 +1155,7 @@ def call_metric_function(metric_fn,
     else:
       # Update dimensions of weights to match with mask.
       weights = math_ops.cast(weights, dtype=y_pred.dtype)
-      mask, _, weights = tf_losses_utils.squeeze_or_expand_dimensions(
+      mask, _, weights = losses_utils.squeeze_or_expand_dimensions(
           mask, sample_weight=weights)
       weights *= mask
 
@@ -1187,6 +1195,52 @@ def get_loss_function(loss):
       loss_fn,
       name=loss_fn.__name__,
       reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
+
+
+class RespectCompiledTrainableState(object):
+  """Set and restore trainable state if it has changed since compile.
+
+  The keras API guarantees that the value of each Layer's `trainable` property
+  at `Model.compile` time will be used when training that model. In order to
+  respect this requirement, it may be necessary to set the trainable value of
+  layers to their compile time values before beginning a training endpoint and
+  restore the values before returing from said endpoint. This scope checks if
+  any layer's trainable state has changed since Model compile, and performs this
+  set and un-set bookkeeping.
+
+  However, the trainable state of a layer changes quite infrequently, if ever,
+  for many kinds of workflows. Moreover, updating every layer in a model is an
+  expensive operation. As a result, we will only explicitly set and unset the
+  trainable state of a model if a trainable value has changed since compile.
+  """
+
+  def __init__(self, model):
+    self._model = model
+    self._current_trainable_state = None
+    self._compiled_trainable_state = None
+    self._should_set_trainable = False
+
+  def __enter__(self):
+    self._current_trainable_state = self._model._get_trainable_state()  # pylint: disable=protected-access
+    self._compiled_trainable_state = self._model._compiled_trainable_state  # pylint: disable=protected-access
+
+    # Check to see if any layer's trainable state has changed since `compile`.
+    for layer, trainable in self._compiled_trainable_state.items():
+      if (layer in self._current_trainable_state and
+          trainable != self._current_trainable_state[layer]):
+        self._should_set_trainable = True
+        break
+
+    # If so, restore the model to its compiled state.
+    if self._should_set_trainable:
+      self._model._set_trainable_state(self._compiled_trainable_state)  # pylint: disable=protected-access
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    # If we set the values to their compiled state in __enter__, we need to
+    # restore the original values before leaving the scope.
+    if self._should_set_trainable:
+      self._model._set_trainable_state(self._current_trainable_state)  # pylint: disable=protected-access
+    return False  # False values do not suppress exceptions
 
 
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
@@ -1311,7 +1365,7 @@ def check_steps_argument(input_data, steps, steps_name):
 
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
-    x = ops.convert_to_tensor(x)
+    x = ops.convert_to_tensor_v2(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
@@ -1337,7 +1391,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   new_targets = []
   for target, out in zip(targets, outputs):
     if isinstance(target, np.ndarray):
-      target = ops.convert_to_tensor(target)
+      target = ops.convert_to_tensor_v2(target)
     if target.dtype != out.dtype:
       new_targets.append(cast_single_tensor(target, dtype=out.dtype))
     else:
@@ -1386,7 +1440,7 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
     ValueError: In case of invalid `sample_weight_mode` input.
   """
 
-  if isinstance(sample_weight_mode, collections.Mapping):
+  if isinstance(sample_weight_mode, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'sample_weight_mode', sample_weight_mode,
         [e.output_name for e in training_endpoints])
@@ -1460,7 +1514,7 @@ def prepare_loss_functions(loss, output_names):
 def prepare_loss_weights(training_endpoints, loss_weights=None):
   """Converts loss weights to a list of loss weights.
 
-  The result loss weights will be populated on the trainging endpoint.
+  The result loss weights will be populated on the training endpoint.
 
   Arguments:
       training_endpoints: List of model training endpoints.
@@ -1479,7 +1533,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
   if loss_weights is None:
     for e in training_endpoints:
       e.loss_weight = 1.
-  elif isinstance(loss_weights, collections.Mapping):
+  elif isinstance(loss_weights, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'loss_weights', loss_weights,
         [e.output_name for e in training_endpoints])
@@ -1538,7 +1592,7 @@ def assert_not_batched(dataset):
   if isinstance(dataset, dataset_ops.DatasetV1Adapter):
     return assert_not_batched(dataset._dataset)
   else:
-    whitelisted_types = [
+    allowed_types = [
         dataset_ops._OptionsDataset,
         dataset_ops.ConcatenateDataset,
         dataset_ops.CacheDataset,
@@ -1559,7 +1613,7 @@ def assert_not_batched(dataset):
         readers.TextLineDatasetV2,
         readers.TFRecordDatasetV2,
     ]
-    for ty in whitelisted_types:
+    for ty in allowed_types:
       if isinstance(dataset, ty):
         for input_dataset in dataset._inputs():
           assert_not_batched(input_dataset)
@@ -1593,7 +1647,7 @@ def assert_not_shuffled(dataset):
   if isinstance(dataset, dataset_ops.DatasetV1Adapter):
     return assert_not_shuffled(dataset._dataset)
   else:
-    whitelisted_types = [
+    allowed_types = [
         dataset_ops._OptionsDataset,
         dataset_ops.BatchDataset,
         dataset_ops.ConcatenateDataset,
@@ -1616,7 +1670,7 @@ def assert_not_shuffled(dataset):
         readers.TextLineDatasetV2,
         readers.TFRecordDatasetV2,
     ]
-    for ty in whitelisted_types:
+    for ty in allowed_types:
       if isinstance(dataset, ty):
         for input_dataset in dataset._inputs():
           assert_not_shuffled(input_dataset)
@@ -1878,7 +1932,7 @@ def get_input_shape_and_dtype(layer):
       raise ValueError('An empty Model cannot be used as a Layer.')
     layer = layer.layers[0]
 
-  if hasattr(layer, '_batch_input_shape'):
+  if getattr(layer, '_batch_input_shape', None):
     return layer._batch_input_shape, layer.dtype
   return None, None
 

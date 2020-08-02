@@ -124,7 +124,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
 /// the export directory definitely does not contain a SavedModel. If the method
 /// returns `true`, the export directory may contain a SavedModel but provides
 /// no guarantee that it can be loaded.
-bool MaybeSavedModelDirectory(const string& export_dir);
+bool MaybeSavedModelDirectory(const std::string& export_dir);
 
 }  // namespace tensorflow
 

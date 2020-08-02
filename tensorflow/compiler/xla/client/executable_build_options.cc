@@ -64,6 +64,24 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_num_replicas(
   return *this;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_num_partitions(
+    int num_partitions) {
+  num_partitions_ = num_partitions;
+  return *this;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_use_spmd_partitioning(
+    bool use_spmd_partitioning) {
+  use_spmd_partitioning_ = use_spmd_partitioning;
+  return *this;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
+    const DeviceAssignment& device_assignment) {
+  device_assignment_ = device_assignment;
+  return *this;
+}
+
 string ExecutableBuildOptions::ToString() const {
   string result_layout = "nullopt";
   if (result_layout_set_) {

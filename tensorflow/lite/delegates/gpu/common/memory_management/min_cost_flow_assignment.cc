@@ -211,14 +211,14 @@ class MinCostFlowSolver {
 // auxiliary flow graph, find minimum-cost flow in it and calculates the
 // assignment of shared objects to tensors, using the result of the flow
 // algorithm.
-Status MinCostFlowAssignment(
+absl::Status MinCostFlowAssignment(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     ObjectsAssignment<size_t>* assignment) {
   MinCostFlowSolver solver;
   solver.Build(usage_records);
   solver.Solve();
   solver.CalculateAssignment(assignment);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

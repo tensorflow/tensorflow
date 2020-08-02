@@ -36,11 +36,13 @@ constexpr char kNext[] = "next";
 
 class RangeDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step)
+  Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step,
+          DataTypeVector output_dtypes)
       : DatasetBase(DatasetContext(ctx)),
         start_(start),
         stop_(stop),
-        step_(step) {}
+        step_(step),
+        output_dtypes_(output_dtypes) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
@@ -49,8 +51,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   const DataTypeVector& output_dtypes() const override {
-    static DataTypeVector* dtypes = new DataTypeVector({DT_INT64});
-    return *dtypes;
+    return output_dtypes_;
   }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
@@ -67,9 +68,9 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override {
     if (step_ > 0) {
-      return std::max(0LL, (stop_ - start_ - 1) / step_ + 1);
+      return std::max(int64{0}, (stop_ - start_ - 1) / step_ + 1);
     } else {
-      return std::max(0LL, (start_ - stop_ - 1) / -step_ + 1);
+      return std::max(int64{0}, (start_ - stop_ - 1) / -step_ + 1);
     }
   }
 
@@ -106,7 +107,19 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       out_tensors->reserve(1);
-      out_tensors->emplace_back(next_);
+      switch (dataset()->output_dtypes()[0]) {
+#define HANDLE_TYPE(type)                                \
+  case DataTypeToEnum<type>::value: {                    \
+    out_tensors->emplace_back(static_cast<type>(next_)); \
+    break;                                               \
+  }
+        TF_CALL_NUMBER_TYPES(HANDLE_TYPE);
+#undef HANDLE_TYPE
+        default:
+          return errors::InvalidArgument(
+              "Unsupported data type: ",
+              DataTypeString(dataset()->output_dtypes()[0]));
+      }
       *end_of_sequence = false;
       next_ += dataset()->step_;
 
@@ -119,7 +132,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNext), next_));
       return Status::OK();
@@ -134,16 +148,19 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 next_ GUARDED_BY(mu_);
+    int64 next_ TF_GUARDED_BY(mu_);
   };
 
   const int64 start_;
   const int64 stop_;
   const int64 step_;
+  const DataTypeVector output_dtypes_;
 };
 
 RangeDatasetOp::RangeDatasetOp(OpKernelConstruction* ctx)
-    : DatasetOpKernel(ctx) {}
+    : DatasetOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+}
 
 void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   int64 start;
@@ -157,7 +174,7 @@ void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   OP_REQUIRES(ctx, step != 0,
               errors::InvalidArgument("step must be a non-zero integer."));
 
-  *output = new Dataset(ctx, start, stop, step);
+  *output = new Dataset(ctx, start, stop, step, output_types_);
 }
 
 namespace {

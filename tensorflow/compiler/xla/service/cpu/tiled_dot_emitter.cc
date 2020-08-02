@@ -173,7 +173,7 @@ class GemvConfig {
 //   |         C            | D |
 //   +----------------------+---+
 //
-// where A is the largest submatrix of the LHS that can be evenly dividied into
+// where A is the largest submatrix of the LHS that can be evenly divided into
 // tiles.  For each tile in A, assuming tile_rows_ == tile_cols_ == 4, we have:
 //
 //   +---+---+---+---+       +--+--+--+--+
@@ -212,7 +212,7 @@ class GemvConfig {
 // Where R is the starting row for the tile.
 //
 // We have an inner epilogue loop to deal with the "C" submatrix and an outer
-// epilogue loop to deal with the B,D submarix.
+// epilogue loop to deal with the B,D submatrix.
 //
 // TODO(sanjoy): We should investigate if using gather loads and scatter stores
 // can be used here have the same inner loop for both column-major and row-major
@@ -410,7 +410,7 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
 //   |         C            | D |
 //   +----------------------+---+
 //
-// where A is the largest submatrix of the LHS that can be evenly dividied into
+// where A is the largest submatrix of the LHS that can be evenly divided into
 // tiles.  For each tile in A, assuming tile_rows_ == tile_cols_ == 4, we have:
 //
 //   +---+---+---+---+

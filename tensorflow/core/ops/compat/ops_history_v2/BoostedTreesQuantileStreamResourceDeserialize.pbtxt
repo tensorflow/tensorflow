@@ -1,0 +1,19 @@
+op {
+  name: "BoostedTreesQuantileStreamResourceDeserialize"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "bucket_boundaries"
+    type: DT_FLOAT
+    number_attr: "num_streams"
+  }
+  attr {
+    name: "num_streams"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

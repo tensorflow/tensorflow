@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 #if defined(INTEL_MKL)
+
 #define EIGEN_USE_THREADS
 
 #if !defined(INTEL_MKL_DNN_ONLY)
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
+#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::stream;
@@ -124,7 +126,7 @@ template <typename T>
 Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
                       Tensor* out_tensor, const gtl::ArraySlice<int32>& perm) {
   try {
-    engine cpu_engine = engine(engine::cpu, 0);
+    engine cpu_engine = engine(ENGINE_CPU, 0);
     MklDnnData<T> in(&cpu_engine);
     MklDnnData<T> out(&cpu_engine);
 
@@ -135,14 +137,29 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     memory::dims out_strides =
         ReorderStrides(CalculateTFStrides(out_dims), perm);
 
+    std::shared_ptr<stream> transpose_stream;
     in.SetUsrMem(in_dims, in_strides, &in_tensor);
     // Output dimensions are same as input dimensions. We adjust the layout
     // using strides.
     out.SetUsrMem(in_dims, out_strides, out_tensor);
 
     std::vector<primitive> net;
+#ifdef ENABLE_MKLDNN_V1
+    auto* prim = FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem());
+    transpose_stream.reset(CreateStream(context, prim->GetEngine()));
+    in.SetUsrMemDataHandle(&in_tensor, transpose_stream);
+    out.SetUsrMemDataHandle(out_tensor, transpose_stream);
+    net.push_back(*(prim->GetPrimitive()));
+    std::vector<MemoryArgsMap> net_args;
+    net_args.push_back({{MKLDNN_ARG_FROM, *in.GetUsrMem()},
+                        {MKLDNN_ARG_TO, *out.GetUsrMem()}});
+    execute_primitives(net, transpose_stream, net_args);
+#else
+    transpose_stream.reset(new CPU_STREAM(cpu_engine));
     net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
-    stream(stream::kind::eager).submit(net).wait();
+    transpose_stream->submit(net).wait();
+#endif  // ENABLE_MKLDNN_V1
+
     return Status::OK();
   } catch (mkldnn::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) +

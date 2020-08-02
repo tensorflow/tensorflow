@@ -15,9 +15,10 @@ limitations under the License.
 #ifdef INTEL_MKL
 #include <string>
 #include <unordered_map>
+
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
-#include "tensorflow/core/graph/mkl_layout_pass.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/util.h"
@@ -87,7 +88,7 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
-    : EagerOpRewrite(name, file, line) {
+    : EagerOpRewrite(name, file, line), registered_kernels_map_() {
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
@@ -112,13 +113,10 @@ Status MklEagerOpRewrite::Run(
 Status MklEagerOpRewrite::SetupNewOp(
     EagerOperation* orig_op, const string mkl_op_name,
     std::unique_ptr<EagerOperation>* new_mkl_op) {
-  const tensorflow::AttrTypeMap* types;
-  bool is_function = false;
-  TF_RETURN_IF_ERROR(
-      tensorflow::AttrTypeMapForOp(mkl_op_name.c_str(), &types, &is_function));
-  EagerContext* ctx = orig_op->EagerContext();
-  new_mkl_op->reset(new tensorflow::EagerOperation(ctx, mkl_op_name.c_str(),
-                                                   is_function, types));
+  bool is_remote = false;
+  new_mkl_op->reset(new tensorflow::EagerOperation(&orig_op->EagerContext()));
+  TF_RETURN_IF_ERROR(new_mkl_op->get()->Reset(mkl_op_name.c_str(), nullptr,
+                                              is_remote, nullptr));
 
   int num_inputs = orig_op->Inputs().size();
   // Add all inputs to the new op.
@@ -127,7 +125,6 @@ Status MklEagerOpRewrite::SetupNewOp(
   }
 
   // Copy all attributes to the new op.
-  string name;
   const NodeDef& orig_ndef = orig_op->MutableAttrs()->BuildNodeDef();
 
   AttrSlice attr_list(orig_ndef);
@@ -139,14 +136,8 @@ Status MklEagerOpRewrite::SetupNewOp(
       ->MutableAttrs()
       ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
 
-  if (orig_op->Device() != nullptr) {
-    (*new_mkl_op)->SetDevice(orig_op->Device());
-  } else {
-    string device_name =
-        DeviceNameUtils::ParsedNameToString(orig_op->GetDeviceName());
-    (*new_mkl_op)->SetDeviceName(device_name.c_str());
-  }
-  return Status::OK();
+  string device_name = orig_op->DeviceName();
+  return (*new_mkl_op)->SetDeviceName(device_name.c_str());
 }
 
 Status MklEagerOpRewrite::CreateGenericMklOp(

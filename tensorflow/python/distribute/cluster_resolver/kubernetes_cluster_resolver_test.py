@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.distribute.cluster_resolver import KubernetesClusterResolver
+from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import KubernetesClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -134,7 +134,7 @@ class KubernetesClusterResolverTest(test.TestCase):
             {'job-name=tensorflow': ret}))
 
     error_msg = 'Pod "tensorflow-abc123" is not running; phase: "Failed"'
-    with self.assertRaisesRegexp(RuntimeError, error_msg):
+    with self.assertRaisesRegex(RuntimeError, error_msg):
       cluster_resolver.cluster_spec()
 
   def testMultiplePodSelectorsAndWorkers(self):

@@ -46,12 +46,13 @@ TEST_F(HloMetadataTest, MetadataPropagation) {
 
   Shape argument_layout = ShapeUtil::MakeShape(F32, {});
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<LocalExecutable> executable,
+      auto executables,
       local_client_->Compile(builder.Build().ValueOrDie(),
                              {&argument_layout, &argument_layout},
                              ExecutableBuildOptions()));
 
-  auto instruction = executable->executable()
+  auto instruction = executables[0]
+                         ->executable()
                          ->module()
                          .entry_computation()
                          ->root_instruction();
@@ -67,15 +68,14 @@ TEST_F(HloMetadataTest, MetadataClearing) {
   BuildAddComputation(&builder);
 
   Shape argument_layout = ShapeUtil::MakeShape(F32, {});
-  auto executable_status = local_client_->Compile(
-      builder.Build().ValueOrDie(), {&argument_layout, &argument_layout},
-      ExecutableBuildOptions());
-  ASSERT_IS_OK(executable_status);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      local_client_->Compile(builder.Build().ValueOrDie(),
+                             {&argument_layout, &argument_layout},
+                             ExecutableBuildOptions()));
 
-  std::unique_ptr<LocalExecutable> executable =
-      executable_status.ConsumeValueOrDie();
-
-  auto instruction = executable->executable()
+  auto instruction = executables[0]
+                         ->executable()
                          ->module()
                          .entry_computation()
                          ->root_instruction();

@@ -16,43 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_BASE64_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_BASE64_H_
 
-#include <string>
-#include "tensorflow/core/lib/core/status.h"
-
-namespace tensorflow {
-
-/// \brief Converts data into web-safe base64 encoding.
-///
-/// See https://en.wikipedia.org/wiki/Base64
-template <typename T>
-Status Base64Encode(StringPiece source, bool with_padding, T* encoded);
-template <typename T>
-Status Base64Encode(StringPiece source,
-                    T* encoded);  // with_padding=false.
-
-/// \brief Converts data from web-safe base64 encoding.
-///
-/// See https://en.wikipedia.org/wiki/Base64
-template <typename T>
-Status Base64Decode(StringPiece data, T* decoded);
-
-// Explicit instantiations defined in base64.cc.
-extern template Status Base64Decode<string>(StringPiece data, string* decoded);
-extern template Status Base64Encode<string>(StringPiece source,
-                                            string* encoded);
-extern template Status Base64Encode<string>(StringPiece source,
-                                            bool with_padding, string* encoded);
-
-#ifdef USE_TSTRING
-extern template Status Base64Decode<tstring>(StringPiece data,
-                                             tstring* decoded);
-extern template Status Base64Encode<tstring>(StringPiece source,
-                                             tstring* encoded);
-extern template Status Base64Encode<tstring>(StringPiece source,
-                                             bool with_padding,
-                                             tstring* encoded);
-#endif  // USE_TSTRING
-
-}  // namespace tensorflow
+#include "tensorflow/core/platform/base64.h"
 
 #endif  // TENSORFLOW_CORE_LIB_STRINGS_BASE64_H_

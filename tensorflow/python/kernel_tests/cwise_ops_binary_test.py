@@ -342,6 +342,11 @@ class BinaryOpTest(test.TestCase):
     # _MOD for int32 on GPU by calling _compareGpu
     self._compareGpu(x, y, np.mod, _MOD)
 
+  def testUint32Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int32)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int32)
+    self._compareBoth(x, y, np.add, math_ops.add)
+
   def testInt64Basic(self):
     x = np.arange(1 << 40, 13 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int64)
@@ -791,7 +796,7 @@ class BinaryOpTest(test.TestCase):
   def testPowNegativeExponent(self):
     for dtype in [np.int32, np.int64]:
       with test_util.force_cpu():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
@@ -799,7 +804,7 @@ class BinaryOpTest(test.TestCase):
           self.evaluate(math_ops.pow(x, y))
 
       with test_util.force_cpu():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
@@ -807,7 +812,7 @@ class BinaryOpTest(test.TestCase):
           self.evaluate(math_ops.pow(x, y))
 
       with test_util.force_cpu():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
@@ -943,10 +948,48 @@ class ComparisonOpTest(test.TestCase):
     y = np.arange(0, 10).reshape([5, 2])
     for t in dtypes:
       for f in funcs:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             (ValueError, errors.InvalidArgumentError),
             "Incompatible shapes|Dimensions must be equal"):
           f(x.astype(t), y.astype(t))
+
+  def testEqualDType(self):
+    dtypes = [
+        np.float16,
+        np.float32,
+        np.float64,
+        np.int8,
+        np.int16,
+        np.int32,
+        np.int64,
+        np.uint8,
+        np.uint16,
+        np.uint32,
+        np.uint64,
+        np.bool,
+    ]
+    x = np.asarray([0, 1, 2, 3, 4])
+    y = np.asarray([0, 1, 2, 3, 4])
+    for dtype in dtypes:
+      xt = x.astype(dtype)
+      yt = y.astype(dtype)
+      cmp_eq = math_ops.equal(xt, yt)
+      cmp_ne = math_ops.not_equal(xt, yt)
+      values = self.evaluate([cmp_eq, cmp_ne])
+      self.assertAllEqual(
+          [[True, True, True, True, True], [False, False, False, False, False]],
+          values)
+    for dtype in [np.complex64, np.complex128]:
+      xt = x.astype(dtype)
+      xt -= 1j * xt
+      yt = y.astype(dtype)
+      yt -= 1j * yt
+      cmp_eq = math_ops.equal(xt, yt)
+      cmp_ne = math_ops.not_equal(xt, yt)
+      values = self.evaluate([cmp_eq, cmp_ne])
+      self.assertAllEqual(
+          [[True, True, True, True, True], [False, False, False, False, False]],
+          values)
 
 
 if __name__ == "__main__":

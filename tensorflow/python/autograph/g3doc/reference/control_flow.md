@@ -164,7 +164,7 @@ after if
 #### Python values modified in TensorFlow control flow become Tensors
 
 If a symbol is modified in a TensorFlow control flow statement, then it becomes
-a `tf.Tensor`, even if it started off as a Python promitive value.
+a `tf.Tensor`, even if it started off as a Python primitive value.
 
 For example, the conditional below will run as a `tf.cond` (its condition is a
 `tf.Tensor`), which in turn will cause `i` to become a `tf.Tensor`.
@@ -361,11 +361,19 @@ iterate over a Python `list` (or respectively `tuple`), therefore will be
 executed as normal Python. If you intended to run it as a TensorFlow loop,
 use `tf.stack` or `tf.concat`.
 
-Caution: A `for` loop over a Python `range` will be executed as normal Python.
-If you intended to run it as a TensorFlow loop, `tf.range`.
+Caution: A `for` loop over a Python `range` will execute as normal Python.
+If you intended to run it as a TensorFlow loop, use `tf.range`.
 
 Note: AutoGraph may output a warning when it believes that you are unrolling
 a loop inefficiently. However, the warning thresholds are very conservative.
+The warning is only printed when
+[__debug__](https://docs.python.org/3/library/constants.html#__debug__) is
+`True`.
+
+Note: If `__debug__` is `True`, AutoGraph limits the number of iterations in
+normal Python loops to prevent infinite loops and raise an error if the limits
+are exceeded. However, the iteration limits are very large and may take a while
+to trigger an error.
 
 ### `break` statements
 
@@ -410,6 +418,21 @@ def extra_test(break_):
   return ag__.not_(break_)
 # break_ becomes a loop variable.
 break_, = ag__.for_stmt(range(10), extra_test, ..., (break_,))
+```
+
+Mixing Tensor-dependent `break` and Python-dependent loops is disallowed:
+
+```
+@tf.function
+def buggy_while_py_true_tf_break(x):
+  while True:   # python conditional
+    if tf.equal(x, 0): # tensor break
+      break
+    x -= 1
+  return x
+
+# Raises OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed
+# buggy_while_true_tf_break(5)
 ```
 
 ### `continue` statements

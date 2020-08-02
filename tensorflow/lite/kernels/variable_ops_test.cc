@@ -12,17 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <vector>
+#include <stdint.h>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 
 namespace tflite {
 
-// Forward declaraction for op kernels.
+// Forward declaration for op kernels.
 namespace ops {
 namespace custom {
 
@@ -104,7 +102,7 @@ TEST_F(VariableOpsTest, TestReadVariableBeforeAssign) {
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteError);
 }
 
-TEST_F(VariableOpsTest, TestReeasignToDifferentSize) {
+TEST_F(VariableOpsTest, TestReassignToDifferentSize) {
   // 1st invocation. The variable is assigned as a scalar.
   {
     ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);

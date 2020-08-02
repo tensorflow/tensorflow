@@ -732,6 +732,15 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   } while (std::next_permutation(layout.begin(), layout.end()));
 }
 
+TEST(ShapeUtilTest, UpdateDynamicDimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape});
+
+  ShapeUtil::UpdateDynamicDimension(&tuple_shape, {0}, 1, true);
+  EXPECT_TRUE(ShapeUtil::GetSubshape(tuple_shape, {0}).is_dynamic_dimension(1));
+}
+
 TEST(ShapeUtilTest, PermuteDynamicDimensions) {
   Shape shape =
       ShapeUtil::MakeShape(F32, {10, 100, 1000},

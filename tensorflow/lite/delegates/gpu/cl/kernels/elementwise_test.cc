@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
+using ::testing::FloatEq;
 using ::testing::FloatNear;
 using ::testing::Pointwise;
 
@@ -41,8 +42,8 @@ TEST_F(OpenCLOperationTest, Abs) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::ABS);
@@ -66,8 +67,8 @@ TEST_F(OpenCLOperationTest, Cos) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::COS);
@@ -77,6 +78,81 @@ TEST_F(OpenCLOperationTest, Cos) {
           dst_tensor.data,
           Pointwise(FloatNear(eps), {std::cos(0.0f), std::cos(-1.0f),
                                      std::cos(-0.05f), std::cos(0.045f)}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, Copy) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 1, 2);
+  src_tensor.data = {half(0.0f), half(-1.0f), half(-0.05f), half(0.045f)};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseOneInput operation =
+          CreateElementwiseOneInput(op_def, OperationType::COPY);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatEq(), src_tensor.data));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, Elu) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 1, 7);
+  src_tensor.data = {0.0f, 1.0f, -1.0f, 100.0f, -100.0f, 0.01f, -0.01f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseOneInput operation =
+          CreateElementwiseOneInput(op_def, OperationType::ELU);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
+                                    BHWC(1, 1, 1, 7), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {0.0f, 1.0f, std::exp(-1.0f) - 1.0f,
+                                             100.0f, std::exp(-100.0f) - 1.0f,
+                                             0.01f, std::exp(-0.01f) - 1.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, Exp) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 1, 7);
+  src_tensor.data = {0.0f, 1.0f, -1.0f, 100.0f, -100.0f, 0.01f, -0.01f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseOneInput operation =
+          CreateElementwiseOneInput(op_def, OperationType::EXP);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
+                                    BHWC(1, 1, 1, 7), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps),
+                            {std::exp(0.0f), std::exp(1.0f), std::exp(-1.0f),
+                             std::exp(100.0f), std::exp(-100.0f),
+                             std::exp(0.01f), std::exp(-0.01f)}));
     }
   }
 }
@@ -92,8 +168,8 @@ TEST_F(OpenCLOperationTest, HardSwish) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::HARD_SWISH);
@@ -118,8 +194,8 @@ TEST_F(OpenCLOperationTest, Log) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::LOG);
@@ -143,8 +219,8 @@ TEST_F(OpenCLOperationTest, Rsqrt) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::RSQRT);
@@ -170,8 +246,8 @@ TEST_F(OpenCLOperationTest, Sigmoid) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::SIGMOID);
@@ -194,8 +270,8 @@ TEST_F(OpenCLOperationTest, Sin) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::SIN);
@@ -220,8 +296,8 @@ TEST_F(OpenCLOperationTest, Sqrt) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::SQRT);
@@ -246,8 +322,8 @@ TEST_F(OpenCLOperationTest, Square) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::SQUARE);
@@ -270,8 +346,8 @@ TEST_F(OpenCLOperationTest, Tanh) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ElementwiseOneInput operation =
           CreateElementwiseOneInput(op_def, OperationType::TANH);
@@ -298,12 +374,12 @@ TEST_F(OpenCLOperationTest, Sub) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ElementwiseTwoInput operation =
-          CreateElementwiseTwoInput(op_def, OperationType::SUB);
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::SUB, src_tensor_1.shape);
       ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
                                     creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
@@ -326,12 +402,12 @@ TEST_F(OpenCLOperationTest, SquaredDiff) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ElementwiseTwoInput operation =
-          CreateElementwiseTwoInput(op_def, OperationType::SQUARED_DIFF);
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::SQUARED_DIFF, src_tensor_1.shape);
       ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
                                     creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
@@ -354,12 +430,12 @@ TEST_F(OpenCLOperationTest, Div) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ElementwiseTwoInput operation =
-          CreateElementwiseTwoInput(op_def, OperationType::DIV);
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::DIV, src_tensor_1.shape);
       ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
                                     creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
@@ -382,17 +458,334 @@ TEST_F(OpenCLOperationTest, Pow) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ElementwiseTwoInput operation =
-          CreateElementwiseTwoInput(op_def, OperationType::POW);
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::POW, src_tensor_1.shape);
       ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
                                     creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {1.0f, 7.0f, 16.0f, 8.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, Add) {
+  TensorFloat32 src_tensor_0, src_tensor_1;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_1.shape = BHWC(1, 2, 1, 2);
+  src_tensor_0.data = {1.0f, 2.0f, 3.0f, 4.5f};
+  src_tensor_1.data = {0.5f, 1.0f, 3.0f, 1.5f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::ADD, src_tensor_1.shape);
+      ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
+                                    creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {1.5f, 3.0f, 6.0f, 6.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, Maximum) {
+  TensorFloat32 src_tensor_0, src_tensor_1;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_1.shape = BHWC(1, 2, 1, 2);
+  src_tensor_0.data = {0.0f, -6.2f, 2.0f, -3.0f};
+  src_tensor_1.data = {1.0f, 2.0f, 3.0f, -2.0f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::MAXIMUM, src_tensor_1.shape);
+      ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
+                                    creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {1.0f, 2.0f, 3.0f, -2.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MaximumWithScalar) {
+  TensorFloat32 src_tensor_0;
+  src_tensor_0.shape = BHWC(1, 4, 1, 1);
+  src_tensor_0.data = {0.0f, -6.2f, 2.0f, -3.0f};
+
+  ElementwiseAttributes attr;
+  attr.param = -1.0f;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      const float* scalar = absl::get_if<float>(&attr.param);
+      ElementwiseOneRuntimeOneScalar operation =
+          CreateElementwiseOneRuntimeOneScalar(creation_context_, op_def,
+                                               OperationType::MAXIMUM, *scalar);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
+                                    BHWC(1, 4, 1, 1), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {0.0f, -1.0f, 2.0f, -1.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MaximumWithConstantLinearTensor) {
+  TensorFloat32 src_tensor_0;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_0.data = {1.0f, -6.2f, -2.0f, 3.0f};
+
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> linear_tensor;
+  linear_tensor.shape = Linear(2);
+  linear_tensor.data = {0.5f, 2.0f};
+  ElementwiseAttributes attr;
+  attr.param = linear_tensor;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation;
+      ASSERT_OK(CreateElementwiseTwoInput(creation_context_, op_def,
+                                          OperationType::MAXIMUM, linear_tensor,
+                                          &operation));
+      ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {1.0f, 2.0f, 0.5f, 3.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensor) {
+  TensorFloat32 src_tensor_0;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_0.data = {1.0f, -6.2f, -2.0f, 3.0f};
+
+  ::tflite::gpu::Tensor<HWC, DataType::FLOAT32> hwc_tensor;
+  hwc_tensor.shape = HWC(2, 1, 2);
+  hwc_tensor.data = {0.5f, 2.0f, 0.7f, 4.7f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation;
+      ASSERT_OK(CreateElementwiseTwoInput(creation_context_, op_def,
+                                          OperationType::MAXIMUM, hwc_tensor,
+                                          &operation));
+      ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {1.0f, 2.0f, 0.7f, 4.7f}));
+    }
+  }
+}
+TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensorBroadcastChannels) {
+  TensorFloat32 src_tensor_0;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_0.data = {1.0f, -6.2f, -2.0f, 3.0f};
+
+  ::tflite::gpu::Tensor<HWC, DataType::FLOAT32> hwc_tensor;
+  hwc_tensor.shape = HWC(2, 1, 1);
+  hwc_tensor.data = {0.5f, 2.0f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation;
+      ASSERT_OK(CreateElementwiseTwoInput(creation_context_, op_def,
+                                          OperationType::MAXIMUM, hwc_tensor,
+                                          &operation));
+      ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {1.0f, 0.5f, 2.0f, 3.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, Minimum) {
+  TensorFloat32 src_tensor_0, src_tensor_1;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_1.shape = BHWC(1, 2, 1, 2);
+  src_tensor_0.data = {0.0f, -6.2f, 2.0f, -3.0f};
+  src_tensor_1.data = {1.0f, 2.0f, 3.0f, -2.0f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::MINIMUM, src_tensor_1.shape);
+      ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
+                                    creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {0.0f, -6.2f, 2.0f, -3.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MinimumWithScalar) {
+  TensorFloat32 src_tensor_0;
+  src_tensor_0.shape = BHWC(1, 4, 1, 1);
+  src_tensor_0.data = {0.0f, -6.2f, 2.0f, -3.0f};
+
+  ElementwiseAttributes attr;
+  attr.param = -1.0f;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      const float* scalar = absl::get_if<float>(&attr.param);
+      ElementwiseOneRuntimeOneScalar operation =
+          CreateElementwiseOneRuntimeOneScalar(creation_context_, op_def,
+                                               OperationType::MINIMUM, *scalar);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
+                                    BHWC(1, 4, 1, 1), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {-1.0f, -6.2f, -1.0f, -3.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, Mul) {
+  TensorFloat32 src_tensor_0, src_tensor_1;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_1.shape = BHWC(1, 2, 1, 2);
+  src_tensor_0.data = {1.0f, 2.0f, 3.0f, 4.5f};
+  src_tensor_1.data = {0.5f, 1.0f, 3.0f, 1.5f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::MUL, src_tensor_1.shape);
+      ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
+                                    creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {0.5f, 2.0f, 9.0f, 6.75f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MulBroadcastHW) {
+  TensorFloat32 src_tensor_0, src_tensor_1;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_1.shape = BHWC(1, 1, 1, 2);
+  src_tensor_0.data = {1.0f, 2.0f, 3.0f, 4.5f};
+  src_tensor_1.data = {0.5f, 3.0f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::MUL, src_tensor_1.shape);
+      ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
+                                    creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {0.5f, 6.0f, 1.5f, 13.5f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MulBroadcastChannels) {
+  TensorFloat32 src_tensor_0, src_tensor_1;
+  src_tensor_0.shape = BHWC(1, 2, 1, 2);
+  src_tensor_1.shape = BHWC(1, 2, 1, 1);
+  src_tensor_0.data = {1.0f, 2.0f, 3.0f, 4.5f};
+  src_tensor_1.data = {0.5f, 3.0f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          op_def, OperationType::MUL, src_tensor_1.shape);
+      ASSERT_OK(ExecuteGPUOperation({src_tensor_0, src_tensor_1},
+                                    creation_context_, &operation,
+                                    BHWC(1, 2, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {0.5f, 1.0f, 9.0f, 13.5f}));
     }
   }
 }

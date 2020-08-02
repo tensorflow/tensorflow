@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -67,7 +68,7 @@ namespace xla {
 //  )
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
-class HloTestBase : public ::testing::Test {
+class HloTestBase : public ManifestCheckingTest {
  public:
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
@@ -84,11 +85,11 @@ class HloTestBase : public ::testing::Test {
   // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
   // HLO verifier on destruction.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
-      const string& name = TestName());
+      const string& name = TestName(), int64 replica_count = 1);
 
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text);
+      absl::string_view hlo_text, int64 replica_count = 1);
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
       absl::string_view hlo_text, const HloModuleConfig& config);
 
@@ -99,6 +100,10 @@ class HloTestBase : public ::testing::Test {
                                    HloModule* module);
 
   static PrecisionConfig DefaultPrecisionConfig(int operands);
+
+  // Sets most fath math options to be enabled to model the fast math flags
+  // generally used for CPU:AOT compilation.
+  static void SetAotFastMathDebugOptions(DebugOptions* options);
 
  protected:
   // This uses the interpreter backend as the reference backend and
@@ -130,9 +135,10 @@ class HloTestBase : public ::testing::Test {
   virtual DebugOptions GetDebugOptionsForTest();
 
   // Gets an HloModuleConfig with options appropriate for tests.
-  HloModuleConfig GetModuleConfigForTest() {
+  HloModuleConfig GetModuleConfigForTest(int64 replica_count = 1) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
+    config.set_replica_count(replica_count);
     return config;
   }
 
@@ -203,6 +209,11 @@ class HloTestBase : public ::testing::Test {
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
+  // Executes an hlo module with fake inputs and checks that the execution is
+  // successful.
+  ::testing::AssertionResult Run(std::unique_ptr<HloModule> module,
+                                 bool run_hlo_passes) TF_MUST_USE_RESULT;
+
   // Convenient wrappers for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
@@ -215,10 +226,13 @@ class HloTestBase : public ::testing::Test {
                                  bool run_hlo_passes = true,
                                  ExecutionProfile* profile = nullptr,
                                  string backend_config = "") TF_MUST_USE_RESULT;
+
+  // If assert_determinism is true, the assertion will fail unless all runs
+  // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
       const absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles,
-      string backend_config = "") TF_MUST_USE_RESULT;
+      std::vector<ExecutionProfile>* profiles, string backend_config = "",
+      bool assert_determinism = false) TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
@@ -274,6 +288,8 @@ class HloTestBase : public ::testing::Test {
   // inspect a particular computation or instruction.
   HloComputation* FindComputation(HloModule* module, absl::string_view name);
   HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
+  // Gets the instruction from the given module with the given opcode.
+  HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
 
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }

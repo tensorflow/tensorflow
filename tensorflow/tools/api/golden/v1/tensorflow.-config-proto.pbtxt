@@ -99,6 +99,12 @@ tf_proto {
       type: TYPE_BOOL
     }
     field {
+      name: "share_cluster_devices_in_session"
+      number: 17
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
       name: "experimental"
       number: 16
       label: LABEL_OPTIONAL
@@ -195,6 +201,12 @@ tf_proto {
       field {
         name: "enable_mlir_bridge"
         number: 13
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "enable_mlir_graph_optimization"
+        number: 16
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }

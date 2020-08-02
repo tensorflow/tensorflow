@@ -28,10 +28,7 @@ namespace cl {
 class Padding : public GPUOperation {
  public:
   Padding(const OperationDef& definition, const PadAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
-
-  Status Compile(const CreationContext& creation_context) override;
+  int3 GetGridSize() const override;
 
   // Move only
   Padding(Padding&& kernel);
@@ -40,12 +37,8 @@ class Padding : public GPUOperation {
   Padding& operator=(const Padding&) = delete;
 
  private:
-  Status BindArguments();
-  int3 GetGridSize() const;
-
-  int4 prepended_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
+  std::string GetPaddingCode(const OperationDef& op_def,
+                             const PadAttributes& attr);
 };
 
 Padding CreatePadding(const OperationDef& definition,

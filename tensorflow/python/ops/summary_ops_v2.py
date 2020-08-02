@@ -93,6 +93,11 @@ def _should_record_summaries_internal(default_state):
   if _summary_state.writer is None:
     return constant_op.constant(False)
 
+  if not callable(_summary_state.is_recording):
+    static_cond = tensor_util.constant_value(_summary_state.is_recording)
+    if static_cond is not None and not static_cond:
+      return constant_op.constant(False)
+
   resolve = lambda x: x() if callable(x) else x
   cond_distributed = resolve(_summary_state.is_recording_distribution_strategy)
   cond = resolve(_summary_state.is_recording)
@@ -110,6 +115,7 @@ def _should_record_summaries_v2():
   return _should_record_summaries_internal(default_state=True)
 
 
+@tf_export("summary.should_record_summaries", v1=[])
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
   return _should_record_summaries_internal(default_state=False)
@@ -197,14 +203,57 @@ class SummaryWriter(object):
   """Interface representing a stateful summary writer object."""
 
   @abc.abstractmethod
-  def set_as_default(self):
-    """Enables this summary writer for the current thread."""
+  def set_as_default(self, step=None):
+    """Enables this summary writer for the current thread.
+
+    For convenience, if `step` is not None, this function also sets a default
+    value for the `step` parameter used in summary-writing functions elsewhere
+    in the API so that it need not be explicitly passed in every such
+    invocation. The value can be a constant or a variable.
+
+    Note: when setting `step` in a @tf.function, the step value will be
+    captured at the time the function is traced, so changes to the step outside
+    the function will not be reflected inside the function unless using
+    a `tf.Variable` step.
+
+    Args:
+      step: An `int64`-castable default step value, or `None`. When not `None`,
+        the current step is modified to the given value. When `None`, the
+        current step is not modified.
+    """
     raise NotImplementedError()
 
   @abc.abstractmethod
   @tf_contextlib.contextmanager
-  def as_default(self):
-    """Returns a context manager that enables summary writing."""
+  def as_default(self, step=None):
+    """Returns a context manager that enables summary writing.
+
+    For convenience, if `step` is not None, this function also sets a default
+    value for the `step` parameter used in summary-writing functions elsewhere
+    in the API so that it need not be explicitly passed in every such
+    invocation. The value can be a constant or a variable.
+
+    Note: when setting `step` in a @tf.function, the step value will be
+    captured at the time the function is traced, so changes to the step outside
+    the function will not be reflected inside the function unless using
+    a `tf.Variable` step.
+
+    For example, `step` can be used as:
+
+    ```python
+    with writer_a.as_default(step=10):
+      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
+      with writer_b.as_default(step=20):
+        tf.summary.scalar(tag, value) # Logged to writer_b with step 20
+      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
+    ```
+
+    Args:
+      step: An `int64`-castable default step value, or `None`. When not `None`,
+        the current step is captured, replaced by a given one, and the original
+        one is restored when the context manager exits. When `None`, the current
+        step is not modified (and not restored when the context manager exits).
+    """
     raise NotImplementedError()
 
   def init(self):
@@ -223,13 +272,19 @@ class SummaryWriter(object):
 class ResourceSummaryWriter(SummaryWriter):
   """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
 
-  def  __init__(self, shared_name, init_op_fn, name=None, v2=False):
+  def __init__(self,
+               shared_name,
+               init_op_fn,
+               name=None,
+               v2=False,
+               metadata=None):
     self._resource = gen_summary_ops.summary_writer(
         shared_name=shared_name, name=name)
     # TODO(nickfelt): cache other constructed ops in graph mode
     self._init_op_fn = init_op_fn
     self._init_op = init_op_fn(self._resource)
     self._v2 = v2
+    self._metadata = {} if metadata is None else metadata
     self._closed = False
     if context.executing_eagerly():
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
@@ -237,26 +292,77 @@ class ResourceSummaryWriter(SummaryWriter):
     else:
       ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
 
-  def set_as_default(self):
-    """Enables this summary writer for the current thread."""
+  def set_as_default(self, step=None):
+    """Enables this summary writer for the current thread.
+
+    For convenience, if `step` is not None, this function also sets a default
+    value for the `step` parameter used in summary-writing functions elsewhere
+    in the API so that it need not be explicitly passed in every such
+    invocation. The value can be a constant or a variable.
+
+    Note: when setting `step` in a @tf.function, the step value will be
+    captured at the time the function is traced, so changes to the step outside
+    the function will not be reflected inside the function unless using
+    a `tf.Variable` step.
+
+    Args:
+      step: An `int64`-castable default step value, or `None`. When not `None`,
+        the current step is modified to the given value. When `None`, the
+        current step is not modified.
+    """
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
     _summary_state.writer = self
+    if step is not None:
+      _summary_state.step = step
 
   @tf_contextlib.contextmanager
-  def as_default(self):
-    """Returns a context manager that enables summary writing."""
+  def as_default(self, step=None):
+    """Returns a context manager that enables summary writing.
+
+    For convenience, if `step` is not None, this function also sets a default
+    value for the `step` parameter used in summary-writing functions elsewhere
+    in the API so that it need not be explicitly passed in every such
+    invocation. The value can be a constant or a variable.
+
+    Note: when setting `step` in a @tf.function, the step value will be
+    captured at the time the function is traced, so changes to the step outside
+    the function will not be reflected inside the function unless using
+    a `tf.Variable` step.
+
+    For example, `step` can be used as:
+
+    ```python
+    with writer_a.as_default(step=10):
+      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
+      with writer_b.as_default(step=20):
+        tf.summary.scalar(tag, value) # Logged to writer_b with step 20
+      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
+    ```
+
+    Args:
+      step: An `int64`-castable default step value, or `None`. When not `None`,
+        the current step is captured, replaced by a given one, and the original
+        one is restored when the context manager exits. When `None`, the current
+        step is not modified (and not restored when the context manager exits).
+    """
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
     old = _summary_state.writer
+    if step is not None:
+      old_step = _summary_state.step
     try:
       _summary_state.writer = self
+      if step is not None:
+        _summary_state.step = step
       yield self
       # Flushes the summary writer in eager mode or in graph functions, but
       # not in legacy graph mode (you're on your own there).
       self.flush()
     finally:
       _summary_state.writer = old
+      if step is not None:
+        _summary_state.step = old_step
 
   def init(self):
     """Initializes the summary writer."""
@@ -289,11 +395,11 @@ class ResourceSummaryWriter(SummaryWriter):
 class NoopSummaryWriter(SummaryWriter):
   """A summary writer that does nothing, for create_noop_writer()."""
 
-  def set_as_default(self):
+  def set_as_default(self, step=None):
     pass
 
   @tf_contextlib.contextmanager
-  def as_default(self):
+  def as_default(self, step=None):
     yield
 
   def init(self):
@@ -406,7 +512,8 @@ def create_file_writer_v2(logdir,
               flush_millis=flush_millis,
               filename_suffix=filename_suffix),
           name=name,
-          v2=True)
+          v2=True,
+          metadata={"logdir": logdir})
 
 
 def create_file_writer(logdir,
@@ -1100,7 +1207,7 @@ def keras_model(name, data, step=None):
 
   Writing the Keras model configuration allows the TensorBoard graph plugin to
   render a conceptual graph, as opposed to graph of ops. In case the model fails
-  to serialze as JSON, it ignores and returns False.
+  to serialize as JSON, it ignores and returns False.
 
   Args:
     name: A name for this summary. The summary tag used for TensorBoard will be
@@ -1173,7 +1280,7 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
   if ops.inside_function():
     logging.warn("Cannot enable trace inside a tf.function.")
     return
-  if not context.context().executing_eagerly():
+  if not context.executing_eagerly():
     logging.warn("Must enable trace in eager mode.")
     return
 
@@ -1204,21 +1311,21 @@ def trace_export(name, step=None, profiler_outdir=None):
     step: Explicit `int64`-castable monotonic step value for this summary. If
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
-    profiler_outdir: Output directory for profiler. It is required when profiler
-      is enabled when trace was started. Otherwise, it is ignored.
+    profiler_outdir: Output directory for profiler. This is only used when the
+      profiler was enabled when the trace was started. In that case, if there is
+      a logdir-based default SummaryWriter, this defaults to the same directory,
+      but otherwise the argument must be passed.
 
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  # TODO(stephanlee): See if we can remove profiler_outdir and infer it from
-  # the SummaryWriter's logdir.
   global _current_trace_context
 
   if ops.inside_function():
     logging.warn("Cannot export trace inside a tf.function.")
     return
-  if not context.context().executing_eagerly():
+  if not context.executing_eagerly():
     logging.warn("Can only export trace while executing eagerly.")
     return
 
@@ -1226,8 +1333,14 @@ def trace_export(name, step=None, profiler_outdir=None):
     if _current_trace_context is None:
       raise ValueError("Must enable trace before export.")
     graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
+    if profiler_outdir is None \
+        and isinstance(_summary_state.writer, ResourceSummaryWriter):
+      logdir = _summary_state.writer._metadata.get("logdir")  # pylint: disable=protected-access
+      if logdir is not None:
+        profiler_outdir = logdir
     if profiler and profiler_outdir is None:
-      raise ValueError("Required profiler_outdir is not specified")
+      raise ValueError("Must set profiler_outdir or "
+                       "enable summary writer with logdir.")
 
   run_meta = context.context().export_run_metadata()
 

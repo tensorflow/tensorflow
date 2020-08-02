@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
@@ -267,7 +268,7 @@ class ConcatTest(xla_test.XLATestCase):
                 # TODO(irving): Make tf.concat handle map, then drop list().
                 xs = list(map(constant_op.constant, [x0, x1]))
                 c = array_ops.concat(xs, axis)
-                self.assertAllEqual(c.eval(), correct)
+                self.assertAllEqual(c, correct)
                 # Check gradients
                 dc = np.random.randn(*c.get_shape().as_list())
                 dxs = self.evaluate(gradients_impl.gradients(c, xs, dc))
@@ -280,19 +281,20 @@ class ConcatTest(xla_test.XLATestCase):
       with self.test_scope():
         concat_list_t = array_ops.concat([c1, c2], 0)
         concat_tuple_t = array_ops.concat((c1, c2), 0)
-      self.assertAllEqual(concat_list_t.eval(), self.evaluate(concat_tuple_t))
+      self.assertAllEqual(concat_list_t, self.evaluate(concat_tuple_t))
 
   def testConcatNoScalars(self):
     with self.session():
       with self.test_scope():
         scalar = constant_op.constant(7)
         dim = array_ops.placeholder(dtypes.int32)
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, r"Can't concatenate scalars \(use tf\.stack instead\)"):
           array_ops.concat([scalar, scalar, scalar], dim)
 
   # The purpose of this is to ensure that XLA on GPU will not run out of memory
   # with too many arguments.
+  @test_util.disable_mlir_bridge("TODO(b/153895138): Debug.")
   def testConcatLargeNumberOfTensors(self):
     if "CPU" in self.device:
       self.skipTest("This test can time out on CPU, so we will just allow "

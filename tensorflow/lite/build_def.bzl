@@ -7,6 +7,8 @@ load(
     "tf_cc_shared_object",
     "tf_cc_test",
 )
+load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def tflite_copts():
     """Defines compile time flags."""
@@ -29,6 +31,17 @@ def tflite_copts():
     }) + select({
         clean_dep("//tensorflow:optimized"): ["-O3"],
         "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:android"): [
+            "-ffunction-sections",  # Helps trim binary size.
+            "-fdata-sections",  # Helps trim binary size.
+        ],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-fno-exceptions",  # Exceptions are unused in TFLite.
+        ],
     })
 
     return copts
@@ -140,9 +153,8 @@ def tflite_cc_shared_object(
         copts = tflite_copts(),
         linkopts = [],
         linkstatic = 1,
-        deps = [],
-        visibility = None,
-        tags = None):
+        per_os_targets = False,
+        **kwargs):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
         name = name,
@@ -150,9 +162,8 @@ def tflite_cc_shared_object(
         linkstatic = linkstatic,
         linkopts = linkopts + tflite_jni_linkopts(),
         framework_so = [],
-        deps = deps,
-        visibility = visibility,
-        tags = tags,
+        per_os_targets = per_os_targets,
+        **kwargs
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -242,7 +253,6 @@ def generated_test_models():
         "ceil",
         "concat",
         "constant",
-        "control_dep",
         "conv",
         "conv_relu",
         "conv_relu1",
@@ -317,12 +327,14 @@ def generated_test_models():
         "relu6",
         "reshape",
         "resize_bilinear",
+        "resize_nearest_neighbor",
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
         "rfft2d",
         "round",
         "rsqrt",
+        "scatter_nd",
         "shape",
         "sigmoid",
         "sin",
@@ -375,8 +387,12 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_rnn",
         ]
     elif conversion_mode == "forward-compat":
-        return []
-    return []
+        return [
+            "merged_models",  # b/150647401
+        ]
+    return [
+        "merged_models",  # b/150647401
+    ]
 
 def generated_test_models_successful(conversion_mode):
     """Returns the list of successful test models.
@@ -619,7 +635,7 @@ def gen_selected_ops(name, model, namespace = "", **kwargs):
 
     Args:
       name: Name of the generated library.
-      model: TFLite model to interpret.
+      model: TFLite models to interpret, expect a list in case of multiple models.
       namespace: Namespace in which to put RegisterSelectedOps.
       **kwargs: Additional kwargs to pass to genrule.
     """
@@ -630,12 +646,17 @@ def gen_selected_ops(name, model, namespace = "", **kwargs):
     # isinstance is not supported in skylark.
     if type(model) != type([]):
         model = [model]
+
+    input_models_args = " --input_models=%s" % ",".join(
+        ["$(location %s)" % f for f in model],
+    )
+
     native.genrule(
         name = name,
         srcs = model,
         outs = [out],
-        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s $(SRCS)") %
-              (tool, namespace, out, tflite_path[2:]),
+        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s %s") %
+              (tool, namespace, out, tflite_path[2:], input_models_args),
         tools = [tool],
         **kwargs
     )
@@ -646,7 +667,7 @@ def flex_dep(target_op_sets):
     else:
         return []
 
-def gen_model_coverage_test(src, model_name, data, failure_type, tags):
+def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "medium"):
     """Generates Python test targets for testing TFLite models.
 
     Args:
@@ -665,25 +686,164 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
         if failure_type[i] != "none":
             args.append("--failure_type=%s" % failure_type[i])
         i = i + 1
+
+        # Avoid coverage timeouts for large/enormous tests.
+        coverage_tags = ["nozapfhahn"] if size in ["large", "enormous"] else []
         native.py_test(
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = [src],
             main = src,
-            size = "large",
+            size = size,
             args = [
                 "--model_name=%s" % model_name,
                 "--target_ops=%s" % target_op_sets,
             ] + args,
             data = data,
             srcs_version = "PY2AND3",
-            python_version = "PY2",
+            python_version = "PY3",
             tags = [
+                "no_gpu",  # Executing with TF GPU configurations is redundant.
                 "no_oss",
                 "no_windows",
-            ] + tags,
+            ] + tags + coverage_tags,
             deps = [
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
         )
+
+def if_tflite_experimental_runtime(if_eager, if_non_eager, if_none = []):
+    return select({
+        "//tensorflow/lite:tflite_experimental_runtime_eager": if_eager,
+        "//tensorflow/lite:tflite_experimental_runtime_non_eager": if_non_eager,
+        "//conditions:default": if_none,
+    })
+
+def tflite_experimental_runtime_linkopts(if_eager = [], if_non_eager = [], if_none = []):
+    return if_tflite_experimental_runtime(
+        if_eager = [
+            # "//tensorflow/lite/experimental/tf_runtime:eager_interpreter",
+            # "//tensorflow/lite/experimental/tf_runtime:eager_model",
+            # "//tensorflow/lite/experimental/tf_runtime:subgraph",
+        ] + if_eager,
+        if_non_eager = [
+            # "//tensorflow/lite/experimental/tf_runtime:interpreter",
+            # "//tensorflow/lite/experimental/tf_runtime:model",
+        ] + if_non_eager,
+        if_none = [] + if_none,
+    )
+
+def tflite_custom_cc_library(
+        name,
+        models = [],
+        srcs = [],
+        deps = [],
+        visibility = ["//visibility:private"]):
+    """Generates a tflite cc library, stripping off unused operators.
+
+    This library includes the TfLite runtime as well as all operators needed for the given models.
+    Op resolver can be retrieved using tflite::CreateOpResolver method.
+
+    Args:
+        name: Str, name of the target.
+        models: List of models. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+        srcs: List of files implementing custom operators if any.
+        deps: Additional dependencies to build all the custom operators.
+        visibility: Visibility setting for the generated target. Default to private.
+    """
+    real_srcs = []
+    real_srcs.extend(srcs)
+    real_deps = []
+    real_deps.extend(deps)
+
+    if models:
+        gen_selected_ops(
+            name = "%s_registration" % name,
+            model = models,
+        )
+        real_srcs.append(":%s_registration" % name)
+        real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
+    else:
+        # Support all operators if `models` not specified.
+        real_deps.append("//tensorflow/lite/java/src/main/native")
+
+    native.cc_library(
+        name = name,
+        srcs = real_srcs,
+        hdrs = [
+            # TODO(b/161323860) replace this by generated header.
+            "//tensorflow/lite/java/src/main/native:op_resolver.h",
+        ],
+        copts = tflite_copts(),
+        linkopts = select({
+            "//tensorflow:windows": [],
+            "//conditions:default": ["-lm", "-ldl"],
+        }),
+        deps = depset([
+            "//tensorflow/lite:framework",
+            "//tensorflow/lite/kernels:builtin_ops",
+        ] + real_deps),
+        visibility = visibility,
+    )
+
+def tflite_custom_android_library(
+        name,
+        models = [],
+        srcs = [],
+        deps = [],
+        custom_package = "org.tensorflow.lite",
+        visibility = ["//visibility:private"]):
+    """Generates a tflite Android library, stripping off unused operators.
+
+    Note that due to a limitation in the JNI Java wrapper, the compiled TfLite shared binary
+    has to be named as tensorflowlite_jni.so so please make sure that there is no naming conflict.
+    i.e. you can't call this rule multiple times in the same build file.
+
+    Args:
+        name: Name of the target.
+        models: List of models to be supported. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+        srcs: List of files implementing custom operators if any.
+        deps: Additional dependencies to build all the custom operators.
+        custom_package: Name of the Java package. It is required by android_library in case
+            the Java source file can't be inferred from the directory where this rule is used.
+        visibility: Visibility setting for the generated target. Default to private.
+    """
+    tflite_custom_cc_library(name = "%s_cc" % name, models = models, srcs = srcs, deps = deps, visibility = visibility)
+
+    # JNI wrapper expects a binary file called `libtensorflowlite_jni.so` in java path.
+    tflite_jni_binary(
+        name = "libtensorflowlite_jni.so",
+        linkscript = "//tensorflow/lite/java:tflite_version_script.lds",
+        deps = [
+            ":%s_cc" % name,
+            "//tensorflow/lite/java/src/main/native:native_framework_only",
+        ],
+    )
+
+    native.cc_library(
+        name = "%s_jni" % name,
+        srcs = ["libtensorflowlite_jni.so"],
+        visibility = visibility,
+    )
+
+    android_library(
+        name = name,
+        manifest = "//tensorflow/lite/java:AndroidManifest.xml",
+        deps = [
+            ":%s_jni" % name,
+            "//tensorflow/lite/java:tensorflowlite_java",
+            "@org_checkerframework_qual",
+        ],
+        custom_package = custom_package,
+        visibility = visibility,
+    )
+
+    aar_with_jni(
+        name = "%s_aar" % name,
+        android_library = name,
+    )

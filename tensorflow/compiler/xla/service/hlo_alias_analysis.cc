@@ -185,7 +185,7 @@ class BufferValueMap {
     };
 
     // If the value shows up in a root instruction, alias it with parameter
-    // intruction.
+    // instruction.
     for (const HloPosition& pos : value.positions()) {
       if (pos.instruction == module_->entry_computation()->root_instruction()) {
         ShapeIndex output_index = pos.index;
@@ -404,7 +404,7 @@ bool HloAliasAnalysis::InstructionBuffersAreDistinct(
       }
     } else {
       // It's possible for multiple values at this index to have the same
-      // HloBuffer. This does not result in non-distictness. To account for
+      // HloBuffer. This does not result in non-distinctness. To account for
       // this case, add all of the buffers at this index after checking
       // whether each buffer exists at an earlier index. This is a corner
       // case, however, as the number of values at an index is almost always

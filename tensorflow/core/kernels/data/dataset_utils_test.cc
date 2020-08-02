@@ -20,19 +20,31 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+using ::testing::UnorderedElementsAre;
+
 class DatasetHashUtilsTest : public ::testing::Test {
  protected:
   uint64 GetHash(const FunctionDefLibrary& library, const FunctionDef& fn) {
+    // Construct a node with a function as an attr.
+    GraphDef graph_def;
+    *graph_def.mutable_library() = library;
+    NodeDef* node = graph_def.add_node();
+    node->set_op("RemoteCall");
+    NameAttrList func;
+    func.set_name(fn.signature().name());
+    AddNodeAttr("f", func, node);
     uint64 hash = 0;
-    TF_CHECK_OK(HashFunction(library, fn, &hash));
+    TF_CHECK_OK(HashNode(graph_def, *node, &hash));
     return hash;
   }
 
@@ -49,21 +61,33 @@ class DatasetHashUtilsTest : public ::testing::Test {
   }
 };
 
+string full_name(string key) {
+  return strings::StrCat(kFullNameRandomHex, kPipe, "Iterator:", key);
+}
+
+TEST(DatasetUtilsTest, MatchesAnyVersion) {
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2"));
+  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3"));
+  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "BatchV2Dataset"));
+  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "PaddedBatchDataset"));
+}
+
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(writer.WriteScalar("Int64", 24));
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar(full_name("Int64"), 24));
   Tensor input_tensor(DT_FLOAT, {1});
   input_tensor.flat<float>()(0) = 2.0f;
-  TF_ASSERT_OK(writer.WriteTensor("Tensor", input_tensor));
-  TF_ASSERT_OK(writer.Flush());
+  TF_ASSERT_OK(writer.WriteTensor(full_name("Tensor"), input_tensor));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
 
-  VariantTensorDataReader reader(&data);
+  VariantTensorDataReader reader(data);
   int64 val_int64;
-  TF_ASSERT_OK(reader.ReadScalar("Int64", &val_int64));
+  TF_ASSERT_OK(reader.ReadScalar(full_name("Int64"), &val_int64));
   EXPECT_EQ(val_int64, 24);
   Tensor val_tensor;
-  TF_ASSERT_OK(reader.ReadTensor("Tensor", &val_tensor));
+  TF_ASSERT_OK(reader.ReadTensor(full_name("Tensor"), &val_tensor));
   EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
   EXPECT_EQ(input_tensor.flat<float>()(0), val_tensor.flat<float>()(0));
 }
@@ -72,16 +96,95 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
   VariantTensorData data;
   strings::StrAppend(&data.metadata_, "key1", "@@");
   data.tensors_.push_back(Tensor(DT_INT64, {1}));
-  VariantTensorDataReader reader(&data);
+  std::vector<const VariantTensorData*> reader_data;
+  reader_data.push_back(&data);
+  VariantTensorDataReader reader(reader_data);
   int64 val_int64;
   tstring val_string;
   Tensor val_tensor;
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar("NonExistentKey", &val_int64).code());
+            reader.ReadScalar(full_name("NonExistentKey"), &val_int64).code());
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar("NonExistentKey", &val_string).code());
+            reader.ReadScalar(full_name("NonExistentKey"), &val_string).code());
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadTensor("NonExistentKey", &val_tensor).code());
+            reader.ReadTensor(full_name("NonExistentKey"), &val_tensor).code());
+}
+
+TEST(DatasetUtilsTest, VariantTensorDataRoundtripIteratorName) {
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar("Iterator", "Int64", 24));
+  Tensor input_tensor(DT_FLOAT, {1});
+  input_tensor.flat<float>()(0) = 2.0f;
+  TF_ASSERT_OK(writer.WriteTensor("Iterator", "Tensor", input_tensor));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  int64 val_int64;
+  TF_ASSERT_OK(reader.ReadScalar("Iterator", "Int64", &val_int64));
+  EXPECT_EQ(val_int64, 24);
+  Tensor val_tensor;
+  TF_ASSERT_OK(reader.ReadTensor("Iterator", "Tensor", &val_tensor));
+  EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
+  EXPECT_EQ(input_tensor.flat<float>()(0), val_tensor.flat<float>()(0));
+}
+
+TEST(DatasetUtilsTest, VariantTensorDataNonExistentKeyIteratorName) {
+  VariantTensorData data;
+  strings::StrAppend(&data.metadata_, "key1", "@@");
+  data.tensors_.push_back(Tensor(DT_INT64, {1}));
+  std::vector<const VariantTensorData*> reader_data;
+  reader_data.push_back(&data);
+  VariantTensorDataReader reader(reader_data);
+  int64 val_int64;
+  tstring val_string;
+  Tensor val_tensor;
+  EXPECT_EQ(error::NOT_FOUND,
+            reader.ReadScalar("Iterator", "NonExistentKey", &val_int64).code());
+  EXPECT_EQ(
+      error::NOT_FOUND,
+      reader.ReadScalar("Iterator", "NonExistentKey", &val_string).code());
+  EXPECT_EQ(
+      error::NOT_FOUND,
+      reader.ReadTensor("Iterator", "NonExistentKey", &val_tensor).code());
+}
+
+TEST(DatasetUtilsTest, VariantTensorDataWriteAfterFlushing) {
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar(full_name("Int64"), 24));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+  Tensor input_tensor(DT_FLOAT, {1});
+  input_tensor.flat<float>()(0) = 2.0f;
+  EXPECT_EQ(error::FAILED_PRECONDITION,
+            writer.WriteTensor(full_name("Tensor"), input_tensor).code());
+}
+
+TEST(DatasetUtilsTest, CheckpointElementsRoundTrip) {
+  std::vector<std::vector<Tensor>> elements;
+  elements.push_back(CreateTensors<int32>(TensorShape({3}), {{1, 2, 3}}));
+  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{4, 5}}));
+  VariantTensorDataWriter writer;
+  tstring test_prefix = full_name("test_prefix");
+  TF_ASSERT_OK(WriteElementsToCheckpoint(&writer, test_prefix, elements));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  std::vector<std::vector<Tensor>> read_elements;
+  TF_ASSERT_OK(
+      ReadElementsFromCheckpoint(&reader, test_prefix, &read_elements));
+  ASSERT_EQ(elements.size(), read_elements.size());
+  for (int i = 0; i < elements.size(); ++i) {
+    std::vector<Tensor>& original = elements[i];
+    std::vector<Tensor>& read = read_elements[i];
+
+    ASSERT_EQ(original.size(), read.size());
+    for (int j = 0; j < original.size(); ++j) {
+      EXPECT_EQ(original[j].NumElements(), read[j].NumElements());
+      EXPECT_EQ(original[j].flat<int32>()(0), read[j].flat<int32>()(0));
+    }
+  }
 }
 
 TEST(DatasetUtilsTest, AddToFunctionLibrary) {
@@ -176,6 +279,34 @@ TEST(DatasetUtilsTest, RunnerWithMaxParallelism) {
   runner(fn);
 }
 
+TEST(DatasetUtilsTest, ParseDeterminismPolicy) {
+  DeterminismPolicy determinism;
+  TF_ASSERT_OK(DeterminismPolicy::FromString("true", &determinism));
+  EXPECT_TRUE(determinism.IsDeterministic());
+  TF_ASSERT_OK(DeterminismPolicy::FromString("false", &determinism));
+  EXPECT_TRUE(determinism.IsNondeterministic());
+  TF_ASSERT_OK(DeterminismPolicy::FromString("default", &determinism));
+  EXPECT_TRUE(determinism.IsDefault());
+}
+
+TEST(DatasetUtilsTest, DeterminismString) {
+  for (auto s : {"true", "false", "default"}) {
+    DeterminismPolicy determinism;
+    TF_ASSERT_OK(DeterminismPolicy::FromString(s, &determinism));
+    EXPECT_TRUE(s == determinism.String());
+  }
+}
+
+TEST(DatasetUtilsTest, BoolConstructor) {
+  EXPECT_TRUE(DeterminismPolicy(true).IsDeterministic());
+  EXPECT_FALSE(DeterminismPolicy(true).IsNondeterministic());
+  EXPECT_FALSE(DeterminismPolicy(true).IsDefault());
+
+  EXPECT_TRUE(DeterminismPolicy(false).IsNondeterministic());
+  EXPECT_FALSE(DeterminismPolicy(false).IsDeterministic());
+  EXPECT_FALSE(DeterminismPolicy(false).IsDefault());
+}
+
 TEST_F(DatasetHashUtilsTest, HashFunctionSameFunctionDifferentNames) {
   FunctionDefLibrary fl;
 
@@ -228,7 +359,7 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
   *f1 = FunctionDefHelper::Create(
       "AddAndMul", {"i: float", "j: float", "k: float"}, {"o: float"}, {},
       {{{"add"}, "Add", {"i", "j"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"add", "k"}, {{"T", DT_FLOAT}}}},
+       {{"ret"}, "Mul", {"add:z:0", "k"}, {{"T", DT_FLOAT}}}},
       /*ret_def=*/{{"o", "ret:z:0"}},
       /*control_ret_def=*/{{"must_execute", "ret"}});
 
@@ -236,11 +367,45 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
   *f2 = FunctionDefHelper::Create(
       "AddAndMul", {"a: float", "b: float", "c: float"}, {"o: float"}, {},
       {{{"add"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
-       {{"mul"}, "Mul", {"add", "c"}, {{"T", DT_FLOAT}}}},
+       {{"mul"}, "Mul", {"add:z:0", "c"}, {{"T", DT_FLOAT}}}},
       /*ret_def=*/{{"o", "mul:z:0"}},
       /*control_ret_def=*/{{"must_execute", "mul"}});
 
   EXPECT_EQ(GetHash(fl, *f1), GetHash(fl, *f2));
+}
+
+TEST_F(DatasetHashUtilsTest, HashGraphWithMultipleCycles) {
+  uint64 hash = 0;
+  for (int i = 0; i < 1000; ++i) {
+    GraphDef g;
+    NodeDef* output_node = g.add_node();
+    TF_CHECK_OK(NodeDefBuilder("O", "Add")
+                    .Input("A", 0, DT_FLOAT)
+                    .Input("D", 0, DT_FLOAT)
+                    .Finalize(output_node));
+    TF_CHECK_OK(NodeDefBuilder("A", "Abs")
+                    .Input("B", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    TF_CHECK_OK(NodeDefBuilder("B", "Add")
+                    .Input("C", 0, DT_FLOAT)
+                    .Input("D", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    TF_CHECK_OK(NodeDefBuilder("C", "Ceil")
+                    .Input("A", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    TF_CHECK_OK(NodeDefBuilder("D", "Cos")
+                    .Input("E", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    TF_CHECK_OK(NodeDefBuilder("E", "Floor")
+                    .Input("B", 0, DT_FLOAT)
+                    .Finalize(g.add_node()));
+    uint64 t = GetHash(g, *output_node);
+    if (hash == 0) {
+      hash = t;
+    } else {
+      EXPECT_EQ(t, hash);
+    }
+  }
 }
 
 TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentNames) {
@@ -381,6 +546,56 @@ TEST_F(DatasetHashUtilsTest, HashSameGraphDifferentSeeds) {
                   .Finalize(seed2));
 
   uint64 hash2 = GetHash(gd, *shuffle_ds);
+
+  EXPECT_EQ(hash1, hash2);
+}
+
+TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentColocationNames) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Attr("_class", {"graph_1/node_2"})
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash1 = GetHash(gd, *n3);
+
+  n1->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_3/node_7", "Const")
+                  .Attr("value", 1)
+                  .Attr("_class", {"graph_3/node_9"})
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  n2->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_4/node_9", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  n3->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_5/node_11", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash2 = GetHash(gd, *n3);
 
   EXPECT_EQ(hash1, hash2);
 }
@@ -751,15 +966,15 @@ TEST_F(DatasetHashUtilsTest, HashFunctionsWithControlDependencyLoop) {
 
   FunctionDef func = FunctionDefHelper::Create(
       /*function_name=*/"AddAndMul",
-      /*in_def=*/{"i: float"},
+      /*in_def=*/{"i: float", "j: int32"},
       /*out_def=*/{"o: float"},
       /*attr_def=*/{},
       /*node_def=*/
       {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}, {"ret"}},
        // This creates a dependency on the same function.
-       {{"for"}, "For", {"i", "i", "i"}, {func_attr}, {"ret"}},
+       {{"for"}, "For", {"j", "j", "j"}, {func_attr, {"T", DT_FLOAT}}, {"ret"}},
        {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "for:z:0"}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
       /*control_ret_def=*/{{"must_execute", "add"}});
   *f1 = func;
 
@@ -917,6 +1132,141 @@ TEST_F(DatasetHashUtilsTest, HashStringTensor) {
   EXPECT_EQ(GetHash(v1), GetHash(v2));
   EXPECT_NE(GetHash(v1), GetHash(v3));
 }
+
+class SelectOptimizationsHashTest : public ::testing::TestWithParam<uint64> {};
+
+TEST_P(SelectOptimizationsHashTest, DatasetUtils) {
+  const uint64 hash_result = GetParam();
+  string job_name = "job";
+  const string opt_ins_raw = "";
+  const string opt_outs_raw = "";
+  auto hash_func = [hash_result](const string& str) { return hash_result; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 0},  {"exp2", 20}, {"exp3", 33}, {"exp4", 45},
+      {"exp5", 67}, {"exp6", 88}, {"exp7", 100}};
+  std::vector<tstring> optimizations_enabled, optimizations_disabled,
+      optimizations_default;
+  std::vector<tstring> optimizations =
+      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
+                          optimizations_enabled, optimizations_disabled,
+                          optimizations_default, hash_func);
+
+  int tested_times = 0;
+  switch (hash_result) {
+    case 0:
+    case 100:
+    case 200:
+      tested_times++;
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4",
+                                                      "exp5", "exp6", "exp7"));
+      break;
+    case 33:
+    case 133:
+      tested_times++;
+      EXPECT_THAT(optimizations,
+                  UnorderedElementsAre("exp4", "exp5", "exp6", "exp7"));
+      break;
+    case 67:
+    case 167:
+      tested_times++;
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp6", "exp7"));
+      break;
+  }
+  EXPECT_EQ(tested_times, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsHashTest,
+                         ::testing::Values(0, 33, 67, 100, 133, 167, 200));
+
+class SelectOptimizationsOptTest
+    : public ::testing::TestWithParam<std::tuple<string, string>> {};
+
+TEST_P(SelectOptimizationsOptTest, DatasetUtils) {
+  string job_name = "job";
+  const string opt_ins_raw = std::get<0>(GetParam());
+  const string opt_outs_raw = std::get<1>(GetParam());
+  auto hash_func = [](const string& str) { return 50; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 0}, {"exp2", 25}, {"exp3", 50}, {"exp4", 75}, {"exp5", 100}};
+  std::vector<tstring> optimizations_enabled, optimizations_disabled,
+      optimizations_default;
+  std::vector<tstring> optimizations =
+      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
+                          optimizations_enabled, optimizations_disabled,
+                          optimizations_default, hash_func);
+
+  int tested_times = 0;
+  if (opt_outs_raw == "all") {
+    EXPECT_THAT(optimizations, UnorderedElementsAre());
+    tested_times++;
+  } else if (opt_outs_raw.empty()) {
+    if (opt_ins_raw == "all") {
+      EXPECT_THAT(optimizations,
+                  UnorderedElementsAre("exp1", "exp2", "exp3", "exp4", "exp5"));
+      tested_times++;
+    } else if (opt_ins_raw.empty()) {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp4", "exp5"));
+      tested_times++;
+    } else if (opt_ins_raw == "exp2,exp4") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4", "exp5"));
+      tested_times++;
+    }
+  } else if (opt_outs_raw == "exp1,exp5") {
+    if (opt_ins_raw == "all") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4"));
+      tested_times++;
+    } else if (opt_ins_raw.empty()) {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp4"));
+      tested_times++;
+    } else if (opt_ins_raw == "exp2,exp4") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4"));
+      tested_times++;
+    }
+  }
+  EXPECT_EQ(tested_times, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Test, SelectOptimizationsOptTest,
+    ::testing::Combine(::testing::Values("all", "", "exp2,exp4"),
+                       ::testing::Values("all", "", "exp1,exp5")));
+
+class SelectOptimizationsConflictTest
+    : public ::testing::TestWithParam<std::tuple<string, string, uint64>> {};
+
+TEST_P(SelectOptimizationsConflictTest, DatasetUtils) {
+  string job_name = "job";
+  const string opt_ins_raw = std::get<0>(GetParam());
+  const string opt_outs_raw = std::get<1>(GetParam());
+  const uint64 hash_result = std::get<2>(GetParam());
+  auto hash_func = [hash_result](const string& str) { return hash_result; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 20}, {"exp2", 30}, {"exp3", 40},
+      {"exp4", 60}, {"exp5", 70}, {"exp6", 80}};
+  std::vector<tstring> optimizations_enabled = {"exp1", "exp4"},
+                       optimizations_disabled = {"exp2", "exp5"},
+                       optimizations_default = {"exp3", "exp6"};
+  std::vector<tstring> optimizations =
+      SelectOptimizations(job_name, opt_ins_raw, opt_outs_raw, live_experiments,
+                          optimizations_enabled, optimizations_disabled,
+                          optimizations_default, hash_func);
+
+  int tested_times = 0;
+  if (opt_outs_raw.empty()) {
+    EXPECT_THAT(optimizations,
+                UnorderedElementsAre("exp1", "exp3", "exp4", "exp6"));
+    tested_times++;
+  } else if (opt_outs_raw == "exp1,exp3") {
+    EXPECT_THAT(optimizations, UnorderedElementsAre("exp1", "exp4", "exp6"));
+    tested_times++;
+  }
+  EXPECT_EQ(tested_times, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsConflictTest,
+                         ::testing::Combine(::testing::Values("", "exp2"),
+                                            ::testing::Values("", "exp1,exp3"),
+                                            ::testing::Values(10, 50, 90)));
 
 }  // namespace
 }  // namespace data

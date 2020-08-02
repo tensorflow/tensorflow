@@ -91,7 +91,7 @@ class InterleaveDatasetParams : public DatasetParams {
   DataTypeVector type_arguments_;
 };
 
-class InterleaveDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class InterleaveDatasetOpTest : public DatasetOpsTestBase {};
 
 FunctionDefHelper::AttrValueWrapper MakeTensorSliceDatasetFunc(
     const DataTypeVector& output_types,

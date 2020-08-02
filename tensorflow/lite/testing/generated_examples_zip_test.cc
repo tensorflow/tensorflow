@@ -18,15 +18,17 @@ limitations under the License.
 #include <fstream>
 #include <map>
 #include <sstream>
+
 #include <gtest/gtest.h>
 #include "re2/re2.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/testing/parse_testdata.h"
 #include "tensorflow/lite/testing/tflite_driver.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tflite {
 namespace testing {
@@ -46,7 +48,6 @@ string* FLAGS_tar_binary_path = new string("/bin/tar");
 string* FLAGS_unzip_binary_path = new string("/system/bin/unzip");
 string* FLAGS_tar_binary_path = new string("/system/bin/tar");
 #endif
-bool FLAGS_use_nnapi = false;
 bool FLAGS_ignore_unsupported_nnapi = false;
 }  // namespace
 
@@ -90,9 +91,6 @@ const std::map<string, string>& GetKnownBrokenTests() {
       // ResizeBilinear looks completely incompatible with Tensorflow
       {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
 
-      // Transpose only supports 1D-4D input tensors.
-      {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
-
       // Relu does not support int32.
       // These test cases appends a Relu after the tested ops when
       // activation=True. The tests are failing since Relu doesn't support
@@ -102,15 +100,11 @@ const std::map<string, string>& GetKnownBrokenTests() {
       {R"(^\/floor_mod.*activation=True.*dtype=tf\.int32)", "112968789"},
       {R"(^\/floor_mod.*activation=True.*dtype=tf\.int64)", "112968789"},
 
-      {R"(^\/sub.*dtype=tf\.int64)", "119126484"},
       {R"(^\/div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/mul.*dtype=tf\.int64)", "119126484"},
       {R"(^\/add.*dtype=tf\.int64)", "119126484"},
       {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
-
-      // Select kernel doesn't support broadcasting yet.
-      {R"(^\/where.*1,2,3,1)", "134692786"},
 
       // Strided slice doesn't support ellipsis.
       {R"(strided_slice.*Ellipsis)", "138098220"},
@@ -156,10 +150,18 @@ const std::map<string, string>& GetKnownBrokenNnapiTests() {
 const std::map<string, string>& GetKnownQuantizeBrokenTests() {
   static const std::map<string, string>* const kQuantizeBrokenTests =
       new std::map<string, string>({
-          {R"(^\/conv.*fully_quantize=True)", "134594898"},
-          {R"(^\/depthwiseconv.*fully_quantize=True)", "134594898"},
           {R"(^\/sum.*fully_quantize=True)", "134594898"},
           {R"(^\/l2norm.*fully_quantize=True)", "134594898"},
+      });
+  return *kQuantizeBrokenTests;
+}
+
+const std::map<string, int>& GetQuantizeTestsError() {
+  static const std::map<string, int>* const kQuantizeBrokenTests =
+      new std::map<string, int>({
+          {R"(^\/conv_relu1.*fully_quantize=True)", 18},
+          {R"(^\/conv_relu6.*fully_quantize=True)", 8},
+          {R"(^\/maximum.*fully_quantize=True)", 8},
       });
   return *kQuantizeBrokenTests;
 }
@@ -296,24 +298,30 @@ TEST_P(OpsTest, RunZipTests) {
 
   std::ifstream tflite_stream(tflite_test_case);
   ASSERT_TRUE(tflite_stream.is_open()) << tflite_test_case;
-  tflite::testing::TfLiteDriver test_driver(
-      FLAGS_use_nnapi ? TfLiteDriver::DelegateType::kNnapi
-                      : TfLiteDriver::DelegateType::kNone);
+  tflite::testing::TfLiteDriver test_driver;
+  const bool use_nnapi =
+      tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
+          "use_nnapi");
+
+  auto quantized_tests_error = GetQuantizeTestsError();
   bool fully_quantize = false;
   if (test_path.find("fully_quantize=True") != std::string::npos) {
-    // TODO(b/134594898): Tighten this constraint.
-    test_driver.SetThreshold(0.2, 0.1);
+    for (const auto& p : quantized_tests_error) {
+      if (RE2::PartialMatch(test_name, p.first)) {
+        test_driver.SetQuantizationErrorMultiplier(p.second);
+        break;
+      }
+    }
     fully_quantize = true;
   }
 
   test_driver.SetModelBaseDir(tflite_dir);
 
   auto broken_tests = GetKnownBrokenTests();
-  if (FLAGS_use_nnapi) {
+  if (use_nnapi) {
     auto kBrokenNnapiTests = GetKnownBrokenNnapiTests();
     broken_tests.insert(kBrokenNnapiTests.begin(), kBrokenNnapiTests.end());
   }
-  auto quantize_broken_tests = GetKnownQuantizeBrokenTests();
 
   bool result = tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver);
   string message = test_driver.GetErrorMessage();
@@ -327,7 +335,7 @@ TEST_P(OpsTest, RunZipTests) {
       }
     }
     if (bug_number.empty()) {
-      if (FLAGS_use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
+      if (use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
         EXPECT_EQ(message, string("Failed to invoke interpreter")) << message;
       } else {
         EXPECT_TRUE(result) << message;
@@ -346,7 +354,7 @@ TEST_P(OpsTest, RunZipTests) {
     if (!result) {
       string bug_number;
       // See if the tests are potential quantize failures.
-      for (const auto& p : quantize_broken_tests) {
+      for (const auto& p : GetKnownQuantizeBrokenTests()) {
         if (RE2::PartialMatch(test_name, p.first)) {
           bug_number = p.second;
           break;
@@ -401,8 +409,6 @@ int main(int argc, char** argv) {
       tensorflow::Flag("tar_binary_path",
                        tflite::testing::FLAGS_tar_binary_path,
                        "Location of a suitable tar binary."),
-      tensorflow::Flag("use_nnapi", &tflite::testing::FLAGS_use_nnapi,
-                       "Whether to enable the NNAPI delegate"),
       tensorflow::Flag("ignore_unsupported_nnapi",
                        &tflite::testing::FLAGS_ignore_unsupported_nnapi,
                        "Don't fail tests just because delegation to NNAPI "
@@ -410,7 +416,12 @@ int main(int argc, char** argv) {
   bool success = tensorflow::Flags::Parse(&argc, argv, flags);
   if (!success || (argc == 2 && !strcmp(argv[1], "--helpfull"))) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
-    return 1;
+    return EXIT_FAILURE;
+  }
+
+  if (!tflite::testing::TfLiteDriver::InitTestDelegateProviders(
+          &argc, const_cast<const char**>(argv))) {
+    return EXIT_FAILURE;
   }
 
   ::tflite::LogToStderr();

@@ -352,14 +352,17 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
   NodeMap node_map(&graph);
 
   const NodeDef* add_node = node_map.GetNode("add");
+  const NodeDef* mul_node = node_map.GetNode("mul");
   ASSERT_NE(add_node, nullptr);
 
   // [a, b] are only non-control inputs
   EXPECT_EQ(NumNonControlInputs(*add_node), 2);
+  EXPECT_EQ(NumControlInputs(*add_node), 1);
   // [sqrt, shape] are non control outputs
   EXPECT_EQ(NumNonControlOutputs(*add_node, node_map), 2);
   // sqrt is the only data output
   EXPECT_EQ(NumNonControlDataOutputs(*add_node, node_map), 1);
+  EXPECT_EQ(NumControlInputs(*mul_node), 0);
 
   EXPECT_TRUE(HasControlInputs(*add_node));
   EXPECT_TRUE(HasRegularInputs(*add_node));
@@ -420,10 +423,10 @@ TEST(IsKernelRegisteredForNode, All) {
   v.set_type(DataType::DT_FLOAT);
   (*node.mutable_attr())["T"] = v;
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   node.set_device("/gpu:0");
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Bad device name.
   node.set_device("");
@@ -515,6 +518,45 @@ TEST_F(UtilsTest, SafeTensorIdToString) {
   EXPECT_EQ(SafeTensorIdToString({"foo", 0}), "foo");
   EXPECT_EQ(SafeTensorIdToString({"foo", 1}), "foo:1");
   EXPECT_EQ(SafeTensorIdToString({"foo", 2}), "foo:2");
+}
+
+TEST_F(UtilsTest, EraseRegularNodeAttributes) {
+  NodeDef node;
+  AttrValue dummy;
+  node.set_name("foo");
+  node.set_op("MatMul");
+  (*node.mutable_attr())["baz"] = dummy;
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 0);
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 0);
+
+  (*node.mutable_attr())["baz"] = dummy;
+  (*node.mutable_attr())["_bar"] = dummy;
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 1);
+  EXPECT_EQ(node.attr().begin()->first, "_bar");
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 0);
+}
+
+TEST_F(UtilsTest, EraseNodeOutputAttributes) {
+  NodeDef node;
+  AttrValue dummy;
+  node.set_name("foo");
+  node.set_op("MatMul");
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
+  (*node.mutable_attr())["_xla_inferred_shapes"] = dummy;
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 0);
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
+
+  (*node.mutable_attr())["baz"] = dummy;
+  (*node.mutable_attr())["_output_shapes"] = dummy;
+  (*node.mutable_attr())["_xla_inferred_shapes"] = dummy;
+  (*node.mutable_attr())["_output_gnu"] = dummy;
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 3);
+  EXPECT_EQ(node.attr_size(), 1);
+  EXPECT_EQ(node.attr().begin()->first, "baz");
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
 }
 
 template <typename T>

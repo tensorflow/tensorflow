@@ -31,6 +31,12 @@ struct ObjectTypeGetter {
   ObjectType operator()(OpenClTexture) const {
     return ObjectType::OPENCL_TEXTURE;
   }
+  ObjectType operator()(VulkanBuffer) const {
+    return ObjectType::VULKAN_BUFFER;
+  }
+  ObjectType operator()(VulkanTexture) const {
+    return ObjectType::VULKAN_TEXTURE;
+  }
   ObjectType operator()(CpuMemory) const { return ObjectType::CPU_MEMORY; }
 };
 
@@ -42,6 +48,8 @@ struct ObjectValidityChecker {
   }
   bool operator()(OpenClBuffer obj) const { return obj.memobj; }
   bool operator()(OpenClTexture obj) const { return obj.memobj; }
+  bool operator()(VulkanBuffer obj) const { return obj.memory; }
+  bool operator()(VulkanTexture obj) const { return obj.memory; }
   bool operator()(CpuMemory obj) const {
     return obj.data != nullptr && obj.size_bytes > 0 &&
            (data_type == DataType::UNKNOWN ||
@@ -72,15 +80,19 @@ bool IsValid(const TensorObjectDef& def, const TensorObject& object) {
 bool IsObjectPresent(ObjectType type, const TensorObject& obj) {
   switch (type) {
     case ObjectType::CPU_MEMORY:
-      return absl::get_if<CpuMemory>(&obj);
+      return absl::holds_alternative<CpuMemory>(obj);
     case ObjectType::OPENGL_SSBO:
-      return absl::get_if<OpenGlBuffer>(&obj);
+      return absl::holds_alternative<OpenGlBuffer>(obj);
     case ObjectType::OPENGL_TEXTURE:
-      return absl::get_if<OpenGlTexture>(&obj);
+      return absl::holds_alternative<OpenGlTexture>(obj);
     case ObjectType::OPENCL_BUFFER:
-      return absl::get_if<OpenClBuffer>(&obj);
+      return absl::holds_alternative<OpenClBuffer>(obj);
     case ObjectType::OPENCL_TEXTURE:
-      return absl::get_if<OpenClTexture>(&obj);
+      return absl::holds_alternative<OpenClTexture>(obj);
+    case ObjectType::VULKAN_BUFFER:
+      return absl::holds_alternative<VulkanBuffer>(obj);
+    case ObjectType::VULKAN_TEXTURE:
+      return absl::holds_alternative<VulkanTexture>(obj);
     case ObjectType::UNKNOWN:
       return false;
   }
@@ -99,6 +111,89 @@ uint32_t NumElements(const TensorObjectDef& def) {
       return 0;
   }
   return 0;
+}
+
+int GetPosition(const InferenceOptions& options, InferencePriority p) {
+  if (options.priority1 == p) return 1;
+  if (options.priority2 == p) return 2;
+  if (options.priority3 == p) return 3;
+  return 4;  // least important
+}
+
+PriorityImportance GetRelativeImportance(const InferenceOptions& options,
+                                         InferencePriority p1,
+                                         InferencePriority p2) {
+  int p1_position = GetPosition(options, p1);
+  int p2_position = GetPosition(options, p2);
+  if (p1_position == p2_position) return PriorityImportance::UNKNOWN;
+  return p1_position < p2_position ? PriorityImportance::HIGHER
+                                   : PriorityImportance::LOWER;
+}
+
+bool IsValid(const InferenceOptions& options) {
+  if (options.usage == InferenceUsage::UNKNOWN) {
+    return false;
+  }
+  if (options.priority1 == InferencePriority::UNKNOWN ||
+      options.priority2 == InferencePriority::UNKNOWN ||
+      options.priority3 == InferencePriority::UNKNOWN) {
+    return false;
+  }
+  if (options.priority1 == InferencePriority::AUTO) {
+    return false;
+  }
+  if (options.priority2 == InferencePriority::AUTO &&
+      options.priority3 != InferencePriority::AUTO) {
+    return false;
+  }
+  if (options.priority1 == options.priority2 ||
+      options.priority1 == options.priority3) {
+    return false;
+  }
+  if (options.priority2 == options.priority3 &&
+      options.priority2 != InferencePriority::AUTO) {
+    return false;
+  }
+  return true;
+}
+
+// Implementation note: this resolution logic is shared between GL and CL
+// backends, but they might have own logic. Thus, the function is defined
+// here just for code re-use purposes.
+void ResolveAutoPriority(InferenceOptions* options) {
+  // priority1 can not be AUTO as it would make options invalid.
+  if (options->priority2 == InferencePriority::AUTO) {
+    switch (options->priority1) {
+      case InferencePriority::MIN_LATENCY:
+        options->priority2 = InferencePriority::MIN_MEMORY_USAGE;
+        options->priority3 = InferencePriority::MAX_PRECISION;
+        return;
+      case InferencePriority::MIN_MEMORY_USAGE:
+        options->priority2 = InferencePriority::MAX_PRECISION;
+        options->priority3 = InferencePriority::MIN_LATENCY;
+        return;
+      case InferencePriority::MAX_PRECISION:
+        options->priority2 = InferencePriority::MIN_LATENCY;
+        options->priority3 = InferencePriority::MIN_MEMORY_USAGE;
+        return;
+      case InferencePriority::UNKNOWN:
+      case InferencePriority::AUTO:
+        // Invalid and unreachable option.
+        return;
+    }
+  }
+
+  if (options->priority3 == InferencePriority::AUTO) {
+    // Simply add missing priority
+    if (GetPosition(*options, InferencePriority::MIN_LATENCY) == 4) {
+      options->priority3 = InferencePriority::MIN_LATENCY;
+    } else if (GetPosition(*options, InferencePriority::MAX_PRECISION) == 4) {
+      options->priority3 = InferencePriority::MAX_PRECISION;
+    } else if (GetPosition(*options, InferencePriority::MIN_MEMORY_USAGE) ==
+               4) {
+      options->priority3 = InferencePriority::MIN_MEMORY_USAGE;
+    }
+  }
 }
 
 }  // namespace gpu

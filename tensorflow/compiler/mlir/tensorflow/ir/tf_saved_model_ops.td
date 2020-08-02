@@ -18,9 +18,8 @@ limitations under the License.
 #ifndef SAVED_MODEL_DIALECT
 #define SAVED_MODEL_DIALECT
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+include "mlir/IR/SymbolInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // Dialect definition
@@ -111,12 +110,68 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
 
     The `value` attribute contains the tensor's value (or initial value, in the
     case it is mutable).
+
+    The `type` attribute contains the tensor's type, which for the case of
+    mutable tensors might be more general than just the fixed static shape of
+    the `value` attribute. For example, a global tensor might be unranked such
+    as `tensor<*xf32>`, or a more complex shape such as `tensor<4x?x27xf32>`.
+    The shape of `value` must be compatible with the shape of `type` in the
+    sense of `tf.TensorShape` compatibility. And the element types must match.
   }];
 
   let arguments = (ins
     StrAttr:$sym_name,
     ElementsAttr:$value,
+    TypeAttr:$type,
     UnitAttr:$is_mutable
+  );
+
+  let verifier = [{ return Verify(*this); }];
+}
+
+def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
+  let summary = "Initializes TensorFlow session state.";
+  let description = [{
+    The session initializer op marks a function that must be called by an
+    external agent exactly once to initialize TensorFlow session state, and this
+    must happen before any other exported functions are called. There must be no
+    more than one session initializer in a saved model.
+
+    The `initializer` represents the initialization function. The function have
+    no output and this function should be only called once.
+
+    This is used, for example, to initialize hash tables stored in resources and
+    accessed by resource name (rather than as resource handles or bound inputs
+    which is how `global_tensor`s are referenced)
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$initializer
+  );
+
+
+  let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
+}
+
+def TfSavedModel_AssetOp: TfSavedModel_Op<"asset", [Symbol]> {
+  let summary = "Represents an asset in saved model.";
+  let description = [{
+    Represents an asset in the saved model that points to an external file. It
+    is a scalar string tensor and it is passed as an argument to the session
+    initializer function.
+
+    The `sym_name` represents the symbol table name used for internal IR
+    references.
+
+    The `filename` attribute contains the file path to the asset file and it is
+    relative to saved model directory.
+  }];
+
+  let arguments = (ins
+    StrAttr:$sym_name,
+    StrAttr:$filename
   );
 }
 

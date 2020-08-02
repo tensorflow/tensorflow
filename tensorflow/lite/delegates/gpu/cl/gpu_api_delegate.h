@@ -16,34 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_GPU_API_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_GPU_API_DELEGATE_H_
 
-#include <stdint.h>
-
+#define GL_NO_PROTOTYPES
+#define EGL_NO_PROTOTYPES
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
-#include "tensorflow/lite/c/c_api_internal.h"
+#undef GL_NO_PROTOTYPES
+#undef EGL_NO_PROTOTYPES
 
-#ifdef SWIG
-#define TFL_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TFL_COMPILE_LIBRARY
-#define TFL_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TFL_COMPILE_LIBRARY
-#else
-#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
+#include <stdint.h>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-
-enum TfLiteGpuInferencePriority {
-  TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION = 0,
-  TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY = 1,
-};
 
 // Shader compilation options.
 typedef struct {
@@ -80,8 +67,8 @@ typedef struct {
 // .compile_options = {
 //   .precision_loss_allowed = false,
 // }
-// .egl_display = eglGetCurrentDisplay(),
-// .egl_context = eglGetCurrentContext();
+// .egl_display = EGL_NO_DISPLAY;
+// .egl_context = EGL_NO_CONTEXT;
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateCreate_New(
     const TfLiteGpuDelegateOptions_New* options);
 

@@ -50,7 +50,6 @@ from __future__ import print_function
 
 import os
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.lib.io import file_io
 
 
@@ -65,12 +64,25 @@ def _is_temp_dir(dirpath, strategy):
 
 def _get_temp_dir(dirpath, strategy):
   if _is_temp_dir(dirpath, strategy):
-    return dirpath
-  return os.path.join(dirpath, _get_base_dirpath(strategy))
+    temp_dir = dirpath
+  else:
+    temp_dir = os.path.join(dirpath, _get_base_dirpath(strategy))
+  file_io.recursive_create_dir_v2(temp_dir)
+  return temp_dir
 
 
-def write_dirpath(dirpath, strategy=None):
-  """Returns the write path that should be used to save file distributedly."""
+def write_dirpath(dirpath, strategy):
+  """Returns the writing dir that should be used to save file distributedly.
+
+  `dirpath` would be created if it doesn't exist.
+
+  Args:
+    dirpath: Original dirpath that would be used without distribution.
+    strategy: The tf.distribute strategy object currently used.
+
+  Returns:
+    The writing dir path that should be used to save with distribution.
+  """
   if strategy is None:
     # Infer strategy from `distribution_strategy_context` if not given.
     strategy = distribution_strategy_context.get_strategy()
@@ -80,15 +92,20 @@ def write_dirpath(dirpath, strategy=None):
     return dirpath
   if not strategy.extended._in_multi_worker_mode():  # pylint: disable=protected-access
     return dirpath
-  if multi_worker_util.is_chief():
+  if strategy.extended.should_checkpoint:
     return dirpath
   # If this worker is not chief and hence should not save file, save it to a
   # temporary directory to be removed later.
   return _get_temp_dir(dirpath, strategy)
 
 
-def remove_temp_dirpath(dirpath, strategy=None):
-  """Removes the temp path after writing is finished."""
+def remove_temp_dirpath(dirpath, strategy):
+  """Removes the temp path after writing is finished.
+
+  Args:
+    dirpath: Original dirpath that would be used without distribution.
+    strategy: The tf.distribute strategy object currently used.
+  """
   if strategy is None:
     # Infer strategy from `distribution_strategy_context` if not given.
     strategy = distribution_strategy_context.get_strategy()
@@ -96,8 +113,37 @@ def remove_temp_dirpath(dirpath, strategy=None):
     # If strategy is still not available, this is not in distributed training.
     # Fallback to no-op.
     return
-  if strategy.extended._in_multi_worker_mode():  # pylint: disable=protected-access
-    if not multi_worker_util.is_chief():
-      # If this worker is not chief and hence should not save file, remove
-      # the temporary directory.
-      file_io.delete_recursively(_get_temp_dir(dirpath, strategy))
+  # TODO(anjalisridhar): Consider removing the check for multi worker mode since
+  # it is redundant when used with the should_checkpoint property.
+  if (strategy.extended._in_multi_worker_mode() and  # pylint: disable=protected-access
+      not strategy.extended.should_checkpoint):
+    # If this worker is not chief and hence should not save file, remove
+    # the temporary directory.
+    file_io.delete_recursively(_get_temp_dir(dirpath, strategy))
+
+
+def write_filepath(filepath, strategy):
+  """Returns the writing file path to be used to save file distributedly.
+
+  Directory to contain `filepath` would be created if it doesn't exist.
+
+  Args:
+    filepath: Original filepath that would be used without distribution.
+    strategy: The tf.distribute strategy object currently used.
+
+  Returns:
+    The writing filepath that should be used to save file with distribution.
+  """
+  dirpath = os.path.dirname(filepath)
+  base = os.path.basename(filepath)
+  return os.path.join(write_dirpath(dirpath, strategy), base)
+
+
+def remove_temp_dir_with_filepath(filepath, strategy):
+  """Removes the temp path for file after writing is finished.
+
+  Args:
+    filepath: Original filepath that would be used without distribution.
+    strategy: The tf.distribute strategy object currently used.
+  """
+  remove_temp_dirpath(os.path.dirname(filepath), strategy)

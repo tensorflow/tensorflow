@@ -285,7 +285,7 @@ void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
   auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
                             left_node_id, right_node_id);
   auto* new_split = node->mutable_bucketized_split();
-  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_feature_id(candidate.feature_id);
   new_split->set_threshold(candidate.threshold);
   new_split->set_dimension_id(candidate.dimension_id);
   new_split->set_left_id(*left_node_id);
@@ -310,7 +310,7 @@ void BoostedTreesEnsembleResource::AddCategoricalSplitNode(
   auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
                             left_node_id, right_node_id);
   auto* new_split = node->mutable_categorical_split();
-  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_feature_id(candidate.feature_id);
   new_split->set_value(candidate.threshold);
   new_split->set_dimension_id(candidate.dimension_id);
   new_split->set_left_id(*left_node_id);
@@ -340,7 +340,7 @@ boosted_trees::Node* BoostedTreesEnsembleResource::AddLeafNodes(
         node->mutable_leaf());
   }
   node->mutable_metadata()->set_gain(candidate.gain);
-  // TODO(npononareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.
+  // TODO(nponomareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.
   if (logits_dimension == 1) {
     const float prev_logit_value = node->metadata().original_leaf().scalar();
     left_node->mutable_leaf()->set_scalar(prev_logit_value +
@@ -424,7 +424,8 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree,
                               ->mutable_post_pruned_nodes_meta();
 
   for (int32 i = 0; i < num_nodes; ++i) {
-    if (index_for_deleted < nodes_to_delete.size() &&
+    const int64 nodes_to_delete_size = nodes_to_delete.size();
+    if (index_for_deleted < nodes_to_delete_size &&
         i == nodes_to_delete[index_for_deleted]) {
       // Node i will get removed,
       ++index_for_deleted;
@@ -455,7 +456,8 @@ void BoostedTreesEnsembleResource::PostPruneTree(const int32 current_tree,
   protobuf::RepeatedPtrField<boosted_trees::Node> new_nodes;
   new_nodes.Reserve(old_to_new_ids.size());
   for (auto node : *(tree->mutable_nodes())) {
-    if (index_for_deleted < nodes_to_delete.size() &&
+    const int64 nodes_to_delete_size = nodes_to_delete.size();
+    if (index_for_deleted < nodes_to_delete_size &&
         i == nodes_to_delete[index_for_deleted]) {
       ++index_for_deleted;
       ++i;
@@ -570,7 +572,7 @@ void BoostedTreesEnsembleResource::RecursivelyDoPostPrunePreparation(
     if (node_metadata.has_original_leaf()) {
       parent_values = node_value(tree_id, node_id);
     }
-    for (int32 i = 0; i < parent_values.size(); ++i) {
+    for (int32 i = 0, end = parent_values.size(); i < end; ++i) {
       nodes_meta->at(left_id).second.emplace_back(parent_values[i] -
                                                   left_child_values[i]);
       nodes_meta->at(right_id).second.emplace_back(parent_values[i] -

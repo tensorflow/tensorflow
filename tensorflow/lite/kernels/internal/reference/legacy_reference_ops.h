@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/tanh.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -387,8 +388,20 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   op_params.stride_height = stride_height;
 
   TransposeConv(op_params, DimsToShape(input_dims), input_data,
-                DimsToShape(filter_dims), filter_data, DimsToShape(output_dims),
-                output_data, DimsToShape(im2col_dims), im2col_data);
+                DimsToShape(filter_dims), filter_data,
+                /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr,
+                DimsToShape(output_dims), output_data, DimsToShape(im2col_dims),
+                im2col_data);
+}
+
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
+  TransposeConv(params, input_shape, input_data, filter_shape, filter_data,
+                /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr, output_shape,
+                output_data, im2col_shape, im2col_data);
 }
 
 inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,
@@ -613,9 +626,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
@@ -832,49 +845,6 @@ inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
   Logistic(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const uint8* input_data, const RuntimeShape& output_shape,
-                 uint8* output_data) {
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int input_left_shift = params.input_left_shift;
-  const int32 output_zero_point = 128;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    const uint8 input_val_u8 = input_data[i];
-    const int32 input_val_centered =
-        static_cast<int32>(input_val_u8) - input_zero_point;
-    uint8 output_val;
-    if (input_val_centered <= -input_range_radius) {
-      output_val = 0;
-    } else if (input_val_centered >= input_range_radius) {
-      output_val = 255;
-    } else {
-      const int32 input_val_rescaled =
-          MultiplyByQuantizedMultiplierGreaterThanOne(
-              input_val_centered, input_multiplier, input_left_shift);
-      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
-      const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
-      // Convert from Q0.31 to Q24.7.
-      using gemmlowp::RoundingDivideByPOT;
-      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
-      output_val_s32 += output_zero_point;
-      if (output_val_s32 == 256) {
-        output_val_s32 = 255;
-      }
-      // Reinterpret as Q0.7, encoded in uint8.
-      TFLITE_DCHECK_GE(output_val_s32, 0);
-      TFLITE_DCHECK_LE(output_val_s32, 255);
-      output_val = static_cast<uint8>(output_val_s32);
-    }
-    output_data[i] = output_val;
-  }
-}
-
 inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
                  int32 input_zero_point, int32 input_range_radius,
                  int32 input_multiplier, int input_left_shift,
@@ -1085,7 +1055,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
   inline void name(const T* input1_data, const Dims<4>& input1_dims,          \
                    const T* input2_data, const Dims<4>& input2_dims,          \
                    bool* output_data, const Dims<4>& output_dims) {           \
-    gemmlowp::ScopedProfilingLabel label(#name);                              \
+    ruy::profiler::ScopeLabel label(#name);                                   \
     Comparison<T, name##Fn>(input1_data, input1_dims, input2_data,            \
                             input2_dims, output_data, output_dims);           \
   }                                                                           \
@@ -1096,7 +1066,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
       int32 input2_multiplier, int input2_shift, bool* output_data,           \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                      \
+    ruy::profiler::ScopeLabel label(#name "/8bit");                           \
     Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,             \
                             input1_offset, input1_multiplier, input1_shift,   \
                             input2_data, input2_dims, input2_offset,          \
@@ -1108,7 +1078,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input1_data, const Dims<4>& input1_dims, const T* input2_data, \
       const Dims<4>& input2_dims, bool* output_data,                          \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                  \
+    ruy::profiler::ScopeLabel label("Broadcast" #name);                       \
     BroadcastComparison<T, name##Fn>(input1_data, input1_dims, input2_data,   \
                                      input2_dims, output_data, output_dims);  \
   }                                                                           \
@@ -1119,7 +1089,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
       int32 input2_multiplier, int input2_shift, bool* output_data,           \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");          \
+    ruy::profiler::ScopeLabel label("Broadcast" #name "/8bit");               \
     BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
                                      input1_offset, input1_multiplier,        \
                                      input1_shift, input2_data, input2_dims,  \
@@ -1325,7 +1295,7 @@ template <FusedActivationFunctionType Ac>
 void Add(const int32* input1_data, const Dims<4>& input1_dims,
          const int32* input2_data, const Dims<4>& input2_dims,
          int32* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Add/int32");
+  ruy::profiler::ScopeLabel label("Add/int32");
   TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
 
   tflite::ArithmeticParams op_params;
@@ -2012,6 +1982,7 @@ inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
                            const Dims<4>& output_dims, bool align_corners) {
   tflite::ResizeBilinearParams op_params;
   op_params.align_corners = align_corners;
+  op_params.half_pixel_centers = false;
   ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
                  DimsToShape(output_size_dims), output_size_data,
                  DimsToShape(output_dims), output_data);
@@ -2146,9 +2117,9 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
                               const T* input2_data, const Dims<4>& input2_dims,
                               T* output_data, const Dims<4>& output_dims,
                               Op op) {
-  MaximumMinimumBroadcast4DSlow(DimsToShape(input1_dims), input1_data,
-                                DimsToShape(input2_dims), input2_data,
-                                DimsToShape(output_dims), output_data, op);
+  MaximumMinimumBroadcastSlow(DimsToShape(input1_dims), input1_data,
+                              DimsToShape(input2_dims), input2_data,
+                              DimsToShape(output_dims), output_data, op);
 }
 
 template <typename T1, typename T2, typename T3>

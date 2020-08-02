@@ -8,9 +8,12 @@ _DeepLab_ is a state-of-art deep learning model for semantic image segmentation,
 where the goal is to assign semantic labels (e.g. person, dog, cat) to every
 pixel in the input image.
 
-If you are new to TensorFlow Lite and are working with iOS, we
+If you are new to TensorFlow Lite and are working with Android or iOS, we
 recommend exploring the following example applications that can help you get
 started.
+
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android">Android
+example</a>
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/ios">iOS
 example</a>
@@ -40,7 +43,7 @@ The current implementation includes the following features:
   <li>DeepLabv3+: We extend DeepLabv3 to include a simple yet effective decoder module to refine the segmentation results especially along object boundaries. Furthermore, in this encoder-decoder structure one can arbitrarily control the resolution of extracted encoder features by atrous convolution to trade-off precision and runtime.</li>
 </ol>
 
-## Performance Benchmarks
+## Performance benchmarks
 
 Performance benchmark numbers are generated with the tool
 [described here](https://www.tensorflow.org/lite/performance/benchmarks).

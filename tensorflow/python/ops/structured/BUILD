@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 package(
     default_visibility = [
         "//tensorflow:internal",
+        "//tensorflow:structured_tensor_whitelist",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -34,6 +35,7 @@ py_library(
 py_test(
     name = "structured_tensor_test",
     srcs = ["structured_tensor_test.py"],
+    python_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",
@@ -49,6 +51,7 @@ py_test(
 py_test(
     name = "structured_tensor_spec_test",
     srcs = ["structured_tensor_spec_test.py"],
+    python_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",
@@ -64,6 +67,7 @@ py_test(
 py_test(
     name = "structured_tensor_slice_test",
     srcs = ["structured_tensor_slice_test.py"],
+    python_version = "PY3",
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",

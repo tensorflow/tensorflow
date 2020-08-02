@@ -41,7 +41,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
         env.update({
             "TF_NEED_CUDA": "1",
             "TF_CUDA_CLANG": "1" if compiler.endswith("clang") else "0",
-            "TF_CUDA_COMPUTE_CAPABILITIES": "3.0,6.0",
+            "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
             "TF_ENABLE_XLA": "1",
             "TF_CUDNN_VERSION": cudnn_version,
             "TF_CUDA_VERSION": cuda_version,
@@ -72,7 +72,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
     docker_toolchain_autoconfig(
         name = name,
         base = base,
-        bazel_version = "0.29.1",
+        bazel_version = "1.2.1",
         build_bazel_src = build_bazel_src,
         config_repos = config_repos,
         env = env,

@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -114,7 +113,7 @@ class SquareLinearOperatorCompositionTest(
     self.assertFalse(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
 
-    with self.assertRaisesRegexp(ValueError, "always non-singular"):
+    with self.assertRaisesRegex(ValueError, "always non-singular"):
       linalg.LinearOperatorComposition(
           [operator_1, operator_2], is_non_singular=False)
 
@@ -132,11 +131,11 @@ class SquareLinearOperatorCompositionTest(
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3)),
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3).astype(np.float32))
     ]
-    with self.assertRaisesRegexp(TypeError, "same dtype"):
+    with self.assertRaisesRegex(TypeError, "same dtype"):
       linalg.LinearOperatorComposition(operators)
 
   def test_empty_operators_raises(self):
-    with self.assertRaisesRegexp(ValueError, "non-empty"):
+    with self.assertRaisesRegex(ValueError, "non-empty"):
       linalg.LinearOperatorComposition([])
 
 
@@ -151,14 +150,11 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def operator_and_matrix(self, build_info, dtype, use_placeholder):
-    sess = ops.get_default_session()
+  def operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    del ensure_self_adjoint_and_pd
     shape = list(build_info.shape)
-
-    # Test only the case of 2 matrices.
-    # The Square test uses either 1 or 2, so we have tested the case of 1 matrix
-    # sufficiently.
-    num_operators = 2
 
     # Create 2 matrices/operators, A1, A2, which becomes A = A1 A2.
     # Use inner dimension of 2.
@@ -207,7 +203,7 @@ class NonSquareLinearOperatorCompositionTest(
     ]
     operator = linalg.LinearOperatorComposition(operators)
     with self.cached_session():
-      self.assertAllEqual((2, 3, 5), operator.shape_tensor().eval())
+      self.assertAllEqual((2, 3, 5), operator.shape_tensor())
 
   @test_util.run_deprecated_v1
   def test_shape_tensors_when_only_dynamically_available(self):
