@@ -91,9 +91,11 @@ def normalize_element(element, element_signature=None):
   if element_signature is None:
     components = nest.flatten(element)
     flattened_signature = [None] * len(components)
+    pack_as = element
   else:
     flattened_signature = nest.flatten(element_signature)
     components = nest.flatten_up_to(element_signature, element)
+    pack_as = element_signature
   with ops.name_scope("normalize_element"):
     # Imported here to avoid circular dependency.
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
@@ -125,7 +127,8 @@ def normalize_element(element, element_signature=None):
         else:
           normalized_components.append(
               ops.convert_to_tensor(t, name="component_%d" % i, dtype=dtype))
-  return nest.pack_sequence_as(element_signature, normalized_components)
+  return nest.pack_sequence_as(pack_as, normalized_components)
+      
 
 
 def convert_legacy_structure(output_types, output_shapes, output_classes):
