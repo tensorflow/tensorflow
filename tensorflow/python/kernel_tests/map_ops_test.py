@@ -168,9 +168,10 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(g, 5)
       self.assertAllEqual(g2, 6)
       self.assertAllEqual(g3, 7)
+    del tape
 
   def testInsertLookupComposeGrad(self):
-    with backprop.GradientTape(persistent=True) as tape:
+    with backprop.GradientTape() as tape:
       m = map_ops.empty_tensor_map()
       k = constant_op.constant(1.0)
       k2 = constant_op.constant(2.0)
@@ -203,6 +204,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       g3 = tape.gradient(l2 * 7, v2)
       self.assertAllClose(g2, array_ops.zeros_like(v))
       self.assertAllClose(g3, 7)
+    del tape
 
   def testDiffKeySameValueGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
@@ -223,6 +225,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l2 = map_ops.tensor_map_lookup(m, k2, v2.dtype)
       g2 = tape.gradient(l + l2, v2)
       self.assertAllEqual(g2, 1)
+    del tape
 
   def testLookupAddGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
@@ -243,6 +246,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(g2, [1, 1])
       g3 = tape.gradient(l1 + l2 * 4, v2)
       self.assertAllEqual(g3, 4)
+    del tape
 
   def testLookupMultiplyGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
@@ -261,6 +265,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(g, [v2, v])
       g2 = tape.gradient(l1 * l1, v)
       self.assertAllClose(g2, 2*v)
+    del tape
 
   def testEraseSecondGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
@@ -281,6 +286,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(g, 5)
       g2 = tape.gradient(e * 6, v2)
       self.assertAllEqual(g2, 6)
+    del tape
 
   def testEraseFirstGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
@@ -307,6 +313,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       m, e2 = map_ops.tensor_map_erase(m, k2, v2.dtype)
       g4 = tape.gradient(e2 * 8, v2)
       self.assertAllEqual(g4, 8)
+    del tape
 
   def testEraseInsertComposedGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
@@ -327,6 +334,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(g, 5)
       g2 = tape.gradient(e * 6, v)
       self.assertAllEqual(g2, 6)
+    del tape
 
   def testStringKeyGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
@@ -354,6 +362,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(e, v2)
       g2 = tape.gradient(e * 6, v2)
       self.assertAllEqual(g2, 6)
+    del tape
 
   def testStringValue(self):
     m = map_ops.empty_tensor_map()
