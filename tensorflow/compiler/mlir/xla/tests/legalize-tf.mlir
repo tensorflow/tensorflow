@@ -2303,11 +2303,8 @@ func @expand_dims(%arg0: tensor<2xf32>, %axis: tensor<i32>) -> tensor<1x2xf32> {
 // CHECK-LABEL: func @sign
 // CHECK-SAME: [[ARG:%arg.*]]: tensor<1x2x3x4xf32>
 func @sign(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
-  // CHECK: [[PRED:%.*]] = "mhlo.compare"([[ARG]], [[ARG]])
-  // CHECK: [[ZEROS:%.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x2x3x4xf32>
   // CHECK: [[SIGN:%.*]] = "mhlo.sign"([[ARG]])
-  // CHECK: [[SELECT:%.*]] = "mhlo.select"([[PRED]], [[ZEROS]], [[SIGN]])
-  // CHECK: return [[SELECT]] : tensor<1x2x3x4xf32>
+  // CHECK: return [[SIGN]] : tensor<1x2x3x4xf32>
   %0 = "tf.Sign"(%arg0) : (tensor<1x2x3x4xf32>) -> (tensor<1x2x3x4xf32>)
   return %0 : tensor<1x2x3x4xf32>
 }
