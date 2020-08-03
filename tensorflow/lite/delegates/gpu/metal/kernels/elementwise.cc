@@ -115,7 +115,7 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
 
   desc->uniform_buffers = {
       {"constant int2&",
-       [input_ids, output_id](const std::map<ValueId, BHWC>& buffers) {
+       [input_ids](const std::map<ValueId, BHWC>& buffers) {
          const auto& input_dim_1 = buffers.find(input_ids[1])->second;
          std::vector<int> uniform_params{
              input_dim_1.w,
