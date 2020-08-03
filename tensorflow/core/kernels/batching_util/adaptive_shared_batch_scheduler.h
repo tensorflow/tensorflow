@@ -425,7 +425,7 @@ void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatch() {
     return;
   }
   auto best_it = batches_.end();
-  double best_score = std::numeric_limits<double>::max;
+  double best_score = (std::numeric_limits<double>::max)();
   int64 now_micros = GetEnv()->NowMicros();
   for (auto it = batches_.begin(); it != batches_.end(); it++) {
     if ((*it)->schedulable_time_micros() > now_micros) continue;
