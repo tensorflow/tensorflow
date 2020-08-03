@@ -5883,10 +5883,10 @@ def mask_fill(tensor, mask, name="mask_fill", value=0):
   Examples:
 
   ```python
-  tensor = [0, 1, 2, 3]
-  mask = np.array([True, False, True, False])
-  value = 5
-  tf.mask_fill(tensor, mask, value)  # [5, 1, 5, 3]
+  >>>tensor = [0, 1, 2, 3]
+  >>>mask = np.array([True, False, True, False])
+  >>>value = 5
+  >>>tf.mask_fill(tensor, mask, value)  # [5, 1, 5, 3]
   ```
 
   Args:
