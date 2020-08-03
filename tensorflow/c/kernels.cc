@@ -283,23 +283,21 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
                            int64_t* dims, int num_dims, 
-                           TF_AllocatorAttributes attributes,
+                           TF_AllocatorAttributes* attributes,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, ""); 
-  tensorflow::TensorShape shape;
-  for (int i = 0; i < num_dims; ++i) {
-    shape.AddDim(dims[i]);
-  }
+  tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
+      reinterpret_cast<tensorflow::int64*>(dims), num_dims);
   tensorflow::AllocatorAttributes allocator_attr; 
-  if (attributes.on_host) { 
+  if (attributes->on_host) { 
     allocator_attr.set_on_host(true); 
   }
   tensorflow::Status s;
   tensorflow::Tensor tensor;
   TF_Tensor* tf_tensor;
-  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape,
-  		&tensor, allocator_attr);
+  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), 
+      tensorflow::TensorShape(dimarray), &tensor, allocator_attr);
   if (!s.ok()) {
     ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;

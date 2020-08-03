@@ -476,7 +476,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSizeOne) {
 #endif 
     TF_Tensor* output = TF_AllocateTemp(
         /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
-        /*num_dims=*/1, /*allocator_attributes*/ alloc_attrs, s);
+        /*num_dims=*/1, /*allocator_attributes*/ &alloc_attrs, s);
     size_t tensor_size_bytes = TF_DataTypeSize(TF_FLOAT);
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     validate_tensor(output, &dim, 1, TF_FLOAT); 
@@ -513,7 +513,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempEmpty) {
 #endif 
     TF_Tensor* output = TF_AllocateTemp(
         /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
-        /*num_dims=*/1, /*allocator_attributes*/ alloc_attrs, s);
+        /*num_dims=*/1, /*allocator_attributes*/ &alloc_attrs, s);
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     validate_tensor(output, &dim, 1, TF_FLOAT);
     TF_SetOutput(ctx, 0, output, s); 
@@ -546,7 +546,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
 #endif 
     TF_Tensor* output = TF_AllocateTemp(
         /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/dim,
-        /*num_dims=*/2, /*allocator_attributes*/ alloc_attrs, s);
+        /*num_dims=*/2, /*allocator_attributes*/ &alloc_attrs, s);
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     validate_tensor(output, dim, 2, TF_FLOAT);
 
