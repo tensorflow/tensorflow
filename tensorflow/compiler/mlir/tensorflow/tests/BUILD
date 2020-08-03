@@ -5,6 +5,7 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = ["guarantee-all-funcs-one-use.mlir"],  # TODO(b/162700124): Re-enable.
     tags_override = {
         "optimize.mlir": ["no_rocm"],
         "tf_optimize.mlir": ["no_rocm"],
