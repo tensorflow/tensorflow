@@ -165,7 +165,6 @@ def custom_gradient(f=None):
   2
   >>> tape.gradient(x, y)
   None
-  ```
 
   Nesting custom gradients can lead to unintuitive results. The default
   behavior does not correspond to n-th order derivatives. For example
