@@ -1,16 +1,17 @@
-// Copyright 2020 Google LLC
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -51,12 +52,12 @@ class GuaranteeAllFuncsOneUse
     : public PassWrapper<GuaranteeAllFuncsOneUse, OperationPass<ModuleOp>> {
  public:
   void runOnOperation() override {
-    if (failed(run())) {
+    if (failed(Run())) {
       signalPassFailure();
     }
   }
 
-  LogicalResult run() {
+  LogicalResult Run() {
     auto module = getOperation();
 
     // Overall strategy:
@@ -84,13 +85,13 @@ class GuaranteeAllFuncsOneUse
         // At this point, we know we are going to change the module.
         made_changes = true;
         for (const SymbolTable::SymbolUse &use : llvm::drop_begin(uses, 1)) {
-          auto new_func = func.clone();
           if (num_clones++ > k_max_clones) {
             return func.emitError()
                    << "reached cloning limit (likely recursive call graph or "
                       "repeated diamond-like call structure "
                       "or just very large program)";
           }
+          auto new_func = func.clone();
           symbol_table.insert(new_func);
           new_func.setVisibility(SymbolTable::Visibility::Private);
           if (failed(symbol_table.replaceAllSymbolUses(func, new_func.getName(),

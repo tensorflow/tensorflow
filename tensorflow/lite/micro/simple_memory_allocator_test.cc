@@ -22,31 +22,89 @@ limitations under the License.
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-TF_LITE_MICRO_TEST(TestAdjustHead) {
+TF_LITE_MICRO_TEST(TestEnsureHeadSizeSimpleAlignment) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
   tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
                                           arena_size);
 
-  // First allocation from head.
-  {
-    uint8_t* result = allocator.AdjustHead(100, 1);
-    TF_LITE_MICRO_EXPECT(arena == result);
-    TF_LITE_MICRO_EXPECT(arena + 100 == allocator.GetHead());
-  }
-  // Second allocation doesn't require as much space so head pointer didn't
-  // move.
-  {
-    uint8_t* result = allocator.AdjustHead(10, 1);
-    TF_LITE_MICRO_EXPECT(arena == result);
-    TF_LITE_MICRO_EXPECT(arena + 100 == allocator.GetHead());
-  }
-  // Third allocation increase head memory usage.
-  {
-    uint8_t* result = allocator.AdjustHead(1000, 1);
-    TF_LITE_MICRO_EXPECT(arena == result);
-    TF_LITE_MICRO_EXPECT(arena + 1000 == allocator.GetHead());
-  }
+  // First head adjustment
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/100, /*alignment=*/1));
+  TF_LITE_MICRO_EXPECT(arena + 100 == allocator.GetHead());
+
+  // Second head adjusment is smaller, head size should still be 100.
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/10, /*alignment=*/1));
+  TF_LITE_MICRO_EXPECT(arena + 100 == allocator.GetHead());
+
+  // Third head adjustment re-increases the head size:
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/1000, /*alignment=*/1));
+  TF_LITE_MICRO_EXPECT(arena + 1000 == allocator.GetHead());
+}
+
+TF_LITE_MICRO_TEST(TestAdjustHeadSizeMisalignment) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  // First head adjustment of 100 bytes (aligned 12):
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/100, /*alignment=*/12));
+
+  // Offset alignment of 12 can lead to allocation within 8 byte range of
+  // requested bytes based to arena alignment at runtime:
+  TF_LITE_MICRO_EXPECT_GE(allocator.GetHead(), arena + 100);
+  TF_LITE_MICRO_EXPECT_LE(allocator.GetHead(), arena + 100 + 11);
+
+  // Second head adjusment shrinks the head size (aligned at 12), head size
+  // should still be 100:
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/10, /*alignment=*/12));
+  TF_LITE_MICRO_EXPECT_GE(allocator.GetHead(), arena + 100);
+  TF_LITE_MICRO_EXPECT_LE(allocator.GetHead(), arena + 100 + 11);
+
+  // Third head adjustment re-increases the head size (aligned at 12):
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/1000, /*alignment=*/12));
+  TF_LITE_MICRO_EXPECT_GE(allocator.GetHead(), arena + 1000);
+  TF_LITE_MICRO_EXPECT_LE(allocator.GetHead(), arena + 1000 + 11);
+}
+
+TF_LITE_MICRO_TEST(TestAdjustHeadSizeMisalignedHandlesCorrectBytesAvailable) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  // First head adjustment of 100 bytes (aligned 12):
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/100, /*alignment=*/12));
+
+  // allocator.GetAvailableMemory() should also report the actual amount of
+  // memory available based on a requested offset (12):
+  size_t aligned_available_bytes =
+      allocator.GetAvailableMemory(/*alignment=*/12);
+  TF_LITE_MICRO_EXPECT_LE(aligned_available_bytes, arena_size - 100);
+  TF_LITE_MICRO_EXPECT_GE(aligned_available_bytes, arena_size - 100 - 24);
+
+  // Second head adjusment shrinks the head size (aligned at 12), head size
+  // should still be 100:
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/10, /*alignment=*/12));
+  aligned_available_bytes = allocator.GetAvailableMemory(/*alignment=*/12);
+
+  TF_LITE_MICRO_EXPECT_LE(aligned_available_bytes, arena_size - 100);
+  TF_LITE_MICRO_EXPECT_GE(aligned_available_bytes, arena_size - 100 - 24);
+
+  // Third head adjustment re-increases the head size (aligned at 12):
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.EnsureHeadSize(/*size=*/1000, /*alignment=*/12));
+  aligned_available_bytes = allocator.GetAvailableMemory(/*alignment=*/12);
+  TF_LITE_MICRO_EXPECT_LE(aligned_available_bytes, arena_size - 1000);
+  TF_LITE_MICRO_EXPECT_GE(aligned_available_bytes, arena_size - 1000 - 24);
 }
 
 TF_LITE_MICRO_TEST(TestJustFits) {
@@ -121,7 +179,7 @@ TF_LITE_MICRO_TEST(TestResetTempAllocations) {
   TF_LITE_MICRO_EXPECT_EQ(temp2 - temp1, 0);
 }
 
-TF_LITE_MICRO_TEST(TestAllocateHeadWithoutResettingTemp) {
+TF_LITE_MICRO_TEST(TestEnsureHeadSizeWithoutResettingTemp) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
   tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
@@ -130,22 +188,18 @@ TF_LITE_MICRO_TEST(TestAllocateHeadWithoutResettingTemp) {
   uint8_t* temp = allocator.AllocateTemp(100, 1);
   TF_LITE_MICRO_EXPECT(nullptr != temp);
 
-  // Allocation should be null since temp allocation was not followed by a call
-  // to ResetTempAllocations().
-  uint8_t* head = allocator.AdjustHead(100, 1);
-  TF_LITE_MICRO_EXPECT(nullptr == head);
+  // Adjustment to head should fail since temp allocation was not followed by a
+  // call to ResetTempAllocations().
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, allocator.EnsureHeadSize(100, 1));
 
   allocator.ResetTempAllocations();
 
-  head = allocator.AdjustHead(100, 1);
-  TF_LITE_MICRO_EXPECT(nullptr != head);
+  // Reduce head size back to zero.
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator.EnsureHeadSize(0, 1));
 
   // The most recent head allocation should be in the same location as the
   // original temp allocation pointer.
-  TF_LITE_MICRO_EXPECT(temp == head);
+  TF_LITE_MICRO_EXPECT(temp == allocator.GetHead());
 }
-
-// TODO(b/161171251): Add more coverage to this test - specifically around -1
-// alignments and other odd allocation requests.
 
 TF_LITE_MICRO_TESTS_END

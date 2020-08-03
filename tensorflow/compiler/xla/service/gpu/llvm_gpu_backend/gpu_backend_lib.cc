@@ -83,10 +83,10 @@ const int kDefaultInlineThreshold = 1100;
 static string GetSmName(std::pair<int, int> compute_capability) {
   int compute_capability_version =
       compute_capability.first * 10 + compute_capability.second;
-  int sm_version = 35;
+  int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35}) {
+  for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35, 32, 30}) {
     if (v <= compute_capability_version) {
       sm_version = v;
       break;

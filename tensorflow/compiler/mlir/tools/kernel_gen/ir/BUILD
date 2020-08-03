@@ -1,14 +1,8 @@
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
     licenses = ["notice"],  # Apache 2.0
-)
-
-package_group(
-    name = "friends",
-    includes = ["//third_party/mlir:subpackages"],
-    packages = ["//tensorflow/compiler/mlir/..."],
 )
 
 gentbl(

@@ -435,8 +435,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           math_ops.sign,
-          np.array([[-2.0, -1.0, -0.0, +0.0, 1.0, 2.0]], dtype=dtype),
-          expected=np.array([[-1.0, -1.0, -0.0, +0.0, 1.0, 1.0]], dtype=dtype))
+          np.array([[-2.0, -1.0, -0.0, +0.0, 1.0, 2.0,
+                     float("nan")]],
+                   dtype=dtype),
+          expected=np.array([[-1.0, -1.0, -0.0, +0.0, 1.0, 1.0,
+                              float("nan")]],
+                            dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           math_ops.is_finite,

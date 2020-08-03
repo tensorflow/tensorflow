@@ -58,6 +58,11 @@ class ObjectReader {
 
   template <typename TensorT>
   absl::Status ReadTensor(uint32_t idx, TensorT* t) const {
+    if (idx < 0 || idx >= node_->inputs->size) {
+      // If larger, this can be an older model with fewer input tensors than the
+      // current implementation.
+      return absl::OutOfRangeError("Invalid data index found.");
+    }
     const int32_t tensor_idx = node_->inputs->data[idx];
     if (tensor_idx < 0) {
       return absl::InvalidArgumentError(

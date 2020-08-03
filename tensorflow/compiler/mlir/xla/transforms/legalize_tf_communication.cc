@@ -96,7 +96,7 @@ llvm::SmallDenseMap<StringRef, FuncAndClone> GetFunctionsToRewrite(
     for (FuncOp& func : funcs_to_visit) {
       auto uses = func.getSymbolUses(module);
       if (!uses) continue;
-      for (auto& use : uses.getValue()) {
+      for (auto& use : *uses) {
         // Only `mlir::CallOp` is supported as this requires knowing how to
         // rewrite arguments and results to a function.
         if (!isa<mlir::CallOp>(use.getUser())) continue;
@@ -189,13 +189,13 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
       /*is_host_transfer=*/builder.getBoolAttr(true));
 
   if (index) {
-    SetFrontendAttributes(send, index.getValue(), key, operand.getType(),
+    SetFrontendAttributes(send, *index, key, operand.getType(),
                           /*device_to_host=*/true);
   } else {
     SetFrontendAttributes(send, key, operand.getType());
   }
 
-  if (tpu_core) SetOpSharding(send, tpu_core.getValue());
+  if (tpu_core) SetOpSharding(send, *tpu_core);
 
   return send.getResult();
 }
@@ -217,22 +217,22 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
       builder.create<RecvOp>(loc, recv_result_type, token, channel_handle,
                              /*is_host_transfer=*/builder.getBoolAttr(true));
   if (index) {
-    SetFrontendAttributes(recv, index.getValue(), key, result_type,
+    SetFrontendAttributes(recv, *index, key, result_type,
                           /*device_to_host=*/false);
   } else {
     SetFrontendAttributes(recv, key, result.getType());
   }
-  if (tpu_core) SetOpSharding(recv, tpu_core.getValue());
+  if (tpu_core) SetOpSharding(recv, *tpu_core);
 
   auto get_tuple_element =
       builder.create<GetTupleElementOp>(loc, recv.getResult(), /*index=*/0);
-  if (tpu_core) SetOpSharding(get_tuple_element, tpu_core.getValue());
+  if (tpu_core) SetOpSharding(get_tuple_element, *tpu_core);
 
   result.replaceAllUsesWith(get_tuple_element);
 
   auto new_token = builder.create<GetTupleElementOp>(loc, recv.getResult(),
                                                      /*index=*/1);
-  if (tpu_core) SetOpSharding(new_token, tpu_core.getValue());
+  if (tpu_core) SetOpSharding(new_token, *tpu_core);
 
   return new_token.getResult();
 }
@@ -320,8 +320,8 @@ Value RewriteCallOp(OpBuilder& builder, CallOp call,
   auto new_result_types = llvm::to_vector<4>(call.getResultTypes());
   new_result_types.push_back(token.getType());
   auto new_call = builder.create<CallOp>(
-      call.getLoc(), new_result_types,
-      new_symbol ? new_symbol.getValue() : call.callee(), new_operands);
+      call.getLoc(), new_result_types, new_symbol ? *new_symbol : call.callee(),
+      new_operands);
 
   for (auto results : llvm::zip(call.getResults(), new_call.getResults()))
     std::get<0>(results).replaceAllUsesWith(std::get<1>(results));

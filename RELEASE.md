@@ -25,7 +25,14 @@
     * Code that requires very tricky shape manipulation via converted op layers in order to work, where the Keras symbolic shape inference proves insufficient.
     * Code that tries manually walking a `tf.keras.Model` layer by layer and assumes layers only ever have one positional argument. This assumption doesn't hold true before TF 2.4 either, but is more likely to cause issues know.
     * Code that manually enters `keras.backend.get_graph()` before building a functional model. This is no longer needed.
-
+* Start enforcing input shape assumptions when calling Functional API Keras
+  models. This may potentially break some users, in case there is a mismatch
+  between the shape used when creating `Input` objects in a Functional model,
+  and the shape of the data passed to that model. You can fix this mismatch by
+  either calling the model with correctly-shaped data, or by relaxing `Input`
+  shape assumptions (note that you can pass shapes with `None` entries for axes
+  that are meant to be dynamic). You can also disable the input checking
+  entirely by setting `model.input_spec = None`.
 
 ## Known Caveats
 
