@@ -2903,6 +2903,10 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
+    deps = [
+        "//tensorflow/c/kernels:summary_op_lib",
+        "//tensorflow/core:logging_ops_op_lib",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
