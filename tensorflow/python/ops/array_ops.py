@@ -5909,9 +5909,8 @@ def mask_fill(tensor, mask, name="mask_fill", value=0):
     """Mask tensor along dimension 0 with a 1-D mask."""
     return tensor * (1 - mask) + (value * mask)
   for i in mask:
-  if(i!= 1 and i!= 0):
-    raise ValueError(
-          "mask should have only boolean values")
+    if(i!= 1 and i!= 0):
+      raise ValueError("mask should have only boolean values")
   with ops.name_scope(name, values=[tensor, mask]):
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     mask = ops.convert_to_tensor(mask, name="mask")
