@@ -676,6 +676,7 @@ cc_library(
 cc_library(
     name = "tf_saved_model_passes",
     srcs = [
+        "transforms/deduplicate_bound_input_bindings.cc",
         "transforms/freeze_global_tensors.cc",
         "transforms/lift_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
