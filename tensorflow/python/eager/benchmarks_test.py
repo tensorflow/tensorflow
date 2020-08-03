@@ -1260,6 +1260,8 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(scan, 100)
 
+  @test_util.disable_tfrt(
+      "tf.While not supported in TF to CoreRT lowing. b/162685874")
   def benchmarkScanDefun(self):
     elems = math_ops.range(1600)
 

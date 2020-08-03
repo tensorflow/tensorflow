@@ -1126,18 +1126,18 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       quantized_converter.inference_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
-        'std_dev and mean must be defined when inference_type or '
-        'inference_input_type is QUANTIZED_UINT8 or INT8.',
-        str(error.exception))
+        'The `quantized_input_stats` flag must be defined when '
+        'either `inference_type` flag or `inference_input_type` '
+        'flag is set to tf.uint8 or tf.int8.', str(error.exception))
 
     with self.assertRaises(ValueError) as error:
       quantized_converter.inference_type = lite_constants.FLOAT
       quantized_converter.inference_input_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
-        'std_dev and mean must be defined when inference_type or '
-        'inference_input_type is QUANTIZED_UINT8 or INT8.',
-        str(error.exception))
+        'The `quantized_input_stats` flag must be defined when '
+        'either `inference_type` flag or `inference_input_type` '
+        'flag is set to tf.uint8 or tf.int8.', str(error.exception))
 
     quantized_converter.inference_type = quantized_type
     quantized_converter.inference_input_type = quantized_type

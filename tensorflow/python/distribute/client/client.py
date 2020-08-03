@@ -31,15 +31,19 @@ import threading
 import weakref
 from absl import logging
 from six.moves import queue
+
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.client import metric_utils
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import function as tf_function
 from tensorflow.python.eager import remote
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -247,20 +251,28 @@ class PerWorkerValues(object):
     self._values = tuple(values)
 
 
+def _select_worker_slice(worker_id, structured):
+  """Selects the worker slice of each of the items in `structured`."""
+
+  def _get(x):
+    return x._values[worker_id] if isinstance(x, PerWorkerValues) else x  # pylint: disable=protected-access
+
+  return nest.map_structure(_get, structured)
+
+
 class Closure(object):
   """Hold a function to be scheduled and its arguments."""
 
-  def __init__(self, function, args=None, kwargs=None):
+  def __init__(self, function, cancellation_mgr, args=None, kwargs=None):
     if not callable(function):
       raise ValueError("Function passed to `Client.schedule` must be a "
                        "callable object.")
     self._args = args or ()
     self._kwargs = kwargs or {}
-    self._function = function
 
     if isinstance(function, def_function.Function):
-      replica_args = self._select_worker_slice(0, self._args)
-      replica_kwargs = self._select_worker_slice(0, self._kwargs)
+      replica_args = _select_worker_slice(0, self._args)
+      replica_kwargs = _select_worker_slice(0, self._kwargs)
 
       # Note: no need to handle function registration failure since this kind of
       # failure will not raise exceptions as designed in the runtime. The client
@@ -276,24 +288,21 @@ class Closure(object):
         concrete_function = function.get_concrete_function(
             *nest.map_structure(_maybe_as_type_spec, replica_args),
             **nest.map_structure(_maybe_as_type_spec, replica_kwargs))
+      self._function = cancellation_mgr.get_cancelable_function(
+          concrete_function)
       self._output_remote_values = nest.map_structure(
           lambda x: RemoteValue(self, x), concrete_function.structured_outputs)
     elif isinstance(function, tf_function.ConcreteFunction):
+      self._function = cancellation_mgr.get_cancelable_function(
+          concrete_function)
       self._output_remote_values = nest.map_structure(
           lambda x: RemoteValue(self, x), function.structured_outputs)
     else:
       # Regular python functions.
+      self._function = function
       # TODO(yuefengz): maybe we should trace python functions if their inputs
       # are Python primitives, tensors and composite tensors.
       self._output_remote_values = RemoteValue(self, None)
-
-  def _select_worker_slice(self, worker_id, structured):
-    """Selects the worker slice of each of the items in `structured`."""
-
-    def _get(x):
-      return x._values[worker_id] if isinstance(x, PerWorkerValues) else x  # pylint: disable=protected-access
-
-    return nest.map_structure(_get, structured)
 
   def _fetch_output_remote_values(self):
     """Temporary method used to sync the scheduler."""
@@ -319,9 +328,8 @@ class Closure(object):
     Args:
       worker: a `Worker` object.
     """
-    replica_args = self._select_worker_slice(worker.worker_index, self._args)
-    replica_kwargs = self._select_worker_slice(worker.worker_index,
-                                               self._kwargs)
+    replica_args = _select_worker_slice(worker.worker_index, self._args)
+    replica_kwargs = _select_worker_slice(worker.worker_index, self._kwargs)
 
     e = (
         _maybe_get_error_and_rebuild_remote_values(worker, replica_args) or
@@ -350,8 +358,7 @@ class _CoordinatedClosureQueue(object):
   This class is thread-safe.
   """
 
-  def __init__(self):
-
+  def __init__(self, cancellation_mgr):
     # `self._inflight_closure_count` only tracks the number of inflight closures
     # that are "in generation". Once an error occurs, error generation is
     # incremented and all subsequent arriving closures (from inflight) are
@@ -359,16 +366,25 @@ class _CoordinatedClosureQueue(object):
     self._inflight_closure_count = 0
 
     self._queue_lock = threading.Lock()
+
     # Condition indicating that all pending closures (either queued or inflight)
     # have been processed, failed, or cancelled.
     self._stop_waiting_condition = threading.Condition(self._queue_lock)
+
     # Condition indicating that an item becomes available in queue (not empty).
     self._closures_queued_condition = threading.Condition(self._queue_lock)
+
     # Condition indicating that a queue slot becomes available (not full).
     # Note that even with "infinite" queue size, there is still a "practical"
     # size limit for the queue depending on host memory capacity, and thus the
     # queue will eventually become full with a lot of enqueued closures.
     self._queue_free_slot_condition = threading.Condition(self._queue_lock)
+
+    # Condition indicating there is no inflight closures.
+    self._no_inflight_closure_condition = threading.Condition(self._queue_lock)
+
+    # Use to cancel in-flight closures.
+    self._cancellation_mgr = cancellation_mgr
 
     if _CLOSURE_QUEUE_MAX_SIZE <= 0:
       logging.warning(
@@ -376,31 +392,6 @@ class _CoordinatedClosureQueue(object):
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
     self._error = None
-
-    # Error generation is a counter that helps us track whether a closure
-    # should be cancelled when it is being put back to `self._queue`. It works
-    # in the following way:
-    # 1) Error generation starts off at 0.
-    # 2) When a worker thread calls `get()`, the closure's error generation
-    #    is copied from this queue's error generation.
-    # 3) If any worker thread experiences an error that's categorized as a
-    #    non-retryable error, the queue's error will be set, error generation
-    #    increments by 1, and the queue is cleared (with the closures marked
-    #    with cancelled error), so other worker threads stop getting closures
-    #    from the queue. Worker preemption is categorized as a retryable error.
-    # 4) At this point, if `put()` or `wait()` is called (usually by the main
-    #    thread via `schedule` and `join`), the error is raised through that
-    #    call.
-    # 5) The closures that are inflight, i.e. that are being executed remotely,
-    #    will not be aware of such error event. If the worker that's executing
-    #    the closure happens to be interrupted, the closure should not be put
-    #    back to the queue, and be cancelled with error instead. Checking the
-    #    generation id of the closure and queue is how the worker thread tells
-    #    whether the closure should be put back. Likewise for `mark_finished`
-    #    and `mark_failed`: if the arriving closure is considered out of
-    #    generation in those two methods, it is simply discarded (the inflight
-    #    closure count still decrements).
-    self._error_generation = 0
 
     # The following is a lock to make sure when `wait` is called and before it
     # returns no `put` can be executed during this period. It is because `wait`
@@ -415,11 +406,14 @@ class _CoordinatedClosureQueue(object):
     # of the code.
     self._put_wait_lock = threading.Lock()
 
-  def _cancel_closures_in_queue(self):
+  def _cancel_all_closures(self):
     """Clears the queue and sets remaining closures cancelled error.
 
     This method expects self._queue_lock to be held prior to entry.
     """
+    self._cancellation_mgr.start_cancel()
+    while self._inflight_closure_count > 0:
+      self._no_inflight_closure_condition.wait()
     while True:
       try:
         closure = self._queue.get(block=False)
@@ -437,8 +431,8 @@ class _CoordinatedClosureQueue(object):
     This method expects self._queue_lock to be held prior to entry.
     """
     if self._error:
+      self._cancel_all_closures()
       try:
-        self._cancel_closures_in_queue()
         raise self._error  # pylint: disable=raising-bad-type
       finally:
         self._error = None
@@ -466,16 +460,17 @@ class _CoordinatedClosureQueue(object):
           return None
       closure = self._queue.get(block=False)
       self._queue_free_slot_condition.notify()
-      closure._error_generation = self._error_generation  # pylint: disable=protected-access
       self._inflight_closure_count += 1
       return closure
 
-  def mark_finished(self, closure):
+  def mark_finished(self):
     """Let the queue know that a closure has been successfully executed."""
     with self._queue_lock:
       if self._inflight_closure_count < 1:
         raise AssertionError("There is no inflight closures to mark_finished.")
       self._inflight_closure_count -= 1
+      if self._inflight_closure_count == 0:
+        self._no_inflight_closure_condition.notifyAll()
       if self._queue.empty() and self._inflight_closure_count == 0:
         self._stop_waiting_condition.notifyAll()
 
@@ -484,17 +479,15 @@ class _CoordinatedClosureQueue(object):
     with self._queue_lock:
       if self._inflight_closure_count < 1:
         raise AssertionError("There is no inflight closures to put_back.")
-      self._inflight_closure_count -= 1
-      if closure._error_generation < self._error_generation:  # pylint: disable=protected-access
-        # If the closure to put back is out of generation, cancel the closure
-        # and ignore it.
-        logging.info("Function %r should no longer be dispatched; marking "
-                     "as cancelled.")
+      if self._error:
         closure._set_output_remote_values_cancelled()  # pylint: disable=protected-access
-        return
-      self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
-      self._queue.put(closure, block=False)
-      self._closures_queued_condition.notify()
+      else:
+        self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
+        self._queue.put(closure, block=False)
+        self._closures_queued_condition.notify()
+      self._inflight_closure_count -= 1
+      if self._inflight_closure_count == 0:
+        self._no_inflight_closure_condition.notifyAll()
 
   def wait(self, timeout=None):
     """Wait for all closures to be finished before returning.
@@ -516,22 +509,18 @@ class _CoordinatedClosureQueue(object):
       self._raise_if_error()
       return True
 
-  def mark_failed(self, e, closure):
+  def mark_failed(self, e):
     """Sets error and unblocks any wait() call."""
     with self._queue_lock:
       # TODO(yuefengz): maybe record all failure and give users more
       # information?
       if self._inflight_closure_count < 1:
         raise AssertionError("There is no inflight closures to mark_failed.")
+      if self._error is None:
+        self._error = e
       self._inflight_closure_count -= 1
-      if closure._error_generation < self._error_generation:  # pylint: disable=protected-access
-        # If the closure to mark fail is out of generation, simply ignore it
-        # (with the actual error associated with the closure preserved).
-        return
-      assert self._error is None
-      self._error = e
-      self._error_generation += 1
-      self._cancel_closures_in_queue()
+      if self._inflight_closure_count == 0:
+        self._no_inflight_closure_condition.notifyAll()
       self._stop_waiting_condition.notifyAll()
 
   def done(self):
@@ -678,7 +667,7 @@ class Worker(object):
         # TODO(yuefengz): we don't have to materialize results every step.
         with metric_utils.monitored_timer("remote_value_fetch"):
           closure._fetch_output_remote_values()  # pylint: disable=protected-access
-        self._cluster._closure_queue.mark_finished(closure)  # pylint: disable=protected-access
+        self._cluster._closure_queue.mark_finished()  # pylint: disable=protected-access
     except Exception as e:  # pylint: disable=broad-except
       logging.error(
           "/job:worker/task:%d encountered the following error when processing "
@@ -686,7 +675,7 @@ class Worker(object):
       nest.map_structure(
           lambda x: x._set_error(e),  # pylint: disable=protected-access
           closure._output_remote_values)  # pylint: disable=protected-access
-      self._cluster._closure_queue.mark_failed(e, closure)  # pylint: disable=protected-access
+      self._cluster._closure_queue.mark_failed(e)  # pylint: disable=protected-access
 
   def _process_queue(self):
     while True:
@@ -710,7 +699,8 @@ class Worker(object):
     # the same worker such as creating resources, setting resources' aborted
     # status, and executing closures happen on the same thread. This allows us
     # to have simpler logic of concurrency.
-    closure = Closure(function=function, args=args, kwargs=kwargs)
+    closure = Closure(
+        function, self._cluster._cancellation_mgr, args=args, kwargs=kwargs)  # pylint: disable=protected-access
     resource_remote_value = closure._output_remote_values  # pylint: disable=protected-access
     self._register_resource(resource_remote_value)
 
@@ -775,7 +765,8 @@ class Cluster(object):
                               protocol=cluster_resolver.rpc_layer,
                               cluster_device_filters=device_filters)
 
-    self._closure_queue = _CoordinatedClosureQueue()
+    self._cancellation_mgr = cancellation.CancellationManager()
+    self._closure_queue = _CoordinatedClosureQueue(self._cancellation_mgr)
     self.failure_handler = WorkerPreemptionHandler(context.get_server_def())
     worker_device_strings = [
         "/job:worker/replica:0/task:%d" % i for i in range(self._num_workers)
@@ -796,7 +787,8 @@ class Cluster(object):
     Returns:
       A structure of `RemoteValue` object.
     """
-    closure = Closure(function=function, args=args, kwargs=kwargs)
+    closure = Closure(
+        function, self._cancellation_mgr, args=args, kwargs=kwargs)
     self._closure_queue.put(closure)
     return closure._output_remote_values  # pylint: disable=protected-access
 
@@ -893,8 +885,8 @@ class Client(object):
     function execution to finish and retrieve its output from the remote worker.
 
     `schedule` guarantees that `fn` will be executed on a worker at least once;
-    it could be more than once if a worker fails and restarts in the middle of
-    function scheduling. Note that since worker can fail at any point when
+    it could be more than once if its corresponding worker fails in the middle
+    of its execution. Note that since worker can fail at any point when
     executing the function, it is possible that the function is partially
     executed, but `Client` guarantees that in those events, the function will
     eventually be fully executed, possibly on a different worker that is
@@ -904,14 +896,12 @@ class Client(object):
     by raising any one of those errors, and clear the errors collected so far.
     There are two implications when this happens: 1) user should call `schedule`
     with `fn` again to re-schedule, and 2) some of the previously scheduled
-    functions may no longer execute. User can call `fetch` on the returned
+    functions may have not been executed. User can call `fetch` on the returned
     `RemoteValue` to inspect if they have executed, failed, or cancelled, and
     reschedule the corresponding function if needed.
 
-    When `schedule` raises, it is possible that there are still functions being
-    executed on workers, at the time `schedule` raises. When this happens, users
-    can call `join` again to wait for all pending async function execution to
-    finish, and bring the cluster into a consistent state.
+    When `schedule` raises, it guarantees that there is no function that is
+    still being executed.
 
     At this time, there is no support of worker assignment for function
     execution, or priority of the workers.
@@ -940,7 +930,8 @@ class Client(object):
     # TODO(b/160702436): Invoke `strategy.run` for user's function so it enters
     # a `ReplicaContext` in a logically correct way.
     with distribute_lib.ReplicaContext(
-        self._strategy, replica_id_in_sync_group=0):
+        self._strategy,
+        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
       with self._translate_parameter_server_failure():
         return self.cluster.schedule(fn, args=args, kwargs=kwargs)
 
@@ -949,17 +940,14 @@ class Client(object):
 
     If any previously scheduled function raises an error, `join` will fail by
     raising any one of those errors, and clear the errors collected so far. If
-    this happens, some of the previously scheduled functions may no longer
-    execute. Users can call `fetch` on the returned `RemoteValue` to inspect if
+    this happens, some of the previously scheduled functions may have not been
+    executed. Users can call `fetch` on the returned `RemoteValue` to inspect if
     they have executed, failed, or cancelled. If some that have been cancelled
     need to be rescheduled, users should call `schedule` with the function
     again.
 
-    Note: `join` raises an exception as soon as the client detects one, and this
-    means it is possible that there are still functions being executed on
-    workers, at the time `join` raises. When this happens, users can call `join`
-    again to wait for all pending async function execution to finish, and bring
-    the cluster into a consistent state.
+    When `join` returns or raises, it guarantees that there is no function that
+    is still being executed.
 
     Raises:
       Exception: one of the exceptions caught by the client by any previously
@@ -976,6 +964,9 @@ class Client(object):
 
     If any previously scheduled function raises an error, `done` will fail by
     raising any one of those errors.
+
+    When `done` returns True or raises, it guarantees that there is no function
+    that is still being executed.
     """
     return self.cluster.done()
 
@@ -1091,7 +1082,7 @@ class Client(object):
         raise
 
 
-class _PerWorkerDistributedDataset(object):  # pylint: disable=protected-access
+class _PerWorkerDistributedDataset(object):
   """Represents worker-distributed datasets created from dataset function."""
 
   def __init__(self, dataset_fn, input_workers, client):
@@ -1107,13 +1098,13 @@ class _PerWorkerDistributedDataset(object):  # pylint: disable=protected-access
 
     if isinstance(dataset_fn, def_function.Function):
       with variable_scope.variable_creator_scope(disallow_variable_creation):
-        self._dataset_fn = dataset_fn.get_concrete_function()
-    elif isinstance(dataset_fn, tf_function.ConcreteFunction):
-      self._dataset_fn = dataset_fn
-    else:
+        dataset_fn = dataset_fn.get_concrete_function()
+    elif not isinstance(dataset_fn, tf_function.ConcreteFunction):
       with variable_scope.variable_creator_scope(disallow_variable_creation):
-        self._dataset_fn = def_function.function(
-            dataset_fn).get_concrete_function()
+        dataset_fn = def_function.function(dataset_fn).get_concrete_function()
+    self._dataset_fn = (
+        client.cluster._cancellation_mgr.get_cancelable_function(  # pylint: disable=protected-access
+            dataset_fn))
     self._input_workers = input_workers
     self._client = client
     self._element_spec = None

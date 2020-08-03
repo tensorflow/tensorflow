@@ -1245,7 +1245,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     return object.__getattribute__(self, name)
 
   def _validate_quantized_input_stats(self, converter_kwargs, calibrate):
-    """Ensure quantized_input_stats provided if required."""
+    """Ensure the `quantized_input_stats` flag is provided if required."""
 
     quantized_types = frozenset({constants.INT8, constants.QUANTIZED_UINT8})
 
@@ -1256,8 +1256,9 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
 
     if (requires_quantized_input_stats and
         not converter_kwargs["quantized_input_stats"]):
-      raise ValueError("std_dev and mean must be defined when inference_type "
-                       "or inference_input_type is QUANTIZED_UINT8 or INT8.")
+      raise ValueError("The `quantized_input_stats` flag must be defined when "
+                       "either `inference_type` flag or `inference_input_type` "
+                       "flag is set to tf.uint8 or tf.int8.")
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.

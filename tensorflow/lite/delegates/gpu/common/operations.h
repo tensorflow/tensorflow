@@ -53,6 +53,7 @@ enum class OperationType {
   MAXIMUM,
   MAX_UNPOOLING_2D,
   MEAN,
+  MEAN_STDDEV_NORMALIZATION,
   MINIMUM,
   MUL,
   PAD,
