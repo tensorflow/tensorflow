@@ -1760,3 +1760,21 @@ distribute_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+py_library(
+    name = "parameter_server_strategy_v2",
+    srcs = ["parameter_server_strategy_v2.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":parameter_server_strategy",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute:values",
+    ],
+)
