@@ -138,7 +138,6 @@ def custom_gradient(f=None):
   In case the function takes multiple variables as input, the `grad` function must also return
   the same number of variables. We take the function `z = x * y` as an example.
 
-  ```python
   >>> @tf.custom_gradient
   def bar(x, y):
       def grad(upstream):
