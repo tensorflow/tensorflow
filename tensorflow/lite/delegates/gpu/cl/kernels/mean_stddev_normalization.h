@@ -30,6 +30,9 @@ class MeanStdDevNormalization : public GPUOperation {
  public:
   explicit MeanStdDevNormalization(const OperationDef& definition);
 
+  absl::Status Tune(const TuningParameters& params) override {
+    return absl::OkStatus();
+  }
   int3 GetGridSize() const override;
 
   // Move only
