@@ -3850,8 +3850,8 @@ def conj(x, name=None):
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of
   complex numbers that are the complex conjugate of each element in `x`. The
-  complex numbers in `x` must be of the form \\(a + bj\\), where *a* is the
-  real part and *b* is the imaginary part.
+  complex numbers in `x` must be of the form \\(a + bj\\), where `a` is the
+  real part and `b` is the imaginary part.
 
   The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
