@@ -691,6 +691,32 @@ class WrappedFileSystem : public FileSystem {
   TransactionToken* token_;
 };
 
+/// This macro adds forwarding methods from FileSystem class to
+/// used class since name hiding will prevent these to be accessed from
+/// derived classes and would require all use locations to migrate to
+/// Transactional API. This is an interim solution until ModularFileSystem class
+/// becomes a singleton.
+// TODO(sami): Remove this macro when filesystem plugins migration is complete.
+
+#define TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT \
+  using FileSystem::NewRandomAccessFile;                      \
+  using FileSystem::NewWritableFile;                          \
+  using FileSystem::NewAppendableFile;                        \
+  using FileSystem::NewReadOnlyMemoryRegionFromFile;          \
+  using FileSystem::FileExists;                               \
+  using FileSystem::GetChildren;                              \
+  using FileSystem::GetMatchingPaths;                         \
+  using FileSystem::Stat;                                     \
+  using FileSystem::DeleteFile;                               \
+  using FileSystem::RecursivelyCreateDir;                     \
+  using FileSystem::DeleteDir;                                \
+  using FileSystem::DeleteRecursively;                        \
+  using FileSystem::GetFileSize;                              \
+  using FileSystem::RenameFile;                               \
+  using FileSystem::CopyFile;                                 \
+  using FileSystem::IsDirectory;                              \
+  using FileSystem::FlushCaches
+
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {
  public:
