@@ -664,7 +664,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
 
   let builders = [OpBuilder<
