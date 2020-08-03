@@ -259,7 +259,6 @@ cc_library(
         "EGL_EGLEXT_PROTOTYPES",
     ],
     deps = [
-        ":cl_device",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",
     ],
