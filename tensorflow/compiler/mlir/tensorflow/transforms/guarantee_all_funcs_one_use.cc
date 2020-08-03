@@ -84,13 +84,13 @@ class GuaranteeAllFuncsOneUse
         // At this point, we know we are going to change the module.
         made_changes = true;
         for (const SymbolTable::SymbolUse &use : llvm::drop_begin(uses, 1)) {
-          auto new_func = func.clone();
           if (num_clones++ > k_max_clones) {
             return func.emitError()
                    << "reached cloning limit (likely recursive call graph or "
                       "repeated diamond-like call structure "
                       "or just very large program)";
           }
+          auto new_func = func.clone();
           symbol_table.insert(new_func);
           new_func.setVisibility(SymbolTable::Visibility::Private);
           if (failed(symbol_table.replaceAllSymbolUses(func, new_func.getName(),
