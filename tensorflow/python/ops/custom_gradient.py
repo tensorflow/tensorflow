@@ -139,7 +139,6 @@ def custom_gradient(f=None):
   the same number of variables. We take the function `z = x * y` as an example.
 
   ```python
-  >>> import tensorflow as tf
   >>> @tf.custom_gradient
   def bar(x, y):
       def grad(upstream):
