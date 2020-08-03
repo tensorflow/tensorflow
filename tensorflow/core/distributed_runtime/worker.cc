@@ -53,7 +53,8 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       StatusCallback done) {
   Status s = env_->session_mgr->CreateSession(
       request->session_handle(), request->server_def(),
-      request->cluster_device_attributes(), request->isolate_session_state());
+      request->cluster_device_attributes(), request->isolate_session_state(),
+      request->master_task(), request->master_incarnation());
   done(s);
 }
 
