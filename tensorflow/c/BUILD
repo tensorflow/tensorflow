@@ -218,7 +218,7 @@ cc_library(
     srcs = ["logging.cc"],
     hdrs = ["logging.h"],
     deps = [
-        ":c_api",
+        ":c_api_macros",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringprintf",
     ],

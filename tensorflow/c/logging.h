@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_LOGGING_H_
 #define TENSORFLOW_C_LOGGING_H_
 
-#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_macros.h"
 
 // --------------------------------------------------------------------------
 // C API for tensorflow::Logging.
