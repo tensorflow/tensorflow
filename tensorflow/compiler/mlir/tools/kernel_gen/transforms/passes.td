@@ -24,4 +24,9 @@ def TestTFFrameworkLegalizeToLLVMPass
   let constructor = "createTestTFFrameworkLegalizeToLLVMPass()";
 }
 
+def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
+  let summary = "Pass to embed TF Framework for allocation and error reporting";
+  let constructor = "createEmbedTFFrameworkPass()";
+}
+
 #endif // TF_FRAMEWORK_PASSES

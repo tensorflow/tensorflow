@@ -16,18 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TRANSFORMS_REWRITERS_H_
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TRANSFORMS_REWRITERS_H_
 
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+
 namespace mlir {
 
 class LLVMTypeConverter;
-class LowerToLLVMOptions;
+class MLIRContext;
 class OwningRewritePatternList;
+class TypeConverter;
 
 namespace kernel_gen {
 namespace tf_framework {
 
-/// Collect a set of patterns to convert from the TF Framework dialect to LLVM.
+/// Collects a set of patterns to convert from the TF Framework dialect to LLVM.
 void PopulateTFFrameworkToLLVMConversionPatterns(
     LLVMTypeConverter *converter, OwningRewritePatternList *patterns);
+
+/// Collects a set of patterns to embed TF Framework.
+void PopulateEmbedTFFrameworkConversionPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace tf_framework
 }  // namespace kernel_gen

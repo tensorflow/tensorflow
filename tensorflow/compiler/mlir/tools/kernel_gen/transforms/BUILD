@@ -20,6 +20,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "embed_tf_framework",
+    srcs = ["embed_tf_framework.cc"],
+    hdrs = ["rewriters.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
 gentbl(
     name = "tf_framework_passes_inc_gen",
     tbl_outs = [("-gen-pass-decls", "tf_framework_passes.h.inc")],
@@ -31,11 +46,13 @@ gentbl(
 cc_library(
     name = "passes",
     srcs = [
+        "embed_tf_framework_pass.cc",
         "register_passes.cc",
         "tf_framework_legalize_to_llvm_pass.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
+        ":embed_tf_framework",
         ":tf_framework_legalize_to_llvm",
         ":tf_framework_passes_inc_gen",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
@@ -43,6 +60,7 @@ cc_library(
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
