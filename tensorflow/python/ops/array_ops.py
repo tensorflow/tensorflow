@@ -5872,7 +5872,7 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     axis = 0
   return repeat_with_axis(input, repeats, axis, name)
 
-@tf_export(v1=["mask_fill"])
+@tf_export("mask_fill")
 @dispatch.add_dispatch_support
 def mask_fill(tensor, mask, name="mask_fill", value=0):
   """Apply boolean mask fill to tensor.
