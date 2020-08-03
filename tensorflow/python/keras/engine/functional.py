@@ -1056,26 +1056,6 @@ def _should_skip_first_node(layer):
           isinstance(layer._layers[0], input_layer_module.InputLayer))
 
 
-def _deserialize_keras_tensors(kwargs, layer_map):
-  """Deserializes Keras Tensors passed to `call`.."""
-
-  def _deserialize_keras_tensor(t):
-    """Deserializes a single Keras Tensor passed to `call`."""
-    if isinstance(t, tf_utils.ListWrapper):
-      t = t.as_list()
-      layer_name = t[0]
-      node_index = t[1]
-      tensor_index = t[2]
-
-      layer = layer_map[layer_name]
-      node = layer._inbound_nodes[node_index]
-      return nest.flatten(node.outputs)[tensor_index]
-    return t
-
-  kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
-  return nest.map_structure(_deserialize_keras_tensor, kwargs)
-
-
 def connect_ancillary_layers(model, created_layers):
   """Adds layers that are not connected to the outputs to the model."""
   # Layers not connected to outputs, such as those added in `add_loss`.
@@ -1134,6 +1114,25 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     if isinstance(layer, input_layer_module.InputLayer):
       return 0
     return node_index_map.get((layer.name, config_node_index), None)
+
+  def _deserialize_keras_tensors(kwargs, layer_map):
+    """Deserializes Keras Tensors passed to `call`.."""
+
+    def _deserialize_keras_tensor(t):
+      """Deserializes a single Keras Tensor passed to `call`."""
+      if isinstance(t, tf_utils.ListWrapper):
+        t = t.as_list()
+        layer_name = t[0]
+        node_index = t[1]
+        tensor_index = t[2]
+
+        layer = layer_map[layer_name]
+        node = layer._inbound_nodes[get_node_index(layer, node_index)]
+        return nest.flatten(node.outputs)[tensor_index]
+      return t
+
+    kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
+    return nest.map_structure(_deserialize_keras_tensor, kwargs)
 
   def process_node(layer, node_data):
     """Deserialize a node.
