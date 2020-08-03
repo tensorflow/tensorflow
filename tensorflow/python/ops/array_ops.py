@@ -5883,10 +5883,11 @@ def mask_fill(tensor, mask, name="mask_fill", value=0):
   Examples:
 
   ```python
-  >>>tensor = [0, 1, 2, 3]
+  >>>tensor = tf.constant([0, 1, 2, 3])
   >>>mask = np.array([True, False, True, False])
   >>>value = 5
-  >>>tf.mask_fill(tensor, mask, value)  # [5, 1, 5, 3]
+  >>>tf.mask_fill(tensor, mask, value)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([5, 1, 5, 3], dtype=int32)>
   ```
 
   Args:
@@ -5906,7 +5907,7 @@ def mask_fill(tensor, mask, name="mask_fill", value=0):
 
   def mask__fill_1d(tensor, mask, value):
     """Mask tensor along dimension 0 with a 1-D mask."""
-    return tensor * (1 - tf.cast(mask, tf.int32)) + value * tf.cast(mask, tf.int32)
+    return tensor * (1 - mask) + (value * mask)
 
   with ops.name_scope(name, values=[tensor, mask]):
     tensor = ops.convert_to_tensor(tensor, name="tensor")
