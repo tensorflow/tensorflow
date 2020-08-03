@@ -489,13 +489,15 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
   // window dilation.
   //
   // * offset(i): RHS * D * i - low_padding
-  // * limit(i): {(RHS - 1) * D + 1} * (i + 1) + (WC - 1) * stride - low_padding
+  // * limit(i): {RHS * (i + 1) * D - (D - 1)} + (WC - 1) * stride - low_padding
   //
   // Since shard i has LHS of range [i * LHS, (i + 1) * LHS)
   // * left-halo: i * LHS - offset(i)
-  //              = (LHS - RHS) * i + low_padding
+  //              = (LHS - RHS * D) * i + low_padding
   // * right-halo: limit(i) - (i + 1) * LHS
-  //   = [{(RHS - 1) * D + 1} - LHS] * (i + 1) + (WC - 1) * stride - low_padding
+  //   = (RHS * D - LHS) * (i + 1) + (1 - D)  + (WC - 1) * stride - low_padding
+  //   = (RHS * D - LHS) * i + (RHS * D - LHS) + (1-D)
+  //     + (WC - 1) * stride - low_padding
   std::vector<int64> shard_counts(dnums.input_spatial_dimensions_size());
   std::vector<int64> lhs_shard_sizes(dnums.input_spatial_dimensions_size());
   std::vector<int64> rhs_shard_sizes(dnums.input_spatial_dimensions_size());
@@ -554,9 +556,10 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
             1));
     right_halo_size_functions[lhs_dimension] =
         OffsetCalculation(MultiplyAddDivideOffsetCalculation(
-            rhs_shard_size_dilated - lhs_shard_size,
-            rhs_shard_size_dilated - lhs_shard_size +
-                wd.stride() * (window_count - 1) - padding_low,
+            rhs_shard_size * wd.window_dilation() - lhs_shard_size,
+            rhs_shard_size * wd.window_dilation() - lhs_shard_size + 1 -
+                wd.window_dilation() + wd.stride() * (window_count - 1) -
+                padding_low,
             1));
 
     // Exchange halo and concatenate.
