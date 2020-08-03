@@ -1413,6 +1413,12 @@ class Context(object):
 
     self._visible_device_list = visible_device_list
 
+  def get_total_memory_usage(self, dev):
+    """Returns total memory usage in bytes for the current device."""
+    self._initialize_physical_devices()
+    self.ensure_initialized()
+    return pywrap_tfe.TFE_GetTotalMemoryUsage(self._context_handle, dev)
+
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
     self._initialize_physical_devices()
