@@ -71,7 +71,6 @@ cc_library(
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/stream_executor/tpu:status_helper",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
