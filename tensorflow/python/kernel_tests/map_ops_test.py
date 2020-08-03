@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  '''def testEmptyTensorMapSize(self):
+  def testEmptyTensorMapSize(self):
     m = map_ops.empty_tensor_map()
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
@@ -60,7 +60,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 "Trying to lookup non-existent key."):
       l = map_ops.tensor_map_lookup(m, k, dtypes.float32)
       self.evaluate(l)
-  
+
   def testTensorMapErase(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
@@ -117,10 +117,10 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                               lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
                               lambda: default_value)
     l2 = control_flow_ops.cond(map_ops.tensor_map_has_key(m, k2),
-                                lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
-                                lambda: default_value)
+                               lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
+                               lambda: default_value)
     self.assertAllClose(l, v)
-    self.assertAllClose(l2, default_value)'''
+    self.assertAllClose(l2, default_value)
 
   def testListKeys(self):
     m = map_ops.empty_tensor_map()
@@ -142,7 +142,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = constant_op.constant([1.0, 2.0, 3.0])
     self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
     self.assertAllClose(sort_ops.sort(keys), expected)
-'''
+
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:
       m = map_ops.empty_tensor_map()
@@ -179,7 +179,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(g, 5)
       self.assertAllEqual(g2, 6)
       self.assertAllEqual(g3, 7)
-  
+
   def testInsertLookupComposeGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
@@ -272,7 +272,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(g, 5)
       g2 = tape.gradient(e * 6, v2)
       self.assertAllEqual(g2, 6)
-  
+
   def testEraseFirstGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
@@ -314,7 +314,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(g, 5)
       g2 = tape.gradient(e * 6, v)
       self.assertAllEqual(g2, 6)
-    
+
   def testStringKeyGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
@@ -389,7 +389,6 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l2 = map_ops.tensor_map_lookup(m, k2, v2.dtype)
       g2 = tape.gradient(l + l2, v2)
       self.assertAllEqual(g2, 1)
-'''
 
 if __name__ == '__main__':
   test.main()
