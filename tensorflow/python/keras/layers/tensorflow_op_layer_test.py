@@ -324,9 +324,9 @@ class AutoLambdaTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
 
     np_inputs = nest.map_structure(
-        lambda x: np.ones((10,) + tuple(x.shape[1:]), 'float32'), model.inputs)
+        lambda x: np.ones((2,) + tuple(x.shape[1:]), 'float32'), model.inputs)
     np_outputs = nest.map_structure(
-        lambda x: np.ones((10,) + tuple(x.shape[1:]), 'float32'), model.outputs)
+        lambda x: np.ones((2,) + tuple(x.shape[1:]), 'float32'), model.outputs)
     model.fit(np_inputs, np_outputs, batch_size=2)
     model(np_inputs)  # Test calling the model directly on inputs.
 
@@ -402,7 +402,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
   def test_getitem_slice_with_step_only(self):
     if not context.executing_eagerly():
       self.skipTest('Complex slicing like this fails in v1')
-    inp = keras.Input(shape=(4, 3, 8))
+    inp = keras.Input(shape=(8,))
     slice_step = keras.Input(shape=(), dtype='int32')
 
     out = inp[..., ::slice_step[0]]
@@ -508,7 +508,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
   def test_getitem_slice_with_stop_only(self):
     if not context.executing_eagerly():
       self.skipTest('Complex slicing like this fails in v1')
-    inp = keras.Input(shape=(4, 3, 8))
+    inp = keras.Input(shape=(8,))
     slice_stop = keras.Input(shape=(), dtype='int32')
 
     out = inp[:slice_stop[0]]
@@ -544,7 +544,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
   def test_getitem_slice_with_stop_and_ellipsis_only(self):
     if not context.executing_eagerly():
       self.skipTest('Complex slicing like this fails in v1')
-    inp = keras.Input(shape=(4, 3, 8))
+    inp = keras.Input(shape=(8,))
     slice_stop = keras.Input(shape=(), dtype='int32')
 
     out = inp[..., :slice_stop[0]]
@@ -646,14 +646,14 @@ class AutoLambdaTest(keras_parameterized.TestCase):
 
   def test_numerical_correctness_with_attrs(self):
     x = ops.convert_to_tensor_v2([[1.5, 1.5], [2.5, 3.5]])
-    inputs = keras.Input(shape=(10,))
+    inputs = keras.Input(shape=(2,))
     outputs = math_ops.reduce_mean(inputs, axis=1)
     model = keras.Model(inputs, outputs)
     y = self.evaluate(model(x))
     self.assertAllClose(y, [1.5, 3.])
 
   def test_numerical_correctness_serialization(self):
-    x = ops.convert_to_tensor_v2([-1., 0., -2., 1.])
+    x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))
     outputs = gen_nn_ops.relu(inputs)
     model1 = keras.Model(inputs, outputs)

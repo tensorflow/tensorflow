@@ -33,6 +33,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training as training_lib
@@ -247,6 +248,32 @@ class Functional(training_lib.Model):
         RuntimeError: if called in Eager mode.
     """
     return nest.map_structure(backend.int_shape, self.input)
+
+  @property
+  def input_spec(self):
+    if hasattr(self, '_manual_input_spec'):
+      return self._manual_input_spec
+    if (isinstance(self._nested_inputs, (dict, list, tuple)) and
+        len(self._nested_inputs) != len(self.inputs)):
+      # Case where we have a nested structure.
+      # In such a case we can't safely run any checks.
+      return None
+    if isinstance(self._nested_inputs, dict):
+      # Case where `_nested_inputs` is a plain dict of Inputs.
+      names = sorted(self._nested_inputs.keys())
+      return [input_spec.InputSpec(
+          shape=shape_with_no_batch_size(self._nested_inputs[name]),
+          allow_last_axis_squeeze=True, name=name) for name in names]
+    else:
+      # Single input, or list / tuple of inputs.
+      # The data may be passed as a dict keyed by input name.
+      return [input_spec.InputSpec(
+          shape=shape_with_no_batch_size(x), allow_last_axis_squeeze=True,
+          name=x._keras_history.layer.name) for x in self.inputs]
+
+  @input_spec.setter
+  def input_spec(self, value):
+    self._manual_input_spec = value
 
   @property
   def output(self):
@@ -1312,3 +1339,12 @@ def get_network_config(network, serialize_layer_fn=None):
   model_outputs = tf_utils.convert_inner_node_data(model_outputs)
   config['output_layers'] = model_outputs
   return config
+
+
+def shape_with_no_batch_size(x):
+  if x.shape.rank is None:
+    return None
+  shape = x.shape.as_list()
+  if shape:
+    shape[0] = None
+  return shape
