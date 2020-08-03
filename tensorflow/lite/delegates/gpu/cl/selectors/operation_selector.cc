@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/default_selector.h"
@@ -285,6 +286,12 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
       return SelectMean(attr, op_def, creation_context.device->GetInfo(),
                         gpu_op);
+    }
+    case OperationType::MEAN_STDDEV_NORMALIZATION: {
+      MeanStdDevNormalization operation = CreateMeanStdDevNormalization(op_def);
+      *gpu_op =
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation));
+      return absl::OkStatus();
     }
     case OperationType::MUL: {
       if (inputs.size() == 2) {
