@@ -275,7 +275,7 @@ distribute_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/optimizer_v2",
