@@ -136,9 +136,8 @@ TfLiteStatus AllocateOutDimensions(TfLiteContext* context, TfLiteIntArray** dims
   size = (y > 0) ? size * y : size;
   size = (z > 0) ? size * z : size;
 
-  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-      context, TfLiteIntArrayGetSizeInBytes(size),
-      reinterpret_cast<void**>(dims)));
+  *dims = reinterpret_cast<TfLiteIntArray*>(context->AllocatePersistentBuffer(
+      context, TfLiteIntArrayGetSizeInBytes(size)));
 
   (*dims)->size = size;
   (*dims)->data[0] = x;
@@ -153,14 +152,13 @@ TfLiteStatus AllocateOutDimensions(TfLiteContext* context, TfLiteIntArray** dims
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  void* raw;
   OpData* op_data = nullptr;
 
   const uint8_t* buffer_t = reinterpret_cast<const uint8_t*>(buffer);
   const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
 
-  context->AllocatePersistentBuffer(context, sizeof(OpData), &raw);
-  op_data = reinterpret_cast<OpData*>(raw);
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  op_data = reinterpret_cast<OpData*>(context->AllocatePersistentBuffer(context, sizeof(OpData)));
 
   op_data->max_detections = m["max_detections"].AsInt32();
   op_data->max_classes_per_detection = m["max_classes_per_detection"].AsInt32();
