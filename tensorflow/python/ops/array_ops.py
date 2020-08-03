@@ -5908,22 +5908,16 @@ def mask_fill(tensor, mask, name="mask_fill", value=0):
   def mask__fill_1d(tensor, mask, value):
     """Mask tensor along dimension 0 with a 1-D mask."""
     return tensor * (1 - mask) + (value * mask)
+  if(tensor.ndim != 1):
+    raise ValueError("tensor should be 1-D array")
+  if(mask.ndim != 1):
+    raise ValueError("mask should be 1-D array")
   for i in mask:
     if(i!= 1 and i!= 0):
       raise ValueError("mask should have only boolean values")
   with ops.name_scope(name, values=[tensor, mask]):
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     mask = ops.convert_to_tensor(mask, name="mask")
-
-    shape_mask = mask.get_shape()
-    ndims_mask = shape_mask.ndims
-    shape_tensor = tensor.get_shape()
-    if ndims_mask == 0:
-      raise ValueError("mask cannot be scalar.")
-    if ndims_mask is None:
-      raise ValueError(
-          "Number of mask dimensions must be specified, even if some dimensions"
-          " are None.  E.g. shape=[None] is ok, but shape=None is not.")
-    for i in mask
+    
     return mask_fill_1d(tensor, mask, value)
 
