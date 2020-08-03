@@ -1016,8 +1016,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
     `True` if `x` is a tensor or "tensor-like", `False` if not.
   """
   return (isinstance(x, internal.NativeObject) or
-          isinstance(x, core.Tensor) or
-          getattr(x, "is_tensor_like", False))
+          isinstance(x, core.Tensor))
 
 
 def shape_tensor(shape):  # pylint: disable=invalid-name
