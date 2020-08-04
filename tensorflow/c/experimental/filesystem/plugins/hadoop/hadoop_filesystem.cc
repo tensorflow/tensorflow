@@ -597,6 +597,44 @@ void RenameFile(const TF_Filesystem* filesystem, const char* src,
     TF_SetStatus(status, TF_OK, "");
 }
 
+int GetChildren(const TF_Filesystem* filesystem, const char* path,
+                char*** entries, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  // hdfsListDirectory returns nullptr if the directory is empty. Do a separate
+  // check to verify the directory exists first.
+  TF_FileStatistics stat;
+  Stat(filesystem, path, &stat, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  int num_entries = 0;
+  auto info = libhdfs->hdfsListDirectory(fs, hdfs_path.c_str(), &num_entries);
+  if (info == nullptr) {
+    if (stat.is_directory) {
+      // Assume it's an empty directory.
+      TF_SetStatus(status, TF_OK, "");
+      return 0;
+    }
+    TF_SetStatusFromIOError(status, errno, path);
+    return -1;
+  }
+  *entries = static_cast<char**>(
+      plugin_memory_allocate(num_entries * sizeof((*entries)[0])));
+  auto BaseName = [](const std::string& name) {
+    return name.substr(name.find_last_of('/') + 1);
+  };
+  for (int i = 0; i < num_entries; i++) {
+    (*entries)[i] = strdup(BaseName(info[i].mName).c_str());
+  }
+  libhdfs->hdfsFreeFileInfo(info, num_entries);
+  TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_hadoop_filesystem
