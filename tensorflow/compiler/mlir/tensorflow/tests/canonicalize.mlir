@@ -143,6 +143,43 @@ func @testConcatCanonicalization(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>)
   return %1 : tensor<2x2xi32>
 }
 
+// CHECK-LABEL: testConcatCwiseBinaryOnInnerDim
+func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
+  %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x2xf32> {
+
+  // CHECK: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>}
+  // CHECK: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+
+  // CHECK: %[[LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
+  // CHECK: %[[RHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
+
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[LHS_CONCAT]], %[[RHS_CONCAT]])
+  // CHECK-SAME: (tensor<?x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+  // CHECK: return %[[MUL]]
+
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %1 = "tf.Mul"(%arg0, %arg2) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %2 = "tf.Mul"(%arg1, %arg3) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %3 = "tf.ConcatV2"(%1, %2, %0) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
+
+  return %3 : tensor<?x2xf32>
+}
+
+// CHECK-LABEL: testConcatCwiseBinaryInvalidInnerDim
+func @testConcatCwiseBinaryInvalidInnerDim(%arg0: tensor<?x2xf32>,
+  %arg1: tensor<?x2xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x4xf32> {
+  // Each individual binary operation has an implicit broadcast that will be
+  // lost if we would reorder them with the concat.
+
+  // CHECK: "tf.ConcatV2"(%1, %2, %0)
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %1 = "tf.Mul"(%arg0, %arg2) : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
+  %2 = "tf.Mul"(%arg1, %arg3) : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
+  %3 = "tf.ConcatV2"(%1, %2, %0) : (tensor<?x2xf32>, tensor<?x2xf32>, tensor<i32>) -> tensor<?x4xf32>
+
+  return %3 : tensor<?x4xf32>
+}
+
 // CHECK-LABEL: testLogOfSoftmax
 func @testLogOfSoftmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Softmax"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>

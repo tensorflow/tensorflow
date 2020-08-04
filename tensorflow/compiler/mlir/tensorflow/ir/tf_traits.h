@@ -124,6 +124,11 @@ class CannotDuplicate : public TraitBase<ConcreteType, CannotDuplicate> {
   }
 };
 
+// Coefficient wise binary operation with implicit broadcasting support, for
+// example tf.Sub operation.
+template <typename ConcreteType>
+class CwiseBinary : public TraitBase<ConcreteType, CwiseBinary> {};
+
 }  // namespace TF
 }  // namespace OpTrait
 }  // namespace mlir
