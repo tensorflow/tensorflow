@@ -2055,6 +2055,17 @@ func @testTranspose(tensor<2x?xf32>) -> tensor<?x2xf32> {
 
 // -----
 
+// Test tf.Transpose with different partial unknown shape
+// CHECK-LABEL: testTranspose
+func @testTranspose(tensor<2x?x?xf32>) -> tensor<3x?x2xf32> {
+^bb0(%arg0: tensor<2x?x?xf32>):
+  %cst = constant dense<[2, 1, 0]> : tensor<3xi32>
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x?x?xf32>, tensor<3xi32>) -> tensor<3x?x2xf32>
+  return %0 : tensor<3x?x2xf32>
+}
+
+// -----
+
 // Test tf.Transpose with invalid rank of perm
 func @testTranspose(tensor<2x3xf32>, tensor<1x2xi32>) -> tensor<3x2xf32> {
 ^bb0(%arg0: tensor<2x3xf32>, %arg1: tensor<1x2xi32>):

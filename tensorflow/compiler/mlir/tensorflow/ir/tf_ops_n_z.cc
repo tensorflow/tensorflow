@@ -1763,11 +1763,7 @@ static LogicalResult Verify(TransposeOp op) {
   auto x_type = op.x().getType().dyn_cast<RankedTensorType>();
   auto y_type = op.y().getType().dyn_cast<RankedTensorType>();
 
-  if (!perm_type) {
-    return success();
-  }
-
-  if (perm_type.getRank() != 1) {
+  if (perm_type && perm_type.getRank() != 1) {
     return op.emitOpError()
            << "expected perm to be a 1-D Tensor, got perm of rank "
            << perm_type.getRank();
@@ -1780,7 +1776,7 @@ static LogicalResult Verify(TransposeOp op) {
            << y_type.getRank();
   }
 
-  if (!x_type || !y_type || !perm_type.hasStaticShape()) {
+  if (!x_type || !y_type || !perm_type || !perm_type.hasStaticShape()) {
     return success();
   }
 
@@ -1801,10 +1797,7 @@ static LogicalResult Verify(TransposeOp op) {
       const int64_t y_dim = y_type.getDimSize(y_idx);
       const int64_t x_idx = e.value().getSExtValue();
       const int64_t x_dim = x_type.getDimSize(x_idx);
-      if (y_dim == ShapedType::kDynamicSize || x_dim == ShapedType::kDynamicSize) {
-        continue;
-      }
-      if (y_dim != x_dim) {
+      if (y_dim != ShapedType::kDynamicSize && x_dim != ShapedType::kDynamicSize && y_dim != x_dim) {
         return op.emitOpError()
                << "requires y.shape[" << y_idx << "] (" << y_dim << ") "
                << "to be equal to x.shape[perm[" << x_idx << "]] "
