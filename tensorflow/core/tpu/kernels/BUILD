@@ -89,9 +89,15 @@ tf_kernel_library(
     name = "tpu_configuration_ops",
     srcs = ["tpu_configuration_ops.cc"],
     hdrs = ["tpu_configuration_ops.h"],
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
     deps = [
         ":tpu_compilation_cache_factory",
         ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_local_lookup",
+        ":tpu_compilation_cache_lookup",
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         "//tensorflow/c:tf_status",

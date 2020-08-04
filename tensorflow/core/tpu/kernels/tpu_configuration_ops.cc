@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_factory.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/tpu_api.h"
@@ -253,6 +255,12 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
                                      mesh_state_interface));
   }
 
+#if defined(LIBTFTPU)
+  VLOG(1) << "Removing existing proto compilation cache lookup if it exists";
+  OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuCompilationCacheLookup>(
+                          rmgr, tpu::kCompiledProtoCacheResourceName));
+#endif
+
   if (enable_whole_mesh_compilations_) {
     // If this is a whole mesh compilation mode, create the compilation cache,
     // if missing.
@@ -276,6 +284,15 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
   if (local_compilation_cache != nullptr) {
     local_compilation_cache->Unref();
+
+#if defined(LIBTFTPU)
+    tpu::TpuCompilationCacheLookup* proto_lookup;
+    proto_lookup =
+        new tpu::TpuCompilationCacheLocalLookup(local_compilation_cache);
+    OP_REQUIRES_OK(
+        ctx, rmgr->Create(rmgr->default_container(),
+                          tpu::kCompiledProtoCacheResourceName, proto_lookup));
+#endif
   }
 
   Tensor* ctx_output;
