@@ -5865,11 +5865,12 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         partitioner = partitioned_variables.fixed_size_partitioner(2, axis=0)
 
       with variable_scope.variable_scope('vars', partitioner=partitioner):
-        embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
-            [categorical_column_a, categorical_column_b],
-            dimension=embedding_dimension,
-            initializer=_initializer,
-            use_safe_embedding_lookup=use_safe_embedding_lookup)
+        embedding_column_a, embedding_column_b = (
+            fc_new.shared_embedding_columns(
+                [categorical_column_a, categorical_column_b],
+                dimension=embedding_dimension,
+                initializer=_initializer,
+                use_safe_embedding_lookup=use_safe_embedding_lookup))
         # Provide sparse input and get dense result.
         embedding_lookup_a = embedding_column_a._get_dense_tensor(
             _LazyBuilder(input_features))
