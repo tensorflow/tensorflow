@@ -801,6 +801,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
           2**31 - 1, 2**31, 2**32 - 1, 2**32, -2**32 + 1, -2**32, -2**63 + 1,
           2**63 - 1
       ]
+      # Only choose inputs which fit in the int dtype.
+      raw_inputs = list(
+          filter(lambda x: np.iinfo(dtype).min <= x <= np.iinfo(dtype).max,
+                 raw_inputs))
       inputs = np.array(raw_inputs, dtype=dtype)
 
       def count_bits(x):
