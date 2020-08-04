@@ -69,6 +69,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import trace
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
@@ -2094,6 +2095,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if not proceed:
         return
     if save_format == 'h5':
+      dirpath = os.path.dirname(filepath)
+      gfile.MakeDirs(dirpath)
       with h5py.File(filepath, 'w') as f:
         hdf5_format.save_weights_to_hdf5_group(f, self.layers)
     else:
