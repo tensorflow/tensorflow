@@ -24,11 +24,9 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import base_preprocessing_layer
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.layers import convolutional
 from tensorflow.python.keras.layers import merge
-from tensorflow.python.keras.layers import core
 
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.layers.preprocessing import normalization
@@ -36,7 +34,6 @@ from tensorflow.python.keras.layers.preprocessing import preprocessing_stage_fun
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.python.util import nest
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -57,17 +54,17 @@ class PreprocessingStageTest(
         self.adapt_time = time.time()
         self.adapt_count += 1
 
-      def call(self, data, training=True):
-        return data + 1
+      def call(self, inputs):
+        return inputs + 1
 
 
     class PLMerge(PL):
-      def call(self, data, training=True):
-        return data[0] + data[1]
+      def call(self, inputs):
+        return inputs[0] + inputs[1]
 
     class PLSplit(PL):
-      def call(self, data, training=True):
-        return data + 1, data - 1
+      def call(self, inputs):
+        return inputs + 1, inputs - 1
 
     # Test with NumPy array
     x0 = Input(shape=(3,))
@@ -83,7 +80,9 @@ class PreprocessingStageTest(
     l2 = PLSplit()
     z, y = l2(y)
 
-    stage = preprocessing_stage_functional.PreprocessingStageFunctional([x0, x1, x2], [y, z])
+    stage = preprocessing_stage_functional.PreprocessingStageFunctional(
+        [x0, x1, x2], [y, z]
+    )
     stage.compile()
     one_array = np.ones((4, 3), dtype='float32')
     stage.adapt([one_array, one_array, one_array])
@@ -95,8 +94,8 @@ class PreprocessingStageTest(
 
     # Check call
     y, z = stage([array_ops.ones((4, 3), dtype='float32'),
-                    array_ops.ones((4, 3), dtype='float32'),
-                    array_ops.ones((4, 3), dtype='float32')])
+                  array_ops.ones((4, 3), dtype='float32'),
+                  array_ops.ones((4, 3), dtype='float32')])
     self.assertAllClose(y, np.ones((4, 3), dtype='float32') + 1.)
     self.assertAllClose(z, np.ones((4, 3), dtype='float32') + 3.)
 
@@ -130,7 +129,9 @@ class PreprocessingStageTest(
     z = normalization.Normalization()(z)
     z = convolutional.Conv2D(4, 3)(z)
 
-    stage = preprocessing_stage_functional.PreprocessingStageFunctional([x0, x1, x2], z)
+    stage = preprocessing_stage_functional.PreprocessingStageFunctional(
+        [x0, x1, x2], z
+    )
 
     data = [np.ones((12, 10, 10, 3), dtype='float32'),
             np.ones((12, 10, 10, 3), dtype='float32'),
@@ -141,12 +142,12 @@ class PreprocessingStageTest(
     stage.compile('rmsprop', 'mse')
     stage.fit(data, np.ones((12, 8, 8, 4)))
 
-    dataset_x0 = dataset_ops.Dataset.from_tensor_slices(np.ones((12, 10, 10, 3)))
-    dataset_x1 = dataset_ops.Dataset.from_tensor_slices(np.ones((12, 10, 10, 3)))
-    dataset_x2 = dataset_ops.Dataset.from_tensor_slices(np.ones((12, 10, 10, 3)))
-    dataset_x = dataset_ops.Dataset.zip((dataset_x0, dataset_x1, dataset_x2))
-    dataset_y = dataset_ops.Dataset.from_tensor_slices(np.ones((12, 8, 8, 4)))
-    dataset = dataset_ops.Dataset.zip((dataset_x, dataset_y)).batch(4)
+    ds_x0 = dataset_ops.Dataset.from_tensor_slices(np.ones((12, 10, 10, 3)))
+    ds_x1 = dataset_ops.Dataset.from_tensor_slices(np.ones((12, 10, 10, 3)))
+    ds_x2 = dataset_ops.Dataset.from_tensor_slices(np.ones((12, 10, 10, 3)))
+    ds_x = dataset_ops.Dataset.zip((ds_x0, ds_x1, ds_x2))
+    ds_y = dataset_ops.Dataset.from_tensor_slices(np.ones((12, 8, 8, 4)))
+    dataset = dataset_ops.Dataset.zip((ds_x, ds_y)).batch(4)
     stage.fit(dataset)
     _ = stage.evaluate(data, np.ones((12, 8, 8, 4)))
     _ = stage.predict(data)
