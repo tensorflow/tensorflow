@@ -576,6 +576,27 @@ void DeleteDir(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
+void RenameFile(const TF_Filesystem* filesystem, const char* src,
+                const char* dst, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path_src, hdfs_path_dst;
+  ParseHadoopPath(src, &scheme, &namenode, &hdfs_path_src);
+  ParseHadoopPath(dst, &scheme, &namenode, &hdfs_path_dst);
+
+  if (libhdfs->hdfsExists(fs, hdfs_path_dst.c_str()) == 0 &&
+      libhdfs->hdfsDelete(fs, hdfs_path_dst.c_str(), /*recursive=*/0) != 0)
+    return TF_SetStatusFromIOError(status, errno, dst);
+
+  if (libhdfs->hdfsRename(fs, hdfs_path_src.c_str(), hdfs_path_dst.c_str()) !=
+      0)
+    TF_SetStatusFromIOError(status, errno, src);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_hadoop_filesystem
