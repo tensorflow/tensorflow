@@ -1174,14 +1174,17 @@ def resize_image_with_crop_or_pad(image, target_height, target_width,
     offset_pad_height = max_(height_diff // 2, 0)
 
     # Maybe crop if needed.
-    cropped = crop_to_bounding_box(image, offset_crop_height, offset_crop_width,
+    cropped = crop_to_bounding_box(image, offset_crop_height,
+                                   offset_crop_width,
                                    min_(target_height, height),
                                    min_(target_width, width))
 
     # Maybe pad if needed.
-    resized = pad_to_bounding_box(cropped, offset_pad_height, offset_pad_width,
-                                  target_height, target_width, mode=mode,
-                                  name=name, constant_values=constant_values)
+    resized = pad_to_bounding_box(cropped, offset_pad_height,
+                                  offset_pad_width,
+                                  target_height, target_width,
+                                  mode=mode, name=name,
+                                  constant_values=constant_values)
 
     # In theory all the checks below are redundant.
     if resized.get_shape().ndims is None:
