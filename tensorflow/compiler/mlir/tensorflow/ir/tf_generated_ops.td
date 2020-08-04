@@ -2487,7 +2487,7 @@ this op runs. The length of the list is returned in two cases:
   );
 }
 
-def TF_DiagOp : TF_Op<"Diag", [NoSideEffect]> {
+def TF_DiagOp : TF_Op<"Diag", [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Returns a diagonal tensor with a given diagonal values.";
 
   let description = [{
