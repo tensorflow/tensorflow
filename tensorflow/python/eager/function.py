@@ -3198,10 +3198,16 @@ class Function(object):
         shared_func_graph=False)
     return graph_function
 
-  def _define_function_with_shape_relaxation(self, args, kwargs):
+  def _define_function_with_shape_relaxation(self,
+                                             args,
+                                             kwargs,
+                                             flat_args,
+                                             flat_kwargs):
     """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
+    flat_args_all = nest.flatten((args, kwargs), expand_composites=False)
+
     any_composite_args = any(isinstance(x, composite_tensor.CompositeTensor)
-                             for x in nest.flatten((args, kwargs)))
+                             for x in flat_args_all)
 
     # Build a cache key where TensorShapes include only rank information (and
     # not information about the size of each dimension).
@@ -3216,7 +3222,7 @@ class Function(object):
       rank_only_cache_key = self._cache_key(
           cache_key_args, cache_key_kwargs, include_tensor_ranks_only=True)
 
-    arg_specs = [_type_spec_for(x) for x in nest.flatten((args, kwargs))]
+    arg_specs = [_type_spec_for(x) for x in flat_args_all]
     relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
         rank_only_cache_key, None)
     relaxed_arg_function = self._function_cache.arg_relaxed.get(
@@ -3225,7 +3231,7 @@ class Function(object):
     if (relaxed_arg_function is not None
         and all(_is_type_subset(x, y) for (x, y) in
                 zip(relaxed_arg_specs, arg_specs))):
-      return relaxed_arg_function, args, kwargs
+      return relaxed_arg_function, flat_args, flat_kwargs
 
     if relaxed_arg_specs is None:
       relaxed_arg_specs = arg_specs
@@ -3251,14 +3257,16 @@ class Function(object):
           (args, kwargs), relaxed_arg_specs, expand_composites=False)
       (args, kwargs) = nest.pack_sequence_as(
           (relaxed_arg_specs, relaxed_kwarg_specs),
-          nest.flatten((args, kwargs), expand_composites=True),
+          flat_args + flat_kwargs,
           expand_composites=True)
 
     graph_function = self._create_graph_function(
         args, kwargs, override_flat_arg_shapes=relaxed_arg_shapes)
     self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function
 
-    return graph_function, args, kwargs
+    return (graph_function,
+            nest.flatten(args, expand_composites=True),
+            nest.flatten(kwargs, expand_composites=True))
 
   def _maybe_define_function(self, args, kwargs):
     """Gets a function for these inputs, defining it if necessary.
@@ -3286,6 +3294,7 @@ class Function(object):
       args, kwargs, flat_args, flat_kwargs = \
           self._function_spec.canonicalize_function_inputs(*args, **kwargs)
     else:
+      # TODO(jlchu): Check - empty lists or Nones?
       flat_args, flat_kwargs = [], []
 
     cache_key = self._cache_key(args, kwargs)
@@ -3325,10 +3334,8 @@ class Function(object):
       if (self._experimental_relax_shapes
           and self.input_signature is None
           and call_context_key in self._function_cache.missed):
-        return_function, _, _ = \
-            self._define_function_with_shape_relaxation(args, kwargs)
-        #TODO(jlchu): Investigate modifying above function sig directly
-        return return_function, flat_args, flat_kwargs
+        return self._define_function_with_shape_relaxation(
+            args, kwargs, flat_args, flat_kwargs)
 
       self._function_cache.missed.add(call_context_key)
       graph_function = self._create_graph_function(args, kwargs)
