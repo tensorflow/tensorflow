@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import tensorflow_datasets as tfds
 
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
@@ -262,6 +262,11 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
   def testEval(self):
     if not is_tensorrt_enabled():
       return
+
+    # TODO(b/162447069): Enable the test for TRT 7.1.3.
+    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
+      return
+
     model_dir = test.test_src_dir_path(
         'python/compiler/tensorrt/test/testdata/mnist')
 
@@ -285,7 +290,6 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
         model_dir=model_dir)['accuracy']
     logging.info('accuracy_tf_trt: %f', accuracy_tf_trt)
     self.assertAllClose(0.9675, accuracy_tf_trt, rtol=1e-3, atol=1e-3)
-
 
 if __name__ == '__main__':
   test.main()

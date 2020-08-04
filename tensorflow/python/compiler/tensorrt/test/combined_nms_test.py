@@ -90,6 +90,9 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     }
 
   def ShouldRunTest(self, run_params):
+    # TODO(b/162447069): Enable the test for TRT 7.1.3.
+    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
+      return (False, 'Skip test due to b/162447069')
     # There is no CombinedNonMaxSuppression op for GPU at the moment, so
     # calibration will fail.
     # TODO(laigd): fix this.
