@@ -94,9 +94,11 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 _AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
                    ragged_tensor.RaggedTensor)
 
-_keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
-                                           'keras layers usage', 'method')
-_keras_model_gauge = monitoring.BoolGauge(
+keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
+                                          'keras layers usage', 'method')
+keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
+                                       'keras api usage', 'method')
+keras_model_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
@@ -301,6 +303,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                dtype=None,
                dynamic=False,
                **kwargs):
+    keras_api_gauge.get_cell('layer').set(True)
+    keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -3084,7 +3088,6 @@ class TensorFlowOpLayer(Layer):
     super(TensorFlowOpLayer, self).__init__(
         name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
         autocast=False)
-    _keras_layers_gauge.get_cell('TensorflowOpLayer').set(True)
     if isinstance(node_def, dict):
       self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
     else:
