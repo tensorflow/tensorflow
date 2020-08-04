@@ -432,7 +432,6 @@ cc_library(
     ]),
     hdrs = glob([
         "include/mlir/Dialect/*.h",
-        "include/mlir/Dialect/*.h",
     ]),
     includes = ["include"],
     deps = [

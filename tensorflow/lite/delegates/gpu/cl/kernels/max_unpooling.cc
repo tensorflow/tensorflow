@@ -25,24 +25,22 @@ namespace gpu {
 namespace cl {
 
 MaxUnpooling::MaxUnpooling(const OperationDef& definition,
-                           const MaxUnpooling2DAttributes& attr,
-                           const DeviceInfo& device_info)
+                           const MaxUnpooling2DAttributes& attr)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, 0, 0),
       padding_(attr.padding.appended.w, attr.padding.appended.h, 0, 0),
       kernel_size_(attr.kernel.w, attr.kernel.h, 0, 0) {
-  code_ = GetMaxUnpoolingKernelCode(definition_, device_info);
+  code_ = GetMaxUnpoolingKernelCode(definition_);
 }
 
 MaxUnpooling::MaxUnpooling(const OperationDef& definition,
-                           const MaxUnpooling3DAttributes& attr,
-                           const DeviceInfo& device_info)
+                           const MaxUnpooling3DAttributes& attr)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, attr.strides.d, 0),
       padding_(attr.padding.appended.w, attr.padding.appended.h,
                attr.padding.appended.d, 0),
       kernel_size_(attr.kernel.w, attr.kernel.h, attr.kernel.d, 0) {
-  code_ = GetMaxUnpoolingKernelCode(definition_, device_info);
+  code_ = GetMaxUnpoolingKernelCode(definition_);
 }
 
 MaxUnpooling::MaxUnpooling(MaxUnpooling&& kernel)
@@ -62,15 +60,15 @@ MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
 }
 
 std::string MaxUnpooling::GetMaxUnpoolingKernelCode(
-    const OperationDef& op_def, const DeviceInfo& device_info) {
+    const OperationDef& op_def) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
   AddSrcTensor("src_tensor", src_desc);
   auto src_ind_desc = op_def.src_tensors[1];
-  src_ind_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_ind_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_ind_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -202,15 +200,13 @@ int3 MaxUnpooling::GetGridSize() const {
 }
 
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
-                                const MaxUnpooling2DAttributes& attr,
-                                const DeviceInfo& device_info) {
-  return MaxUnpooling(definition, attr, device_info);
+                                const MaxUnpooling2DAttributes& attr) {
+  return MaxUnpooling(definition, attr);
 }
 
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
-                                const MaxUnpooling3DAttributes& attr,
-                                const DeviceInfo& device_info) {
-  return MaxUnpooling(definition, attr, device_info);
+                                const MaxUnpooling3DAttributes& attr) {
+  return MaxUnpooling(definition, attr);
 }
 
 }  // namespace cl

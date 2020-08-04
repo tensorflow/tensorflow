@@ -49,7 +49,6 @@ cc_binary(
     srcs = ["modify_model_interface_main.cc"],
     deps = [
         ":modify_model_interface",
-        ":quantize_model",
     ],
 )
 
@@ -90,8 +89,6 @@ cc_library(
     hdrs = ["quantization_wrapper.h"],
     deps = [
         ":quantization_wrapper_utils",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:quantize_model",
         "@flatbuffers",
@@ -115,7 +112,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -130,7 +126,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -159,7 +154,6 @@ cc_library(
     hdrs = ["operator_property.h"],
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -200,7 +194,6 @@ cc_library(
         ":quantization_utils",
         ":model_utils",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_map",
         "@flatbuffers",
         "//tensorflow/lite:framework",
@@ -245,7 +238,6 @@ cc_library(
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deps = [
-        "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
         "@com_google_googletest//:gtest",
         "@flatbuffers",

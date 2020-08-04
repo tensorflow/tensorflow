@@ -83,20 +83,6 @@ void RearrangeWeightsToOHWIOGroupI4O4(
   }
 }
 
-// Returns fastest TextureAddressMode that return ZERO for out-of-range image
-// coordinates.
-//
-// Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
-// we can observe huge register overhead when compared to other modes.
-
-// While using CLK_ADDRESS_NONE with out-of-range image coordinates is undefined
-// in the OpenCL specification, we have observed that CLK_ADDRESS_NONE works
-// like CLK_ADDRESS_CLAMP for out-of-range image coordinates for RGBA F16/F32
-// textures on Adreno3xx devices. Using CLK_ADDRESS_NONE is significantly faster
-// than CLK_ADDRESS_CLAMP on Adreno 3xx.
-TextureAddressMode GetFastestZeroMode(const CLDevice& device);
-TextureAddressMode GetFastestZeroMode(const DeviceInfo& device_info);
-
 // Returns float4 mask for last plane(batch of 4 channels)
 // assumes that plane size is 4;
 // for example we have 7 channels, in our data structures we align it to 8

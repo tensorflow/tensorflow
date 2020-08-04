@@ -12,25 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_LOGGING_H_
+#define TENSORFLOW_C_LOGGING_H_
 
-#include "tensorflow/c/experimental/saved_model/public/tensorhandle_list.h"
+#include "tensorflow/c/c_api_macros.h"
 
-#include <stddef.h>
+// --------------------------------------------------------------------------
+// C API for tensorflow::Logging.
 
-#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
-#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
-#include "tensorflow/c/experimental/saved_model/internal/tensorhandle_list_type.h"
-
+#ifdef __cplusplus
 extern "C" {
+#endif
 
-size_t TF_TensorHandleListSize(const TF_TensorHandleList* list) {
-  return tensorflow::unwrap(list)->size();
+typedef enum TF_LogLevel {
+  TF_INFO = 0,
+  TF_WARNING = 1,
+  TF_ERROR = 2,
+  TF_FATAL = 3,
+} TF_LogLevel;
+
+TF_CAPI_EXPORT extern void TF_Log(TF_LogLevel level, const char* fmt, ...);
+TF_CAPI_EXPORT extern void TF_VLog(int level, const char* fmt, ...);
+TF_CAPI_EXPORT extern void TF_DVLog(int level, const char* fmt, ...);
+
+#ifdef __cplusplus
 }
+#endif
 
-TFE_TensorHandle* TF_TensorHandleListGet(const TF_TensorHandleList* list,
-                                         int i) {
-  return tensorflow::wrap((*tensorflow::unwrap(list))[i]);
-}
-
-
-}  // end extern "C"
+#endif  // TENSORFLOW_C_LOGGING_H_

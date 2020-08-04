@@ -12,18 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility_recommender.h"
 
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+namespace tflite {
+namespace acceleration {
 
-namespace mlir {
-namespace kernel_gen {
-namespace tf_framework {
-#define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/tf_framework_passes.h.inc"
+TfLiteGpuDelegateOptionsV2 GPUCompatibilityRecommender::GetBestOptionsFor(
+    const AndroidInfo& /* android_info */,
+    const ::tflite::gpu::GpuInfo& /* gpu_info */) const {
+  // This method is for forwards-compatibility: the list may later include
+  // information about which backend to choose (OpenGL/OpenCL/Vulkan) or other
+  // options.
+  return TfLiteGpuDelegateOptionsV2Default();
+}
 
-bool register_all_passes = ([] { registerTFFrameworkPasses(); }(), true);
-
-}  // namespace tf_framework
-}  // namespace kernel_gen
-}  // namespace mlir
+}  // namespace acceleration
+}  // namespace tflite

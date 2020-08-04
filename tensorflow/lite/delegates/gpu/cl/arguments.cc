@@ -145,6 +145,33 @@ std::string GetImageModifier(AccessType access) {
   }
 }
 
+std::string GetDefaultSamplers(const DeviceInfo& device_info) {
+  std::string result;
+  result +=
+      "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
+      "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
+  if (device_info.IsAdreno3xx()) {
+    // Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
+    // we can observe huge register overhead when compared to other modes.
+
+    // While using CLK_ADDRESS_NONE with out-of-range image coordinates is
+    // undefined in the OpenCL specification, we have observed that
+    // CLK_ADDRESS_NONE works like CLK_ADDRESS_CLAMP for out-of-range image
+    // coordinates for RGBA F16/F32 textures on Adreno3xx devices. Using
+    // CLK_ADDRESS_NONE is significantly faster than CLK_ADDRESS_CLAMP on Adreno
+    // 3xx.
+    result +=
+        "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
+        "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
+  } else {
+    result +=
+        "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
+        "CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;\n";
+  }
+
+  return result;
+}
+
 }  // namespace
 
 // Static
@@ -483,6 +510,7 @@ absl::Status Arguments::TransformToCLCode(
   RETURN_IF_ERROR(ResolveSelectorsPass(linkables, code));
   ResolveArgsPass(device_info, code);
   *code = absl::Substitute(*code, GetListOfArgs());
+  *code = GetDefaultSamplers(device_info) + *code;
   return absl::OkStatus();
 }
 

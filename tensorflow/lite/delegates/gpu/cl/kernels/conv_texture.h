@@ -94,8 +94,7 @@ class ConvTexture : public GPUOperation {
                                const int3& block_size, bool is1x1,
                                bool adreno4xx_optimization,
                                bool stride_correction,
-                               bool different_weights_for_height,
-                               const DeviceInfo& device_info);
+                               bool different_weights_for_height);
 
   int2 kernel_size_;
   int2 stride_;

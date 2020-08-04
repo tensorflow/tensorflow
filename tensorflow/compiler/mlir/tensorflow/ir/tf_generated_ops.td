@@ -7226,6 +7226,28 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   ];
 }
 
+def TF_RangeDatasetOp : TF_Op<"RangeDataset", []> {
+  let summary = [{
+Creates a dataset with a range of values. Corresponds to python's xrange.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I64Tensor:$start,
+    I64Tensor:$stop,
+    I64Tensor:$step,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_RankOp : TF_Op<"Rank", [NoSideEffect]> {
   let summary = "Returns the rank of a tensor.";
 

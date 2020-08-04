@@ -21,12 +21,17 @@ include "mlir/Pass/PassBase.td"
 def TestTFFrameworkLegalizeToLLVMPass
     : Pass<"test-tf-framework-legalize-to-llvm", "ModuleOp"> {
   let summary = "Test pass for applying TF Framework -> LLVM patterns.";
-  let constructor = "createTestTFFrameworkLegalizeToLLVMPass()";
+  let constructor = "tf_framework::createTestTFFrameworkLegalizeToLLVMPass()";
 }
 
 def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
   let summary = "Pass to embed TF Framework for allocation and error reporting";
-  let constructor = "createEmbedTFFrameworkPass()";
+  let constructor = "tf_framework::createEmbedTFFrameworkPass()";
+}
+
+def ShapeToDescriptorsPass : Pass<"test-shape-to-descriptors", "ModuleOp"> {
+  let summary = "Pass to transform shape computations to descriptors";
+  let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
 #endif // TF_FRAMEWORK_PASSES

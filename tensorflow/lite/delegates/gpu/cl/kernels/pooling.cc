@@ -25,18 +25,18 @@ namespace gpu {
 namespace cl {
 
 Pooling::Pooling(const OperationDef& definition,
-                 const Pooling2DAttributes& attr, const DeviceInfo& device_info)
+                 const Pooling2DAttributes& attr)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, 0, 0),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       kernel_size_(attr.kernel.w, attr.kernel.h, 0, 0),
       type_(attr.type),
       output_indices_(attr.output_indices) {
-  GenerateCode(device_info);
+  GenerateCode();
 }
 
 Pooling::Pooling(const OperationDef& definition,
-                 const Pooling3DAttributes& attr, const DeviceInfo& device_info)
+                 const Pooling3DAttributes& attr)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, attr.strides.d, 0),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
@@ -44,7 +44,7 @@ Pooling::Pooling(const OperationDef& definition,
       kernel_size_(attr.kernel.w, attr.kernel.h, attr.kernel.d, 0),
       type_(attr.type),
       output_indices_(attr.output_indices) {
-  GenerateCode(device_info);
+  GenerateCode();
 }
 
 Pooling::Pooling(Pooling&& kernel)
@@ -67,11 +67,10 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
   return *this;
 }
 
-std::string Pooling::GetAveragePoolingKernelCode(
-    const OperationDef& op_def, bool stride_correction,
-    const DeviceInfo& device_info) {
+std::string Pooling::GetAveragePoolingKernelCode(const OperationDef& op_def,
+                                                 bool stride_correction) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -348,12 +347,11 @@ std::string Pooling::GetMaxPoolingKernelCode(const OperationDef& op_def,
   return c;
 }
 
-void Pooling::GenerateCode(const DeviceInfo& device_info) {
+void Pooling::GenerateCode() {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   if (type_ == PoolingType::AVERAGE) {
-    code_ = GetAveragePoolingKernelCode(definition_, stride_correction,
-                                        device_info);
+    code_ = GetAveragePoolingKernelCode(definition_, stride_correction);
   } else if (type_ == PoolingType::MAX) {
     code_ = GetMaxPoolingKernelCode(definition_, stride_correction,
                                     output_indices_);
@@ -387,15 +385,13 @@ int3 Pooling::GetGridSize() const {
 }
 
 Pooling CreatePooling(const OperationDef& definition,
-                      const Pooling2DAttributes& attr,
-                      const DeviceInfo& device_info) {
-  return Pooling(definition, attr, device_info);
+                      const Pooling2DAttributes& attr) {
+  return Pooling(definition, attr);
 }
 
 Pooling CreatePooling(const OperationDef& definition,
-                      const Pooling3DAttributes& attr,
-                      const DeviceInfo& device_info) {
-  return Pooling(definition, attr, device_info);
+                      const Pooling3DAttributes& attr) {
+  return Pooling(definition, attr);
 }
 
 }  // namespace cl

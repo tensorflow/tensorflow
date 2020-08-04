@@ -293,9 +293,6 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/162271237): argmax gives different'
                                  ' results in MLIR-based bridge')
   def testArgMinMax(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('b/162800904: Tie resolution is wrong on TPU for tf.func')
-
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(experimental_compile=True)

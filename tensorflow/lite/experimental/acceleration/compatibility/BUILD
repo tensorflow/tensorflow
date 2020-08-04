@@ -152,11 +152,47 @@ cc_library(
         ":android_info",
         ":database_fbs",
         ":devicedb",
-        "//tensorflow/lite/delegates/gpu:delegate",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "gpu_compatibility_test",
+    srcs = ["gpu_compatibility_test.cc"],
+    deps = [
+        ":gpu_compatibility",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_compatibility_recommender",
+    srcs = [
+        "gpu_compatibility_recommender.cc",
+    ],
+    hdrs = [
+        "gpu_compatibility_recommender.h",
+    ],
+    deps = [
+        ":android_info",
+        ":gpu_compatibility",
+        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+    ],
+)
+
+cc_test(
+    name = "gpu_compatibility_recommender_test",
+    srcs = ["gpu_compatibility_recommender_test.cc"],
+    tags = ["notap"],  # Needs to be built with --copt=-DCL_DELEGATE_NO_GL
+    deps = [
+        ":gpu_compatibility_recommender",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

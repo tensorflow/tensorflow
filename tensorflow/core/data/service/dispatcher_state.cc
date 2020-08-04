@@ -25,8 +25,7 @@ namespace data {
 
 DispatcherState::DispatcherState() {}
 
-Status DispatcherState::Apply(Update update, JournalWriter* journal_writer) {
-  TF_RETURN_IF_ERROR(journal_writer->Write(update));
+Status DispatcherState::Apply(Update update) {
   switch (update.update_type_case()) {
     case Update::kRegisterDataset:
       RegisterDataset(update.register_dataset());

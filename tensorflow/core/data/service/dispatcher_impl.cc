@@ -49,6 +49,10 @@ using Dataset = DispatcherState::Dataset;
 using NamedJobKey = DispatcherState::NamedJobKey;
 using Job = DispatcherState::Job;
 
+std::string JournalDir(StringPiece work_dir) {
+  return io::JoinPath(work_dir, kJournalDir);
+}
+
 Status CreateWorkerStub(const std::string& address, const std::string& protocol,
                         std::unique_ptr<WorkerService::Stub>* stub) {
   ::grpc::ChannelArguments args;
@@ -65,13 +69,33 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const experimental::DispatcherConfig& config)
     : config_(config) {
-  if (config_.work_dir().empty()) {
-    journal_writer_ = absl::make_unique<NoopJournalWriter>();
-  } else {
-    std::string journal_dir = io::JoinPath(config_.work_dir(), kJournalDir);
-    journal_writer_ =
-        absl::make_unique<FileJournalWriter>(Env::Default(), journal_dir);
+  if (!config_.work_dir().empty()) {
+    journal_writer_ = absl::make_unique<FileJournalWriter>(
+        Env::Default(), JournalDir(config_.work_dir()));
   }
+}
+
+Status DataServiceDispatcherImpl::Start() {
+  if (config_.work_dir().empty()) {
+    return Status::OK();
+  }
+  mutex_lock l(mu_);
+  Update update;
+  bool end_of_journal = false;
+  FileJournalReader reader(Env::Default(), JournalDir(config_.work_dir()));
+  Status s = reader.Read(&update, &end_of_journal);
+  if (errors::IsNotFound(s)) {
+    LOG(INFO) << "No journal found. Starting dispatcher from new state.";
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(s);
+  LOG(INFO) << "Restoring dispatcher state from journal in "
+            << JournalDir(config_.work_dir());
+  while (!end_of_journal) {
+    TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
+    TF_RETURN_IF_ERROR(reader.Read(&update, &end_of_journal));
+  }
+  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::RegisterWorker(
@@ -407,9 +431,17 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::ApplyWithoutJournaling(const Update& update)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  return state_.Apply(update);
+}
+
 Status DataServiceDispatcherImpl::Apply(const Update& update)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  return state_.Apply(update, journal_writer_.get());
+  if (journal_writer_.has_value()) {
+    TF_RETURN_IF_ERROR(journal_writer_.value()->Write(update));
+  }
+  return state_.Apply(update);
 }
 
 }  // namespace data

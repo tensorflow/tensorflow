@@ -37,7 +37,7 @@ cc_library(
 
 gentbl(
     name = "tf_framework_passes_inc_gen",
-    tbl_outs = [("-gen-pass-decls -name TFFramework", "tf_framework_passes.h.inc")],
+    tbl_outs = [("-gen-pass-decls -name KernelGen", "kernel_gen_passes.h.inc")],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -47,7 +47,7 @@ cc_library(
     name = "passes",
     srcs = [
         "embed_tf_framework_pass.cc",
-        "register_passes.cc",
+        "shape_to_descriptors_pass.cc",
         "tf_framework_legalize_to_llvm_pass.cc",
     ],
     hdrs = ["passes.h"],
@@ -56,11 +56,18 @@ cc_library(
         ":tf_framework_legalize_to_llvm",
         ":tf_framework_passes_inc_gen",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeToSCF",
+        "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )

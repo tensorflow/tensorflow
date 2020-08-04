@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/internal/concrete_function_type.h"
 #include "tensorflow/c/experimental/saved_model/internal/function_metadata_type.h"
-#include "tensorflow/c/experimental/saved_model/internal/tensorhandle_list_type.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/status.h"
 

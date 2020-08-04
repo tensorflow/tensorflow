@@ -27,12 +27,11 @@ namespace gpu {
 namespace cl {
 
 ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
-    const DeviceInfo& device_info)
+    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
     : GPUOperation(definition) {
   code_ = GenerateConvolutionTransposedCode(
       definition_, DivideRoundUp(attr.weights.shape.i, 4),
-      DivideRoundUp(attr.weights.shape.o, 4), device_info);
+      DivideRoundUp(attr.weights.shape.o, 4));
 }
 
 ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
@@ -48,10 +47,9 @@ ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
 }
 
 std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
-    const OperationDef& op_def, int src_depth, int dst_depth,
-    const DeviceInfo& device_info) {
+    const OperationDef& op_def, int src_depth, int dst_depth) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -208,8 +206,7 @@ absl::Status CreateConvolutionTransposed3x3Thin(
     return absl::InvalidArgumentError(
         "ConvolutionTransposed3x3Thin doesn't support this attributes");
   }
-  *result = ConvolutionTransposed3x3Thin(definition, attr,
-                                         creation_context.device->GetInfo());
+  *result = ConvolutionTransposed3x3Thin(definition, attr);
   RETURN_IF_ERROR(
       result->UploadData(attr.weights, attr.bias, creation_context.context));
   return absl::OkStatus();

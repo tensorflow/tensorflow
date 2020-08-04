@@ -74,7 +74,6 @@ bool IsShapeConsumer(const NodeDef& node) {
 }  // namespace
 
 NodeMap::NodeMap(GraphDef* graph) {
-  CHECK(graph != nullptr);
   nodes_.reserve(graph->node_size());
   outputs_.reserve(graph->node_size());
   for (int i = 0; i < graph->node_size(); i++) {

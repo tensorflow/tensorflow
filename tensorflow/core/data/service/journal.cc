@@ -61,10 +61,6 @@ Status FileJournalWriter::Write(Update update) {
   return Status::OK();
 }
 
-NoopJournalWriter::NoopJournalWriter() {}
-
-Status NoopJournalWriter::Write(Update update) { return Status::OK(); }
-
 FileJournalReader::FileJournalReader(Env* env, StringPiece journal_dir)
     : env_(env), journal_dir_(journal_dir) {}
 

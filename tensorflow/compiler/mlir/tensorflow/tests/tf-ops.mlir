@@ -2044,6 +2044,71 @@ func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
 
 // -----
 
+// Test tf.Transpose with partial unknown shape
+// CHECK-LABEL: testTranspose
+func @testTranspose(tensor<2x?xf32>) -> tensor<?x2xf32> {
+^bb0(%arg0: tensor<2x?xf32>):
+  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x?xf32>, tensor<2xi32>) -> tensor<?x2xf32>
+  return %0 : tensor<?x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with different partial unknown shape
+// CHECK-LABEL: testTranspose
+func @testTranspose(tensor<2x?x?xf32>) -> tensor<3x?x2xf32> {
+^bb0(%arg0: tensor<2x?x?xf32>):
+  %cst = constant dense<[2, 1, 0]> : tensor<3xi32>
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x?x?xf32>, tensor<3xi32>) -> tensor<3x?x2xf32>
+  return %0 : tensor<3x?x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid rank of perm
+func @testTranspose(tensor<2x3xf32>, tensor<1x2xi32>) -> tensor<3x2xf32> {
+^bb0(%arg0: tensor<2x3xf32>, %arg1: tensor<1x2xi32>):
+  // expected-error @+1 {{expected perm to be a 1-D Tensor, got perm of rank 2}}
+  %0 = "tf.Transpose"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<1x2xi32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid size of perm
+func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
+^bb0(%arg0: tensor<2x3xf32>):
+  %cst = constant dense<[1, 0, 2]> : tensor<3xi32>
+  // expected-error @+1 {{expected perm to be a 1-D Tensor of size equal to the rank of x, got perm of size 3, and x of rank 2}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid rank of y
+func @testTranspose(tensor<2x3xf32>) -> tensor<3x2x1xf32> {
+^bb0(%arg0: tensor<2x3xf32>):
+  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  // expected-error @+1 {{x should be of the same rank with y, got x of rank 2, and y of rank 3}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<3x2x1xf32>
+  return %0 : tensor<3x2x1xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid shape of y
+func @testTranspose(tensor<2x3x4xf32>) -> tensor<3x2x4xf32> {
+^bb0(%arg0: tensor<2x3x4xf32>):
+  %cst = constant dense<[2, 0, 1]> : tensor<3xi32>
+  // expected-error @+1 {{requires y.shape[0] (3) to be equal to x.shape[perm[2]] (4)}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3x4xf32>, tensor<3xi32>) -> tensor<3x2x4xf32>
+  return %0 : tensor<3x2x4xf32>
+}
+
+// -----
+
 // Test invalid tf.Less
 func @testLess(tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32> {
 ^bb0(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>):

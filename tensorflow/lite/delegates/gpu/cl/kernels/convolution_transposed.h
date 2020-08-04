@@ -55,7 +55,7 @@ class ConvolutionTransposed : public GPUOperation {
       ConvolutionTransposed* result);
   explicit ConvolutionTransposed(const OperationDef& definition,
                                  const ConvolutionTransposedAttributes& attr,
-                                 const CLDevice& device);
+                                 const DeviceInfo& device_info);
   template <DataType T>
   absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                              CLContext* context);
@@ -65,7 +65,7 @@ class ConvolutionTransposed : public GPUOperation {
                             absl::Span<T> dst);
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
-                                                const CLDevice& device,
+                                                const DeviceInfo& device_info,
                                                 bool weights_are_buffer,
                                                 const int3& block_size);
 

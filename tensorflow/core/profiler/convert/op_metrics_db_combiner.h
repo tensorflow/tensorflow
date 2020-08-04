@@ -23,6 +23,9 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// Combines the src OpMetrics into the dst OpMetrics.
+void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst);
+
 // Combines the memory access breakdown.
 void CombineMemoryAccessedBreakdown(
     const protobuf::RepeatedPtrField<OpMetrics_MemoryAccessed>& src,

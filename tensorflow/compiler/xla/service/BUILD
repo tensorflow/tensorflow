@@ -1705,6 +1705,7 @@ cc_library(
         ":hlo",
         ":hlo_module_config",
         ":shape_inference",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",

@@ -95,10 +95,9 @@ std::string ConvTexture::GenerateConvCode(const OperationDef& op_def,
                                           const int3& block_size, bool is1x1,
                                           bool adreno4xx_optimization,
                                           bool stride_correction,
-                                          bool different_weights_for_height,
-                                          const DeviceInfo& device_info) {
+                                          bool different_weights_for_height) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -390,9 +389,9 @@ void ConvTexture::GenerateCode(const DeviceInfo& device_info) {
       definition_.precision == CalculationsPrecision::F16;
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  code_ = GenerateConvCode(definition_, block_size_, is1x1,
-                           adreno4xx_optimization, stride_correction,
-                           different_weights_for_height_, device_info);
+  code_ =
+      GenerateConvCode(definition_, block_size_, is1x1, adreno4xx_optimization,
+                       stride_correction, different_weights_for_height_);
 
   if (UseFP16SIMD(device_info, definition_.precision, is1x1)) {
     compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);

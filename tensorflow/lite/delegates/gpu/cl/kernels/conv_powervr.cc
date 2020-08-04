@@ -269,7 +269,7 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
                                       bool stride_correction,
                                       const ConvParams& conv_params) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }

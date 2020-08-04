@@ -35,8 +35,8 @@ DepthwiseConv3x3::DepthwiseConv3x3(const OperationDef& definition,
       weights_are_buffer_(weights_are_buffer),
       local_mem_uploads_(local_mem_uploads) {
   work_group_size_ = int3(8, 4, 1);
-  code_ = GenerateDepthwiseConvCode(definition_, device_info,
-                                    weights_are_buffer_, local_mem_uploads_);
+  code_ = GenerateDepthwiseConvCode(definition_, weights_are_buffer_,
+                                    local_mem_uploads_);
 
   if (definition_.precision == CalculationsPrecision::F16 &&
       device_info.IsPowerVR()) {
@@ -59,10 +59,10 @@ DepthwiseConv3x3& DepthwiseConv3x3::operator=(DepthwiseConv3x3&& operation) {
 }
 
 std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
-    const OperationDef& op_def, const DeviceInfo& device_info,
-    bool weights_are_buffer, bool local_mem_uploads) {
+    const OperationDef& op_def, bool weights_are_buffer,
+    bool local_mem_uploads) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
