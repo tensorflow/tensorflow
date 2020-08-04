@@ -349,69 +349,39 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
 
   GraphDef graph;
   TF_CHECK_OK(s.ToGraphDef(&graph));
+  NodeMap node_map(&graph);
 
-  {
-    NodeMap node_map(&graph);
+  const NodeDef* add_node = node_map.GetNode("add");
+  const NodeDef* mul_node = node_map.GetNode("mul");
+  ASSERT_NE(add_node, nullptr);
 
-    const NodeDef* add_node = node_map.GetNode("add");
-    const NodeDef* mul_node = node_map.GetNode("mul");
-    ASSERT_NE(add_node, nullptr);
+  // [a, b] are only non-control inputs
+  EXPECT_EQ(NumNonControlInputs(*add_node), 2);
+  EXPECT_EQ(NumControlInputs(*add_node), 1);
+  // [sqrt, shape] are non control outputs
+  EXPECT_EQ(NumNonControlOutputs(*add_node, node_map), 2);
+  // sqrt is the only data output
+  EXPECT_EQ(NumNonControlDataOutputs(*add_node, node_map), 1);
+  EXPECT_EQ(NumControlInputs(*mul_node), 0);
 
-    // [a, b] are only non-control inputs
-    EXPECT_EQ(NumNonControlInputs(*add_node), 2);
-    EXPECT_EQ(NumControlInputs(*add_node), 1);
-    // [sqrt, shape] are non control outputs
-    EXPECT_EQ(NumNonControlOutputs(*add_node, node_map), 2);
-    // sqrt is the only data output
-    EXPECT_EQ(NumNonControlDataOutputs(*add_node, node_map), 1);
-    EXPECT_EQ(NumControlInputs(*mul_node), 0);
+  EXPECT_TRUE(HasControlInputs(*add_node));
+  EXPECT_TRUE(HasRegularInputs(*add_node));
+  EXPECT_TRUE(HasControlOutputs(*add_node, node_map));
+  EXPECT_TRUE(HasRegularOutputs(*add_node, node_map));
 
-    EXPECT_TRUE(HasControlInputs(*add_node));
-    EXPECT_TRUE(HasRegularInputs(*add_node));
-    EXPECT_TRUE(HasControlOutputs(*add_node, node_map));
-    EXPECT_TRUE(HasRegularOutputs(*add_node, node_map));
+  const NodeDef* x_node = node_map.GetNode("x");
+  ASSERT_NE(x_node, nullptr);
+  EXPECT_FALSE(HasControlInputs(*x_node));
+  EXPECT_FALSE(HasRegularInputs(*x_node));
+  EXPECT_FALSE(HasControlOutputs(*x_node, node_map));
+  EXPECT_TRUE(HasRegularOutputs(*x_node, node_map));
 
-    const NodeDef* x_node = node_map.GetNode("x");
-    ASSERT_NE(x_node, nullptr);
-    EXPECT_FALSE(HasControlInputs(*x_node));
-    EXPECT_FALSE(HasRegularInputs(*x_node));
-    EXPECT_FALSE(HasControlOutputs(*x_node, node_map));
-    EXPECT_TRUE(HasRegularOutputs(*x_node, node_map));
-
-    const NodeDef* round_node = node_map.GetNode("round");
-    ASSERT_NE(round_node, nullptr);
-    EXPECT_TRUE(HasControlInputs(*round_node));
-    EXPECT_TRUE(HasRegularInputs(*round_node));
-    EXPECT_FALSE(HasControlOutputs(*round_node, node_map));
-    EXPECT_FALSE(HasRegularOutputs(*round_node, node_map));
-  }
-
-  {
-    // Similar test for ImmutableNodeMap.
-    ImmutableNodeMap node_map(&graph);
-
-    const NodeDef* add_node = node_map.GetNode("add");
-    const NodeDef* mul_node = node_map.GetNode("mul");
-    ASSERT_NE(add_node, nullptr);
-
-    // [a, b] are only non-control inputs
-    EXPECT_EQ(NumNonControlInputs(*add_node), 2);
-    EXPECT_EQ(NumControlInputs(*add_node), 1);
-    EXPECT_EQ(NumControlInputs(*mul_node), 0);
-
-    EXPECT_TRUE(HasControlInputs(*add_node));
-    EXPECT_TRUE(HasRegularInputs(*add_node));
-
-    const NodeDef* x_node = node_map.GetNode("x");
-    ASSERT_NE(x_node, nullptr);
-    EXPECT_FALSE(HasControlInputs(*x_node));
-    EXPECT_FALSE(HasRegularInputs(*x_node));
-
-    const NodeDef* round_node = node_map.GetNode("round");
-    ASSERT_NE(round_node, nullptr);
-    EXPECT_TRUE(HasControlInputs(*round_node));
-    EXPECT_TRUE(HasRegularInputs(*round_node));
-  }
+  const NodeDef* round_node = node_map.GetNode("round");
+  ASSERT_NE(round_node, nullptr);
+  EXPECT_TRUE(HasControlInputs(*round_node));
+  EXPECT_TRUE(HasRegularInputs(*round_node));
+  EXPECT_FALSE(HasControlOutputs(*round_node, node_map));
+  EXPECT_FALSE(HasRegularOutputs(*round_node, node_map));
 }
 
 TEST(CheckAttrExists, All) {
@@ -683,29 +653,16 @@ TEST(SetTensorValueTest, Quantized) {
                              /*error_msg=*/"");
 }
 
-static void BM_NodeMapConstruct(benchmark::State& state) {
-  const int size = state.range(0);
+static void BM_NodeMapConstruct(int iters, int size) {
   testing::StopTiming();
   GraphDef graph = test::CreateRandomGraph(size);
   testing::StartTiming();
-  for (auto s : state) {
+  for (int i = 0; i < iters; i++) {
     NodeMap node_map(&graph);
   }
   testing::StopTiming();
 }
 BENCHMARK(BM_NodeMapConstruct)->Range(1, 1 << 20);
-
-static void BM_ImmutableNodeMapConstruct(benchmark::State& state) {
-  const int size = state.range(0);
-  testing::StopTiming();
-  GraphDef graph = test::CreateRandomGraph(size);
-  testing::StartTiming();
-  for (auto s : state) {
-    ImmutableNodeMap node_map(&graph);
-  }
-  testing::StopTiming();
-}
-BENCHMARK(BM_ImmutableNodeMapConstruct)->Range(1, 1 << 20);
 
 }  // namespace
 }  // namespace grappler

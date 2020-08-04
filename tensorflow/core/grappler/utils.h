@@ -98,39 +98,16 @@ inline int NodePosition(const string& name) {
   return position;
 }
 
-namespace internal {
-// Base template class for NodeMap and ImmutableNodeMap.
-template <typename GraphDefT, typename NodeDefT>
-class NodeMapInternal {
+// A utility class to lookup a node and its outputs by node name.
+class NodeMap {
  public:
   // Note: The NodeMap will store pointers to nodes in graph, which may become
   // invalid if graph is changed.
-  explicit NodeMapInternal(GraphDefT* graph) {
-    if (graph == nullptr) {
-      LOG(WARNING) << "NodeMapInternal constructor is called with a nullptr!";
-      return;
-    }
-    nodes_.reserve(graph->node_size());
-    outputs_.reserve(graph->node_size());
-    for (int i = 0; i < graph->node_size(); i++) {
-      NodeDefT* node = GetNodeDefFromGraph(graph, i);
-      const string& node_name = node->name();
-      auto rslt = nodes_.emplace(node_name, node);
-      // Check that the graph doesn't contain multiple nodes with the same name.
-      if (!rslt.second) {
-        // The first node found with a given name becomes the canonical.
-        LOG(WARNING) << "Duplicated node in the graph: " << node_name;
-      }
-      NodeDefT* canonical = rslt.second ? node : rslt.first->second;
-      for (const auto& input : node->input()) {
-        outputs_[NodeName(input)].insert(canonical);
-      }
-    }
-  }
+  explicit NodeMap(GraphDef* graph);
 
   // Get unordered list of fanouts from node. Notice, that the order is
   // non-deterministic.
-  const absl::flat_hash_set<NodeDefT*>& GetOutputs(
+  const absl::flat_hash_set<NodeDef*>& GetOutputs(
       const string& node_name) const {
     auto it = outputs_.find(node_name);
     if (it == outputs_.end()) {
@@ -140,12 +117,12 @@ class NodeMapInternal {
   }
 
   // Get fanouts ordered by name.
-  std::vector<NodeDefT*> GetOutputsOrderedByNodeName(
+  std::vector<NodeDef*> GetOutputsOrderedByNodeName(
       const string& node_name) const {
-    std::vector<NodeDefT*> result;
+    std::vector<NodeDef*> result;
     auto it = outputs_.find(node_name);
     if (it != outputs_.end()) {
-      const absl::flat_hash_set<NodeDefT*>& outputs = it->second;
+      const absl::flat_hash_set<NodeDef*>& outputs = it->second;
       result.reserve(outputs.size());
       result.assign(outputs.begin(), outputs.end());
       std::sort(result.begin(), result.end(),
@@ -158,7 +135,7 @@ class NodeMapInternal {
 
   // This method doesn't record the outputs of the added node; the outputs need
   // to be explicitly added by the AddOutput method.
-  void AddNode(const string& node_name, NodeDefT* node) {
+  void AddNode(const string& node_name, NodeDef* node) {
     DCHECK(node != nullptr);
     auto ret = nodes_.emplace(node_name, node);
     DCHECK(ret.second)
@@ -171,7 +148,7 @@ class NodeMapInternal {
     outputs_.erase(NodeName(name));
   }
 
-  NodeDefT* GetNode(const string& name) const {
+  NodeDef* GetNode(const string& name) const {
     const string node_name = NodeName(name);
     auto it = nodes_.find(node_name);
     if (it == nodes_.end()) {
@@ -220,26 +197,9 @@ class NodeMapInternal {
   }
 
  private:
-  // Helper method to get the NodeDef pointer of i-th node in a graph.
-  NodeDefT* GetNodeDefFromGraph(GraphDefT* graph, int64 i) const;
-
-  const absl::flat_hash_set<NodeDefT*> empty_set_;
-  absl::node_hash_map<string, NodeDefT*> nodes_;
-  absl::node_hash_map<string, absl::flat_hash_set<NodeDefT*>> outputs_;
-};
-}  // namespace internal
-
-// A utility class to lookup a node and its outputs by node name.
-class NodeMap : public internal::NodeMapInternal<GraphDef, NodeDef> {
- public:
-  explicit NodeMap(GraphDef* graph) : NodeMapInternal(graph) {}
-};
-
-// Same to NodeMap, but uses const GraphDef.
-class ImmutableNodeMap
-    : public internal::NodeMapInternal<const GraphDef, const NodeDef> {
- public:
-  explicit ImmutableNodeMap(const GraphDef* graph) : NodeMapInternal(graph) {}
+  const absl::flat_hash_set<NodeDef*> empty_set_;
+  absl::node_hash_map<string, NodeDef*> nodes_;
+  absl::node_hash_map<string, absl::flat_hash_set<NodeDef*>> outputs_;
 };
 
 // A vector with a set. The set stores the same elements as the vector, and
