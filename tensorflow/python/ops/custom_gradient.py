@@ -146,23 +146,18 @@ def custom_gradient(f=None):
   ...     return upstream * dz_dx, upstream * dz_dy
   ...   z = x * y
   ...   return z, grad
-  ...
-  ... x = tf.constant(2.0, dtype=tf.float32)
-  ... y = tf.constant(3.0, dtype=tf.float32)
-  ...
-  ... with tf.GradientTape(persistent=True) as tape:
+  >>> x = tf.constant(2.0, dtype=tf.float32)
+  >>> y = tf.constant(3.0, dtype=tf.float32)
+  >>> with tf.GradientTape(persistent=True) as tape:
   ...   tape.watch(x)
   ...   tape.watch(y)
   ...   z = bar(x, y)
-
   >>> z
-  6
+  <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
   >>> tape.gradient(z, x)
-  3
+  <tf.Tensor: shape=(), dtype=float32, numpy=3.0>
   >>> tape.gradient(z, y)
-  2
-  >>> tape.gradient(x, y)
-  None
+  <tf.Tensor: shape=(), dtype=float32, numpy=2.0>
 
   Nesting custom gradients can lead to unintuitive results. The default
   behavior does not correspond to n-th order derivatives. For example
