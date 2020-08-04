@@ -917,7 +917,7 @@ class Function(object):
     canon_args, canon_kwds, flat_args, flat_kwds = \
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             *args, **kwds)
-    # TODO(jlchu): verify that mdofication to fn_with_cond works
+    # TODO(jlchu): verify that modification to fn_with_cond works
     return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
                                             flat_args, flat_kwds)
 

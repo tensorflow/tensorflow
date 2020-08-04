@@ -3295,8 +3295,7 @@ class Function(object):
       args, kwargs, flat_args, flat_kwargs = \
           self._function_spec.canonicalize_function_inputs(*args, **kwargs)
     else:
-      # TODO(jlchu): Check - empty lists or Nones?
-      flat_args, flat_kwargs = [], []
+      flat_args, flat_kwargs = [None], [None]
 
     cache_key = self._cache_key(args, kwargs)
 
