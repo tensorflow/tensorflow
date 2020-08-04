@@ -125,7 +125,7 @@ class Optimize(enum.Enum):
   OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
 
   def __str__(self):
-    return self.value
+    return str(self.value)
 
 
 @_tf_export("lite.RepresentativeDataset")
@@ -230,7 +230,7 @@ class QuantizationMode(object):
 
   def post_training_int16x8_allow_float(self):
     """Post training int16x8 quantize, allow float fallback."""
-    return (self._is_int16x8_target_required() and self._is_allow_float())
+    return self._is_int16x8_target_required() and self._is_allow_float()
 
   def post_training_dynamic_range_int8(self):
     """Post training int8 const, on-the-fly int8 quantize of dynamic tensors."""
@@ -907,7 +907,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     """
     # TODO(b/130297984): Add support for converting multiple function.
 
-    if len(self._funcs) == 0:
+    if len(self._funcs) == 0:  # pylint: disable=g-explicit-length-test
       raise ValueError("No ConcreteFunction is specified.")
 
     if len(self._funcs) > 1:
@@ -1127,7 +1127,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       parameter is ignored. (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays. If an integer type is provided and
-      `optimizations` are not used, `quantized_inputs_stats` must be provided.
+      `optimizations` are not used, `quantized_input_stats` must be provided.
       If `inference_type` is tf.uint8, signaling conversion to a fully quantized
       model from a quantization-aware trained input model, then
       `inference_input_type` defaults to tf.uint8. In all other cases,
@@ -1681,7 +1681,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays.
       If an integer type is provided and `optimizations` are not used,
-      `quantized_inputs_stats` must be provided.
+      `quantized_input_stats` must be provided.
       If `inference_type` is tf.uint8, signaling conversion to a fully quantized
       model from a quantization-aware trained input model, then
       `inference_input_type` defaults to tf.uint8.
@@ -2011,6 +2011,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
         None value for dimension in input_tensor.
     """
     return super(TFLiteConverter, self).convert()
+
 
 @_tf_export(v1=["lite.TocoConverter"])
 class TocoConverter(object):
