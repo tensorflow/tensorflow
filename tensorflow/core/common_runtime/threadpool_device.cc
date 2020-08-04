@@ -60,13 +60,8 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
     // Default to available physical cores
     const int mkl_intra_op = port::NumSchedulableCPUs();
     const int ht = port::NumHyperthreadsPerCore();
-    omp_set_num_threads((mkl_intra_op + ht - 1) / ht);
-  } else {
-    uint64 user_val = 0;
-    if (strings::safe_strtou64(user_omp_threads, &user_val)) {
-      // Superflous but triggers OpenMP loading
-      omp_set_num_threads(user_val);
-    }
+    std::call_once(omp_setting_flag, omp_set_num_threads,
+		     (mkl_intra_op + ht - 1) / ht);
   }
 #endif  // _OPENMP
 #endif  // !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
