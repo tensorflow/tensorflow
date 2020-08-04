@@ -470,6 +470,25 @@ void PathExists(const TF_Filesystem* filesystem, const char* path,
                  (std::string(path) + " not found").c_str());
 }
 
+void Stat(const TF_Filesystem* filesystem, const char* path,
+          TF_FileStatistics* stats, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  auto info = libhdfs->hdfsGetPathInfo(fs, hdfs_path.c_str());
+  if (info == nullptr) return TF_SetStatusFromIOError(status, errno, path);
+
+  stats->length = static_cast<int64_t>(info->mSize);
+  stats->mtime_nsec = static_cast<int64_t>(info->mLastMod) * 1e9;
+  stats->is_directory = info->mKind == kObjectKindDirectory;
+  libhdfs->hdfsFreeFileInfo(info, 1);
+  TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_hadoop_filesystem
