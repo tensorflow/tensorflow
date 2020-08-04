@@ -339,31 +339,32 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
 std::unique_ptr<blas::IBlasLtMatmulPlan> StreamExecutor::CreateBlasLtMatmulPlan(
     blas::DataType ab_type, blas::DataType cd_type,
     blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, int64 lda, int64 ldb, int64 ldc) {
+    blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
+    uint64 m, uint64 n, uint64 k, int64 lda, int64 ldb, int64 ldc) {
   blas::BlasSupport *blas_support = AsBlas();
   if (!blas_support) {
     return nullptr;
   }
   return blas_support->CreateBlasLtMatmulPlan(
-      ab_type, cd_type, computation_type, pointer_mode, transa, transb, m, n, k,
-      lda, ldb, ldc);
+      ab_type, cd_type, computation_type, pointer_mode, epilogue, transa,
+      transb, m, n, k, lda, ldb, ldc);
 }
 
 std::unique_ptr<blas::IBlasLtMatmulPlan>
 StreamExecutor::CreateBlasLtMatmulPlanStridedBatched(
     blas::DataType ab_type, blas::DataType cd_type,
     blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, uint64 batch_count, int64 lda, int64 stride_a, int64 ldb,
-    int64 stride_b, int64 ldc, int64 stride_c) {
+    blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
+    uint64 m, uint64 n, uint64 k, uint64 batch_count, int64 lda, int64 stride_a,
+    int64 ldb, int64 stride_b, int64 ldc, int64 stride_c) {
   blas::BlasSupport *blas_support = AsBlas();
   if (!blas_support) {
     return nullptr;
   }
   return blas_support->CreateBlasLtMatmulPlanStridedBatched(
-      ab_type, cd_type, computation_type, pointer_mode, transa, transb, m, n, k,
-      batch_count, lda, stride_a, ldb, stride_b, ldc, stride_c);
+      ab_type, cd_type, computation_type, pointer_mode, epilogue, transa,
+      transb, m, n, k, batch_count, lda, stride_a, ldb, stride_b, ldc,
+      stride_c);
 }
 
 bool StreamExecutor::GetBlasLtMatmulAlgorithms(

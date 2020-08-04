@@ -148,6 +148,7 @@ class CUDABlas : public blas::BlasSupport {
       const DeviceMemory<CDType>& c, DeviceMemory<CDType>* d,
       ScratchAllocator* scratch_allocator,
       const blas::IBlasLtMatmulAlgorithm* algorithm,
+      const DeviceMemory<CDType>& bias,
       blas::ProfileResult* output_profile_result);
 
   // Helper function for implementing DoBlasLtMatmulInternal.
@@ -157,7 +158,7 @@ class CUDABlas : public blas::BlasSupport {
       const HostOrDeviceScalar<ScaleType>& alpha, const ABType* a,
       const ABType* b, const HostOrDeviceScalar<ScaleType>& beta,
       const CDType* c, CDType* d, ScratchAllocator* scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm* algorithm);
+      const blas::IBlasLtMatmulAlgorithm* algorithm, const CDType* bias);
 
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;

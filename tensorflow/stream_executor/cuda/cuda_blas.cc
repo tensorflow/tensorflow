@@ -468,6 +468,18 @@ cublasLtPointerMode_t CUBLASPointerMode(blas::PointerMode pointer_mode) {
     return CUBLASLT_POINTER_MODE_DEVICE;
   }
 }
+cublasLtEpilogue_t CUBLASEpilogue(blas::Epilogue epilogue) {
+  switch (epilogue) {
+  case blas::Epilogue::kDefault:
+    return CUBLASLT_EPILOGUE_DEFAULT;
+  case blas::Epilogue::kReLU:
+    return CUBLASLT_EPILOGUE_RELU;
+  case blas::Epilogue::kBias:
+    return CUBLASLT_EPILOGUE_BIAS;
+  case blas::Epilogue::kBiasThenReLU:
+    return CUBLASLT_EPILOGUE_RELU_BIAS;
+  }
+}
 #endif  // CUDA_VERSION >= 11000
 
 cudaDataType_t GetCUDADataType(blas::DataType ty) {
@@ -3135,12 +3147,12 @@ using UniqueMatmulPreference =
     std::unique_ptr<std::remove_pointer<cublasLtMatmulPreference_t>::type,
                     MatmulPreferenceDestroyer>;
 
-UniqueOpDesc CreateCublasLtOperationDesc(
-    blas::ComputationType computation_type, blas::DataType scale_type,
-    blas::PointerMode pointer_mode, blas::Transpose transa,
-    blas::Transpose transb) {
-  cublasOperation_t cuda_transa = CUDABlasTranspose(transa);
-  cublasOperation_t cuda_transb = CUDABlasTranspose(transb);
+UniqueOpDesc CreateCublasLtOperationDesc(blas::ComputationType computation_type,
+                                         blas::DataType scale_type,
+                                         blas::PointerMode pointer_mode,
+                                         blas::Epilogue epilogue,
+                                         blas::Transpose transa,
+                                         blas::Transpose transb) {
   cublasLtMatmulDesc_t desc;
   cublasComputeType_t cublas_compute_type =
       CUBLASComputationType(computation_type);
@@ -3154,9 +3166,13 @@ UniqueOpDesc CreateCublasLtOperationDesc(
   }
   UniqueOpDesc unique_desc(desc);
   if (!SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
-                         CUBLASPointerMode(pointer_mode)) ||
-      !SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSA, cuda_transa) ||
-      !SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSB, cuda_transb)) {
+                       CUBLASPointerMode(pointer_mode)) ||
+      !SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE,
+                       CUBLASEpilogue(epilogue)) ||
+      !SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSA,
+                       CUDABlasTranspose(transa)) ||
+      !SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSB,
+                       CUDABlasTranspose(transb))) {
     return nullptr;
   }
   return unique_desc;
@@ -3217,11 +3233,11 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
  public:
   CUDABlasLtMatmulPlan(blas::DataType ab_type, blas::DataType cd_type,
                        blas::ComputationType compute_type,
-                       blas::PointerMode pointer_mode, blas::Transpose transa,
-                       blas::Transpose transb, uint64 m, uint64 n, uint64 k,
-                       int batch_count, int64 lda, int64 stride_a, int64 ldb,
-                       int64 stride_b, int64 ldc, int64 stride_c, int64 ldd,
-                       int64 stride_d);
+                       blas::PointerMode pointer_mode, blas::Epilogue epilogue,
+                       blas::Transpose transa, blas::Transpose transb, uint64 m,
+                       uint64 n, uint64 k, int batch_count, int64 lda,
+                       int64 stride_a, int64 ldb, int64 stride_b, int64 ldc,
+                       int64 stride_c, int64 ldd, int64 stride_d);
 
   cublasLtMatmulDesc_t op_desc() const { return op_desc_.get(); }
   cublasLtMatrixLayout_t a_desc() const { return a_desc_.get(); }
@@ -3234,11 +3250,16 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
   blas::DataType cd_type() const { return cd_type_; }
   blas::DataType scale_type() const { return scale_type_; }
   blas::PointerMode pointer_mode() const { return pointer_mode_; }
+  blas::Epilogue epilogue() const { return epilogue_; }
   int batch_count() const { return batch_count_; }
   int64 stride_a() const { return stride_a_; }
   int64 stride_b() const { return stride_b_; }
   int64 stride_c() const { return stride_c_; }
   int64 stride_d() const { return stride_d_; }
+
+  // Note: Must be const to satisfy API. This is always called before the plan
+  // is executed, so the state change is not observed in subsequent executions.
+  bool SetBiasPointer(const void* bias) const;
 
  private:
   UniqueOpDesc op_desc_;
@@ -3250,6 +3271,7 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
   blas::DataType cd_type_;
   blas::DataType scale_type_;
   blas::PointerMode pointer_mode_;
+  blas::Epilogue epilogue_;
   int batch_count_;
   int64 stride_a_;
   int64 stride_b_;
@@ -3260,12 +3282,13 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
 CUDABlasLtMatmulPlan::CUDABlasLtMatmulPlan(
     blas::DataType ab_type, blas::DataType cd_type,
     blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, int batch_count, int64 lda, int64 stride_a, int64 ldb,
-    int64 stride_b, int64 ldc, int64 stride_c, int64 ldd, int64 stride_d)
+    blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
+    uint64 m, uint64 n, uint64 k, int batch_count, int64 lda, int64 stride_a,
+    int64 ldb, int64 stride_b, int64 ldc, int64 stride_c, int64 ldd,
+    int64 stride_d)
     : op_desc_(CreateCublasLtOperationDesc(
           computation_type, GetScaleType(cd_type, computation_type),
-          pointer_mode, transa, transb)),
+          pointer_mode, epilogue, transa, transb)),
       a_desc_(nullptr),
       b_desc_(nullptr),
       c_desc_(
@@ -3276,6 +3299,7 @@ CUDABlasLtMatmulPlan::CUDABlasLtMatmulPlan(
       cd_type_(cd_type),
       scale_type_(GetScaleType(cd_type, computation_type)),
       pointer_mode_(pointer_mode),
+      epilogue_(epilogue),
       batch_count_(batch_count),
       stride_a_(stride_a),
       stride_b_(stride_b),
@@ -3289,6 +3313,11 @@ CUDABlasLtMatmulPlan::CUDABlasLtMatmulPlan(
                                      batch_count);
   b_desc_ = CreateCublasLtLayoutDesc(ab_type, rows_b, cols_b, ldb, stride_b,
                                      batch_count);
+}
+
+bool CUDABlasLtMatmulPlan::SetBiasPointer(const void* bias) const {
+  return SetCublasLtAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_BIAS_POINTER,
+                         bias);
 }
 
 class CUDABlasLtMatmulAlgorithm final : public blas::IBlasLtMatmulAlgorithm {
@@ -3370,13 +3399,14 @@ std::unique_ptr<blas::IBlasLtMatmulPlan>
 CUDABlas::CreateBlasLtMatmulPlanStridedBatched(
     blas::DataType ab_type, blas::DataType cd_type,
     blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-    uint64 k, int batch_count, int64 lda, int64 stride_a, int64 ldb,
-    int64 stride_b, int64 ldc, int64 stride_c) {
+    blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
+    uint64 m, uint64 n, uint64 k, int batch_count, int64 lda, int64 stride_a,
+    int64 ldb, int64 stride_b, int64 ldc, int64 stride_c) {
 #if CUDA_VERSION >= 11000
   auto result = std::make_unique<CUDABlasLtMatmulPlan>(
-      ab_type, cd_type, computation_type, pointer_mode, transa, transb, m, n, k,
-      batch_count, lda, stride_a, ldb, stride_b, ldc, stride_c, ldc, stride_c);
+      ab_type, cd_type, computation_type, pointer_mode, epilogue, transa,
+      transb, m, n, k, batch_count, lda, stride_a, ldb, stride_b, ldc, stride_c,
+      ldc, stride_c);
   if (!result->ok()) {
     result.reset();
   }
@@ -3436,7 +3466,8 @@ bool CUDABlas::DoBlasLtMatmulInternalImpl(
     const HostOrDeviceScalar<ScaleType>& alpha, const ABType* a,
     const ABType* b, const HostOrDeviceScalar<ScaleType>& beta, const CDType* c,
     CDType* d, ScratchAllocator* scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm* algorithm) {
+    const blas::IBlasLtMatmulAlgorithm* algorithm,
+    const CDType* bias) {
   const auto& cuda_plan = *static_cast<const CUDABlasLtMatmulPlan*>(plan);
   const auto& cuda_algo =
       *static_cast<const CUDABlasLtMatmulAlgorithm*>(algorithm);
@@ -3473,6 +3504,20 @@ bool CUDABlas::DoBlasLtMatmulInternalImpl(
     VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong "
                "pointer_mode for the given alpha/beta.";
     return false;
+  }
+  if ((cuda_plan.epilogue() == blas::Epilogue::kBias ||
+       cuda_plan.epilogue() == blas::Epilogue::kBiasThenReLU) !=
+      (bias != nullptr)) {
+    VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong "
+               "epilogue for the given bias pointer.";
+    return false;
+  }
+  if (bias != nullptr) {
+    if (!cuda_plan.SetBiasPointer(bias)) {
+      VLOG(2) << "DoBlasLtMatmul returning false because setting the bias "
+                 "pointer failed.";
+      return false;
+    }
   }
   const ScaleType* alpha_ptr =
       alpha.is_pointer() ? GpuMemory(alpha.pointer()) : &alpha.value();
@@ -3525,6 +3570,7 @@ bool CUDABlas::DoBlasLtMatmulInternal(
     const DeviceMemory<CDType>& c, DeviceMemory<CDType>* d,
     ScratchAllocator* scratch_allocator,
     const blas::IBlasLtMatmulAlgorithm* algorithm,
+    const DeviceMemory<CDType>& bias,
     blas::ProfileResult* output_profile_result) {
 #if CUDA_VERSION >= 11000
   std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
@@ -3538,7 +3584,8 @@ bool CUDABlas::DoBlasLtMatmulInternal(
   bool err_on_failure = timer != nullptr;
   bool result = DoBlasLtMatmulInternalImpl(
       stream, err_on_failure, plan, alpha, GpuMemory(a), GpuMemory(b), beta,
-      GpuMemory(c), GpuMemoryMutable(d), scratch_allocator, algorithm);
+      GpuMemory(c), GpuMemoryMutable(d), scratch_allocator, algorithm,
+      GpuMemory(bias));
 
   if (timer && result) {
     // GpuTimer will CHECK-fail if we Stop() it while the stream is in an error
@@ -3563,9 +3610,10 @@ bool CUDABlas::DoBlasLtMatmul(
     const DeviceMemory<int8>& b, const HostOrDeviceScalar<int32>& beta,
     DeviceMemory<int32>* c, ScratchAllocator* scratch_allocator,
     const blas::IBlasLtMatmulAlgorithm* algorithm,
+    const DeviceMemory<int32>& bias,
     blas::ProfileResult* output_profile_result) {
   return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm,
+                                scratch_allocator, algorithm, bias,
                                 output_profile_result);
 }
 
@@ -3578,6 +3626,7 @@ bool CUDABlas::DoBlasLtMatmul(Stream* stream,
                               DeviceMemory<Eigen::half>* c,
                               ScratchAllocator* scratch_allocator,
                               const blas::IBlasLtMatmulAlgorithm* algorithm,
+                              const DeviceMemory<Eigen::half>& bias,
                               blas::ProfileResult* output_profile_result) {
 #if CUDA_VERSION >= 11000
   const auto& cuda_plan = *static_cast<const CUDABlasLtMatmulPlan*>(plan);
@@ -3591,11 +3640,11 @@ bool CUDABlas::DoBlasLtMatmul(Stream* stream,
     HostOrDeviceScalar<float> float_alpha(static_cast<float>(alpha.value()));
     HostOrDeviceScalar<float> float_beta(static_cast<float>(beta.value()));
     return DoBlasLtMatmulInternal(stream, plan, float_alpha, a, b, float_beta,
-                                  *c, c, scratch_allocator, algorithm,
+                                  *c, c, scratch_allocator, algorithm, bias,
                                   output_profile_result);
   }
   return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm,
+                                scratch_allocator, algorithm, bias,
                                 output_profile_result);
 #else  // if CUDA_VERSION < 11000
   return false;
@@ -3608,9 +3657,10 @@ bool CUDABlas::DoBlasLtMatmul(
     const DeviceMemory<float>& b, const HostOrDeviceScalar<float>& beta,
     DeviceMemory<float>* c, ScratchAllocator* scratch_allocator,
     const blas::IBlasLtMatmulAlgorithm* algorithm,
+    const DeviceMemory<float>& bias,
     blas::ProfileResult* output_profile_result) {
   return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm,
+                                scratch_allocator, algorithm, bias,
                                 output_profile_result);
 }
 
@@ -3620,9 +3670,10 @@ bool CUDABlas::DoBlasLtMatmul(
     const DeviceMemory<double>& b, const HostOrDeviceScalar<double>& beta,
     DeviceMemory<double>* c, ScratchAllocator* scratch_allocator,
     const blas::IBlasLtMatmulAlgorithm* algorithm,
+    const DeviceMemory<double>& bias,
     blas::ProfileResult* output_profile_result) {
   return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm,
+                                scratch_allocator, algorithm, bias,
                                 output_profile_result);
 }
 
@@ -3634,9 +3685,10 @@ bool CUDABlas::DoBlasLtMatmul(
     const HostOrDeviceScalar<std::complex<float>>& beta,
     DeviceMemory<std::complex<float>>* c, ScratchAllocator* scratch_allocator,
     const blas::IBlasLtMatmulAlgorithm* algorithm,
+    const DeviceMemory<std::complex<float>>& bias,
     blas::ProfileResult* output_profile_result) {
   return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm,
+                                scratch_allocator, algorithm, bias,
                                 output_profile_result);
 }
 
@@ -3648,9 +3700,10 @@ bool CUDABlas::DoBlasLtMatmul(
     const HostOrDeviceScalar<std::complex<double>>& beta,
     DeviceMemory<std::complex<double>>* c, ScratchAllocator* scratch_allocator,
     const blas::IBlasLtMatmulAlgorithm* algorithm,
+    const DeviceMemory<std::complex<double>>& bias,
     blas::ProfileResult* output_profile_result) {
   return DoBlasLtMatmulInternal(stream, plan, alpha, a, b, beta, *c, c,
-                                scratch_allocator, algorithm,
+                                scratch_allocator, algorithm, bias,
                                 output_profile_result);
 }
 

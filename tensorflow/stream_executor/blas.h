@@ -107,6 +107,13 @@ enum class ComputationType {
   kF32FastBF16, // 32-bit floating-point with reduced (7-bit) mantissa
 };
 
+enum class Epilogue {
+  kDefault = 1,                   // No special postprocessing
+  kReLU = 2,                      // Apply ReLU func point-wise to the results
+  kBias = 4,                      // Add broadcasted bias vector to the results
+  kBiasThenReLU = kBias | kReLU,  // Apply bias and then ReLU transform
+};
+
 // Converts a ComputationType to a string.
 std::string ComputationTypeString(ComputationType ty);
 
@@ -1462,11 +1469,11 @@ class BlasSupport {
   std::unique_ptr<blas::IBlasLtMatmulPlan> CreateBlasLtMatmulPlan(
       blas::DataType ab_type, blas::DataType c_type,
       blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, int64 lda, int64 ldb, int64 ldc) {
+      blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
+      uint64 m, uint64 n, uint64 k, int64 lda, int64 ldb, int64 ldc) {
     return CreateBlasLtMatmulPlanStridedBatched(
-        ab_type, c_type, computation_type, pointer_mode, transa, transb, m, n,
-        k, 1, lda, 0, ldb, 0, ldc, 0);
+        ab_type, c_type, computation_type, pointer_mode, epilogue, transa,
+        transb, m, n, k, 1, lda, 0, ldb, 0, ldc, 0);
   }
 
   // A more general version of CreateBlasLtMatmulPlan supporting
@@ -1475,9 +1482,9 @@ class BlasSupport {
   CreateBlasLtMatmulPlanStridedBatched(
       blas::DataType ab_type, blas::DataType c_type,
       blas::ComputationType computation_type, blas::PointerMode pointer_mode,
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, int batch_count, int64 lda, int64 stride_a, int64 ldb,
-      int64 stride_b, int64 ldc, int64 stride_c) = 0;
+      blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb,
+      uint64 m, uint64 n, uint64 k, int batch_count, int64 lda, int64 stride_a,
+      int64 ldb, int64 stride_b, int64 ldc, int64 stride_c) = 0;
 
   // Gets a list of supported algorithms for DoBlasLtMatmul. The algorithms are
   // returned in the order of increasing estimated compute time according to an
@@ -1492,13 +1499,18 @@ class BlasSupport {
   // Executes a blaslt matmul operation on the stream. If output_profile_result
   // is not nullptr, the operation is profiled, error messages are
   // suppressed, and output_profile_result->algorithm() is set to
-  // algorithm->index().
+  // algorithm->index(). If epilogue was set to kBias or kBiasThenReLU when
+  // creating the plan, the bias argument here must refer to a valid device
+  // vector of length equal to the number of rows in matrix c. If epilogue was
+  // set to any other value then the bias argument here must be null. The bias
+  // vector is broadcast across the batch dimension.
   virtual bool DoBlasLtMatmul(
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,
       const HostOrDeviceScalar<int32>& alpha, const DeviceMemory<int8>& a,
       const DeviceMemory<int8>& b, const HostOrDeviceScalar<int32>& beta,
       DeviceMemory<int32>* c, ScratchAllocator* scratch_allocator,
       const blas::IBlasLtMatmulAlgorithm* algorithm,
+      const DeviceMemory<int32>& bias = {},
       blas::ProfileResult* output_profile_result = nullptr) = 0;
   virtual bool DoBlasLtMatmul(
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,
@@ -1507,6 +1519,7 @@ class BlasSupport {
       const HostOrDeviceScalar<Eigen::half>& beta, DeviceMemory<Eigen::half>* c,
       ScratchAllocator* scratch_allocator,
       const blas::IBlasLtMatmulAlgorithm* algorithm,
+      const DeviceMemory<Eigen::half>& bias = {},
       blas::ProfileResult* output_profile_result = nullptr) = 0;
   virtual bool DoBlasLtMatmul(
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,
@@ -1514,6 +1527,7 @@ class BlasSupport {
       const DeviceMemory<float>& b, const HostOrDeviceScalar<float>& beta,
       DeviceMemory<float>* c, ScratchAllocator* scratch_allocator,
       const blas::IBlasLtMatmulAlgorithm* algorithm,
+      const DeviceMemory<float>& bias = {},
       blas::ProfileResult* output_profile_result = nullptr) = 0;
   virtual bool DoBlasLtMatmul(
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,
@@ -1521,6 +1535,7 @@ class BlasSupport {
       const DeviceMemory<double>& b, const HostOrDeviceScalar<double>& beta,
       DeviceMemory<double>* c, ScratchAllocator* scratch_allocator,
       const blas::IBlasLtMatmulAlgorithm* algorithm,
+      const DeviceMemory<double>& bias = {},
       blas::ProfileResult* output_profile_result = nullptr) = 0;
   virtual bool DoBlasLtMatmul(
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,
@@ -1530,6 +1545,7 @@ class BlasSupport {
       const HostOrDeviceScalar<std::complex<float>>& beta,
       DeviceMemory<std::complex<float>>* c, ScratchAllocator* scratch_allocator,
       const blas::IBlasLtMatmulAlgorithm* algorithm,
+      const DeviceMemory<std::complex<float>>& bias = {},
       blas::ProfileResult* output_profile_result = nullptr) = 0;
   virtual bool DoBlasLtMatmul(
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,
@@ -1540,6 +1556,7 @@ class BlasSupport {
       DeviceMemory<std::complex<double>>* c,
       ScratchAllocator* scratch_allocator,
       const blas::IBlasLtMatmulAlgorithm* algorithm,
+      const DeviceMemory<std::complex<double>>& bias = {},
       blas::ProfileResult* output_profile_result = nullptr) = 0;
 
   virtual port::Status GetVersion(std::string *version) = 0;
@@ -2359,9 +2376,10 @@ class BlasSupport {
   CreateBlasLtMatmulPlanStridedBatched(                                        \
       blas::DataType ab_type, blas::DataType cd_type,                          \
       blas::ComputationType computation_type, blas::PointerMode pointer_mode,  \
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,      \
-      uint64 k, int batch_count, int64 lda, int64 stride_a, int64 ldb,         \
-      int64 stride_b, int64 ldc, int64 stride_c) override;                     \
+      blas::Epilogue epilogue, blas::Transpose transa, blas::Transpose transb, \
+      uint64 m, uint64 n, uint64 k, int batch_count, int64 lda,                \
+      int64 stride_a, int64 ldb, int64 stride_b, int64 ldc, int64 stride_c)    \
+      override;                                                                \
   bool GetBlasLtMatmulAlgorithms(                                              \
       const blas::IBlasLtMatmulPlan* plan, size_t max_workspace_size,          \
       int max_algorithm_count,                                                 \
@@ -2373,6 +2391,7 @@ class BlasSupport {
       const DeviceMemory<int8>& b, const HostOrDeviceScalar<int32>& beta,      \
       DeviceMemory<int32>* c, ScratchAllocator* scratch_allocator,             \
       const blas::IBlasLtMatmulAlgorithm* algorithm,                           \
+      const DeviceMemory<int32>& bias = {},                                    \
       blas::ProfileResult* output_profile_result = nullptr) override;          \
   bool DoBlasLtMatmul(                                                         \
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,                     \
@@ -2381,21 +2400,24 @@ class BlasSupport {
       const HostOrDeviceScalar<Eigen::half>& beta,                             \
       DeviceMemory<Eigen::half>* c, ScratchAllocator* scratch_allocator,       \
       const blas::IBlasLtMatmulAlgorithm* algorithm,                           \
-      blas::ProfileResult* output_profile_result) override;                    \
+      const DeviceMemory<Eigen::half>& bias = {},                              \
+      blas::ProfileResult* output_profile_result = nullptr) override;          \
   bool DoBlasLtMatmul(                                                         \
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,                     \
       const HostOrDeviceScalar<float>& alpha, const DeviceMemory<float>& a,    \
       const DeviceMemory<float>& b, const HostOrDeviceScalar<float>& beta,     \
       DeviceMemory<float>* c, ScratchAllocator* scratch_allocator,             \
       const blas::IBlasLtMatmulAlgorithm* algorithm,                           \
-      blas::ProfileResult* output_profile_result) override;                    \
+      const DeviceMemory<float>& bias = {},                                    \
+      blas::ProfileResult* output_profile_result = nullptr) override;          \
   bool DoBlasLtMatmul(                                                         \
       Stream* stream, const blas::IBlasLtMatmulPlan* plan,                     \
       const HostOrDeviceScalar<double>& alpha, const DeviceMemory<double>& a,  \
       const DeviceMemory<double>& b, const HostOrDeviceScalar<double>& beta,   \
       DeviceMemory<double>* c, ScratchAllocator* scratch_allocator,            \
       const blas::IBlasLtMatmulAlgorithm* algorithm,                           \
-      blas::ProfileResult* output_profile_result) override;                    \
+      const DeviceMemory<double>& bias = {},                                   \
+      blas::ProfileResult* output_profile_result = nullptr) override;          \
   bool DoBlasLtMatmul(Stream* stream, const blas::IBlasLtMatmulPlan* plan,     \
                       const HostOrDeviceScalar<std::complex<float>>& alpha,    \
                       const DeviceMemory<std::complex<float>>& a,              \
@@ -2404,7 +2426,9 @@ class BlasSupport {
                       DeviceMemory<std::complex<float>>* c,                    \
                       ScratchAllocator* scratch_allocator,                     \
                       const blas::IBlasLtMatmulAlgorithm* algorithm,           \
-                      blas::ProfileResult* output_profile_result) override;    \
+                      const DeviceMemory<std::complex<float>>& bias = {},      \
+                      blas::ProfileResult* output_profile_result = nullptr)    \
+      override;                                                                \
   bool DoBlasLtMatmul(Stream* stream, const blas::IBlasLtMatmulPlan* plan,     \
                       const HostOrDeviceScalar<std::complex<double>>& alpha,   \
                       const DeviceMemory<std::complex<double>>& a,             \
@@ -2413,7 +2437,9 @@ class BlasSupport {
                       DeviceMemory<std::complex<double>>* c,                   \
                       ScratchAllocator* scratch_allocator,                     \
                       const blas::IBlasLtMatmulAlgorithm* algorithm,           \
-                      blas::ProfileResult* output_profile_result) override;    \
+                      const DeviceMemory<std::complex<double>>& bias = {},     \
+                      blas::ProfileResult* output_profile_result = nullptr)    \
+      override;                                                                \
   port::Status GetVersion(std::string *version) override;
 
 }  // namespace blas

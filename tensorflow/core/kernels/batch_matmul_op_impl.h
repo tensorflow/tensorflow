@@ -558,8 +558,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             stream->parent()->CreateBlasLtMatmulPlanStridedBatched(
                 /*ab_type=*/blas_dtype,
                 /*cd_type=*/blas_dtype, computation_type,
-                se::blas::PointerMode::kHost, blas_transpose_b,
-                blas_transpose_a, n, m, k, batch_size,
+                se::blas::PointerMode::kHost, se::blas::Epilogue::kDefault,
+                blas_transpose_b, blas_transpose_a, n, m, k, batch_size,
                 /*lda=*/in_y.dim_size(2), b_stride,
                 /*ldb=*/in_x.dim_size(2), a_stride, /*ldc=*/n, c_stride);
         OP_REQUIRES(
@@ -621,7 +621,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
               stream
                   ->ThenBlasLtMatmul(plan.get(), alpha, *b_ptrs[0], *a_ptrs[0],
                                      beta, c_ptrs[0], &scratch_allocator,
-                                     profile_algorithm.get(), &profile_result)
+                                     profile_algorithm.get(), {},
+                                     &profile_result)
                   .ok();
 
           VLOG(4) << "  Autotune algorithm " << i
