@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -55,6 +57,42 @@ def all_reduce_sum_gradients(grads_and_vars):
       reduced_pos += 1
   assert reduced_pos == len(reduced), "Failed to add all gradients"
   return reduced_with_nones
+
+
+def make_gradient_clipnorm_fn(clipnorm):
+  """Creates a gradient transformation function for clipping by norm."""
+
+  def gradient_clipnorm_fn(grads_and_vars):
+
+    if isinstance(distribute_ctx.get_strategy(),
+                  central_storage_strategy.CentralStorageStrategy):
+      raise ValueError(
+          "`clipnorm` is not supported with `CenteralStorageStrategy`")
+
+    clipped_grads_and_vars = [
+        (clip_ops.clip_by_norm(g, clipnorm), v) for g, v in grads_and_vars
+    ]
+    return clipped_grads_and_vars
+
+  return gradient_clipnorm_fn
+
+
+def make_gradient_clipvalue_fn(clipvalue):
+  """Creates a gradient transformation function for clipping by value."""
+
+  def gradient_clipvalue_fn(grads_and_vars):
+
+    if isinstance(distribute_ctx.get_strategy(),
+                  central_storage_strategy.CentralStorageStrategy):
+      raise ValueError(
+          "`clipvalue` is not supported with `CenteralStorageStrategy`")
+
+    clipped_grads_and_vars = [(clip_ops.clip_by_value(g, -clipvalue,
+                                                      clipvalue), v)
+                              for g, v in grads_and_vars]
+    return clipped_grads_and_vars
+
+  return gradient_clipvalue_fn
 
 
 def filter_empty_gradients(grads_and_vars):

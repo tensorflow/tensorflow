@@ -33,6 +33,10 @@
   shape assumptions (note that you can pass shapes with `None` entries for axes
   that are meant to be dynamic). You can also disable the input checking
   entirely by setting `model.input_spec = None`.
+* `tf.keras.optimizers.Optimizer.get_gradients` no longer performs gradient
+  clipping. Instead, gradient clipping is performed in
+  `tf.keras.optimizers.Optimizer.apply_gradients`, after the gradients on each
+  device have been aggregated.
 
 ## Known Caveats
 
@@ -95,6 +99,8 @@
       * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
     * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
       as an alternative to accepting a `callable` loss.
+    * `Optimizer` arguments `clipnorm` and `clipvalue` are now supported with
+      `tf.distribute.Strategy` (`CentralStorageStrategy` is not yet supported).
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
