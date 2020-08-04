@@ -335,6 +335,15 @@ tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
+[profiler_server_impl] # profiler
+tensorflow::ProfilerServer::StartProfilerServer
+tensorflow::ProfilerServer::~ProfilerServer
+
+[profiler_client_impl] # profiler
+tensorflow::profiler::ProfileGrpc
+tensorflow::profiler::NewSessionGrpc
+tensorflow::profiler::MonitorGrpc
+
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl

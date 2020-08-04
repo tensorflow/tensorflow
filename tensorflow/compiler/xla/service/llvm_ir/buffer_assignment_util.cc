@@ -54,14 +54,17 @@ string SanitizeConstantName(const HloInstruction& instr) {
   return instr_name;
 }
 
-string ConstantBufferAllocationToGlobalName(
-    const BufferAllocation& allocation) {
-  const HloInstruction& instr = InstrForConstantBufferAllocation(allocation);
+string ConstantHloToGlobalName(const HloInstruction& instr) {
   string instr_name = instr.name();
   // Check that names are sanitized and stored in the HLO instructions
   // before constant buffer allocation.
   DCHECK_EQ(instr_name, SanitizeConstantName(instr));
   return absl::StrCat("buffer_for_", instr_name);
+}
+
+string ConstantBufferAllocationToGlobalName(
+    const BufferAllocation& allocation) {
+  return ConstantHloToGlobalName(InstrForConstantBufferAllocation(allocation));
 }
 
 const Literal& LiteralForConstantAllocation(

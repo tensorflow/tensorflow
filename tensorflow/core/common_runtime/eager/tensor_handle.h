@@ -53,8 +53,7 @@ class EagerContext;
 // Associates a Tensor and a Device, used in the eager runtime. Internal version
 // of the TFE_TensorHandle struct and the python EagerTensor class
 // (unrelated to python TensorHandle).
-class TensorHandle : public ImmediateExecutionTensorHandle,
-                     public core::RefCounted {
+class TensorHandle : public ImmediateExecutionTensorHandle {
   // TensorHandle for dtype != DT_RESOURCE
   TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
                Device* resource_device, EagerContext* ctx);

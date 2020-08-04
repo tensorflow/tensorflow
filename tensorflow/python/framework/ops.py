@@ -853,6 +853,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
                     "Please call `x.shape` rather than `len(x)` for "
                     "shape information.".format(self.name))
 
+  # TODO(mdan): This convoluted machinery is hard to maintain. Clean up.
   @staticmethod
   def _override_operator(operator, func):
     _override_helper(Tensor, operator, func)
@@ -5819,7 +5820,24 @@ def executing_eagerly_outside_functions():
       return context.executing_eagerly()
 
 
+@tf_export("inside_function", v1=[])
 def inside_function():
+  """Indicates whether the caller code is executing inside a `tf.function`.
+
+  Returns:
+    Boolean, True if the caller code is executing inside a `tf.function`
+    rather than eagerly.
+
+  Example:
+
+  >>> tf.inside_function()
+  False
+  >>> @tf.function
+  ... def f():
+  ...   print(tf.inside_function())
+  >>> f()
+  True
+  """
   return get_default_graph().building_function
 
 

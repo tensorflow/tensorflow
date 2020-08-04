@@ -54,9 +54,6 @@ Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
                                    std::vector<TensorShape>* shapes);
 Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
                                    std::vector<TensorShape>* shapes);
-
-// A callback called on exit.
-void LogAndExit(int code);
 }  // namespace tpu
 }  // namespace tensorflow
 

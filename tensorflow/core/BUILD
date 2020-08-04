@@ -458,7 +458,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:common_shape_fns.h",
         "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
         "//tensorflow/core/framework:dataset.h",
-        "//tensorflow/core/framework:dataset_stateful_op_whitelist.h",
+        "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
         "//tensorflow/core/framework:device_base.h",
         "//tensorflow/core/framework:function.h",
         "//tensorflow/core/framework:function_handle_cache.h",
@@ -630,7 +630,6 @@ tf_gen_op_libs(
         "linalg_ops",
         "list_ops",
         "lookup_ops",
-        "logging_ops",
         "manip_ops",
         "math_ops",
         "mkl_nn_ops",
@@ -661,6 +660,19 @@ tf_gen_op_libs(
     deps = [
         ":lib",
         ":protos_all_cc",
+    ],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "logging_ops",
+    ],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+        # TODO(b/162630222): remove this dependency.
+        "//tensorflow/c/kernels:summary_op_lib",
     ],
 )
 
@@ -863,6 +875,7 @@ cc_library(
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_chromiumos(
         [],
@@ -880,6 +893,7 @@ cc_library(
             ":tpu_outfeed_ops_op_lib",
             ":tpu_ordinal_selector_ops_op_lib",
             ":tpu_replication_ops_op_lib",
+            "//tensorflow/core/tpu/ops",
         ],
     ) + if_mkl([
         ":mkl_array_ops_op_lib",
@@ -969,6 +983,7 @@ cc_library(
     name = "all_kernels_impl",
     visibility = [":__subpackages__"],
     deps = [
+        "//tensorflow/c/kernels:summary_op",
         "//tensorflow/c/kernels:bitcast_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
@@ -1898,6 +1913,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
         "//tensorflow/core/platform:prefetch",
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:resource",

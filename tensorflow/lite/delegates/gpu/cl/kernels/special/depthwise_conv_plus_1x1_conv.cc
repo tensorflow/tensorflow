@@ -26,130 +26,27 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
-std::string GenerateCode(const OperationDef& op_def,
-                         const DepthwiseConvolution2DAttributes& dw_attr,
-                         int result_depth, const CLDevice& device,
-                         Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-
-  args->AddInt("stride_x", dw_attr.strides.w);
-  args->AddInt("padding_x", -dw_attr.padding.prepended.w);
-  args->AddInt("dilation_x", dw_attr.dilations.w);
-  args->AddInt("stride_y", dw_attr.strides.h);
-  args->AddInt("padding_y", -dw_attr.padding.prepended.h);
-  args->AddInt("dilation_y", dw_attr.dilations.h);
-
-  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
-
-  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
-                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
-
-  std::string c = GetCommonDefines(op_def.precision);
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id = get_global_id(0);\n";
-    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
-    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
-    c += "  args.dst_tensor.SetBatchRef(B);\n";
-    c += "  args.src_tensor.SetBatchRef(B);\n";
-  } else {
-    c += "  int X = get_global_id(0);\n";
-  }
-  c += "  int Y = get_global_id(1);\n";
-  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) { "
-       "\n";
-  c += "    return; \n";
-  c += "  } \n";
-  c += "  __constant FLT4* constants = args.constants.GetPtr();\n";
-  int intermediate_depth = DivideRoundUp(dw_attr.weights.shape.i, 4);
-  int weights_counter = 0;
-  for (int d = 0; d < intermediate_depth; ++d) {
-    c += "  FLT4 dw_res_" + std::to_string(d) + " = constants[" +
-         std::to_string(weights_counter++) + "];\n";
-  }
-  c += "  int x_offseted = X * args.stride_x + args.padding_x;\n";
-  c += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
-  c += "  int x_c, y_c;\n";
-  if (manual_clamp) {
-    c += "  bool x_in, y_in;\n";
-  }
-  c += "  FLT4 src;\n";
-  for (int ky = 0; ky < dw_attr.weights.shape.h; ++ky) {
-    c += "  y_c = y_offseted + " + std::to_string(ky) + " * args.dilation_y;\n";
-    if (manual_clamp) {
-      c += "  y_in = y_c >= 0 && y_c < args.src_tensor.Height();\n";
-      c += "  y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
-    }
-    for (int kx = 0; kx < dw_attr.weights.shape.w; ++kx) {
-      c += "  x_c = x_offseted + " + std::to_string(kx) +
-           " * args.dilation_x;\n";
-      if (manual_clamp) {
-        c += "  x_in = x_c >= 0 && x_c < args.src_tensor.Width();\n";
-        c += "  x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
-      }
-      for (int d = 0; d < intermediate_depth; ++d) {
-        std::string multiplier = manual_clamp ? "* (FLT)(x_in && y_in)" : "";
-        c += "  src = args.src_tensor.Read(x_c, y_c, " + std::to_string(d) +
-             ")" + multiplier + ";\n";
-        c += "  dw_res_" + std::to_string(d) + " += src * constants[" +
-             std::to_string(weights_counter++) + "];\n";
-      }
-    }
-  }
-  for (int d = 0; d < result_depth; ++d) {
-    c += "  FLT4 conv_res_" + std::to_string(d) + " = constants[" +
-         std::to_string(weights_counter++) + "];\n";
-  }
-  for (int d = 0; d < result_depth; ++d) {
-    for (int s = 0; s < intermediate_depth; ++s) {
-      std::string src = "dw_res_" + std::to_string(s);
-      std::string dst = "conv_res_" + std::to_string(d);
-      c += "  " + dst + " += " + src + ".x * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".y * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".z * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-      c += "  " + dst + " += " + src + ".w * constants[" +
-           std::to_string(weights_counter++) + "];\n";
-    }
-    c += "  args.dst_tensor.Write(conv_res_" + std::to_string(d) + ", X, Y, " +
-         std::to_string(d) + ");\n";
-  }
-  c += "}\n";
-
-  return c;
-}
-}  // namespace
 
 DepthwiseConvPlus1x1Conv::DepthwiseConvPlus1x1Conv(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr)
-    : GPUOperation(definition),
-      dw_attr_(dw_attr),
-      result_depth_(DivideRoundUp(conv_attr.weights.shape.o, 4)) {
+    const Convolution2DAttributes& conv_attr, const DeviceInfo& device_info)
+    : GPUOperation(definition), dw_attr_(dw_attr) {
   work_group_size_ = int3(8, 8, 1);
+  code_ =
+      GenerateCode(definition_, dw_attr_,
+                   DivideRoundUp(conv_attr.weights.shape.o, 4), device_info);
 }
 
 DepthwiseConvPlus1x1Conv::DepthwiseConvPlus1x1Conv(
     DepthwiseConvPlus1x1Conv&& operation)
     : GPUOperation(std::move(operation)),
-      dw_attr_(std::move(operation.dw_attr_)),
-      result_depth_(operation.result_depth_) {}
+      dw_attr_(std::move(operation.dw_attr_)) {}
 
 DepthwiseConvPlus1x1Conv& DepthwiseConvPlus1x1Conv::operator=(
     DepthwiseConvPlus1x1Conv&& operation) {
   if (this != &operation) {
     dw_attr_ = std::move(operation.dw_attr_);
-    std::swap(result_depth_, operation.result_depth_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -247,25 +144,102 @@ absl::Status DepthwiseConvPlus1x1Conv::UploadWeights(
   return absl::OkStatus();
 }
 
-absl::Status DepthwiseConvPlus1x1Conv::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateCode(definition_, dw_attr_, result_depth_,
-                                  *creation_context.device, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
+std::string DepthwiseConvPlus1x1Conv::GenerateCode(
+    const OperationDef& op_def, const DepthwiseConvolution2DAttributes& dw_attr,
+    int result_depth, const DeviceInfo& device_info) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  AddSrcTensor("src_tensor", src_desc);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
-absl::Status DepthwiseConvPlus1x1Conv::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  return absl::OkStatus();
+  args_.AddInt("stride_x", dw_attr.strides.w);
+  args_.AddInt("padding_x", -dw_attr.padding.prepended.w);
+  args_.AddInt("dilation_x", dw_attr.dilations.w);
+  args_.AddInt("stride_y", dw_attr.strides.h);
+  args_.AddInt("padding_y", -dw_attr.padding.prepended.h);
+  args_.AddInt("dilation_y", dw_attr.dilations.h);
+
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+
+  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
+                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
+
+  std::string c = GetCommonDefines(op_def.precision);
+  c += "__kernel void main_function(\n";
+  c += "$0) {\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int X = get_global_id(0);\n";
+  }
+  c += "  int Y = get_global_id(1);\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) { "
+       "\n";
+  c += "    return; \n";
+  c += "  } \n";
+  c += "  __constant FLT4* constants = args.constants.GetPtr();\n";
+  int intermediate_depth = DivideRoundUp(dw_attr.weights.shape.i, 4);
+  int weights_counter = 0;
+  for (int d = 0; d < intermediate_depth; ++d) {
+    c += "  FLT4 dw_res_" + std::to_string(d) + " = constants[" +
+         std::to_string(weights_counter++) + "];\n";
+  }
+  c += "  int x_offseted = X * args.stride_x + args.padding_x;\n";
+  c += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
+  c += "  int x_c, y_c;\n";
+  if (manual_clamp) {
+    c += "  bool x_in, y_in;\n";
+  }
+  c += "  FLT4 src;\n";
+  for (int ky = 0; ky < dw_attr.weights.shape.h; ++ky) {
+    c += "  y_c = y_offseted + " + std::to_string(ky) + " * args.dilation_y;\n";
+    if (manual_clamp) {
+      c += "  y_in = y_c >= 0 && y_c < args.src_tensor.Height();\n";
+      c += "  y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
+    }
+    for (int kx = 0; kx < dw_attr.weights.shape.w; ++kx) {
+      c += "  x_c = x_offseted + " + std::to_string(kx) +
+           " * args.dilation_x;\n";
+      if (manual_clamp) {
+        c += "  x_in = x_c >= 0 && x_c < args.src_tensor.Width();\n";
+        c += "  x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
+      }
+      for (int d = 0; d < intermediate_depth; ++d) {
+        std::string multiplier = manual_clamp ? "* (FLT)(x_in && y_in)" : "";
+        c += "  src = args.src_tensor.Read(x_c, y_c, " + std::to_string(d) +
+             ")" + multiplier + ";\n";
+        c += "  dw_res_" + std::to_string(d) + " += src * constants[" +
+             std::to_string(weights_counter++) + "];\n";
+      }
+    }
+  }
+  for (int d = 0; d < result_depth; ++d) {
+    c += "  FLT4 conv_res_" + std::to_string(d) + " = constants[" +
+         std::to_string(weights_counter++) + "];\n";
+  }
+  for (int d = 0; d < result_depth; ++d) {
+    for (int s = 0; s < intermediate_depth; ++s) {
+      std::string src = "dw_res_" + std::to_string(s);
+      std::string dst = "conv_res_" + std::to_string(d);
+      c += "  " + dst + " += " + src + ".x * constants[" +
+           std::to_string(weights_counter++) + "];\n";
+      c += "  " + dst + " += " + src + ".y * constants[" +
+           std::to_string(weights_counter++) + "];\n";
+      c += "  " + dst + " += " + src + ".z * constants[" +
+           std::to_string(weights_counter++) + "];\n";
+      c += "  " + dst + " += " + src + ".w * constants[" +
+           std::to_string(weights_counter++) + "];\n";
+    }
+    c += "  args.dst_tensor.Write(conv_res_" + std::to_string(d) + ", X, Y, " +
+         std::to_string(d) + ");\n";
+  }
+  c += "}\n";
+
+  return c;
 }
 
 int3 DepthwiseConvPlus1x1Conv::GetGridSize() const {
@@ -299,7 +273,8 @@ absl::Status CreateDepthwiseConvPlus1x1Conv(
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr,
     DepthwiseConvPlus1x1Conv* result) {
-  *result = DepthwiseConvPlus1x1Conv(definition, dw_attr, conv_attr);
+  *result = DepthwiseConvPlus1x1Conv(definition, dw_attr, conv_attr,
+                                     creation_context.device->GetInfo());
   RETURN_IF_ERROR(
       result->UploadWeights(dw_attr, conv_attr, creation_context.context));
   return absl::OkStatus();

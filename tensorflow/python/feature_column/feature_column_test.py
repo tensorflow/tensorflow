@@ -171,7 +171,6 @@ class LazyColumnTest(test.TestCase):
         TypeError, '"key" must be either a "str" or "_FeatureColumn".'):
       builder.get(NotAFeatureColumn())
 
-  @test_util.run_deprecated_v1
   def test_expand_dim_rank_1_sparse_tensor_empty_batch(self):
     # empty 1-D sparse tensor:
     builder = _LazyBuilder(features={'a': sparse_tensor.SparseTensor(
@@ -179,7 +178,7 @@ class LazyColumnTest(test.TestCase):
         dense_shape=[0],
         values=np.array([]))})
     with self.cached_session():
-      spv = builder.get('a').eval()
+      spv = builder.get('a')
       self.assertAllEqual(np.array([0, 1], dtype=np.int64), spv.dense_shape)
       self.assertAllEqual(
           np.reshape(np.array([], dtype=np.int64), (0, 2)), spv.indices)
@@ -187,7 +186,6 @@ class LazyColumnTest(test.TestCase):
 
 class NumericColumnTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_defaults(self):
     a = fc._numeric_column('aaa')
     self.assertEqual('aaa', a.key)
@@ -266,7 +264,6 @@ class NumericColumnTest(test.TestCase):
         'aaa': parsing_ops.FixedLenFeature((2, 3), dtype=dtypes.int32)
     }, a._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_parse_example_no_default_value(self):
     price = fc._numeric_column('price', shape=[2])
     data = example_pb2.Example(features=feature_pb2.Features(
@@ -309,7 +306,6 @@ class NumericColumnTest(test.TestCase):
     with self.assertRaisesRegex(TypeError, 'must be a callable'):
       fc._numeric_column('price', normalizer_fn='NotACallable')
 
-  @test_util.run_deprecated_v1
   def test_normalizer_fn_transform_feature(self):
 
     def _increment_two(input_tensor):
@@ -328,7 +324,7 @@ class NumericColumnTest(test.TestCase):
 
     price = fc._numeric_column('price', shape=[2], normalizer_fn=_increment_two)
     builder = _LazyBuilder({'price': [[1., 2.], [5., 6.]]})
-    self.assertEqual(builder.get(price), price._get_dense_tensor(builder))
+    self.assertAllClose(builder.get(price), price._get_dense_tensor(builder))
 
   def test_sparse_tensor_not_supported(self):
     price = fc._numeric_column('price')
@@ -340,7 +336,6 @@ class NumericColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'must be a Tensor'):
       price._transform_feature(builder)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     a = fc._numeric_column('aaa', shape=[1, 2], default_value=[[3., 2.]])
     a_copy = copy.deepcopy(a)
@@ -353,7 +348,6 @@ class NumericColumnTest(test.TestCase):
         'aaa', shape=[1, 2], default_value=np.array([[3., 2.]]))
     self.assertEqual(a.default_value, ((3., 2.),))
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     price = fc._numeric_column('price')
     with ops.Graph().as_default():
@@ -368,7 +362,6 @@ class NumericColumnTest(test.TestCase):
         sess.run(price_var.assign([[10.]]))
         self.assertAllClose([[10.], [50.]], self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     price = fc._numeric_column('price')
     with ops.Graph().as_default():
@@ -465,8 +458,8 @@ class BucketizedColumnTest(test.TestCase):
           'price': [[-1., 1.], [5., 6.]]
       }, [bucketized_price])
       with _initialized_session():
-        self.assertAllEqual([[0, 1], [3, 4]],
-                            transformed_tensor[bucketized_price].eval())
+        self.assertAllClose([[0, 1], [3, 4]],
+                            transformed_tensor[bucketized_price])
 
   def test_get_dense_tensor_one_input_value(self):
     """Tests _get_dense_tensor() for input with shape=[1]."""
@@ -539,7 +532,6 @@ class BucketizedColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'must be a Tensor'):
       bucketized_price._transform_feature(builder)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     a = fc._numeric_column('aaa', shape=[2])
     a_bucketized = fc._bucketized_column(a, boundaries=[0, 1])
@@ -667,7 +659,6 @@ class BucketizedColumnTest(test.TestCase):
 
 class HashedCategoricalColumnTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_defaults(self):
     a = fc._categorical_column_with_hash_bucket('aaa', 10)
     self.assertEqual('aaa', a.name)
@@ -695,7 +686,6 @@ class HashedCategoricalColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       fc._categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.float32)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     original = fc._categorical_column_with_hash_bucket('aaa', 10)
     for column in (original, copy.deepcopy(original)):
@@ -735,10 +725,8 @@ class HashedCategoricalColumnTest(test.TestCase):
           sparse_tensor.SparseTensorValue(
               indices=[[0, 0], [0, 1]],
               values=np.array([b'omar', b'stringer'], dtype=np.object_),
-              dense_shape=[1, 2]),
-          features['aaa'].eval())
+              dense_shape=[1, 2]), features['aaa'].eval())
 
-  @test_util.run_deprecated_v1
   def test_strings_should_be_hashed(self):
     hashed_sparse = fc._categorical_column_with_hash_bucket('wire', 10)
     wire_tensor = sparse_tensor.SparseTensor(
@@ -753,7 +741,7 @@ class HashedCategoricalColumnTest(test.TestCase):
       self.assertEqual(dtypes.int64, output.values.dtype)
       self.assertAllEqual(expected_values, output.values)
       self.assertAllEqual(wire_tensor.indices, output.indices)
-      self.assertAllEqual(wire_tensor.dense_shape, output.dense_shape.eval())
+      self.assertAllEqual(wire_tensor.dense_shape, output.dense_shape)
 
   def test_tensor_dtype_should_be_string_or_integer(self):
     string_fc = fc._categorical_column_with_hash_bucket(
@@ -793,7 +781,6 @@ class HashedCategoricalColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       builder.get(hashed_sparse)
 
-  @test_util.run_deprecated_v1
   def test_ints_should_be_hashed(self):
     hashed_sparse = fc._categorical_column_with_hash_bucket(
         'wire', 10, dtype=dtypes.int64)
@@ -852,7 +839,6 @@ class HashedCategoricalColumnTest(test.TestCase):
                           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
     self.assertCountEqual([], ops.get_collection('my_weights'))
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
     hashed_sparse = fc._categorical_column_with_hash_bucket('wire', 10)
     builder = _LazyBuilder({'wire': (('omar', ''), ('stringer', 'marlo'))})
@@ -860,7 +846,6 @@ class HashedCategoricalColumnTest(test.TestCase):
     self.assertIsNone(id_weight_pair.weight_tensor)
     self.assertEqual(builder.get(hashed_sparse), id_weight_pair.id_tensor)
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     wire_column = fc._categorical_column_with_hash_bucket('wire', 4)
     self.assertEqual(4, wire_column._num_buckets)
@@ -878,12 +863,11 @@ class HashedCategoricalColumnTest(test.TestCase):
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
                             self.evaluate(wire_var))
         self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
-        wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
+        self.evaluate(wire_var.assign(((1.,), (2.,), (3.,), (4.,))))
         # 'marlo' -> 3: wire_var[3] = 4
         # 'skywalker' -> 2, 'omar' -> 2: wire_var[2] + wire_var[2] = 3+3 = 6
         self.assertAllClose(((4.,), (6.,)), self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     wire_column = fc._categorical_column_with_hash_bucket('wire', 4)
     self.assertEqual(4, wire_column._num_buckets)
@@ -902,7 +886,7 @@ class HashedCategoricalColumnTest(test.TestCase):
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
                             self.evaluate(wire_var))
         self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
-        wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
+        self.evaluate(wire_var.assign(((1.,), (2.,), (3.,), (4.,))))
         # 'marlo' -> 3: wire_var[3] = 4
         # 'skywalker' -> 2, 'omar' -> 2: wire_var[2] + wire_var[2] = 3+3 = 6
         self.assertAllClose(((4.,), (6.,)), self.evaluate(predictions))
@@ -990,7 +974,6 @@ class CrossedColumnTest(test.TestCase):
     crossed = fc._crossed_column([b, 'c'], 15)
     self.assertEqual(15, crossed._num_buckets)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     a = fc._numeric_column('a', dtype=dtypes.int32)
     b = fc._bucketized_column(a, boundaries=[0, 1])
@@ -1001,7 +984,6 @@ class CrossedColumnTest(test.TestCase):
     self.assertEqual(15, crossed2_copy.hash_bucket_size)
     self.assertEqual(5, crossed2_copy.hash_key)
 
-  @test_util.run_deprecated_v1
   def test_parse_example(self):
     price = fc._numeric_column('price', shape=[2])
     bucketized_price = fc._bucketized_column(price, boundaries=[0, 50])
@@ -1044,7 +1026,7 @@ class CrossedColumnTest(test.TestCase):
     }
     outputs = _transform_features(features, [price_cross_wire])
     output = outputs[price_cross_wire]
-    with self.cached_session() as sess:
+    with self.cached_session():
       output_val = self.evaluate(output)
       self.assertAllEqual(
           [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [1, 3]], output_val.indices)
@@ -1052,7 +1034,6 @@ class CrossedColumnTest(test.TestCase):
         self.assertIn(val, list(range(hash_bucket_size)))
       self.assertAllEqual([2, 4], output_val.dense_shape)
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors(self):
     a = fc._numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc._bucketized_column(a, boundaries=(0, 1))
@@ -1120,7 +1101,6 @@ class CrossedColumnTest(test.TestCase):
         self.assertAllEqual(expected_values, id_tensor_eval.values)
         self.assertAllEqual((2, 4), id_tensor_eval.dense_shape)
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     """Tests linear_model.
 
@@ -1139,15 +1119,15 @@ class CrossedColumnTest(test.TestCase):
       }, (crossed,))
       bias = get_linear_model_bias()
       crossed_var = get_linear_model_column_var(crossed)
-      with _initialized_session() as sess:
+      with _initialized_session():
         self.assertAllClose((0.,), self.evaluate(bias))
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,), (0.,)),
                             self.evaluate(crossed_var))
         self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
-        sess.run(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
+        self.evaluate(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
         # Expected ids after cross = (1, 0, 1, 3, 4, 2)
         self.assertAllClose(((3.,), (14.,)), self.evaluate(predictions))
-        sess.run(bias.assign((.1,)))
+        self.evaluate(bias.assign((.1,)))
         self.assertAllClose(((3.1,), (14.1,)), self.evaluate(predictions))
 
   def test_linear_model_with_weights(self):
@@ -1202,7 +1182,6 @@ class CrossedColumnTest(test.TestCase):
                 dense_shape=(2, 2)),
         }, (crossed,))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     """Tests _LinearModel.
 
@@ -1223,15 +1202,15 @@ class CrossedColumnTest(test.TestCase):
       }, (crossed,))
       bias = get_linear_model_bias()
       crossed_var = get_linear_model_column_var(crossed)
-      with _initialized_session() as sess:
+      with _initialized_session():
         self.assertAllClose((0.,), self.evaluate(bias))
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,), (0.,)),
                             self.evaluate(crossed_var))
         self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
-        sess.run(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
+        self.evaluate(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
         # Expected ids after cross = (1, 0, 1, 3, 4, 2)
         self.assertAllClose(((3.,), (14.,)), self.evaluate(predictions))
-        sess.run(bias.assign((.1,)))
+        self.evaluate(bias.assign((.1,)))
         self.assertAllClose(((3.1,), (14.1,)), self.evaluate(predictions))
 
   def test_keras_linear_model_with_weights(self):

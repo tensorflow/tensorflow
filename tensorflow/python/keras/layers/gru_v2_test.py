@@ -186,7 +186,7 @@ class GRUV2Test(keras_parameterized.TestCase):
     gru_model.fit(x_train, y_train)
     y_2 = gru_model.predict(x_train)
 
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       cudnn_layer = rnn.GRU(rnn_state_size,
                             recurrent_activation='sigmoid',
                             reset_after=True)
@@ -249,14 +249,14 @@ class GRUV2Test(keras_parameterized.TestCase):
 
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
-    with test_util.device(use_gpu=False):
+    with testing_utils.device(should_use_gpu=False):
       layer = rnn.GRU(rnn_state_size)
       output = layer(inputs)
       cpu_model = keras.models.Model(inputs, output)
       weights = cpu_model.get_weights()
       y_1 = cpu_model.predict(x_train)
 
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       layer = rnn.GRU(rnn_state_size)
       output = layer(inputs)
       gpu_model = keras.models.Model(inputs, output)
@@ -266,7 +266,7 @@ class GRUV2Test(keras_parameterized.TestCase):
     # Note that CuDNN uses 'sigmoid' as activation, so the GRU V2 uses
     # 'sigmoid' as default. Construct the canonical GRU with sigmoid to achieve
     # the same output.
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       layer = rnn_v1.GRU(rnn_state_size,
                          recurrent_activation='sigmoid',
                          reset_after=True)
@@ -583,14 +583,14 @@ class GRUV2Test(keras_parameterized.TestCase):
 
     # Test for V1 behavior.
     lstm_v1 = rnn_v1.GRU(units, return_sequences=True, go_backwards=True)
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       outputs_masked_v1 = lstm_v1(inputs, mask=constant_op.constant(mask))
       outputs_trimmed_v1 = lstm_v1(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked_v1[:, -masksteps:], outputs_trimmed_v1)
 
     # Test for V2 behavior.
     lstm = rnn.GRU(units, return_sequences=True, go_backwards=True)
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       outputs_masked = lstm(inputs, mask=constant_op.constant(mask))
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)

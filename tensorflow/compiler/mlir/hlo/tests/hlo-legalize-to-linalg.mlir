@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -hlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -hlo-legalize-to-linalg -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @float_add
@@ -557,3 +557,18 @@ func @reverse(%input: tensor<2x3xf32>) -> tensor<2x3xf32> {
 }
 // CHECK: linalg.generic
 // CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+
+// -----
+
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @iota
+func @iota() -> tensor<7x10xf32> {
+  %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xf32>)
+  return %result : tensor<7x10xf32>
+}
+// CHECK: linalg.indexed_generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index):
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
+// CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
+// CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32

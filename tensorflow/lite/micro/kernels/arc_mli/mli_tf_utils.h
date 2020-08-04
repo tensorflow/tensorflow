@@ -35,7 +35,7 @@ static void ConvertToMliTensorData(const TfLiteTensor* tfT, mli_tensor* mliT) {
   } else if (tfT->type == kTfLiteInt32) {
     mliT->el_type = MLI_EL_ASYM_I32;
   } else {
-    TF_LITE_FATAL("Wrong data type. Expected int8 or int32.");
+    TF_LITE_FATAL("Wrong data type. Expected int8_t or int32_t.");
   }
 
   mliT->capacity = tfT->bytes;

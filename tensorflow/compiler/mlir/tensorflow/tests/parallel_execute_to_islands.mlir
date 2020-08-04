@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-parallel-execute-to-islands | FileCheck %s
+// RUN: tf-opt %s -tf-parallel-execute-to-islands | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @check_regions_to_islands
 func @check_regions_to_islands() {

@@ -381,8 +381,8 @@ class ClipTest(test.TestCase):
       np_ans_1 = [0.8, -1.6]
 
       ans, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
-      tf_ans_1 = ans[0].eval()
-      tf_ans_2 = ans[1].values.eval()
+      tf_ans_1 = self.evaluate(ans[0])
+      tf_ans_2 = self.evaluate(ans[1].values)
       tf_norm = self.evaluate(norm)
 
     self.assertAllClose(tf_norm, 5.0)

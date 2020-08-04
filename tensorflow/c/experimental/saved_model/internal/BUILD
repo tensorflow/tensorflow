@@ -42,12 +42,15 @@ cc_library(
         ":tensorhandle_list_type",
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status_internal",
+        "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

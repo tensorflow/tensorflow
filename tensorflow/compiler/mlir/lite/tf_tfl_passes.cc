@@ -166,6 +166,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
+    // Run shape inference after variables are converted to constants.
+    if (pass_config.shape_inference) {
+      pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+    }
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(
@@ -173,12 +177,18 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     if (pass_config.shape_inference) {
       // Add a shape inference pass to optimize away the unnecessary casts.
+      // This also fixes the unranked shapes due to TF ops constant folding.
+      // TODO(fengliuai): remove this pass if TableGen patterns have a better
+      // to control the shapes for the intermediate results.
       pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
     }
 
     // Inline function calls that left in the graph after folding functional
     // control flow ops (IfOp, CaseOp).
     pass_manager->addPass(mlir::createInlinerPass());
+
+    // This pass removes the asset file dependencies in hash table use cases.
+    pass_manager->addPass(mlir::TF::CreateInitTextFileToImportPass());
 
     pass_manager->addPass(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));

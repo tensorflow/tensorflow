@@ -328,9 +328,6 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
     symbol_names: Tuple containing names of the loop variables returned by
       get_state.
     opts: Optional dict of extra loop parameters.
-
-  Returns:
-    Tuple containing the final state.
   """
   if tensor_util.is_tensor(iter_):
     if tensors.is_range_tensor(iter_):
@@ -356,11 +353,11 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
         iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
   elif isinstance(iter_, distribute.Iterator):
-    raise NotImplementedError(
-        'distributed iterators not supported yet, use the distributed dataset'
-        ' directly')
+    _tf_iterator_for_stmt(
+        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
   elif isinstance(iter_, distribute.Iterable):
+    # TODO(b/162250181): Use _tf_iterator_for_stmt(iter(iter_)...
     _tf_distributed_iterable_for_stmt(
         iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
@@ -571,7 +568,7 @@ def _tf_iterator_for_stmt(
 
   def aug_body():
     """Main body passed to _tf_while_stmt."""
-    opt_iterate = iterator_ops.get_next_as_optional(iter_)
+    opt_iterate = iter_.get_next_as_optional()
     has_next.value = opt_iterate.has_value()
     loop_vars = aug_get_state()  # updated by set_state() in _tf_while_loop.
 

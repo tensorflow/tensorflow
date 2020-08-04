@@ -76,3 +76,16 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   }
 
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
+  // CHECK: func @f
+  func @f(
+    %arg0: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
+    %arg1: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
+  ) attributes {tf_saved_model.exported_names = ["f"]} {
+    return
+  }
+}

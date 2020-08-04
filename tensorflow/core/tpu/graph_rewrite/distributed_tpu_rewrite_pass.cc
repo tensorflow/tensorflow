@@ -1693,8 +1693,10 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     const DataTypeVector& retval_types,
     const std::vector<InferredShape>& retval_shapes, const Graph& graph,
     const Node* replicate_node, FunctionLibraryRuntime* flr,
+    bool allow_parameter_replication_for_spmd,
     std::vector<xla::OpSharding>* arg_sharding, std::vector<bool>* arg_fast_mem,
-    std::vector<xla::OpSharding>* retval_sharding) {
+    std::vector<xla::OpSharding>* retval_sharding,
+    std::vector<std::string>* arg_names) {
   // Builds vectors of the argument and return nodes.
   std::vector<Node*> args(arg_types.size());
   std::vector<Node*> retvals(retval_types.size());
@@ -1744,10 +1746,12 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   TensorDevicePlacer args_device_selector(num_cores_per_replica, arg_types,
                                           arg_shapes);
   arg_sharding->resize(args.size());
+  arg_names->resize(args.size());
   arg_fast_mem->resize(args.size());
   CachedFunctionHandles cached_function_handles(flr);
-  const bool use_spmd = UseSpmdForXlaPartitioning(replicate_node) ||
-                        replicate_inputs_outputs_by_default_for_xla_spmd_;
+  const bool use_spmd = (UseSpmdForXlaPartitioning(replicate_node) ||
+                         replicate_inputs_outputs_by_default_for_xla_spmd_) &&
+                        allow_parameter_replication_for_spmd;
   for (int i = 0; i < args.size(); ++i) {
     const Node* n = args[i];
     absl::optional<int64> assigned_core;
@@ -1809,7 +1813,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (sharding->type() != xla::OpSharding::REPLICATED &&
                sharding->type() != xla::OpSharding::OTHER) {
       return tensorflow::errors::InvalidArgument(
-          "Unsupported argument sharding: ", sharding->DebugString());
+          "Unsupported argument sharding (for arg ", n->DebugString(),
+          "): ", sharding->DebugString());
     }
     if (assigned_core.has_value()) {
       args_device_selector.ReportDeviceAssigned(*assigned_core, i);
@@ -1832,6 +1837,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     }
     (*arg_sharding)[i] = *sharding;
     (*arg_fast_mem)[i] = is_fast_mem;
+    (*arg_names)[i] = n->name();
     if (is_fast_mem) {
       VLOG(3) << "Add " << TPU_FAST_MEM_ATTR << " attribute to "
               << args[i]->name();
@@ -1850,7 +1856,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
 
     TF_ASSIGN_OR_RETURN(
         absl::optional<xla::OpSharding> sharding,
-        ParseShardingFromDevice(*edge->src(), num_cores_per_replica));
+        ParseShardingFromEdgeSource(*edge, num_cores_per_replica));
 
     if (partitioned_output_nodes.contains(i)) {
       Node* output_node = partitioned_output_nodes[i];
@@ -1878,7 +1884,9 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       } else if (sharding.value().type() != xla::OpSharding::REPLICATED &&
                  sharding.value().type() != xla::OpSharding::OTHER) {
         return tensorflow::errors::InvalidArgument(
-            "Unsupported argument sharding: ", sharding->DebugString());
+            "Unsupported argument sharding for retval ",
+            retvals[i]->DebugString(), " edge=", edge->DebugString(), ": ",
+            sharding->DebugString());
       }
     } else {
       if (use_spmd) {
@@ -1914,6 +1922,23 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     }
     retvals[i]->AddAttr(kShardingAttribute, sharding->SerializeAsString());
     (*retval_sharding)[i] = *sharding;
+  }
+  if (use_spmd &&
+      (absl::c_any_of(*arg_sharding,
+                      [](const xla::OpSharding& s) {
+                        return s.type() == xla::OpSharding::MAXIMAL;
+                      }) ||
+       absl::c_any_of(*retval_sharding, [](const xla::OpSharding& s) {
+         return s.type() == xla::OpSharding::MAXIMAL;
+       }))) {
+    LOG(WARNING) << "XLA SPMD only supports cases where all inputs/outputs "
+                    "exist on every partition (sharded or replicated). Fall "
+                    "back to MPMD.";
+    return AssignArgsAndRetvalsToCores(
+        num_cores_per_replica, params_info, arg_types, arg_shapes, retval_types,
+        retval_shapes, graph, replicate_node, flr,
+        /*allow_parameter_replication_for_spmd=*/false, arg_sharding,
+        arg_fast_mem, retval_sharding, arg_names);
   }
   return Status::OK();
 }
@@ -2000,6 +2025,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     const string& session_handle,
     const std::vector<xla::OpSharding>& arg_sharding,
     const std::vector<bool>& arg_fast_mem,
+    const std::vector<std::string>& arg_names,
     const std::vector<xla::OpSharding>& retval_sharding,
     int num_cores_per_replica, const string& compile_device,
     const xla::DeviceAssignment* xla_device_assignment,
@@ -2013,7 +2039,15 @@ Status DistributedTPURewritePass::BuildCompileNode(
   proto.set_function_library_fingerprint(library_fingerprint);
   proto.set_enable_automatic_model_parallelism(
       enable_cross_replica_sharding_mirrored_variables_);
-  const bool use_spmd = UseSpmdForXlaPartitioning(replicate_node);
+  const bool use_spmd =
+      UseSpmdForXlaPartitioning(replicate_node) && allow_xla_spmd_partition_ &&
+      !absl::c_any_of(arg_sharding,
+                      [](const xla::OpSharding& s) {
+                        return s.type() == xla::OpSharding::MAXIMAL;
+                      }) &&
+      !absl::c_any_of(retval_sharding, [](const xla::OpSharding& s) {
+        return s.type() == xla::OpSharding::MAXIMAL;
+      });
   proto.set_use_spmd_for_xla_partitioning(use_spmd);
 
   // Get and fill padding map.
@@ -2041,6 +2075,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     tpu::TPUCompileMetadataProto::Arg* arg = proto.add_args();
     DataType type = arg_types[i];
     const InferredShape& arg_shape = arg_shapes[i];
+    arg->set_name(arg_names[i]);
     if (type == DT_RESOURCE) {
       TF_RET_CHECK(arg_shape.handle_type != DT_INVALID) << i;
       arg->set_dtype(arg_shape.handle_type);
@@ -2440,7 +2475,8 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
 
 Status DistributedTPURewritePass::BuildExecuteNodes(
     const ParameterInfo& params_info, int num_tasks, int num_cores_per_replica,
-    const Node& replicate_node, const DataTypeVector& arg_types,
+    const Node& replicate_node, const std::vector<std::string>& arg_names,
+    const DataTypeVector& arg_types,
     const std::vector<InferredShape>& arg_shapes,
     const DataTypeVector& retval_types,
     const std::vector<xla::OpSharding>& arg_shardings,
@@ -2563,7 +2599,9 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       }
     } else {
       return tensorflow::errors::InvalidArgument(
-          "Unsupported argument sharding: ", sharding.DebugString());
+          "Unsupported argument sharding for arg=", arg_names[i],
+          " shape=", arg_shapes[i].shape.DebugString(), ": ",
+          sharding.DebugString());
     }
   }
   std::vector<std::vector<int>> core_retval_nums(num_cores_per_replica);
@@ -3812,11 +3850,13 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
 
   std::vector<xla::OpSharding> arg_sharding;
   std::vector<bool> arg_fast_mem;
+  std::vector<std::string> arg_names;
   std::vector<xla::OpSharding> retval_sharding;
   TF_RETURN_IF_ERROR(AssignArgsAndRetvalsToCores(
       num_cores_per_replica, params_info, arg_types, arg_shapes, retval_types,
-      retval_shapes, *computation, replicate_node, flr, &arg_sharding,
-      &arg_fast_mem, &retval_sharding));
+      retval_shapes, *computation, replicate_node, flr,
+      allow_xla_spmd_partition_, &arg_sharding, &arg_fast_mem, &retval_sharding,
+      &arg_names));
 
   VLOG(1) << DumpGraphToFile("distributed_tpu_graph_to_replicate", *computation,
                              flib_def);
@@ -3874,7 +3914,7 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
   TF_RETURN_IF_ERROR(BuildCompileNode(
       replicate_node, *function, library_fingerprint, params_info, arg_shapes,
       arg_types, guaranteed_constant_nodes, session_handle, arg_sharding,
-      arg_fast_mem, retval_sharding, num_cores_per_replica,
+      arg_fast_mem, arg_names, retval_sharding, num_cores_per_replica,
       /*compile_device=*/tpu_compilation_device, xla_device_assignment.get(),
       dynamic_shape_nodes, graph, &compile_node, autotuner_thresh));
 
@@ -3888,8 +3928,8 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
 
   std::vector<VariableWrite> variable_writes;
   TF_RETURN_IF_ERROR(BuildExecuteNodes(
-      params_info, num_tasks, num_cores_per_replica, *replicate_node, arg_types,
-      arg_shapes, retval_types, arg_sharding, retval_sharding,
+      params_info, num_tasks, num_cores_per_replica, *replicate_node, arg_names,
+      arg_types, arg_shapes, retval_types, arg_sharding, retval_sharding,
       tf_device_assignment, compile_node, variable_reads,
       control_after_compilation, control_after, &variable_writes, graph));
   bool contains_resource_write_op =
@@ -4084,6 +4124,7 @@ Status DistributedTPURewritePass::Run(
 }
 
 bool DistributedTPURewritePass::distribute_vars_ = false;
+bool DistributedTPURewritePass::allow_xla_spmd_partition_ = true;
 bool DistributedTPURewritePass::
     replicate_inputs_outputs_by_default_for_xla_spmd_ = false;
 bool DistributedTPURewritePass::
@@ -4091,10 +4132,12 @@ bool DistributedTPURewritePass::
 bool DistributedTPURewritePass::enable_automatic_model_parallelism_ = false;
 
 /*static*/ void DistributedTPURewritePass::SetDistributedTpuRewritePassOptions(
-    bool distribute_vars, bool replicate_inputs_outputs_by_default_for_xla_spmd,
+    bool distribute_vars, bool allow_xla_spmd_partition,
+    bool replicate_inputs_outputs_by_default_for_xla_spmd,
     bool enable_cross_replica_sharding_mirrored_variables,
     bool enable_automatic_model_parallelism) {
   distribute_vars_ = distribute_vars;
+  allow_xla_spmd_partition_ = allow_xla_spmd_partition;
   replicate_inputs_outputs_by_default_for_xla_spmd_ =
       replicate_inputs_outputs_by_default_for_xla_spmd;
   enable_cross_replica_sharding_mirrored_variables_ =

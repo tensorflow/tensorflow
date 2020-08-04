@@ -117,6 +117,52 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAddition) {
                   m::ConstantScalar(0.125))));
 }
 
+// (A*C1) * (B*C2) => (A*B)*(C1*C2)
+TEST_F(AlgebraicSimplifierTest, MultiplyChain) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      c = f32[] constant(2)
+      d = f32[] constant(4)
+      x = f32[] multiply(p0, c)
+      y = f32[] multiply(p1, d)
+      ROOT z = f32[] multiply(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MultiplyAnyOrder(
+          m::MultiplyAnyOrder(m::Parameter(0), m::Parameter(1)),
+          m::MultiplyAnyOrder(m::ConstantScalar(2), m::ConstantScalar(4)))));
+}
+
+// MUL(MUL(X, BROADCAST(constant)), BROADCAST(Y)) ==>
+// MUL(X, BROADCAST(MUL(Y, BROADCAST(constant))))
+TEST_F(AlgebraicSimplifierTest, MultiplyBroadcastReassoc) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[2,2] parameter(0)
+      p1 = f32[] parameter(1)
+      b = f32[] constant(2)
+      c = f32[2, 2] broadcast(b), dimensions={}
+      x = f32[2,2] multiply(p0, c)
+      y = f32[2,2] broadcast(p1), dimensions={}
+      ROOT z = f32[2,2] multiply(y, x)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::Parameter(0), m::Broadcast(m::MultiplyAnyOrder(
+                                       m::Parameter(1), m::Constant())))));
+}
+
 // A*C + B*C => (A+B)*C if C is a broadcast of a floating-point power of 2.
 TEST_F(AlgebraicSimplifierTest, FactorFpAdditionWithBroadcast) {
   const char* kModuleStr = R"(
@@ -1566,6 +1612,32 @@ TEST_F(AlgebraicSimplifierTest, Pow2) {
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
+}
+
+// Test that pow(A, 3) is simplified to A*A*A.
+TEST_F(AlgebraicSimplifierTest, Pow3) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* three = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, three));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Power(m::Parameter(0), m::Op().Is(three))));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Multiply(m::Parameter(0),
+                             m::Multiply(m::Parameter(0), m::Parameter(0)))));
 }
 
 // Test that pow(A, -1) is simplified to 1/A.

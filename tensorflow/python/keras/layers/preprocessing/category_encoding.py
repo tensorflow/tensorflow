@@ -131,6 +131,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
         compute_max_element=max_tokens is None,
         compute_idf=output_mode == TFIDF)
     super(CategoryEncoding, self).__init__(combiner=combiner, **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("CategoryEncoding")
 
     self._max_tokens = max_tokens
     self._output_mode = output_mode

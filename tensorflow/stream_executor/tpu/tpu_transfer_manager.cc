@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/tpu_transfer_manager.h"
 
+#include <utility>
+
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/tpu/tpu_api.h"
@@ -80,18 +82,20 @@ Status TpuTransferManager::TransferLiteralToDeviceAsync(
 
 struct TransferFromDeviceState {
   std::atomic<int64_t> remaining_transfers;
-  StatusHelper status_helper;
+  SE_Status* overall_status =
+      tpu::ExecutorApiFn()->TpuStatus_NewFn();  // OK or the first error
   std::function<void(Status)> done;
 
   void TransferFinished(SE_Status* status) {
-    if (!TpuStatus_Ok(status) && TpuStatus_Ok(status_helper.c_status)) {
-      status_helper.c_status = status;
-    } else {
-      TpuStatus_Free(status);
+    if (!tpu::ExecutorApiFn()->TpuStatus_OkFn(status) &&
+        tpu::ExecutorApiFn()->TpuStatus_OkFn(overall_status)) {
+      std::swap(overall_status, status);
     }
+    tpu::ExecutorApiFn()->TpuStatus_FreeFn(status);
 
     if (--remaining_transfers == 0) {
-      done(status_helper.status());
+      done(StatusHelper::FromC(overall_status));
+      tpu::ExecutorApiFn()->TpuStatus_FreeFn(overall_status);
       delete this;
     }
   }

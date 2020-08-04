@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
 namespace tflite {
@@ -132,11 +133,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   auto* op_data = static_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   tflite::QuantizationParams op_params;
-  op_params.zero_point = output->params.zero_point;
+  op_params.zero_point = op_data->zero_point;
 
   if (input->type != kTfLiteInt16 && output->type != kTfLiteInt8) {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
@@ -146,9 +147,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   xtensa::hifimini::AffineQuantize(
-      op_data->scale_multiplier, op_data->zero_point, GetTensorShape(input),
-      GetTensorData<int16_t>(input), GetTensorShape(output),
-      GetTensorData<int8_t>(output));
+      op_data->scale_multiplier, op_data->zero_point,
+      tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<int16_t>(input),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 
@@ -156,7 +159,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
-// quantized output, in int8 or uint8 format.
+// quantized output, in int8_t or uint8_t format.
 TfLiteRegistration Register_QUANTIZE() {
   return {/*init=*/quantize::Init,
           /*free=*/nullptr,

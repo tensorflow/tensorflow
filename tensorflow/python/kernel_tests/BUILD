@@ -49,6 +49,7 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "no_mac",  # TODO(b/129706424): Re-enable this test on Mac.
+        "nomsan",  # TODO(b/161902335): Re-enable.
         "notsan",  # TODO(b/161829717): Re-enable.
     ],
     deps = [
@@ -73,21 +74,6 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
         "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "batch_gather_op_test",
-    srcs = ["batch_gather_op_test.py"],
-    tags = [
-        "no_gpu",  # b/127001953
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -254,6 +240,17 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
+    name = "collective_ops_test",
+    size = "small",
+    srcs = ["collective_ops_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:collective_ops_gen",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
@@ -2039,20 +2036,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "gather_op_test",
-    size = "medium",
-    srcs = ["gather_op_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
     name = "gradient_correctness_test",
     size = "small",
     srcs = ["gradient_correctness_test.py"],
@@ -2459,18 +2442,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "session_ops_test",
-    size = "small",
-    srcs = ["session_ops_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session_ops",
-    ],
-)
-
-cuda_py_test(
     name = "shape_ops_test",
     size = "medium",
     srcs = ["shape_ops_test.py"],
@@ -2765,18 +2736,6 @@ cuda_py_test(
         "notap",  # flaky timeout/segfault, b/136498892
         "optonly",  # times out
     ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "unstack_op_test",
-    size = "small",
-    srcs = ["unstack_op_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3081,21 +3040,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "slice_op_test",
-    size = "medium",
-    srcs = ["slice_op_test.py"],
-    tags = ["no_windows"],  # b/126916429
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
         "//third_party/py/numpy",
     ],
 )
@@ -3520,9 +3464,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
-    tags = [
-        "no_gpu",  # TODO(b/161856380): Re-enable when fix lands.
-    ],
+    xla_enable_strict_auto_jit = False,  # b/161856380
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

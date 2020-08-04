@@ -106,6 +106,28 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
+  def benchmark_bidirect_lstm_imdb_bs_512_gpu_2(self):
+    """Measure performance with batch_size=512, run_iters=4, gpu=2 and
+
+    distribution_strategy=`mirrored`.
+    """
+    batch_size = 512
+    run_iters = 4
+    metrics, wall_time, extras = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.imdb_x,
+        y=self.imdb_y,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        num_gpus=2,
+        distribution_strategy='mirrored',
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+
 
 if __name__ == '__main__':
   tf.test.main()

@@ -38,7 +38,6 @@ namespace cl {
 class DepthwiseConvolution : public GPUOperation {
  public:
   DepthwiseConvolution() = default;
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -59,10 +58,10 @@ class DepthwiseConvolution : public GPUOperation {
       DepthwiseConvolution* result);
   DepthwiseConvolution(const OperationDef& definition,
                        const DepthwiseConvolution2DAttributes& attr,
-                       bool weights_are_buffer);
+                       bool weights_are_buffer, const DeviceInfo& device_info);
   DepthwiseConvolution(const OperationDef& definition,
                        const DepthwiseConvolution3DAttributes& attr,
-                       bool weights_are_buffer);
+                       bool weights_are_buffer, const DeviceInfo& device_info);
 
   template <DataType T>
   absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -79,6 +78,12 @@ class DepthwiseConvolution : public GPUOperation {
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
+
+  std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
+                                               bool stride_correction,
+                                               int channel_multiplier,
+                                               bool weights_are_buffer,
+                                               const DeviceInfo& device_info);
 
   bool weights_are_buffer_;
 

@@ -121,5 +121,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops.data_service_ops import distribute
+from tensorflow.python.data.experimental.ops.data_service_ops import from_dataset_id
+from tensorflow.python.data.experimental.ops.data_service_ops import register_dataset
 from tensorflow.python.data.experimental.service.server_lib import DispatchServer
 from tensorflow.python.data.experimental.service.server_lib import WorkerServer

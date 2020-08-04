@@ -16,8 +16,10 @@ exports_files([
     "src/testdata/add.bin",
     "src/testdata/add_unknown_dimensions.bin",
     "src/testdata/grace_hopper_224.jpg",
+    "src/testdata/tile_with_bool_input.bin",
     "AndroidManifest.xml",
     "proguard.flags",
+    "tflite_version_script.lds",
 ])
 
 JAVA_SRCS = glob([
@@ -248,6 +250,7 @@ java_test(
     data = [
         "src/testdata/add.bin",
         "src/testdata/add_unknown_dimensions.bin",
+        "src/testdata/tile_with_bool_input.bin",
         "//tensorflow/lite:testdata/dynamic_shapes.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
@@ -335,6 +338,33 @@ java_test(
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflowlitelib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "InterpreterCustomizedAndroidBuildTest",
+    size = "small",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterCustomizedAndroidBuildTest.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/test_model.bin",
+    ],
+    javacopts = JAVACOPTS,
+    # Add customized libtensorflowlite_jni.so to java_path
+    jvm_flags = ["-Djava.library.path=third_party/tensorflow/lite/testing"],
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+        "v1only",
+    ],
+    test_class = "org.tensorflow.lite.InterpreterCustomizedAndroidBuildTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/testing:customtized_tflite_for_add_ops",
         "@com_google_truth",
         "@junit",
     ],

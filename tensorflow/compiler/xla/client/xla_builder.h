@@ -45,6 +45,16 @@ limitations under the License.
 namespace xla {
 
 class XlaBuilder;
+class XlaOp;
+
+namespace internal {
+
+XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
+                            absl::Span<const XlaOp> operands,
+                            absl::string_view fusion_kind,
+                            const XlaComputation& fused_computation);
+
+}  // namespace internal
 
 // This represents an instruction that has been enqueued using the XlaBuilder.
 // This is used to pass to subsequent computations that depends upon the
@@ -152,6 +162,11 @@ class XlaBuilder {
   // instructions generated via this computation builder will have the same
   // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
+
+  // Similar to SetOpMetadata, but only set the metadata for the next op.
+  void SetOneShotOpMetadata(OpMetadata metadata) {
+    metadata_ = std::move(metadata);
+  }
 
   // Clears the HloMetadata state.
   void ClearOpMetadata() { metadata_.Clear(); }
@@ -624,6 +639,8 @@ class XlaBuilder {
   XlaOp ConvertElementType(XlaOp operand, PrimitiveType new_element_type);
 
   XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
+  virtual StatusOr<XlaOp> BitcastConvertTypeInternal(const Shape& shape,
+                                                     XlaOp operand);
 
   XlaOp Transpose(XlaOp operand, absl::Span<const int64> permutation);
   virtual StatusOr<XlaOp> TransposeInternal(
@@ -635,6 +652,10 @@ class XlaBuilder {
 
   XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
              int64 dimension = -1, bool is_stable = false);
+  virtual StatusOr<XlaOp> SortInternal(const Shape& shape,
+                                       absl::Span<const XlaOp> operands,
+                                       const XlaComputation& comparator,
+                                       int64 dimension, bool is_stable);
 
   XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
 
@@ -651,6 +672,9 @@ class XlaBuilder {
 
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
+  virtual StatusOr<XlaOp> WhileInternal(const Shape& shape,
+                                        const XlaComputation& condition,
+                                        const XlaComputation& body, XlaOp init);
 
   XlaOp Conditional(XlaOp predicate, XlaOp true_operand,
                     const XlaComputation& true_computation, XlaOp false_operand,
@@ -841,6 +865,9 @@ class XlaBuilder {
   // operation, in order to simplify client code (and not sprinkle this metadata
   // throughout the TensorFlow op kernel implementations).
   OpMetadata metadata_;
+
+  // A temporary metadata that will only be applied to the next op created.
+  absl::optional<OpMetadata> one_shot_metadata_;
 
   // Sharding for this operator. This is structured as a "model"-like operation,
   // in order to simplify client code, similar to metadata_.
@@ -1205,6 +1232,10 @@ class XlaBuilder {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
+
+  friend XlaOp internal::XlaBuilderBuildFusion(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      absl::string_view fusion_kind, const XlaComputation& fused_computation);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on

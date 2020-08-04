@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
@@ -131,7 +132,7 @@ class TableHandler(object):
     inputs = ragged_tensor.convert_to_tensor_or_ragged_tensor(inputs)
 
     # Run the lookup operation on the converted tensor.
-    if ragged_tensor.is_ragged(inputs):
+    if tf_utils.is_ragged(inputs):
       return self._ragged_lookup(inputs)
     else:
       return self._tensor_lookup(inputs)

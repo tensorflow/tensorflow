@@ -85,8 +85,8 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteConvParams* params) {
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
-  // MLI optimized version only supports int8 dataype, dilation factor of 1 and
-  // per-axis quantization of weights (no broadcasting/per-tensor)
+  // MLI optimized version only supports int8_t dataype, dilation factor of 1
+  // and per-axis quantization of weights (no broadcasting/per-tensor)
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&
                  (params->dilation_width_factor == 1) &&
@@ -242,7 +242,7 @@ TfLiteStatus EvalMliQuantizedPerChannel(
     const OpData& data, const TfLiteTensor* input, const TfLiteTensor* filter,
     const TfLiteTensor* bias, TfLiteTensor* output) {
   // Run Conv MLI kernel
-  // MLI optimized version only supports int8 dataype and dilation factor of 1
+  // MLI optimized version only supports int8_t dataype and dilation factor of 1
   if ((input->type == kTfLiteInt8) && (params->dilation_width_factor == 1) &&
       (params->dilation_height_factor == 1)) {
     mli_tensor mli_in = {};

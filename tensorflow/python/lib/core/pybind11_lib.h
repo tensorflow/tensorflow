@@ -60,6 +60,11 @@ void ThrowTypeError(const char* error_message) {
   throw pybind11::error_already_set();
 }
 
+void ThrowValueError(const char* error_message) {
+  PyErr_SetString(PyExc_ValueError, error_message);
+  throw pybind11::error_already_set();
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_

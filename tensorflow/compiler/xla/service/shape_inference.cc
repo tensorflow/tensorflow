@@ -643,11 +643,6 @@ Status ValidateDotDimensionNumbers(
     return InvalidArgument("%s", message);
   };
 
-  // Check if both element types are the same.
-  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
-    return fail("Element types do not match.");
-  }
-
   // Validate basic properties of dot dimension numbers.
   TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 
@@ -954,18 +949,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(ExpectArray(
       rhs, absl::StrCat("rhs of binary operation ", HloOpcodeString(opcode))));
   switch (opcode) {
+    case HloOpcode::kAdd:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 
     case HloOpcode::kSubtract:
-    case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
     case HloOpcode::kPower:
     case HloOpcode::kDivide:
     case HloOpcode::kRemainder:
-    case HloOpcode::kMultiply:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -1621,11 +1616,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         batch_group_count, feature_group_count);
   }
 
-  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
-    return InvalidArgument(
-        "Convolution with different element types: %s and %s.",
-        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs));
-  }
   if (dnums.input_spatial_dimensions_size() !=
       dnums.kernel_spatial_dimensions_size()) {
     return InvalidArgument(

@@ -643,8 +643,10 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     }
     // Release any outputs that are allocated, ExecuteNativeSegment will
     // re-allocate them and fail if they are currently allocated.
+    // The Tensor pointer in the returned TensorValue must be explicitly
+    // deleted.
     for (int i = 0; i < ctx->num_outputs(); i++) {
-      ctx->release_output(i);
+      delete ctx->release_output(i).tensor;
     }
     ExecuteNativeSegment(ctx, helper);
     return;

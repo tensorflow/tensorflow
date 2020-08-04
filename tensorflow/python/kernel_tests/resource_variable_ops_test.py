@@ -187,7 +187,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with self.cached_session():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
-      self.assertNotEmpty(handle.eval())
+      self.assertNotEmpty(self.evaluate(handle))
 
   @test_util.run_deprecated_v1
   def testCachedValueReadBeforeWrite(self):
@@ -1218,6 +1218,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
       # Test operations
       self.assertAllEqual((v * 2).numpy(), (v + v).numpy())
+
+  def testNumpyDotArray(self):
+    with context.eager_mode():
+      # Scalars use a separate code path.
+      v1 = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
+                                                  name="v1")
+      self.assertEqual(1, np.array(v1))
+
+      v2 = resource_variable_ops.ResourceVariable(initial_value=lambda: [1, 2],
+                                                  name="v2")
+      self.assertAllEqual(v2.read_value().numpy(), np.array(v2))
+      self.assertAllEqual([1, 2], np.array(v2))
 
   def testContainerEager(self):
     with context.eager_mode():

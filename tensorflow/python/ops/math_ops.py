@@ -85,6 +85,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -1102,10 +1103,6 @@ def to_complex128(x, name="ToComplex128"):
 
 ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
 ops.Tensor._override_operator("__abs__", abs)
-# __invert__ corresponds to the ~ operator.  Here we follow the numpy convention
-# ~ marks an elementwise bit-wise inverse.  This is only implemented for boolean
-# tensors and will throw a TypeError if used on nonboolean arrays
-ops.Tensor._override_operator("__invert__", gen_math_ops.logical_not)
 
 
 def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
@@ -1569,9 +1566,35 @@ def logical_and(x, y, name=None):
   return gen_math_ops.logical_and(x, y, name)
 
 
-_OverrideBinaryOperatorHelper(logical_and, "and")
-_OverrideBinaryOperatorHelper(gen_math_ops.logical_or, "or")
-_OverrideBinaryOperatorHelper(logical_xor, "xor")
+def and_(x, y, name=None):
+  if x.dtype == dtypes.bool:
+    return gen_math_ops.logical_and(x, y, name)
+  return gen_bitwise_ops.bitwise_and(x, y)
+
+
+def or_(x, y, name=None):
+  if x.dtype == dtypes.bool:
+    return gen_math_ops.logical_or(x, y, name)
+  return gen_bitwise_ops.bitwise_or(x, y)
+
+
+def xor_(x, y, name=None):
+  if x.dtype == dtypes.bool:
+    return logical_xor(x, y, name)
+  return gen_bitwise_ops.bitwise_xor(x, y)
+
+
+def invert_(x, name=None):
+  if x.dtype == dtypes.bool:
+    return gen_math_ops.logical_not(x, name=name)
+  return gen_bitwise_ops.invert(x, name=name)
+
+
+_OverrideBinaryOperatorHelper(and_, "and")
+_OverrideBinaryOperatorHelper(or_, "or")
+_OverrideBinaryOperatorHelper(xor_, "xor")
+ops.Tensor._override_operator("__invert__", invert_)
+
 
 ops.Tensor._override_operator("__lt__", gen_math_ops.less)
 ops.Tensor._override_operator("__le__", gen_math_ops.less_equal)
@@ -3848,19 +3871,28 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
 def conj(x, name=None):
   r"""Returns the complex conjugate of a complex number.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  complex numbers that are the complex conjugate of each element in `input`. The
-  complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
-  real part and *b* is the imaginary part.
+  Given a tensor `x` of complex numbers, this operation returns a tensor of
+  complex numbers that are the complex conjugate of each element in `x`. The
+  complex numbers in `x` must be of the form \\(a + bj\\), where `a` is the
+  real part and `b` is the imaginary part.
 
   The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
   For example:
 
-      # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-      tf.math.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+  >>> x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  >>> tf.math.conj(x)
+  <tf.Tensor: shape=(2,), dtype=complex128,
+  numpy=array([-2.25-4.75j,  3.25-5.75j])>
 
   If `x` is real, it is returned unchanged.
+
+  For example:
+
+  >>> x = tf.constant([-2.25, 3.25])
+  >>> tf.math.conj(x)
+  <tf.Tensor: shape=(2,), dtype=float32,
+  numpy=array([-2.25,  3.25], dtype=float32)>
 
   Args:
     x: `Tensor` to conjugate.  Must have numeric or variant type.
@@ -3871,6 +3903,10 @@ def conj(x, name=None):
 
   Raises:
     TypeError: If `x` is not a numeric tensor.
+
+  @compatibility(numpy)
+  Equivalent to numpy.conj.
+  @end_compatibility
   """
   if isinstance(x, ops.Tensor):
     dt = x.dtype

@@ -174,7 +174,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       op = v.assign_add(1.)
 
       def body_fn(i):  # pylint: disable=invalid-name

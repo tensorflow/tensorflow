@@ -41,7 +41,9 @@ limitations under the License.
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -49,6 +51,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
@@ -57,7 +60,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
 
@@ -494,7 +499,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
         original_input_type.getShape();
     SmallVector<int64_t, 4> new_shape;
     int index = 0;
-    while (index < original_input_shape.size() || new_axis_mask) {
+    const int original_input_rank = original_input_shape.size();
+    while (index < original_input_rank || new_axis_mask) {
       if (new_axis_mask & 1) {
         new_shape.emplace_back(1);
       } else {
@@ -696,6 +702,23 @@ LogicalResult ValidateOp(Operation *op) {
   return failure(has_illegal_ops);
 }
 
+// Converts a set of TF2XLA ops into pure TF ops for future legalizations as
+// TF2XLA ops aren't supported by later stages.
+LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
+  ConversionTarget target(*context);
+  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<TF::TensorFlowDialect>();
+  target.addLegalOp<ModuleOp>();
+  target.addLegalOp<FuncOp>();
+  target.addIllegalOp<TF::XlaConvOp>();
+
+  OwningRewritePatternList patterns;
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
+
+  return applyPartialConversion(func, target, patterns);
+}
+
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
@@ -707,6 +730,11 @@ void PrepareTFPass::runOnFunction() {
   // to make things more modular.
   if (failed(ValidateOp(func))) {
     func.emitError() << "tfl-prepare-tf pass failed.";
+    signalPassFailure();
+    return;
+  }
+
+  if (failed(ConvertTf2XlaOps(func, ctx))) {
     signalPassFailure();
     return;
   }

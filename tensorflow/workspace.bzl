@@ -164,11 +164,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "bd4278ebbe3f6b104f46548717b00bdba95acaab3cbac3de4015c65d868259f8",
-        strip_prefix = "XNNPACK-d27202dfeaa8d3a96670ba47f3dce2f19305a092",
+        sha256 = "c6eae589a4af7785da467162acd339bae359842e14c93bddc8fbe84ffd361c70",
+        strip_prefix = "XNNPACK-aff24e26a760552ee98a036f2a6e95b123e1bc6d",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/d27202dfeaa8d3a96670ba47f3dce2f19305a092.zip",
-            "https://github.com/google/XNNPACK/archive/d27202dfeaa8d3a96670ba47f3dce2f19305a092.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/aff24e26a760552ee98a036f2a6e95b123e1bc6d.zip",
+            "https://github.com/google/XNNPACK/archive/aff24e26a760552ee98a036f2a6e95b123e1bc6d.zip",
         ],
     )
 
@@ -237,11 +237,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "2ec918767935cf6ec92b1d52c53a304cd13148f0b3dbdf3c3632de4a581d5a5a",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-8889a2c1c648f5dd1413dc2d94c2407c7ce1bd32",
+        sha256 = "9d8cbf2bd665cbb7b684bf4c6c5482b98dc6965847108f260c077049da04bee8",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/8889a2c1c648f5dd1413dc2d94c2407c7ce1bd32/eigen-8889a2c1c648f5dd1413dc2d94c2407c7ce1bd32.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/8889a2c1c648f5dd1413dc2d94c2407c7ce1bd32/eigen-8889a2c1c648f5dd1413dc2d94c2407c7ce1bd32.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69/eigen-2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69/eigen-2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69.tar.gz",
         ],
     )
 
@@ -688,6 +688,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         sha256 = "b956598d8cbe168b5ee717b5dafa56563eb5201a947856a6688bbeac9cac4e1f",
         strip_prefix = "grpc-b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
+        patch_file = clean_dep("//third_party/grpc:generate_cc_env_fix.patch"),
         system_link_files = {
             "//third_party/systemlibs:BUILD": "bazel/BUILD",
             "//third_party/systemlibs:grpc.BUILD": "src/compiler/BUILD",
@@ -711,8 +712,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "b2589200957af50e7d166afca9df6ad46d7418c6"
-    LLVM_SHA256 = "24c69e3a036d0ec6650b4e05f544aff8a9df65759baf24b13b7fcd4d0948478a"
+    LLVM_COMMIT = "b5059b7140232559ed123cb94d4e8f75ca9a44dc"
+    LLVM_SHA256 = "3075583f88b572da4afb1340281b0e170d51ef03ba6eb2965e7dc8288cbff153"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

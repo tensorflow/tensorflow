@@ -943,7 +943,10 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    NoSideEffect,
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
-   SameOperandsAndResultElementType]> {
+   PredOpTrait<"x and output must have same element type",
+       TFL_TCresVTEtIsSameAsOp<0, 0>>,
+   PredOpTrait<"y and output must have same element type",
+       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 

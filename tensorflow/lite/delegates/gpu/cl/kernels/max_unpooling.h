@@ -28,13 +28,14 @@ namespace cl {
 class MaxUnpooling : public GPUOperation {
  public:
   MaxUnpooling(const OperationDef& definition,
-               const MaxUnpooling2DAttributes& attr);
+               const MaxUnpooling2DAttributes& attr,
+               const DeviceInfo& device_info);
   MaxUnpooling(const OperationDef& definition,
-               const MaxUnpooling3DAttributes& attr);
+               const MaxUnpooling3DAttributes& attr,
+               const DeviceInfo& device_info);
 
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   MaxUnpooling(MaxUnpooling&& kernel);
@@ -43,16 +44,21 @@ class MaxUnpooling : public GPUOperation {
   MaxUnpooling& operator=(const MaxUnpooling&) = delete;
 
  private:
+  std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
+                                        const DeviceInfo& device_info);
+
   int4 stride_;
   int4 padding_;
   int4 kernel_size_;
 };
 
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
-                                const MaxUnpooling2DAttributes& attr);
+                                const MaxUnpooling2DAttributes& attr,
+                                const DeviceInfo& device_info);
 
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
-                                const MaxUnpooling3DAttributes& attr);
+                                const MaxUnpooling3DAttributes& attr,
+                                const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

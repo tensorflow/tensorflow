@@ -312,8 +312,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right, ALGORITHM::pooling_max,
           prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md,
-          diff_dst_md);
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md);
 #else
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,

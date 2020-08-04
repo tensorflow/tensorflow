@@ -580,8 +580,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertIsNone(v1)
       self.assertEmpty(v0.device)
-      # TODO(b/159752793): There should be only one input here.
-      self.assertLen(saved_function.signature.input_arg, 2)
+      self.assertLen(saved_function.signature.input_arg, 1)
 
   def test_expand_distributed_variables_not_allowed(self):
     root = tracking.AutoTrackable()

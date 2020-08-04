@@ -376,19 +376,20 @@ class MklConcatFwdPrimitive : public MklPrimitive {
       context_.data_mem_shdptr.push_back(src_mem);
       context_.data_mem.push_back(*context_.data_mem_shdptr[i]);
     }
+    // Store the expected memory format
+    context_.dst_md.reset(new memory::desc({concat_fwd_dims.dst_dims},
+                                           MklDnnType<T>(),
+                                           concat_fwd_dims.mkl_common_format));
 // Create a concat primitive descriptor
 #ifdef ENABLE_MKLDNN_V1
     context_.fwd_pd.reset(new concat::primitive_desc(
-        concat_fwd_dims.concat_dims, context_.src_md, cpu_engine_));
+        *context_.dst_md, concat_fwd_dims.concat_dims, context_.src_md,
+        cpu_engine_));
 #else
     context_.fwd_pd.reset(new concat::primitive_desc(
         concat_fwd_dims.concat_dims, context_.src_pd));
 #endif  // ENABLE_MKLDNN_V1
 
-    // Store the expected memory format
-    context_.dst_md.reset(new memory::desc({concat_fwd_dims.dst_dims},
-                                           MklDnnType<T>(),
-                                           concat_fwd_dims.mkl_common_format));
 #ifdef ENABLE_MKLDNN_V1
     // Create memory primitive based on dummy data
     context_.dst_mem.reset(
@@ -404,8 +405,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
 #ifdef ENABLE_MKLDNN_V1
     context_.concat_fwd.reset(new concat(*context_.fwd_pd));
     std::unordered_map<int, memory> net_args = {
-        { MKLDNN_ARG_DST,
-          *context_.dst_mem }};
+        {MKLDNN_ARG_DST, *context_.dst_mem}};
     for (int i = 0; i < concat_fwd_dims.num_inputs; ++i) {
       net_args.insert({MKLDNN_ARG_MULTIPLE_SRC + i, context_.data_mem[i]});
     }

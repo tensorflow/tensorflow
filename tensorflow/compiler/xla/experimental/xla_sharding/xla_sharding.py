@@ -294,3 +294,39 @@ def manual_to_auto_spmd_partition(tensor, manual_sharding, full_shape):
   """
   return tf2xla.spmd_shard_to_full_shape(
       tensor, manual_sharding=manual_sharding, full_shape=full_shape)
+
+
+def mesh_split(tensor,
+               device_mesh,
+               tensor_split_dims_mapping,
+               use_sharding_op=False):
+  """Returns a tensor that is split along multiple dimensions in a device mesh.
+
+  Args:
+    tensor: A tf.Tensor to split.
+    device_mesh: An np.ndarray describing the topology of the device mesh and
+      each element is the ID of the device in the topology.
+    tensor_split_dims_mapping: A list of integers that map each tensor axis to
+      the device mesh axis along which it is sharded. Its length is the tensor
+      rank, and tensor_split_dims_mapping[i] is device mesh axis for tensor
+      dimension i. Use -1 for tensor dimensions that are not sharded.
+    use_sharding_op: If true, adds a sharding op to set the sharding.
+
+  Raises:
+    ValueError: The number of tensor split dimensions is different from device
+      mesh rank.
+  """
+  permutation = [d for d in tensor_split_dims_mapping if d >= 0]
+  if len(permutation) != len(device_mesh.shape):
+    raise ValueError(
+        'Number of tensor split dimensions (%r) is different from device mesh '
+        'rank (%r). tensor_split_dims_mapping: %r, device_mesh.shape: %r' %
+        (len(permutation), len(
+            device_mesh.shape), tensor_split_dims_mapping, device_mesh.shape))
+  tile_assignment = _np.transpose(device_mesh, permutation)
+  tile_shape = [
+      1 if d < 0 else device_mesh.shape[d] for d in tensor_split_dims_mapping
+  ]
+  tile_assignment = _np.reshape(tile_assignment, tile_shape)
+
+  return tile(tensor, tile_assignment, use_sharding_op=use_sharding_op)

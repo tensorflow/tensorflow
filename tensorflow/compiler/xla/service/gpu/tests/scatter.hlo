@@ -180,7 +180,7 @@ ENTRY main {
 // CHECK:       atomic_op_loop_body:                              ; preds = %[[VAL_104]], %[[VAL_95]]
 // CHECK:         %[[VAL_105:.*]] = load i32, i32* %[[VAL_64]], align 4
 // CHECK:         store i32 %[[VAL_105]], i32* %[[VAL_63]], align 4
-// CHECK:         call void @mul_s32(i32* %[[VAL_63]], i32* %[[VAL_98]], i32* %[[VAL_63]], i8* null)
+// CHECK:         call void @mul_s32(i32* %[[VAL_63]], i32* %[[VAL_98]], i32* %[[VAL_63]])
 // CHECK:         %[[VAL_106:.*]] = load i32, i32* %[[VAL_63]], align 4
 // CHECK:         %[[VAL_107:.*]] = cmpxchg i32* %[[VAL_97]], i32 %[[VAL_105]], i32 %[[VAL_106]] seq_cst seq_cst
 // CHECK:         %[[VAL_108:.*]] = extractvalue { i32, i1 } %[[VAL_107]], 0

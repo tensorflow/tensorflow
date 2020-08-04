@@ -1,6 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "if_tflite_experimental_runtime", "tflite_cc_shared_object", "tflite_copts", "tflite_experimental_runtime_linkopts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -83,7 +82,6 @@ FRAMEWORK_LIB_HDRS = [
 cc_library(
     name = "version",
     hdrs = ["version.h"],
-    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     # Note that we only use the header defines from :version_lib.
     deps = ["//tensorflow/core:version_lib"],
@@ -139,7 +137,6 @@ cc_library(
     name = "external_cpu_backend_context",
     srcs = ["external_cpu_backend_context.cc"],
     hdrs = ["external_cpu_backend_context.h"],
-    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         "//tensorflow/lite/c:common",
@@ -193,7 +190,6 @@ cc_library(
     hdrs = [
         "string_type.h",
     ],
-    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
 )
 
@@ -309,7 +305,6 @@ cc_library(
     name = "string_util",
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
-    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":string",
@@ -620,7 +615,6 @@ cc_library(
 cc_library(
     name = "type_to_tflitetype",
     hdrs = ["type_to_tflitetype.h"],
-    build_for_embedded = True,
     deps = ["//tensorflow/lite/c:common"],
 )
 

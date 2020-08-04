@@ -810,10 +810,9 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
+        "//tensorflow:android_x86": [],
+        "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
-        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
@@ -825,10 +824,9 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/platform:dynamic_annotations",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
+        "//tensorflow:android_x86": [],
+        "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
-        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
@@ -3217,8 +3215,8 @@ tf_cc_test(
     name = "eigen_mkldnn_contraction_kernel_test",
     size = "small",
     srcs = select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
+        "//tensorflow:android_x86": [],
+        "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
@@ -3824,6 +3822,7 @@ tf_kernel_library(
         ":transpose_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -3859,6 +3858,8 @@ LOGGING_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    # TODO(b/162630222): remove this dependency.
+    "//tensorflow/c/kernels:summary_op",
 ]
 
 tf_kernel_library(
@@ -5341,7 +5342,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sendrecv_ops",
     prefix = "sendrecv_ops",
-    deps = REQUIRED_DEPS,
+    deps = REQUIRED_DEPS + [
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
 )
 
 tf_cc_test(

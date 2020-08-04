@@ -117,7 +117,7 @@ Status SetPerCoreArgShapes(
   } else {
     TF_RET_CHECK(proto_arg.sharding().type() == xla::OpSharding::REPLICATED)
         << "Unsupported argument sharding: "
-        << proto_arg.sharding().DebugString();
+        << " proto_arg=" << proto_arg.DebugString();
     for (int core = 0; core < per_core_arg_shapes->size(); ++core) {
       (*arg_core_mapping)[arg_index].indices.push_back(
           (*per_core_arg_shapes)[core].size());
@@ -189,6 +189,7 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
     XlaCompiler::Argument& arg = args->back();
     arg.type = proto_arg.dtype();
     arg.shape = arg_shapes[i];
+    arg.node_name = proto_arg.name();
     switch (proto_arg.kind()) {
       case tpu::TPUCompileMetadataProto::Arg::PARAMETER:
         arg.kind = XlaCompiler::Argument::kParameter;
@@ -390,10 +391,12 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
             << " seconds to give time for TPUCompileOp to finished.";
   env->SleepForMicroseconds(kSleepSeconds * 1000000);
   if (done->load()) {
-    // If the TPUCompileOp has finished, then terminate peacefully.
+    // If the TpuCompileOp has finished, then terminate peacefully.
     return;
   }
 
+  LOG(ERROR) << "Aborting process due to cancelled TpuCompileOp. This "
+             << "termination is to ensure a consistent state.";
   std::exit(42);
 }
 
@@ -659,9 +662,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   }
 
   const TpuCompilationCacheKey key = CreateCompilationCacheKey(
-      function_.name(), metadata_.function_library_fingerprint(),
-      /*mlir_module=*/"", guaranteed_constants, dynamic_shapes, metadata_,
-      *mesh_state);
+      function_.name(), metadata_.function_library_fingerprint(), mlir_module_,
+      guaranteed_constants, dynamic_shapes, metadata_, *mesh_state);
 
   // Process-wide cache of TPU executables.
   TpuCompilationCacheInterface* cache;

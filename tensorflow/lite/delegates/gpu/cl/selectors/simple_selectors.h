@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -27,7 +28,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectLSTM(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
+void SelectLSTM(const OperationDef& op_def, const DeviceInfo& device_info,
+                std::unique_ptr<GPUOperation>* ptr);
 
 void SelectReLU(const CreationContext& creation_context,
                 const ReLUAttributes& attr, const OperationDef& op_def,
@@ -39,10 +41,12 @@ absl::Status SelectPReLU(const PReLUAttributes& attr,
                          std::unique_ptr<GPUOperation>* ptr);
 
 void SelectPooling(const Pooling2DAttributes& attr, const OperationDef& op_def,
+                   const DeviceInfo& device_info,
                    std::unique_ptr<GPUOperation>* ptr);
 
 void SelectMaxUnpooling(const MaxUnpooling2DAttributes& attr,
                         const OperationDef& op_def,
+                        const DeviceInfo& device_info,
                         std::unique_ptr<GPUOperation>* ptr);
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
@@ -55,6 +59,7 @@ absl::Status SelectResize(const Resize2DAttributes& attr,
 absl::Status SelectConcat(const ConcatAttributes& attr,
                           const std::vector<int>& channels,
                           const OperationDef& op_def,
+                          const DeviceInfo& device_info,
                           std::unique_ptr<GPUOperation>* ptr);
 
 void SelectReshape(int src_channels, int dst_channels,
@@ -68,6 +73,7 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
 absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
+                        const DeviceInfo& device_info,
                         std::unique_ptr<GPUOperation>* ptr);
 
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
@@ -91,10 +97,10 @@ absl::Status SelectWinograd36To4x4(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     std::unique_ptr<GPUOperation>* ptr);
 
-absl::Status SelectQuantizeAndDequantize(
-    const QuantizeAndDequantizeAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr);
+void SelectQuantizeAndDequantize(const QuantizeAndDequantizeAttributes& attr,
+                                 const CreationContext& creation_context,
+                                 const OperationDef& op_def,
+                                 std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl
 }  // namespace gpu

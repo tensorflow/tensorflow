@@ -97,7 +97,9 @@ TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
         int version = metadata_buffer[0];
         int subgraph_idx = metadata_buffer[1];
         const int nbr_offline_offsets = metadata_buffer[2];
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
         int* offline_planner_offsets = (int*)&metadata_buffer[3];
+#endif
 
         TF_LITE_REPORT_ERROR(error_reporter, "==== Model metadata info: =====");
         TF_LITE_REPORT_ERROR(error_reporter,
@@ -688,7 +690,7 @@ void* MicroAllocator::AllocatePersistentBuffer(size_t bytes) {
 TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
                                                          size_t bytes,
                                                          int* buffer_idx) {
-  // A sanity check to make sure scratch_buffer_handles_ is contiguous i.e.
+  // A consistency check to make sure scratch_buffer_handles_ is contiguous i.e.
   // scratch_buffer_handles_ is pointing to the last allocation from memory
   // allocator.
   if (scratch_buffer_handles_ != nullptr &&
@@ -1009,6 +1011,7 @@ const SubGraph* MicroAllocator::GetSubGraphFromModel(const Model* model) {
 TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
     const Model* model, const SubGraph* subgraph,
     TfLiteEvalTensor* eval_tensors) {
+  size_t head_usage = 0;
   // Create static memory plan
   // 1. Calculate AllocationInfo to know the lifetime of each tensor/buffer.
   // 2. Add them into the planner (such as the GreedyMemoryPlanner).
@@ -1017,8 +1020,10 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   // Note that AllocationInfo is only needed for creating the plan. It will be
   // thrown away when the child allocator (tmp_allocator) goes out of scope.
   {
+    // TODO(b/162595810): Use temp allocation buffer instead of a stack
+    // instance:
     SimpleMemoryAllocator tmp_allocator(error_reporter_,
-                                        memory_allocator_->GetHead(),
+                                        memory_allocator_->GetBufferHead(),
                                         memory_allocator_->GetTail());
 
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
@@ -1035,16 +1040,17 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
     const AllocationInfo* allocation_info = builder.Finish();
 
     // Remaining arena size that memory planner can use for calculating offsets.
-    size_t remaining_arena_size = tmp_allocator.GetAvailableMemory();
+    size_t remaining_arena_size =
+        tmp_allocator.GetAvailableMemory(kBufferAlignment);
     uint8_t* planner_arena =
-        tmp_allocator.AllocateFromHead(remaining_arena_size, /*alignment=*/1);
+        tmp_allocator.AllocateTemp(remaining_arena_size, kBufferAlignment);
     TF_LITE_ENSURE(error_reporter_, planner_arena != nullptr);
     GreedyMemoryPlanner planner(planner_arena, remaining_arena_size);
     TF_LITE_ENSURE_STATUS(
         CreatePlan(error_reporter_, &planner, allocation_info, builder.Size()));
 
     size_t actual_available_arena_size =
-        memory_allocator_->GetAvailableMemory();
+        memory_allocator_->GetAvailableMemory(kBufferAlignment);
     // Make sure we have enough arena size.
     if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
       TF_LITE_REPORT_ERROR(
@@ -1057,14 +1063,13 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
 
     // Commit the plan.
     TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
-                                     memory_allocator_->GetHead(),
+                                     memory_allocator_->GetBufferHead(),
                                      allocation_info, builder.Size()));
-    // Allocate the planned area, so the allocator knows it's used.
-    uint8_t* allocated_tensor_memory =
-        memory_allocator_->AllocateFromHead(planner.GetMaximumMemorySize(),
-                                            /*alignment=*/1);
-    TF_LITE_ENSURE(error_reporter_, allocated_tensor_memory != nullptr);
+    head_usage = planner.GetMaximumMemorySize();
   }
+
+  TF_LITE_ENSURE_STATUS(
+      memory_allocator_->EnsureHeadSize(head_usage, kBufferAlignment));
   return kTfLiteOk;
 }
 

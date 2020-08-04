@@ -56,9 +56,18 @@ std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op);
 std::string TfOpEventName(const TfOp& tf_op);
 std::string TfOpEventName(absl::string_view tf_op_fullname);
 
+// Trace event name for dataset ops.
+std::string DatasetOpEventName(absl::string_view full_name);
+
+// Returns the iterator name without prefix and parent iterator names.
+std::string IteratorName(absl::string_view full_name);
+
 // Returns true if the given name is a TensorFlow Dataset Op.
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
   return tf_op_type == kDatasetOp;
+}
+inline bool IsDatasetOp(const TfOp& tf_op) {
+  return tf_op.category == Category::kTfData;
 }
 
 // Returns true if the given name is a TensorFlow Infeed Enqueue Op.
@@ -94,9 +103,6 @@ bool IsTfOpType(absl::string_view op_type);
 
 // Returns true if the given string matches JAX pattern.
 bool IsJaxOpType(absl::string_view op_type);
-
-// Returns true if the given string matches tf.data iterator pattern.
-bool IsIteratorEventName(absl::string_view event_name);
 
 }  // namespace profiler
 }  // namespace tensorflow

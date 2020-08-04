@@ -66,9 +66,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
 
-  StatusOr<DeviceMemoryBase> AllocateDeviceMemoryBase(uint64 size,
-                                                      int64 memory_space);
-
   Status AllocateEvent(Event* event) override;
 
   bool AllocateStream(Stream* stream) override;

@@ -36,23 +36,53 @@ bool IsAllChannelsX4(const std::vector<int>& channels) {
   return true;
 }
 
-std::string GetConcatKernelCode(const OperationDef& op_def,
-                                const std::vector<int>& channels,
-                                Arguments* args) {
+}  // namespace
+
+ConcatZ::ConcatZ(const OperationDef& definition,
+                 const std::vector<int>& channels,
+                 const DeviceInfo& device_info)
+    : GPUOperation(definition) {
+  code_ = GetConcatKernelCode(definition, channels);
+  if (device_info.IsPowerVR() &&
+      definition.precision == CalculationsPrecision::F32 &&
+      !IsAllChannelsX4(channels)) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
+  if (device_info.IsAMD() &&
+      definition.precision != CalculationsPrecision::F32 &&
+      definition.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
+      !IsAllChannelsX4(channels)) {
+    // BUG, some AMD gpus crash without it
+    compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
+}
+
+ConcatZ::ConcatZ(ConcatZ&& kernel) : GPUOperation(std::move(kernel)) {}
+
+ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
+  if (this != &kernel) {
+    GPUOperation::operator=(std::move(kernel));
+  }
+  return *this;
+}
+
+std::string ConcatZ::GetConcatKernelCode(const OperationDef& op_def,
+                                         const std::vector<int>& channels) {
   std::vector<std::string> tensor_names(op_def.src_tensors.size());
   for (int i = 0; i < op_def.src_tensors.size(); ++i) {
     tensor_names[i] = "src_tensor_" + std::to_string(i);
-    auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[i]);
+    auto src_desc = op_def.src_tensors[i];
     if (op_def.IsBatchSupported()) {
-      src_desc->SetStateVar("BatchedWidth", "true");
+      src_desc.SetStateVar("BatchedWidth", "true");
     }
-    args->AddObjectRef(tensor_names[i], AccessType::READ, std::move(src_desc));
+    AddSrcTensor(tensor_names[i], src_desc);
   }
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    dst_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
+  AddDstTensor("dst_tensor", dst_desc);
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -131,54 +161,6 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
   return c;
 }
 
-}  // namespace
-
-ConcatZ::ConcatZ(ConcatZ&& kernel)
-    : GPUOperation(std::move(kernel)), channels_(std::move(kernel.channels_)) {}
-
-ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
-  if (this != &kernel) {
-    channels_ = std::move(kernel.channels_);
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-absl::Status ConcatZ::Compile(const CreationContext& creation_context) {
-  std::string code = GetConcatKernelCode(definition_, channels_, &args_);
-  std::vector<CompilerOptions> options;
-  if (creation_context.device->IsPowerVR() &&
-      definition_.precision == CalculationsPrecision::F32 &&
-      !IsAllChannelsX4(channels_)) {
-    // BUG, some PowerVRs (GE8320) produce incorrect result without it
-    options.push_back(CompilerOptions::CL_OPT_DISABLE);
-  }
-  if (creation_context.device->IsAMD() &&
-      definition_.precision != CalculationsPrecision::F32 &&
-      definition_.src_tensors[0].storage_type != TensorStorageType::BUFFER &&
-      !IsAllChannelsX4(channels_)) {
-    // BUG, some AMD gpus crash without it
-    options.push_back(CompilerOptions::CL_OPT_DISABLE);
-  }
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status ConcatZ::BindArguments() {
-  for (int i = 0; i < definition_.src_tensors.size(); ++i) {
-    RETURN_IF_ERROR(
-        args_.SetObjectRef("src_tensor_" + std::to_string(i), src_[i]));
-  }
-  return args_.SetObjectRef("dst_tensor", dst_[0]);
-}
-
 int3 ConcatZ::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
@@ -187,8 +169,9 @@ int3 ConcatZ::GetGridSize() const {
 }
 
 ConcatZ CreateConcatZ(const OperationDef& definition,
-                      const std::vector<int>& channels) {
-  return ConcatZ(definition, channels);
+                      const std::vector<int>& channels,
+                      const DeviceInfo& device_info) {
+  return ConcatZ(definition, channels, device_info);
 }
 
 }  // namespace cl

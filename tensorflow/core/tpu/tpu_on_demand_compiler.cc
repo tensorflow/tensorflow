@@ -38,6 +38,35 @@ static SE_ExecutableRunOptions ToC(
   SE_ExecutableRunOptions se_options;
   se_options.allocator = ApiConverter::ToC(options.run_options().allocator());
   se_options.device_ordinal = options.run_options().device_ordinal();
+  if (options.run_options().host_to_device_stream() != nullptr) {
+    se_options.host_to_device_stream =
+        static_cast<TpuStream*>(
+            options.run_options().host_to_device_stream()->implementation())
+            ->se_stream();
+  } else {
+    se_options.host_to_device_stream = nullptr;
+  }
+
+  if (options.run_options().device_assignment() != nullptr) {
+    xla::DeviceAssignmentProto dev_assign_proto;
+    options.run_options()
+        .device_assignment()
+        ->Serialize(&dev_assign_proto)
+        .IgnoreError();
+    se_options.device_assignment =
+        stream_executor::tpu::SerializeProto(dev_assign_proto);
+  } else {
+    se_options.device_assignment.bytes = nullptr;
+    se_options.device_assignment.size = 0;
+  }
+
+  se_options.rng_seed = options.run_options().rng_seed();
+  se_options.run_id = options.run_options().run_id().ToInt();
+  se_options.launch_id = options.run_options().launch_id();
+
+  CHECK_EQ(options.run_options().then_execute_function(), nullptr)
+      << "ThenExecuteFunction not supported by this platform.";
+
   auto impl =
       const_cast<stream_executor::Stream*>(options.stream())->implementation();
   se_options.stream = static_cast<TpuStream*>(impl)->se_stream();
@@ -130,14 +159,18 @@ class TpuExecutable : public Executable {
 };
 
 XLA_HloModuleConfig HloModuleConfigToC(const xla::HloModuleConfig& config) {
-  XLA_HloModuleConfig hlo_config{
-      .seed = config.seed(),
-      .launch_id = config.launch_id(),
-      .replica_count = config.replica_count(),
-      .num_partitions = config.num_partitions(),
-      .use_spmd_partitioning = config.use_spmd_partitioning(),
-      .has_static_device_assignment = config.has_static_device_assignment(),
-      .has_entry_computation_layout = config.has_entry_computation_layout()};
+  XLA_HloModuleConfig hlo_config;
+
+  hlo_config.seed = config.seed();
+  hlo_config.launch_id = config.launch_id();
+  hlo_config.replica_count = config.replica_count();
+  hlo_config.num_partitions = config.num_partitions();
+  hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
+  hlo_config.has_static_device_assignment =
+      config.has_static_device_assignment();
+  hlo_config.has_entry_computation_layout =
+      config.has_entry_computation_layout();
+
   if (config.has_static_device_assignment()) {
     DeviceAssignmentProto dev_proto;
     config.static_device_assignment().Serialize(&dev_proto).IgnoreError();
@@ -163,8 +196,8 @@ XLA_HloModuleConfig HloModuleConfigToC(const xla::HloModuleConfig& config) {
 
 class TpuCompiler : public Compiler {
  public:
-  TpuCompiler() { compiler_ = TpuCompiler_New(); }
-  ~TpuCompiler() override {}
+  TpuCompiler() { compiler_ = ExecutorApiFn()->TpuCompiler_NewFn(); }
+  ~TpuCompiler() override { ExecutorApiFn()->TpuCompiler_FreeFn(compiler_); }
 
   stream_executor::Platform::Id PlatformId() const override {
     return tensorflow::TpuPlatform::kId;
