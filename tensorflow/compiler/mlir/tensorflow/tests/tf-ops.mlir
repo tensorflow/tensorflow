@@ -2091,7 +2091,7 @@ func @testTranspose(tensor<2x3xf32>) -> tensor<3x2x1xf32> {
 func @testTranspose(tensor<2x3x4xf32>) -> tensor<3x2x4xf32> {
 ^bb0(%arg0: tensor<2x3x4xf32>):
   %cst = constant dense<[2, 0, 1]> : tensor<3xi32>
-  // expected-error @+1 {{y.shape[0] = 3 != x.shape[perm[2]] = 4}}
+  // expected-error @+1 {{requires y.shape[0] (3) to be equal to x.shape[perm[2]] (4)}}
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3x4xf32>, tensor<3xi32>) -> tensor<3x2x4xf32>
   return %0 : tensor<3x2x4xf32>
 }

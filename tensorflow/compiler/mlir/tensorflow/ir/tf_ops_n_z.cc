@@ -1760,6 +1760,9 @@ void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 static LogicalResult Verify(TransposeOp op) {
   auto perm_type = op.perm().getType().dyn_cast<RankedTensorType>();
+  auto x_type = op.x().getType().dyn_cast<RankedTensorType>();
+  auto y_type = op.y().getType().dyn_cast<RankedTensorType>();
+
   if (!perm_type) {
     return success();
   }
@@ -1770,33 +1773,23 @@ static LogicalResult Verify(TransposeOp op) {
            << perm_type.getRank();
   }
 
-  if (!perm_type.hasStaticShape()) {
+  if (x_type && y_type && x_type.getRank() != y_type.getRank()) {
+    return op.emitOpError()
+           << "x should be of the same rank with y, got "
+           << "x of rank " << x_type.getRank() << ", and y of rank "
+           << y_type.getRank();
+  }
+
+  if (!x_type || !y_type || !perm_type.hasStaticShape()) {
     return success();
   }
 
-  auto x_type = op.x().getType().dyn_cast<RankedTensorType>();
-  if (!x_type) {
-    return success();
-  }
-
-  const int64_t x_rank = x_type.getRank();
-  if (x_rank != perm_type.getNumElements()) {
+  if (x_type.getRank() != perm_type.getNumElements()) {
     return op.emitOpError()
            << "expected perm to be a 1-D Tensor of size "
            << "equal to the rank of x, got perm of size "
-           << perm_type.getNumElements() << ", and x of rank " << x_rank;
-  }
-
-  auto y_type = op.y().getType().dyn_cast<RankedTensorType>();
-  if (!y_type) {
-    return success();
-  }
-
-  const int64_t y_rank = y_type.getRank();
-  if (x_rank != y_rank) {
-    return op.emitOpError()
-           << "x should be of the same rank with y, got "
-           << "x of rank " << x_rank << ", and y of rank " << y_rank;
+           << perm_type.getNumElements() << ", and x of rank "
+           << x_type.getRank();
   }
 
   DenseIntElementsAttr attr_perm;
@@ -1808,10 +1801,14 @@ static LogicalResult Verify(TransposeOp op) {
       const int64_t y_dim = y_type.getDimSize(y_idx);
       const int64_t x_idx = e.value().getSExtValue();
       const int64_t x_dim = x_type.getDimSize(x_idx);
+      if (y_dim == ShapedType::kDynamicSize || x_dim == ShapedType::kDynamicSize) {
+        continue;
+      }
       if (y_dim != x_dim) {
         return op.emitOpError()
-               << "y.shape[" << y_idx << "] = " << y_dim
-               << " != x.shape[perm[" << x_idx << "]] = " << x_dim;
+               << "requires y.shape[" << y_idx << "] (" << y_dim << ") "
+               << "to be equal to x.shape[perm[" << x_idx << "]] "
+               << "(" << x_dim << ")";
       }
     }
   }
