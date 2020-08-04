@@ -131,12 +131,14 @@ def custom_gradient(f=None):
   By chain rule we know that
   `dy/dx = dy/x_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
 
-  In this case the gradient of our current function defined as `dx_i/dx_i+1 = (1 - 1 / (1 + e))`.
-  The upstream gradient `dy` would be `dx_i+1/dx_i+2 * dx_i+2/dx_i+3 * ... * dx_n/dx`.
-  The upstream gradient multiplied by the current gradient is then passed downstream.
+  In this case the gradient of our current function defined as 
+  `dx_i/dx_i+1 = (1 - 1 / (1 + e))`. The upstream gradient `dy` would be
+  `dx_i+1/dx_i+2 * dx_i+2/dx_i+3 * ... * dx_n/dx`. The upstream gradient 
+  multiplied by the current gradient is then passed downstream.
 
-  In case the function takes multiple variables as input, the `grad` function must also return
-  the same number of variables. We take the function `z = x * y` as an example.
+  In case the function takes multiple variables as input, the `grad` 
+  function must also return  the same number of variables.
+  We take the function `z = x * y` as an example.
 
   >>> @tf.custom_gradient
   ... def bar(x, y):
