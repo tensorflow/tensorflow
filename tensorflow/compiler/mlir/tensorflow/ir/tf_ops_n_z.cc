@@ -1797,7 +1797,8 @@ static LogicalResult Verify(TransposeOp op) {
       const int64_t y_dim = y_type.getDimSize(y_idx);
       const int64_t x_idx = e.value().getSExtValue();
       const int64_t x_dim = x_type.getDimSize(x_idx);
-      if (y_dim != ShapedType::kDynamicSize && x_dim != ShapedType::kDynamicSize && y_dim != x_dim) {
+      if (y_dim != ShapedType::kDynamicSize &&
+          x_dim != ShapedType::kDynamicSize && y_dim != x_dim) {
         return op.emitOpError()
                << "requires y.shape[" << y_idx << "] (" << y_dim << ") "
                << "to be equal to x.shape[perm[" << x_idx << "]] "
