@@ -54,7 +54,7 @@ static void MergeSummaryOp_Delete(void* kernel) {
 static void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   tensorflow::Summary s; 
   std::unordered_set<tensorflow::string> tags; 
-  Status_Wrapper status_wrapper;; 
+  Status_Wrapper status_wrapper;
   for (int input_num = 0; input_num < TF_NumInputs(ctx); ++input_num) { 
     TensorWrapper input_wrapper; 
     TF_GetInput(ctx, input_num, &input_wrapper.t, status_wrapper.s); 
@@ -90,16 +90,15 @@ static void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
     }
   }
   TensorWrapper summary_tensor_wrapper; 
-  TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0,
+  summary_tensor_wrapper.t = TF_AllocateOutput(ctx, 0,
       TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
       sizeof(tensorflow::tstring), status_wrapper.s);
-  summary_tensor_wrapper.t = summary_tensor; 
   if (TF_GetCode(status_wrapper.s) != TF_OK){ 
     TF_OpKernelContext_Failure(ctx, status_wrapper.s);
     return; 
   }
   tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
-      TF_TensorData(summary_tensor)); 
+      TF_TensorData(summary_tensor_wrapper.t)); 
   CHECK(SerializeToTString(s, output_tstring));
 }
 

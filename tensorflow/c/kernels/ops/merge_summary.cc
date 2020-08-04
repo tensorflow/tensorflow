@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 static void merge_summary_shape_inference_fn(TF_ShapeInferenceContext* ctx,
-                                              TF_Status* status) {
-	TF_SetStatus(status, TF_OK, ""); 
+                                             TF_Status* status) {
+  TF_SetStatus(status, TF_OK, ""); 
   TF_ShapeHandle* result = TF_ShapeInferenceContextScalar(ctx);
   TF_ShapeInferenceContextSetOutput(ctx, 0, result, status);
   TF_DeleteShapeHandle(result);
