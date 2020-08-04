@@ -278,7 +278,7 @@ class Dequantizer {
  public:
   Dequantizer(int zero_point, float scale)
       : zero_point_(zero_point), scale_(scale) {}
-  float operator()(uint8 x) {
+  float operator()(uint8_t x) {
     return (static_cast<float>(x) - zero_point_) * scale_;
   }
 
@@ -291,8 +291,8 @@ void DequantizeBoxEncodings(const TfLiteTensor* input_box_encodings, int idx,
                             float quant_zero_point, float quant_scale,
                             int length_box_encoding,
                             CenterSizeEncoding* box_centersize) {
-  const uint8* boxes =
-      GetTensorData<uint8>(input_box_encodings) + length_box_encoding * idx;
+  const uint8_t* boxes =
+      GetTensorData<uint8_t>(input_box_encodings) + length_box_encoding * idx;
   Dequantizer dequantize(quant_zero_point, quant_scale);
   // See definition of the KeyPointBoxCoder at
   // https://github.com/tensorflow/models/blob/master/research/object_detection/box_coders/keypoint_box_coder.py
@@ -737,7 +737,7 @@ void DequantizeClassPredictions(const TfLiteTensor* input_class_predictions,
       static_cast<float>(input_class_predictions->params.zero_point);
   float quant_scale = static_cast<float>(input_class_predictions->params.scale);
   Dequantizer dequantize(quant_zero_point, quant_scale);
-  const uint8* scores_quant = GetTensorData<uint8>(input_class_predictions);
+  const uint8_t* scores_quant = GetTensorData<uint8_t>(input_class_predictions);
   for (int idx = 0; idx < num_boxes * num_classes_with_background; ++idx) {
     scores[idx] = dequantize(scores_quant[idx]);
   }
