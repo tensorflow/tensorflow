@@ -454,6 +454,22 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
                "HDFS does not support ReadOnlyMemoryRegion");
 }
 
+void PathExists(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  if (libhdfs->hdfsExists(fs, hdfs_path.c_str()) == 0)
+    TF_SetStatus(status, TF_OK, "");
+  else
+    TF_SetStatus(status, TF_NOT_FOUND,
+                 (std::string(path) + " not found").c_str());
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_hadoop_filesystem
