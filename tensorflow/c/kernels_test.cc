@@ -467,16 +467,13 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSizeOne) {
     // Allocate scalar TF_Tensor
     TF_Status* s = TF_NewStatus();
     int64_t dim = 1;
-    TF_AllocatorAttributes alloc_attrs; 
-    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE; 
-#if GOOGLE_CUDA
-    alloc_attrs.on_host = 0;
-#else 
-    alloc_attrs.on_host = 1; 
+    TF_AllocatorAttributes* alloc_attrs = TF_NewAllocatorAttributes(); 
+#if !GOOGLE_CUDA
+    TF_AllocatorAttributesSetOnHost(alloc_attrs);
 #endif 
     TF_Tensor* output = TF_AllocateTemp(
         /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
-        /*num_dims=*/1, /*allocator_attributes*/ &alloc_attrs, s);
+        /*num_dims=*/1, /*allocator_attributes*/ alloc_attrs, s);
     size_t tensor_size_bytes = TF_DataTypeSize(TF_FLOAT);
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     validate_tensor(output, &dim, 1, TF_FLOAT); 
@@ -487,6 +484,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSizeOne) {
     TF_SetOutput(ctx, 0, output, s); 
     TF_DeleteStatus(s);
     TF_DeleteTensor(output);
+    TF_DeleteAllocatorAttributes(alloc_attrs);
   };
 
   SetupOp("AllocateTempOp1", "AllocateTemp1", my_compute_func);
@@ -504,21 +502,19 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempEmpty) {
     TF_Status* s = TF_NewStatus();
     // Allocate empty TF_Tensor
     int64_t dim = 0;
-    TF_AllocatorAttributes alloc_attrs; 
-    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE; 
-#if GOOGLE_CUDA
-    alloc_attrs.on_host = 0;
-#else 
-    alloc_attrs.on_host = 1; 
+    TF_AllocatorAttributes* alloc_attrs = TF_NewAllocatorAttributes(); 
+#if !GOOGLE_CUDA
+    TF_AllocatorAttributesSetOnHost(alloc_attrs);
 #endif 
     TF_Tensor* output = TF_AllocateTemp(
         /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
-        /*num_dims=*/1, /*allocator_attributes*/ &alloc_attrs, s);
+        /*num_dims=*/1, /*allocator_attributes*/ alloc_attrs, s);
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     validate_tensor(output, &dim, 1, TF_FLOAT);
     TF_SetOutput(ctx, 0, output, s); 
     TF_DeleteStatus(s);
     TF_DeleteTensor(output);
+    TF_DeleteAllocatorAttributes(alloc_attrs);
   };
 
   SetupOp("AllocateTempOp0", "AllocateTemp0", my_compute_func);
@@ -537,16 +533,13 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
     size_t tensor_size_bytes = 6 * TF_DataTypeSize(TF_FLOAT);
     // Allocate 2x3 TF_Tensor
     int64_t dim[2] = {2, 3};
-    TF_AllocatorAttributes alloc_attrs; 
-    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE; 
-#if GOOGLE_CUDA
-    alloc_attrs.on_host = 0;
-#else 
-    alloc_attrs.on_host = 1; 
+    TF_AllocatorAttributes* alloc_attrs = TF_NewAllocatorAttributes(); 
+#if !GOOGLE_CUDA
+    TF_AllocatorAttributesSetOnHost(alloc_attrs);
 #endif 
     TF_Tensor* output = TF_AllocateTemp(
         /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/dim,
-        /*num_dims=*/2, /*allocator_attributes*/ &alloc_attrs, s);
+        /*num_dims=*/2, /*allocator_attributes*/ alloc_attrs, s);
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     validate_tensor(output, dim, 2, TF_FLOAT);
 
@@ -556,6 +549,7 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
     TF_SetOutput(ctx, 0, output, s); 
     TF_DeleteStatus(s);
     TF_DeleteTensor(output);
+    TF_DeleteAllocatorAttributes(alloc_attrs);
   };
 
   SetupOp("AllocateTempOp2x3", "AllocateTempOp2x3", my_compute_func);

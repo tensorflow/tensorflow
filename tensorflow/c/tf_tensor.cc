@@ -321,3 +321,20 @@ bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }
 }  // namespace tensorflow
 
 bool TF_TensorIsAligned(const TF_Tensor* t) { return t->tensor->IsAligned(); }
+
+TF_AllocatorAttributes* TF_NewAllocatorAttributes() { 
+  return new TF_AllocatorAttributes{tensorflow::AllocatorAttributes()};
+}
+
+void TF_AllocatorAttributesSetOnHost(TF_AllocatorAttributes* tf_alloc_attrs) {
+  tf_alloc_attrs->alloc_attrs.set_on_host(true); 
+}
+
+void TF_DeleteAllocatorAttributes(TF_AllocatorAttributes* tf_alloc_attrs) { 
+  if (tf_alloc_attrs == nullptr) { 
+    return; 
+  }
+  else { 
+    delete tf_alloc_attrs;
+  }
+}

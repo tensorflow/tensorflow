@@ -289,15 +289,11 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
   TF_SetStatus(status, TF_OK, ""); 
   tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
       reinterpret_cast<tensorflow::int64*>(dims), num_dims);
-  tensorflow::AllocatorAttributes allocator_attr; 
-  if (attributes->on_host) { 
-    allocator_attr.set_on_host(true); 
-  }
   tensorflow::Status s;
   tensorflow::Tensor tensor;
   TF_Tensor* tf_tensor;
   s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), 
-      tensorflow::TensorShape(dimarray), &tensor, allocator_attr);
+      tensorflow::TensorShape(dimarray), &tensor, attributes->alloc_attrs);
   if (!s.ok()) {
     ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;

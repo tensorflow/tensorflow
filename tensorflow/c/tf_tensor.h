@@ -46,17 +46,6 @@ limitations under the License.
 extern "C" {
 #endif
 
-// Allocator Attributes used for tensor allocation. 
-typedef struct TF_AllocatorAttributes { 
-  size_t struct_size; 
-  // Set boolean to 1 for CPU allocation, else 0. 
-  unsigned char on_host; 
-} TF_AllocatorAttributes; 
-
-
-#define TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE \
-    TF_OFFSET_OF_END(TF_AllocatorAttributes, on_host) 
-
 // --------------------------------------------------------------------------
 // TF_Tensor holds a multi-dimensional array of elements of a single data type.
 // For all types other than TF_STRING, the data buffer stores elements
@@ -162,6 +151,17 @@ TF_CAPI_EXPORT extern void TF_TensorBitcastFrom(const TF_Tensor* from,
 
 // Returns bool iff this tensor is aligned.
 TF_CAPI_EXPORT extern bool TF_TensorIsAligned(const TF_Tensor*);
+
+// Allocator Attributes used for tensor allocation. 
+typedef struct TF_AllocatorAttributes TF_AllocatorAttributes; 
+
+TF_CAPI_EXPORT extern TF_AllocatorAttributes* TF_NewAllocatorAttributes(); 
+
+TF_CAPI_EXPORT extern void TF_AllocatorAttributesSetOnHost(
+    TF_AllocatorAttributes* tf_alloc_attrs); 
+
+TF_CAPI_EXPORT extern void TF_DeleteAllocatorAttributes(
+    TF_AllocatorAttributes* tf_alloc_attrs);
 
 #ifdef __cplusplus
 } /* end extern "C" */
