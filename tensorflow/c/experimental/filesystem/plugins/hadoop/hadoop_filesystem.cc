@@ -489,6 +489,27 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
+int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
+                    TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  auto info = libhdfs->hdfsGetPathInfo(fs, hdfs_path.c_str());
+  if (info == nullptr) {
+    TF_SetStatusFromIOError(status, errno, path);
+    return -1;
+  }
+
+  TF_SetStatus(status, TF_OK, "");
+  auto size = static_cast<int64_t>(info->mSize);
+  libhdfs->hdfsFreeFileInfo(info, 1);
+  return size;
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_hadoop_filesystem
