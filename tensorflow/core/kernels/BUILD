@@ -2960,6 +2960,7 @@ tf_kernel_library(
         ":fill_functor",
         ":tensor_map",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
