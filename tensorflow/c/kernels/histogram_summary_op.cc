@@ -92,13 +92,13 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       std::ostringstream err; 
       err << "Nan in summary histogram for: " << k->op_node_name; 
       TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
-      break;
+      return;
     }
     else if (Eigen::numext::isinf(double_val)) { 
       std::ostringstream err; 
       err << "Infinity in Histogram for: " << k->op_node_name; 
       TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
-      break; 
+      return; 
     }
     histo.Add(double_val);
   }
@@ -109,16 +109,13 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   v->set_tag(tag.data(), tag.size()); 
   histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */); 
 
-  // Must use new status for TF_AllocateOutput if previous status is set 
-  // because of an invalid values argument.  
-  StatusWrapper allocation_status_wrapper;
   TensorWrapper summary_tensor_wrapper; 
   summary_tensor_wrapper.t = TF_AllocateOutput(ctx, 0,
       TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
-      sizeof(tensorflow::tstring), allocation_status_wrapper.s);
+      sizeof(tensorflow::tstring), status_wrapper.s);
 
-  if (TF_GetCode(allocation_status_wrapper.s) != TF_OK){ 
-    TF_OpKernelContext_Failure(ctx, allocation_status_wrapper.s);
+  if (TF_GetCode(status_wrapper.s) != TF_OK){ 
+    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
     return; 
   }
   tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
