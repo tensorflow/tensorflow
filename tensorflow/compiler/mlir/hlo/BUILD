@@ -60,7 +60,7 @@ gentbl(
     strip_include_prefix = "include/mlir-hlo/Dialect/mhlo/transforms/",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name MHLO",
             "include/mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc",
         ),
     ],
@@ -76,7 +76,7 @@ gentbl(
     strip_include_prefix = "include/mlir-hlo/Dialect/mhlo/transforms/",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name LMHLO",
             "include/mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc",
         ),
     ],
