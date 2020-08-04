@@ -1853,8 +1853,7 @@ class ConcreteFunction(object):
       `flat_args` and `flat_kwargs`.
     """
     return self._call_flat(
-        [t for t in flat_args + flat_kwargs \
-        # TODO(jlchu): delete when final [t for t in nest.flatten((args, kwargs), expand_composites=True)
+        [t for t in flat_args + flat_kwargs
          if isinstance(t, (ops.Tensor,
                            resource_variable_ops.BaseResourceVariable))],
         captured_inputs=self.captured_inputs,
@@ -2727,9 +2726,11 @@ def _is_ndarray(value):
 
 def _convert_numpy_inputs(inputs):
   """Convert numpy array inputs to tensors."""
-  ## TODO(jlchu): Modify/delete comment when change is final!!!
   # We assume that any CompositeTensors have already converted their components
-  # from numpy arrays to Tensors, so we don't need to expand composites here.
+  # from numpy arrays to Tensors, so we don't need to expand composites here for
+  # the numpy array conversion. Instead, we do so because the flattened inputs
+  # are eventually passed to ConcreteFunction()._filtered_call, which requires
+  # expanded composites.
   flat_inputs = nest.flatten(inputs, expand_composites=True)
 
   # Check for NumPy arrays in arguments and convert them to Tensors.
