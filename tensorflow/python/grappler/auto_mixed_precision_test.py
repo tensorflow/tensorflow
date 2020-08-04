@@ -138,6 +138,11 @@ def _conv_pool(x):
   return h_pool2
 
 
+def _depthwise_conv2d(x, w):
+  """Returns a 2d depthwise convolution layer with full stride."""
+  return nn.depthwise_conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME')
+
+
 def _simple_loop(x, functor):
   """Simple loop whose body is provided by the functor."""
   init = (constant_op.constant(0), x)
@@ -564,6 +569,36 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(num_to_f16, 4)
     self.assertEqual(num_to_fp32, 1)
     tol = 5e-3 if mode == 'mkl' else 1e-3
+    self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
+
+  # TODO(benbarsdell): This test has not been tried with MKL.
+  @parameterized.parameters(['cuda'])
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_depthwise_conv2d(self, mode):
+    """Test grad ops with depthwise convolution2d graph."""
+    self._maybe_skip(mode)
+    random_seed.set_random_seed(0)
+    x = _input([2, 8, 8, 1])
+    f = _weight([3, 3, 1, 4])
+    y = _depthwise_conv2d(x, f)
+    y = array_ops.identity(y)
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+    g = optimizer.compute_gradients(y, [x, f])
+    output = (y, g)
+
+    output_val_ref, output_val, cost_graph = self._run(mode, output)
+    node_map = _build_node_map(cost_graph.node)
+    self._assert_output_f16(mode, node_map, 'depthwise')
+    self._assert_output_f16(
+        mode, node_map,
+        'gradients/depthwise_grad/DepthwiseConv2dNativeBackpropInput')
+    self._assert_output_f16(
+        mode, node_map,
+        'gradients/depthwise_grad/DepthwiseConv2dNativeBackpropFilter')
+
+    output_val_ref, output_val, cost_graph = self._run(mode, output)
+    tol = 2e-3
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   @parameterized.parameters(['cuda', 'mkl'])
