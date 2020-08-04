@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -349,12 +350,16 @@ class XlaBuilder {
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   //
-  // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
-  // be aliased with output. If a buffer is not donated at runtime, a copy will
-  // be inserted by XLA to prevent buffer clobbering.
+  // Note: Except when 'must-alias' is true, alias is assumed to be 'may-alias'
+  // and only donated buffer at runtime will be aliased with output. If a buffer
+  // is not donated at runtime, a copy will be inserted by XLA to prevent buffer
+  // clobbering.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                  const ShapeIndex& param_index) {
-    input_output_aliases_.push_back({output_index, param_number, param_index});
+                  const ShapeIndex& param_index,
+                  HloInputOutputAliasConfig::AliasKind kind =
+                      HloInputOutputAliasConfig::AliasKind::kMayAlias) {
+    input_output_aliases_.push_back(
+        {output_index, param_number, param_index, kind});
   }
 
   // Describes an input/output alias as inserted by the SetUpAlias() API.
@@ -365,6 +370,8 @@ class XlaBuilder {
     int64 param_number;
     // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
+    // Specifies if the alias is a must alias or may alias.
+    HloInputOutputAliasConfig::AliasKind kind;
   };
 
   // Looks up the HloInstruction and sets the frontend attribute "attribute" to
