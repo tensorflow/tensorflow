@@ -138,6 +138,13 @@ class HloModuleConfig {
   }
   bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
 
+  // If enabled, deduplicate equivalent hlos into function calls to reduce code
+  // size.
+  void set_deduplicate_hlo(bool deduplicate_hlo) {
+    deduplicate_hlo_ = deduplicate_hlo;
+  }
+  bool deduplicate_hlo() const { return deduplicate_hlo_; }
+
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
@@ -245,6 +252,10 @@ class HloModuleConfig {
   // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
   // needs to partition the module.
   bool use_spmd_partitioning_ = false;
+
+  // If enabled, deduplicate equivalent hlos into function calls to reduce code
+  // size.
+  bool deduplicate_hlo_ = false;
 
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.

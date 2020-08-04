@@ -662,6 +662,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return self._get_replica(replica_id)
 
   def read_value(self):
+    if values_util.is_saving_non_distributed():
+      return self._primary.read_value()
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return array_ops.identity(self._get())
 
@@ -884,6 +886,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
+    if values_util.is_saving_non_distributed():
+      return ops.convert_to_tensor(
+          self._primary, dtype=dtype, name=name, as_ref=as_ref)
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
@@ -1012,6 +1017,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
+    # TODO(b/154017756): Make _dense_var_to_tensor consistent between ON_READ
+    # and ON_WRITE.
     # Try to avoid assignments to and other mutations of MirroredVariable
     # state except through a DistributionStrategy.extended.update() call.
     if as_ref:
@@ -1053,8 +1060,11 @@ class _SyncOnReadSaveable(saveable_object.SaveableObject):
     # when saving.
     tensor, = restored_tensors
     if self._sync_on_read_variable.aggregation == vs.VariableAggregation.SUM:
-      tensor = math_ops.cast(tensor / len(self._sync_on_read_variable._devices),  # pylint: disable=protected-access
+      # pylint: disable=protected-access
+      strategy = self._sync_on_read_variable._distribute_strategy
+      tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
                              self._sync_on_read_variable.dtype)
+      # pylint: enable=protected-access
     return control_flow_ops.group(
         tuple(
             values_util.assign_on_device(v.device, v, tensor)
@@ -1191,12 +1201,6 @@ class SyncOnReadVariable(DistributedVariable):
       return _SyncOnReadSaveable(self, name)
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
-
-  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
-    """Converts a variable to a tensor."""
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      return ops.convert_to_tensor(
-          self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 # Register a conversion functions which reads the value of the variable,
@@ -1403,8 +1407,9 @@ class OnReadPolicy(VariablePolicy):
     # total across all devices when restoring a variable that was summed
     # when saving.
     if self._aggregation == vs.VariableAggregation.SUM:
-      tensor = math_ops.cast(tensor / len(var._devices),  # pylint: disable=protected-access
-                             var.dtype)
+      strategy = var._distribute_strategy  # pylint: disable=protected-access
+      num_replicas_in_sync = strategy.num_replicas_in_sync
+      tensor = math_ops.cast(tensor / num_replicas_in_sync, var.dtype)
     return control_flow_ops.group(
         tuple(
             values_util.assign_on_device(v.device, v, tensor)

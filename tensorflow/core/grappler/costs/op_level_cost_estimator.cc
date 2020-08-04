@@ -522,6 +522,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
   // Unary ops alphabetically sorted
   elementwise_ops_.emplace("Acos", EIGEN_COST(scalar_acos_op<float>));
+  elementwise_ops_.emplace("All", EIGEN_COST(scalar_boolean_and_op));
+  elementwise_ops_.emplace("ArgMax", EIGEN_COST(scalar_max_op<float>));
   elementwise_ops_.emplace("Asin", EIGEN_COST(scalar_asin_op<float>));
   elementwise_ops_.emplace("Atan", EIGEN_COST(scalar_atan_op<float>));
   elementwise_ops_.emplace("Atan2", EIGEN_COST(scalar_quotient_op<float>) +
@@ -546,7 +548,10 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Lgamma", 1);
   elementwise_ops_.emplace("Log", EIGEN_COST(scalar_log_op<float>));
   elementwise_ops_.emplace("Log1p", EIGEN_COST(scalar_log1p_op<float>));
+  elementwise_ops_.emplace("Max", EIGEN_COST(scalar_max_op<float>));
+  elementwise_ops_.emplace("Min", EIGEN_COST(scalar_min_op<float>));
   elementwise_ops_.emplace("Neg", EIGEN_COST(scalar_opposite_op<float>));
+  elementwise_ops_.emplace("Prod", EIGEN_COST(scalar_product_op<float>));
   elementwise_ops_.emplace("QuantizeAndDequantizeV2",
                            quantize_and_dequantize_v2_cost);
   elementwise_ops_.emplace("QuantizedSigmoid",
@@ -554,6 +559,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("QuantizeV2", quantize_v2_cost);
   elementwise_ops_.emplace("Reciprocal", EIGEN_COST(scalar_inverse_op<float>));
   elementwise_ops_.emplace("Relu", EIGEN_COST(scalar_max_op<float>));
+  elementwise_ops_.emplace("Relu6", EIGEN_COST(scalar_max_op<float>));
   elementwise_ops_.emplace("Rint", 1);
   elementwise_ops_.emplace("Round", EIGEN_COST(scalar_round_op<float>));
   elementwise_ops_.emplace("Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>));
@@ -562,8 +568,10 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Sin", EIGEN_COST(scalar_sin_op<float>));
   elementwise_ops_.emplace("Sqrt", EIGEN_COST(scalar_sqrt_op<float>));
   elementwise_ops_.emplace("Square", EIGEN_COST(scalar_square_op<float>));
+  elementwise_ops_.emplace("Sum", EIGEN_COST(scalar_sum_op<float>));
   elementwise_ops_.emplace("Tan", EIGEN_COST(scalar_tan_op<float>));
   elementwise_ops_.emplace("Tanh", EIGEN_COST(scalar_tanh_op<float>));
+  elementwise_ops_.emplace("TopKV2", EIGEN_COST(scalar_max_op<float>));
   // Binary ops alphabetically sorted
   elementwise_ops_.emplace("Add", EIGEN_COST(scalar_sum_op<float>));
   elementwise_ops_.emplace("AddV2", EIGEN_COST(scalar_sum_op<float>));

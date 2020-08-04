@@ -22,6 +22,8 @@ namespace internal {
 void SegmentReductionValidationHelper(OpKernelContext* context,
                                       const Tensor& input,
                                       const Tensor& segment_ids) {
+  OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(input.shape()),
+              errors::InvalidArgument("input must be at least rank 1"));
   OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
               errors::InvalidArgument("segment_ids should be a vector."));
   const int64 num_indices = segment_ids.NumElements();

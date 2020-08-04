@@ -60,7 +60,7 @@ gentbl(
     strip_include_prefix = "include/mlir-hlo/Dialect/mhlo/transforms/",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name MHLO",
             "include/mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc",
         ),
     ],
@@ -76,7 +76,7 @@ gentbl(
     strip_include_prefix = "include/mlir-hlo/Dialect/mhlo/transforms/",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name LMHLO",
             "include/mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc",
         ),
     ],
@@ -341,6 +341,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
@@ -804,6 +805,13 @@ cc_library(
         ":transform_unranked_hlo",
         "@llvm-project//mlir:Pass",
     ],
+)
+
+cc_library(
+    name = "register_all_passes",
+    srcs = ["lib/Dialect/mhlo/transforms/register_all_passes.cc"],
+    deps = [":all_passes"],
+    alwayslink = 1,
 )
 
 cc_binary(

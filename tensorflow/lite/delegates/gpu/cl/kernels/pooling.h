@@ -34,7 +34,6 @@ class Pooling : public GPUOperation {
 
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Pooling(Pooling&& kernel);
@@ -44,11 +43,12 @@ class Pooling : public GPUOperation {
 
  private:
   std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
-                                          bool stride_correction,
-                                          const CLDevice& device);
+                                          bool stride_correction);
   std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
                                       bool stride_correction,
                                       bool output_indices);
+
+  void GenerateCode();
 
   int4 stride_;
   int4 padding_;

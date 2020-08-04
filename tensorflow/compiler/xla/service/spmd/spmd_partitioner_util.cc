@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -62,6 +63,24 @@ HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
   auto zero = b->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, zero, {}));
+}
+
+HloInstruction* CreateOne(const Shape& shape, SpmdBuilder* b) {
+  if (shape.IsTuple()) {
+    std::vector<HloInstruction*> elements;
+    for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      elements.push_back(
+          CreateOne(ShapeUtil::GetTupleElementShape(shape, i), b));
+    }
+    return b->AddInstruction(HloInstruction::CreateTuple(elements));
+  }
+
+  if (shape.IsToken()) {
+    return b->AddInstruction(HloInstruction::CreateToken());
+  }
+  auto one = b->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::One(shape.element_type())));
+  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, one, {}));
 }
 
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
@@ -1284,6 +1303,67 @@ HloInstruction* PerGroupSliceFromReplicated(
       MakePartitionOffsets(replicated->shape(), group_level_sharding, group_id,
                            b),
       shard_shape.dimensions()));
+}
+
+absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
+    absl::Span<int64 const> tgt_to_src) {
+  if (source.IsTileMaximal()) {
+    return source;
+  }
+  std::vector<int64> tgt_dims_skipping_new(tgt_to_src.size(), -1);
+  int64 skipped_tgt_dims = 0;
+  for (int64 i = 0; i < tgt_to_src.size(); ++i) {
+    if (tgt_to_src[i] < 0) {
+      skipped_tgt_dims++;
+    } else {
+      tgt_dims_skipping_new[i] = i - skipped_tgt_dims;
+    }
+  }
+  int64 skipped_src_dims = absl::c_count(src_to_tgt, -1);
+  std::vector<int64> perm(src_to_tgt.size());
+  for (int64 i = 0; i < src_to_tgt.size(); ++i) {
+    if (src_to_tgt[i] < 0) {
+      if (source.tile_assignment().dim(i) > 1) {
+        return absl::nullopt;
+      }
+      perm[src_to_tgt.size() - skipped_src_dims] = i;
+      skipped_src_dims--;
+    } else {
+      perm[tgt_dims_skipping_new[src_to_tgt[i]]] = i;
+    }
+  }
+  auto tgt_sharding = hlo_sharding_util::TransposeSharding(source, perm);
+  if (skipped_tgt_dims == 0) {
+    return tgt_sharding;
+  }
+  auto reshape_tiles = tgt_sharding.tile_assignment();
+  std::vector<int64> tgt_tiles(tgt_to_src.size(), 1);
+  for (int64 i = 0; i < tgt_tiles.size(); ++i) {
+    if (tgt_to_src[i] >= 0) {
+      tgt_tiles[i] = reshape_tiles.dim(tgt_dims_skipping_new[i]);
+    }
+  }
+  reshape_tiles.Reshape(tgt_tiles);
+  return HloSharding::Tile(reshape_tiles);
+}
+
+absl::optional<HloOpcode> ParseReductionComputation(
+    const HloComputation* reduction_comp) {
+  if (reduction_comp->num_parameters() != 2) {
+    return absl::nullopt;
+  }
+  auto root = reduction_comp->root_instruction();
+  if (!root->IsElementwiseBinary()) {
+    return absl::nullopt;
+  }
+  if (!absl::c_linear_search(root->operands(),
+                             reduction_comp->parameter_instruction(0)) ||
+      !absl::c_linear_search(root->operands(),
+                             reduction_comp->parameter_instruction(1))) {
+    return absl::nullopt;
+  }
+  return root->opcode();
 }
 
 }  // namespace spmd

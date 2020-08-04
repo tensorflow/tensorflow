@@ -1069,47 +1069,7 @@ Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
   return Status::OK();
 }
 
-// If partitioning in the operand only happens in dimensions in passthrough
-// dimensions (offset dimensions in the gather output (or scatter update) that
-// have the same size as the operand), returns the corresponding output (or
-// update) sharding by passing through the input sharding.
-absl::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
-    const PartitionedHlo& operand, const Shape& update_or_gather_shape,
-    absl::Span<const int64> collapsed_or_inserted_dims,
-    absl::Span<const int64> index_map,
-    absl::Span<const int64> offset_or_window_dims,
-    absl::Span<const int64> slice_size) {
-  if (operand.sharding().IsTileMaximal()) {
-    return operand.sharding();
-  }
-  std::vector<int64> passthrough_tile(update_or_gather_shape.rank(), 1);
-  int64 collapsed = 0;
-  for (int64 i = 0; i < operand.base_shape().rank(); ++i) {
-    int64 dim_partitions = operand.sharding().tile_assignment().dim(i);
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(index_map, i)) {
-      if (dim_partitions > 1) {
-        return absl::nullopt;
-      }
-      collapsed++;
-      continue;
-    }
-    if (slice_size[i] != operand.base_shape().dimensions(i) &&
-        dim_partitions > 1) {
-      return absl::nullopt;
-    }
-    int64 offset_dim = offset_or_window_dims[i - collapsed];
-    if (i - collapsed > 0 &&
-        offset_dim < offset_or_window_dims[i - collapsed - 1]) {
-      // Output offsets are transposed, we do not support this case.
-      return absl::nullopt;
-    }
-    passthrough_tile[offset_dim] = dim_partitions;
-  }
-  Array<int64> tile_assignment = operand.sharding().tile_assignment();
-  tile_assignment.Reshape(passthrough_tile);
-  return HloSharding::Tile(tile_assignment);
-}
+namespace {
 
 // Returns whether partitioning in the operand only happens in dimensions with
 // gather/scatter slice size 1.
@@ -1204,6 +1164,8 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
   return {broadcast_min, broadcast_max};
 }
 
+}  // namespace
+
 Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   auto scatter = Cast<HloScatterInstruction>(hlo);
   auto dnums = scatter->scatter_dimension_numbers();
@@ -1219,17 +1181,77 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
     slice_size[i] = updates.base_shape().dimensions(
         dnums.update_window_dims(num_update_window_dims++));
   }
-  std::vector<int64> inserted_window_dims(dnums.inserted_window_dims().begin(),
-                                          dnums.inserted_window_dims().end());
   std::vector<int64> scatter_dims_to_operand_dims(
       dnums.scatter_dims_to_operand_dims().begin(),
       dnums.scatter_dims_to_operand_dims().end());
-  std::vector<int64> update_window_dims(dnums.update_window_dims().begin(),
-                                        dnums.update_window_dims().end());
-  if (!operand.sharding().IsTileMaximal()) {
-    auto maybe_passthrough = PassthroughOperandToGatherOutputOrScatterUpdate(
-        operand, updates.base_shape(), inserted_window_dims,
-        scatter_dims_to_operand_dims, update_window_dims, slice_size);
+  std::vector<int64> update_scatter_dims;
+  for (int64 i = 0; i < updates.base_shape().rank(); ++i) {
+    if (!absl::c_linear_search(dnums.update_window_dims(), i)) {
+      update_scatter_dims.push_back(i);
+    }
+  }
+  if (operand.sharding().IsTileMaximal()) {
+    if (!indices.sharding().IsTileMaximal() &&
+        (dnums.index_vector_dim() == indices.base_shape().rank() ||
+         indices.sharding().tile_assignment().dim(dnums.index_vector_dim()) ==
+             1)) {
+      auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
+      if (!reduction_opcode.has_value()) {
+        return DefaultAction(hlo);
+      }
+      HloInstruction* identity;
+      switch (*reduction_opcode) {
+        case HloOpcode::kAdd:
+        case HloOpcode::kOr:
+          identity = CreateZero(operand.hlo()->shape(), &b_);
+          break;
+        case HloOpcode::kMultiply:
+        case HloOpcode::kAnd:
+          identity = CreateOne(operand.hlo()->shape(), &b_);
+          break;
+        default:
+          return DefaultAction(hlo);
+      }
+      std::vector<int64> update_dim_to_index_dim(updates.base_shape().rank(),
+                                                 -1);
+      std::vector<int64> index_dim_to_update_dim(indices.base_shape().rank(),
+                                                 -1);
+      for (int64 i = 0; i < update_scatter_dims.size(); ++i) {
+        int64 indices_scatter_dim = i < dnums.index_vector_dim() ? i : i + 1;
+        update_dim_to_index_dim[update_scatter_dims[i]] = indices_scatter_dim;
+        index_dim_to_update_dim[indices_scatter_dim] = update_scatter_dims[i];
+      }
+      auto new_updates_sharding = TransposeShardingWithCollapsedDims(
+          indices.sharding(), index_dim_to_update_dim, update_dim_to_index_dim);
+      CHECK(new_updates_sharding.has_value());
+      updates = updates.Reshard(*new_updates_sharding);
+      // To avoid accumulating the initial operand multiple times during
+      // all-reduce, we use zero operands for all non-zero partitions.
+      auto not_partition_zero = b_.AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::MakeScalarShape(PRED), partition_id_));
+      not_partition_zero = b_.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::ChangeElementType(identity->shape(), PRED),
+          not_partition_zero, {}));
+      auto select_operand =
+          b_.AddInstruction(HloInstruction::HloInstruction::CreateTernary(
+              identity->shape(), HloOpcode::kSelect, not_partition_zero,
+              identity, operand.Replicate().hlo()));
+      auto pscatter = b_.AddInstruction(scatter->CloneWithNewOperands(
+          scatter->shape(), {select_operand, indices.hlo(), updates.hlo()}));
+      auto all_reduce =
+          collective_ops_creator_.create_cross_partition_all_reduce(
+              &b_, pscatter, scatter->to_apply(), {}, NewChannel());
+      all_reduce->set_sharding(HloSharding::Replicate());
+      SetPartitionedHlo(hlo, [&]() {
+        return PartitionedHlo(all_reduce, hlo->shape(), MakePartitioningState())
+            .Reshard(hlo->sharding())
+            .hlo();
+      });
+      return Status::OK();
+    }
+  } else {
+    auto maybe_passthrough = hlo_sharding_util::ScatterUpdateShardingFromOutput(
+        operand.sharding(), *hlo);
     // Handle pass through cases if we can use compatible sharding for update.
     if (maybe_passthrough.has_value()) {
       indices = indices.Reshard(HloSharding::Replicate());
@@ -2083,16 +2105,50 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   const auto& dnums = gather->gather_dimension_numbers();
   auto operand = GetPartitionedHlo(gather->operand(0));
   auto indices = GetPartitionedHlo(gather->operand(1));
-  std::vector<int64> collapsed_slice_dims(dnums.collapsed_slice_dims().begin(),
-                                          dnums.collapsed_slice_dims().end());
   std::vector<int64> start_index_map(dnums.start_index_map().begin(),
                                      dnums.start_index_map().end());
-  std::vector<int64> offset_dims(dnums.offset_dims().begin(),
-                                 dnums.offset_dims().end());
-  if (!operand.sharding().IsTileMaximal()) {
-    auto maybe_passthrough = PassthroughOperandToGatherOutputOrScatterUpdate(
-        operand, gather->shape(), collapsed_slice_dims, start_index_map,
-        offset_dims, gather->gather_slice_sizes());
+  std::vector<int64> batch_dims;
+  for (int64 i = 0; i < gather->shape().rank(); ++i) {
+    if (!absl::c_linear_search(dnums.offset_dims(), i)) {
+      batch_dims.push_back(i);
+    }
+  }
+  if (operand.sharding().IsTileMaximal()) {
+    if (!indices.sharding().IsTileMaximal() &&
+        (dnums.index_vector_dim() == indices.base_shape().rank() ||
+         indices.sharding().tile_assignment().dim(dnums.index_vector_dim()) ==
+             1)) {
+      auto replicated_operand = operand.Replicate();
+      TF_ASSIGN_OR_RETURN(
+          Shape partitioned_output_shape,
+          ShapeInference::InferGatherShape(replicated_operand.hlo()->shape(),
+                                           indices.hlo()->shape(), dnums,
+                                           gather->gather_slice_sizes()));
+      auto pgather = b_.AddInstruction(gather->CloneWithNewOperands(
+          partitioned_output_shape, {replicated_operand.hlo(), indices.hlo()}));
+      std::vector<int64> output_dim_to_index_dim(pgather->shape().rank(), -1);
+      std::vector<int64> index_dim_to_output_dim(indices.base_shape().rank(),
+                                                 -1);
+      for (int64 i = 0; i < batch_dims.size(); ++i) {
+        int64 indices_batch_dim = i < dnums.index_vector_dim() ? i : i + 1;
+        output_dim_to_index_dim[batch_dims[i]] = indices_batch_dim;
+        index_dim_to_output_dim[indices_batch_dim] = batch_dims[i];
+      }
+      auto pgather_sharding = TransposeShardingWithCollapsedDims(
+          indices.sharding(), index_dim_to_output_dim, output_dim_to_index_dim);
+      CHECK(pgather_sharding.has_value());
+      pgather->set_sharding(*pgather_sharding);
+      SetPartitionedHlo(hlo, [&]() {
+        return PartitionedHlo(pgather, hlo->shape(), MakePartitioningState())
+            .Reshard(hlo->sharding())
+            .hlo();
+      });
+      return Status::OK();
+    }
+  } else {
+    auto maybe_passthrough =
+        hlo_sharding_util::GatherOutputShardingFromDataOperand(
+            operand.sharding(), *hlo);
     if (maybe_passthrough.has_value()) {
       indices = indices.Reshard(HloSharding::Replicate());
       auto pshape = MakePartitionedShape(gather->shape(), *maybe_passthrough);

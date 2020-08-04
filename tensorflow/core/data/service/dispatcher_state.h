@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -64,7 +65,6 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-   public:
     Dataset(int64 dataset_id, int64 fingerprint, const DatasetDef& dataset_def)
         : dataset_id(dataset_id),
           fingerprint(fingerprint),
@@ -78,7 +78,6 @@ class DispatcherState {
   // A key for identifying a named job. The key contains a user-specified name,
   // as well as an index describing which iteration of the job we are on.
   struct NamedJobKey {
-   public:
     NamedJobKey(absl::string_view name, int64 index)
         : name(name), index(index) {}
 
@@ -97,7 +96,6 @@ class DispatcherState {
 
   // A job for processing a dataset.
   struct Job {
-   public:
     Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
         absl::optional<NamedJobKey> named_job_key)
         : job_id(job_id),
@@ -123,6 +121,8 @@ class DispatcherState {
 
   // Returns the next available job id.
   int64 NextAvailableJobId() const;
+  // Returns a list of all jobs.
+  std::vector<std::shared_ptr<const Job>> ListJobs();
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
   Status JobFromId(int64 id, std::shared_ptr<const Job>* job) const;
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.

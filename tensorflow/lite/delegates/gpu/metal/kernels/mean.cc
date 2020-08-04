@@ -130,8 +130,7 @@ std::vector<ComputeTaskDescriptorPtr> Mean(int id, ValueId input_id,
                          }};
   desc->uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id,
-        work_group_size](const std::map<ValueId, BHWC>& buffers) {
+       [input_id, work_group_size](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_shape = buffers.find(input_id)->second;
          const int src_slices = DivideRoundUp(src_shape.c, 4);
          struct uniforms {

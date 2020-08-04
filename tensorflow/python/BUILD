@@ -2905,6 +2905,7 @@ tf_gen_op_wrapper_private_py(
     ],
     deps = [
         "//tensorflow/c/kernels:histogram_summary_op_lib",
+        "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/core:logging_ops_op_lib",
     ],
 )
@@ -4948,23 +4949,6 @@ cuda_py_test(
         ":variables",
         ":while_v2",
         "//tensorflow/python/eager:def_function",
-    ],
-)
-
-cuda_py_test(
-    name = "gradient_checker_test",
-    size = "medium",
-    srcs = ["ops/gradient_checker_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":nn_grad",
-        ":nn_ops",
-        ":platform",
-        "//third_party/py/numpy",
     ],
 )
 

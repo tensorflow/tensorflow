@@ -855,6 +855,15 @@ func @doNotConvertNonTrivialTransposeToReshape(%arg0: tensor<6x6x256x1xf32>) -> 
   // CHECK: return %[[RESULT]]
 }
 
+// CHECK-LABEL: Relu
+func @Relu(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense<0.0> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  return %0 : tensor<2x3xf32>
+
+  // CHECK: %[[RESULT:.*]] = "tfl.relu"(%arg0)
+  // CHECK: return %[[RESULT]]
+}
 
 // CHECK-LABEL: Relu1
 func @Relu1(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {

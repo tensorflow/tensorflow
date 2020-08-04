@@ -22,8 +22,10 @@ namespace tensorflow {
 
 namespace {
 
-static string CollectiveKey(OpKernelContext* ctx, int32 instance_key) {
-  return strings::StrCat(instance_key, ":", ctx->frame_iter().frame_id, ":",
+static string CollectiveKey(OpKernelContext* ctx, int32 group_key,
+                            int32 instance_key) {
+  return strings::StrCat(group_key, ":", instance_key, ":",
+                         ctx->frame_iter().frame_id, ":",
                          ctx->frame_iter().iter_id);
 }
 
@@ -52,7 +54,8 @@ class CollectiveOpKernel : public AsyncOpKernel {
   // A string encoding instance, frame and iter to be handed off to
   // the implementation for use in generating RecvBuf keys.
   string GetCollectiveKey(OpKernelContext* c) {
-    return CollectiveKey(c, col_params_.instance.instance_key);
+    return CollectiveKey(c, col_params_.group.group_key,
+                         col_params_.instance.instance_key);
   }
 
   // Returns false if calling invocation of ComputeAsync should return
@@ -441,6 +444,12 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_->instance.data_type));
     string merge_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
+    OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
+    if (merge_op_name == "Max") {
+      merge_op_name = "Maximum";
+    } else if (merge_op_name == "Min") {
+      merge_op_name = "Minimum";
+    }
     string final_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
     OP_REQUIRES_OK(
@@ -551,7 +560,8 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
                       << " instance " << col_params->instance.instance_key;
               col_exec->ExecuteAsync(
                   c, *col_params,
-                  CollectiveKey(c, col_params->instance.instance_key),
+                  CollectiveKey(c, col_params->group.group_key,
+                                col_params->instance.instance_key),
                   actual_done);
             } else {
               c->SetStatus(s);

@@ -2303,11 +2303,8 @@ func @expand_dims(%arg0: tensor<2xf32>, %axis: tensor<i32>) -> tensor<1x2xf32> {
 // CHECK-LABEL: func @sign
 // CHECK-SAME: [[ARG:%arg.*]]: tensor<1x2x3x4xf32>
 func @sign(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
-  // CHECK: [[PRED:%.*]] = "mhlo.compare"([[ARG]], [[ARG]])
-  // CHECK: [[ZEROS:%.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x2x3x4xf32>
   // CHECK: [[SIGN:%.*]] = "mhlo.sign"([[ARG]])
-  // CHECK: [[SELECT:%.*]] = "mhlo.select"([[PRED]], [[ZEROS]], [[SIGN]])
-  // CHECK: return [[SELECT]] : tensor<1x2x3x4xf32>
+  // CHECK: return [[SIGN]] : tensor<1x2x3x4xf32>
   %0 = "tf.Sign"(%arg0) : (tensor<1x2x3x4xf32>) -> (tensor<1x2x3x4xf32>)
   return %0 : tensor<1x2x3x4xf32>
 }
@@ -3482,8 +3479,8 @@ func @cross_replica_sum(%input: tensor<10xf32>) -> tensor<10xf32> {
 // tf.Size legalization
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: @size_rank_one_i32
-func @size_rank_one_i32(%input: tensor<f32>) -> (tensor<i32>) {
+// CHECK-LABEL: @size_scalar_i32
+func @size_scalar_i32(%input: tensor<f32>) -> (tensor<i32>) {
   // CHECK: %[[CONST:.*]] = mhlo.constant dense<1>
   // CHECK-SAME: tensor<i32>
   %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<i32>
@@ -3491,12 +3488,30 @@ func @size_rank_one_i32(%input: tensor<f32>) -> (tensor<i32>) {
   return %size : tensor<i32>
 }
 
-// CHECK-LABEL: @size_rank_one_i64
-func @size_rank_one_i64(%input: tensor<f32>) -> (tensor<i64>) {
+// CHECK-LABEL: @size_scalar_i64
+func @size_scalar_i64(%input: tensor<f32>) -> (tensor<i64>) {
   // CHECK: %[[CONST:.*]] = mhlo.constant dense<1>
   // CHECK-SAME: tensor<i64>
   %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT64"} : (tensor<f32>) -> tensor<i64>
   // CHECK: return %[[CONST]]
+  return %size : tensor<i64>
+}
+
+// CHECK-LABEL: @size_rank_one_i64
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<?xf32>)
+func @size_rank_one_i64(%input: tensor<?xf32>) -> (tensor<i64>) {
+  // CHECK: %[[INIT:.*]] = mhlo.constant dense<1>
+  // CHECK-SAME: tensor<i64>
+
+  // CHECK: %[[DIM_0:.*]] = "mhlo.get_dimension_size"(%[[INPUT]])
+  // CHECK-SAME: dimension = 0
+  // CHECK-SAME: tensor<i32>
+
+  // CHECK: %[[CAST_DIM_0:.*]] = "mhlo.convert"(%[[DIM_0]]) : (tensor<i32>) -> tensor<i64>
+  // CHECK: %[[RESULT:.*]] = chlo.broadcast_multiply %[[INIT]], %[[CAST_DIM_0]]
+
+  %size = "tf.Size"(%input) : (tensor<?xf32>) -> tensor<i64>
+  // CHECK: return %[[RESULT]]
   return %size : tensor<i64>
 }
 
@@ -3506,13 +3521,16 @@ func @size_ranked(%input: tensor<2x?x8xf32>) -> (tensor<i32>) {
   // CHECK: %[[CONST:.*]] = mhlo.constant dense<1>
   // CHECK: %[[DIM_0:.*]] = "mhlo.get_dimension_size"(%[[INPUT]])
   // CHECK-SAME: dimension = 0
-  // CHECK: %[[MUL_0:.*]] = chlo.broadcast_multiply %[[CONST]], %[[DIM_0]]
+  // CHECK: %[[CAST_DIM_0:.*]] = "mhlo.convert"(%[[DIM_0]]) : (tensor<i32>) -> tensor<i32>
+  // CHECK: %[[MUL_0:.*]] = chlo.broadcast_multiply %[[CONST]], %[[CAST_DIM_0]]
   // CHECK: %[[DIM_1:.*]] = "mhlo.get_dimension_size"(%[[INPUT]])
   // CHECK-SAME: dimension = 1
-  // CHECK: %[[MUL_1:.*]] = chlo.broadcast_multiply %[[MUL_0]], %[[DIM_1]]
+  // CHECK: %[[CAST_DIM_1:.*]] = "mhlo.convert"(%[[DIM_1]]) : (tensor<i32>) -> tensor<i32>
+  // CHECK: %[[MUL_1:.*]] = chlo.broadcast_multiply %[[MUL_0]], %[[CAST_DIM_1]]
   // CHECK: %[[DIM_2:.*]] = "mhlo.get_dimension_size"(%[[INPUT]])
   // CHECK-SAME: dimension = 2
-  // CHECK: %[[MUL_2:.*]] = chlo.broadcast_multiply %[[MUL_1]], %[[DIM_2]]
+  // CHECK: %[[CAST_DIM_2:.*]] = "mhlo.convert"(%[[DIM_2]]) : (tensor<i32>) -> tensor<i32>
+  // CHECK: %[[MUL_2:.*]] = chlo.broadcast_multiply %[[MUL_1]], %[[CAST_DIM_2]]
   %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<2x?x8xf32>) -> tensor<i32>
   // CHECK: return %[[MUL_2]]
   return %size : tensor<i32>

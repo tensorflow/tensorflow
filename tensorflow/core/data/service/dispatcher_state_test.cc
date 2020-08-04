@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_state.h"
 
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
@@ -54,7 +55,7 @@ Status CreateNamedJob(int64 job_id, int64 dataset_id,
   create_job->set_job_id(job_id);
   create_job->set_dataset_id(dataset_id);
   create_job->set_processing_mode(ProcessingModeDef::PARALLEL_EPOCHS);
-  NamedJobKey* key = create_job->mutable_named_job_key();
+  NamedJobKeyDef* key = create_job->mutable_named_job_key();
   key->set_name(named_job_key.name);
   key->set_index(named_job_key.index);
   TF_RETURN_IF_ERROR(state->Apply(update));

@@ -117,7 +117,7 @@ Status SetPerCoreArgShapes(
   } else {
     TF_RET_CHECK(proto_arg.sharding().type() == xla::OpSharding::REPLICATED)
         << "Unsupported argument sharding: "
-        << proto_arg.sharding().DebugString();
+        << " proto_arg=" << proto_arg.DebugString();
     for (int core = 0; core < per_core_arg_shapes->size(); ++core) {
       (*arg_core_mapping)[arg_index].indices.push_back(
           (*per_core_arg_shapes)[core].size());
@@ -410,6 +410,46 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
     TF_RETURN_IF_ERROR(
         tpu::ShapeTensorToTensorShape(dynamic_shapes[i], &(*shapes)[i]));
   }
+  return Status::OK();
+}
+
+/* static */
+Status TpuCompileOpKernelCommon::ComputeArgumentShapes(
+    const tpu::TPUCompileMetadataProto& metadata,
+    const std::vector<TensorShape>& dynamic_shapes,
+    std::vector<TensorShape>* arg_shapes) {
+  arg_shapes->resize(metadata.args_size());
+  int dynamic_shape_pos = 0;
+  for (int i = 0; i < metadata.args_size(); ++i) {
+    const tpu::TPUCompileMetadataProto::Arg& arg = metadata.args(i);
+    // The XLA compiler determines the shape of each constant by inspecting the
+    // value of its corresponding host-memory tensor. As a result, we don't need
+    // to give the compiler graph-inferred shapes for constant arguments.
+    if (arg.kind() == tpu::TPUCompileMetadataProto::Arg::GUARANTEED_CONSTANT) {
+      continue;
+    }
+    TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(arg.shape()));
+    PartialTensorShape static_shape(arg.shape());
+
+    TensorShape& shape = (*arg_shapes)[i];
+    if (static_shape.IsFullyDefined()) {
+      TF_RET_CHECK(static_shape.AsTensorShape(&shape));
+    } else {
+      TF_RET_CHECK(dynamic_shape_pos < dynamic_shapes.size())
+          << "Too few dynamic shapes";
+      shape = dynamic_shapes[dynamic_shape_pos++];
+      if (!static_shape.IsCompatibleWith(shape)) {
+        return errors::InvalidArgument(
+            "Mismatch between static and dynamic shape for argument. Static "
+            "shape: ",
+            static_shape.DebugString(),
+            "; dynamic shape: ", shape.DebugString());
+      }
+    }
+  }
+  // Checks we consumed all of the dynamic shapes.
+  TF_RET_CHECK(dynamic_shape_pos == dynamic_shapes.size())
+      << "Too many dynamic shapes";
   return Status::OK();
 }
 

@@ -40,7 +40,6 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   absl::Status Tune(const TuningParameters& params) override {
     return absl::OkStatus();
   }
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 

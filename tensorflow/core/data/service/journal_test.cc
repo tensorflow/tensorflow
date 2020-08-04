@@ -29,11 +29,11 @@ namespace {
 using ::testing::HasSubstr;
 
 bool NewJournalDir(std::string* journal_dir) {
-  std::string filename;
-  if (!Env::Default()->LocalTempFilename(&filename)) {
+  std::string filename = testing::TmpDir();
+  if (!Env::Default()->CreateUniqueFileName(&filename, "journal_dir")) {
     return false;
   }
-  *journal_dir = io::JoinPath(testing::TmpDir(), filename);
+  *journal_dir = filename;
   return true;
 }
 
@@ -63,7 +63,7 @@ Update MakeRegisterDatasetUpdate() {
 
 Status CheckJournalContent(StringPiece journal_dir,
                            const std::vector<Update>& expected) {
-  JournalReader reader(Env::Default(), journal_dir);
+  FileJournalReader reader(Env::Default(), journal_dir);
   for (const auto& update : expected) {
     Update result;
     bool end_of_journal = true;
@@ -87,7 +87,7 @@ TEST(Journal, RoundTripMultiple) {
   std::vector<Update> updates = {MakeCreateJobUpdate(),
                                  MakeRegisterDatasetUpdate(),
                                  MakeFinishJobUpdate()};
-  JournalWriter writer(Env::Default(), journal_dir);
+  FileJournalWriter writer(Env::Default(), journal_dir);
   for (const auto& update : updates) {
     TF_EXPECT_OK(writer.Write(update));
   }
@@ -102,7 +102,7 @@ TEST(Journal, AppendExistingFile) {
                                  MakeRegisterDatasetUpdate(),
                                  MakeFinishJobUpdate()};
   for (const auto& update : updates) {
-    JournalWriter writer(Env::Default(), journal_dir);
+    FileJournalWriter writer(Env::Default(), journal_dir);
     TF_EXPECT_OK(writer.Write(update));
   }
 
@@ -112,7 +112,7 @@ TEST(Journal, AppendExistingFile) {
 TEST(Journal, MissingFile) {
   std::string journal_dir;
   EXPECT_TRUE(NewJournalDir(&journal_dir));
-  JournalReader reader(Env::Default(), journal_dir);
+  FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(&result, &end_of_journal);
@@ -131,7 +131,7 @@ TEST(Journal, NonRecordData) {
     TF_ASSERT_OK(file->Append("not record data"));
   }
 
-  JournalReader reader(Env::Default(), journal_dir);
+  FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(&result, &end_of_journal);
@@ -152,7 +152,7 @@ TEST(Journal, InvalidRecordData) {
     TF_ASSERT_OK(writer->WriteRecord("not serializd proto"));
   }
 
-  JournalReader reader(Env::Default(), journal_dir);
+  FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(&result, &end_of_journal);

@@ -22,9 +22,10 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
 
@@ -109,59 +110,62 @@ class UnstackOpTest(test.TestCase):
               with self.subTest(shape=shape, k=k, axis=axis, dtype=dtype):
                 self.assertAllEqual(ref[k], self.evaluate(c))
 
-  @test_util.run_deprecated_v1
   def testGradientsAxis0(self):
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
       data = np.random.randn(*shape)
-      shapes = [shape[1:]] * shape[0]
+      x = constant_op.constant(data)
+
       for i in xrange(shape[0]):
+        def func(x, shape=shape, i=i):
+          return array_ops.unstack(x, num=shape[0])[i]
+
         with self.cached_session():
-          x = constant_op.constant(data)
-          cs = array_ops.unstack(x, num=shape[0])
-          err = gradient_checker.compute_gradient_error(x, shape, cs[i],
-                                                        shapes[i])
+          err = gradient_checker_v2.max_error(
+              *gradient_checker_v2.compute_gradient(func, [x]))
           self.assertLess(err, 1e-6)
 
-  @test_util.run_deprecated_v1
   def testGradientsAxis1(self):
     for shape in (2, 3), (3, 2), (4, 3, 2):
       data = np.random.randn(*shape)
-      out_shape = list(shape)
-      del out_shape[1]
+      x = constant_op.constant(data)
+
       for i in xrange(shape[1]):
+        def func(x, shape=shape, i=i):
+          return array_ops.unstack(x, num=shape[1], axis=1)[i]
+
         with self.cached_session():
-          x = constant_op.constant(data)
-          cs = array_ops.unstack(x, num=shape[1], axis=1)
-          err = gradient_checker.compute_gradient_error(x, shape, cs[i],
-                                                        out_shape)
+          err = gradient_checker_v2.max_error(
+              *gradient_checker_v2.compute_gradient(func, [x]))
           self.assertLess(err, 1e-6)
 
-  @test_util.run_deprecated_v1
   def testInferNum(self):
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-      x = array_ops.placeholder(np.float32, shape=shape)
+      x = array_ops.ones(shape, dtype=np.float32)
       cs = array_ops.unstack(x)
       self.assertEqual(type(cs), list)
       self.assertEqual(len(cs), shape[0])
 
-  @test_util.run_deprecated_v1
   def testCannotInferNumFromUnknownShape(self):
-    x = array_ops.placeholder(np.float32)
-    with self.assertRaisesRegex(ValueError,
-                                r'Cannot infer num from shape <unknown>'):
-      array_ops.unstack(x)
+    # Testing unknown shape in graph mode.
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(np.float32)
+      with self.assertRaisesRegex(ValueError,
+                                  r'Cannot infer num from shape <unknown>'):
+        array_ops.unstack(x)
 
-  @test_util.run_deprecated_v1
   def testUnknownShapeOkWithNum(self):
-    x = array_ops.placeholder(np.float32)
-    array_ops.unstack(x, num=2)
+    # Testing unknown shape in graph mode.
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(np.float32)
+      array_ops.unstack(x, num=2)
 
-  @test_util.run_deprecated_v1
   def testCannotInferNumFromNoneShape(self):
-    x = array_ops.placeholder(np.float32, shape=(None,))
-    with self.assertRaisesRegex(ValueError,
-                                r'Cannot infer num from shape \((\?|None),\)'):
-      array_ops.unstack(x)
+    # Testing unknown shape in graph mode.
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(np.float32, shape=(None,))
+      with self.assertRaisesRegex(
+          ValueError, r'Cannot infer num from shape \((\?|None),\)'):
+        array_ops.unstack(x)
 
   def testAgainstNumpy(self):
     # For 1 to 5 dimensions.

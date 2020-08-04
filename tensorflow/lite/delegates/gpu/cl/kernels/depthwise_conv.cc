@@ -79,6 +79,10 @@ DepthwiseConvolution::DepthwiseConvolution(
       dilation_(attr.dilations.w, attr.dilations.h, 0, 0),
       channel_multiplier_(attr.weights.shape.o) {
   work_group_size_ = int3(8, 8, 1);
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateDepthwiseConvolutionCode(
+      definition_, stride_correction, channel_multiplier_, weights_are_buffer_);
 }
 
 DepthwiseConvolution::DepthwiseConvolution(
@@ -94,6 +98,10 @@ DepthwiseConvolution::DepthwiseConvolution(
       dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d, 0),
       channel_multiplier_(attr.weights.shape.o) {
   work_group_size_ = int3(8, 8, 1);
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateDepthwiseConvolutionCode(
+      definition_, stride_correction, channel_multiplier_, weights_are_buffer_);
 }
 
 DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
@@ -121,9 +129,9 @@ DepthwiseConvolution& DepthwiseConvolution::operator=(
 
 std::string DepthwiseConvolution::GenerateDepthwiseConvolutionCode(
     const OperationDef& op_def, bool stride_correction, int channel_multiplier,
-    bool weights_are_buffer, const CLDevice& device) {
+    bool weights_are_buffer) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -268,24 +276,6 @@ std::string DepthwiseConvolution::GenerateDepthwiseConvolutionCode(
   c += "}\n";
 
   return c;
-}
-
-absl::Status DepthwiseConvolution::Compile(
-    const CreationContext& creation_context) {
-  const bool stride_correction =
-      definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code = GenerateDepthwiseConvolutionCode(
-      definition_, stride_correction, channel_multiplier_, weights_are_buffer_,
-      *creation_context.device);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status DepthwiseConvolution::BindArguments() {

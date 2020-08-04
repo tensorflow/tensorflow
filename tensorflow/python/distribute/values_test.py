@@ -432,12 +432,6 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(v, variables_lib.Variable)
 
   def testCheckpointing(self, distribution, synchronization, aggregation, mode):
-    # TODO(anjs): Remove this when b/162147051 is fixed.
-    if (isinstance(distribution,
-                   collective_all_reduce_strategy.CollectiveAllReduceStrategy)
-        and aggregation == variables_lib.VariableAggregation.SUM
-        and synchronization == variables_lib.VariableSynchronization.ON_READ):
-      self.skipTest("b/162147051")
 
     if (isinstance(distribution,
                    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
@@ -609,12 +603,6 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                   parameter_server_strategy.ParameterServerStrategyExtended):
       self.skipTest("b/148689177: AggregatingVariable doesn't "
                     "conform to Variable interface well")
-
-    # TODO(crccw): Unskip this in cl/323875091.
-    if (isinstance(
-        distribution,
-        collective_all_reduce_strategy.CollectiveAllReduceStrategy)):
-      self.skipTest("Being fixed in cl/323875091")
 
     # tf.function requires the return value to be Tensors, which is not always
     # case for properties and methods of Variable, so we simply discard the

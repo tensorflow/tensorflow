@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -67,6 +68,7 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
                                    named_job_key);
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
+  LOG(INFO) << "Created a new job with id " << job_id;
   if (named_job_key.has_value()) {
     DCHECK(!named_jobs_.contains(named_job_key.value()));
     named_jobs_[named_job_key.value()] = job;
@@ -102,6 +104,16 @@ Status DispatcherState::DatasetFromFingerprint(
   }
   *dataset = it->second;
   return Status::OK();
+}
+
+std::vector<std::shared_ptr<const DispatcherState::Job>>
+DispatcherState::ListJobs() {
+  std::vector<std::shared_ptr<const DispatcherState::Job>> jobs;
+  jobs.reserve(jobs_.size());
+  for (const auto& it : jobs_) {
+    jobs.push_back(it.second);
+  }
+  return jobs;
 }
 
 Status DispatcherState::JobFromId(int64 id,

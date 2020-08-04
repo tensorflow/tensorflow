@@ -970,12 +970,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if self._autocast:
         inputs = self._maybe_cast_inputs(inputs, input_list)
 
+      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
       if eager:
         call_fn = self.call
         name_scope = self._name
       else:
-        input_spec.assert_input_compatibility(self.input_spec, inputs,
-                                              self.name)
         name_scope = self._name_scope()  # Avoid autoincrementing.
         call_fn = self._autographed_call()
 

@@ -630,7 +630,6 @@ tf_gen_op_libs(
         "linalg_ops",
         "list_ops",
         "lookup_ops",
-        "logging_ops",
         "manip_ops",
         "math_ops",
         "mkl_nn_ops",
@@ -661,6 +660,20 @@ tf_gen_op_libs(
     deps = [
         ":lib",
         ":protos_all_cc",
+    ],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "logging_ops",
+    ],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+        # TODO(b/162630222): remove this dependency.
+        "//tensorflow/c/kernels:summary_op_lib",
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
     ],
 )
 
@@ -864,6 +877,7 @@ cc_library(
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
         "//tensorflow/c/kernels:histogram_summary_op_lib",
+        "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_chromiumos(
         [],
@@ -972,6 +986,7 @@ cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/c/kernels:histogram_summary_op",
+        "//tensorflow/c/kernels:summary_op",
         "//tensorflow/c/kernels:bitcast_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
@@ -1901,6 +1916,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
         "//tensorflow/core/platform:prefetch",
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:resource",

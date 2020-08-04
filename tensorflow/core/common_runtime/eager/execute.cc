@@ -88,6 +88,21 @@ const string& DeviceNameOrUnspecified(VariantDevice device) {
   }
 }
 
+// Returns whether a kernel should be cached.
+bool KernelCacheEnabled(const OpDef& op_def) {
+  if (data::DatasetOpKernel::IsDatasetOp(&op_def)) {
+    return false;
+  }
+  // TODO(b/162540360): Revisit a way to mark kernels as uncachable once we have
+  // 5+ such kernels to exclude.
+  //
+  // RuntimeFallback requires that this kernel should not be cached.
+  if (op_def.name() == "_BatchFunctionFallback") {
+    return false;
+  }
+  return true;
+}
+
 // This function expects *handle to point to an existing tensor handle that is
 // currently on "handle_device", but where the operation expects that input to
 // reside on "expected_input_device".  The function will arrange for this
@@ -555,7 +570,7 @@ Status GetOrCreateKernelAndDevice(
       // programs that build input pipeline graphs in a loop.
       const OpDef* op_def;
       TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
-      if (!data::DatasetOpKernel::IsDatasetOp(op_def)) {
+      if (KernelCacheEnabled(*op_def)) {
         ctx.AddKernelToCache(cache_key, kernel.get());
       }
     }

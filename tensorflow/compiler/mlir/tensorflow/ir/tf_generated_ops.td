@@ -1558,6 +1558,29 @@ Mutually reduces multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", []> {
+  let summary = [{
+Mutually reduces multiple tensors of identical type and shape.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, I32, I64]>:$input,
+    I32Tensor:$group_size,
+    I32Tensor:$group_key,
+    I32Tensor:$instance_key,
+
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
+    TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, I32, I64]>:$data
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ComplexOp : TF_Op<"Complex", [NoSideEffect, ResultsBroadcastableShape]> {
   let summary = "Converts two real numbers to a complex number.";
 
@@ -6093,7 +6116,7 @@ Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_MultinomialOp : TF_Op<"Multinomial", []> {
+def TF_MultinomialOp : TF_Op<"Multinomial", [TF_CannotDuplicate]> {
   let summary = "Draws samples from a multinomial distribution.";
 
   let arguments = (ins
@@ -6550,6 +6573,35 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_ParameterizedTruncatedNormalOp : TF_Op<"ParameterizedTruncatedNormal", [TF_CannotDuplicate]> {
+  let summary = [{
+Outputs random values from a normal distribution. The parameters may each be a
+  }];
+
+  let description = [{
+scalar which applies to the entire output, or a vector of length shape[0] which
+stores the parameters for each batch.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_FpTensor:$means,
+    TF_FpTensor:$stdevs,
+    TF_FpTensor:$minvals,
+    TF_FpTensor:$maxvals,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_PowOp : TF_Op<"Pow", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Computes the power of one value to another.";
@@ -6933,6 +6985,33 @@ array([0.6666667, 1. , 1. ], dtype=float32)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RandomGammaOp : TF_Op<"RandomGamma", [TF_CannotDuplicate]> {
+  let summary = [{
+Outputs random values from the Gamma distribution(s) described by alpha.
+  }];
+
+  let description = [{
+This op uses the algorithm by Marsaglia et al. to acquire samples via
+transformation-rejection from pairs of uniform and normal random variables.
+See http://dl.acm.org/citation.cfm?id=358414
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TensorOf<[F16, F32, F64]>:$alpha,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr S = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_RandomGammaGradOp : TF_Op<"RandomGammaGrad", [NoSideEffect, ResultsBroadcastableShape]>,
                            WithBroadcastableBinOpBuilder {
   let summary = [{
@@ -6951,7 +7030,60 @@ Computes the derivative of a Gamma random sample w.r.t. `alpha`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [SameOperandsAndResultType]> {
+def TF_RandomPoissonOp : TF_Op<"RandomPoisson", [TF_CannotDuplicate]> {
+  let summary = "Use RandomPoissonV2 instead.";
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TensorOf<[F16, F32, F64]>:$rate,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr S = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_RandomPoissonV2Op : TF_Op<"RandomPoissonV2", [TF_CannotDuplicate]> {
+  let summary = [{
+Outputs random values from the Poisson distribution(s) described by rate.
+  }];
+
+  let description = [{
+This op uses two algorithms, depending on rate. If rate >= 10, then
+the algorithm by Hormann is used to acquire samples via
+transformation-rejection.
+See http://www.sciencedirect.com/science/article/pii/0167668793909974.
+
+Otherwise, Knuth's algorithm is used to acquire samples via multiplying uniform
+random variables.
+See Donald E. Knuth (1969). Seminumerical Algorithms. The Art of Computer
+Programming, Volume 2. Addison Wesley
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TensorOf<[F16, F32, F64, I32, I64]>:$rate,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, I32, I64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr R = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr S = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [SameOperandsAndResultType, TF_CannotDuplicate]> {
   let summary = "Randomly shuffles a tensor along its first dimension.";
 
   let description = [{
@@ -6980,7 +7112,7 @@ The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RandomStandardNormalOp : TF_Op<"RandomStandardNormal", []> {
+def TF_RandomStandardNormalOp : TF_Op<"RandomStandardNormal", [TF_CannotDuplicate]> {
   let summary = "Outputs random values from a normal distribution.";
 
   let description = [{
@@ -7002,7 +7134,7 @@ The generated values will have mean 0 and standard deviation 1.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {
+def TF_RandomUniformOp : TF_Op<"RandomUniform", [TF_CannotDuplicate]> {
   let summary = "Outputs random values from a uniform distribution.";
 
   let description = [{
@@ -7027,6 +7159,36 @@ lower bound 0 is included in the range, while the upper bound 1 is excluded.
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_RandomUniformIntOp : TF_Op<"RandomUniformInt", [TF_CannotDuplicate]> {
+  let summary = "Outputs random integers from a uniform distribution.";
+
+  let description = [{
+The generated values are uniform integers in the range `[minval, maxval)`.
+The lower bound `minval` is included in the range, while the upper bound
+`maxval` is excluded.
+
+The random integers are slightly biased unless `maxval - minval` is an exact
+power of two.  The bias is small for values of `maxval - minval` significantly
+smaller than the range of the output (either `2^32` or `2^64`).
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$minval,
+    TF_I32OrI64Tensor:$maxval,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_RangeOp : TF_Op<"Range", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
@@ -9434,6 +9596,33 @@ The outputs are a deterministic function of `shape` and `seed`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_StatelessTruncatedNormalOp : TF_Op<"StatelessTruncatedNormal", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom values from a truncated normal distribution.
+  }];
+
+  let description = [{
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+
+The outputs are a deterministic function of `shape` and `seed`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_I32OrI64Tensor:$seed
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_StopGradientOp : TF_Op<"StopGradient", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
   let summary = "Stops gradient computation.";
 
@@ -10875,7 +11064,7 @@ y + truncate_mod(x, y) = x`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_TruncatedNormalOp : TF_Op<"TruncatedNormal", []> {
+def TF_TruncatedNormalOp : TF_Op<"TruncatedNormal", [TF_CannotDuplicate]> {
   let summary = "Outputs random values from a truncated normal distribution.";
 
   let description = [{

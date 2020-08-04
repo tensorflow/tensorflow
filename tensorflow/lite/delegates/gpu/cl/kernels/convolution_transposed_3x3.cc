@@ -42,6 +42,12 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
   } else {
     weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
   }
+  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type_,
+                                            padding_, work_group_launch_order_);
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+  }
 }
 
 ConvolutionTransposed3x3::ConvolutionTransposed3x3(
@@ -297,28 +303,6 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   }
   c += "}\n";
   return c;
-}
-
-absl::Status ConvolutionTransposed3x3::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateConvolutionTransposedCode(
-      definition_, weights_upload_type_, padding_, work_group_launch_order_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_));
-  return absl::OkStatus();
 }
 
 absl::Status ConvolutionTransposed3x3::BindArguments() {

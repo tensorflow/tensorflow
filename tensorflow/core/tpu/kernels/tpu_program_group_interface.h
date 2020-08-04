@@ -20,8 +20,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/time/time.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/lib/core/status.h"

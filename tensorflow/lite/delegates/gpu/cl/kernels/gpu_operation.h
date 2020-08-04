@@ -59,18 +59,15 @@ struct OperationDef {
   bool IsBatchSupported() const;
 };
 
-class ElementwiseOperation;
-
 // GPUOperation represents some implementation of neural network operation on
-// GPU. GPUOperation can contain ElementwiseOperation operations, in this case,
-// ElementwiseOperation still hold necessary data and should be alive.
-// When GPUOperation contains ElementwiseOperations, this GPUoperation replaces
-// some sequence of operations Op + el_op0 + el_op1 + ...
+// GPU. GPUOperation can contain another GPU operations with flag elementwise_.
+// When GPUOperation contains another GPU ops, this GPUoperation replaces
+// some sequence of operations Op + op0 + op1 + ...
 // Because of this abilities of GPUOperation, usage scenario is next:
 // Create instance of GPUOperation.
-// Create all instances of ElementwiseOperations that we will(probably) attach
-// to GPUOperation. Attach all ElementwiseOperations to GPUOperation. Call
-// GPUOperation.Compile(). Don't call ElementwiseOperation.Compile() if it
+// Create all instances of GPUOperations that we will(probably) attach
+// to GPUOperation. Attach all GPUOperations to GPUOperation. Call
+// GPUOperation.Compile(). Don't call GPUOperations.Compile() if it
 // attached, it useless(and may be error)
 class GPUOperation {
  public:
@@ -83,7 +80,7 @@ class GPUOperation {
   GPUOperation(const GPUOperation&) = delete;
   GPUOperation& operator=(const GPUOperation&) = delete;
 
-  void AddOperation(ElementwiseOperation* operation);
+  void AddOperation(GPUOperation* operation);
 
   void SetSrc(Tensor* ptr, int index = 0);
   void SetDst(Tensor* ptr, int index = 0);
@@ -101,7 +98,9 @@ class GPUOperation {
     return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
   }
 
-  virtual absl::Status Compile(const CreationContext& creation_context) {
+  virtual absl::Status Compile(const CreationContext& creation_context);
+
+  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info) {
     return absl::OkStatus();
   }
 
@@ -114,62 +113,36 @@ class GPUOperation {
   void AddDstTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
 
+  bool IsLinkable() const { return elementwise_ && linkable_; }
+
+  // for linking
+  void AddUniquePostfix(const std::string& unique_postfix);
+
+  Arguments args_;
+  std::string code_;
+
+  bool elementwise_ = false;
+  // applicable only with elementwise_ = true;
+  bool linkable_ = true;  // by default every elementwise is linkable
+  // applicable only with elementwise_ = true;
+  bool check_src_channels_size_ = false;
+
  protected:
   virtual absl::Status BindArguments() { return absl::OkStatus(); }
-  virtual int3 GetGridSize() const = 0;
+  virtual int3 GetGridSize() const;
 
   // Defines operation calculation precision and format of src/dst tensors.
   OperationDef definition_;
   std::vector<Tensor*> src_;
   std::vector<Tensor*> dst_;
-  Arguments args_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
   int3 grid_size_ = int3(0, 0, 0);
   std::vector<std::string> src_tensors_names_;
   std::vector<std::string> dst_tensors_names_;
-  std::vector<ElementwiseOperation*> linked_operations_;
+  std::vector<CompilerOptions> compiler_options_;
+  std::vector<GPUOperation*> linked_operations_;
 };
-
-// ElementwiseOperation can be fused(linked) to another operation.
-// field linked_ indicate about this
-// link_index_ used mostly for generating of correct names for
-//   linked code variables
-// link_index_ is number of operation in sequence of linked operations
-// and should be unique in this sequence
-// link_index_ = 0 is equivalent that operation not linked.
-class ElementwiseOperation : public GPUOperation {
- public:
-  ElementwiseOperation() {}
-  explicit ElementwiseOperation(const OperationDef& definition)
-      : GPUOperation(definition) {}
-
-  virtual ~ElementwiseOperation() {}
-
-  absl::Status Compile(const CreationContext& creation_context) override;
-  int3 GetGridSize() const override;
-
-  // Move only
-  ElementwiseOperation(ElementwiseOperation&& operation);
-  ElementwiseOperation& operator=(ElementwiseOperation&& operation);
-  ElementwiseOperation(const ElementwiseOperation&) = delete;
-  ElementwiseOperation& operator=(const ElementwiseOperation&) = delete;
-
-  Arguments&& MoveArgs() { return std::move(args_); }
-  std::string GetCode() const { return code_; }
-  void AddUniquePostfix(const std::string& unique_postfix);
-
-  bool IsLinkable() const { return linkable_; }
-
- protected:
-  bool check_src_channels_size_ = false;
-  std::string code_;
-  bool linkable_ = true;
-};
-
-absl::Status MergeOperations(
-    const std::vector<ElementwiseOperation*>& linked_ops,
-    Arguments* merged_args, std::string* merged_code);
 
 }  // namespace cl
 }  // namespace gpu

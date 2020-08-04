@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
@@ -30,9 +31,8 @@ namespace cl {
 
 class ConcatZ : public GPUOperation {
  public:
-  ConcatZ(const OperationDef& definition, const std::vector<int>& channels)
-      : GPUOperation(definition), channels_(channels) {}
-  absl::Status Compile(const CreationContext& creation_context) override;
+  ConcatZ(const OperationDef& definition, const std::vector<int>& channels,
+          const DeviceInfo& device_info);
   int3 GetGridSize() const override;
 
   // Move only
@@ -44,12 +44,11 @@ class ConcatZ : public GPUOperation {
  private:
   std::string GetConcatKernelCode(const OperationDef& op_def,
                                   const std::vector<int>& channels);
-
-  std::vector<int> channels_;
 };
 
 ConcatZ CreateConcatZ(const OperationDef& definition,
-                      const std::vector<int>& channels);
+                      const std::vector<int>& channels,
+                      const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

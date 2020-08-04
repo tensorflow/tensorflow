@@ -27,12 +27,15 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-ConcatXY::ConcatXY(ConcatXY&& operation)
-    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
+ConcatXY::ConcatXY(const OperationDef& definition, const ConcatAttributes& attr)
+    : GPUOperation(definition) {
+  code_ = GetConcatKernelCode(definition, attr);
+}
+
+ConcatXY::ConcatXY(ConcatXY&& operation) : GPUOperation(std::move(operation)) {}
 
 ConcatXY& ConcatXY::operator=(ConcatXY&& operation) {
   if (this != &operation) {
-    attr_ = operation.attr_;
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -125,19 +128,6 @@ std::string ConcatXY::GetConcatKernelCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status ConcatXY::Compile(const CreationContext& creation_context) {
-  std::string code = GetConcatKernelCode(definition_, attr_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 int3 ConcatXY::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height() * dst_[0]->Depth();
@@ -146,8 +136,8 @@ int3 ConcatXY::GetGridSize() const {
 }
 
 ConcatXY CreateConcatXY(const OperationDef& definition,
-                        const ConcatAttributes& attr, int tensors_count) {
-  return ConcatXY(definition, attr, tensors_count);
+                        const ConcatAttributes& attr) {
+  return ConcatXY(definition, attr);
 }
 
 }  // namespace cl

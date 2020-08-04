@@ -20,99 +20,19 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 
 namespace mlir {
 namespace TF {
-
 namespace detail {
 
-// This template defines an aggregate analysis base class, which analyzes a
-// module but the analysis info is stored per function.
-template <typename InfoT>
-class PerFunctionAggregateAnalysis {
- public:
-  using Info = InfoT;
-
-  // Returns the analysis info for the given function.
-  const Info& GetAnalysisForFunc(FuncOp func) const {
-    auto it = info_map_.find(func);
-    assert(it != info_map_.end());
-    return it->second;
-  }
-
- protected:
-  llvm::SmallDenseMap<FuncOp, InfoT, 8> info_map_;
-};
-
-class BacktrackAnalysis;
-
-// Resource alias analysis information for a single function.
-class ResourceAliasAnalysisInfo {
- public:
-  // Constructs analysis info by analyzing the given function.
-  ResourceAliasAnalysisInfo(FuncOp func,
-                            const BacktrackAnalysis& backtrack_analysis);
-
-  ResourceAliasAnalysisInfo(ResourceAliasAnalysisInfo&&) = default;
-
-  // Returns if the analysis fails to resolve a resource-type value.
-  bool IsUnknownResource(const Value resource) const;
-
-  // Returns the set unique IDs which `resource` could alias. Requires that
-  // IsUnknownResource(resource) == false.
-  const llvm::SmallSet<int64_t, 8>& GetResourceUniqueIds(Value resource) const;
-
-  // Returns the set of values that are potentially aliases of `value`. Requires
-  // that IsUnknownResource(resource) == false.
-  llvm::SmallSetVector<Value, 8> GetResourceAliases(Value resource) const;
-
- private:
-  // Maps resource value to unique ID and vice-versa.
-  void AddValueUniqueIDMapping(Value value, int64_t id) {
-    resource_value_to_ids_[value].insert(id);
-    id_to_resource_values_[id].insert(value);
-  }
-
-  // Returns the set unique Values which map to `id`.
-  const llvm::SmallSetVector<Value, 8>& GetUniqueIdResources(int64_t id) const;
-
-  // Maps each resource-type value to a set of unique IDs that it could alias.
-  llvm::SmallDenseMap<Value, llvm::SmallSet<int64_t, 8>, 8>
-      resource_value_to_ids_;
-
-  // Maps each unique ID to a set of resource-type values that could alias to
-  // it. This is inverse of `resource_value_to_ids_` map.
-  llvm::SmallDenseMap<int64_t, llvm::SmallSetVector<Value, 8>, 8>
-      id_to_resource_values_;
-};
-
-}  // namespace detail
-
-// An analysis that runs on a module and maps each resource-type value to a
-// set of unique IDs representing the possible resources it could alias.
-//
-// Note that this is not an inter-procedural or inter-regional analysis, i.e.,
-// each function and region are handled separately and cross-function or cross-
-// region aliasing cannot be checked by this analysis.
-class ResourceAliasAnalysis : public detail::PerFunctionAggregateAnalysis<
-                                  detail::ResourceAliasAnalysisInfo> {
- public:
-  // Constructs analysis by analyzing the given module operation.
-  explicit ResourceAliasAnalysis(Operation* op);
-};
-
-namespace detail {
 // Side effect analysis info for a single function.
 class SideEffectAnalysisInfo {
  public:
@@ -211,27 +131,6 @@ class SideEffectAnalysis : public detail::PerFunctionAggregateAnalysis<
  public:
   // Constructs analysis by analyzing the given module operation.
   explicit SideEffectAnalysis(Operation* op);
-};
-
-// Base CRTP class to help write passes that are consumes a per-function
-// aggregate analysis and operate on all non-extern functions (similar to a
-// FunctionPass, but with no concurrency between functions). The derived classes
-// need to provide a runOnFunction() method that accepts the function and the
-// analysis information for that function.
-template <typename DerivedT, typename AnalysisT>
-class PerFunctionAggregateAnalysisConsumerPass
-    : public PassWrapper<
-          PerFunctionAggregateAnalysisConsumerPass<DerivedT, AnalysisT>,
-          OperationPass<ModuleOp>> {
-  void runOnOperation() override {
-    ModuleOp op = this->getOperation();
-    DerivedT& derived = *static_cast<DerivedT*>(this);
-    auto& analysis = this->template getAnalysis<AnalysisT>();
-
-    for (auto func : op.getOps<FuncOp>())
-      if (!func.isExternal())
-        derived.runOnFunction(func, analysis.GetAnalysisForFunc(func));
-  }
 };
 
 }  // namespace TF

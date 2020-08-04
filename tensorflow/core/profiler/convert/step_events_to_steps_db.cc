@@ -142,6 +142,12 @@ StepDatabaseResult ConvertStepEventsToStepDb(
     for (const auto& it : step_details->Collectives()) {
       collectives[it.first] = it.second;
     }
+    // Populates the device transfer stats for this step.
+    auto& device_memory_transfers =
+        *per_core_step_info.mutable_device_memory_transfers();
+    for (const auto& dma : step_details->DeviceMemoryTransfers()) {
+      *device_memory_transfers.Add() = dma;
+    }
     // The remaining fields in PerCoreStepInfo are not filled.
     *step_db.add_step_sequence() = per_core_step_info;
   }

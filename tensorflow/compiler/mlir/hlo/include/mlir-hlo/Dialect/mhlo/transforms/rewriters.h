@@ -90,8 +90,7 @@ void PopulateTanhToApproximationPatterns(MLIRContext *context,
 namespace lmhlo {
 
 /// Collect a set of patterns to convert from the LHLO dialect to LLVM.
-void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
-                                          LLVMTypeConverter *converter,
+void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns);
 
 }  // namespace lmhlo

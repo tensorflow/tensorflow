@@ -127,6 +127,26 @@ HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
 HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
                                          const HloInstruction& hlo);
 
+// Returns an output sharding of gather by passing through the data operand's
+// sharding.
+absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
+    const HloSharding& data_operand_sharding, const HloInstruction& hlo);
+
+// Returns a data operand sharding of gather by passing through the output's
+// sharding.
+absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
+    const HloSharding& output_sharding, const HloInstruction& hlo);
+
+// Returns an output sharding of scatter by passing through the update operand's
+// sharding.
+absl::optional<HloSharding> ScatterOutputShardingFromUpdate(
+    const HloSharding& update_sharding, const HloInstruction& hlo);
+
+// Returns an update operand sharding of scatter by passing through the output's
+// sharding.
+absl::optional<HloSharding> ScatterUpdateShardingFromOutput(
+    const HloSharding& output_sharding, const HloInstruction& hlo);
+
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.
 // - If computation is add/or, return 0/false with corresponding op code;

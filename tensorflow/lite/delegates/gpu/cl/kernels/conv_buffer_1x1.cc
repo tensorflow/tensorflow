@@ -151,7 +151,10 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
 
 ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
                              const ConvParams& conv_params)
-    : GPUOperation(definition), conv_params_(conv_params) {}
+    : GPUOperation(definition), conv_params_(conv_params) {
+  code_ = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
+  work_group_size_ = conv_params_.work_group_size;
+}
 
 ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
     : GPUOperation(std::move(operation)),
@@ -298,21 +301,6 @@ std::string ConvBuffer1x1::GenerateConvBuffer1x1(
   }
   c += "}\n";
   return c;
-}
-
-absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
-  std::string code = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
-  work_group_size_ = conv_params_.work_group_size;
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_));
-  return absl::OkStatus();
 }
 
 int3 ConvBuffer1x1::GetGridSize() const {

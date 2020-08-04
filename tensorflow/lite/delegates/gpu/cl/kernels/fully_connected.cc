@@ -24,8 +24,22 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-FullyConnected::FullyConnected(const OperationDef& definition)
-    : GPUOperation(definition) {}
+FullyConnected::FullyConnected(const OperationDef& definition,
+                               const DeviceInfo& device_info)
+    : GPUOperation(definition) {
+  if (device_info.IsAdreno()) {
+    if (device_info.IsAdreno3xx()) {
+      work_group_size_ = int3(8, 4, 1);
+    } else if (device_info.IsAdreno4xx()) {
+      work_group_size_ = int3(16, 4, 1);
+    } else {
+      work_group_size_ = int3(32, 4, 1);
+    }
+  } else {
+    work_group_size_ = int3(16, 4, 1);
+  }
+  code_ = GetFullyConnectedKernelCode(definition_, work_group_size_);
+}
 
 FullyConnected::FullyConnected(FullyConnected&& kernel)
     : GPUOperation(std::move(kernel)) {}
@@ -92,36 +106,6 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
   return c;
 }
 
-absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
-  int wg_width = 32;
-  int wg_height = 4;
-  int work_items;
-  do {
-    work_group_size_ = {wg_width, wg_height, 1};
-    wg_width /= 2;
-    std::string code =
-        GetFullyConnectedKernelCode(definition_, work_group_size_);
-    std::string element_wise_code;
-    RETURN_IF_ERROR(
-        MergeOperations(linked_operations_, &args_, &element_wise_code));
-    RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                            {{"dst_tensor", element_wise_code}},
-                                            &code));
-    auto status = creation_context.cache->GetOrCreateCLKernel(
-        code, "main_function", *creation_context.context,
-        *creation_context.device, &kernel_);
-    if (!status.ok()) {
-      if (work_group_size_.x == 1) {
-        return status;
-      } else {
-        continue;
-      }
-    }
-    work_items = work_group_size_.x * work_group_size_.y * work_group_size_.z;
-  } while (work_items > kernel_.GetMaxWorkGroupSize());
-  return absl::OkStatus();
-}
-
 int3 FullyConnected::GetGridSize() const {
   return int3(dst_[0]->Slices(), 1, 1);
 }
@@ -130,7 +114,7 @@ absl::Status CreateFullyConnected(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const FullyConnectedAttributes& attr,
                                   FullyConnected* result) {
-  *result = FullyConnected(definition);
+  *result = FullyConnected(definition, creation_context.device->GetInfo());
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 

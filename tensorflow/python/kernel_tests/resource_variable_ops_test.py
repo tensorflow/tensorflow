@@ -187,7 +187,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with self.cached_session():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
-      self.assertNotEmpty(handle.eval())
+      self.assertNotEmpty(self.evaluate(handle))
 
   @test_util.run_deprecated_v1
   def testCachedValueReadBeforeWrite(self):

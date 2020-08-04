@@ -26,6 +26,12 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+SpaceToDepth::SpaceToDepth(const OperationDef& op_def,
+                           const SpaceToDepthAttributes& attr)
+    : GPUOperation(op_def), attr_(attr) {
+  code_ = GetSpaceToDepthCode(definition_);
+}
+
 SpaceToDepth::SpaceToDepth(SpaceToDepth&& operation)
     : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
 
@@ -80,19 +86,6 @@ std::string SpaceToDepth::GetSpaceToDepthCode(const OperationDef& op_def) {
   c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
   c += "}\n";
   return c;
-}
-
-absl::Status SpaceToDepth::Compile(const CreationContext& creation_context) {
-  std::string code = GetSpaceToDepthCode(definition_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status SpaceToDepth::BindArguments() {

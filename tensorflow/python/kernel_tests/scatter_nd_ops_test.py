@@ -150,7 +150,7 @@ class StatefulScatterNdTest(test.TestCase):
         np_scatter(new, indices, updates)
         # Scatter via tensorflow
         ref_var = variables.VariableV1(ref)
-        ref_var.initializer.run()
+        self.evaluate(ref_var.initializer)
         tf_scatter(ref_var, indices, updates).eval()
 
         # Compare
@@ -276,7 +276,7 @@ class StatefulScatterNdTest(test.TestCase):
   #     update1 = tf.compat.v1.scatter_nd_update(
   #         var, tf.constant(
   #             [[0]], dtype=tf.int64), [False])
-  #     var.initializer.run()
+  #     self.evaluate(var.initializer)
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
@@ -292,7 +292,7 @@ class StatefulScatterNdTest(test.TestCase):
       updates = np.array([-3, -4, -5]).astype(np.float32)
       with self.cached_session(use_gpu=False):
         ref = variables.VariableV1(params)
-        ref.initializer.run()
+        self.evaluate(ref.initializer)
 
         # Indices all in range, no problem.
         indices = np.array([[2], [0], [5]])
@@ -325,7 +325,7 @@ class StatefulScatterNdTest(test.TestCase):
         initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
         dtype=dtypes.float32)
     with self.cached_session():
-      res.initializer.run()
+      self.evaluate(res.initializer)
       with self.assertRaisesOpError("Output must be at least 1-D"):
         state_ops.scatter_nd_update(res, [[0]], [0.22]).eval()
 
@@ -340,7 +340,7 @@ class StatefulScatterNdTest(test.TestCase):
 
     expected_result = np.zeros([2, 2], dtype=np.int32)
     with self.cached_session():
-      ref.initializer.run()
+      self.evaluate(ref.initializer)
       self.assertAllEqual(expected_result, self.evaluate(scatter_update))
 
   @test_util.run_deprecated_v1
@@ -397,7 +397,7 @@ class StatefulScatterNdTest(test.TestCase):
       # We don't test the implementation; just test there's no failures.
       with self.cached_session(force_gpu=True):
         ref = variables.Variable(params)
-        ref.initializer.run()
+        self.evaluate(ref.initializer)
 
         # Indices all in range, no problem.
         indices = np.array([2, 0, 5])
@@ -556,7 +556,7 @@ class ScatterNdTest(test.TestCase):
     scatter = self.scatter_nd(indices, updates, shape)
 
     with self.cached_session():
-      self.assertEqual(scatter.eval().size, 0)
+      self.assertEqual(self.evaluate(scatter).size, 0)
 
   @test_util.run_deprecated_v1
   def testRank3InvalidShape1(self):

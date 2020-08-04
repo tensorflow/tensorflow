@@ -899,20 +899,45 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       return propagate_slicing() || propagate_base();
     }
     case HloOpcode::kGather: {
-      if (!IsSpatiallyPartitioned(instruction->operand(1))) {
-        return false;
+      bool changed = false;
+      if (IsSpatiallyPartitioned(instruction->operand(1))) {
+        HloSharding new_sharding = hlo_sharding_util::GatherOutputSharding(
+            instruction->operand(1)->sharding(), instruction);
+        changed |= MaybeImproveInstructionSharding(new_sharding, instruction);
       }
-      HloSharding new_sharding = hlo_sharding_util::GatherOutputSharding(
-          instruction->operand(1)->sharding(), instruction);
-      return MaybeImproveInstructionSharding(new_sharding, instruction);
+      if (is_spmd && IsSpatiallyPartitioned(instruction->operand(0))) {
+        auto maybe_from_data =
+            hlo_sharding_util::GatherOutputShardingFromDataOperand(
+                instruction->operand(0)->sharding(), *instruction);
+        if (maybe_from_data) {
+          changed |=
+              MaybeImproveInstructionSharding(*maybe_from_data, instruction);
+        }
+      }
+      return changed;
     }
     case HloOpcode::kScatter: {
+      bool changed = false;
+      if (is_spmd && IsSpatiallyPartitioned(instruction->operand(0))) {
+        changed |= MaybeImproveInstructionSharding(
+            instruction->operand(0)->sharding(), instruction);
+      }
       if (!IsSpatiallyPartitioned(instruction->operand(1)) &&
           !IsSpatiallyPartitioned(instruction->operand(2))) {
         return false;
       }
-      return MaybeImproveInstructionSharding(HloSharding::Replicate(),
-                                             instruction);
+      if (is_spmd && IsSpatiallyPartitioned(instruction->operand(2))) {
+        auto maybe_from_update =
+            hlo_sharding_util::ScatterOutputShardingFromUpdate(
+                instruction->operand(2)->sharding(), *instruction);
+        if (maybe_from_update) {
+          changed |=
+              MaybeImproveInstructionSharding(*maybe_from_update, instruction);
+        }
+      }
+      changed |= MaybeImproveInstructionSharding(HloSharding::Replicate(),
+                                                 instruction);
+      return changed;
     }
     case HloOpcode::kWhile: {
       if (!instruction->operand(0)->has_sharding()) {
@@ -1217,6 +1242,43 @@ absl::optional<HloSharding> GetShardingFromUser(
     case HloOpcode::kReverse: {
       return hlo_sharding_util::ReverseSharding(user.sharding(),
                                                 user.dimensions());
+    }
+    case HloOpcode::kGather: {
+      if (&instruction == user.operand(1)) {
+        return hlo_sharding_util::GatherIndexSharding(user.sharding(), &user);
+      }
+      if (is_spmd) {
+        return hlo_sharding_util::GatherDataOperandShardingFromOutput(
+            user.sharding(), user);
+      }
+      return absl::nullopt;
+    }
+    case HloOpcode::kScatter: {
+      if (&instruction == user.operand(0)) {
+        return user.sharding();
+      }
+      if (&instruction == user.operand(1)) {
+        auto update = user.operand(2);
+        if (!IsSpatiallyPartitioned(update)) {
+          return absl::nullopt;
+        }
+        return hlo_sharding_util::ScatterIndexSharding(update->sharding(),
+                                                       &user);
+      }
+      CHECK_EQ(&instruction, user.operand(2));
+      auto indices = user.operand(1);
+      if (IsSpatiallyPartitioned(indices)) {
+        auto from_indices =
+            hlo_sharding_util::ScatterDataSharding(indices->sharding(), &user);
+        if (!from_indices.IsTileMaximal()) {
+          return from_indices;
+        }
+      }
+      if (is_spmd) {
+        return hlo_sharding_util::ScatterUpdateShardingFromOutput(
+            user.sharding(), user);
+      }
+      return absl::nullopt;
     }
     default: {
       // If the user output shape is compatible with the current instruction
