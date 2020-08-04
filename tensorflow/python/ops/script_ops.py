@@ -39,6 +39,7 @@ from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -394,6 +395,7 @@ def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
 
 
 @tf_export("py_function")
+@dispatch.add_dispatch_support
 def eager_py_func(func, inp, Tout, name=None):
   """Wraps a python function into a TensorFlow op that executes it eagerly.
 
@@ -571,6 +573,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     stateful argument making all functions stateful.
     """)
 @tf_export(v1=["py_func"])
+@dispatch.add_dispatch_support
 def py_func(func, inp, Tout, stateful=True, name=None):
   return py_func_common(func, inp, Tout, stateful, name=name)
 
@@ -579,6 +582,7 @@ py_func.__doc__ = "%s" % py_func_common.__doc__
 
 
 @tf_export("numpy_function")
+@dispatch.add_dispatch_support
 def numpy_function(func, inp, Tout, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
