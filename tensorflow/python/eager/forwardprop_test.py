@@ -1041,6 +1041,28 @@ class BatchTests(test.TestCase, parameterized.TestCase):
       z = x * y
     self.assertAllClose(acc.jvp(z), constant_op.constant([5.0, 2.0, 7.0]))
 
+  @parameterized.named_parameters(
+    [("ForwardPropFirst", True),
+     ("TapeFirst", False)])
+  def testBatchBackwardOverForward(self, forward_prop_first):
+    primals = constant_op.constant(1.)
+    tangents = constant_op.constant([.1, .2])
+    expected = constant_op.constant([-.1 * math_ops.cos(1.).numpy(), -.2 * math_ops.cos(1.).numpy()])
+    print(expected)
+    if forward_prop_first:
+      forward_accumulator = forwardprop.ForwardAccumulator._batch_accumulator(primals, tangents)
+      gradient_tape = backprop.GradientTape()
+    else:
+      gradient_tape = backprop.GradientTape()
+      forward_accumulator = forwardprop.ForwardAccumulator._batch_accumulator(primals, tangents)
+    with gradient_tape as tape:
+      with forward_accumulator as acc:
+        tape.watch(primals)
+        d = math_ops.cos(primals)
+        self.assertTrue(tape_lib.should_record_backprop((acc.jvp(d),)))
+      self.assertAllClose(expected,
+                          tape.gradient(acc.jvp(d), primals))
+
 
 if __name__ == "__main__":
   # TODO(allenl): Also test with 1.x-style graph mode.
