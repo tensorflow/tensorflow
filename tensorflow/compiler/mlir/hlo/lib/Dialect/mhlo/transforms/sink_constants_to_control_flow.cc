@@ -16,12 +16,12 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/RegionUtils.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 
 namespace mlir {
 namespace mhlo {
