@@ -747,19 +747,17 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     `tf.TypeSpec` objects from `output_signature` argument:
 
     >>> def gen():
-    ...   ragged_tensor = tf.ragged.constant([[1, 2], [3]],
-    ...                                      ragged_rank=1,
-    ...                                      dtype=tf.int64)
+    ...   ragged_tensor = tf.ragged.constant([[1, 2], [3]])
     ...   yield 42, ragged_tensor
     >>>
     >>> dataset = tf.data.Dataset.from_generator(
     ...      gen,
     ...      output_signature=(
-    ...          tf.TensorSpec(shape=(), dtype=tf.int64),
-    ...          tf.RaggedTensorSpec(shape=(2, None), dtype=tf.int64)))
+    ...          tf.TensorSpec(shape=(), dtype=tf.int32),
+    ...          tf.RaggedTensorSpec(shape=(2, None), dtype=tf.int32)))
     >>>
     >>> list(dataset.take(1))
-    [(<tf.Tensor: shape=(), dtype=int64, numpy=42>,
+    [(<tf.Tensor: shape=(), dtype=int32, numpy=42>,
     <tf.RaggedTensor [[1, 2], [3]]>)]
 
     There is also a deprecated way to call `from_generator` by either with
