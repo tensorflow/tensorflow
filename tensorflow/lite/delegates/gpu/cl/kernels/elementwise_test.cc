@@ -546,9 +546,9 @@ TEST_F(OpenCLOperationTest, MaximumWithScalar) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      const float* scalar = absl::get_if<float>(&attr.param);
-      GPUOperation operation = CreateElementwiseOneRuntimeOneScalar(
-          creation_context_, op_def, OperationType::MAXIMUM, *scalar);
+      GPUOperation operation;
+      ASSERT_OK(CreateElementwise(creation_context_, op_def,
+                                  OperationType::MAXIMUM, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 4, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -578,9 +578,8 @@ TEST_F(OpenCLOperationTest, MaximumWithConstantLinearTensor) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation;
-      ASSERT_OK(CreateElementwiseTwoInput(creation_context_, op_def,
-                                          OperationType::MAXIMUM, linear_tensor,
-                                          &operation));
+      ASSERT_OK(CreateElementwise(creation_context_, op_def,
+                                  OperationType::MAXIMUM, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -597,6 +596,8 @@ TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensor) {
   ::tflite::gpu::Tensor<HWC, DataType::FLOAT32> hwc_tensor;
   hwc_tensor.shape = HWC(2, 1, 2);
   hwc_tensor.data = {0.5f, 2.0f, 0.7f, 4.7f};
+  ElementwiseAttributes attr;
+  attr.param = hwc_tensor;
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -608,9 +609,8 @@ TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensor) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation;
-      ASSERT_OK(CreateElementwiseTwoInput(creation_context_, op_def,
-                                          OperationType::MAXIMUM, hwc_tensor,
-                                          &operation));
+      ASSERT_OK(CreateElementwise(creation_context_, op_def,
+                                  OperationType::MAXIMUM, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -626,6 +626,8 @@ TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensorBroadcastChannels) {
   ::tflite::gpu::Tensor<HWC, DataType::FLOAT32> hwc_tensor;
   hwc_tensor.shape = HWC(2, 1, 1);
   hwc_tensor.data = {0.5f, 2.0f};
+  ElementwiseAttributes attr;
+  attr.param = hwc_tensor;
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -637,9 +639,8 @@ TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensorBroadcastChannels) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation;
-      ASSERT_OK(CreateElementwiseTwoInput(creation_context_, op_def,
-                                          OperationType::MAXIMUM, hwc_tensor,
-                                          &operation));
+      ASSERT_OK(CreateElementwise(creation_context_, op_def,
+                                  OperationType::MAXIMUM, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -693,9 +694,9 @@ TEST_F(OpenCLOperationTest, MinimumWithScalar) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      const float* scalar = absl::get_if<float>(&attr.param);
-      GPUOperation operation = CreateElementwiseOneRuntimeOneScalar(
-          creation_context_, op_def, OperationType::MINIMUM, *scalar);
+      GPUOperation operation;
+      ASSERT_OK(CreateElementwise(creation_context_, op_def,
+                                  OperationType::MINIMUM, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 4, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -784,6 +785,35 @@ TEST_F(OpenCLOperationTest, MulBroadcastChannels) {
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {0.5f, 1.0f, 9.0f, 13.5f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, SubWithScalarAtFirstPosition) {
+  TensorFloat32 src_tensor_0;
+  src_tensor_0.shape = BHWC(1, 4, 1, 1);
+  src_tensor_0.data = {0.0f, -6.2f, 2.0f, -3.0f};
+
+  ElementwiseAttributes attr;
+  attr.param = 4.0f;
+  attr.runtime_tensor_is_second = true;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      GPUOperation operation;
+      ASSERT_OK(CreateElementwise(creation_context_, op_def, OperationType::SUB,
+                                  attr, &operation));
+      ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
+                                    BHWC(1, 4, 1, 1), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data,
+                  Pointwise(FloatNear(eps), {4.0f, 10.2f, 2.0f, 7.0f}));
     }
   }
 }

@@ -31,27 +31,13 @@ namespace cl {
 GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
                                        const OperationType& op_type);
 
-// Creates simple two input (first input is runtime tensor and second input is
-// scalar argument) operation, for example sub, div, pow, etc.
-GPUOperation CreateElementwiseOneRuntimeOneScalar(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const OperationType& op_type, float scalar_parameter);
-
 // Creates simple two input(first input is runtime tensor and second input is
-// constant linear tensor) operation, for example sub, div and etc.
-absl::Status CreateElementwiseTwoInput(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const OperationType& op_type,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
-    GPUOperation* result);
-
-// Creates simple two input(first input is runtime tensor and second input is
-// constant HWC tensor) operation, for example sub, div and etc.
-absl::Status CreateElementwiseTwoInput(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const OperationType& op_type,
-    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& constant_tensor,
-    GPUOperation* result);
+// constant or linear/hwc tensor) operation, for example sub, div and etc.
+absl::Status CreateElementwise(const CreationContext& creation_context,
+                               const OperationDef& definition,
+                               const OperationType& op_type,
+                               const ElementwiseAttributes& attr,
+                               GPUOperation* result);
 
 // Creates simple two input(2 runtime tensors) operation, for example
 // sub, div and etc.
