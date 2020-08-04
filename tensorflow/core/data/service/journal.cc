@@ -34,10 +34,10 @@ std::string DataServiceJournalFile(StringPiece journal_dir) {
   return io::JoinPath(journal_dir, kJournal);
 }
 
-JournalWriter::JournalWriter(Env* env, StringPiece journal_dir)
+FileJournalWriter::FileJournalWriter(Env* env, StringPiece journal_dir)
     : env_(env), journal_dir_(journal_dir) {}
 
-Status JournalWriter::EnsureInitialized() {
+Status FileJournalWriter::EnsureInitialized() {
   if (writer_) {
     return Status::OK();
   }
@@ -48,7 +48,7 @@ Status JournalWriter::EnsureInitialized() {
   return Status::OK();
 }
 
-Status JournalWriter::Write(Update update) {
+Status FileJournalWriter::Write(Update update) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   std::string s = update.SerializeAsString();
   if (s.empty()) {
@@ -61,10 +61,14 @@ Status JournalWriter::Write(Update update) {
   return Status::OK();
 }
 
-JournalReader::JournalReader(Env* env, StringPiece journal_dir)
+NoopJournalWriter::NoopJournalWriter() {}
+
+Status NoopJournalWriter::Write(Update update) { return Status::OK(); }
+
+FileJournalReader::FileJournalReader(Env* env, StringPiece journal_dir)
     : env_(env), journal_dir_(journal_dir) {}
 
-Status JournalReader::EnsureInitialized() {
+Status FileJournalReader::EnsureInitialized() {
   if (reader_) {
     return Status::OK();
   }
@@ -74,7 +78,7 @@ Status JournalReader::EnsureInitialized() {
   return Status::OK();
 }
 
-Status JournalReader::Read(Update* update, bool* end_of_journal) {
+Status FileJournalReader::Read(Update* update, bool* end_of_journal) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   tstring record;
   Status s = reader_->ReadRecord(&offset_, &record);

@@ -37,7 +37,7 @@ cc_library(
 
 gentbl(
     name = "tf_framework_passes_inc_gen",
-    tbl_outs = [("-gen-pass-decls", "tf_framework_passes.h.inc")],
+    tbl_outs = [("-gen-pass-decls -name TFFramework", "tf_framework_passes.h.inc")],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],

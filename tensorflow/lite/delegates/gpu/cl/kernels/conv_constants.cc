@@ -37,7 +37,7 @@ int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
 }
 
 int GetOptimalMaxConstantSize(const DeviceInfo& info) {
-  if (info.vendor != Vendor::QUALCOMM) {
+  if (!info.IsAdreno()) {
     // In general we do not expect that this kernel will be used with non Adreno
     // so as it tuned for __constant memory that have big profit on Adreno
     return 1024;  // 1KB

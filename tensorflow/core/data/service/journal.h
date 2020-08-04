@@ -27,19 +27,26 @@ namespace data {
 // Returns the location of the journal file within the journal directory.
 std::string DataServiceJournalFile(StringPiece journal_dir);
 
-// JournalWriter is not thread-safe, requiring external synchronization when
-// used by multiple threads.
+// Interface for writing to a journal.
 class JournalWriter {
+ public:
+  virtual ~JournalWriter() = default;
+  // Writes and syncs an update to the journal.
+  virtual Status Write(Update update) = 0;
+};
+
+// FileJournalWriter is not thread-safe, requiring external synchronization when
+// used by multiple threads.
+class FileJournalWriter : public JournalWriter {
  public:
   // Creates a journal writer to write to the given journal directory.
   // If there is already journal data there, the journal writer will append to
   // the existing journal.
-  explicit JournalWriter(Env* env, StringPiece journal_dir);
-  JournalWriter(const JournalWriter&) = delete;
-  JournalWriter& operator=(const JournalWriter&) = delete;
+  explicit FileJournalWriter(Env* env, StringPiece journal_dir);
+  FileJournalWriter(const FileJournalWriter&) = delete;
+  FileJournalWriter& operator=(const FileJournalWriter&) = delete;
 
-  // Writes and syncs an update to the journal.
-  Status Write(Update update);
+  Status Write(Update update) override;
 
  private:
   // Initializes the writer if it is not yet initialized.
@@ -51,17 +58,36 @@ class JournalWriter {
   std::unique_ptr<io::RecordWriter> writer_;
 };
 
-// JournalReader is not thread-safe, requiring external synchronization when
-// used by multiple threads.
+// NoopJournalWriter implements the JournalWriter interface, but doesn't
+// actually write journal entries anywhere.
+class NoopJournalWriter : public JournalWriter {
+ public:
+  // Creates a journal writer which does nothing.
+  explicit NoopJournalWriter();
+  NoopJournalWriter(const NoopJournalWriter&) = delete;
+  NoopJournalWriter& operator=(const NoopJournalWriter&) = delete;
+
+  Status Write(Update update) override;
+};
+
+// Interface for reading from a journal.
 class JournalReader {
  public:
-  explicit JournalReader(Env* env, StringPiece journal_dir);
-  JournalReader(const JournalReader&) = delete;
-  JournalReader& operator=(const JournalReader&) = delete;
-
+  virtual ~JournalReader() = default;
   // Reads the next update from the journal. Sets `*end_of_journal=true` if
   // there are no more updates left in the journal.
-  Status Read(Update* update, bool* end_of_journal);
+  virtual Status Read(Update* update, bool* end_of_journal) = 0;
+};
+
+// JournalReader is not thread-safe, requiring external synchronization when
+// used by multiple threads.
+class FileJournalReader : public JournalReader {
+ public:
+  explicit FileJournalReader(Env* env, StringPiece journal_dir);
+  FileJournalReader(const FileJournalReader&) = delete;
+  FileJournalReader& operator=(const FileJournalReader&) = delete;
+
+  Status Read(Update* update, bool* end_of_journal) override;
 
  private:
   // Initializes the reader if it is not yet initialized.

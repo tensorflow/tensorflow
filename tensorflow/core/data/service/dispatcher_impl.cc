@@ -28,11 +28,13 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -40,6 +42,9 @@ namespace tensorflow {
 namespace data {
 
 namespace {
+// The name of the journal directory inside the dispatcher's working directory.
+constexpr StringPiece kJournalDir = "journal";
+
 using Dataset = DispatcherState::Dataset;
 using NamedJobKey = DispatcherState::NamedJobKey;
 using Job = DispatcherState::Job;
@@ -59,7 +64,15 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const experimental::DispatcherConfig& config)
-    : config_(config) {}
+    : config_(config) {
+  if (config_.work_dir().empty()) {
+    journal_writer_ = absl::make_unique<NoopJournalWriter>();
+  } else {
+    std::string journal_dir = io::JoinPath(config_.work_dir(), kJournalDir);
+    journal_writer_ =
+        absl::make_unique<FileJournalWriter>(Env::Default(), journal_dir);
+  }
+}
 
 Status DataServiceDispatcherImpl::RegisterWorker(
     const RegisterWorkerRequest* request, RegisterWorkerResponse* response) {
@@ -124,7 +137,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
         Update update;
         FinishJobUpdate* finish_job = update.mutable_finish_job();
         finish_job->set_job_id(task->job_id);
-        TF_RETURN_IF_ERROR(state_.Apply(update));
+        TF_RETURN_IF_ERROR(Apply(update));
       }
       VLOG(3) << "Task " << task_id << " from job " << task->job_id
               << " completed";
@@ -170,7 +183,7 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   register_dataset->set_dataset_id(*dataset_id);
   register_dataset->set_fingerprint(fingerprint);
   *register_dataset->mutable_dataset_def() = dataset;
-  return state_.Apply(update);
+  return Apply(update);
 }
 
 Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
@@ -278,7 +291,7 @@ Status DataServiceDispatcherImpl::CreateJob(
     key->set_name(named_job_key->name);
     key->set_index(named_job_key->index);
   }
-  TF_RETURN_IF_ERROR(state_.Apply(update));
+  TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   return Status::OK();
 }
@@ -392,6 +405,11 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   VLOG(3) << "Returning list of " << workers_.size()
           << " workers from GetWorkers";
   return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::Apply(const Update& update)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  return state_.Apply(update, journal_writer_.get());
 }
 
 }  // namespace data
