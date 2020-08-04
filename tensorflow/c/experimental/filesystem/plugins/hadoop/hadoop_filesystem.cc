@@ -601,7 +601,7 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
                 char*** entries, TF_Status* status) {
   auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
   auto fs = Connect(libhdfs, path, status);
-  if (TF_GetCode(status) != TF_OK) return;
+  if (TF_GetCode(status) != TF_OK) return -1;
 
   std::string scheme, namenode, hdfs_path;
   ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
@@ -610,7 +610,7 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   // check to verify the directory exists first.
   TF_FileStatistics stat;
   Stat(filesystem, path, &stat, status);
-  if (TF_GetCode(status) != TF_OK) return;
+  if (TF_GetCode(status) != TF_OK) return -1;
 
   int num_entries = 0;
   auto info = libhdfs->hdfsListDirectory(fs, hdfs_path.c_str(), &num_entries);
@@ -633,6 +633,7 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   }
   libhdfs->hdfsFreeFileInfo(info, num_entries);
   TF_SetStatus(status, TF_OK, "");
+  return num_entries;
 }
 
 // TODO(vnvo2409): Implement later
