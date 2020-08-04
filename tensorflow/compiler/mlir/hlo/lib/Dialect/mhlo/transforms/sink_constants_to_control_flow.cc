@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/RegionUtils.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 
 namespace mlir {
 namespace mhlo {
@@ -29,8 +30,16 @@ namespace {
 
 // A pass that sinks constants implicitly captured in control flow regions. This
 // is necessary to export to XLA.
-class SinkConstantsToControlFlow
-    : public mlir::PassWrapper<SinkConstantsToControlFlow, FunctionPass> {
+//
+// TODO(hinsu): Generalize this pass to handle all the ops with regions. Any
+// value used within the region that is defined outside of op's region should be
+// sank to the regions and not just the constants. Ops such as If and While
+// whose computations doesn't require fixed signature like Sort or Reduce have
+// an option to pass outside values as operands of the op to avoid recomputing
+// those within internally. Note that doing so is the only option in case of
+// values defined outside that are BlockArguments of any of the parent region.
+class SinkConstantsToControlFlowPass
+    : public mlir::PassWrapper<SinkConstantsToControlFlowPass, FunctionPass> {
   void runOnFunction() override {
     getFunction().walk([](Operation* op) {
       if (auto while_op = llvm::dyn_cast<WhileOp>(op)) {
@@ -39,6 +48,8 @@ class SinkConstantsToControlFlow
       } else if (auto if_op = llvm::dyn_cast<IfOp>(op)) {
         SinkToRegion(&if_op.true_branch());
         SinkToRegion(&if_op.false_branch());
+      } else if (auto sort_op = llvm::dyn_cast<SortOp>(op)) {
+        SinkToRegion(&sort_op.comparator());
       }
     });
   }
@@ -46,39 +57,36 @@ class SinkConstantsToControlFlow
  private:
   // Performs constant sinking into a region.
   static void SinkToRegion(Region* region) {
-    llvm::DenseMap<Value, ConstOp> sunk_constant;
+    llvm::DenseMap<Value, Operation*> sunk_constant;
     visitUsedValuesDefinedAbove({*region}, [&](OpOperand* use) {
       Value constant = use->get();
-      auto const_op = dyn_cast_or_null<ConstOp>(constant.getDefiningOp());
-      if (!const_op) return;
+      auto op = constant.getDefiningOp();
+      if (!op || !op->hasTrait<OpTrait::ConstantLike>()) return;
       auto map_entry = sunk_constant.try_emplace(constant, nullptr);
       if (!map_entry.second) {
         // This constant has already been cloned into the region, reuse it.
-        use->set(map_entry.first->getSecond().getResult());
-        if (constant.use_empty()) const_op.erase();
+        use->set(map_entry.first->getSecond()->getResult(0));
+        if (op->use_empty()) op->erase();
         return;
       }
       if (constant.hasOneUse()) {
-        const_op.getOperation()->moveBefore(&region->front().front());
+        op->moveBefore(&region->front().front());
         return;
       }
-      map_entry.first->getSecond() = const_op.clone();
+      map_entry.first->getSecond() = op->clone();
       region->front().getOperations().insert(region->front().begin(),
                                              map_entry.first->getSecond());
-      use->set(map_entry.first->getSecond().getResult());
+      use->set(map_entry.first->getSecond()->getResult(0));
     });
   }
 };
 
-static mlir::PassRegistration<SinkConstantsToControlFlow> pass(
-    "mhlo-sink-constants-to-control-flow",
-    "Sink constants implicitly captured in control flow regions. This is "
-    "necessary to export to XLA.");
-
 }  // anonymous namespace
 
+// TODO(hinsu): Rename this pass and move to a different file along with the
+// generalization to make all ops isolated from above.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass() {
-  return std::make_unique<SinkConstantsToControlFlow>();
+  return std::make_unique<SinkConstantsToControlFlowPass>();
 }
 
 }  // namespace mhlo

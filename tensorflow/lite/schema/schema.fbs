@@ -41,6 +41,7 @@ enum TensorType : byte {
   COMPLEX64 = 8,
   INT8 = 9,
   FLOAT64 = 10,
+  COMPLEX128 = 11,
 }
 
 // Custom quantization parameters for experimenting with new quantization

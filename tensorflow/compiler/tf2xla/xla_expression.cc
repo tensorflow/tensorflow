@@ -163,4 +163,23 @@ xla::StatusOr<TensorShape> XlaExpression::GetShape() const {
   }
 }
 
+const XlaExpression* XlaExpression::CastExpressionFromTensor(
+    const Tensor& tensor) {
+  const XlaExpression* expression =
+      reinterpret_cast<const XlaExpression*>(tensor.tensor_data().data());
+  CHECK(expression->kind() != XlaExpression::Kind::kInvalid)
+      << expression->HumanString();
+  return expression;
+}
+
+// Assigns an XlaExpression to a tensor on an XLA compilation device.
+void XlaExpression::AssignExpressionToTensor(const XlaExpression& value,
+                                             Tensor* tensor) {
+  const XlaExpression* expression =
+      reinterpret_cast<const XlaExpression*>(tensor->tensor_data().data());
+  CHECK(expression->kind() == XlaExpression::Kind::kInvalid)
+      << expression->HumanString();
+  *const_cast<XlaExpression*>(expression) = value;
+}
+
 }  // namespace tensorflow

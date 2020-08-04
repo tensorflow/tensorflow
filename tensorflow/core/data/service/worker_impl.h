@@ -17,10 +17,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/master.grpc.pb.h"
+#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -29,17 +30,19 @@ namespace data {
 // A TensorFlow DataService serves dataset elements over RPC.
 class DataServiceWorkerImpl {
  public:
-  explicit DataServiceWorkerImpl(const std::string& master_address,
-                                 const std::string& protocol);
+  explicit DataServiceWorkerImpl(const experimental::WorkerConfig& config);
   ~DataServiceWorkerImpl();
 
   // Starts the worker. The worker needs to know its own address so that it can
-  // register with the master.
+  // register with the dispatcher. This is set in `Start` instead of in the
+  // constructor because the worker may be binding to port `0`, in which case
+  // the address isn't known until the worker has started and decided which port
+  // to bind to.
   void Start(const std::string& worker_address);
 
   // See worker.proto for API documentation.
 
-  /// Master-facing API.
+  /// Dispatcher-facing API.
   Status ProcessTask(const ProcessTaskRequest* request,
                      ProcessTaskResponse* response);
 
@@ -48,15 +51,15 @@ class DataServiceWorkerImpl {
                     GetElementResponse* response);
 
  private:
-  // Sets master_stub_ if it isn't already set.
-  Status EnsureMasterStubInitialized();
-  // Registers the worker with the master.
+  // Sets dispatcher_stub_ if it isn't already set.
+  Status EnsureDispatcherStubInitialized();
+  // Registers the worker with the dispatcher.
   Status Register();
-  // Sends task status to the master.
+  // Sends task status to the dispatcher.
   Status SendTaskUpdate();
   // Creates an iterator to process a task.
   Status ProcessTaskInternal(const TaskDef& task);
-  // A thread for updating the master with worker status.
+  // A thread for updating the dispatcher with worker status.
   void HeartbeatThread();
 
   typedef struct Task {
@@ -67,18 +70,17 @@ class DataServiceWorkerImpl {
     std::unique_ptr<standalone::Iterator> iterator;
   } Task;
 
-  const std::string master_address_;
-  // Protocol for communicating with the master.
-  const std::string protocol_;
+  const experimental::WorkerConfig config_;
   // The worker's own address.
   std::string worker_address_;
 
   mutex mu_;
   int64 worker_id_ TF_GUARDED_BY(mu_);
-  std::unique_ptr<MasterService::Stub> master_stub_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<DispatcherService::Stub> dispatcher_stub_ TF_GUARDED_BY(mu_);
   // Information about tasks, keyed by task ids.
   absl::flat_hash_map<int64, Task> tasks_ TF_GUARDED_BY(mu_);
-  // List of completed tasks which haven't yet been communicated to the master.
+  // List of completed tasks which haven't yet been communicated to the
+  // dispatcher.
   std::vector<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Condition variable for notifying the heartbeat thread.

@@ -25,6 +25,7 @@ import shutil
 
 from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -226,7 +227,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
         name='random_fourier_features',
     )
     expected_initializer = initializer
-    if isinstance(initializer, init_ops.Initializer):
+    if not isinstance(initializer, six.string_types):
       expected_initializer = initializers.serialize(initializer)
 
     expected_dtype = (

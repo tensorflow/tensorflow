@@ -94,7 +94,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 
-using tensorflow::int64;
 using tensorflow::string;
 
 namespace {
@@ -968,7 +967,7 @@ int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h, TF_Status* status) {
     return -1;
   }
 
-  int64 num_elements = -1;
+  tensorflow::int64 num_elements = -1;
   status->status = tensorflow::unwrap(h)->NumElements(&num_elements);
   return num_elements;
 }
@@ -980,7 +979,7 @@ int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
     return -1;
   }
 
-  int64 dim = -1;
+  tensorflow::int64 dim = -1;
   status->status = tensorflow::unwrap(h)->Dim(dim_index, &dim);
   return dim;
 }
@@ -1073,11 +1072,13 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   status->status = context->FindDeviceFromName(device_name, &device);
   tensorflow::CustomDevice* custom_device = nullptr;
   if (!status->status.ok()) {
-    status->status =
-        context->FindCustomDeviceFromName(device_name, &custom_device);
-    if (!status->status.ok()) {
+    if (!context->FindCustomDeviceFromName(device_name, &custom_device)) {
       deallocator(data, len, deallocator_arg);
+      status->status =
+          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
       return nullptr;
+    } else {
+      status->status = tensorflow::Status::OK();
     }
   }
   std::vector<tensorflow::int64> dimvec(num_dims);

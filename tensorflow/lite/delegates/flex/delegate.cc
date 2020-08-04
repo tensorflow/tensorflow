@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/kernel.h"
 #include "tensorflow/lite/delegates/flex/util.h"
@@ -30,9 +31,13 @@ limitations under the License.
 namespace tflite {
 
 // Corresponding weak declaration found in lite/interpreter_builder.cc.
+#if TFLITE_HAS_ATTRIBUTE_WEAK
+// If weak symbol is not supported (Windows), it can use
+// TF_AcquireFlexDelegate() path instead.
 TfLiteDelegateUniquePtr AcquireFlexDelegate() {
   return tflite::FlexDelegate::Create();
 }
+#endif
 
 TfLiteDelegateUniquePtr FlexDelegate::Create(
     std::unique_ptr<FlexDelegate> base_delegate) {
@@ -140,6 +145,11 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 // Exported C interface function which is used by AcquireFlexDelegate() at
 // interpreter_build.cc. To export the function name globally, the function name
 // must be matched with patterns in tf_version_script.lds
-extern "C" tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
-  return tflite::AcquireFlexDelegate();
+extern "C" {
+#if defined(_WIN32)
+__declspec(dllexport)
+#endif
+    tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
+  return tflite::FlexDelegate::Create();
 }
+}  // extern "C"

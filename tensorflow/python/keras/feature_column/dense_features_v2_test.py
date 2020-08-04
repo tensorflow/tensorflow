@@ -29,7 +29,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.feature_column import dense_features_v2 as df
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -44,9 +45,9 @@ def _initialized_session(config=None):
   return sess
 
 
-class DenseFeaturesTest(test.TestCase):
+class DenseFeaturesTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_retrieving_input(self):
     features = {'a': [0.]}
     dense_features = df.DenseFeatures(fc.numeric_column('a'))
@@ -434,18 +435,18 @@ class DenseFeaturesTest(test.TestCase):
           expected_var_names,
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
-  @test_util.run_deprecated_v1
   def test_multiple_layers_with_same_shared_embedding_column(self):
     categorical_column_a = fc.categorical_column_with_identity(
         key='aaa', num_buckets=3)
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=3)
     embedding_dimension = 2
-    embedding_column_b, embedding_column_a = fc.shared_embedding_columns_v2(
-        [categorical_column_b, categorical_column_a],
-        dimension=embedding_dimension)
 
+    # feature_column.shared_embeddings is not supported in eager.
     with ops.Graph().as_default():
+      embedding_column_b, embedding_column_a = fc.shared_embedding_columns_v2(
+          [categorical_column_b, categorical_column_a],
+          dimension=embedding_dimension)
       features = {
           'aaa':
               sparse_tensor.SparseTensor(
@@ -468,19 +469,19 @@ class DenseFeaturesTest(test.TestCase):
           ['aaa_bbb_shared_embedding:0'],
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
-  @test_util.run_deprecated_v1
   def test_multiple_layers_with_same_shared_embedding_column_diff_graphs(self):
     categorical_column_a = fc.categorical_column_with_identity(
         key='aaa', num_buckets=3)
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=3)
     embedding_dimension = 2
-    embedding_column_b, embedding_column_a = fc.shared_embedding_columns_v2(
-        [categorical_column_b, categorical_column_a],
-        dimension=embedding_dimension)
-    all_cols = [embedding_column_a, embedding_column_b]
 
+    # feature_column.shared_embeddings is not supported in eager.
     with ops.Graph().as_default():
+      embedding_column_b, embedding_column_a = fc.shared_embedding_columns_v2(
+          [categorical_column_b, categorical_column_a],
+          dimension=embedding_dimension)
+      all_cols = [embedding_column_a, embedding_column_b]
       features = {
           'aaa':
               sparse_tensor.SparseTensor(
@@ -520,7 +521,6 @@ class DenseFeaturesTest(test.TestCase):
           ['aaa_bbb_shared_embedding:0'],
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
-  @test_util.run_deprecated_v1
   def test_with_1d_sparse_tensor(self):
     embedding_values = (
         (1., 2., 3., 4., 5.),  # id 0
@@ -546,38 +546,38 @@ class DenseFeaturesTest(test.TestCase):
     embedded_country = fc.embedding_column(
         country, dimension=5, initializer=_initializer)
 
-    # Provides 1-dim tensor and dense tensor.
-    features = {
-        'price':
-            constant_op.constant([
-                11.,
-                12.,
-            ]),
-        'body-style':
-            sparse_tensor.SparseTensor(
-                indices=((0,), (1,)),
-                values=('sedan', 'hardtop'),
-                dense_shape=(2,)),
-        # This is dense tensor for the categorical_column.
-        'country':
-            constant_op.constant(['CA', 'US']),
-    }
-    self.assertEqual(1, features['price'].shape.ndims)
-    self.assertEqual(1, features['body-style'].dense_shape.get_shape()[0])
-    self.assertEqual(1, features['country'].shape.ndims)
+    with ops.Graph().as_default():
+      # Provides 1-dim tensor and dense tensor.
+      features = {
+          'price':
+              constant_op.constant([
+                  11.,
+                  12.,
+              ]),
+          'body-style':
+              sparse_tensor.SparseTensor(
+                  indices=((0,), (1,)),
+                  values=('sedan', 'hardtop'),
+                  dense_shape=(2,)),
+          # This is dense tensor for the categorical_column.
+          'country':
+              constant_op.constant(['CA', 'US']),
+      }
+      self.assertEqual(1, features['price'].shape.ndims)
+      self.assertEqual(1, features['body-style'].dense_shape.get_shape()[0])
+      self.assertEqual(1, features['country'].shape.ndims)
 
-    net = df.DenseFeatures([price, one_hot_body_style, embedded_country])(
-        features)
-    self.assertEqual(1 + 3 + 5, net.shape[1])
-    with _initialized_session() as sess:
+      net = df.DenseFeatures([price, one_hot_body_style, embedded_country])(
+          features)
+      self.assertEqual(1 + 3 + 5, net.shape[1])
+      with _initialized_session() as sess:
 
-      # Each row is formed by concatenating `embedded_body_style`,
-      # `one_hot_body_style`, and `price` in order.
-      self.assertAllEqual([[0., 0., 1., 11., 12., 13., 14., 15., 11.],
-                           [1., 0., 0., 1., 2., 3., 4., 5., 12.]],
-                          sess.run(net))
+        # Each row is formed by concatenating `embedded_body_style`,
+        # `one_hot_body_style`, and `price` in order.
+        self.assertAllEqual([[0., 0., 1., 11., 12., 13., 14., 15., 11.],
+                             [1., 0., 0., 1., 2., 3., 4., 5., 12.]],
+                            sess.run(net))
 
-  @test_util.run_deprecated_v1
   def test_with_1d_unknown_shape_sparse_tensor(self):
     embedding_values = (
         (1., 2.),  # id 0
@@ -604,39 +604,39 @@ class DenseFeaturesTest(test.TestCase):
         country, dimension=2, initializer=_initializer)
 
     # Provides 1-dim tensor and dense tensor.
-    features = {
-        'price': array_ops.placeholder(dtypes.float32),
-        'body-style': array_ops.sparse_placeholder(dtypes.string),
-        # This is dense tensor for the categorical_column.
-        'country': array_ops.placeholder(dtypes.string),
-    }
-    self.assertIsNone(features['price'].shape.ndims)
-    self.assertIsNone(features['body-style'].get_shape().ndims)
-    self.assertIsNone(features['country'].shape.ndims)
+    with ops.Graph().as_default():
+      features = {
+          'price': array_ops.placeholder(dtypes.float32),
+          'body-style': array_ops.sparse_placeholder(dtypes.string),
+          # This is dense tensor for the categorical_column.
+          'country': array_ops.placeholder(dtypes.string),
+      }
+      self.assertIsNone(features['price'].shape.ndims)
+      self.assertIsNone(features['body-style'].get_shape().ndims)
+      self.assertIsNone(features['country'].shape.ndims)
 
-    price_data = np.array([11., 12.])
-    body_style_data = sparse_tensor.SparseTensorValue(
-        indices=((0,), (1,)), values=('sedan', 'hardtop'), dense_shape=(2,))
-    country_data = np.array([['US'], ['CA']])
+      price_data = np.array([11., 12.])
+      body_style_data = sparse_tensor.SparseTensorValue(
+          indices=((0,), (1,)), values=('sedan', 'hardtop'), dense_shape=(2,))
+      country_data = np.array([['US'], ['CA']])
 
-    net = df.DenseFeatures([price, one_hot_body_style, embedded_country])(
-        features)
-    self.assertEqual(1 + 3 + 2, net.shape[1])
-    with _initialized_session() as sess:
+      net = df.DenseFeatures([price, one_hot_body_style, embedded_country])(
+          features)
+      self.assertEqual(1 + 3 + 2, net.shape[1])
+      with _initialized_session() as sess:
 
-      # Each row is formed by concatenating `embedded_body_style`,
-      # `one_hot_body_style`, and `price` in order.
-      self.assertAllEqual(
-          [[0., 0., 1., 1., 2., 11.], [1., 0., 0., 11., 12., 12.]],
-          sess.run(
-              net,
-              feed_dict={
-                  features['price']: price_data,
-                  features['body-style']: body_style_data,
-                  features['country']: country_data
-              }))
+        # Each row is formed by concatenating `embedded_body_style`,
+        # `one_hot_body_style`, and `price` in order.
+        self.assertAllEqual(
+            [[0., 0., 1., 1., 2., 11.], [1., 0., 0., 11., 12., 12.]],
+            sess.run(
+                net,
+                feed_dict={
+                    features['price']: price_data,
+                    features['body-style']: body_style_data,
+                    features['country']: country_data
+                }))
 
-  @test_util.run_deprecated_v1
   def test_with_rank_0_feature(self):
     # price has 1 dimension in dense_features
     price = fc.numeric_column('price')
@@ -649,15 +649,16 @@ class DenseFeaturesTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'Feature .* cannot have rank 0'):
       df.DenseFeatures([price])(features)
 
-    # Dynamic rank 0 should fail
-    features = {
-        'price': array_ops.placeholder(dtypes.float32),
-    }
-    net = df.DenseFeatures([price])(features)
-    self.assertEqual(1, net.shape[1])
-    with _initialized_session() as sess:
-      with self.assertRaisesOpError('Feature .* cannot have rank 0'):
-        sess.run(net, feed_dict={features['price']: np.array(1)})
+    with ops.Graph().as_default():
+      # Dynamic rank 0 should fail
+      features = {
+          'price': array_ops.placeholder(dtypes.float32),
+      }
+      net = df.DenseFeatures([price])(features)
+      self.assertEqual(1, net.shape[1])
+      with _initialized_session() as sess:
+        with self.assertRaisesOpError('Feature .* cannot have rank 0'):
+          sess.run(net, feed_dict={features['price']: np.array(1)})
 
 
 if __name__ == '__main__':

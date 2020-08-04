@@ -24,7 +24,6 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -459,9 +458,8 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""
 
   def __init__(self, strategy):
-    zero = constant_op.constant(0, dtypes.int32)
     distribute_lib.ReplicaContext.__init__(
-        self, strategy, replica_id_in_sync_group=zero)
+        self, strategy, replica_id_in_sync_group=0)
 
   @property
   def devices(self):

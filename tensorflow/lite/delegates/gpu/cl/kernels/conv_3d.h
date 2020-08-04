@@ -39,9 +39,9 @@ namespace cl {
 class Conv3D : public GPUOperation {
  public:
   Conv3D() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   Conv3D(Conv3D&& operation);
@@ -105,16 +105,14 @@ class Conv3D : public GPUOperation {
                              int dst_slices, bool x_kernel_is_1,
                              bool y_kernel_is_1, bool z_kernel_is_1) const;
 
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
+  std::string GenerateConv3D(const OperationDef& op_def, bool stride_correction,
+                             const Conv3D::ConvParams& conv_params);
 
   int3 stride_;
   int3 padding_;
   int3 kernel_size_;
   int3 dilation_;
   ConvParams conv_params_;
-
-  CLKernel kernel_;
 };
 
 template <DataType T>

@@ -45,7 +45,9 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     *status = custom_device->CopyTensorFromDevice(
         this, "/job:localhost/replica:0/task:0/device:CPU:0", &copy);
     if (status->ok()) {
-      return copy->Resolve(status);
+      auto result = copy->Resolve(status);
+      copy->Unref();
+      return result;
     } else {
       return nullptr;
     }
@@ -124,12 +126,14 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
   *status = this->FindDeviceFromName(device_name, &device);
   if (!status->ok()) {
     tensorflow::CustomDevice* dev;
-    *status = this->FindCustomDeviceFromName(device_name, &dev);
-    if (status->ok()) {
+    if (this->FindCustomDeviceFromName(device_name, &dev)) {
       *status = dev->CopyTensorToDevice(input, &result);
       if (status->ok()) {
         return result;
       }
+    } else {
+      *status =
+          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
     }
     return nullptr;
   }
@@ -139,8 +143,7 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
     return nullptr;
   }
   tensorflow::CustomDevice* dev;
-  *status = this->FindCustomDeviceFromName(handle_device_name, &dev);
-  if (status->ok()) {
+  if (this->FindCustomDeviceFromName(handle_device_name, &dev)) {
     *status = dev->CopyTensorFromDevice(input, device_name, &result);
     if (status->ok()) {
       return result;
@@ -194,14 +197,10 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
   if (device == kVariantDeviceNull) {
     TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
   }
-  if (device == kVariantDeviceNull) {
+  if (device == kVariantDeviceNull && ctx_.PinSmallOpsToCPU()) {
     bool pin_to_cpu;
     TF_RETURN_IF_ERROR(eager::MaybePinSmallOpsToCpu(
-        &pin_to_cpu, Name(),
-        absl::MakeSpan(
-            reinterpret_cast<ImmediateExecutionTensorHandle**>(inputs_.data()),
-            inputs_.size()),
-        ctx_));
+        &pin_to_cpu, Name(), GetInputs(), ctx_.HostCPU()->name()));
     if (pin_to_cpu) {
       device = ctx_.HostCPU();
     }

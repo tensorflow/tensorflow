@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
+#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/master.grpc.pb.h"
-#include "tensorflow/core/data/service/master.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -45,9 +45,9 @@ auto* tf_data_service_created =
                                     "has been created.");
 }  // namespace
 
-DataServiceWorkerImpl::DataServiceWorkerImpl(const std::string& master_address,
-                                             const std::string& protocol)
-    : master_address_(master_address), protocol_(protocol) {
+DataServiceWorkerImpl::DataServiceWorkerImpl(
+    const experimental::WorkerConfig& config)
+    : config_(config) {
   tf_data_service_created->GetCell()->Set(true);
 }
 
@@ -67,13 +67,12 @@ void DataServiceWorkerImpl::Start(const std::string& worker_address) {
   heartbeat_thread_.reset(thread);
   Status s = Register();
   while (!s.ok()) {
-    LOG(WARNING) << "Failed to register with master at " << master_address_
-                 << ": " << s;
+    LOG(WARNING) << "Failed to register with dispatcher at "
+                 << config_.dispatcher_address() << ": " << s;
     Env::Default()->SleepForMicroseconds(kHeartbeatIntervalMicros);
     s = Register();
   }
 }
-
 
 Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
                                           ProcessTaskResponse* response) {
@@ -169,29 +168,29 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   return Status::OK();
 }
 
-Status DataServiceWorkerImpl::EnsureMasterStubInitialized()
+Status DataServiceWorkerImpl::EnsureDispatcherStubInitialized()
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  if (!master_stub_) {
+  if (!dispatcher_stub_) {
     ::grpc::ChannelArguments args;
     std::shared_ptr<::grpc::ChannelCredentials> credentials;
-    TF_RETURN_IF_ERROR(
-        CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
-    auto channel =
-        ::grpc::CreateCustomChannel(master_address_, credentials, args);
-    master_stub_ = MasterService::NewStub(channel);
+    TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
+        config_.protocol(), &credentials));
+    auto channel = ::grpc::CreateCustomChannel(config_.dispatcher_address(),
+                                               credentials, args);
+    dispatcher_stub_ = DispatcherService::NewStub(channel);
   }
   return Status::OK();
 }
 
 Status DataServiceWorkerImpl::Register() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  VLOG(3) << "Registering with master at " << master_address_;
-  TF_RETURN_IF_ERROR(EnsureMasterStubInitialized());
+  VLOG(3) << "Registering with dispatcher at " << config_.dispatcher_address();
+  TF_RETURN_IF_ERROR(EnsureDispatcherStubInitialized());
   RegisterWorkerRequest req;
   req.set_worker_address(worker_address_);
   RegisterWorkerResponse resp;
 
   grpc::ClientContext ctx;
-  grpc::Status s = master_stub_->RegisterWorker(&ctx, req, &resp);
+  grpc::Status s = dispatcher_stub_->RegisterWorker(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to register worker", s);
   }
@@ -205,8 +204,8 @@ Status DataServiceWorkerImpl::Register() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
 
 Status DataServiceWorkerImpl::SendTaskUpdate() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   VLOG(3) << "Sending " << pending_completed_tasks_.size()
-          << " task updates to master";
-  TF_RETURN_IF_ERROR(EnsureMasterStubInitialized());
+          << " task updates to dispatcher";
+  TF_RETURN_IF_ERROR(EnsureDispatcherStubInitialized());
   WorkerUpdateRequest req;
   req.set_worker_id(worker_id_);
   for (int task_id : pending_completed_tasks_) {
@@ -217,7 +216,7 @@ Status DataServiceWorkerImpl::SendTaskUpdate() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
 
   WorkerUpdateResponse resp;
   grpc::ClientContext ctx;
-  grpc::Status s = master_stub_->WorkerUpdate(&ctx, req, &resp);
+  grpc::Status s = dispatcher_stub_->WorkerUpdate(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to send task updates", s);
   }
@@ -238,7 +237,8 @@ void DataServiceWorkerImpl::HeartbeatThread() {
     }
     Status s = SendTaskUpdate();
     if (!s.ok()) {
-      LOG(WARNING) << "Failed to send task updates to master: " << s;
+      LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
+      Env::Default()->SleepForMicroseconds(kHeartbeatIntervalMicros);
     }
   }
 }

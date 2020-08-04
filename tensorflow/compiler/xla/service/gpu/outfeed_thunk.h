@@ -41,6 +41,7 @@ class OutfeedThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   const ShapeTree<BufferAllocation::Slice> outfeed_slices_;
 };
 

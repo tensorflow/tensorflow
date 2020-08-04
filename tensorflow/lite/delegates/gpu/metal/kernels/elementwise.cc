@@ -38,6 +38,11 @@ std::string OneInputFunctor(OperationType op_type, const std::string& value) {
       {OperationType::HARD_SWISH,
        "$0 * clamp($0 / 6.0f + FLT4(0.5f), FLT4(0.0f), FLT4(1.0f))"},
       {OperationType::COS, "cos($0)"},
+      {OperationType::ELU,
+       "FLT4($0.x < FLT(0.0f) ? exp($0.x) - FLT(1.0f) : $0.x,"
+       "$0.y < FLT(0.0f) ? exp($0.y) - FLT(1.0f) : $0.y,"
+       "$0.z < FLT(0.0f) ? exp($0.z) - FLT(1.0f) : $0.z,"
+       "$0.w < FLT(0.0f) ? exp($0.w) - FLT(1.0f) : $0.w)"},
       {OperationType::EXP, "exp($0)"},
       {OperationType::LOG, "log($0)"},
       {OperationType::SQRT, "sqrt($0)"},
@@ -45,6 +50,7 @@ std::string OneInputFunctor(OperationType op_type, const std::string& value) {
       {OperationType::SQUARE, "$0 * $0"},
       {OperationType::SIGMOID, "1.0 / (1.0 + exp(-1.0 * $0))"},
       {OperationType::TANH, "tanh($0)"},
+      {OperationType::COPY, "$0"},
   };
 
   if (functors.find(op_type) == functors.end()) {
@@ -109,7 +115,7 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
 
   desc->uniform_buffers = {
       {"constant int2&",
-       [input_ids, output_id](const std::map<ValueId, BHWC>& buffers) {
+       [input_ids](const std::map<ValueId, BHWC>& buffers) {
          const auto& input_dim_1 = buffers.find(input_ids[1])->second;
          std::vector<int> uniform_params{
              input_dim_1.w,

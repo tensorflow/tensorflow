@@ -708,6 +708,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kCopy, CopyOp);
 #undef NoAttributeCase
 #undef MakeAndReturn
+    case HloOpcode::kFusion: {
+      auto fusion = func_builder->create<mlir::mhlo::FusionOp>(
+          loc, result_type, operands,
+          builder_->getStringAttr(xla::ToString(instruction->fusion_kind())));
+      TF_RETURN_IF_ERROR(
+          ImportAsRegion(*instruction->fused_instructions_computation(),
+                         &fusion.fused_computation()));
+      return fusion.getOperation();
+    }
     case HloOpcode::kAddDependency:
       // Arbitrary op code that I suspect we will not implement for quite a
       // while and allows testing handling of unknown ops. Selected because it

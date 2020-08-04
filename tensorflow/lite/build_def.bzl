@@ -7,6 +7,8 @@ load(
     "tf_cc_shared_object",
     "tf_cc_test",
 )
+load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def tflite_copts():
     """Defines compile time flags."""
@@ -732,7 +734,12 @@ def tflite_experimental_runtime_linkopts(if_eager = [], if_non_eager = [], if_no
         if_none = [] + if_none,
     )
 
-def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility = ["//visibility:private"]):
+def tflite_custom_cc_library(
+        name,
+        models = [],
+        srcs = [],
+        deps = [],
+        visibility = ["//visibility:private"]):
     """Generates a tflite cc library, stripping off unused operators.
 
     This library includes the TfLite runtime as well as all operators needed for the given models.
@@ -755,7 +762,7 @@ def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility
     if models:
         gen_selected_ops(
             name = "%s_registration" % name,
-            model = models[0],
+            model = models,
         )
         real_srcs.append(":%s_registration" % name)
         real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
@@ -766,6 +773,10 @@ def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility
     native.cc_library(
         name = name,
         srcs = real_srcs,
+        hdrs = [
+            # TODO(b/161323860) replace this by generated header.
+            "//tensorflow/lite/java/src/main/native:op_resolver.h",
+        ],
         copts = tflite_copts(),
         linkopts = select({
             "//tensorflow:windows": [],
@@ -776,4 +787,63 @@ def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility
             "//tensorflow/lite/kernels:builtin_ops",
         ] + real_deps),
         visibility = visibility,
+    )
+
+def tflite_custom_android_library(
+        name,
+        models = [],
+        srcs = [],
+        deps = [],
+        custom_package = "org.tensorflow.lite",
+        visibility = ["//visibility:private"]):
+    """Generates a tflite Android library, stripping off unused operators.
+
+    Note that due to a limitation in the JNI Java wrapper, the compiled TfLite shared binary
+    has to be named as tensorflowlite_jni.so so please make sure that there is no naming conflict.
+    i.e. you can't call this rule multiple times in the same build file.
+
+    Args:
+        name: Name of the target.
+        models: List of models to be supported. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+        srcs: List of files implementing custom operators if any.
+        deps: Additional dependencies to build all the custom operators.
+        custom_package: Name of the Java package. It is required by android_library in case
+            the Java source file can't be inferred from the directory where this rule is used.
+        visibility: Visibility setting for the generated target. Default to private.
+    """
+    tflite_custom_cc_library(name = "%s_cc" % name, models = models, srcs = srcs, deps = deps, visibility = visibility)
+
+    # JNI wrapper expects a binary file called `libtensorflowlite_jni.so` in java path.
+    tflite_jni_binary(
+        name = "libtensorflowlite_jni.so",
+        linkscript = "//tensorflow/lite/java:tflite_version_script.lds",
+        deps = [
+            ":%s_cc" % name,
+            "//tensorflow/lite/java/src/main/native:native_framework_only",
+        ],
+    )
+
+    native.cc_library(
+        name = "%s_jni" % name,
+        srcs = ["libtensorflowlite_jni.so"],
+        visibility = visibility,
+    )
+
+    android_library(
+        name = name,
+        manifest = "//tensorflow/lite/java:AndroidManifest.xml",
+        deps = [
+            ":%s_jni" % name,
+            "//tensorflow/lite/java:tensorflowlite_java",
+            "@org_checkerframework_qual",
+        ],
+        custom_package = custom_package,
+        visibility = visibility,
+    )
+
+    aar_with_jni(
+        name = "%s_aar" % name,
+        android_library = name,
     )

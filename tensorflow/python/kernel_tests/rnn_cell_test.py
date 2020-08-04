@@ -2197,7 +2197,7 @@ class RawRNNTest(test.TestCase):
 
       r = rnn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
-      self.assertEqual([10], loop_state.eval())
+      self.assertEqual([10], self.evaluate(loop_state))
 
   @test_util.run_v1_only("b/124229375")
   def testLoopStateWithTensorArray(self):

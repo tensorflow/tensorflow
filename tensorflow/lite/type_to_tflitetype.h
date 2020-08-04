@@ -28,55 +28,43 @@ limitations under the License.
 
 namespace tflite {
 
-// Map statically from a c++ type to a TfLiteType. Used in interpreter for safe
-// casts.
-template <class T>
+// Map statically from a C++ type to a TfLiteType. Used in interpreter for
+// safe casts.
+// Example:
+//  typeToTfLiteType<bool>() -> kTfLiteBool
+template <typename T>
 constexpr TfLiteType typeToTfLiteType() {
   return kTfLiteNoType;
 }
-template <>
-constexpr TfLiteType typeToTfLiteType<int>() {
-  return kTfLiteInt32;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int16_t>() {
-  return kTfLiteInt16;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int64_t>() {
-  return kTfLiteInt64;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<float>() {
-  return kTfLiteFloat32;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<unsigned char>() {
-  return kTfLiteUInt8;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int8_t>() {
-  return kTfLiteInt8;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<bool>() {
-  return kTfLiteBool;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<std::complex<float>>() {
-  return kTfLiteComplex64;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<std::string>() {
-  return kTfLiteString;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<TfLiteFloat16>() {
-  return kTfLiteFloat16;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<double>() {
-  return kTfLiteFloat64;
-}
+// Map from TfLiteType to the corresponding C++ type.
+// Example:
+//   TfLiteTypeToType<kTfLiteBool>::Type -> bool
+template <TfLiteType TFLITE_TYPE_ENUM>
+struct TfLiteTypeToType {};  // Specializations below
+
+// Template specialization for both typeToTfLiteType and TfLiteTypeToType.
+#define MATCH_TYPE_AND_TFLITE_TYPE(CPP_TYPE, TFLITE_TYPE_ENUM) \
+  template <>                                                  \
+  constexpr TfLiteType typeToTfLiteType<CPP_TYPE>() {          \
+    return TFLITE_TYPE_ENUM;                                   \
+  }                                                            \
+  template <>                                                  \
+  struct TfLiteTypeToType<TFLITE_TYPE_ENUM> {                  \
+    using Type = CPP_TYPE;                                     \
+  }
+
+MATCH_TYPE_AND_TFLITE_TYPE(int, kTfLiteInt32);
+MATCH_TYPE_AND_TFLITE_TYPE(int16_t, kTfLiteInt16);
+MATCH_TYPE_AND_TFLITE_TYPE(int64_t, kTfLiteInt64);
+MATCH_TYPE_AND_TFLITE_TYPE(float, kTfLiteFloat32);
+MATCH_TYPE_AND_TFLITE_TYPE(unsigned char, kTfLiteUInt8);
+MATCH_TYPE_AND_TFLITE_TYPE(int8_t, kTfLiteInt8);
+MATCH_TYPE_AND_TFLITE_TYPE(bool, kTfLiteBool);
+MATCH_TYPE_AND_TFLITE_TYPE(std::complex<float>, kTfLiteComplex64);
+MATCH_TYPE_AND_TFLITE_TYPE(std::complex<double>, kTfLiteComplex128);
+MATCH_TYPE_AND_TFLITE_TYPE(std::string, kTfLiteString);
+MATCH_TYPE_AND_TFLITE_TYPE(TfLiteFloat16, kTfLiteFloat16);
+MATCH_TYPE_AND_TFLITE_TYPE(double, kTfLiteFloat64);
+
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TYPE_TO_TFLITETYPE_H_

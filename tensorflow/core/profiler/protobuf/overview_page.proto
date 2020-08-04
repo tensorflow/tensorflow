@@ -19,6 +19,11 @@ message OverviewTfOp {
   double cumulative_time_fraction = 4;
   // How many GFlops/sec that this Op achieves.
   double flop_rate = 5;
+  // Whether the Op is eligible to use TensorCores.
+  bool is_op_tensorcore_eligible = 6;
+  // Whether at least one of the kernels launched in this op is using
+  // TensorCore.
+  bool is_op_using_tensorcore = 7;
 }
 
 // Overview result for general analysis.

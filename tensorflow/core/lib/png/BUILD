@@ -33,5 +33,6 @@ filegroup(
         "testdata/lena_palette.png",
         "testdata/lena_palette_trns.png",
         "testdata/lena_rgba.png",
+        "testdata/palette_only.png",
     ],
 )

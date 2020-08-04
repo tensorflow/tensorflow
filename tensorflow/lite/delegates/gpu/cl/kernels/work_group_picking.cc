@@ -80,9 +80,12 @@ absl::Status GetBestWorkGroupAlignedToGrid(const TuningParameters& params,
                                            const int3& grid,
                                            int3* best_work_group) {
   std::vector<int3> work_groups;
+  int3 max_wg_size;
+  max_wg_size.x = params.info->max_work_group_size_x;
+  max_wg_size.y = params.info->max_work_group_size_y;
+  max_wg_size.z = params.info->max_work_group_size_z;
   RETURN_IF_ERROR(GenerateWorkGroupSizesAlignedToGrid(
-      grid, params.info->max_work_group_sizes, kernel.GetMaxWorkGroupSize(),
-      &work_groups));
+      grid, max_wg_size, kernel.GetMaxWorkGroupSize(), &work_groups));
   int best_work_group_index;
   RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(
       kernel, *params.info, grid, work_groups, &best_work_group_index));
@@ -268,10 +271,10 @@ absl::Status GetBestWorkGroupConv(const TuningParameters& params,
   switch (params.tuning_type) {
     case TuningType::FAST: {
       int max_z_size = 16;
-      if (params.info->vendor == Vendor::QUALCOMM) {
+      if (params.info->IsAdreno()) {
         max_z_size = params.info->adreno_info.gpu_version < 400 ? 16 : 64;
       }
-      max_z_size = std::min(max_z_size, params.info->max_work_group_sizes.z);
+      max_z_size = std::min(max_z_size, params.info->max_work_group_size_z);
       *best_work_group =
           GetWorkGroupConv(grid, kernel.GetMaxWorkGroupSize(), max_z_size);
       return absl::OkStatus();

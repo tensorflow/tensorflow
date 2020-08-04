@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
@@ -127,12 +128,34 @@ class TfLiteDriver::DataExpectation {
     return error_is_large;
   }
 
+  bool CompareTwoValuesHelper(double v1, double v2) {
+    double diff = std::abs(v1 - v2);
+    bool error_is_large = false;
+    // For very small numbers, try absolute error, otherwise go with
+    // relative.
+    if (std::abs(v2) < relative_threshold_) {
+      error_is_large = (diff > absolute_threshold_);
+    } else {
+      error_is_large = (diff > relative_threshold_ * std::abs(v2));
+    }
+    return error_is_large;
+  }
+
   bool CompareTwoValues(std::complex<float> v1, std::complex<float> v2) {
     return CompareTwoValues(v1.real(), v2.real()) ||
            CompareTwoValues(v1.imag(), v2.imag());
   }
 
+  bool CompareTwoValues(std::complex<double> v1, std::complex<double> v2) {
+    return CompareTwoValues(v1.real(), v2.real()) ||
+           CompareTwoValues(v1.imag(), v2.imag());
+  }
+
   bool CompareTwoValues(float v1, float v2) {
+    return CompareTwoValuesHelper(v1, v2);
+  }
+
+  bool CompareTwoValues(double v1, double v2) {
     return CompareTwoValuesHelper(v1, v2);
   }
 
@@ -315,10 +338,19 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
     case kTfLiteComplex64:
       return TypedCheck<std::complex<float>, std::complex<float>>(verbose,
                                                                   tensor);
+    case kTfLiteComplex128:
+      return TypedCheck<std::complex<double>, std::complex<double>>(verbose,
+                                                                    tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;
   }
+}
+
+/* static */
+bool TfLiteDriver::InitTestDelegateProviders(int* argc, const char** argv) {
+  return tflite::KernelTestDelegateProviders::Get()->InitFromCmdlineArgs(argc,
+                                                                         argv);
 }
 
 TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
@@ -388,6 +420,16 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     if (interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteOk) {
       Invalidate("Unable to the build graph using the delegate");
       return;
+    }
+  } else {
+    auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
+    for (auto& one : delegate_providers->CreateAllDelegates()) {
+      if (interpreter_->ModifyGraphWithDelegate(std::move(one)) != kTfLiteOk) {
+        Invalidate(
+            "Unable to the build graph using the delegate initialized from "
+            "tflite::KernelTestDelegateProviders");
+        return;
+      }
     }
   }
 
@@ -526,6 +568,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteComplex64:
       expected_output_[id]->SetData<std::complex<float>>(csv_values);
+      break;
+    case kTfLiteComplex128:
+      expected_output_[id]->SetData<std::complex<double>>(csv_values);
       break;
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",

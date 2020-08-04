@@ -126,43 +126,67 @@ class GcsFileSystem : public FileSystem {
                 bool compose_append);
 
   Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+      const string& fname,
+      std::unique_ptr<RandomAccessFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status NewWritableFile(const string& fname,
-                         std::unique_ptr<WritableFile>* result) override;
+  Status NewWritableFile(
+      const string& fname,
+      std::unique_ptr<WritableFile>*
+          result) /*, TransactionToken* token = nullptr */ override;
 
-  Status NewAppendableFile(const string& fname,
-                           std::unique_ptr<WritableFile>* result) override;
+  Status NewAppendableFile(
+      const string& fname,
+      std::unique_ptr<WritableFile>*
+          result /*, TransactionToken* token = nullptr */) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
+      std::unique_ptr<ReadOnlyMemoryRegion>*
+          result /*, TransactionToken* token = nullptr */) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  Status Stat(
+      const string& fname,
+      FileStatistics* stat /*, TransactionToken* token = nullptr */) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(
+      const string& dir,
+      std::vector<string>* result /*, TransactionToken* token = nullptr */)
+      override;
 
-  Status GetMatchingPaths(const string& pattern,
-                          std::vector<string>* results) override;
+  Status GetMatchingPaths(
+      const string& pattern,
+      std::vector<string>* results /*, TransactionToken* token = nullptr */)
+      override;
 
-  Status DeleteFile(const string& fname) override;
+  Status DeleteFile(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status CreateDir(const string& dirname) override;
+  Status CreateDir(
+      const string& dirname /*, TransactionToken* token = nullptr */) override;
 
-  Status DeleteDir(const string& dirname) override;
+  Status DeleteDir(
+      const string& dirname /*, TransactionToken* token = nullptr */) override;
 
-  Status GetFileSize(const string& fname, uint64* file_size) override;
+  Status GetFileSize(
+      const string& fname,
+      uint64* file_size /*, TransactionToken* token = nullptr */) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status RenameFile(
+      const string& src,
+      const string& target /*, TransactionToken* token = nullptr */) override;
 
-  Status IsDirectory(const string& fname) override;
+  Status IsDirectory(
+      const string& fname /*, TransactionToken* token = nullptr */) override;
 
-  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
-                           int64* undeleted_dirs) override;
+  Status DeleteRecursively(
+      const string& dirname, int64* undeleted_files,
+      int64* undeleted_dirs /*, TransactionToken* token = nullptr */) override;
 
-  void FlushCaches() override;
+  void FlushCaches(/* TransactionToken* token = nullptr */) override;
 
   /// Set an object to collect runtime statistics from the GcsFilesystem.
   void SetStats(GcsStatsInterface* stats);
@@ -267,6 +291,31 @@ class GcsFileSystem : public FileSystem {
   virtual Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
                                    char* buffer, size_t* bytes_transferred);
 
+  // Creates an upload session for an upcoming GCS object upload.
+  virtual Status CreateNewUploadSession(uint64 start_offset,
+                                        const std::string& object_to_upload,
+                                        const std::string& bucket,
+                                        uint64 file_size,
+                                        const std::string& gcs_path,
+                                        std::string* session_uri);
+
+  // Uploads object data to session.
+  virtual Status UploadToSession(const std::string& session_uri,
+                                 uint64 start_offset, uint64 already_uploaded,
+                                 const std::string& tmp_content_filename,
+                                 uint64 file_size,
+                                 const std::string& file_path);
+
+  /// \brief Requests status of a previously initiated upload session.
+  ///
+  /// If the upload has already succeeded, sets 'completed' to true.
+  /// Otherwise sets 'completed' to false and 'uploaded' to the currently
+  /// uploaded size in bytes.
+  virtual Status RequestUploadSessionStatus(const string& session_uri,
+                                            uint64 file_size,
+                                            const std::string& gcs_path,
+                                            bool* completed, uint64* uploaded);
+
   Status ParseGcsPathForScheme(StringPiece fname, string scheme,
                                bool empty_object_ok, string* bucket,
                                string* object);
@@ -281,6 +330,9 @@ class GcsFileSystem : public FileSystem {
                               string* bucket, string* object);
 
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
+
+  // Used by a subclass.
+  TimeoutConfig timeouts_;
 
  private:
   // GCS file statistics.
@@ -377,8 +429,6 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<BucketLocationCache> bucket_location_cache_;
   std::unordered_set<string> allowed_locations_;
   bool compose_append_;
-
-  TimeoutConfig timeouts_;
 
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
 

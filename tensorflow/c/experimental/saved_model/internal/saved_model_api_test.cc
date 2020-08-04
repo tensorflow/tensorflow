@@ -16,10 +16,15 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
+#include "tensorflow/c/experimental/saved_model/public/tensorhandle_list.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
@@ -92,12 +97,42 @@ TEST_P(CSavedModelAPITest, LoadsSavedModel) {
   TF_SavedModel* saved_model =
       TF_LoadSavedModel(model_dir.c_str(), ctx, status);
 
-  // TODO(bmzhao): Change this to expect TF_OK when loading is implemented.
-  // That unblocks writing other tests that require a TF_SavedModel*,
-  // like loading a ConcreteFunction. This test at least checks that the
-  // C API builds and can be minimally run.
-  EXPECT_EQ(TF_GetCode(status), TF_UNIMPLEMENTED);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  TF_ConcreteFunction* compute_fn =
+      TF_GetSavedModelConcreteFunction(saved_model, "compute", status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
+  std::vector<TFE_TensorHandle*> compute_fn_inputs;
+  TFE_TensorHandle* input_a = TestScalarTensorHandle(ctx, 2.0f);
+  TFE_TensorHandle* input_b = TestScalarTensorHandle(ctx, 1.0f);
+  compute_fn_inputs.push_back(input_a);
+  compute_fn_inputs.push_back(input_b);
+
+  TFE_Op* compute_fn_op = TF_ConcreteFunctionGetCallOp(
+      compute_fn, compute_fn_inputs.data(), compute_fn_inputs.size(), status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  // TODO(bmzhao): Finish API on FunctionMetadata args, so we know how many
+  // inputs + outputs a function has.
+  TFE_TensorHandle* compute_fn_outputs[1] = {nullptr};
+  int num_retvals = 1;
+
+  TFE_Execute(compute_fn_op, &compute_fn_outputs[0], &num_retvals, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TF_Tensor* result = TFE_TensorHandleResolve(compute_fn_outputs[0], status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  EXPECT_EQ(TF_NumDims(result), 0);
+  float output_value = *static_cast<float*>(TF_TensorData(result));
+  // (1 + 2) * (2 + 1) / 3 + 5 should be 8
+  EXPECT_FLOAT_EQ(output_value, 8.0);
+
+  TF_DeleteTensor(result);
+  TFE_DeleteTensorHandle(compute_fn_outputs[0]);
+  TFE_DeleteTensorHandle(input_a);
+  TFE_DeleteTensorHandle(input_b);
+  TFE_DeleteOp(compute_fn_op);
   TF_DeleteSavedModel(saved_model);
   TF_DeleteStatus(status);
   TFE_DeleteContext(ctx);

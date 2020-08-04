@@ -33,6 +33,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -230,6 +231,16 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
           mode=['eager'],
           iteration_type=['iterator', 'dataset'],
           inside_func=[False, True],
+          sync_batchnorm=[True, False]) +
+      combinations.combine(
+          distribution=strategy_combinations.multiworker_strategies,
+          optimizer_fn=[
+              optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+              optimizer_combinations.adagrad_optimizer_keras_v2_fn
+          ],
+          mode=['eager'],
+          iteration_type=['iterator', 'dataset'],
+          inside_func=[False, True],
           sync_batchnorm=[True, False]
       ))
   def test_dnn_correctness_minus_tpus(self, distribution, optimizer_fn,
@@ -238,6 +249,14 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
     # TODO(anjs): Identify why this particular V1 optimizer needs a higher tol.
     if 'FtrlV1' in optimizer_fn._name and 'TPU' in type(distribution).__name__:
       self.skipTest('Reduced tolerance of the order of 1e-1 required.')
+    if ('CollectiveAllReduce' in type(distribution).__name__ and
+        test_util.is_xla_enabled()):
+      self.skipTest('XLA tests fail with MWMS.')
+    # Unable to use required_gpus to check if this is a multiGPU combination
+    # since required_gpus and NamedDistribution cannot be used together.
+    if ('CollectiveAllReduce' in type(distribution).__name__
+        and not inside_func and iteration_type == 'dataset'):
+      self.skipTest('MWMS tests fail with multiple GPUs.')
     self.dnn_correctness(distribution, optimizer_fn, iteration_type,
                          inside_func, sync_batchnorm)
 
@@ -263,4 +282,4 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
 
 
 if __name__ == '__main__':
-  test.main()
+  combinations.main()

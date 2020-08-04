@@ -28,11 +28,9 @@ namespace cl {
 
 class SpaceToDepth : public GPUOperation {
  public:
-  SpaceToDepth(const OperationDef& op_def, const SpaceToDepthAttributes& attr)
-      : GPUOperation(op_def), attr_(attr), work_group_size_(8, 4, 1) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
+  SpaceToDepth(const OperationDef& op_def, const SpaceToDepthAttributes& attr);
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   SpaceToDepth(SpaceToDepth&& operation);
   SpaceToDepth& operator=(SpaceToDepth&& operation);
@@ -40,12 +38,9 @@ class SpaceToDepth : public GPUOperation {
   SpaceToDepth& operator=(const SpaceToDepth&) = delete;
 
  private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
+  std::string GetSpaceToDepthCode(const OperationDef& op_def);
 
   SpaceToDepthAttributes attr_;
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 SpaceToDepth CreateSpaceToDepth(const OperationDef& op_def,

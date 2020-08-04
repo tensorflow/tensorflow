@@ -28,7 +28,7 @@ void RemoteMgr::AddOperationOutputs(
     const gtl::ArraySlice<tensorflow::TensorHandle*> handles,
     int64 operation_id) {
   mutex_lock l(remote_tensor_handle_mu_);
-  for (int i = 0; i < handles.size(); i++) {
+  for (int i = 0, end = handles.size(); i < end; i++) {
     // TODO(nareshmodi): Correctly handle operation_id not being unique.
     remote_tensor_handle_map_.emplace(
         RemoteTensorHandleInternal(operation_id, i), handles[i]);

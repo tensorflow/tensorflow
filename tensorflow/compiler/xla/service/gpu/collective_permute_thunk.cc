@@ -220,10 +220,13 @@ RefcountingHashMap<RendezvousKey, Rendezvous>& GlobalRendezvousMap() {
 CollectivePermuteThunk::CollectivePermuteThunk(
     ThunkInfo thunk_info, const BufferAllocation::Slice& src,
     const BufferAllocation::Slice& dest)
-    : Thunk(kCollectivePermute, thunk_info), src_(src), dest_(dest) {}
+    : Thunk(kCollectivePermute, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
+      src_(src),
+      dest_(dest) {}
 
 Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto* instr = Cast<HloCollectivePermuteInstruction>(hlo_instruction());
+  auto* instr = Cast<HloCollectivePermuteInstruction>(hlo_instruction_);
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
 

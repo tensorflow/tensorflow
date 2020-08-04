@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
-include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
@@ -89,12 +89,10 @@ def : Pat<(HLO_DivOp HLO_ComplexTensor:$lhs, HLO_IntOrFpTensor:$rhs),
 // Absolute value is evaluated as:
 //   result = sqrt(val.real * val.real + val.imag * val.imag)
 def : Pat<(HLO_AbsOp HLO_ComplexTensor:$val),
-          (HLO_ComplexOp
            (HLO_SqrtOp
              (HLO_AddOp
               (HLO_MulOp (HLO_RealOp:$real $val), $real),
-              (HLO_MulOp (HLO_ImagOp:$imag $val), $imag))),
-           (HLO_ConstOp (ConstantSplat<"0"> $real)))>;
+              (HLO_MulOp (HLO_ImagOp:$imag $val), $imag)))>;
 
 // Exponential can be lowered to an exponential on the real component and a
 // sum of sinusoids of the imaginary component, which equates to a normal

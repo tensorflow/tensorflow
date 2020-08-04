@@ -23,6 +23,7 @@ from tensorflow.lite.python import lite_constants
 
 STR_TO_TFLITE_TYPES = {
     'INT8': lite_constants.INT8,
+    'INT16': lite_constants.INT16,
     'UINT8': lite_constants.QUANTIZED_UINT8
 }
 TFLITE_TO_STR_TYPES = {v: k for k, v in STR_TO_TFLITE_TYPES.items()}

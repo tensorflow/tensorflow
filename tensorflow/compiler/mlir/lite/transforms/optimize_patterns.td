@@ -37,22 +37,19 @@ class HasRankAtMost<int n> : Constraint<
 // Multi-pattern consisting of matching stand-alone convolution op followed by
 // activation op.
 multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
-  def : Pat<(ActFnOp (TFL_Conv2DOp:$conv_out $input, $filter, $bias,
-                                   $h_factor, $w_factor, TFL_AF_None,
-                                   $padding, $stride_h, $stride_w)),
-            (TFL_Conv2DOp $input, $filter, $bias,
-                          $h_factor, $w_factor, ActFnAttr,
-                          $padding, $stride_h, $stride_w),
-            [(HasOneUse $conv_out)]>;
-  def : Pat<(ActFnOp (TFL_DepthwiseConv2DOp:$conv_out $input, $filter, $bias,
-                                   $h_factor, $w_factor, TFL_AF_None,
-                                   $padding, $stride_h, $stride_w,
-                                   $multiplier)),
-            (TFL_DepthwiseConv2DOp $input, $filter, $bias,
-                                   $h_factor, $w_factor, ActFnAttr,
-                                   $padding, $stride_h, $stride_w,
-                                   $multiplier),
-            [(HasOneUse $conv_out)]>;
+  def FuseActivationFuncWithConv#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_Conv2DOp:$conv_out $input, $filter, $bias, $h_factor,
+                 $w_factor, TFL_AF_None, $padding, $stride_h, $stride_w)),
+    (TFL_Conv2DOp $input, $filter, $bias, $h_factor, $w_factor, ActFnAttr,
+        $padding, $stride_h, $stride_w),
+    [(HasOneUse $conv_out)]>;
+  def FuseActivationFuncWithDepthwiseConv#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_DepthwiseConv2DOp:$conv_out $input, $filter, $bias, $h_factor,
+                $w_factor, TFL_AF_None, $padding, $stride_h, $stride_w,
+                $multiplier)),
+    (TFL_DepthwiseConv2DOp $input, $filter, $bias, $h_factor, $w_factor,
+        ActFnAttr, $padding, $stride_h, $stride_w, $multiplier),
+    [(HasOneUse $conv_out)]>;
 }
 
 // TODO(hinsu): Also fuse ops corresponding to SIGN_BIT fused
@@ -73,33 +70,29 @@ class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
 // constant folding the bias and the binary op's constant operand. The following
 // pattern restricts to float constant values for now.
 multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
-  def : Pat<(binaryOp (TFL_Conv2DOp:$output $input, $filter,
-                          (ConstantOp F32ElementsAttr:$bias),
-                          $h_factor, $w_factor, TFL_AF_None,
-                          $padding, $stride_h, $stride_w),
-                     (ConstantOp F32ElementsAttr:$value), $act_fn),
-          (TFL_Conv2DOp $input, $filter,
-                        (binaryOp (ConstantOp $bias),
-                                   (ConstantOp $value), TFL_AF_None),
-                        $h_factor, $w_factor, $act_fn,
-                        $padding, $stride_h, $stride_w),
-          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
-           (HasOneUse $output)]>;
-  def : Pat<(binaryOp (TFL_DepthwiseConv2DOp:$output $input, $filter,
-                          (ConstantOp F32ElementsAttr:$bias),
-                          $h_factor, $w_factor, TFL_AF_None,
-                          $padding, $stride_h, $stride_w,
-                          $multiplier),
-                     (ConstantOp F32ElementsAttr:$value), $act_fn),
-          (TFL_DepthwiseConv2DOp $input, $filter,
-                          (binaryOp (ConstantOp $bias),
-                                     (ConstantOp $value),
-                                     TFL_AF_None),
-                          $h_factor, $w_factor, $act_fn,
-                          $padding, $stride_h, $stride_w,
-                          $multiplier),
-          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
-           (HasOneUse $output)]>;
+  def FuseBinaryOpWithConv#binaryOp : Pat<
+    (binaryOp (TFL_Conv2DOp:$output $input, $filter,
+                (ConstantOp F32ElementsAttr:$bias), $h_factor, $w_factor,
+                TFL_AF_None, $padding, $stride_h, $stride_w),
+              (ConstantOp F32ElementsAttr:$value), $act_fn),
+    (TFL_Conv2DOp $input, $filter,
+      (binaryOp (ConstantOp $bias),
+         (ConstantOp $value), TFL_AF_None),
+      $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
+     (HasOneUse $output)]>;
+  def FuseBinaryOpWithDepthwiseConv#binaryOp : Pat<
+    (binaryOp (TFL_DepthwiseConv2DOp:$output $input, $filter,
+                (ConstantOp F32ElementsAttr:$bias),
+                $h_factor, $w_factor, TFL_AF_None, $padding, $stride_h,
+                $stride_w, $multiplier),
+              (ConstantOp F32ElementsAttr:$value), $act_fn),
+    (TFL_DepthwiseConv2DOp $input, $filter,
+      (binaryOp (ConstantOp $bias), (ConstantOp $value), TFL_AF_None),
+      $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w,
+      $multiplier),
+    [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasOneUse $output)]>;
 }
 foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
   defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
@@ -116,43 +109,43 @@ def ExpandTo4DForDepthwiseConv: NativeCodeCall<
 // The following pattern restricts to float constant values for now.
 
 multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
-  def : Pat<(BinaryOp (TFL_DepthwiseConv2DOp:$output $input,
-                          (ConstantOp F32ElementsAttr:$filter),
-                          (ConstantOp F32ElementsAttr:$bias),
-                          $h_factor, $w_factor, TFL_AF_None,
-                          $padding, $stride_h, $stride_w,
-                          $multiplier),
-                     (ConstantOp F32ElementsAttr:$value), $act_fn),
-          (TFL_DepthwiseConv2DOp $input,
-                          (BinaryOp (ConstantOp $filter),
-                                     (ConstantOp
-                                       (ExpandTo4DForDepthwiseConv $value)),
-                                     TFL_AF_None),
-                          (BinaryOp (ConstantOp $bias),
-                                     (ConstantOp $value),
-                                     TFL_AF_None),
-                          $h_factor, $w_factor, $act_fn,
-                          $padding, $stride_h, $stride_w,
-                          $multiplier),
-          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
-           (HasOneUse $output)]>;
-  def : Pat<(BinaryOp (TFL_Conv2DOp:$conv_output $input,
-                          (ConstantOp F32ElementsAttr:$filter),
-                          (ConstantOp F32ElementsAttr:$bias),
-                          $h_factor, $w_factor, TFL_AF_None,
-                          $padding, $stride_h, $stride_w),
-                     (ConstantOp F32ElementsAttr:$value), $act_fn),
-          (TFL_Conv2DOp $input,
-                          (BinaryOp (ConstantOp $filter),
-                                     (ConstantOp (ExpandTo4DForConv $value)),
-                                     TFL_AF_None),
-                          (BinaryOp (ConstantOp $bias),
-                                     (ConstantOp $value),
-                                     TFL_AF_None),
-                          $h_factor, $w_factor, $act_fn,
-                          $padding, $stride_h, $stride_w),
-          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
-           (HasOneUse $conv_output)]>;
+  def FuseMulOrDivWithDepthwiseConv#BinaryOp : Pat<
+    (BinaryOp (TFL_DepthwiseConv2DOp:$output $input,
+                (ConstantOp F32ElementsAttr:$filter),
+                (ConstantOp F32ElementsAttr:$bias),
+                $h_factor, $w_factor, TFL_AF_None, $padding, $stride_h,
+                $stride_w, $multiplier),
+              (ConstantOp F32ElementsAttr:$value), $act_fn),
+    (TFL_DepthwiseConv2DOp $input,
+      (BinaryOp
+        (ConstantOp $filter),
+        (ConstantOp (ExpandTo4DForDepthwiseConv $value)),
+        TFL_AF_None),
+      (BinaryOp
+        (ConstantOp $bias),
+        (ConstantOp $value),
+        TFL_AF_None),
+      $h_factor, $w_factor, $act_fn, $padding, $stride_h,
+      $stride_w, $multiplier),
+    [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasOneUse $output)]>;
+  def FuseMulOrDivWithConv#BinaryOp : Pat<
+    (BinaryOp (TFL_Conv2DOp:$conv_output $input,
+                (ConstantOp F32ElementsAttr:$filter),
+                (ConstantOp F32ElementsAttr:$bias),
+                $h_factor, $w_factor, TFL_AF_None,
+                $padding, $stride_h, $stride_w),
+              (ConstantOp F32ElementsAttr:$value), $act_fn),
+    (TFL_Conv2DOp $input,
+      (BinaryOp (ConstantOp $filter),
+        (ConstantOp (ExpandTo4DForConv $value)),
+        TFL_AF_None),
+      (BinaryOp (ConstantOp $bias),
+        (ConstantOp $value),
+        TFL_AF_None),
+      $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
+     (HasOneUse $conv_output)]>;
 }
 
 foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
@@ -177,7 +170,7 @@ class OperandHasRank<int n> : Constraint<
   CPred<"$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
 // Matching HardSwish
-def : Pat<
+def MatchHardSwishPattern1 : Pat<
   (TFL_MulOp
     (TFL_MulOp
      $x, (TFL_AddOp
@@ -190,7 +183,7 @@ def : Pat<
   (TFL_HardSwishOp $x),
   [(EqualOperands $x, $y)]>;
 
-def : Pat<
+def MatchHardSwishPattern2 : Pat<
   (TFL_MulOp
     $x,
     (TFL_MulOp
@@ -207,7 +200,7 @@ def : Pat<
 // Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
 // incorrect placement in the quantization aware training.
 // TODO(b/149735743): We should make the placement automatically.
-def : Pat<
+def MatchHardSwishQuantized : Pat<
   (TFL_MulOp (TFL_DequantizeOp (TFL_QuantizeOp
     (TFL_MulOp
      $x, (TFL_DequantizeOp (TFL_QuantizeOp (TFL_AddOp
@@ -238,7 +231,8 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
   // This pattern constructs L2NormalizationOp from
   // Mul->Rsqrt->Sum->Square Or
   // Div->sqrt->Sum->Square
-  def : Pat<(FirstOp $operand1,
+  def L2NormalizePattern1#FirstOp#SecondOp : Pat<
+                  (FirstOp $operand1,
                      (SecondOp
                         (TFL_SumOp
                            (TFL_SquareOp:$sq_op $square_operand),
@@ -251,7 +245,8 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
 
   // Below patterns for L2Normalize when there is an Add or Maximum
   // adding or clamping to a small constant scalar.
-  def : Pat<(FirstOp $operand1,
+  def L2NormalizePattern2#FirstOp#SecondOp : Pat<
+                    (FirstOp $operand1,
                      (SecondOp
                       (TFL_AddOp
                        (TFL_SumOp
@@ -265,7 +260,8 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
             (L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
-  def : Pat<(FirstOp $operand1,
+  def L2NormalizePattern3#FirstOp#SecondOp : Pat<
+                    (FirstOp $operand1,
                      (SecondOp
                       (TFL_MaximumOp
                        (TFL_SumOp
@@ -302,14 +298,16 @@ def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
 multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
-  def : Pat<(BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
-             $operand, $act_func),
-  (BinaryOp $input, $operand, $act_func),
+  def FuseTileBroadcastToBinaryOp1#BinaryOp : Pat<
+    (BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
+     $operand, $act_func),
+    (BinaryOp $input, $operand, $act_func),
   [(OperandsBroadcastToOutputType $input, $operand, $result)]>;
 
-  def : Pat<(BinaryOp:$result $operand,
-             (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
-  (BinaryOp $operand, $input, $act_func),
+  def FuseTileBroadcastToBinaryOp2#BinaryOp : Pat<
+    (BinaryOp:$result $operand,
+      (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
+    (BinaryOp $operand, $input, $act_func),
   [(OperandsBroadcastToOutputType $operand, $input, $result)]>;
 }
 
@@ -318,9 +316,10 @@ multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
   foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                        [TFL_Relu6Op, TFL_AF_Relu6],
                        [TFL_Relu1Op, TFL_AF_Relu1]] in {
-    def : Pat<(actFnPair[0] (BinaryOp:$binary_out $lhs, $rhs, TFL_AF_None)),
-              (BinaryOp $lhs, $rhs, actFnPair[1]),
-              [(HasOneUse $binary_out)]>;
+    def FuseBinaryWithActivation#BinaryOp#actFnPair[0] : Pat<
+      (actFnPair[0] (BinaryOp:$binary_out $lhs, $rhs, TFL_AF_None)),
+      (BinaryOp $lhs, $rhs, actFnPair[1]),
+    [(HasOneUse $binary_out)]>;
   }
 }
 
@@ -340,21 +339,22 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
   // transformation, the shape of the binary op result is [40x1600], which
   // couldn't be reshaped to [1,40,40]. `IsTailOfShape` constraint is added to
   // make sure $rhs is the tail shape of $lhs.
-  def : Pat<(BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
-                      (ConstantOp:$rhs $a), TFL_AF_None),
-            (TFL_ReshapeOp (BinaryOp $input, $rhs, TFL_AF_None), $shape),
-             // The broadcasting of "BinaryOp" only happens in the lower
-             // dimensions, and the higher dimensions are same, so we know the
-             // result and input of the "BinaryOp" in the source pattern have
-             // the same shape, which is defined by `shape`.
-            [(IsTailOfShape $rhs, $lhs),
-             (HasOneUse $lhs),
-             // The result of the new "BinaryOp" will have the same shape as
-             // `input`. In other words, the shape of the `Reshape` op are not
-             // changed after the transformation.
-             (IsTailOfShape $rhs, $input),
-             (HasRankAtMost<5> $input),
-             (HasRankAtMost<5> $rhs)]>;
+  def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+    (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+      (ConstantOp:$rhs $a), $act_fn),
+    (TFL_ReshapeOp (BinaryOp $input, $rhs, $act_fn), $shape),
+    // The broadcasting of "BinaryOp" only happens in the lower
+    // dimensions, and the higher dimensions are same, so we know the
+    // result and input of the "BinaryOp" in the source pattern have
+    // the same shape, which is defined by `shape`.
+    [(IsTailOfShape $rhs, $lhs),
+     (HasOneUse $lhs),
+     // The result of the new "BinaryOp" will have the same shape as
+     // `input`. In other words, the shape of the `Reshape` op are not
+     // changed after the transformation.
+     (IsTailOfShape $rhs, $input),
+     (HasRankAtMost<5> $input),
+     (HasRankAtMost<5> $rhs)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -370,19 +370,20 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
   // transformation, the shape of the binary op result is [40x1600], which
   // couldn't be reshaped to [1,40,40]. `IsTailOfShape` constraint is added to
   // make sure $rhs is the tail shape of $lhs.
-  def : Pat<(BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
-                      (ConstantOp:$rhs $a)),
-            (TFL_ReshapeOp (BinaryOp $input, $rhs), $shape),
-             // The broadcasting of "BinaryOp" only happens in the lower
-             // dimensions, and the higher dimensions are same, so we know the
-             // result and input of the "BinaryOp" in the source pattern have
-             // the same shape, which is defined by `shape`.
-            [(IsTailOfShape $rhs, $lhs),
-             (HasOneUse $lhs),
-             // The result of the new "BinaryOp" will have the same shape as
-             // `input`. In other words, the shape of the `Reshape` op are not
-             // changed after the transformation.
-             (IsTailOfShape $rhs, $input)]>;
+  def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+    (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+      (ConstantOp:$rhs $a)),
+    (TFL_ReshapeOp (BinaryOp $input, $rhs), $shape),
+    // The broadcasting of "BinaryOp" only happens in the lower
+    // dimensions, and the higher dimensions are same, so we know the
+    // result and input of the "BinaryOp" in the source pattern have
+    // the same shape, which is defined by `shape`.
+    [(IsTailOfShape $rhs, $lhs),
+     (HasOneUse $lhs),
+     // The result of the new "BinaryOp" will have the same shape as
+     // `input`. In other words, the shape of the `Reshape` op are not
+     // changed after the transformation.
+     (IsTailOfShape $rhs, $input)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,
@@ -392,9 +393,10 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
                    TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
   foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
                    TFL_ReshapeOp, TFL_TransposeOp] in {
-    def : Pat<(ValueOp:$value (MoveOp:$move $input, $move_def)),
-              (MoveOp (ValueOp $input), $move_def),
-              [(HasOneUse $move)]>;
+    def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
+      (ValueOp:$value (MoveOp:$move $input, $move_def)),
+      (MoveOp (ValueOp $input), $move_def),
+      [(HasOneUse $move)]>;
   }
 }
 
@@ -402,17 +404,20 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
-// Convert squeeze to reshape if possible.
-def : Pat<(TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
-          (TFL_ReshapeOp $input,
-           (ConstantOp (GetShape $squeeze_op))),
-          [(AnyStaticShapeTensor $squeeze_op)]>;
+// Returns True if the operand type is RankedTensorType.
+def HasRankedTensor : Constraint<
+    CPred<"$0.getType().isa<RankedTensorType>()">>;
+
+def ConvertSqueezeToReshape : Pat<
+  (TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
+  (TFL_ReshapeOp $input, (ConstantOp (GetShape $squeeze_op))),
+  [(HasRankedTensor $squeeze_op)]>;
 
 // Convert expand_dims to reshape if possible.
-def : Pat<(TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
-          (TFL_ReshapeOp $input,
-           (ConstantOp (GetShape $expand_dims_op))),
-          [(AnyStaticShapeTensor $expand_dims_op)]>;
+def ConvertExpandDimsToReshape : Pat<
+  (TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
+  (TFL_ReshapeOp $input, (ConstantOp (GetShape $expand_dims_op))),
+  [(AnyStaticShapeTensor $expand_dims_op)]>;
 
 class FloatValueEquals<string val> : Constraint<CPred<
   "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
@@ -420,25 +425,32 @@ class FloatValueEquals<string val> : Constraint<CPred<
   "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
 
 // ReLU patterns
-def : Pat<(TFL_MinimumOp (TFL_MaximumOp $input,
-                          (ConstantOp $NegOne)),
-           (ConstantOp $One)),
-          (TFL_Relu1Op $input),
-          [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
+def MatchReluPattern : Pat<
+  (TFL_MaximumOp $input, (ConstantOp $Zero)),
+  (TFL_ReluOp $input),
+  [(FloatValueEquals<"0"> $Zero)]>;
 
-def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
-                          (ConstantOp $One)),
-           (ConstantOp $NegOne)),
-          (TFL_Relu1Op $input),
-          [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
+def MatchRelu1Pattern1 : Pat<
+  (TFL_MinimumOp (TFL_MaximumOp $input, (ConstantOp $NegOne)),
+    (ConstantOp $One)),
+  (TFL_Relu1Op $input),
+  [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
 
-def : Pat<(TFL_MaximumOp (TFL_MulOp:$mul_out $input1,
-                          (ConstantOp F32ElementsAttr:$alpha), TFL_AF_None),
-           $input2),
-          (TFL_LeakyReluOp $input1, ExtractSingleElementAsFloat:$alpha),
-          [(ConstDoubleValueLessThan<"1"> $alpha),
-           (EqualOperands $input1, $input2),
-           (HasOneUse $mul_out)]>;
+def MatchRelu1Pattern2 : Pat<
+  (TFL_MaximumOp (TFL_MinimumOp $input, (ConstantOp $One)),
+    (ConstantOp $NegOne)),
+  (TFL_Relu1Op $input),
+  [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
+
+def MatchLeakyRelu : Pat<
+  (TFL_MaximumOp
+    (TFL_MulOp:$mul_out $input1,
+     (ConstantOp F32ElementsAttr:$alpha), TFL_AF_None),
+    $input2),
+  (TFL_LeakyReluOp $input1, ExtractSingleElementAsFloat:$alpha),
+  [(ConstDoubleValueLessThan<"1"> $alpha),
+   (EqualOperands $input1, $input2),
+   (HasOneUse $mul_out)]>;
 
 def RemoveTrivialCast : Pat<(TFL_CastOp:$output $input),
                             (replaceWithValue $input),
@@ -451,23 +463,25 @@ def PReluAlphaRankCheck : Constraint<
 
 // PReLU pattern from Keras:
 // f(x) = Relu(x) + (-alpha * Relu(-x))
-def : Pat<(TFL_AddOp
-           (TFL_ReluOp:$relu_out $input1),
-           (TFL_MulOp:$mul_out
-            (TFL_ReluOp (TFL_NegOp:$input_neg_out $input2)),
-            $neg_alpha,
-            TFL_AF_None),
-           TFL_AF_None),
-          (TFL_PReluOp $input1, (TFL_NegOp $neg_alpha)),
-          [(EqualOperands $input1, $input2),
-           (PReluAlphaRankCheck $neg_alpha, $input1),
-           (HasOneUse $relu_out),
-           (HasOneUse $mul_out),
-           (HasOneUse $input_neg_out)]>;
+def MatchPRelu : Pat<
+  (TFL_AddOp
+   (TFL_ReluOp:$relu_out $input1),
+   (TFL_MulOp:$mul_out
+    (TFL_ReluOp (TFL_NegOp:$input_neg_out $input2)),
+    $neg_alpha,
+    TFL_AF_None),
+   TFL_AF_None),
+  (TFL_PReluOp $input1, (TFL_NegOp $neg_alpha)),
+  [(EqualOperands $input1, $input2),
+   (PReluAlphaRankCheck $neg_alpha, $input1),
+   (HasOneUse $relu_out),
+   (HasOneUse $mul_out),
+   (HasOneUse $input_neg_out)]>;
 
 // The constant folding in this pass might produce constant in the tf dialect.
 // This rule is to legalize these constant to the tfl dialect.
-def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
+def LegalizeConstOp : Pat<
+  (TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
 
 // Reorders adds to allow constant folding.
 // Add --> Add $input, $constantA
@@ -476,13 +490,21 @@ def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
 // Add --> $input
 //    \--> Add ($constantA, $constantB)
 foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
-  def : Pat<(TFL_AddOp
-              (TFL_AddOp:$first_output $input, (ConstantOp $a), TFL_AF_None),
-              (ConstantOp $b), ActFun),
-            (TFL_AddOp $input,
-              (TFL_AddOp (ConstantOp $a), (ConstantOp $b), TFL_AF_None),
-              ActFun),
-  [(HasOneUse $first_output)]>;
+  def ReorderAddToAllowConstFold_ActFunc_#ActFun : Pat<
+    (TFL_AddOp
+     (TFL_AddOp:$first_output $input, (ConstantOp $a), TFL_AF_None),
+     (ConstantOp $b), ActFun),
+    (TFL_AddOp $input,
+     (TFL_AddOp (ConstantOp $a), (ConstantOp $b), TFL_AF_None),
+     ActFun),
+    [(HasOneUse $first_output)]>;
 }
 
-
+// We can eliminate Relu from Relu(SquaredDifference(x, y)),
+// since the result of SquaredDifference is always non-negative.
+// TFLite interpreter doesn't support Relu+int32 for now. So the test cases
+// are failing without the following pattern to optimize Relu away fixes
+// the problem.
+def OptimizeReluSquaredDifference : Pat<
+  (TFL_ReluOp (TFL_SquaredDifferenceOp $l, $r)),
+  (TFL_SquaredDifferenceOp $l, $r)>;

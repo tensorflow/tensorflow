@@ -38,7 +38,8 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
       if (output->type == kTfLiteInt16) {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
-        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // NOTE: Current int16_t softmax output does not require symmetric
+        // scaling
         // - so no need to verify scale here.
       } else {
         TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
@@ -102,8 +103,6 @@ void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
           op_data, GetTensorShape(input), GetTensorData<int8_t>(input),
           GetTensorShape(output), GetTensorData<int16_t>(output));
     } else {
-      const unsigned int num_dims = NumDimensions(input);
-
       const int trailing_dim = input_shape.DimensionsCount() - 1;
       const int outer_size =
           MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);

@@ -30,7 +30,7 @@ absl::Status SelectDWConvolutionAdreno(
     const DepthwiseConvolution2DAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  if (!op_def.IsBatchSupported() && IsDepthwiseConv3x3Supported(attr)) {
+  if (IsDepthwiseConv3x3Supported(attr)) {
     DepthwiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
         CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
@@ -48,7 +48,7 @@ absl::Status SelectDWConvolutionPowerVR(
     const DepthwiseConvolution2DAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  if (!op_def.IsBatchSupported() && IsDepthwiseConv3x3Supported(attr)) {
+  if (IsDepthwiseConv3x3Supported(attr)) {
     DepthwiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
         CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
@@ -71,8 +71,7 @@ absl::Status SelectDWConvolutionMali(
                      storage_type == TensorStorageType::IMAGE_BUFFER;
   MaliInfo mali_info = creation_context.device->GetInfo().mali_info;
   if (IsDepthwiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
-      !buffer_type && !op_def.IsBatchSupported() &&
-      op_def.precision != CalculationsPrecision::F32) {
+      !buffer_type && op_def.precision != CalculationsPrecision::F32) {
     DepthwiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
         CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
@@ -91,15 +90,15 @@ absl::Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
                                  const CreationContext& creation_context,
                                  const OperationDef& op_def,
                                  std::unique_ptr<GPUOperation>* ptr) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
-    case Vendor::POWERVR:
-      return SelectDWConvolutionPowerVR(attr, creation_context, op_def, ptr);
-    case Vendor::MALI:
-      return SelectDWConvolutionMali(attr, creation_context, op_def, ptr);
-    default:
-      return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
+  const auto& device_info = creation_context.device->GetInfo();
+  if (device_info.IsAdreno()) {
+    return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
+  } else if (device_info.IsPowerVR()) {
+    return SelectDWConvolutionPowerVR(attr, creation_context, op_def, ptr);
+  } else if (device_info.IsMali()) {
+    return SelectDWConvolutionMali(attr, creation_context, op_def, ptr);
+  } else {
+    return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
   }
 }
 

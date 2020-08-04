@@ -369,8 +369,9 @@ class RingGathererTest : public ::testing::Test {
     cp->instance.impl_details.subdiv_permutations.clear();
     cp->subdiv_rank.clear();
     // Create a stub ring gatherer only for testing param initialization.
-    RingGatherer gatherer;
-    TF_CHECK_OK(gatherer.InitializeCollectiveParams(cp));
+    RingGatherer* gatherer = new RingGatherer;
+    core::ScopedUnref unref(gatherer);
+    TF_CHECK_OK(gatherer->InitializeCollectiveParams(cp));
     EXPECT_EQ(expected_subdiv_perms,
               cp->instance.impl_details.subdiv_permutations);
     EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
@@ -476,14 +477,15 @@ class RingGathererTest : public ::testing::Test {
       // Prepare a RingGatherer instance.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      RingGatherer gatherer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                &ctx, &op_params, col_params_, exec_key,
-                                kStepId, &input_tensor_, output_tensor_ptr);
-      TF_CHECK_OK(gatherer.InitializeCollectiveContext(&col_ctx));
+      RingGatherer* gatherer = new RingGatherer;
+      core::ScopedUnref unref(gatherer);
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
+          col_params_, exec_key, kStepId, &input_tensor_, output_tensor_ptr);
+      TF_CHECK_OK(gatherer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-gather.
-      gatherer.Run([this](Status s) { status_ = s; });
+      gatherer->Run([this](Status s) { status_ = s; });
       if (status_.ok()) {
         CHECK(output_tensor_.CopyFrom(*ctx.mutable_output(0),
                                       ctx.mutable_output(0)->shape()));

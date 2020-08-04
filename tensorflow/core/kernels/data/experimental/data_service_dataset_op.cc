@@ -69,7 +69,7 @@ const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 // Dataset for reading data from the tf.data service non-deterministically.
 //
 // This dataset interleaves dataset elements produced by multiple tf.data
-// workers. We periodically query the tf.data master to determine which workers
+// workers. We periodically query the dispatcher to determine which workers
 // to read from (in case workers are added or removed).
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
@@ -185,26 +185,35 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     ~Iterator() override {
-      mutex_lock l(mu_);
       VLOG(1) << "Destroying data service dataset iterator for job id "
               << job_id_;
+      CancelThreads();
+      if (deregister_fn_) deregister_fn_();
+      // Thread destructors will block until the threads finish, no need to wait
+      // here.
+    }
+
+    void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
       cancelled_ = true;
       worker_thread_cv_.notify_all();
       manager_thread_cv_.notify_all();
       get_next_cv_.notify_all();
-      // Thread destructors will block until the threads finish, no need to wait
-      // here.
     }
 
     Status Initialize(IteratorContext* ctx) override {
       VLOG(3) << "Connecting to " << dataset()->address_
               << " in data service dataset op";
-      DataServiceMasterClient master(dataset()->address_, dataset()->protocol_);
+      TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+          ctx->cancellation_manager(), [this]() { CancelThreads(); },
+          &deregister_fn_));
+      DataServiceDispatcherClient dispatcher(dataset()->address_,
+                                             dataset()->protocol_);
       if (dataset()->job_name_.empty()) {
-        TF_RETURN_IF_ERROR(master.CreateJob(
+        TF_RETURN_IF_ERROR(dispatcher.CreateJob(
             dataset()->dataset_id_, dataset()->processing_mode_, &job_id_));
       } else {
-        TF_RETURN_IF_ERROR(master.GetOrCreateJob(
+        TF_RETURN_IF_ERROR(dispatcher.GetOrCreateJob(
             dataset()->dataset_id_, dataset()->processing_mode_,
             dataset()->job_name_, iterator_index_, &job_id_));
       }
@@ -283,11 +292,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // Periodically refresh the task list.
     // Maintain one thread fetching elements for each task.
-    // TODO(aaudibert): Instead of polling, have master send updates when
+    // TODO(aaudibert): Instead of polling, have dispatcher send updates when
     // the list of tasks changes.
     void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
       VLOG(3) << "Starting task thread manager";
-      DataServiceMasterClient master(dataset()->address_, dataset()->protocol_);
+      DataServiceDispatcherClient dispatcher(dataset()->address_,
+                                             dataset()->protocol_);
       uint64 next_check = Env::Default()->NowMicros();
       while (true) {
         {
@@ -305,18 +315,19 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return;
           }
         }
-        UpdateTasks(&master);
+        UpdateTasks(&dispatcher);
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
                      dataset()->task_refresh_interval_ms_ * 1000;
       }
     }
 
-    void UpdateTasks(DataServiceMasterClient* master) LOCKS_EXCLUDED(mu_) {
+    void UpdateTasks(DataServiceDispatcherClient* dispatcher)
+        LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
-      Status s = master->GetTasks(job_id_, &tasks, &job_finished);
+      Status s = dispatcher->GetTasks(job_id_, &tasks, &job_finished);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get task info for job id " << job_id_ << ": "
                      << s;
@@ -528,6 +539,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     condition_variable worker_thread_cv_ TF_GUARDED_BY(mu_);
     condition_variable manager_thread_cv_ TF_GUARDED_BY(mu_);
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
 
     int64 outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
     // max_outstanding_requests controls how many elements may be held in memory

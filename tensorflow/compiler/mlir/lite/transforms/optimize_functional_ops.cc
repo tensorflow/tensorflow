@@ -83,16 +83,15 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     if (!llvm::hasSingleElement(parent_op)) return failure();
 
     // Find the then and else branch functions.
-    SymbolTable table(op.getParentOfType<ModuleOp>());
-    FuncOp then_branch = table.lookup<FuncOp>(op.then_branch());
-    FuncOp else_branch = table.lookup<FuncOp>(op.else_branch());
+    FuncOp then_func = op.then_func();
+    FuncOp else_func = op.else_func();
 
     // If the If has no uses and its functions are side-effect free, then
     // remove.
     // TODO(jpienaar): Remove once recusive side-effects are supported.
     if (op.use_empty() &&
         (op.is_stateless() ||
-         (IsSideEffectFree(then_branch) && IsSideEffectFree(else_branch)))) {
+         (IsSideEffectFree(then_func) && IsSideEffectFree(else_func)))) {
       rewriter.eraseOp(op.getOperation());
       return success();
     }
@@ -109,7 +108,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 
     // Identify the branch to inline.
     bool cond_value = (*cond.int_value_begin()).getSExtValue();
-    FuncOp func = cond_value ? then_branch : else_branch;
+    FuncOp func = cond_value ? then_func : else_func;
 
     // Make sure that the function has exactly one block to simplify inlining.
     // TFLite doesn't use control flow with blocks so functions with more than

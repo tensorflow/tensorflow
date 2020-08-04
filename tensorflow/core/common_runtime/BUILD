@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
+    "if_tpu",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -42,11 +43,13 @@ load(
     "mkl_deps",
 )
 
+default_package_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+]
+
 package(
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    default_visibility = default_package_visibility,
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -56,6 +59,7 @@ tf_cuda_library(
         "composite_device.h",
         "device.h",
         "device_factory.h",
+        "device_mgr.h",
         "function.h",
         "function_optimization_registry.h",
         "gradients.h",
@@ -88,7 +92,7 @@ cc_library(
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
         "//tensorflow/core/common_runtime/sycl:sycl_runtime",
-    ],
+    ] + if_tpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 
 filegroup(
@@ -757,6 +761,10 @@ cc_library(
         "shape_refiner.h",
     ],
     copts = tf_copts(),
+    visibility = default_package_visibility + [
+        "//platforms/performance/autograppler:__subpackages__",
+        "//platforms/performance/tf_sim:__subpackages__",
+    ],
     deps = [
         ":device",
         ":device_factory",
@@ -959,6 +967,10 @@ cc_library(
     srcs = ["lower_functional_ops.cc"],
     hdrs = ["lower_functional_ops.h"],
     copts = tf_copts(),
+    visibility = default_package_visibility + [
+        "//platforms/performance/autograppler:__subpackages__",
+        "//platforms/performance/tf_sim:__subpackages__",
+    ],
     deps = [
         ":function_utils",
         ":inline_function_utils",
@@ -1659,6 +1671,7 @@ cc_library(
     deps = [
         ":shared_counter",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -1666,6 +1679,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

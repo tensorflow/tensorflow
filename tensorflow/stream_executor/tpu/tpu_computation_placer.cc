@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/tpu_computation_placer.h"
 
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 template <typename T>
 using StatusOr = TpuComputationPlacer::StatusOr<T>;
 
 TpuComputationPlacer::TpuComputationPlacer() {
-  placer_ = TpuComputationPlacer_New();
+  placer_ = tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_NewFn();
 }
 
 TpuComputationPlacer::~TpuComputationPlacer() {
-  TpuComputationPlacer_Free(placer_);
+  tensorflow::tpu::ExecutorApiFn()->TpuComputationPlacer_FreeFn(placer_);
 }
 
 StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,

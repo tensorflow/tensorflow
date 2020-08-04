@@ -109,7 +109,8 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
       for (const auto& chunk : extra.tensor_content()) {
         num_bytes += chunk.size();
       }
-      if (num_bytes != to_tensor->TotalBytes()) {
+      const int64 total_bytes = to_tensor->TotalBytes();
+      if (num_bytes != total_bytes) {
         done(errors::Internal("RecvBufResponse returned ", num_bytes,
                               " bytes where to_tensor expected ",
                               to_tensor->TotalBytes()));

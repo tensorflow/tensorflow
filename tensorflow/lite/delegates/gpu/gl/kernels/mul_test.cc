@@ -41,7 +41,7 @@ TEST(MulTest, Scalar) {
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
 
-  MultiplyAttributes attr;
+  ElementwiseAttributes attr;
   attr.param = 2.f;
 
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
@@ -61,7 +61,7 @@ TEST(MulTest, Linear) {
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
 
-  MultiplyAttributes attr;
+  ElementwiseAttributes attr;
   Tensor<Linear, DataType::FLOAT32> tensor;
   tensor.shape.v = 2;
   tensor.id = 1;

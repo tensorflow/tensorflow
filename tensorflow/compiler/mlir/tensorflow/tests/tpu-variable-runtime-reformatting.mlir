@@ -20,8 +20,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                {T = ["tfdtype$DT_INT32", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE"], body = @while_body_7560,
-                cond = @while_cond_7550, device = "", is_stateless = false,
-                output_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>]}
+                cond = @while_cond_7550, device = "", is_stateless = false}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
             tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
@@ -217,8 +216,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                {T = ["tfdtype$DT_INT32", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE"], body = @while_body_7560,
-                cond = @while_cond_7550, device = "", is_stateless = false,
-                output_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>]}
+                cond = @while_cond_7550, device = "", is_stateless = false}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
             tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
@@ -305,8 +303,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                {T = ["tfdtype$DT_INT32", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE", "tfdtype$DT_RESOURCE"],
                 body = @while_body_7560,
-                cond = @while_cond_7550, device = "", is_stateless = false,
-                output_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>]}
+                cond = @while_cond_7550, device = "", is_stateless = false}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
             tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,

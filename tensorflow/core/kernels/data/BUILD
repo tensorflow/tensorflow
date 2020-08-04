@@ -54,6 +54,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -63,6 +64,7 @@ tf_cc_test(
     name = "dataset_utils_test",
     srcs = ["dataset_utils_test.cc"],
     deps = [
+        ":dataset_test_base",
         ":dataset_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
@@ -1201,6 +1203,7 @@ tf_kernel_library(
     hdrs = ["cache_dataset_ops.h"],
     deps = [
         ":cache_ops",
+        ":dataset_utils",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1240,6 +1243,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:platform_port",
     ],
 )
 

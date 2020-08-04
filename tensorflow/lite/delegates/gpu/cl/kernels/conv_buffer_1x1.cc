@@ -81,24 +81,120 @@ std::string GetComputationPart(const int3& block_size, int element_size,
   return c;
 }
 
-std::string GenerateConvBuffer1x1(const OperationDef& op_def,
-                                  const ConvBuffer1x1::ConvParams& conv_params,
-                                  Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
+ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
+                                        const OperationDef& definition,
+                                        const BHWC& shape, int src_depth,
+                                        int dst_depth) {
+  ConvBuffer1x1::ConvParams conv_params;
+  conv_params.element_size = 4;
+  conv_params.block_size = int3(1, 1, 1);
+  if (!device.IsMali()) {
+    return conv_params;
+  }
+  bool can_use_flt8 = (shape.w * shape.b) % 2 == 0 &&
+                      definition.precision != CalculationsPrecision::F32;
+  bool is_midgard = device.IsMali() && device.GetInfo().mali_info.IsMidgard();
+  if (is_midgard) {
+    if (can_use_flt8) {
+      conv_params.element_size = 8;
+    }
+    if (definition.precision == CalculationsPrecision::F16 || !can_use_flt8) {
+      conv_params.block_size.x = 2;
+    }
+    return conv_params;
+  }
+
+  int task_size = shape.w * shape.b * shape.h * dst_depth;
+  int block_size =
+      GetRecommendedBlockSizeForConv(device, definition.precision, task_size);
+
+  if (!can_use_flt8 && block_size > 4) {
+    block_size = 4;
+  }
+
+  if (can_use_flt8 && block_size >= 2) {
+    conv_params.element_size = 8;
+    block_size /= 2;
+  }
+  if (block_size == 4) {
+    conv_params.block_size.x = 2;
+    if (definition.precision == CalculationsPrecision::F32 && dst_depth < 32) {
+      conv_params.block_size.y = 2;
+    } else {
+      conv_params.block_size.z = 2;
+    }
+  } else if (block_size == 2) {
+    if (dst_depth >= 32) {
+      conv_params.block_size.z = 2;
+    } else {
+      conv_params.block_size.x = 2;
+    }
+  }
+
+  return conv_params;
+}
+
+ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
+                                        const OperationDef& definition,
+                                        int src_depth, int dst_depth) {
+  ConvBuffer1x1::ConvParams conv_params;
+  conv_params.element_size = 4;
+  conv_params.block_size = int3(1, 1, 1);
+  if (device.IsMali() && definition.precision == CalculationsPrecision::F16 &&
+      device.GetInfo().compute_units_count <= 4) {
+    conv_params.block_size.x *= 2;
+  }
+  return conv_params;
+}
+
+}  // namespace
+
+ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
+                             const ConvParams& conv_params)
+    : GPUOperation(definition), conv_params_(conv_params) {
+  code_ = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
+  work_group_size_ = conv_params_.work_group_size;
+}
+
+ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
+    : GPUOperation(std::move(operation)),
+      conv_params_(std::move(operation.conv_params_)) {}
+
+ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
+  if (this != &operation) {
+    std::swap(conv_params_, operation.conv_params_);
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string ConvBuffer1x1::GenerateConvBuffer1x1(
+    const OperationDef& op_def, const ConvBuffer1x1::ConvParams& conv_params,
+    Arguments* args) {
+  auto src_desc = op_def.src_tensors[0];
   if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  if (conv_params.element_size == 8) {
-    src_desc->SetStateVar("ElementsX2", "true");
-  } else if (conv_params.element_size == 16) {
-    src_desc->SetStateVar("ElementsX4", "true");
+  if (conv_params_.element_size == 8) {
+    src_desc.SetStateVar("ElementsX2", "true");
+  } else if (conv_params_.element_size == 16) {
+    src_desc.SetStateVar("ElementsX4", "true");
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  AddSrcTensor("src_tensor", src_desc);
+  if (op_def.src_tensors.size() == 2) {
+    // dynamic weights
+    BufferDescriptor desc;
+    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_size = 16;
+    desc.memory_type = MemoryType::GLOBAL;
+    AddSrcBuffer("weights", desc);
+  }
+
+  auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    dst_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
+  AddDstTensor("dst_tensor", dst_desc);
 
   std::string c = GetCommonDefines(op_def.precision);
   switch (op_def.precision) {
@@ -207,116 +303,6 @@ std::string GenerateConvBuffer1x1(const OperationDef& op_def,
   return c;
 }
 
-ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
-                                        const OperationDef& definition,
-                                        const BHWC& shape, int src_depth,
-                                        int dst_depth) {
-  ConvBuffer1x1::ConvParams conv_params;
-  conv_params.element_size = 4;
-  conv_params.block_size = int3(1, 1, 1);
-  if (!device.IsMali()) {
-    return conv_params;
-  }
-  bool can_use_flt8 = (shape.w * shape.b) % 2 == 0 &&
-                      definition.precision != CalculationsPrecision::F32;
-  bool is_midgard = device.IsMali() && device.GetInfo().mali_info.IsMidgard();
-  if (is_midgard) {
-    if (can_use_flt8) {
-      conv_params.element_size = 8;
-    }
-    if (definition.precision == CalculationsPrecision::F16 || !can_use_flt8) {
-      conv_params.block_size.x = 2;
-    }
-    return conv_params;
-  }
-
-  int task_size = shape.w * shape.b * shape.h * dst_depth;
-  int block_size =
-      GetRecommendedBlockSizeForConv(device, definition.precision, task_size);
-
-  if (!can_use_flt8 && block_size > 4) {
-    block_size = 4;
-  }
-
-  if (can_use_flt8 && block_size >= 2) {
-    conv_params.element_size = 8;
-    block_size /= 2;
-  }
-  if (block_size == 4) {
-    conv_params.block_size.x = 2;
-    if (definition.precision == CalculationsPrecision::F32 && dst_depth < 32) {
-      conv_params.block_size.y = 2;
-    } else {
-      conv_params.block_size.z = 2;
-    }
-  } else if (block_size == 2) {
-    if (dst_depth >= 32) {
-      conv_params.block_size.z = 2;
-    } else {
-      conv_params.block_size.x = 2;
-    }
-  }
-
-  return conv_params;
-}
-
-ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
-                                        const OperationDef& definition,
-                                        int src_depth, int dst_depth) {
-  ConvBuffer1x1::ConvParams conv_params;
-  conv_params.element_size = 4;
-  conv_params.block_size = int3(1, 1, 1);
-  if (device.IsMali() && definition.precision == CalculationsPrecision::F16 &&
-      device.GetInfo().compute_units_count <= 4) {
-    conv_params.block_size.x *= 2;
-  }
-  return conv_params;
-}
-
-}  // namespace
-
-ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
-                             const ConvParams& conv_params)
-    : GPUOperation(definition), conv_params_(conv_params) {}
-
-ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
-    : GPUOperation(std::move(operation)),
-      conv_params_(std::move(operation.conv_params_)),
-      kernel_(std::move(operation.kernel_)) {}
-
-ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
-  if (this != &operation) {
-    std::swap(conv_params_, operation.conv_params_);
-    kernel_ = std::move(operation.kernel_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
-  std::string code = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_));
-  return absl::OkStatus();
-}
-
-absl::Status ConvBuffer1x1::BindArguments() {
-  if (definition_.src_tensors.size() == 2) {
-    RETURN_IF_ERROR(args_.SetObjectRef("weights", src_[1]));
-  }
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
-}
-
 int3 ConvBuffer1x1::GetGridSize() const {
   const int dst_width_elements = DivideRoundUp(
       dst_[0]->Width() * dst_[0]->Batch(), (conv_params_.element_size / 4));
@@ -330,15 +316,11 @@ int3 ConvBuffer1x1::GetGridSize() const {
 }
 
 absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &conv_params_.work_group_size);
-}
-
-absl::Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(),
-                                 conv_params_.work_group_size);
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+  RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
+                                       &conv_params_.work_group_size));
+  work_group_size_ = conv_params_.work_group_size;
+  return absl::OkStatus();
 }
 
 bool IsConvBuffer1x1Supported(const OperationDef& definition,
@@ -442,12 +424,6 @@ absl::Status CreateConvBuffer1x1DynamicWeights(
                                 dst_depth);
   }
   *result = ConvBuffer1x1(definition, conv_params);
-  BufferDescriptor desc;
-  desc.element_type = definition.src_tensors[1].data_type;
-  desc.element_size = 16;
-  desc.memory_type = MemoryType::GLOBAL;
-  result->args_.AddObjectRef("weights", AccessType::READ,
-                             absl::make_unique<BufferDescriptor>(desc));
   return result->UploadBiases(attr.bias, creation_context.context);
 }
 

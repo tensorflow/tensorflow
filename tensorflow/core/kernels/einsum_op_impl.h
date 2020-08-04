@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/einsum_op_util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -715,15 +716,17 @@ class EinsumOp : public OpKernel {
     ctx->set_output(0, output);
   }
 
-  string TraceString(OpKernelContext* ctx, bool verbose) override {
-    if (!verbose) {
-      return strings::StrCat(name_view(), ":", type_string_view(),
-                             "#equation=(", equation_, ")#");
-    } else {
-      string trace_args = GetTraceArgument(ctx);
-      return strings::StrCat(name_view(), ":", type_string_view(),
-                             "#equation=(", equation_, "),", trace_args, "#");
+  string TraceString(const OpKernelContext& ctx, bool verbose) const override {
+    string op = profiler::TraceMeOp(name_view(), type_string_view());
+    string equation = strings::StrCat("(", equation_, ")");
+    if (verbose) {
+      string shape = ShapeTraceString(ctx);
+      if (!shape.empty()) {
+        return profiler::TraceMeEncode(
+            std::move(op), {{"equation", equation}, {"shape", shape}});
+      }
     }
+    return profiler::TraceMeEncode(std::move(op), {{"equation", equation}});
   }
 
  private:

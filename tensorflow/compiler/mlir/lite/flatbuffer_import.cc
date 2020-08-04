@@ -229,7 +229,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
 
   llvm::SmallVector<llvm::APFloat, 4> min_maxs;
   min_maxs.reserve(mins.size() * 2);
-  for (int i = 0; i < mins.size(); ++i) {
+  for (int i = 0, end = mins.size(); i < end; ++i) {
     llvm::APFloat min(mins[i]);
     llvm::APFloat max(maxs[i]);
     min_maxs.push_back(min);
@@ -281,7 +281,7 @@ std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
   int bytes_len = bytes.size();
   assert(bytes_len % read_size == 0);
 
-  size_t elem_count = bytes_len / read_size;
+  int elem_count = bytes_len / read_size;
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
@@ -318,7 +318,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
   switch (elem_type.getWidth()) {
     case 16: {
       assert(bytes_len % 2 == 0);
-      size_t elem_count = bytes_len / 2;
+      int elem_count = bytes_len / 2;
       std::vector<llvm::APFloat> values;
       values.reserve(elem_count);
 
@@ -337,7 +337,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 32: {
       assert(bytes_len % 4 == 0);
-      size_t elem_count = bytes_len / 4;
+      int elem_count = bytes_len / 4;
       std::vector<float> values;
       values.reserve(elem_count);
 
@@ -353,7 +353,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 64: {
       assert(bytes_len % 8 == 0);
-      size_t elem_count = bytes_len / 8;
+      int elem_count = bytes_len / 8;
       std::vector<double> values;
       values.reserve(elem_count);
 
@@ -829,7 +829,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Add state variables to inputs.
   absl::flat_hash_set<int32_t> input_index_set(func_inputs.begin(),
                                                func_inputs.end());
-  for (int i = 0; i < subgraph.tensors.size(); i++) {
+  for (int i = 0, end = subgraph.tensors.size(); i < end; i++) {
     auto& tensor = *subgraph.tensors.at(i);
     if (tensor.is_variable && !input_index_set.contains(i)) {
       func_inputs.emplace_back(i);

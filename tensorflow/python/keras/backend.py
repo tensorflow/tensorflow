@@ -43,7 +43,7 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import device as tfdev
+from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -53,10 +53,10 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradients_module
@@ -83,7 +83,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import keras_export
 
 py_all = all
@@ -395,9 +394,6 @@ def _default_learning_phase():
           False, shape=(), name='keras_learning_phase')
 
 
-@deprecated('2020-10-11',
-            'Simply pass a True/False value to the `training` argument '
-            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.set_learning_phase')
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
@@ -423,6 +419,10 @@ def set_learning_phase(value):
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
   """
+  logging.warning('`tf.keras.backend.set_learning_phase` is deprecated and '
+                  'will be removed after 2020-10-11. To update it, simply '
+                  'pass a True/False value to the `training` argument of the '
+                  '`__call__` method of your layer or model.')
   deprecated_internal_set_learning_phase(value)
 
 
@@ -459,9 +459,6 @@ def deprecated_internal_set_learning_phase(value):
     _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
-@deprecated('2020-10-11',
-            'Simply pass a True/False value to the `training` argument '
-            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.learning_phase_scope')
 @tf_contextlib.contextmanager
 def learning_phase_scope(value):
@@ -479,6 +476,10 @@ def learning_phase_scope(value):
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
+  logging.warning('`tf.keras.backend.learning_phase_scope` is deprecated and '
+                  'will be removed after 2020-10-11. To update it, simply '
+                  'pass a True/False value to the `training` argument of the '
+                  '`__call__` method of your layer or model.')
   with deprecated_internal_learning_phase_scope(value):
     try:
       yield
@@ -725,7 +726,7 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
-    if tfdev.is_device_spec(device):
+    if isinstance(device, device_spec.DeviceSpecV2):
       device = device.to_string()
     self.device = device
 
@@ -744,7 +745,10 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return tfdev.DeviceSpec.from_string(op.device)
+  if tf2.enabled():
+    return device_spec.DeviceSpecV2.from_string(op.device)
+  else:
+    return device_spec.DeviceSpecV1.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):
@@ -1177,7 +1181,7 @@ def placeholder(shape=None,
 
   >>> input_ph = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> input_ph
-  <tf.Tensor 'Placeholder_...' shape=(2, 4, 5) dtype=float32>
+  <KerasTensor: shape=(2, 4, 5) dtype=float32 (Symbolic value ...)>
 
   """
   if sparse and ragged:
@@ -1278,7 +1282,7 @@ def shape(x):
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
   >>> input = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> tf.keras.backend.shape(input)
-  <tf.Tensor 'Shape_...' shape=(3,) dtype=int32>
+  <KerasTensor: shape=(3,) dtype=int32 inferred_value=[2, 4, 5] ...>
 
   """
   return array_ops.shape(x)
@@ -1793,13 +1797,13 @@ def dot(x, y):
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
-  <tf.Tensor ... shape=(2, 4) dtype=float32>
+  <KerasTensor: shape=(2, 4) dtype=float32 ...>
 
   >>> x = tf.keras.backend.placeholder(shape=(32, 28, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
-  <tf.Tensor ... shape=(32, 28, 4) dtype=float32>
+  <KerasTensor: shape=(32, 28, 4) dtype=float32 ...>
 
   >>> x = tf.keras.backend.random_uniform_variable(shape=(2, 3), low=0, high=1)
   >>> y = tf.keras.backend.ones((4, 3, 5))
@@ -2049,10 +2053,10 @@ def transpose(x):
          [3.,  6.]], dtype=float32)
   >>> input = tf.keras.backend.placeholder((2, 3))
   >>> input
-  <tf.Tensor 'Placeholder_...' shape=(2, 3) dtype=float32>
+  <KerasTensor: shape=(2, 3) dtype=float32 ...>
   >>> input_transposed = tf.keras.backend.transpose(input)
   >>> input_transposed
-  <tf.Tensor 'Transpose_...' shape=(3, 2) dtype=float32>
+  <KerasTensor: shape=(3, 2) dtype=float32 ...>
   """
   return array_ops.transpose(x)
 
@@ -4102,9 +4106,9 @@ def rnn(step_function,
   # That's what the tile call does, it just repeats the mask along its
   # second dimension n times.
   def _expand_mask(mask_t, input_t, fixed_dim=1):
-    if nest.is_sequence(mask_t):
+    if nest.is_nested(mask_t):
       raise ValueError('mask_t is expected to be tensor, but got %s' % mask_t)
-    if nest.is_sequence(input_t):
+    if nest.is_nested(input_t):
       raise ValueError('input_t is expected to be tensor, but got %s' % input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
@@ -4130,7 +4134,7 @@ def rnn(step_function,
         input_t.reverse()
       return input_t
 
-    if nest.is_sequence(inputs):
+    if nest.is_nested(inputs):
       processed_input = nest.map_structure(_process_single_input_t, inputs)
     else:
       processed_input = (_process_single_input_t(inputs),)
@@ -4869,7 +4873,7 @@ def hard_sigmoid(x):
   """
   point_two = _constant_to_tensor(0.2, x.dtype.base_dtype)
   point_five = _constant_to_tensor(0.5, x.dtype.base_dtype)
-  x = math_ops.mul(x, point_two)
+  x = math_ops.multiply(x, point_two)
   x = math_ops.add(x, point_five)
   x = clip_ops.clip_by_value(x, 0., 1.)
   return x
@@ -5859,7 +5863,6 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
       shape, minval=minval, maxval=maxval, dtype=dtype, seed=seed)
 
 
-@deprecated(None, 'Use `tf.keras.backend.random_bernoulli` instead.')
 @keras_export('keras.backend.random_binomial')
 @dispatch.add_dispatch_support
 def random_binomial(shape, p=0.0, dtype=None, seed=None):
@@ -5888,6 +5891,8 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
   <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
   dtype=float32)>
   """
+  logging.warning('`tf.keras.backend.random_binomial` is deprecated. '
+                  'Please use `tf.keras.backend.random_bernoulli` instead.')
   if dtype is None:
     dtype = floatx()
   if seed is None:

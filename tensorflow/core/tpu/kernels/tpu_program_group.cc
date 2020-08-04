@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 
@@ -32,6 +33,7 @@ namespace {
 
 namespace se_tpu = ::stream_executor::tpu;
 
+using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 using xla::Shape;
 
@@ -60,8 +62,8 @@ StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
   size_t count = 0;
   StatusHelper status;
   VLOG(1) << "Run TpuCompile_CompileAheadOfTime.";
-  TpuCompile_CompileAheadOfTime(serialized_aot_request, &xla_tpu_programs,
-                                &count, status.c_status);
+  CompileApiFn()->TpuCompile_CompileAheadOfTimeFn(
+      serialized_aot_request, &xla_tpu_programs, &count, status.c_status);
   VLOG(1) << "Run CompileAheadOfTime completed.";
   if (!status.status().ok()) {
     return status.status();
@@ -70,9 +72,8 @@ StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
   for (size_t i = 0; i < count; ++i) {
     tpu_programs[i] = xla_tpu_programs[i];
   }
-  delete[] xla_tpu_programs;
+  TpuProgramApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
   return tpu_programs;
-  return Status::OK();
 }
 
 StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
@@ -98,12 +99,59 @@ StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
       per_core_variable_indices, device_assignment);
 }
 
+Status CreateTpuProgramGroup(
+    absl::Span<XLA_TpuProgram* const> xla_tpu_programs,
+    TpuProgramGroupInterface* tpu_program_group_interface) {
+  CHECK_GT(xla_tpu_programs.size(), 0);
+  TpuProgramGroup* tpu_program_group =
+      tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
+  CHECK_NE(tpu_program_group, nullptr);
+  tpu_program_group->set_tpu_programs(xla_tpu_programs);
+
+  // TODO(jiawenhao): Handle the case of xla_tpu_programs.size() > 1.
+  bool may_modify_variables;
+  TpuProgramApiFn()->TpuProgram_GetMayModifyVariablesFn(xla_tpu_programs[0],
+                                                        &may_modify_variables);
+  tpu_program_group->set_may_modify_variables(
+      std::vector<bool>(1, may_modify_variables));
+
+  TpuSerializedProto serialized_executable_info;
+  TpuProgramApiFn()->TpuProgram_GetExecutableInfoFn(
+      xla_tpu_programs[0], &serialized_executable_info);
+  TPUExecutableInfoProto executable_info =
+      se_tpu::DeserializeProto<TPUExecutableInfoProto>(
+          serialized_executable_info);
+  tpu_program_group->set_executable_info(executable_info);
+  StreamExecutor_Tpu_FreeSerializedProto(&serialized_executable_info);
+
+  TPUHostTransferInfoProto host_transfer_info;
+  TpuSerializedProto serialized_host_transfer_info;
+  TpuProgramApiFn()->TpuProgram_GetHostTransferInfoFn(
+      xla_tpu_programs[0], &serialized_host_transfer_info);
+  if (serialized_host_transfer_info.size > 0) {
+    host_transfer_info = se_tpu::DeserializeProto<TPUHostTransferInfoProto>(
+        serialized_host_transfer_info);
+    StreamExecutor_Tpu_FreeSerializedProto(&serialized_host_transfer_info);
+  }
+  tpu_program_group->set_host_transfer_info(host_transfer_info);
+
+  TpuSerializedProto serialized_hlo_metadata;
+  TpuProgramApiFn()->TpuProgram_GetHloMetadataFn(xla_tpu_programs[0],
+                                                 &serialized_hlo_metadata);
+  xla::HloProto hlo_metadata =
+      se_tpu::DeserializeProto<xla::HloProto>(serialized_hlo_metadata);
+  tpu_program_group->set_hlo_metadata(hlo_metadata);
+  StreamExecutor_Tpu_FreeSerializedProto(&serialized_hlo_metadata);
+
+  return Status::OK();
+}
+
 }  // namespace
 
 int64_t TpuProgramGroup::program_size() const {
   int64_t total_size = 0;
-  for (XLA_TpuProgram* tpu_program : tpu_programs_) {
-    total_size += TpuProgram_GetProgramSize(tpu_program);
+  for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
+    total_size += TpuProgramApiFn()->TpuProgram_GetProgramSizeFn(tpu_program);
   }
   return total_size;
 }
@@ -111,7 +159,8 @@ int64_t TpuProgramGroup::program_size() const {
 bool TpuProgramGroup::LogProgramMemorySummary() {
   bool success = true;
   for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
-    success &= TpuProgram_LogProgramMemorySummary(tpu_program);
+    success &=
+        TpuProgramApiFn()->TpuProgram_LogProgramMemorySummaryFn(tpu_program);
   }
   return success;
 }
@@ -119,7 +168,8 @@ bool TpuProgramGroup::LogProgramMemorySummary() {
 void TpuProgramGroup::UnloadAndDestroyPrograms() {
   for (XLA_TpuProgram* tpu_program : tpu_programs_) {
     StatusHelper status;
-    TpuProgram_UnloadAndDestroy(tpu_program, status.c_status);
+    TpuProgramApiFn()->TpuProgram_UnloadAndDestroyFn(tpu_program,
+                                                     status.c_status);
     auto s = status.status();
     if (!s.ok()) {
       LOG(ERROR) << "TpuProgramGroup::UnloadPrograms(): " << s.ToString();
@@ -170,36 +220,9 @@ void TpuProgramGroup::UnloadAndDestroyPrograms() {
   // SPMD could return 1 result for all partitions.
   TF_RET_CHECK(xla_tpu_programs.size() == 1 ||
                xla_tpu_programs.size() == metadata.num_cores_per_replica());
-  tpu_program_group->set_tpu_programs(xla_tpu_programs);
 
-  // TODO(jiawenhao): Handle the case of xla_tpu_programs.size() > 1.
-  TpuSerializedProto serialized_executable_info;
-  TpuProgram_GetExecutableInfo(xla_tpu_programs[0],
-                               &serialized_executable_info);
-  TPUExecutableInfoProto executable_info =
-      se_tpu::DeserializeProto<TPUExecutableInfoProto>(
-          serialized_executable_info);
-  tpu_program_group->set_executable_info(executable_info);
-  StreamExecutor_Tpu_FreeSerializedProto(&serialized_executable_info);
-
-  TPUHostTransferInfoProto host_transfer_info;
-  TpuSerializedProto serialized_host_transfer_info;
-  TpuProgram_GetHostTransferInfo(xla_tpu_programs[0],
-                                 &serialized_host_transfer_info);
-  if (serialized_host_transfer_info.size > 0) {
-    host_transfer_info = se_tpu::DeserializeProto<TPUHostTransferInfoProto>(
-        serialized_host_transfer_info);
-    StreamExecutor_Tpu_FreeSerializedProto(&serialized_host_transfer_info);
-  }
-  tpu_program_group->set_host_transfer_info(host_transfer_info);
-
-  TpuSerializedProto serialized_hlo_metadata;
-  TpuProgram_GetHloMetadata(xla_tpu_programs[0], &serialized_hlo_metadata);
-  xla::HloProto hlo_metadata =
-      se_tpu::DeserializeProto<xla::HloProto>(serialized_hlo_metadata);
-  tpu_program_group->set_hlo_metadata(hlo_metadata);
-  StreamExecutor_Tpu_FreeSerializedProto(&serialized_hlo_metadata);
-
+  TF_RETURN_IF_ERROR(
+      CreateTpuProgramGroup(xla_tpu_programs, tpu_program_group));
   return Status::OK();
 }
 
@@ -238,5 +261,41 @@ Status TpuProgramGroup::LogCompilationStats(const TpuCompilationCacheKey& key,
   // implementation can be pushing into some external storage for analytics.
   return Status::OK();
 }
+
+/*static*/
+Status TpuProgramGroup::CompileAndBuild(
+    const TpuCompilationRequestProto& compilation_request,
+    const XLA_TpuMeshState* mesh_state,
+    TpuProgramGroupInterface* tpu_program_group_interface) {
+  se_tpu::SerializedProto serialized_compilation_request =
+      se_tpu::SerializeProto(compilation_request);
+  auto cleanup = gtl::MakeCleanup([serialized_compilation_request] {
+    se_tpu::SerializedProto_Free(serialized_compilation_request);
+  });
+  size_t count = 0;
+  XLA_TpuProgram** xla_tpu_programs = nullptr;
+  StatusHelper status;
+  CompileApiFn()->TpuCompile_CompileAndBuildFn(serialized_compilation_request,
+                                               mesh_state, &xla_tpu_programs,
+                                               &count, status.c_status);
+  if (!status.ok()) {
+    VLOG(1) << "Run CompileAndBuild failed.";
+    return status.status();
+  }
+
+  // SPMD could return 1 result for all partitions.
+  TF_RET_CHECK(count == 1 ||
+               count == compilation_request.metadata().num_cores_per_replica());
+
+  VLOG(1) << "CreateTpuProgramGroup";
+  Status serialize_status =
+      CreateTpuProgramGroup(absl::MakeConstSpan(&xla_tpu_programs[0], count),
+                            tpu_program_group_interface);
+  VLOG(1) << absl::StrCat("Run CreateTpuProgramGroup completed. StatusCode: ",
+                          serialize_status.code());
+  TpuProgramApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
+  return serialize_status;
+}
+
 }  // namespace tpu
 }  // namespace tensorflow

@@ -26,6 +26,7 @@ cc_library(
         ":function_metadata",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -113,8 +114,23 @@ cc_library(
     deps = [
         ":concrete_function",
         ":saved_model_api",
+        ":saved_model_utils",
+        "//tensorflow/c:tensor_interface",
         "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core/ops:restore_ops",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:tensorhandle_convertible",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:tf_concrete_function",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:variable",
+        "//tensorflow/cc/saved_model:bundle_v2",
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -131,6 +147,7 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

@@ -147,7 +147,8 @@ bool SubgraphIterator::NextIfSamePort() {
   if (AtEnd()) {
     return false;
   }
-  if (link_idx_ + 1 < link_map_it_->second.size()) {
+  const int64 link_map_it_second_size = link_map_it_->second.size();
+  if (link_idx_ + 1 < link_map_it_second_size) {
     ++link_idx_;
     return true;
   } else {
@@ -174,7 +175,8 @@ void SubgraphIterator::SkipNode() {
 
 bool SubgraphIterator::PropagateNext() {
   // Loops are used to skip over the empty entries.
-  while (link_idx_ >= link_map_it_->second.size()) {
+  const int64 link_map_it_second_size = link_map_it_->second.size();
+  while (link_idx_ >= link_map_it_second_size) {
     ++link_map_it_;
     while (link_map_it_ == (*id_it_)->links().end()) {
       if (++id_it_ == id_->end()) {
