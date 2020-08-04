@@ -697,7 +697,6 @@ class WrappedFileSystem : public FileSystem {
 /// Transactional API. This is an interim solution until ModularFileSystem class
 /// becomes a singleton.
 // TODO(sami): Remove this macro when filesystem plugins migration is complete.
-
 #define TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT \
   using FileSystem::NewRandomAccessFile;                      \
   using FileSystem::NewWritableFile;                          \
