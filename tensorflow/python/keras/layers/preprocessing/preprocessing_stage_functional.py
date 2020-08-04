@@ -33,7 +33,7 @@ class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
   """A functional preprocessing stage.
 
   This preprocessing stage wraps a graph of preprocessing layers into a
-  Functional-like object that enables you to `adapt()` the whole list via
+  Functional-like object that enables you to `adapt()` the whole graph via
   a single `adapt()` call on the preprocessing stage.
 
   Arguments:
@@ -53,7 +53,7 @@ class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
       reset_state: Whether this call to `adapt` should reset the state of
         the layers in this preprocessing stage.
     """
-    if not isinstance(data, dataset_ops.DatasetV2):
+    if not isinstance(data, dataset_ops.Dataset):
       data = self._flatten_to_reference_inputs(data)
       if any([not isinstance(datum, (np.ndarray, ops.EagerTensor))
               for datum in data]):
@@ -61,7 +61,7 @@ class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
             '`adapt()` requires a batched Dataset, a list of EagerTensors '
             'or Numpy arrays as input, got {}'.format(type(data)))
 
-    if isinstance(data, dataset_ops.DatasetV2):
+    if isinstance(data, dataset_ops.Dataset):
       # Validate the datasets to try and ensure we haven't been passed one with
       # infinite size. That would cause an infinite loop here.
       if tf_utils.dataset_is_infinite(data):
@@ -69,8 +69,8 @@ class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
             'The dataset passed to `adapt()` has an infinite number of '
             'elements. Please use dataset.take(...) to make the number '
             'of elements finite.')
-      #  datasets
-      data = [data.map(lambda *x: x[i]) for i in range(len(data.element_spec))]
+      # Unzip dataset object to a list of single input dataset.
+      data = _unzip_dataset(data)
 
     # Dictionary mapping reference tensors to data
     data_dict = {}
@@ -89,27 +89,53 @@ class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
         if node.is_input:
           continue
 
-        # Node with input not ready yet
+        # Node with input not computed yet
         if any(t_id not in data_dict for t_id in node.flat_input_ids):
           continue
 
         args, kwargs = node.map_arguments(data_dict)
 
         if hasattr(node.layer, 'adapt'):
-          if all(isinstance(arg, dataset_ops.DatasetV2) for arg in args):
-            args = dataset_ops.DatasetV2.zip(args)
-          node.layer.adapt(*args, reset_state=reset_state)
+          args_flatten = nest.flatten(args)
+          if all(isinstance(arg, dataset_ops.Dataset) for arg in args_flatten):
+            args = dataset_ops.Dataset.zip(tuple(args_flatten))
+          node.layer.adapt(args, reset_state=reset_state)
 
-        if isinstance(args, dataset_ops.DatasetV2):
-          map_fn = lambda x: nest.flatten(node.layer(x, **args))
-          output_ds = args.map(map_fn)
-          outputs = [output_ds.map(lambda *x: x[i]) for i in
-                     range(len(output_ds.element_spec))]
+        if isinstance(args, dataset_ops.Dataset):
+          def map_fn(*x, node=node, args=args, kwargs=kwargs):
+            if len(args.element_spec) == 1:
+              return nest.flatten(node.layer(*x, **kwargs))
+            return nest.flatten(node.layer(x, **kwargs))
+          outputs = args.map(map_fn)
+          outputs = _unzip_dataset(outputs)
         else:
           outputs = node.layer(*args, **kwargs)
           outputs = nest.flatten(outputs)
 
         # Update tensor_dict.
-        for x_id, y in zip(node.flat_output_ids, nest.flatten(outputs)):
-          tensor_dict[x_id] = [y] * tensor_usage_count[x_id]
+        for x_id, y in zip(node.flat_output_ids, outputs):
+          data_dict[x_id] = [y] * tensor_usage_count[x_id]
 
+
+def _unzip_dataset(data):
+  """Unzip dataset into a list of single element datasets.
+  Arguments:
+    data: A Dataset object.
+  Return:
+    A list of Dataset object, each correspond to one of the
+    `element_spec` of the input Dataset object.
+  Example:
+    >>> ds1 = tf.data.Dataset.from_tensor_slices([1,2,3])
+    >>> ds2 = tf.data.Dataset.from_tensor_slices([4,5,6])
+    >>> ds_zipped = tf.data.Dataset.zip((ds1, ds2))
+    >>> ds_unzipped = _unzip_dataset(ds_zipped)
+
+    Then each element of `ds_unzipped` is the same as `ds`.
+  """
+  element_count = len(nest.flatten(data.element_spec))
+  data_unzipped = []
+  for i in range(element_count):
+    def map_fn(*x, j=i):
+      return x[j]
+    data_unzipped.append(data.map(map_fn))
+  return data
