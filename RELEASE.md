@@ -14,6 +14,25 @@
 * Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
 * `tensorflow.python`, `tensorflow.core` and `tensorflow.compiler` modules are
     now hidden. These modules are not part of TensorFlow public API.
+* A major refactoring of the internals of the Keras Functional API may affect code that is relying on certain internal details:
+    * Code that uses `isinstance(x, tf.Tensor)` instead of `tf.is_tensor` when checking Keras symbolic inputs/outputs should switch to using `tf.is_tensor`.
+    * Code that is overly dependent on the exact names attached to symbolic tensors (e.g. assumes there will be ":0" at the end of the inputs, treats names as unique identifiers instead of using `tensor.ref()`, etc.)
+    * Code that uses `get_concrete_function` to trace Keras symbolic inputs directly should switch to building matching `tf.TensorSpec`s directly and tracing the `TensorSpec` objects.
+    * Code that relies on the exact number and names of the op layers that TensorFlow operations were converted into. These may have changed.
+    * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and happens to work before TF 2.4. These will explicitly be unsupported now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly or being silently buggy.
+    * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to return a static or symbolic value depending on if the input had a fully static shape or not. Now these ops always return symbolic values.
+    * Code already susceptible to leaking tensors outside of graphs becomes slightly more likely to do so now.
+    * Code that requires very tricky shape manipulation via converted op layers in order to work, where the Keras symbolic shape inference proves insufficient.
+    * Code that tries manually walking a `tf.keras.Model` layer by layer and assumes layers only ever have one positional argument. This assumption doesn't hold true before TF 2.4 either, but is more likely to cause issues know.
+    * Code that manually enters `keras.backend.get_graph()` before building a functional model. This is no longer needed.
+* Start enforcing input shape assumptions when calling Functional API Keras
+  models. This may potentially break some users, in case there is a mismatch
+  between the shape used when creating `Input` objects in a Functional model,
+  and the shape of the data passed to that model. You can fix this mismatch by
+  either calling the model with correctly-shaped data, or by relaxing `Input`
+  shape assumptions (note that you can pass shapes with `None` entries for axes
+  that are meant to be dynamic). You can also disable the input checking
+  entirely by setting `model.input_spec = None`.
 
 ## Known Caveats
 
@@ -24,6 +43,7 @@
 * <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 * <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 * A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See tensorflow/python/ops/numpy_ops/README.md for details of what are supported and what are the differences with NumPy.
+* A major refactoring of the internals of the Keras Functional API has been completed, that should improve the reliability, stability, and performance of constructing Functional models.
 
 ## Bug Fixes and Other Changes
 
@@ -45,7 +65,8 @@
     benavior.
   * Added `tf.SparseTensor.with_values`. This returns a new SparseTensor with
     the same sparsity pattern, but with new provided values. It is similar to
-  the `with_values` function of `RaggedTensor`.
+    the `with_values` function of `RaggedTensor`.
+  * Added `StatelessCase` op, and uses it if none of case branches has stateful ops.
 * `tf.data`:
     * Added new `tf.data.experimental.service.register_dataset` and
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
@@ -58,14 +79,27 @@
       dataset when it is safe to do so. The optimization can be disabled via
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
+* `tf.image`:
+    * Added deterministic `tf.image.stateless_random_*` functions for each
+      `tf.image.random_*` function. Given the same seed, the stateless functions
+      produce the same results independent of how many times the function is
+      called, and independent of global seed settings.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
-*   `tf.keras`:
-    * <ADD RELEASE NOTES HERE>
+* `tf.keras`:
+    * Improvements from the functional API refactoring:
+      * Functional model construction does not need to maintain a global workspace graph, removing memory leaks especially when building many models or very large models.
+      * Functional model construction should be ~8-10% faster on average.
+      * Functional models can now contain non-symbolic values in their call inputs inside of the first positional argument.
+      * Several classes of TF ops that were not reliably converted to Keras layers during functional API construction should now work, e.g. `tf.image.ssim_multiscale`
+      * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
+    * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
+      as an alternative to accepting a `callable` loss.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
     performance.
+  * Added support for `iter(DistributedDataset)` in AutoGraph `for` loops.
 *   `tf.lite`:
     * `DynamicBuffer::AddJoinedString()` will now add a separator if the first
       string to be joined is empty.
@@ -77,6 +111,9 @@
 *   Math and Linear Algebra:
     * <ADD RELEASE NOTES HERE>
 *   TPU Enhancements:
+    * Added support for the `beta` parameter of the FTRL optimizer for TPU
+      embeddings. Users of other TensorFlow platforms can implement equivalent
+      behavior by adjusting the `l2` parameter.
     * <ADD RELEASE NOTES HERE>
 *   XLA Support:
     * <ADD RELEASE NOTES HERE>

@@ -156,7 +156,7 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
                                  absl::Span<const int> variable_indices,
                                  absl::Span<VariableInfo const> variable_infos,
                                  ResourceVarsSnapshot* result) {
-  for (int i = 0; i < variable_indices.size(); i++) {
+  for (int i = 0, end = variable_indices.size(); i < end; i++) {
     Var* var = variable_infos[i].var();
     (*result)[variable_indices[i]] =
         var ? absl::make_optional(*var->tensor()) : absl::nullopt;
@@ -206,7 +206,8 @@ XlaComputationLaunchContext::PopulateInputs(
 
   xla::TransferManager* transfer_manager =
       client_->backend().transfer_manager();
-  for (int i = 0; i < compilation_result->xla_input_shapes.size(); ++i) {
+  for (int i = 0, end = compilation_result->xla_input_shapes.size(); i < end;
+       ++i) {
     int arg_num = compilation_result->input_mapping[i];
     CHECK_GE(arg_num, missing_ctx_input_prefix);
     const xla::Shape& shape = compilation_result->xla_input_shapes[i];
@@ -466,7 +467,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
 
   // Copy XLA results to the OpOutputList.
   int output_num = 0;
-  for (int i = 0; i < ctx->num_outputs(); ++i) {
+  for (int i = 0, end = ctx->num_outputs(); i < end; ++i) {
     const TensorShape& shape = output_tensor_shapes[i];
     const DataType& type = compilation_result->outputs[i].type;
     VLOG(2) << "Populating output for retval " << i << " shape "
@@ -514,7 +515,8 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   }
 
   // Apply variable updates, if any.
-  for (int i = 0; i < compilation_result->resource_updates.size(); ++i) {
+  for (int i = 0, end = compilation_result->resource_updates.size(); i < end;
+       ++i) {
     const XlaCompiler::ResourceUpdate& write =
         compilation_result->resource_updates[i];
     int actual_input_index = write.input_index - missing_ctx_input_prefix;

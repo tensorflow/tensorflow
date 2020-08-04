@@ -28,7 +28,6 @@ import numpy as np
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import backprop
@@ -211,11 +210,8 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     if optimizer is None:
       optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
 
-    num_replicas = (
-        distribution_strategy_context.get_strategy().num_replicas_in_sync)
     return tpu_embedding_v2.TPUEmbedding(
         feature_config=self.feature_config,
-        batch_size=self.batch_size * num_replicas,
         optimizer=optimizer)
 
   def _create_sparse_dataset(self, strategy, include_weights=False, weight=0.5):
@@ -474,9 +470,11 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     with strategy.scope():
       mid_level = tpu_embedding_v2.TPUEmbedding(
           feature_config=feature_config,
-          batch_size=self.batch_size * num_replicas,
           optimizer=optimizer)
-
+    # Call build here. We call 'next' outside of the tf.function and this
+    # results in data where the shape of the sparse tensor is a tensor which we
+    # can't tell the shape of at tracing time.
+    mid_level.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
     data = next(iter(strategy.experimental_distribute_dataset(
         dataset,

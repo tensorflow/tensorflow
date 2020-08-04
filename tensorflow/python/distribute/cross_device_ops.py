@@ -964,13 +964,14 @@ class CollectiveAllReduce(CrossDeviceOps):
     #
     # In a multi threaded eager program we need to ensure different groups of
     # collectives don't interleave each other, otherwise there couuld be
-    # deadlocks. E.g.
+    # deadlocks. E.g. if two user threads both are launching collectives:
     #   user-thread-0  device0                 device1
     #   user-thread-1          device0 device1
-    # Note that thanks to protection in the runtime, this is only an issue when
-    # the instance key is re-used. The instance key is reused if the user builds
-    # a tf.function and runs it in multiple threads, since the instance key is
-    # an attribute of the collective ops.
+    # In eager mode, we use one executor per device. Executors use single FIFO
+    # queues, so the above launch sequences end up with the following queues:
+    #   device-0  collective-0  collective-1
+    #   device-1  collective-1  collective-0
+    # This deadlocks since neither collective is able to finish.
     self._lock = threading.Lock()
 
     # Collective ops requires all devices to participate and is blocking. In
@@ -1050,7 +1051,8 @@ class CollectiveAllReduce(CrossDeviceOps):
       dense_results = []
     if sparse_values:
       sparse_results = self._do_batch_all_reduce_sparse(reduce_op,
-                                                        sparse_values)
+                                                        sparse_values,
+                                                        experimental_hints)
     else:
       sparse_results = []
     return cross_device_utils.stitch_values(
@@ -1120,7 +1122,8 @@ class CollectiveAllReduce(CrossDeviceOps):
                     "Id",
                     communication,
                     control_inputs,
-                    executors=self._executors))
+                    executors=self._executors,
+                    timeout=experimental_hints.timeout_seconds))
 
     for e in self._executors:
       e.wait()
@@ -1136,7 +1139,8 @@ class CollectiveAllReduce(CrossDeviceOps):
           distribute_utils.regroup(value, wrap_class=value_lib.Mirrored))
     return mirrored
 
-  def _do_batch_all_reduce_sparse(self, reduce_op, per_replica_values):
+  def _do_batch_all_reduce_sparse(self, reduce_op, per_replica_values,
+                                  experimental_hints):
     """All-reduce IndexedSlices across all workers in a batch."""
 
     logging.log_first_n(
@@ -1158,8 +1162,12 @@ class CollectiveAllReduce(CrossDeviceOps):
       for per_replica in per_replica_values:
         gathered_values.append(
             cross_device_utils.build_collective_gather_indexed_slices(
-                per_replica.values, self._devices, self._group_size,
-                self._collective_keys, communication_hint))
+                per_replica.values,
+                self._devices,
+                self._group_size,
+                self._collective_keys,
+                communication_hint,
+                timeout=experimental_hints.timeout_seconds))
 
     mirrored = []
     for value in gathered_values:

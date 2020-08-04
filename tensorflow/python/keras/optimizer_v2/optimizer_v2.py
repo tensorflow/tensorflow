@@ -27,7 +27,6 @@ import six
 
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import parameter_server_strategy
-from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -38,6 +37,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -47,13 +47,18 @@ from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
+
+
+_DEFAULT_VALID_DTYPES = frozenset([
+    dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
+    dtypes.complex64, dtypes.complex128
+])
 
 
 def _deduplicate_indexed_slices(values, indices):
@@ -345,7 +350,7 @@ class OptimizerV2(trackable.Trackable):
     else:
       self._distribution_strategy = None
 
-  def minimize(self, loss, var_list, grad_loss=None, name=None):
+  def minimize(self, loss, var_list, grad_loss=None, name=None, tape=None):
     """Minimize `loss` by updating `var_list`.
 
     This method simply computes gradient using `tf.GradientTape` and calls
@@ -354,14 +359,19 @@ class OptimizerV2(trackable.Trackable):
     of using this function.
 
     Args:
-      loss: A callable taking no arguments which returns the value to minimize.
+      loss: `Tensor` or callable. If a callable, `loss` should take no arguments
+        and return the value to minimize. If a `Tensor`, the `tape` argument
+        must be passed.
       var_list: list or tuple of `Variable` objects to update to minimize
         `loss`, or a callable returning the list or tuple of `Variable` objects.
         Use callable when the variable list would otherwise be incomplete before
         `minimize` since the variables are created at the first time `loss` is
         called.
-      grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
-      name: Optional name for the returned operation.
+      grad_loss: (Optional). A `Tensor` holding the gradient computed for
+        `loss`.
+      name: (Optional) str. Name for the returned operation.
+      tape: (Optional) `tf.GradientTape`. If `loss` is provided as a `Tensor`,
+        the tape that computed the `loss` must be provided.
 
     Returns:
       An `Operation` that updates the variables in `var_list`. The `iterations`
@@ -372,8 +382,7 @@ class OptimizerV2(trackable.Trackable):
 
     """
     grads_and_vars = self._compute_gradients(
-        loss, var_list=var_list, grad_loss=grad_loss)
-
+        loss, var_list=var_list, grad_loss=grad_loss, tape=tape)
     return self.apply_gradients(grads_and_vars, name=name)
 
   def _clip_gradients(self, grads):
@@ -396,7 +405,7 @@ class OptimizerV2(trackable.Trackable):
       ]
     return grads
 
-  def _compute_gradients(self, loss, var_list, grad_loss=None):
+  def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
     """Compute gradients of `loss` for the variables in `var_list`.
 
     This is the first part of `minimize()`.  It returns a list
@@ -406,13 +415,17 @@ class OptimizerV2(trackable.Trackable):
     given variable.
 
     Args:
-      loss: A callable taking no arguments which returns the value to minimize.
+      loss: `Tensor` or callable. If a callable, `loss` should take no
+        arguments and return the value to minimize. If a `Tensor`, the `tape`
+        argument must be passed.
       var_list: list or tuple of `Variable` objects to update to minimize
         `loss`, or a callable returning the list or tuple of `Variable` objects.
         Use callable when the variable list would otherwise be incomplete before
         `minimize` and the variables are created at the first time when `loss`
         is called.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
+      tape: (Optional) `tf.GradientTape`. If `loss` is provided as a `Tensor`,
+        the tape that computed the `loss` must be provided.
 
     Returns:
       A list of (gradient, variable) pairs. Variable is always present, but
@@ -423,18 +436,28 @@ class OptimizerV2(trackable.Trackable):
       ValueError: If some arguments are invalid, or var_list is None.
     """
     # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-    with backprop.GradientTape() as tape:
-      if not callable(var_list):
-        tape.watch(var_list)
-      loss_value = loss()
-    if callable(var_list):
-      var_list = var_list()
-    var_list = nest.flatten(var_list)
-    with backend.name_scope(self._name + "/gradients"):
-      grads = tape.gradient(loss_value, var_list, grad_loss)
-      grads = self._clip_gradients(grads)
+    if not callable(loss) and tape is None:
+      raise ValueError("`tape` is required when a `Tensor` loss is passed.")
+    tape = tape if tape is not None else backprop.GradientTape()
 
+    if callable(loss):
+      with tape:
+        if not callable(var_list):
+          tape.watch(var_list)
+
+        if callable(loss):
+          loss = loss()
+
+        if callable(var_list):
+          var_list = var_list()
+
+    var_list = nest.flatten(var_list)
+    with ops.name_scope_v2(self._name + "/gradients"):
+      grads = tape.gradient(loss, var_list, grad_loss)
+      # TODO(omalleyt): Move to post-aggregation.
+      grads = self._clip_gradients(grads)
     grads_and_vars = list(zip(grads, var_list))
+
     self._assert_valid_dtypes([
         v for g, v in grads_and_vars
         if g is not None and v.dtype != dtypes.resource
@@ -509,8 +532,9 @@ class OptimizerV2(trackable.Trackable):
     Raises:
       TypeError: If `grads_and_vars` is malformed.
       ValueError: If none of the variables have gradients.
+      RuntimeError: If called in a cross-replica context.
     """
-    grads_and_vars = _filter_grads(grads_and_vars)
+    grads_and_vars = optimizer_utils.filter_empty_gradients(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
 
     with backend.name_scope(self._name):
@@ -550,7 +574,10 @@ class OptimizerV2(trackable.Trackable):
           })
 
   def _aggregate_gradients(self, grads_and_vars):
-    """Returns all-reduced gradients.
+    """Returns aggregated gradients.
+
+    This method must be preserved to maintain backwards compatibility with
+    Horovod aggregation.
 
     Args:
       grads_and_vars: List of (gradient, variable) pairs.
@@ -558,32 +585,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       A list of all-reduced gradients.
     """
-    grads_and_vars = list(grads_and_vars)
-    filtered_grads_and_vars = _filter_grads(grads_and_vars)
-    def all_reduce_fn(distribution, grads_and_vars):
-      return distribution.extended.batch_reduce_to(
-          ds_reduce_util.ReduceOp.SUM, grads_and_vars)
-    # We switch to a cross-replica context since there is a bug which causes
-    # IndexedSlices to be converted to dense tensors when all-reduced in a
-    # replica context.
-    # TODO(b/150507409): Do not switch to a cross-replica context once the bug
-    # is fixed.
-    if filtered_grads_and_vars:
-      reduced = distribute_ctx.get_replica_context().merge_call(
-          all_reduce_fn, args=(filtered_grads_and_vars,))
-    else:
-      reduced = []
-    # Copy 'reduced' but add None gradients back in
-    reduced_with_nones = []
-    reduced_pos = 0
-    for g, _ in grads_and_vars:
-      if g is None:
-        reduced_with_nones.append(None)
-      else:
-        reduced_with_nones.append(reduced[reduced_pos])
-        reduced_pos += 1
-    assert reduced_pos == len(reduced), "Failed to add all gradients"
-    return reduced_with_nones
+    return optimizer_utils.all_reduce_sum_gradients(grads_and_vars)
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
@@ -1077,10 +1079,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       Valid types for loss, variables and gradients.
     """
-    return set([
-        dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
-        dtypes.complex64, dtypes.complex128
-    ])
+    return _DEFAULT_VALID_DTYPES
 
   def _call_if_callable(self, param):
     """Call the function if param is callable."""
@@ -1257,29 +1256,6 @@ class OptimizerV2(trackable.Trackable):
         yield self._distribution_strategy.scope()
     else:
       yield
-
-
-def _filter_grads(grads_and_vars):
-  """Filter out iterable with grad equal to None."""
-  grads_and_vars = tuple(grads_and_vars)
-  if not grads_and_vars:
-    return grads_and_vars
-  filtered = []
-  vars_with_empty_grads = []
-  for grad, var in grads_and_vars:
-    if grad is None:
-      vars_with_empty_grads.append(var)
-    else:
-      filtered.append((grad, var))
-  filtered = tuple(filtered)
-  if not filtered:
-    raise ValueError("No gradients provided for any variable: %s." %
-                     ([v.name for _, v in grads_and_vars],))
-  if vars_with_empty_grads:
-    logging.warning(
-        ("Gradients do not exist for variables %s when minimizing the loss."),
-        ([v.name for v in vars_with_empty_grads]))
-  return filtered
 
 
 def _var_key(var):

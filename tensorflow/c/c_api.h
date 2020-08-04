@@ -126,6 +126,14 @@ TF_CAPI_EXPORT extern void TF_DeleteBuffer(TF_Buffer*);
 TF_CAPI_EXPORT extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
 
 // --------------------------------------------------------------------------
+// Used to return strings across the C API. The caller does not take ownership
+// of the underlying data pointer and is not responsible for freeing it.
+typedef struct TF_StringView {
+  const char* data;
+  size_t len;
+} TF_StringView;
+
+// --------------------------------------------------------------------------
 // TF_SessionOptions holds options that can be passed during session creation.
 typedef struct TF_SessionOptions TF_SessionOptions;
 

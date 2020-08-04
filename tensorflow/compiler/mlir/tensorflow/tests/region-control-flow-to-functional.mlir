@@ -6,14 +6,18 @@
 // CHECK: func @tf.IfRegion_then(%arg0: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:   "tf.Abs"
 func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "tf.If"{{.+}}else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then
+  // CHECK: "tf.If"
+  // CHECK-SAME: _attr0 = false
+  // CHECK-NOT: attr1
+  // CHECK-SAME: else_branch = @tf.IfRegion_else
+  // CHECK-SAME: then_branch = @tf.IfRegion_then
   %0 = "tf.IfRegion"(%arg0) ({
     %1 = "tf.Abs"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%1) : (tensor<*xf32>) -> ()
     }, {
     %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
-    }) { is_stateless = true } :  (tensor<i1>) -> tensor<*xf32>
+    }) {is_stateless = true, _attr0 = false, attr1 = "hello"} :  (tensor<i1>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -220,7 +224,11 @@ func @testNoOutputs(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> () {
 // CHECK: "tf.NotEqual"
 // CHECK-LABEL: testValidWhileRegion
 func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
-  // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
+  // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1)
+  // CHECK-SAME: _attr0 = false
+  // CHECK-NOT: attr1
+  // CHECK-SAME: body = @tf.WhileRegion_body
+  // CHECK-SAME: cond = @tf.WhileRegion_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
     {
       // condition, check if count has reached 0
@@ -237,7 +245,7 @@ func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%add, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  ) { is_stateless = false, _attr0 = false, attr1 = "hello"} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
   return %0#0 : tensor<*xf32>
 }

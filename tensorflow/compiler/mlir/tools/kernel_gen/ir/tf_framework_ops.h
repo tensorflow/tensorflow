@@ -27,18 +27,12 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 
 namespace mlir {
-
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_structs.h.inc"
-
 namespace kernel_gen {
 namespace tf_framework {
 
 namespace TFFrameworkTypes {
 enum Kind {
-  // TODO(pifon): Replace enum value with
-  // OpKernelContextType = Type::FIRST_TF_FRAMEWORK_TYPE,
-  // after DialectSymbolRegistry.def is updated.
-  OpKernelContextType = Type::FIRST_PRIVATE_EXPERIMENTAL_0_TYPE,
+  OpKernelContextType = Type::FIRST_TF_FRAMEWORK_TYPE,
 };
 }  // namespace TFFrameworkTypes
 

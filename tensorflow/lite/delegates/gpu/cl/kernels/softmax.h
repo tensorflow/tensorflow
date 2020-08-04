@@ -29,11 +29,9 @@ namespace cl {
 class Softmax : public GPUOperation {
  public:
   Softmax() = default;
-  explicit Softmax(const OperationDef& definition) : GPUOperation(definition) {}
+  explicit Softmax(const OperationDef& definition);
 
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Softmax(Softmax&& kernel);
@@ -42,6 +40,9 @@ class Softmax : public GPUOperation {
   Softmax& operator=(const Softmax&) = delete;
 
   friend Softmax CreateSoftmax();
+
+ private:
+  std::string GetSoftmaxKernelCode(const OperationDef& op_def);
 };
 
 Softmax CreateSoftmax(const OperationDef& definition);

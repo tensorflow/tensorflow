@@ -71,7 +71,6 @@ cc_library(
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/stream_executor/tpu:status_helper",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -90,9 +89,15 @@ tf_kernel_library(
     name = "tpu_configuration_ops",
     srcs = ["tpu_configuration_ops.cc"],
     hdrs = ["tpu_configuration_ops.h"],
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
     deps = [
         ":tpu_compilation_cache_factory",
         ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_local_lookup",
+        ":tpu_compilation_cache_lookup",
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         "//tensorflow/c:tf_status",
@@ -209,14 +214,19 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_entry",
+    srcs = ["tpu_compilation_cache_entry.cc"],
     hdrs = [
         "tpu_compilation_cache_entry.h",
     ],
     deps = [
+        ":compiled_subgraph",
+        ":tpu_compilation_cache_proto_cc",
         ":tpu_executable_info_proto_cc",
-        ":tpu_program_group_interface",
+        ":tpu_program_group",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/platform:casts",
     ],
 )
 

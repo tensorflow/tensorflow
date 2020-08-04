@@ -643,10 +643,7 @@ LogicalResult Rewrite(
   // Collect `num_replicas` and `num_cores_per_replica` attributes.
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
-      cluster_func.getParentOp()
-          ? llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
-                cluster_func.getParentOp())
-          : nullptr;
+      cluster_func.getParentOfType<tf_device::ReplicateOp>();
   if (replicate) num_replicas = replicate.n().getLimitedValue();
 
   auto num_cores_per_replica_attr = cluster_func.getAttrOfType<IntegerAttr>(
@@ -715,9 +712,9 @@ LogicalResult Rewrite(
   // structured lowering.
   if (auto parallel_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
           cluster_func.getParentOp())) {
-    parallel_op.walk([&](TF::_TPUCompileMlirOp parallel_compile_op) {
-      parallel_compile_op.replaceAllUsesWith(compile_op);
-      parallel_compile_op.erase();
+    parallel_op.walk([&](TF::_TPUCompileMlirPlaceholderProgramKeyOp key_op) {
+      key_op.replaceAllUsesWith(compile_op->getResult(1));
+      key_op.erase();
     });
   }
 

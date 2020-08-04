@@ -108,7 +108,7 @@ class Env {
   /// The ownership of the returned RandomAccessFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewRandomAccessFile(const string& fname,
+  Status NewRandomAccessFile(const std::string& fname,
                              std::unique_ptr<RandomAccessFile>* result);
 
   /// \brief Creates an object that writes to a new file with the specified
@@ -124,7 +124,7 @@ class Env {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewWritableFile(const string& fname,
+  Status NewWritableFile(const std::string& fname,
                          std::unique_ptr<WritableFile>* result);
 
   /// \brief Creates an object that either appends to an existing file, or
@@ -139,7 +139,7 @@ class Env {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewAppendableFile(const string& fname,
+  Status NewAppendableFile(const std::string& fname,
                            std::unique_ptr<WritableFile>* result);
 
   /// \brief Creates a readonly region of memory with the file context.
@@ -154,10 +154,10 @@ class Env {
   /// and the object should be deleted when is not used. The memory region
   /// object shouldn't live longer than the Env object.
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
+      const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  Status FileExists(const string& fname);
+  Status FileExists(const std::string& fname);
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
@@ -169,7 +169,7 @@ class Env {
   /// directory. The names are relative to "dir".
   ///
   /// Original contents of *results are dropped.
-  Status GetChildren(const string& dir, std::vector<string>* result);
+  Status GetChildren(const std::string& dir, std::vector<string>* result);
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
   /// allowed in pattern are described in FileSystem::GetMatchingPaths.
@@ -180,11 +180,11 @@ class Env {
   /// that pattern. *results is cleared.
   ///
   /// More details about `pattern` in FileSystem::GetMatchingPaths.
-  virtual Status GetMatchingPaths(const string& pattern,
+  virtual Status GetMatchingPaths(const std::string& pattern,
                                   std::vector<string>* results);
 
   /// Deletes the named file.
-  Status DeleteFile(const string& fname);
+  Status DeleteFile(const std::string& fname);
 
   /// \brief Deletes the specified directory and all subdirectories and files
   /// underneath it. This is accomplished by traversing the directory tree
@@ -210,7 +210,7 @@ class Env {
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
   ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
   ///                    implemented
-  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+  Status DeleteRecursively(const std::string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs);
 
   /// \brief Creates the specified directory and all the necessary
@@ -218,19 +218,19 @@ class Env {
   ///  * OK - successfully created the directory and sub directories, even if
   ///         they were already created.
   ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
-  Status RecursivelyCreateDir(const string& dirname);
+  Status RecursivelyCreateDir(const std::string& dirname);
 
   /// \brief Creates the specified directory. Typical return codes
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory already exists.
   ///  * PERMISSION_DENIED - dirname is not writable.
-  Status CreateDir(const string& dirname);
+  Status CreateDir(const std::string& dirname);
 
   /// Deletes the specified directory.
-  Status DeleteDir(const string& dirname);
+  Status DeleteDir(const std::string& dirname);
 
   /// Obtains statistics for the given path.
-  Status Stat(const string& fname, FileStatistics* stat);
+  Status Stat(const std::string& fname, FileStatistics* stat);
 
   /// \brief Returns whether the given path is a directory or not.
   /// Typical return codes (not guaranteed exhaustive):
@@ -239,7 +239,7 @@ class Env {
   ///  * NOT_FOUND - The path entry does not exist.
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
-  Status IsDirectory(const string& fname);
+  Status IsDirectory(const std::string& fname);
 
   /// \brief Returns whether the given path is on a file system
   /// that has atomic move capabilities. This can be used
@@ -251,17 +251,17 @@ class Env {
   ///         so has_atomic_move holds the above information.
   ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in
   ///  TF
-  Status HasAtomicMove(const string& path, bool* has_atomic_move);
+  Status HasAtomicMove(const std::string& path, bool* has_atomic_move);
 
   /// Stores the size of `fname` in `*file_size`.
-  Status GetFileSize(const string& fname, uint64* file_size);
+  Status GetFileSize(const std::string& fname, uint64* file_size);
 
   /// \brief Renames file src to target. If target already exists, it will be
   /// replaced.
-  Status RenameFile(const string& src, const string& target);
+  Status RenameFile(const std::string& src, const std::string& target);
 
   /// \brief Copy the src to target.
-  Status CopyFile(const string& src, const string& target);
+  Status CopyFile(const std::string& src, const std::string& target);
 
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
@@ -374,7 +374,7 @@ class EnvWrapper : public Env {
   /// Returns the target to which this Env forwards all calls
   Env* target() const { return target_; }
 
-  Status GetFileSystemForFile(const string& fname,
+  Status GetFileSystemForFile(const std::string& fname,
                               FileSystem** result) override {
     return target_->GetFileSystemForFile(fname, result);
   }
@@ -383,7 +383,7 @@ class EnvWrapper : public Env {
     return target_->GetRegisteredFileSystemSchemes(schemes);
   }
 
-  Status RegisterFileSystem(const string& scheme,
+  Status RegisterFileSystem(const std::string& scheme,
                             FileSystemRegistry::Factory factory) override {
     return target_->RegisterFileSystem(scheme, factory);
   }
@@ -468,43 +468,44 @@ struct ThreadOptions {
 
 /// A utility routine: copy contents of `src` in file system `src_fs`
 /// to `target` in file system `target_fs`.
-Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
-                          FileSystem* target_fs, const string& target);
+Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
+                          FileSystem* target_fs, const std::string& target);
 
 /// A utility routine: reads contents of named file into `*data`
-Status ReadFileToString(Env* env, const string& fname, string* data);
+Status ReadFileToString(Env* env, const std::string& fname, std::string* data);
 
 /// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
-Status WriteStringToFile(Env* env, const string& fname,
+Status WriteStringToFile(Env* env, const std::string& fname,
                          const StringPiece& data);
 
 /// Write binary representation of "proto" to the named file.
-Status WriteBinaryProto(Env* env, const string& fname,
+Status WriteBinaryProto(Env* env, const std::string& fname,
                         const protobuf::MessageLite& proto);
 
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into `*proto`.
-Status ReadBinaryProto(Env* env, const string& fname,
+Status ReadBinaryProto(Env* env, const std::string& fname,
                        protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
-Status WriteTextProto(Env* env, const string& fname,
+Status WriteTextProto(Env* env, const std::string& fname,
                       const protobuf::Message& proto);
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
-inline Status ReadTextProto(Env* /* env */, const string& /* fname */,
+inline Status ReadTextProto(Env* /* env */, const std::string& /* fname */,
                             protobuf::MessageLite* /* proto */) {
   return errors::Unimplemented("Can't parse text protos with protolite.");
 }
-Status ReadTextProto(Env* env, const string& fname, protobuf::Message* proto);
+Status ReadTextProto(Env* env, const std::string& fname,
+                     protobuf::Message* proto);
 
 /// Read contents of named file and parse as either text or binary encoded proto
 /// data and store into `*proto`.
-Status ReadTextOrBinaryProto(Env* env, const string& fname,
+Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
                              protobuf::Message* proto);
-Status ReadTextOrBinaryProto(Env* env, const string& fname,
+Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
                              protobuf::MessageLite* proto);
 
 // START_SKIP_DOXYGEN

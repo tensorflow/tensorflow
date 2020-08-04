@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import numpy as np
 
 from tensorflow.python.compat import compat
@@ -37,6 +38,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sort_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import deprecation
@@ -338,7 +340,6 @@ def random_flip_up_down(image, seed=None):
 
   Example usage:
 
-  >>> import numpy as np
   >>> image = np.array([[[1], [2]], [[3], [4]]])
   >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
   [[[3], [4]], [[1], [2]]]
@@ -364,7 +365,8 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _random_flip(image, 0, seed, 'random_flip_up_down')
+  random_func = functools.partial(random_ops.random_uniform, seed=seed)
+  return _random_flip(image, 0, random_func, 'random_flip_up_down')
 
 
 @tf_export('image.random_flip_left_right')
@@ -378,8 +380,6 @@ def random_flip_left_right(image, seed=None):
   independent of other images.
 
   Example usage:
-
-  >>> import numpy as np
 
   >>> image = np.array([[[1], [2]], [[3], [4]]])
   >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
@@ -407,19 +407,82 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _random_flip(image, 1, seed, 'random_flip_left_right')
+  random_func = functools.partial(random_ops.random_uniform, seed=seed)
+  return _random_flip(image, 1, random_func, 'random_flip_left_right')
 
 
-def _random_flip(image, flip_index, seed, scope_name):
+@tf_export('image.stateless_random_flip_left_right', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_flip_left_right(image, seed):
+  """Randomly flip an image horizontally (left to right) deterministically.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  Example usage:
+
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> seed = (2, 3)
+  >>> tf.image.stateless_random_flip_left_right(image, seed).numpy().tolist()
+  [[[2], [1]], [[4], [3]]]
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    A tensor of the same type and shape as `image`.
+  """
+  random_func = functools.partial(
+      stateless_random_ops.stateless_random_uniform, seed=seed)
+  return _random_flip(
+      image, 1, random_func, 'stateless_random_flip_left_right')
+
+
+@tf_export('image.stateless_random_flip_up_down', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_flip_up_down(image, seed):
+  """Randomly flip an image vertically (upside down) deterministically.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  Example usage:
+
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> seed = (2, 3)
+  >>> tf.image.stateless_random_flip_up_down(image, seed).numpy().tolist()
+  [[[3], [4]], [[1], [2]]]
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    A tensor of the same type and shape as `image`.
+  """
+  random_func = functools.partial(
+      stateless_random_ops.stateless_random_uniform, seed=seed)
+  return _random_flip(
+      image, 0, random_func, 'stateless_random_flip_up_down')
+
+
+def _random_flip(image, flip_index, random_func, scope_name):
   """Randomly (50% chance) flip an image along axis `flip_index`.
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     flip_index: Dimension along which to flip the image.
-      Vertical: 0, Horizontal: 1
-    seed: A Python integer. Used to create a random seed. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      Vertical is 0, Horizontal is 1.
+    random_func: partial function for calling either stateful or stateless
+      random ops with `seed` parameter specified.
     scope_name: Name of the scope in which the ops are added.
 
   Returns:
@@ -434,7 +497,7 @@ def _random_flip(image, flip_index, seed, scope_name):
     shape = image.get_shape()
 
     def f_rank3():
-      uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
+      uniform_random = random_func(shape=[], minval=0, maxval=1.0)
       mirror_cond = math_ops.less(uniform_random, .5)
       result = control_flow_ops.cond(
           mirror_cond,
@@ -445,10 +508,7 @@ def _random_flip(image, flip_index, seed, scope_name):
 
     def f_rank4():
       batch_size = array_ops.shape(image)[0]
-      uniform_random = random_ops.random_uniform([batch_size],
-                                                 0,
-                                                 1.0,
-                                                 seed=seed)
+      uniform_random = random_func(shape=[batch_size], minval=0, maxval=1.0)
       flips = math_ops.round(
           array_ops.reshape(uniform_random, [batch_size, 1, 1, 1]))
       flips = math_ops.cast(flips, image.dtype)
@@ -1828,6 +1888,52 @@ def random_brightness(image, max_delta, seed=None):
   return adjust_brightness(image, delta)
 
 
+@tf_export('image.stateless_random_brightness', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_brightness(image, max_delta, seed):
+  """Adjust the brightness of images by a random factor deterministically.
+
+  Equivalent to `adjust_brightness()` using a `delta` randomly picked in the
+  interval `[-max_delta, max_delta)`.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...      [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> seed = (1, 2)
+  >>> tf.image.stateless_random_brightness(x, 0.2, seed)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 1.1376241,  2.1376243,  3.1376243],
+          [ 4.1376243,  5.1376243,  6.1376243]],
+         [[ 7.1376243,  8.137624 ,  9.137624 ],
+          [10.137624 , 11.137624 , 12.137624 ]]], dtype=float32)>
+
+  Args:
+    image: An image or images to adjust.
+    max_delta: float, must be non-negative.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    The brightness-adjusted image(s).
+
+  Raises:
+    ValueError: if `max_delta` is negative.
+  """
+  if max_delta < 0:
+    raise ValueError('max_delta must be non-negative.')
+
+  delta = stateless_random_ops.stateless_random_uniform(
+      shape=[], minval=-max_delta, maxval=max_delta, seed=seed)
+  return adjust_brightness(image, delta)
+
+
 @tf_export('image.random_contrast')
 @dispatch.add_dispatch_support
 def random_contrast(image, lower, upper, seed=None):
@@ -1865,6 +1971,53 @@ def random_contrast(image, lower, upper, seed=None):
     raise ValueError('lower must be non-negative.')
 
   contrast_factor = random_ops.random_uniform([], lower, upper, seed=seed)
+  return adjust_contrast(image, contrast_factor)
+
+
+@tf_export('image.stateless_random_contrast', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_contrast(image, lower, upper, seed):
+  """Adjust the contrast of images by a random factor deterministically.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  Args:
+    image: An image tensor with 3 or more dimensions.
+    lower: float.  Lower bound for the random contrast factor.
+    upper: float.  Upper bound for the random contrast factor.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...      [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> seed = (1, 2)
+  >>> tf.image.stateless_random_contrast(x, 0.2, 0.5, seed)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[3.4605184, 4.4605184, 5.4605184],
+          [4.820173 , 5.820173 , 6.820173 ]],
+         [[6.179827 , 7.179827 , 8.179828 ],
+          [7.5394816, 8.539482 , 9.539482 ]]], dtype=float32)>
+
+  Returns:
+    The contrast-adjusted image(s).
+
+  Raises:
+    ValueError: if `upper <= lower` or if `lower < 0`.
+  """
+  if upper <= lower:
+    raise ValueError('upper must be > lower.')
+
+  if lower < 0:
+    raise ValueError('lower must be non-negative.')
+
+  contrast_factor = stateless_random_ops.stateless_random_uniform(
+      shape=[], minval=lower, maxval=upper, seed=seed)
   return adjust_contrast(image, contrast_factor)
 
 
@@ -2258,6 +2411,57 @@ def random_hue(image, max_delta, seed=None):
   return adjust_hue(image, delta)
 
 
+@tf_export('image.stateless_random_hue', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_hue(image, max_delta, seed):
+  """Adjust the hue of RGB images by a random factor deterministically.
+
+  Equivalent to `adjust_hue()` but uses a `delta` randomly picked in the
+  interval `[-max_delta, max_delta)`.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  `max_delta` must be in the interval `[0, 0.5]`.
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...      [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> seed = (1, 2)
+  >>> tf.image.stateless_random_hue(x, 0.2, seed)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 1.6514902,  1.       ,  3.       ],
+          [ 4.65149  ,  4.       ,  6.       ]],
+         [[ 7.65149  ,  7.       ,  9.       ],
+          [10.65149  , 10.       , 12.       ]]], dtype=float32)>
+
+  Args:
+    image: RGB image or images. The size of the last dimension must be 3.
+    max_delta: float. The maximum value for the random delta.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    Adjusted image(s), same shape and DType as `image`.
+
+  Raises:
+    ValueError: if `max_delta` is invalid.
+  """
+  if max_delta > 0.5:
+    raise ValueError('max_delta must be <= 0.5.')
+
+  if max_delta < 0:
+    raise ValueError('max_delta must be non-negative.')
+
+  delta = stateless_random_ops.stateless_random_uniform(
+      shape=[], minval=-max_delta, maxval=max_delta, seed=seed)
+  return adjust_hue(image, delta)
+
+
 @tf_export('image.adjust_hue')
 @dispatch.add_dispatch_support
 def adjust_hue(image, delta, name=None):
@@ -2374,6 +2578,63 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   return adjust_jpeg_quality(image, jpeg_quality)
 
 
+@tf_export('image.stateless_random_jpeg_quality', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_jpeg_quality(image,
+                                  min_jpeg_quality,
+                                  max_jpeg_quality,
+                                  seed):
+  """Deterministically radomize jpeg encoding quality for inducing jpeg noise.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  `min_jpeg_quality` must be in the interval `[0, 100]` and less than
+  `max_jpeg_quality`.
+  `max_jpeg_quality` must be in the interval `[0, 100]`.
+
+  Usage Example:
+
+  >>> x = [[[1, 2, 3],
+  ...       [4, 5, 6]],
+  ...      [[7, 8, 9],
+  ...       [10, 11, 12]]]
+  >>> x_uint8 = tf.cast(x, tf.uint8)
+  >>> seed = (1, 2)
+  >>> tf.image.stateless_random_jpeg_quality(x_uint8, 75, 95, seed)
+  <tf.Tensor: shape=(2, 2, 3), dtype=uint8, numpy=
+  array([[[ 0,  4,  5],
+          [ 1,  5,  6]],
+         [[ 5,  9, 10],
+          [ 5,  9, 10]]], dtype=uint8)>
+
+  Args:
+    image: 3D image. Size of the last dimension must be 1 or 3.
+    min_jpeg_quality: Minimum jpeg encoding quality to use.
+    max_jpeg_quality: Maximum jpeg encoding quality to use.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    Adjusted image(s), same shape and DType as `image`.
+
+  Raises:
+    ValueError: if `min_jpeg_quality` or `max_jpeg_quality` is invalid.
+  """
+  if (min_jpeg_quality < 0 or max_jpeg_quality < 0 or min_jpeg_quality > 100 or
+      max_jpeg_quality > 100):
+    raise ValueError('jpeg encoding range must be between 0 and 100.')
+
+  if min_jpeg_quality >= max_jpeg_quality:
+    raise ValueError('`min_jpeg_quality` must be less than `max_jpeg_quality`.')
+
+  jpeg_quality = stateless_random_ops.stateless_random_uniform(
+      shape=[], minval=min_jpeg_quality, maxval=max_jpeg_quality, seed=seed,
+      dtype=dtypes.int32)
+  return adjust_jpeg_quality(image, jpeg_quality)
+
+
 @tf_export('image.adjust_jpeg_quality')
 @dispatch.add_dispatch_support
 def adjust_jpeg_quality(image, jpeg_quality, name=None):
@@ -2468,6 +2729,56 @@ def random_saturation(image, lower, upper, seed=None):
     raise ValueError('lower must be non-negative.')
 
   saturation_factor = random_ops.random_uniform([], lower, upper, seed=seed)
+  return adjust_saturation(image, saturation_factor)
+
+
+@tf_export('image.stateless_random_saturation', v1=[])
+@dispatch.add_dispatch_support
+def stateless_random_saturation(image, lower, upper, seed=None):
+  """Adjust the saturation of RGB images by a random factor deterministically.
+
+  Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
+  picked in the interval `[lower, upper)`.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  Usage Example:
+
+  >>> x = [[[1.0, 2.0, 3.0],
+  ...       [4.0, 5.0, 6.0]],
+  ...      [[7.0, 8.0, 9.0],
+  ...       [10.0, 11.0, 12.0]]]
+  >>> seed = (1, 2)
+  >>> tf.image.stateless_random_saturation(x, 0.5, 1.0, seed)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 1.1559395,  2.0779698,  3.       ],
+          [ 4.1559396,  5.07797  ,  6.       ]],
+         [[ 7.1559396,  8.07797  ,  9.       ],
+          [10.155939 , 11.07797  , 12.       ]]], dtype=float32)>
+
+  Args:
+    image: RGB image or images. The size of the last dimension must be 3.
+    lower: float.  Lower bound for the random saturation factor.
+    upper: float.  Upper bound for the random saturation factor.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    Adjusted image(s), same shape and DType as `image`.
+
+  Raises:
+    ValueError: if `upper <= lower` or if `lower < 0`.
+  """
+  if upper <= lower:
+    raise ValueError('upper must be > lower.')
+
+  if lower < 0:
+    raise ValueError('lower must be non-negative.')
+
+  saturation_factor = stateless_random_ops.stateless_random_uniform(
+      shape=[], minval=lower, maxval=upper, seed=seed)
   return adjust_saturation(image, saturation_factor)
 
 

@@ -106,7 +106,7 @@ int8_t F2QS(float value, float min, float max) {
 }
 
 int32_t F2Q32(float value, float scale) {
-  double quantized = value / scale;
+  double quantized = static_cast<double>(value / scale);
   if (quantized > std::numeric_limits<int32_t>::max()) {
     quantized = std::numeric_limits<int32_t>::max();
   } else if (quantized < std::numeric_limits<int32_t>::min()) {
@@ -150,16 +150,6 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
   }
 }
 
-TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
-                               TfLiteIntArray* dims, bool is_variable) {
-  return CreateFloatTensor(data.begin(), dims, is_variable);
-}
-
-TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
-                              TfLiteIntArray* dims, bool is_variable) {
-  return CreateBoolTensor(data.begin(), dims, is_variable);
-}
-
 TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
                                    float min, float max, bool is_variable) {
   TfLiteTensor result;
@@ -174,12 +164,6 @@ TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
   return result;
 }
 
-TfLiteTensor CreateQuantizedTensor(std::initializer_list<uint8_t> data,
-                                   TfLiteIntArray* dims, float min, float max,
-                                   bool is_variable) {
-  return CreateQuantizedTensor(data.begin(), dims, min, max, is_variable);
-}
-
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float min, float max, bool is_variable) {
   TfLiteTensor result;
@@ -192,12 +176,6 @@ TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
   result.bytes = ElementCount(*dims) * sizeof(int8_t);
   result.is_variable = is_variable;
   return result;
-}
-
-TfLiteTensor CreateQuantizedTensor(std::initializer_list<int8_t> data,
-                                   TfLiteIntArray* dims, float min, float max,
-                                   bool is_variable) {
-  return CreateQuantizedTensor(data.begin(), dims, min, max, is_variable);
 }
 
 TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
@@ -256,12 +234,6 @@ TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
   result.bytes = ElementCount(*dims) * sizeof(int32_t);
   result.is_variable = is_variable;
   return result;
-}
-
-TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,
-                                     TfLiteIntArray* dims, float scale,
-                                     bool is_variable) {
-  return CreateQuantized32Tensor(data.begin(), dims, scale, is_variable);
 }
 
 }  // namespace testing

@@ -52,6 +52,7 @@ from __future__ import print_function
 import argparse
 import csv
 import datetime
+import os
 import os.path
 import platform
 import subprocess
@@ -92,6 +93,10 @@ parser.add_argument(
     "--dry_run",
     action="store_true",
     help="Dry run: do not load to BigQuery or upload to GCS.")
+parser.add_argument(
+    "--job",
+    type=str,
+    help="Name of job calling this script. Default: $KOKORO_JOB_NAME.")
 parser.add_argument(
     "--print_schema",
     action="store_true",
@@ -140,6 +145,7 @@ SCHEMA = ",".join([
     "team:string",
     "logged_date:timestamp",
     "uploaded_to:string",
+    "job:string",
 ])
 # Select the earliest recorded commit in the same table for the same artifact
 # and team. Used to determine the full range of tested commits for each
@@ -271,15 +277,16 @@ def get_all_tested_commits():
 def get_upload_path():
   """Generate URL for 'gsutil cp'."""
   if FLAGS.upload and FLAGS.artifact:
-    head_info = git_pretty("HEAD", PRETTY_HEAD_INFO, n=1)
-    _, current_cl, _, _, _, _, _ = head_info[0].split("\t")
     artifact_filename = os.path.basename(FLAGS.artifact.name)
+    ts = datetime.datetime.now(
+        datetime.timezone.utc).isoformat(timespec="seconds")
     # note: not os.path.join here, because gsutil is always linux-style
-    path = "{bucket}/{team}/{artifact_id}/{cl}.{artifact_filename}".format(
+    # Using a timestamp prevents duplicate entries
+    path = "{bucket}/{team}/{artifact_id}/{now}.{artifact_filename}".format(
         bucket=FLAGS.bucket,
         team=FLAGS.team,
         artifact_id=FLAGS.artifact_id,
-        cl=current_cl,
+        now=ts,
         artifact_filename=artifact_filename)
     return path
   else:
@@ -312,6 +319,7 @@ def build_row():
       FLAGS.team,
       current_time,
       get_upload_path(),
+      FLAGS.job,
   ]
 
 
@@ -328,6 +336,9 @@ def main():
         "specified.\nYou must also specify one of --artifact or --manual_bytes."
         "\nPass -h or --help for usage.")
     exit(1)
+
+  if not FLAGS.job:
+    FLAGS.job = os.environ.get("KOKORO_JOB_NAME", "NO_JOB")
 
   # Generate data about this artifact into a Tab Separated Value file
   next_tsv_row = build_row()

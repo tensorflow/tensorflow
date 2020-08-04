@@ -18,9 +18,9 @@ package(
 )
 
 config_setting(
-    name = "mlir_generated_gpu_kernels_enabled",
+    name = "mlir_generated_gpu_kernels_disabled",
     define_values = {
-        "tensorflow_enable_mlir_generated_gpu_kernels": "1",
+        "tensorflow_enable_mlir_generated_gpu_kernels": "0",
     },
 )
 

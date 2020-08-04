@@ -443,7 +443,10 @@ cuda_py_test(
     srcs = ["function_test.py"],
     python_version = "PY3",
     shard_count = 15,
-    tags = ["nomac"],  # b/157056289
+    tags = [
+        "nogpu",  # TODO(b/162544929): segfault
+        "nomac",  # b/157056289
+    ],
     deps = [
         ":backprop",
         ":cancellation",
@@ -620,6 +623,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
     ],
 )
@@ -846,18 +850,24 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
+tf_xla_py_test(
     name = "def_function_xla_jit_test",
     srcs = ["def_function_xla_jit_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_mac",
+        "no_pip",
         "no_windows",
     ],
-    xla_enabled = True,
+    use_xla_device = False,
     deps = [
         ":backprop",
         ":def_function",
+        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",

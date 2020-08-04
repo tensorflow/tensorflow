@@ -41,6 +41,16 @@ class TpuCoreLocationExternal {
   void* core_location_;
 };
 
+class TpuHostLocationExternal {
+ public:
+  explicit TpuHostLocationExternal(void* host_location)
+      : host_location_(host_location) {}
+  int32 Id() const;
+
+ private:
+  void* host_location_;
+};
+
 struct TpuTopologyChipBoundsExternal {
   int x;
   int y;

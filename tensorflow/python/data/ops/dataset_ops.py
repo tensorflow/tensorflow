@@ -2148,8 +2148,21 @@ name=None))
 
     `cardinality` may return `tf.data.INFINITE_CARDINALITY` if the dataset
     contains an infinite number of elements or `tf.data.UNKNOWN_CARDINALITY` if
-    the analysis fails to determine the number of elements in the dataset
-    (e.g. when the dataset source is a file).
+    the analysis fails to determine the number of elements in the dataset.
+
+    `cardinality` only reports known cardinality (finite or infinite), if it can
+    be inferred statically. In particular, the implementation does not iterate
+    through the dataset or evaluate user-defined functions. As a consequence,
+    the statically inferred cardinality may often be unknown. For example, if
+    the dataset reads from file(s), the cardinality will be unknown. The
+    cardinality will also be unknown if the dataset contains user-defined
+    functions which could affect the cardinality (such as the functions in
+    `filter`, `flat_map`, `interleave`, or `from_generator`).
+
+    When constructing a dataset, you can apply the
+    `tf.data.experimental.assert_cardinality` transformation to inform the
+    dataset of its expected cardinality, so that `cardinality` can produce a
+    known cardinality.
 
     >>> dataset = tf.data.Dataset.range(42)
     >>> print(dataset.cardinality().numpy())
@@ -2158,10 +2171,13 @@ name=None))
     >>> cardinality = dataset.cardinality()
     >>> print((cardinality == tf.data.INFINITE_CARDINALITY).numpy())
     True
-    >>> dataset = dataset.filter(lambda x: True)
+    >>> dataset = dataset.filter(lambda x: False)
     >>> cardinality = dataset.cardinality()
     >>> print((cardinality == tf.data.UNKNOWN_CARDINALITY).numpy())
     True
+    >>> dataset = dataset.apply(tf.data.experimental.assert_cardinality(0))
+    >>> print(dataset.cardinality().numpy())
+    0
 
     Returns:
       A scalar `tf.int64` `Tensor` representing the cardinality of the dataset.

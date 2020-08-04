@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package tensorflow.data;
 
-import "google/protobuf/wrappers.proto";
 import "tensorflow/core/data/service/common.proto";
 
 // Message representing journaled dispatcher metadata updates. When we apply
@@ -13,7 +12,6 @@ message Update {
     RegisterDatasetUpdate register_dataset = 1;
     CreateJobUpdate create_job = 2;
     FinishJobUpdate finish_job = 3;
-    CreateTaskUpdate create_task = 4;
   }
 }
 
@@ -23,20 +21,19 @@ message RegisterDatasetUpdate {
   uint64 fingerprint = 3;
 }
 
+message NamedJobKeyDef {
+  string name = 1;
+  int64 index = 2;
+}
+
 message CreateJobUpdate {
   int64 job_id = 1;
   int64 dataset_id = 2;
   ProcessingModeDef processing_mode = 3;
-  // Only some jobs have names, so this may be null.
-  google.protobuf.StringValue job_name = 4;
+  // Only some jobs have names, so this may be unset.
+  NamedJobKeyDef named_job_key = 4;
 }
 
 message FinishJobUpdate {
   int64 job_id = 1;
-}
-
-message CreateTaskUpdate {
-  int64 task_id = 1;
-  int64 job_id = 2;
-  int64 dataset_id = 3;
 }

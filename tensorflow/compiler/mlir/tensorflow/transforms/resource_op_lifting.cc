@@ -648,7 +648,7 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   AddLoadsStoresOutsideControlFlowOp(new_while,
                                      arg_data_type_and_updated_output_index);
   // Replace uses.
-  for (int64_t i = 0; i < old_to_new_indices.size(); ++i) {
+  for (int64_t i = 0, end = old_to_new_indices.size(); i < end; ++i) {
     if (old_to_new_indices[i] >= 0) {
       while_op.getResult(i).replaceAllUsesWith(
           new_while.getResult(old_to_new_indices[i]));
@@ -794,7 +794,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   AddLoadsStoresOutsideControlFlowOp(new_op,
                                      arg_data_type_and_updated_output_index);
   // Replace uses.
-  for (int64_t i = 0; i < old_to_new_output_indices.size(); ++i) {
+  for (int64_t i = 0, end = old_to_new_output_indices.size(); i < end; ++i) {
     if (old_to_new_output_indices[i] >= 0) {
       op.getResult(i).replaceAllUsesWith(
           new_op.getResult(old_to_new_output_indices[i]));
@@ -938,7 +938,8 @@ void UpdatePartitionedCallOpWithNewCallee(
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);
   // Replace uses.
-  for (int64_t i = 0; i < lifting_info.old_to_new_output_indices.size(); ++i) {
+  for (int64_t i = 0, end = lifting_info.old_to_new_output_indices.size();
+       i < end; ++i) {
     if (lifting_info.old_to_new_output_indices[i] >= 0) {
       call_op.getResult(i).replaceAllUsesWith(
           new_call.getResult(lifting_info.old_to_new_output_indices[i]));

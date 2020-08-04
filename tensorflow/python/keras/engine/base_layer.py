@@ -71,6 +71,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
@@ -929,7 +930,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     call_context = base_layer_utils.call_context()
 
     # Accept NumPy and scalar inputs by converting to Tensors.
-    if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+    if any(isinstance(x, (
+        np_arrays.ndarray, np.ndarray, float, int)) for x in input_list):
       inputs = nest.map_structure(_convert_numpy_or_python_types, inputs)
       input_list = nest.flatten(inputs)
 
@@ -968,12 +970,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if self._autocast:
         inputs = self._maybe_cast_inputs(inputs, input_list)
 
+      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
       if eager:
         call_fn = self.call
         name_scope = self._name
       else:
-        input_spec.assert_input_compatibility(self.input_spec, inputs,
-                                              self.name)
         name_scope = self._name_scope()  # Avoid autoincrementing.
         call_fn = self._autographed_call()
 
@@ -997,12 +998,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     call_context = base_layer_utils.call_context()
 
     # Accept NumPy and scalar inputs by converting to Tensors.
-    if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+    if any(isinstance(x, (
+        np_arrays.ndarray, np.ndarray, float, int)) for x in input_list):
 
       def _convert_non_tensor(x):
         # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
-        if isinstance(x, (np.ndarray, float, int)):
+        if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
           return ops.convert_to_tensor_v2(x)
         return x
 
@@ -3242,7 +3244,7 @@ def _in_functional_construction_mode(layer, inputs, args, kwargs, input_list):  
 
 
 def _convert_numpy_or_python_types(x):
-  if isinstance(x, (np.ndarray, float, int)):
+  if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
     return ops.convert_to_tensor_v2(x)
   return x
 

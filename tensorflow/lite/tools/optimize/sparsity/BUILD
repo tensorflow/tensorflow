@@ -14,6 +14,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//third_party/eigen3",
     ],
 )
 

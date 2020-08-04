@@ -30,124 +30,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-Conv3D::Conv3D(const OperationDef& definition,
-               const Convolution3DAttributes& attr, const CLDevice& device)
-    : GPUOperation(definition),
-      stride_(attr.strides.w, attr.strides.h, attr.strides.d),
-      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
-               -attr.padding.prepended.d),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
-                   attr.weights.shape.d),
-      dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d),
-      conv_params_(GuessBestParams(device, definition, attr)) {}
-
-Conv3D::Conv3D(Conv3D&& operation)
-    : GPUOperation(std::move(operation)),
-      stride_(operation.stride_),
-      padding_(operation.padding_),
-      kernel_size_(operation.kernel_size_),
-      dilation_(operation.dilation_),
-      conv_params_(operation.conv_params_) {}
-
-Conv3D& Conv3D::operator=(Conv3D&& operation) {
-  if (this != &operation) {
-    std::swap(stride_, operation.stride_);
-    std::swap(padding_, operation.padding_);
-    std::swap(kernel_size_, operation.kernel_size_);
-    std::swap(dilation_, operation.dilation_);
-    std::swap(conv_params_, operation.conv_params_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status Conv3D::Compile(const CreationContext& creation_context) {
-  const bool stride_correction =
-      definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code =
-      GenerateConv3D(definition_, stride_correction, conv_params_, &args_);
-  work_group_size_ = conv_params_.work_group_size;
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status Conv3D::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  if (!conv_params_.x_kernel_is_1) {
-    RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
-    RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
-    RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
-    RETURN_IF_ERROR(args_.SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
-  }
-  if (!conv_params_.y_kernel_is_1) {
-    RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
-    RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
-    RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
-    RETURN_IF_ERROR(args_.SetInt("dilation_y", dilation_.y));
-  }
-  if (!conv_params_.z_kernel_is_1) {
-    RETURN_IF_ERROR(args_.SetInt("stride_z", stride_.z));
-    RETURN_IF_ERROR(args_.SetInt("padding_z", padding_.z));
-    RETURN_IF_ERROR(args_.SetInt("kernel_size_z", kernel_size_.z));
-    RETURN_IF_ERROR(args_.SetInt("dilation_z", dilation_.z));
-  }
-  return args_.SetInt("grid_size_s", DivideRoundUp(dst_[0]->Slices(),
-                                                   conv_params_.block_size.w));
-}
-
-int3 Conv3D::GetGridSize() const {
-  const int grid_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
-                                   conv_params_.block_size.x);
-  const int grid_y =
-      DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
-  const int grid_z =
-      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w) *
-      DivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
-  int3 wg;
-  wg.x = DivideRoundUp(grid_x, conv_params_.work_group_size.x);
-  wg.y = DivideRoundUp(grid_y, conv_params_.work_group_size.y);
-  wg.z = DivideRoundUp(grid_z, conv_params_.work_group_size.z);
-  return int3(wg[conv_params_.work_group_launch_order[0]] *
-                  conv_params_.work_group_size.x,
-              wg[conv_params_.work_group_launch_order[1]] *
-                  conv_params_.work_group_size.y,
-              wg[conv_params_.work_group_launch_order[2]] *
-                  conv_params_.work_group_size.z);
-}
-
-absl::Status Conv3D::Tune(const TuningParameters& params) {
-  if (conv_params_.weights_upload_type ==
-          WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP ||
-      conv_params_.weights_upload_type ==
-          WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    return absl::OkStatus();
-  }
-  if (conv_params_.work_group_launch_order[0] == 0 &&
-      conv_params_.work_group_launch_order[1] == 1 &&
-      conv_params_.work_group_launch_order[2] == 2) {
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
-                                         &conv_params_.work_group_size));
-    work_group_size_ = conv_params_.work_group_size;
-  }
-  return absl::OkStatus();
-}
-
 namespace {
 std::string GenerateUploadByThreads(const std::string& local_ptr_name,
                                     const std::string& global_ptr_name,
@@ -284,39 +166,141 @@ std::string GenerateConv(CalculationsPrecision precision,
 }
 }  // namespace
 
-std::string GenerateConv3D(const OperationDef& op_def, bool stride_correction,
-                           const Conv3D::ConvParams& conv_params,
-                           Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(TextureAddressMode::ZERO);
+Conv3D::Conv3D(const OperationDef& definition,
+               const Convolution3DAttributes& attr, const CLDevice& device)
+    : GPUOperation(definition),
+      stride_(attr.strides.w, attr.strides.h, attr.strides.d),
+      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
+               -attr.padding.prepended.d),
+      kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
+                   attr.weights.shape.d),
+      dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d),
+      conv_params_(GuessBestParams(device, definition, attr)) {
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateConv3D(definition_, stride_correction, conv_params_);
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+  }
+}
+
+Conv3D::Conv3D(Conv3D&& operation)
+    : GPUOperation(std::move(operation)),
+      stride_(operation.stride_),
+      padding_(operation.padding_),
+      kernel_size_(operation.kernel_size_),
+      dilation_(operation.dilation_),
+      conv_params_(operation.conv_params_) {}
+
+Conv3D& Conv3D::operator=(Conv3D&& operation) {
+  if (this != &operation) {
+    std::swap(stride_, operation.stride_);
+    std::swap(padding_, operation.padding_);
+    std::swap(kernel_size_, operation.kernel_size_);
+    std::swap(dilation_, operation.dilation_);
+    std::swap(conv_params_, operation.conv_params_);
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+absl::Status Conv3D::BindArguments() {
+  if (!conv_params_.x_kernel_is_1) {
+    RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
+    RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
+    RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
+    RETURN_IF_ERROR(args_.SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
+  }
+  if (!conv_params_.y_kernel_is_1) {
+    RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
+    RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
+    RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
+    RETURN_IF_ERROR(args_.SetInt("dilation_y", dilation_.y));
+  }
+  if (!conv_params_.z_kernel_is_1) {
+    RETURN_IF_ERROR(args_.SetInt("stride_z", stride_.z));
+    RETURN_IF_ERROR(args_.SetInt("padding_z", padding_.z));
+    RETURN_IF_ERROR(args_.SetInt("kernel_size_z", kernel_size_.z));
+    RETURN_IF_ERROR(args_.SetInt("dilation_z", dilation_.z));
+  }
+  return args_.SetInt("grid_size_s", DivideRoundUp(dst_[0]->Slices(),
+                                                   conv_params_.block_size.w));
+}
+
+int3 Conv3D::GetGridSize() const {
+  const int grid_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
+                                   conv_params_.block_size.x);
+  const int grid_y =
+      DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
+  const int grid_z =
+      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w) *
+      DivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
+  int3 wg;
+  wg.x = DivideRoundUp(grid_x, conv_params_.work_group_size.x);
+  wg.y = DivideRoundUp(grid_y, conv_params_.work_group_size.y);
+  wg.z = DivideRoundUp(grid_z, conv_params_.work_group_size.z);
+  return int3(wg[conv_params_.work_group_launch_order[0]] *
+                  conv_params_.work_group_size.x,
+              wg[conv_params_.work_group_launch_order[1]] *
+                  conv_params_.work_group_size.y,
+              wg[conv_params_.work_group_launch_order[2]] *
+                  conv_params_.work_group_size.z);
+}
+
+absl::Status Conv3D::Tune(const TuningParameters& params) {
+  if (conv_params_.weights_upload_type ==
+          WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP ||
+      conv_params_.weights_upload_type ==
+          WeightsUploadType::LOCAL_MEM_BY_THREADS) {
+    return absl::OkStatus();
+  }
+  if (conv_params_.work_group_launch_order[0] == 0 &&
+      conv_params_.work_group_launch_order[1] == 1 &&
+      conv_params_.work_group_launch_order[2] == 2) {
+    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+    RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
+                                         &conv_params_.work_group_size));
+    work_group_size_ = conv_params_.work_group_size;
+  }
+  return absl::OkStatus();
+}
+
+std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
+                                   bool stride_correction,
+                                   const Conv3D::ConvParams& conv_params) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  AddSrcTensor("src_tensor", src_desc);
+
+  auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    dst_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  if (!conv_params.x_kernel_is_1) {
-    args->AddInt("stride_x");
-    args->AddInt("padding_x");
-    args->AddInt("kernel_size_x");
-    args->AddInt("dilation_x");
+  AddDstTensor("dst_tensor", dst_desc);
+
+  if (!conv_params_.x_kernel_is_1) {
+    args_.AddInt("stride_x");
+    args_.AddInt("padding_x");
+    args_.AddInt("kernel_size_x");
+    args_.AddInt("dilation_x");
   }
-  if (!conv_params.y_kernel_is_1) {
-    args->AddInt("stride_y");
-    args->AddInt("padding_y");
-    args->AddInt("kernel_size_y");
-    args->AddInt("dilation_y");
+  if (!conv_params_.y_kernel_is_1) {
+    args_.AddInt("stride_y");
+    args_.AddInt("padding_y");
+    args_.AddInt("kernel_size_y");
+    args_.AddInt("dilation_y");
   }
-  if (!conv_params.z_kernel_is_1) {
-    args->AddInt("stride_z");
-    args->AddInt("padding_z");
-    args->AddInt("kernel_size_z");
-    args->AddInt("dilation_z");
+  if (!conv_params_.z_kernel_is_1) {
+    args_.AddInt("stride_z");
+    args_.AddInt("padding_z");
+    args_.AddInt("kernel_size_z");
+    args_.AddInt("dilation_z");
   }
-  args->AddInt("grid_size_s");
+  args_.AddInt("grid_size_s");
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool buffer_type = src_tensor_type == TensorStorageType::BUFFER ||

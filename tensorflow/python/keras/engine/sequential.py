@@ -495,9 +495,15 @@ class Sequential(functional.Functional):
 
   @property
   def input_spec(self):
+    if hasattr(self, '_manual_input_spec'):
+      return self._manual_input_spec
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @input_spec.setter
+  def input_spec(self, value):
+    self._manual_input_spec = value
 
   @property
   def _trackable_saved_model_saver(self):
@@ -520,6 +526,8 @@ class Sequential(functional.Functional):
 def _get_shape_tuple(t):
   if hasattr(t, 'shape'):
     shape = t.shape
+    if isinstance(shape, tuple):
+      return shape
     if shape.rank is not None:
       return tuple(shape.as_list())
     return None

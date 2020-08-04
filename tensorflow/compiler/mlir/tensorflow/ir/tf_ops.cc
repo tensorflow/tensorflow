@@ -74,6 +74,61 @@ namespace TF {
 //===----------------------------------------------------------------------===//
 
 namespace {
+// Returns true if the op can be duplicated.
+bool CanDuplicate(Operation *op) {
+  // If the op is marked with the cannot duplicate trait, it cannot be
+  // duplicated.
+  if (op->hasTrait<OpTrait::TF::CannotDuplicate>()) return false;
+
+  // If the op has no memory side effects, it can be duplicated.
+  if (MemoryEffectOpInterface::hasNoEffect(op)) return true;
+
+  // If the op is marked stateless using the `is_stateless` attribute, that
+  // attribute determines if the op can be duplicated.
+  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
+    return is_stateless.getValue();
+
+  // Otherwise, assume ops can be duplicated by default.
+  return true;
+}
+
+// Returns true of the given function has a single uses (within the scope
+// of the module containing it and all parent modules).
+bool HasSingleUse(FuncOp func) {
+  // Public function can have any number of external uses.
+  if (func.isPublic()) return false;
+
+  // Return false if unexpected IR structure seen.
+  ModuleOp module = func.getParentOfType<ModuleOp>();
+  if (!module) return false;
+
+  // Inspect function uses in the containing module and all parent
+  // modules.
+  bool use_seen = false;
+  for (; module; module = module.getParentOfType<ModuleOp>()) {
+    auto func_uses_optional =
+        SymbolTable::getSymbolUses(func, &module.getBodyRegion());
+    // Found an unknown use.
+    if (!func_uses_optional) return false;
+
+    // If no uses in this scope, continue looking in parent module
+    SymbolTable::UseRange func_uses = func_uses_optional.getValue();
+    if (func_uses.empty()) continue;
+
+    // Check if multiple uses at this scope or another use already seen.
+    if (!llvm::hasSingleElement(func_uses) || use_seen) return false;
+
+    // This is the first use seen.
+    use_seen = true;
+
+    // If the function is private, no need to inspect parent modules.
+    if (func.isPrivate()) break;
+  }
+
+  // No multiple uses seen.
+  return true;
+}
+
 struct TFInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
@@ -81,8 +136,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  // Defines the legality of inlinining 'src' region into the 'dest' region
-  // attached to a TF operation
+  // Returns if its legal to inline 'src' region into the 'dest' region
+  // attached to a TF operation.
   bool isLegalToInline(Region *dest, Region *src,
                        BlockAndValueMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
@@ -91,13 +146,17 @@ struct TFInlinerInterface : public DialectInlinerInterface {
            llvm::hasSingleElement(*src);
   }
 
-  // Defines the legality of inlining TF operations.
-  bool isLegalToInline(Operation *, Region *,
+  // Returns true if its legal to inline a TF operation `op` into the `dest`
+  // region.
+  bool isLegalToInline(Operation *op, Region *dest,
                        BlockAndValueMapping &) const final {
-    // TODO(riverriddle) For now, enable inlining all operations. This isn't
-    // correct in the face of operations that cannot be duplicated, but this
-    // requires more intricate side-effect modeling.
-    return true;
+    // An op is legal to inline if either of the following conditions is true:
+    // (a) Its legal to duplicate the Op.
+    // (a) The Op is inside a single use function. If that function is inlined,
+    //     post inlining, the function will be dead and eliminated from the IR.
+    //     So there won't be any code duplication.
+    FuncOp func = op->getParentOfType<FuncOp>();
+    return !func || CanDuplicate(op) || HasSingleUse(func);
   }
 
   //===--------------------------------------------------------------------===//

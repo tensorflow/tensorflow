@@ -48,16 +48,16 @@ from tensorflow.python.training.saver import export_meta_graph as _export_meta_g
 _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.float32: _types_pb2.FLOAT,
     dtypes.float16: _types_pb2.FLOAT16,
-    dtypes.float64: _types_pb2.FLOAT64,
     dtypes.int32: _types_pb2.INT32,
+    dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
     dtypes.int64: _types_pb2.INT64,
     dtypes.string: _types_pb2.STRING,
-    dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
-    dtypes.int8: _types_pb2.INT8,
+    dtypes.bool: _types_pb2.BOOL,
     dtypes.int16: _types_pb2.QUANTIZED_INT16,
     dtypes.complex64: _types_pb2.COMPLEX64,
+    dtypes.int8: _types_pb2.INT8,
+    dtypes.float64: _types_pb2.FLOAT64,
     dtypes.complex128: _types_pb2.COMPLEX128,
-    dtypes.bool: _types_pb2.BOOL,
 }
 
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {
@@ -72,6 +72,7 @@ _MAP_TFLITE_ENUM_TO_TF_TYPES = {
     8: dtypes.complex64,
     9: dtypes.int8,
     10: dtypes.float64,
+    11: dtypes.complex128,
 }
 
 _TFLITE_FILE_IDENTIFIER = b"TFL3"
@@ -113,7 +114,7 @@ def _convert_tflite_enum_type_to_tf_type(tflite_enum_type):
   tf_type = _MAP_TFLITE_ENUM_TO_TF_TYPES.get(tflite_enum_type)
   if tf_type is None:
     raise ValueError(
-        "Unsupported enum {}. The valid map of enum to tf.dtypes is : {}"
+        "Unsupported enum {}. The valid map of enum to tf types is : {}"
         .format(tflite_enum_type, _MAP_TFLITE_ENUM_TO_TF_TYPES))
   return tf_type
 

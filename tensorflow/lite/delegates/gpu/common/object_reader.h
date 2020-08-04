@@ -58,7 +58,18 @@ class ObjectReader {
 
   template <typename TensorT>
   absl::Status ReadTensor(uint32_t idx, TensorT* t) const {
+    if (idx < 0 || idx >= node_->inputs->size) {
+      // If larger, this can be an older model with fewer input tensors than the
+      // current implementation.
+      return absl::OutOfRangeError("Invalid data index found.");
+    }
     const int32_t tensor_idx = node_->inputs->data[idx];
+    if (tensor_idx < 0) {
+      return absl::InvalidArgumentError(
+          "Invalid data index found. Possibly an unset optional tensor is "
+          "being read.");
+    }
+
     const TfLiteTensor* tflite_tensor = context_->tensors + tensor_idx;
     t->data.resize(NumElements(tflite_tensor));
     RETURN_IF_ERROR(CreateVectorCopyData(*tflite_tensor, &t->data[0]));

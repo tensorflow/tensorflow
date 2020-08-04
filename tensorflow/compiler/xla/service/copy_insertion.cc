@@ -1158,7 +1158,7 @@ static int64 GetNumExistingCopies(const HloModule* module) {
 
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
-  XLA_LOG_LINES(4, module->ToString());
+  XLA_VLOG_LINES(4, module->ToString());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
 

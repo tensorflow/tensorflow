@@ -73,26 +73,21 @@ bool IsShapeConsumer(const NodeDef& node) {
 
 }  // namespace
 
-NodeMap::NodeMap(GraphDef* graph) {
-  CHECK(graph != nullptr);
-  nodes_.reserve(graph->node_size());
-  outputs_.reserve(graph->node_size());
-  for (int i = 0; i < graph->node_size(); i++) {
-    NodeDef* node = graph->mutable_node(i);
-    const string& node_name = node->name();
-    auto rslt = nodes_.emplace(node_name, node);
-    // Check that the graph doesn't contain multiple nodes with the same name.
-    if (!rslt.second) {
-      // The first node found with a given name becomes the canonical.
-      LOG(WARNING) << "Duplicated node in the graph: " << node_name;
-    }
-    NodeDef* canonical = rslt.second ? node : rslt.first->second;
-    for (const auto& input : node->input()) {
-      outputs_[NodeName(input)].insert(canonical);
-    }
-  }
+namespace internal {
+// Specialized template class method GetNodeDefFromGraph.
+template <>
+NodeDef* NodeMapInternal<GraphDef, NodeDef>::GetNodeDefFromGraph(
+    GraphDef* graph, int64 i) const {
+  return graph->mutable_node(i);
 }
 
+template <>
+const NodeDef*
+NodeMapInternal<const GraphDef, const NodeDef>::GetNodeDefFromGraph(
+    const GraphDef* graph, int64 i) const {
+  return &graph->node(i);
+}
+}  // namespace internal
 string TensorIdToString(const TensorId& tensor_id) {
   return tensor_id.index() == 0 ? string(tensor_id.node())
                                 : tensor_id.ToString();

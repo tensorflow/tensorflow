@@ -26,6 +26,11 @@ namespace micro {
 const TfLiteEvalTensor* GetEvalInput(const TfLiteContext* context,
                                      const TfLiteNode* node, int index);
 
+// Returns a mutable tensor for a given input index. is_variable must be checked
+// during prepare when the full TfLiteTensor is available.
+TfLiteEvalTensor* GetMutableEvalInput(const TfLiteContext* context,
+                                      const TfLiteNode* node, int index);
+
 // Returns the TfLiteEvalTensor struct for a given output index in a node.
 TfLiteEvalTensor* GetEvalOutput(const TfLiteContext* context,
                                 const TfLiteNode* node, int index);

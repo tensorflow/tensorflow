@@ -371,5 +371,7 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
 
 REGISTER_XLA_OP(Name("Case").AllowResourceTypes().AllowVariantTypes(),
                 XlaCaseOp);
+REGISTER_XLA_OP(Name("StatelessCase").AllowResourceTypes().AllowVariantTypes(),
+                XlaCaseOp);
 
 }  // namespace tensorflow

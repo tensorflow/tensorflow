@@ -25,18 +25,34 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetMeanKernelCode(const OperationDef& op_def,
-                              const int3& work_group_size, Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-  args->AddFloat("inv_multiplier_1");
-  args->AddFloat("inv_multiplier_2");
+Mean::Mean(const OperationDef& definition, const DeviceInfo& device_info)
+    : GPUOperation(definition) {
+  // for workgroup size:
+  // must be: (x * y) % 4 = 0;
+  // must be: z = 1;
+  work_group_size_ = int3(16, 16, 1);
+  if (device_info.IsAdreno3xx()) {
+    work_group_size_ = int3(16, 8, 1);
+  }
+  code_ = GetMeanKernelCode(definition_, work_group_size_);
+}
+
+Mean::Mean(Mean&& operation) : GPUOperation(std::move(operation)) {}
+
+Mean& Mean::operator=(Mean&& operation) {
+  if (this != &operation) {
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
+                                    const int3& work_group_size) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  args_.AddFloat("inv_multiplier_1");
+  args_.AddFloat("inv_multiplier_2");
 
   std::string c = GetCommonDefines(op_def.precision);
   const std::string wg_x = std::to_string(work_group_size.x);
@@ -91,39 +107,8 @@ std::string GetMeanKernelCode(const OperationDef& op_def,
   c += "}\n";
   return c;
 }
-}  // namespace
-
-Mean::Mean(Mean&& operation) : GPUOperation(std::move(operation)) {}
-
-Mean& Mean::operator=(Mean&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status Mean::Compile(const CreationContext& creation_context) {
-  // must be: (x * y) % 4 = 0;
-  // must be: z = 1;
-  work_group_size_ = int3(16, 16, 1);
-  if (creation_context.device->IsAdreno3xx()) {
-    work_group_size_ = int3(16, 8, 1);
-  }
-  std::string code = GetMeanKernelCode(definition_, work_group_size_, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
 
 absl::Status Mean::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   const double total_size = src_[0]->Width() * src_[0]->Height();
   const double size_0 = work_group_size_.x * work_group_size_.y;
   const double size_1 = total_size / size_0;
@@ -139,7 +124,9 @@ int3 Mean::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Mean CreateMean(const OperationDef& definition) { return Mean(definition); }
+Mean CreateMean(const OperationDef& definition, const DeviceInfo& device_info) {
+  return Mean(definition, device_info);
+}
 
 }  // namespace cl
 }  // namespace gpu

@@ -73,6 +73,7 @@ Status CompileSerializedMlirToXlaHlo(
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes = {});
 
 // Same as the above but takes input as TensorFlow Graph.
+// TODO(lyandy): Allow populating of targets/control outputs.
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<const XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args,

@@ -306,7 +306,7 @@ class AutomaticStackingTest(test.TestCase):
     with self.session(use_gpu=True):
       v = variables.Variable(17)
       result = ops.convert_to_tensor([[0, 0, 0], [0, v, 0], [0, 0, 0]])
-      v.initializer.run()
+      self.evaluate(v.initializer)
       self.assertAllEqual([[0, 0, 0], [0, 17, 0], [0, 0, 0]],
                           self.evaluate(result))
 

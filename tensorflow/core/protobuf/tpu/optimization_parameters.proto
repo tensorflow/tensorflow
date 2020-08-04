@@ -81,11 +81,27 @@ message BoundedAdagradParameters {
 message StochasticGradientDescentParameters {}
 
 // https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Ftrl
+// https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/41159.pdf
 // https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L2646
+//
+// The hyperparameters for FTRL are the same as for the Keras implementation,
+// with some additions. The "beta" parameter matches the behavior described in
+// the second link above; "beta" / (2 * learning rate) should be added to "l2"
+// to get equivalent behavior in the other TensorFlow implementations of this
+// optimizer. When the multiply_linear_by_lr field is set to true, a modified
+// formula is used for FTRL that treats the "linear" accumulator as being
+// pre-multiplied by the learning rate (i.e., the accumulator named "linear"
+// actually stores "linear * learning_rate"). Other than checkpoint
+// compatibility, this is mathematically equivalent for a static learning rate;
+// for a dynamic learning rate, it is nearly the same as long as the learning
+// rate does not change quickly. The benefit of setting multiply_linear_by_lr to
+// true is that the modified formula handles zero and near-zero learning rates
+// without producing NaNs, improving flexibility for learning rate ramp-up.
 message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
   float lr_power = 3;
+  float beta = 7;
   bool multiply_linear_by_lr = 6;
 
   // Old initial accumulator parameters.
@@ -93,9 +109,9 @@ message FtrlParameters {
   reserved 4, 5;
 }
 
-// The Adam optimizer does not implement hyper-parameter update; use the dynamic
-// learning rate feature instead, setting the learning rate to:
-// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// The Adam optimizer does not implement hyper-parameter update due to hardware
+// limitations; use the dynamic learning rate feature instead, setting the
+// learning rate to: user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
 // Here, t is the current timestep.
 //
 // https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adam

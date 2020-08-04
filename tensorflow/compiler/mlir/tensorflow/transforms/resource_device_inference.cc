@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
+#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
@@ -61,7 +61,9 @@ struct ResourceDeviceInference
 // A class that records each resource's device assignment in a function.
 class PerFunctionResult {
  public:
-  explicit PerFunctionResult(FuncOp func_op) : alias_analysis_(func_op) {}
+  explicit PerFunctionResult(
+      FuncOp func_op, const TF::ResourceAliasAnalysis::Info& alias_analysis)
+      : alias_analysis_(alias_analysis) {}
 
   // Returns the recorded device assignment for a resource, if any.
   llvm::Optional<llvm::StringRef> DeviceForResource(
@@ -105,7 +107,7 @@ class PerFunctionResult {
 
  private:
   llvm::SmallDenseMap<int64_t, llvm::StringRef, 8> resource_id_to_device_;
-  TF::ResourceAliasAnalysis alias_analysis_;
+  const TF::ResourceAliasAnalysis::Info& alias_analysis_;
 };
 
 // Tries to record device assignment for a resource.
@@ -193,11 +195,15 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
 
 void ResourceDeviceInference::runOnOperation() {
   auto module = getOperation();
+  const auto& resource_alias_analysis =
+      getAnalysis<TF::ResourceAliasAnalysis>();
+
   llvm::SmallDenseMap<Operation*, PerFunctionResult, 4> per_function_results;
   llvm::SetVector<FuncOp> worklist;
   module.walk([&](FuncOp func_op) {
     worklist.insert(func_op);
-    per_function_results.try_emplace(func_op, func_op);
+    per_function_results.try_emplace(
+        func_op, func_op, resource_alias_analysis.GetAnalysisForFunc(func_op));
   });
   // Helper that propagates an op's recorded operand device assignments to its
   // called function's arguments.
