@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow_datasets as tfds
-
-from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
@@ -279,7 +277,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
     logging.info('accuracy_tf_native: %f', accuracy_tf_native)
     self.assertAllClose(0.9662, accuracy_tf_native, rtol=3e-3, atol=3e-3)
 
-    if get_linked_tensorrt_version()[0] < 5:
+    if not trt_test.IsTensorRTVersionGreaterEqual(5):
       return
 
     accuracy_tf_trt = self._Run(
