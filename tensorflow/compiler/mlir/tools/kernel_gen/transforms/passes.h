@@ -18,13 +18,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+
 namespace mlir {
-
-class ModuleOp;
-template <typename T>
-class OperationPass;
-class Pass;
-
 namespace kernel_gen {
 namespace tf_framework {
 
@@ -47,6 +44,10 @@ namespace transforms {
 std::unique_ptr<Pass> CreateShapeToDescriptorsPass();
 
 }  // namespace transforms
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
+
 }  // namespace kernel_gen
 }  // namespace mlir
 

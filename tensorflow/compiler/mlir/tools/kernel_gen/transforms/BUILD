@@ -35,15 +35,31 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "tf_framework_passes_inc_gen",
+    tbl_outs = [("-gen-pass-decls -name KernelGen", "kernel_gen_passes.h.inc")],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes.td",
+    td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
 cc_library(
-    name = "shape_to_descriptors",
-    srcs = ["shape_to_descriptors.cc"],
-    hdrs = [
-        "passes.h",
+    name = "passes",
+    srcs = [
+        "embed_tf_framework_pass.cc",
+        "shape_to_descriptors_pass.cc",
+        "tf_framework_legalize_to_llvm_pass.cc",
     ],
+    hdrs = ["passes.h"],
     deps = [
+        ":embed_tf_framework",
+        ":tf_framework_legalize_to_llvm",
+        ":tf_framework_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
@@ -54,35 +70,4 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
-)
-
-gentbl(
-    name = "tf_framework_passes_inc_gen",
-    tbl_outs = [("-gen-pass-decls -name TFFramework", "tf_framework_passes.h.inc")],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "passes.td",
-    td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
-)
-
-cc_library(
-    name = "passes",
-    srcs = [
-        "embed_tf_framework_pass.cc",
-        "register_passes.cc",
-        "tf_framework_legalize_to_llvm_pass.cc",
-    ],
-    hdrs = ["passes.h"],
-    deps = [
-        ":embed_tf_framework",
-        ":shape_to_descriptors",
-        ":tf_framework_legalize_to_llvm",
-        ":tf_framework_passes_inc_gen",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
 )

@@ -59,12 +59,18 @@ tf_cc_binary(
 
 tf_cc_binary(
     name = "kernel-gen-opt",
+    srcs = ["tools/kernel-gen-opt/kernel-gen-opt.cc"],
     visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__"],
     deps = [
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_dialect_registration",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:MlirOptMain",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
