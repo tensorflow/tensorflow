@@ -2207,7 +2207,7 @@ Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
 Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
   for (HloInstruction* user : users) {
-    TF_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
+    TF_RETURN_IF_ERROR(ReplaceUseWith(user, new_producer));
   }
 
   if (parent_ && parent_->root_instruction() == this) {
