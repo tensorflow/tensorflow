@@ -1111,12 +1111,13 @@ XlaOp RoundToEven(XlaOp x) {
 
 // acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
 //           pi                                if x == -1
+// For complex:
+// acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
 XlaOp Acos(XlaOp x) {
   XlaBuilder* b = x.builder();
   return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
 
-    // complex: acos(x) = -i * log(x + sqrt(-(x+1)*(x-1)))
     if (primitive_util::IsComplexType(shape.element_type())) {
       auto one = ScalarLike(x, 1);
       auto imag_one = Complex(
