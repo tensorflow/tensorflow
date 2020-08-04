@@ -69,17 +69,15 @@ absl::Status SelectPReLU(const PReLUAttributes& attr,
 }
 
 void SelectPooling(const Pooling2DAttributes& attr, const OperationDef& op_def,
-                   const DeviceInfo& device_info,
                    std::unique_ptr<GPUOperation>* ptr) {
-  Pooling pooling = CreatePooling(op_def, attr, device_info);
+  Pooling pooling = CreatePooling(op_def, attr);
   *ptr = absl::make_unique<Pooling>(std::move(pooling));
 }
 
 void SelectMaxUnpooling(const MaxUnpooling2DAttributes& attr,
                         const OperationDef& op_def,
-                        const DeviceInfo& device_info,
                         std::unique_ptr<GPUOperation>* ptr) {
-  MaxUnpooling operation = CreateMaxUnpooling(op_def, attr, device_info);
+  MaxUnpooling operation = CreateMaxUnpooling(op_def, attr);
   *ptr = absl::make_unique<MaxUnpooling>(std::move(operation));
 }
 

@@ -59,9 +59,9 @@ ConvConstants::ConvConstants(const OperationDef& definition,
       dst_channels_(attr.weights.shape.o) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  code_ = GenerateConvolutionConstantCode(definition_, kernel_size_,
-                                          src_channels_, dst_channels_,
-                                          stride_correction, device_info);
+  code_ =
+      GenerateConvolutionConstantCode(definition_, kernel_size_, src_channels_,
+                                      dst_channels_, stride_correction);
   if (definition_.precision == CalculationsPrecision::F16 &&
       device_info.IsAdreno3xx()) {
     compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
@@ -97,9 +97,9 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
 
 std::string ConvConstants::GenerateConvolutionConstantCode(
     const OperationDef& op_def, const int2& kernel_size, int src_channels,
-    int dst_channels, bool stride_correction, const DeviceInfo& device_info) {
+    int dst_channels, bool stride_correction) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }

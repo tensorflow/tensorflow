@@ -31,17 +31,16 @@ namespace cl {
 
 ConvolutionTransposed::ConvolutionTransposed(
     const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
-    const CLDevice& device)
+    const DeviceInfo& device_info)
     : GPUOperation(definition),
-      weights_are_buffer_(device.IsMali()),
+      weights_are_buffer_(device_info.IsMali()),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
       stride_(attr.stride.w, attr.stride.h),
       padding_(attr.padding.prepended.w, attr.padding.prepended.h),
       block_size_(2, 2, 2) {
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
-  if (device.IsMali()) {
-    MaliInfo mali_info = device.GetInfo().mali_info;
-    if (mali_info.IsMidgard()) {
+  if (device_info.IsMali()) {
+    if (device_info.mali_info.IsMidgard()) {
       block_size_ = is_f16 ? int3(2, 1, 2) : int3(2, 1, 1);
     } else {
       block_size_ = is_f16 ? int3(2, 2, 2) : int3(2, 2, 1);
@@ -49,13 +48,13 @@ ConvolutionTransposed::ConvolutionTransposed(
   }
   const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   if (dst_depth == 1 || dst_depth == 3) {
-    if (!device.IsMali()) {
+    if (!device_info.IsMali()) {
       block_size_.y *= block_size_.z;
     }
     block_size_.z = 1;
   }
 
-  code_ = GenerateConvolutionTransposedCode(definition_, device,
+  code_ = GenerateConvolutionTransposedCode(definition_, device_info,
                                             weights_are_buffer_, block_size_);
 }
 
@@ -81,10 +80,10 @@ ConvolutionTransposed& ConvolutionTransposed::operator=(
 }
 
 std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
-    const OperationDef& op_def, const CLDevice& device, bool weights_are_buffer,
-    const int3& block_size) {
+    const OperationDef& op_def, const DeviceInfo& device_info,
+    bool weights_are_buffer, const int3& block_size) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   AddSrcTensor("src_tensor", src_desc);
 
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
@@ -256,7 +255,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     c += "      int x_c = kernel_index * args.src_tensor.Slices();\n";
   }
   c += "      for (int s = 0; s < args.src_tensor.Slices(); ++s) {\n";
-  const bool conditional_read = device.IsMali();
+  const bool conditional_read = device_info.IsMali();
   for (int y = 0; y < block_size.y; ++y) {
     const std::string yindex = std::to_string(y);
     for (int x = 0; x < block_size.x; ++x) {
@@ -361,7 +360,8 @@ absl::Status CreateConvolutionTransposed(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed* result) {
-  *result = ConvolutionTransposed(definition, attr, *creation_context.device);
+  *result = ConvolutionTransposed(definition, attr,
+                                  creation_context.device->GetInfo());
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 
