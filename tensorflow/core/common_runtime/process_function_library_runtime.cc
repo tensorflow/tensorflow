@@ -1667,6 +1667,10 @@ Status ProcessFunctionLibraryRuntime::Clone(
       device_mgr_, env, config_ ? &(*config_) : nullptr, graph_def_version,
       out_lib_def->get(), optimizer_options, default_thread_pool_, parent_,
       custom_kernel_creator, session_metadata_, rendezvous_factory_);
+  {
+    tf_shared_lock l(mu_);
+    for (auto* d : composite_devices_) (*out_pflr)->AddCompositeDevice(d);
+  }
   return Status::OK();
 }
 

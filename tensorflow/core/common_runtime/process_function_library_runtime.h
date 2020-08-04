@@ -221,6 +221,7 @@ class ProcessFunctionLibraryRuntime {
   void AddCompositeDevice(CompositeDevice* d) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     device_set_->AddDevice(d);
+    composite_devices_.push_back(d);
   }
 
  protected:
@@ -451,6 +452,9 @@ class ProcessFunctionLibraryRuntime {
   // devices to instantiate multi-worker functions. Function instantiation would
   // fail if it spans the changed remote devices.
   std::shared_ptr<DeviceSet> device_set_ TF_GUARDED_BY(mu_);
+
+  // Composite devices owned by a EagerContext.
+  std::vector<CompositeDevice*> composite_devices_ TF_GUARDED_BY(mu_);
 
   // Holds all the function instantiations. Maps function_keys to handles.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
