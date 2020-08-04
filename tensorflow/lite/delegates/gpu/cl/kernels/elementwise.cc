@@ -134,128 +134,33 @@ std::string GetTwoInputCode(const OperationType& op_type,
 }
 }  // namespace
 
-ElementwiseOneInput::ElementwiseOneInput(const OperationDef& definition,
-                                         const OperationType& op_type)
-    : ElementwiseOperation(definition) {
-  code_ = GetOneInputCode(op_type, definition.precision, "in_out_value");
+GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
+                                       const OperationType& op_type) {
+  GPUOperation op(definition);
+  op.elementwise_ = true;
+  op.code_ = GetOneInputCode(op_type, definition.precision, "in_out_value");
+  return op;
 }
 
-ElementwiseOneInput::ElementwiseOneInput(ElementwiseOneInput&& operation)
-    : ElementwiseOperation(std::move(operation)) {}
-
-ElementwiseOneInput& ElementwiseOneInput::operator=(
-    ElementwiseOneInput&& operation) {
-  if (this != &operation) {
-    ElementwiseOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
-                                              const OperationType& op_type) {
-  ElementwiseOneInput operation(definition, op_type);
-  return operation;
-}
-
-ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
-    const OperationDef& definition, const OperationType& op_type,
-    float scalar_parameter, CalculationsPrecision scalar_precision)
-    : ElementwiseOperation(definition) {
-  if (definition.precision == CalculationsPrecision::F32) {
-    args_.AddFloat("scalar", scalar_parameter);
-  } else {
-    args_.AddHalf("scalar", half(scalar_parameter));
-  }
-  code_ = GetTwoInputCode(op_type, "in_out_value", "args.scalar");
-}
-
-ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
-    ElementwiseOneRuntimeOneScalar&& operation)
-    : ElementwiseOperation(std::move(operation)) {}
-
-ElementwiseOneRuntimeOneScalar& ElementwiseOneRuntimeOneScalar::operator=(
-    ElementwiseOneRuntimeOneScalar&& operation) {
-  if (this != &operation) {
-    ElementwiseOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-ElementwiseOneRuntimeOneScalar CreateElementwiseOneRuntimeOneScalar(
+GPUOperation CreateElementwiseOneRuntimeOneScalar(
     const CreationContext& creation_context, const OperationDef& definition,
     const OperationType& op_type, float scalar_parameter) {
-  const auto scalar_precision = creation_context.device->IsPowerVR()
-                                    ? CalculationsPrecision::F32
-                                    : definition.precision;
-  ElementwiseOneRuntimeOneScalar operation(definition, op_type,
-                                           scalar_parameter, scalar_precision);
-  return operation;
-}
-
-ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
-                                         const OperationType& op_type,
-                                         const BroadcastSettings& broadcast)
-    : ElementwiseOperation(definition),
-      broadcast_(broadcast) {
-  auto src_desc = definition.src_tensors[1];
-  if (definition.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
+  GPUOperation op(definition);
+  op.elementwise_ = true;
+  if (definition.precision == CalculationsPrecision::F32) {
+    op.args_.AddFloat("scalar", scalar_parameter);
+  } else {
+    op.args_.AddHalf("scalar", half(scalar_parameter));
   }
-  AddSrcTensor("second_tensor", src_desc);
-  const std::string x_coord = broadcast.width ? "0" : "X_COORD";
-  const std::string y_coord = broadcast.height ? "0" : "Y_COORD";
-  const std::string s_coord = broadcast.channels ? "0" : "S_COORD";
-  code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(", x_coord,
-                       ", ", y_coord, ", ", s_coord, ");\n");
-  if (broadcast.channels) {
-    code_ += "  second_val.y = second_val.x;\n";
-    code_ += "  second_val.z = second_val.x;\n";
-    code_ += "  second_val.w = second_val.x;\n";
-  }
-  code_ += GetTwoInputCode(op_type, "in_out_value", "second_val");
-}
-
-ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
-                                         const OperationType& op_type,
-                                         const BroadcastSettings& broadcast,
-                                         Tensor&& constant_tensor)
-    : ElementwiseOperation(definition),
-      broadcast_(broadcast) {
-  auto descriptor = constant_tensor.GetDescriptor();
-  args_.AddObject("second_tensor", AccessType::READ,
-                  absl::make_unique<Tensor>(std::move(constant_tensor)),
-                  absl::make_unique<TensorDescriptor>(descriptor));
-  const std::string x_coord = broadcast.width ? "0" : "X_COORD";
-  const std::string y_coord = broadcast.height ? "0" : "Y_COORD";
-  const std::string s_coord = broadcast.channels ? "0" : "S_COORD";
-  code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(", x_coord,
-                       ", ", y_coord, ", ", s_coord, ");\n");
-  if (broadcast.channels) {
-    code_ += "  second_val.y = second_val.x;\n";
-    code_ += "  second_val.z = second_val.x;\n";
-    code_ += "  second_val.w = second_val.x;\n";
-  }
-  code_ += GetTwoInputCode(op_type, "in_out_value", "second_val");
-}
-
-ElementwiseTwoInput::ElementwiseTwoInput(ElementwiseTwoInput&& operation)
-    : ElementwiseOperation(std::move(operation)),
-      broadcast_(operation.broadcast_) {}
-
-ElementwiseTwoInput& ElementwiseTwoInput::operator=(
-    ElementwiseTwoInput&& operation) {
-  if (this != &operation) {
-    broadcast_ = operation.broadcast_;
-    ElementwiseOperation::operator=(std::move(operation));
-  }
-  return *this;
+  op.code_ = GetTwoInputCode(op_type, "in_out_value", "args.scalar");
+  return op;
 }
 
 absl::Status CreateElementwiseTwoInput(
     const CreationContext& creation_context, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
-    ElementwiseTwoInput* result) {
+    GPUOperation* result) {
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
   TensorStorageType storage_type =
       SelectBestStorageType(*creation_context.context, *creation_context.device,
@@ -268,12 +173,21 @@ absl::Status CreateElementwiseTwoInput(
                                &gpu_tensor));
   RETURN_IF_ERROR(
       gpu_tensor.WriteData(creation_context.queue, constant_tensor));
-  BroadcastSettings broadcast;
-  broadcast.width = true;
-  broadcast.height = true;
-  broadcast.channels = shape.c == 1;
-  *result = ElementwiseTwoInput(definition, op_type, broadcast,
-                                std::move(gpu_tensor));
+
+  *result = GPUOperation(definition);
+  result->elementwise_ = true;
+  result->args_.AddObject("second_tensor", AccessType::READ,
+                          absl::make_unique<Tensor>(std::move(gpu_tensor)),
+                          absl::make_unique<TensorDescriptor>(desc));
+  const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
+  result->code_ = absl::StrCat(
+      "FLT4 second_val = args.second_tensor.Read(0, 0, ", s_coord, ");\n");
+  if (shape.c == 1) {
+    result->code_ += "  second_val.y = second_val.x;\n";
+    result->code_ += "  second_val.z = second_val.x;\n";
+    result->code_ += "  second_val.w = second_val.x;\n";
+  }
+  result->code_ += GetTwoInputCode(op_type, "in_out_value", "second_val");
   return absl::OkStatus();
 }
 
@@ -281,7 +195,7 @@ absl::Status CreateElementwiseTwoInput(
     const CreationContext& creation_context, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& constant_tensor,
-    ElementwiseTwoInput* result) {
+    GPUOperation* result) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
   TensorStorageType storage_type =
@@ -295,34 +209,49 @@ absl::Status CreateElementwiseTwoInput(
                                &gpu_tensor));
   RETURN_IF_ERROR(
       gpu_tensor.WriteData(creation_context.queue, constant_tensor));
-  BroadcastSettings broadcast;
-  broadcast.width = shape.w == 1;
-  broadcast.height = shape.h == 1;
-  broadcast.channels = shape.c == 1;
-  *result = ElementwiseTwoInput(definition, op_type, broadcast,
-                                std::move(gpu_tensor));
+
+  *result = GPUOperation(definition);
+  result->elementwise_ = true;
+  result->args_.AddObject("second_tensor", AccessType::READ,
+                          absl::make_unique<Tensor>(std::move(gpu_tensor)),
+                          absl::make_unique<TensorDescriptor>(desc));
+  const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
+  const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
+  const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
+  result->code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(",
+                               x_coord, ", ", y_coord, ", ", s_coord, ");\n");
+  if (shape.c == 1) {
+    result->code_ += "  second_val.y = second_val.x;\n";
+    result->code_ += "  second_val.z = second_val.x;\n";
+    result->code_ += "  second_val.w = second_val.x;\n";
+  }
+  result->code_ += GetTwoInputCode(op_type, "in_out_value", "second_val");
+
   return absl::OkStatus();
 }
 
-ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
-                                              const OperationType& op_type,
-                                              const BHWC& shape) {
-  BroadcastSettings broadcast;
-  broadcast.width = shape.w == 1;
-  broadcast.height = shape.h == 1;
-  broadcast.channels = shape.c == 1;
-  ElementwiseTwoInput operation(definition, op_type, broadcast);
-  return operation;
-}
-
-ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
-                                              const OperationType& op_type) {
-  BroadcastSettings broadcast;
-  broadcast.width = false;
-  broadcast.height = false;
-  broadcast.channels = false;
-  ElementwiseTwoInput operation(definition, op_type, broadcast);
-  return operation;
+GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
+                                       const OperationType& op_type,
+                                       const BHWC& shape) {
+  GPUOperation op(definition);
+  op.elementwise_ = true;
+  auto src_desc = definition.src_tensors[1];
+  if (definition.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  op.AddSrcTensor("second_tensor", src_desc);
+  const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
+  const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
+  const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
+  op.code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(", x_coord,
+                          ", ", y_coord, ", ", s_coord, ");\n");
+  if (shape.c == 1) {
+    op.code_ += "  second_val.y = second_val.x;\n";
+    op.code_ += "  second_val.z = second_val.x;\n";
+    op.code_ += "  second_val.w = second_val.x;\n";
+  }
+  op.code_ += GetTwoInputCode(op_type, "in_out_value", "second_val");
+  return op;
 }
 
 }  // namespace cl
