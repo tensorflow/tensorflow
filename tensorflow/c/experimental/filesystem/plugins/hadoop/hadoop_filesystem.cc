@@ -540,6 +540,42 @@ void CreateDir(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
+void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  // Count the number of entries in the directory, and only delete if it's
+  // non-empty. This is consistent with the interface, but note that there's
+  // a race condition where a file may be added after this check, in which
+  // case the directory will still be deleted.
+  int entries = 0;
+  auto info = libhdfs->hdfsListDirectory(fs, hdfs_path.c_str(), &entries);
+  if (info != nullptr) libhdfs->hdfsFreeFileInfo(info, entries);
+
+  // Due to HDFS bug HDFS-8407, we can't distinguish between an error and empty
+  // folder, especially for Kerberos enable setup, EAGAIN is quite common when
+  // the call is actually successful. Check again by Stat.
+  if (info == nullptr && errno != 0) {
+    TF_FileStatistics stat;
+    Stat(filesystem, path, &stat, status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+
+  if (entries > 0)
+    return TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                        "Cannot delete a non-empty directory.");
+
+  if (libhdfs->hdfsDelete(fs, hdfs_path.c_str(), /*recursive=*/1) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_hadoop_filesystem
