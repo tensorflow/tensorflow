@@ -299,6 +299,7 @@ cc_library(
     hdrs = ["tf_tensor.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_macros",
         ":tensor_interface",
         ":tf_datatype",
         ":tf_status",

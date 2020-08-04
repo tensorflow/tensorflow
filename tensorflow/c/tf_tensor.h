@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 
@@ -44,13 +45,6 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-// Macro used to calculate struct size for maintaining ABI stability across 
-// different struct implementations. 
-#ifndef TF_OFFSET_OF_END
-#define TF_OFFSET_OF_END(TYPE, MEMBER) (offsetof(TYPE, MEMBER) + \
-    sizeof(((TYPE *)0)->MEMBER))
-#endif // TF_OFFSET_OF_END
 
 // Allocator Attributes used for tensor allocation. 
 typedef struct TF_AllocatorAttributes { 
