@@ -265,6 +265,7 @@ func @non_max_suppression_v4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2
   return %0#0 : tensor<2xi32>
 }
 
+<<<<<<< HEAD
 // CHECK-LABEL: bessel_i0e
 func @bessel_i0e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64>) -> (tensor<3xf16>, tensor<3xf32>, tensor<3xf64>) {
   // CHECK-NOT: tf.BesselI0e
@@ -281,6 +282,20 @@ func @bessel_i1e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64
   %1 = "tf.BesselI1e"(%arg1) : (tensor<3xf32>) -> (tensor<3xf32>)
   %2 = "tf.BesselI1e"(%arg2) : (tensor<3xf64>) -> (tensor<3xf64>)
   return %0, %1, %2 : tensor<3xf16>, tensor<3xf32>, tensor<3xf64>
+=======
+// CHECK-LABEL: diag
+func @diag(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
+  // CHECK: %[[ZERO:.*]]  = mhlo.constant dense<0.000000e+00> : tensor<2x2xf32>
+  // CHECK: %[[IOTA:.*]]  = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<2xi32>
+  // CHECK: %[[BROADCAST1:.*]] = "mhlo.broadcast_in_dim"(%[[IOTA]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<2x2xi32>
+  // CHECK: %[[BROADCAST0:.*]] = "mhlo.broadcast_in_dim"(%[[IOTA]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<2x2xi32>
+  // CHECK: %[[EQ:.*]] = "mhlo.compare"(%[[BROADCAST1]], %[[BROADCAST0]]) {comparison_direction = "EQ"} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi1>
+  // CHECK: %[[BROADCAST2:.*]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2xf32>) -> tensor<2x2xf32>
+  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[EQ]], %[[BROADCAST2]], %[[ZERO]]) : (tensor<2x2xi1>, tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "tf.Diag"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf32>
+  // CHECK: return %[[RESULT]] : tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+>>>>>>> 20e87f998e... Add test with mhlo
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

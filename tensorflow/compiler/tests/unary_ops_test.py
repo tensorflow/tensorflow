@@ -95,8 +95,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
     """Tests that result and expeted are exactly equal."""
     self.assertAllEqual(result, expected)
 
-  @test_util.disable_mlir_bridge(
-      "MlirHloBuilder::Iota missing required for xla::Diag")
   def testAllTypeOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(

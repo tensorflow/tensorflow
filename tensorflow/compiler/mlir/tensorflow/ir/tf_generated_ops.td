@@ -2487,6 +2487,40 @@ this op runs. The length of the list is returned in two cases:
   );
 }
 
+def TF_DiagOp : TF_Op<"Diag", [NoSideEffect]> {
+  let summary = "Returns a diagonal tensor with a given diagonal values.";
+
+  let description = [{
+Given a `diagonal`, this operation returns a tensor with the `diagonal`
+and everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has dimensions `[D1, ..., Dk]`, then the output is
+a tensor of rank `2k` with dimensions `[D1, ..., Dk, D1, ..., Dk]` where:
+
+`output[i1,..., ik, i1,..., ik] = diagonal[i1, ..., ik]` and 0 everywhere else.
+
+For example:
+
+```
+# 'diagonal' is [1, 2, 3, 4]
+tf.diag(diagonal) ==> [[1, 0, 0, 0]
+                       [0, 2, 0, 0]
+                       [0, 0, 3, 0]
+                       [0, 0, 0, 4]]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$diagonal
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_DiagPartOp : TF_Op<"DiagPart", [NoSideEffect]> {
   let summary = "Returns the diagonal part of the tensor.";
 
