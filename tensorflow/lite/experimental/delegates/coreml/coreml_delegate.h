@@ -15,11 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_H_
 
-#include "tensorflow/lite/c/common.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+typedef struct TfLiteDelegate TfLiteDelegate;
+
 typedef enum {
   // Create Core ML delegate only on devices with Apple Neural Engine.
   // Returns nullptr otherwise.
