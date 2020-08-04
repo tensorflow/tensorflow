@@ -1896,10 +1896,6 @@ class _FtrlHandler(_OptimizerHandler):
         self._optimization_parameters.l1_regularization_strength)
     table_descriptor.optimization_parameters.ftrl.l2 = (
         self._optimization_parameters.l2_regularization_strength)
-    table_descriptor.optimization_parameters.ftrl.initial_accum = (
-        self._optimization_parameters.initial_accumulator_value)
-    table_descriptor.optimization_parameters.ftrl.initial_linear = (
-        self._optimization_parameters.initial_linear_value)
 
   def get_default_slot_variable_names(self, table):
     # These match the default slot variable names created by

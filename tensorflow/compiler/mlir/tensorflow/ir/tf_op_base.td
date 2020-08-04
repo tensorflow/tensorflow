@@ -59,9 +59,19 @@ TODO: Make invariants more structured so that we can reference them in ops.
 def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
   "TF::OperandsSameAsResultsTypeOrRef">;
 
+// Op has the same operand and result element types (or type itself, if scalar)
+// after resolving reference types (i.e., after converting reference types to
+// their corresponding TensorFlow or standard types).
+def TF_SameOperandsAndResultElementTypeResolveRef : NativeOpTrait<
+  "TF::SameOperandsAndResultElementTypeResolveRef">;
+
 // Layout agnostic operations do not depend on the operands data layout (data
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
+
+// Trait to indicate operations that cannot be duplicated as they might carry
+// certain state around within their implementations.
+def TF_CannotDuplicate : NativeOpTrait<"TF::CannotDuplicate">;
 
 // Variant of broadcastable trait that considers TF's subtype behavior.
 class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[

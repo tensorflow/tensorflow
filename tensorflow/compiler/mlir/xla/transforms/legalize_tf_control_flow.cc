@@ -119,10 +119,8 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
   // return op.
-  auto then_branch = module.lookupSymbol<mlir::FuncOp>(op.then_branch());
-  auto else_branch = module.lookupSymbol<mlir::FuncOp>(op.else_branch());
-  ImportXlaRegion(then_branch, &if_op.true_branch(), loc);
-  ImportXlaRegion(else_branch, &if_op.false_branch(), loc);
+  ImportXlaRegion(op.then_func(), &if_op.true_branch(), loc);
+  ImportXlaRegion(op.else_func(), &if_op.false_branch(), loc);
 
   // De-tuple the results of the xla hlo if result.
   Detuple(if_op.getResult(), op.getResults(), &builder);
@@ -174,11 +172,9 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 
   // Import the regions for both the cond and body. These regions must be
   // updated to tuple the return results together and use the xla hlo return op.
-  auto body_branch = module.lookupSymbol<mlir::FuncOp>(op.body());
-  auto cond_branch = module.lookupSymbol<mlir::FuncOp>(op.cond());
-
-  ImportXlaRegion(body_branch, &while_op.body(), loc);
-  ImportXlaRegion(cond_branch, &while_op.cond(), loc, /*tuple_return=*/false);
+  ImportXlaRegion(op.body_func(), &while_op.body(), loc);
+  ImportXlaRegion(op.cond_func(), &while_op.cond(), loc,
+                  /*tuple_return=*/false);
 
   // De-tuple the results of the xla hlo while.
   Detuple(while_op.getResult(), op.getResults(), &builder);

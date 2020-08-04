@@ -19,23 +19,23 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
-#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
+#include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 namespace mlir {
 class OpBuilder;
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.h.inc"
 
 namespace mhlo {
 
@@ -91,7 +91,7 @@ LogicalResult deriveShapeFromFirstOperand(
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 
 }  // end namespace mhlo
 }  // end namespace mlir

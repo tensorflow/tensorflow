@@ -3,6 +3,12 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 licenses(["notice"])
 
+package_group(
+    name = "friends",
+    includes = ["//third_party/mlir:subpackages"],
+    packages = ["//tensorflow/compiler/mlir/..."],
+)
+
 cc_library(
     name = "cubin_creator",
     srcs = ["cubin_creator.cc"],
@@ -48,5 +54,18 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "kernel-gen-opt",
+    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_dialect_registration",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:MlirOptMain",
     ],
 )

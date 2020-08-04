@@ -2292,7 +2292,7 @@ void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
 // Also consider changing the rounding stragey from "ties to away" to
 // "ties to even" since vcvtnq_s32_f32 is generally more available.
 inline int32x4_t RoundToNearest(const float32x4_t input) {
-#if defined(_ACAT_ARM64)
+#if __ARM_ARCH >= 8
   return vcvtaq_s32_f32(input);
 #else
   static const float32x4_t zero_val_dup = vdupq_n_f32(0.0f);

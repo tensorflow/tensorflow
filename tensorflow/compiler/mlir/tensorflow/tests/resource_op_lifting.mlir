@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-resource-op-lifting | FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-resource-op-lifting | FILECHECK_OPTS="" FileCheck %s
 
 // Tests that resource load operations are hoisted.
 

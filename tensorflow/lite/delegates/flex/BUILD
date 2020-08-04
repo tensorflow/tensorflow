@@ -58,12 +58,14 @@ tf_cc_test(
 
 # Define the standard flex delegate library, that pulls in the standard set
 # of TensorFlow ops and kernels, using tflite_flex_cc_library with no
-# portable_tensorflow_lib parameter. Custom flex delegate can be defined with
-# tflite_flex_cc_library if the parameter portable_tensorflow_lib
-# is provided. Ex:
+# models parameter. Custom flex delegate can be defined with
+# tflite_flex_cc_library if the parameter models is provided. Tensorflow
+# user-provided ops could also be supported by passing to additional_deps.
+# Ex:
 # tflite_flex_cc_library(
-#   name = "sample",
-#   portable_tensorflow_lib = custom_portable_tensorflow_lib,
+#   name = "sample_delegate",
+#   models = ["model1.tflite", "model2.tflite"],
+#   additional_deps = ["your_custom_ops_lib"],
 # )
 tflite_flex_cc_library(
     name = "delegate",

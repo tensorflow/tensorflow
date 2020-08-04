@@ -165,9 +165,8 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
   OpMetricsDb device_tf_op_metrics_db = CreateTfMetricsDbFromDeviceOpMetricsDb(
       op_stats.device_op_metrics_db(), /*with_idle=*/false);
-  absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
-      grouped_kernel_reports =
-          GroupKernelReportsByOpName(op_stats.kernel_stats_db());
+  KernelStatsByOpName kernel_stats_by_op_name =
+      GroupKernelReportsByOpName(op_stats.kernel_stats_db());
   uint64 total_device_time_ps = device_tf_op_metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;
@@ -182,10 +181,11 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     op->set_cumulative_time_fraction(device_cumulative_fraction);
     op->set_flop_rate(
         SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
-    auto iter = grouped_kernel_reports.find(op->name());
-    if (iter != grouped_kernel_reports.end()) {
+    auto iter = kernel_stats_by_op_name.find(op->name());
+    if (iter != kernel_stats_by_op_name.end()) {
       op->set_is_op_tensorcore_eligible(
-          iter->second.front()->is_op_tensor_core_eligible());
+          iter->second.is_op_tensor_core_eligible);
+      op->set_is_op_using_tensorcore(iter->second.tensor_core_duration_ns != 0);
     }
   }
   uint64 total_device_compute_ps =
@@ -300,7 +300,7 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
   auto num_functions_shown = std::min(
       static_cast<decltype(candidates)::size_type>(3), candidates.size());
 
-  for (auto i = 0; i < num_functions_shown; i++) {
+  for (decltype(candidates)::size_type i = 0; i < num_functions_shown; i++) {
     if (i > 0) absl::StrAppend(&expensive_functions, ", ");
     absl::StrAppend(&expensive_functions, "\"", candidates[i].function_name,
                     "\"");

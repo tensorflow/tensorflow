@@ -100,6 +100,11 @@ TextureAddressMode GetFastestZeroMode(const CLDevice& device) {
                               : TextureAddressMode::ZERO;
 }
 
+TextureAddressMode GetFastestZeroMode(const DeviceInfo& device_info) {
+  return device_info.IsAdreno3xx() ? TextureAddressMode::DONT_CARE
+                                   : TextureAddressMode::ZERO;
+}
+
 float4 GetMaskForLastPlane(int channels) {
   float4 mask = float4(0.0f);
   const int reminder = channels % 4 == 0 ? 4 : channels % 4;

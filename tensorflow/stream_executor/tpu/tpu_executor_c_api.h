@@ -40,6 +40,7 @@ int64_t TpuPlatform_VisibleDeviceCount(SE_Platform* platform);
 int64_t TpuPlatform_TpuMemoryLimit(SE_Platform* platform);
 bool TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(SE_Platform* platform);
 void* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
+void* TpuPlatform_GetHostLocation(SE_Platform* platform);
 
 void TpuExecutor_Init(SE_StreamExecutor* executor, int device_ordinal,
                       SE_DeviceOptions* device_options, SE_Status* status);
@@ -201,6 +202,8 @@ int TpuCoreLocation_ChipCoordinates_Z(void* tpu_core_location);
 int TpuCoreLocation_Index(void* tpu_core_location);
 int TpuCoreLocation_Id(void* tpu_core_location);
 
+int TpuHostLocation_Id(void* tpu_host_location);
+
 // C API for XLA::Compiler interface
 
 TFTPU_CAPI_EXPORT Tpu_Compiler* TpuCompiler_New();
@@ -253,6 +256,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_TpuMemoryLimit);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetTopologyPtr);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetHostLocation);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Init);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Free);
@@ -347,9 +351,10 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Index);
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
 
+  TFTPU_ADD_FN_IN_STRUCT(TpuHostLocation_Id);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Free);
-
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunHloPasses);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunBackend);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);

@@ -173,6 +173,11 @@ build:using_cuda --define=using_cuda=true
 build:using_cuda --action_env TF_NEED_CUDA=1
 build:using_cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 
+# Enable the mlir generated GPU kernels only for cuda builds.
+build --define=tensorflow_enable_mlir_generated_gpu_kernels=0
+# This is a more specific option, so it takes precedence over the line above for cuda builds.
+build:using_cuda --define=tensorflow_enable_mlir_generated_gpu_kernels=1
+
 # This config refers to building CUDA op kernels with nvcc.
 build:cuda --config=using_cuda
 build:cuda --define=using_cuda_nvcc=true

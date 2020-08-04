@@ -1,9 +1,9 @@
-// RUN: xla-opt -xla-hlo-to-lhlo-with-xla %s | FileCheck --enable-var-scope %s
+// RUN: xla-opt -xla-hlo-to-lhlo-with-xla %s | FILECHECK_OPTS="" FileCheck --enable-var-scope %s
 
 // Current allocation will lead to one buffer argument for the "value" and
 // another one for the output, an no returned values.
 // CHECK-LABEL: func @main
-// CHECK-SAME:  %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.params = 0 : index},
+// CHECK-SAME:  %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = 1 : index, lmhlo.params = 0 : index},
 // CHECK-SAME:  %[[ARG1:.*]]: memref<16xi8> {lmhlo.alloc = 0 : index, lmhlo.liveout = true}
 // CHECK-SAME: ) {
 func @main(%value: tensor<2x2xf32>) -> tensor<2x2xf32> {

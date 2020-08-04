@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -62,6 +63,24 @@ HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
   auto zero = b->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, zero, {}));
+}
+
+HloInstruction* CreateOne(const Shape& shape, SpmdBuilder* b) {
+  if (shape.IsTuple()) {
+    std::vector<HloInstruction*> elements;
+    for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      elements.push_back(
+          CreateOne(ShapeUtil::GetTupleElementShape(shape, i), b));
+    }
+    return b->AddInstruction(HloInstruction::CreateTuple(elements));
+  }
+
+  if (shape.IsToken()) {
+    return b->AddInstruction(HloInstruction::CreateToken());
+  }
+  auto one = b->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::One(shape.element_type())));
+  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, one, {}));
 }
 
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
@@ -131,6 +150,16 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
           sharding.GetSubSharding(shape, {i}), partition_id));
     }
     return ShapeUtil::MakeTupleShape(subshapes);
+  }
+
+  if (sharding.IsReplicated()) {
+    return shape;
+  }
+  if (sharding.IsTileMaximal()) {
+    if (partition_id == *sharding.UniqueDevice()) {
+      return shape;
+    }
+    return ShapeUtil::MakeTupleShape({});
   }
 
   auto partition_shape = shape;
@@ -1232,6 +1261,109 @@ PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
   }
   result.reshard_cache = grouped_cache.get();
   return result;
+}
+
+HloInstruction* PerGroupSliceFromReplicated(
+    HloInstruction* replicated, HloInstruction* partition_id,
+    const std::vector<std::vector<int64>>& device_groups,
+    absl::Span<const int64> group_dims, absl::Span<const int64> group_dim_sizes,
+    SpmdBuilder* b) {
+  std::vector<uint32> group_ids(device_groups.size() * device_groups[0].size());
+  for (int64 g = 0; g < device_groups.size(); ++g) {
+    for (int64 device : device_groups[g]) {
+      group_ids[device] = g;
+    }
+  }
+  auto group_id_table = b->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint32>(group_ids)));
+  auto group_id = b->AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeScalarShape(U32),
+      b->AddInstruction(HloInstruction::CreateDynamicSlice(
+          ShapeUtil::MakeShape(U32, {1}), group_id_table, {partition_id},
+          {1}))));
+  std::vector<int64> group_level_tile_dims(replicated->shape().rank(), 1);
+  for (int64 i = 0; i < group_dims.size(); ++i) {
+    group_level_tile_dims[group_dims[i]] = group_dim_sizes[i];
+  }
+  Array<int64> group_level_tile(group_level_tile_dims);
+  group_level_tile.Each([&](absl::Span<const int64> indices, int64* group) {
+    *group = 0;
+    for (int64 dim : group_dims) {
+      *group *= group_level_tile.dim(dim);
+      *group += indices[dim];
+    }
+  });
+  auto group_level_sharding = HloSharding::Tile(group_level_tile);
+  auto padded_hlo = PadBaseShapeBeforeUnevenTiledSharding(
+      replicated, group_level_sharding, b);
+  auto shard_shape =
+      MakePartitionedShape(replicated->shape(), group_level_sharding);
+  return b->AddInstruction(HloInstruction::CreateDynamicSlice(
+      shard_shape, padded_hlo,
+      MakePartitionOffsets(replicated->shape(), group_level_sharding, group_id,
+                           b),
+      shard_shape.dimensions()));
+}
+
+absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
+    absl::Span<int64 const> tgt_to_src) {
+  if (source.IsTileMaximal()) {
+    return source;
+  }
+  std::vector<int64> tgt_dims_skipping_new(tgt_to_src.size(), -1);
+  int64 skipped_tgt_dims = 0;
+  for (int64 i = 0; i < tgt_to_src.size(); ++i) {
+    if (tgt_to_src[i] < 0) {
+      skipped_tgt_dims++;
+    } else {
+      tgt_dims_skipping_new[i] = i - skipped_tgt_dims;
+    }
+  }
+  int64 skipped_src_dims = absl::c_count(src_to_tgt, -1);
+  std::vector<int64> perm(src_to_tgt.size());
+  for (int64 i = 0; i < src_to_tgt.size(); ++i) {
+    if (src_to_tgt[i] < 0) {
+      if (source.tile_assignment().dim(i) > 1) {
+        return absl::nullopt;
+      }
+      perm[src_to_tgt.size() - skipped_src_dims] = i;
+      skipped_src_dims--;
+    } else {
+      perm[tgt_dims_skipping_new[src_to_tgt[i]]] = i;
+    }
+  }
+  auto tgt_sharding = hlo_sharding_util::TransposeSharding(source, perm);
+  if (skipped_tgt_dims == 0) {
+    return tgt_sharding;
+  }
+  auto reshape_tiles = tgt_sharding.tile_assignment();
+  std::vector<int64> tgt_tiles(tgt_to_src.size(), 1);
+  for (int64 i = 0; i < tgt_tiles.size(); ++i) {
+    if (tgt_to_src[i] >= 0) {
+      tgt_tiles[i] = reshape_tiles.dim(tgt_dims_skipping_new[i]);
+    }
+  }
+  reshape_tiles.Reshape(tgt_tiles);
+  return HloSharding::Tile(reshape_tiles);
+}
+
+absl::optional<HloOpcode> ParseReductionComputation(
+    const HloComputation* reduction_comp) {
+  if (reduction_comp->num_parameters() != 2) {
+    return absl::nullopt;
+  }
+  auto root = reduction_comp->root_instruction();
+  if (!root->IsElementwiseBinary()) {
+    return absl::nullopt;
+  }
+  if (!absl::c_linear_search(root->operands(),
+                             reduction_comp->parameter_instruction(0)) ||
+      !absl::c_linear_search(root->operands(),
+                             reduction_comp->parameter_instruction(1))) {
+    return absl::nullopt;
+  }
+  return root->opcode();
 }
 
 }  // namespace spmd

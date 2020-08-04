@@ -9,16 +9,22 @@ func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 // CHECK-LABEL: func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>)
 func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.If"(%arg0, %arg1) {
-    then_branch = @testIf1Then, else_branch = @testIf1Else, is_stateless = false
+    then_branch = @testIf1Then, else_branch = @testIf1Else, is_stateless = false,
+    _attr0 = 10, _attr1 = true, attr2 = "hello"
   } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
 
   // CHECK: "tf.IfRegion"
-  // CHECK-NOT: then_branch
-  // CHECK-NOT: else_branch
   // CHECK: [[Result0:%.*]] = call @testIf1Then
   // CHECK: "tf.Yield"([[Result0]])
   // CHECK: [[Result1:%.*]] = call @testIf1Else
   // CHECK: "tf.Yield"([[Result1]])
+  // CHECK: _attr0 = 10
+  // CHECK-SAME: _attr1 = true
+  // CHECK-NOT: attr2 =
+  // CHECK-NOT: else_branch
+  // CHECK-SAME: is_stateless = false
+  // CHECK-NOT: then_branch
+  // CHECK-SAME: }
   return %0 : tensor<*xf32>
 }
 
@@ -127,16 +133,21 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
     body = @testWhileBody,
-    is_stateless = false
+    is_stateless = true,
+    _attr0 = 10, _attr1 = true, attr2 = "hello"
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   // CHECK: [[Result0:%.*]] = "tf.WhileRegion"
-  // CHECK-NOT: cond =
-  // CHECK-NOT: body =
   // CHECK: [[Result1:%.*]] = call @testWhileCond
   // CHECK: "tf.Yield"([[Result1]])
   // CHECK: [[Result2:%.*]] = call @testWhileBody
   // CHECK: "tf.Yield"([[Result2]])
+  // CHECK: _attr0 = 10
+  // CHECK-SAME: _attr1 = true
+  // CHECK-NOT: attr2 =
+  // CHECK-NOT: cond =
+  // CHECK-NOT: body =
+  // CHECK-SAME: is_stateless = true
   // CHECK: return [[Result0]]
   return %1 : tensor<*xf32>
 }

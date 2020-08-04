@@ -23,22 +23,27 @@ namespace tensorflow {
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-REGISTER_OP("_HostComputeMlir")
+REGISTER_OP("_XlaHostComputeMlir")
     .Input("inputs: Tinputs")
     .Output("outputs: Toutputs")
     .Attr("Tinputs: list(type) >= 0")
     .Attr("Toutputs: list(type) >= 0")
-    .Attr("key: string")
+    .Attr("send_key: string")
+    .Attr("recv_key: string")
     .Attr("tpu_core: int = 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return ::tensorflow::shape_inference::UnknownShape(c);
+    })
     .SetIsStateful()
     .Doc(R"doc(
-A host-side computation called from a TPU device.
+A pseudo-op to represent host-side computation in an XLA program.
 
 inputs: A list of tensors that will be sent to the host.
 outputs: A list of tensors that will be returned to the device.
 Tinputs: The element types of each element in `inputs`.
 Toutputs: The element types of each element in `outputs`.
-key: A unique identifier for this region used to match up host transfers.
+send_key: A unique identifier for this region used to match up host recv.
+recv_key: A unique identifier for this region used to match up host send.
 tpu_core: Default core to use for host to device transfers.
 )doc");
 
@@ -78,36 +83,16 @@ REGISTER_OP("XlaHostCompute")
         // statically known.
         return ::tensorflow::shape_inference::UnknownShape(c);
       }
-    })
-    .Doc(R"doc(
-A pseudo-op to represent host-side computation in an XLA program.
-
-inputs: A list of tensors that will be sent to the host.
-outputs: A list of tensors that will be returned to the device.
-Tinputs: The element types of each element in `inputs`.
-Toutputs: The element types of each element in `outputs`.
-ancestors: A list of names of HostCompute computations that must be
-sequenced before this computation.
-shape_inference_graph: If non-empty, a serialized GraphDef representing a graph
-that must be analyzed at compile time to determine the shapes of the outputs.
-shapes: If shape_inference_graph is empty, a list of the shapes of `outputs`.
-key: A unique identifier for this region used to match up host transfers.
-cost_estimate_ns: Estimated duration of the host computation in nanoseconds.
-tpu_core: Default core to use for host to device transfers.
-)doc");
+    });
 
 REGISTER_OP("XlaSendToHost")
     .Input("input: Tinput")
     .Attr("Tinput: type")
     .Attr("key: string")
-    .SetIsStateful()
-    .Doc(R"doc(
-An op to send a tensor to the host.
-
-input: the tensor that will be sent to the host.
-Tinput: element type for input.
-key: A unique identifier for this region used to match up host transfers.
-)doc");
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return ::tensorflow::shape_inference::UnknownShape(c);
+    })
+    .SetIsStateful();
 
 REGISTER_OP("XlaRecvFromHost")
     .Output("output: Toutput")
@@ -127,14 +112,6 @@ REGISTER_OP("XlaRecvFromHost")
           c->MakeShapeFromShapeProto(shape_attr->shape(), &handle));
       c->set_output(0, handle);
       return Status::OK();
-    })
-    .Doc(R"doc(
-An op to receive a tensor from the host.
-
-output: the tensor that will be received from the host.
-Toutput: element type for output.
-shape: shape for output.
-key: A unique identifier for this region used to match up host transfers.
-)doc");
+    });
 
 }  // namespace tensorflow

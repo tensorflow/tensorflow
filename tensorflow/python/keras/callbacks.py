@@ -41,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import worker_training_state
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
@@ -2014,8 +2015,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
     self._writers = {}  # Resets writers.
 
+    self._should_write_train_graph = False
     if self.write_graph:
-      self._write_keras_model_graph()
+      self._write_keras_model_summary()
+      self._should_write_train_graph = True
     if self.embeddings_freq:
       self._configure_embeddings()
 
@@ -2042,13 +2045,19 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     distributed_file_utils.remove_temp_dirpath(self.log_dir,
                                                self.model.distribute_strategy)
 
-  def _write_keras_model_graph(self):
-    """Writes Keras graph networks to TensorBoard."""
+  def _write_keras_model_train_graph(self):
+    """Writes Keras model train_function graph to TensorBoard."""
     with self._train_writer.as_default():
       with summary_ops_v2.always_record_summaries():
-        if not self.model.run_eagerly:
-          summary_ops_v2.graph(K.get_graph(), step=0)
+        train_fn = self.model.train_function
+        # If the train_function is a `tf.function`, we can write out a graph
+        if hasattr(train_fn, 'function_spec'):
+          summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph, step=0)  # pylint: disable=protected-access
 
+  def _write_keras_model_summary(self):
+    """Writes Keras graph network summary to TensorBoard."""
+    with self._train_writer.as_default():
+      with summary_ops_v2.always_record_summaries():
         summary_writable = (
             self.model._is_graph_network or  # pylint: disable=protected-access
             self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
@@ -2207,6 +2216,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       self._start_trace()
 
   def on_train_batch_end(self, batch, logs=None):
+    if self._should_write_train_graph:
+      self._write_keras_model_train_graph()
+      self._should_write_train_graph = False
     if not self._should_trace:
       return
 
@@ -2243,6 +2255,12 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     profiler.stop()
     self._is_tracing = False
 
+  def _collect_learning_rate(self, logs):
+    lr_schedule = getattr(self.model.optimizer, 'lr', None)
+    if isinstance(lr_schedule, learning_rate_schedule.LearningRateSchedule):
+      logs['learning_rate'] = lr_schedule(self.model.optimizer.iterations)
+    return logs
+
   def _log_epoch_metrics(self, epoch, logs):
     """Writes epoch metrics out as scalar summaries.
 
@@ -2255,6 +2273,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
     train_logs = {k: v for k, v in logs.items() if not k.startswith('val_')}
     val_logs = {k: v for k, v in logs.items() if k.startswith('val_')}
+    train_logs = self._collect_learning_rate(train_logs)
 
     with summary_ops_v2.always_record_summaries():
       if train_logs:

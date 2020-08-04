@@ -1,5 +1,5 @@
-func @Tanh(%arg0: tensor<?xf99>) -> tensor<?xf99> {
+func @tanh(%arg0: tensor<?xelem_type>) -> tensor<?xelem_type> {
   %0 = "tf.Tanh"(%arg0) { }
-    : (tensor<?xf99>) -> tensor<?xf99>
-  return %0 : tensor<?xf99>
+    : (tensor<?xelem_type>) -> tensor<?xelem_type>
+  return %0 : tensor<?xelem_type>
 }

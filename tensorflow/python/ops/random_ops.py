@@ -426,6 +426,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
 
 
 @tf_export("random.categorical")
+@dispatch.add_dispatch_support
 def categorical(logits, num_samples, dtype=None, seed=None, name=None):
   """Draws samples from a categorical distribution.
 

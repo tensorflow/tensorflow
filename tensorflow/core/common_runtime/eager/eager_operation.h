@@ -82,6 +82,7 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   Status AddInput(AbstractTensorHandle* input) override;
   Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
+  absl::Span<ImmediateExecutionTensorHandle* const> GetInputs() const override;
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override;
   const tensorflow::OpDef* OpDef() const override { return op_def_; };

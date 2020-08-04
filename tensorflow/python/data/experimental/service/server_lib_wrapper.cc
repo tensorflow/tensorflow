@@ -69,12 +69,16 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
 
   m.def(
       "TF_DATA_NewWorkerServer",
-      [](int port, std::string protocol, std::string dispatcher_address,
-         std::string worker_address)
+      [](std::string serialized_worker_config)
           -> std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> {
+        tensorflow::data::experimental::WorkerConfig config;
+        if (!config.ParseFromString(serialized_worker_config)) {
+          tensorflow::MaybeRaiseFromStatus(tensorflow::errors::InvalidArgument(
+              "Failed to deserialize worker config."));
+        }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
-        tensorflow::Status status = tensorflow::data::NewWorkerServer(
-            port, protocol, dispatcher_address, worker_address, &server);
+        tensorflow::Status status =
+            tensorflow::data::NewWorkerServer(config, &server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },

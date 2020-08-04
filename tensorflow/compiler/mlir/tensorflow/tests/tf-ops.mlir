@@ -191,6 +191,24 @@ func @testMul(%arg0: tensor<2xui16>) -> (tensor<2xui16>) {
 
 // -----
 
+// Test error message for incompatible element types.
+func @testIncompatibleElementTypes(%arg0: tensor<3x2xf32>, %arg1: tensor<3x2xf64>) -> (tensor<3x2xf32>) {
+    // expected-error @+1 {{'tf.Mul' op requires compatible element types for all operands and results}}
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<3x2xf32>, tensor<3x2xf64>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+// Test error message for incompatible element types.
+func @testIncompatibleElementTypes(%arg0: tensor<3x2xf32>, %arg1: tensor<3x2xf32>) -> (tensor<3x2xf64>) {
+    // expected-error @+1 {{'tf.Mul' op requires compatible element types for all operands and results}}
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf64>
+  return %0 : tensor<3x2xf64>
+}
+
+// -----
+
 // CHECK-LABEL: func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<10000xf32>, %arg3: tensor<*xi32>)
 func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<10000xf32>, %arg3: tensor<*xi32>) -> (tensor<100x100xf32>, tensor<*xf32>, tensor<10000xf32>, tensor<100x100xf32>, tensor<*xf32>, tensor<*xf32>) {
   %shape1 = constant dense<100> : tensor<2xi32>

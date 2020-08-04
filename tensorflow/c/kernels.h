@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 
@@ -183,6 +184,10 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrType(
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
     TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* val,
     TF_Status* status);
+
+// Returns the unique operation name for this OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName(
+    TF_OpKernelConstruction* ctx);
 
 // Allocates Tensor for output at given index. Caller takes ownership of
 // returned TF_Tensor and should deallocate it using TF_DeleteTensor(tensor).

@@ -24,17 +24,28 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetTransposeCode(
-    const OperationDef& op_def, const TransposeAttributes& attr,
-    Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+Transpose::Transpose(const OperationDef& definition,
+                     const TransposeAttributes& attr)
+    : GPUOperation(definition), attr_(attr) {
+  code_ = GetTransposeCode(definition_, attr_);
+}
+
+Transpose::Transpose(Transpose&& operation)
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
+
+Transpose& Transpose::operator=(Transpose&& operation) {
+  if (this != &operation) {
+    attr_ = operation.attr_;
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string Transpose::GetTransposeCode(const OperationDef& op_def,
+                                        const TransposeAttributes& attr) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   const std::string batch_id =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
@@ -100,37 +111,6 @@ std::string GetTransposeCode(
   c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
   c += "}\n";
   return c;
-}
-}  // namespace
-
-Transpose::Transpose(Transpose&& operation)
-    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
-
-Transpose& Transpose::operator=(Transpose&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status Transpose::Compile(const CreationContext& creation_context) {
-  std::string code = GetTransposeCode(definition_, attr_, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status Transpose::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  return absl::OkStatus();
 }
 
 int3 Transpose::GetGridSize() const {

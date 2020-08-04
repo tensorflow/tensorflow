@@ -48,8 +48,6 @@ class ConvBuffer1x1 : public GPUOperation {
   ConvBuffer1x1& operator=(const ConvBuffer1x1&) = delete;
 
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
   ConvWeightsDescription GetConvWeightsDescription() const {
@@ -106,6 +104,10 @@ class ConvBuffer1x1 : public GPUOperation {
   template <DataType T>
   absl::Status UploadBiases(const tflite::gpu::Tensor<Linear, T>& biases,
                             CLContext* context);
+
+  std::string GenerateConvBuffer1x1(
+      const OperationDef& op_def, const ConvBuffer1x1::ConvParams& conv_params,
+      Arguments* args);
 
   ConvParams conv_params_;
 };

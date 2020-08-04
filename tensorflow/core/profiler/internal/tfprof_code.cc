@@ -421,14 +421,15 @@ void TFCode::AddNode(TFGraphNode* node) {
   // TODO(xpan): Consider to release CodeDef after TFCode is built. It
   // takes a lot of memory.
   std::set<string> traces;
-  for (int i = 0; i < node->call_stack()->traces().size(); ++i) {
+  for (int i = 0, end = node->call_stack()->traces().size(); i < end; ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
     const string& trace = GetTraceString(node->call_stack()->traces().at(i));
     traces.insert(trace);
     pre_code_node = pre_code_node->AddChildren(
         trace, &node->call_stack()->traces().at(i), "");
-    if (i == node->call_stack()->traces().size() - 1) {
+    const int64 last_index = node->call_stack()->traces().size() - 1;
+    if (i == last_index) {
       pre_code_node->node->AddGraphNode(node);
     }
   }
@@ -446,12 +447,13 @@ void TFCode::Build() {
     TFGraphNode* fn = forward_it->second;
     CodeNode* leaf = nullptr;
     CodeNode* pre_code_node = root_.get();
-    for (int i = 0; i < fn->call_stack()->traces().size(); ++i) {
+    for (int i = 0, end = fn->call_stack()->traces().size(); i < end; ++i) {
       const string& trace =
           GetTraceString(fn->call_stack()->traces().at(i)) + kGradientSuffix;
       pre_code_node = pre_code_node->AddChildren(
           trace, &fn->call_stack()->traces().at(i), kGradientSuffix);
-      if (i == fn->call_stack()->traces().size() - 1) {
+      const int64 last_trace = fn->call_stack()->traces().size() - 1;
+      if (i == last_trace) {
         leaf = pre_code_node;
       }
     }

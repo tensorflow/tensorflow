@@ -365,7 +365,7 @@ static Value UpdateSliceInMinorDims(Location loc, Value v, Value update,
                                     ArrayRef<int64_t> minor_starts,
                                     OpBuilder *builder) {
   llvm::SmallVector<Value, 4> dus_starts(minor_starts.size());
-  for (int64_t i = 0; i < minor_starts.size(); ++i) {
+  for (uint64_t i = 0; i < minor_starts.size(); ++i) {
     dus_starts[i] = GetScalarConstOfType(builder->getIntegerType(32), loc,
                                          minor_starts[i], builder);
   }
@@ -808,7 +808,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
   for (auto it : llvm::enumerate(int_attr.getIntValues())) {
-    if (it.index() % shape[1] == column) {
+    if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
   }
@@ -1383,6 +1383,269 @@ class ConvertDiagPartOp : public OpRewritePattern<TF::DiagPartOp> {
     rewriter.replaceOpWithNewOp<ReshapeOp>(
         op, RankedTensorType::get(new_dims, input_type.getElementType()),
         reduce.getResult(0));
+    return success();
+  }
+};
+
+// Converts TensorFlow MatrixDiagPartOp to HLO ops.
+class ConvertMatrixDiagPartV3Op
+    : public OpRewritePattern<TF::MatrixDiagPartV3Op> {
+  using Shape = llvm::SmallVector<int64_t, 4>;
+
+  // Parse the "k" parameter. MatrixDiagPartV3 allows to specify the diagonal(s)
+  // with k. This can be either a single value (for a single diagonal) or a
+  // tuple of two values (starting and ending diagonal, for a band).
+  LogicalResult ExtractK(TF::MatrixDiagPartV3Op op, int64_t (*k)[2]) const {
+    DenseIntElementsAttr kattr;
+    if (!matchPattern(op.k(), m_Constant(&kattr))) {
+      return failure();
+    }
+    DenseIntElementsAttr::iterator it = kattr.begin();
+    (*k)[0] = (*it).getSExtValue();
+    it++;
+    if (it == kattr.end()) {
+      // Handle input like e.g. "k = 5", in which case we extract a single
+      // diagonal.
+      (*k)[1] = (*k)[0];
+    } else {
+      // Handle input like e.g. "k = [-1, 1]", in which case we extract a
+      // band (multiple diagonals).
+      (*k)[1] = (*it).getSExtValue();
+    }
+    return success();
+  }
+
+  // Utility method for broadcasting integer constants to a given shape.
+  BroadcastOp BroadcastConstant(Location loc, Shape shape, int32_t constant,
+                                int int_size, PatternRewriter &rewriter) const {
+    return rewriter.create<BroadcastOp>(
+        loc, RankedTensorType::get(shape, rewriter.getIntegerType(int_size)),
+        GetScalarConstOfType(rewriter.getIntegerType(int_size), loc, constant,
+                             &rewriter),
+        GetI64ElementsAttr(shape, &rewriter));
+  }
+
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::MatrixDiagPartV3Op op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    ShapedType input_type = op.input().getType().dyn_cast<ShapedType>();
+    auto element_type = input_type.getElementType();
+
+    // Align is a string specifying how superdiagonals and subdiagonals should
+    // be aligned/padded for diagonals that are shorter than max_diag_len. The
+    // format is "{super}_{sub}", with {super} the superdiagonal alignment and
+    // {sub} the subdiagonal alignment. "LEFT" means rows will be padded to the
+    // left, "RIGHT" means rows will be padded ot the right.  The default is
+    // "RIGHT_LEFT".
+    StringRef align = op.getAttrOfType<StringAttr>("align").getValue();
+    enum Alignment { kLeft, kRight };
+
+    // default is RIGHT_LEFT
+    Alignment superdiagonal_align = kRight;
+    Alignment subdiagonal_align = kLeft;
+
+    if (align == "RIGHT_LEFT") {
+      superdiagonal_align = kRight;
+      subdiagonal_align = kLeft;
+    } else if (align == "RIGHT_RIGHT") {
+      superdiagonal_align = kRight;
+      subdiagonal_align = kRight;
+    } else if (align == "LEFT_RIGHT") {
+      superdiagonal_align = kLeft;
+      subdiagonal_align = kRight;
+    } else if (align == "LEFT_LEFT") {
+      superdiagonal_align = kLeft;
+      subdiagonal_align = kLeft;
+    } else {
+      return failure();  // unsupported alignment
+    }
+
+    // MatrixDiagPart operates on a matrix of shape [I, J, ..., L, M, N], and
+    // will extract the diagonal(s) out of [M, N], for all [I, J, ..., L].
+    if (!input_type || !input_type.hasStaticShape()) return failure();
+    int64_t num_dims = input_type.getRank();
+    if (num_dims < 2) return failure();
+    int64_t rows = input_type.getDimSize(num_dims - 2);  // rows
+    int64_t cols = input_type.getDimSize(num_dims - 1);  // cols
+
+    // We extract the diagonals from k[0] up to and including k[1].
+    // Addressing is 0 for the main diagonal. (So k = [0, 0] would just extract
+    // the main diagonal). It's negative for subdiagonals (under and to the left
+    // of the main diagonal) and positive for superdiagonals (above and to the
+    // right of the main diagonal).
+    int64_t k[2];
+    if (failed(ExtractK(op, &k))) return failure();
+    int num_diags = k[1] - k[0] + 1;
+
+    // Shifting diagonals away from the main diagonal might shorten them. This
+    // is the longest diagonal we will see. We make this the last dimension of
+    // the output shape.
+    int64_t max_diag_len =
+        std::min(rows + std::min(k[1], static_cast<int64_t>(0)),
+                 cols + std::min(-k[0], static_cast<int64_t>(0)));
+
+    // The first dimension is the index vector dimension we'll use for gather.
+    // It's 1 here, but will be 2 once we glue x and y together.
+    Shape indices_shape({1, num_diags, max_diag_len});
+
+    RankedTensorType iota_type =
+        RankedTensorType::get(indices_shape, rewriter.getIntegerType(32));
+    Value iotaM =
+        rewriter.create<IotaOp>(loc, iota_type, rewriter.getI64IntegerAttr(1));
+    Value iotaN =
+        rewriter.create<IotaOp>(loc, iota_type, rewriter.getI64IntegerAttr(2));
+
+    // Boradcasted constants, of the same shape as iotaM and iotaN.
+    Value b_zero = BroadcastConstant(loc, indices_shape, 0, 32, rewriter);
+    Value b_false = BroadcastConstant(loc, indices_shape, 0, 1, rewriter);
+    Value b_true = BroadcastConstant(loc, indices_shape, 1, 1, rewriter);
+    Value b_k1 = BroadcastConstant(loc, indices_shape, k[1], 32, rewriter);
+    Value b_rows = BroadcastConstant(loc, indices_shape, rows, 32, rewriter);
+    Value b_cols = BroadcastConstant(loc, indices_shape, cols, 32, rewriter);
+    Value b_max_diag_len =
+        BroadcastConstant(loc, indices_shape, max_diag_len, 32, rewriter);
+
+    // d = k[1] - m
+    // (A.k.a. the number of the diagonal, depending on m. Note that we
+    //  subtract m here. This means we start with the superdiagonals and
+    //  move downwards towards the subdiagonals. So the start indices will
+    //  be decreasing.)
+    Value d = rewriter.create<SubOp>(loc, b_k1, iotaM);
+    Value neg_d = rewriter.create<NegOp>(loc, d);
+
+    // diag_len_d = min(rows + min(d, 0), cols - max(d, 0))
+    // (Length of a diagonal for a given d. Same as max_diag_len for m = 0.)
+    Value diag_len_d = rewriter.create<MinOp>(
+        loc,
+        rewriter.create<AddOp>(loc, b_rows,
+                               rewriter.create<MinOp>(loc, d, b_zero)),
+        rewriter.create<SubOp>(loc, b_cols,
+                               rewriter.create<MaxOp>(loc, d, b_zero)));
+
+    // offset is max_diag_len - diag_len_d if we're padding, 0 otherwise.
+    Value cmp;
+    if (subdiagonal_align == kRight && superdiagonal_align == kRight) {
+      cmp = b_true;
+    } else if (superdiagonal_align == kRight) {
+      // offset = d>=0 ? max_diag_len - diag_len_d : 0
+      cmp = rewriter.create<TF::GreaterEqualOp>(loc, d, b_zero);
+    } else if (subdiagonal_align == kRight) {
+      // offset = d<=0 ? max_diag_len - diag_len_d : 0
+      cmp = rewriter.create<TF::LessEqualOp>(loc, d, b_zero);
+    } else {
+      // offset = 0
+      cmp = b_false;
+    }
+
+    // This offset shifts the diagonals to the "left" or "right", depending
+    // on alignment.
+    Value offset = rewriter.create<SelectOp>(
+        loc, b_zero.getType(), cmp,
+        rewriter.create<SubOp>(loc, b_max_diag_len, diag_len_d), b_zero);
+
+    // x = max(d, 0) - offset
+    // y = max(-d, 0) - offset
+    Value x = rewriter.create<SubOp>(
+        loc, rewriter.create<MaxOp>(loc, d, b_zero), offset);
+    Value y = rewriter.create<SubOp>(
+        loc, rewriter.create<MaxOp>(loc, neg_d, b_zero), offset);
+
+    Value n_plus_x = rewriter.create<AddOp>(loc, iotaN, x);
+    Value n_plus_y = rewriter.create<AddOp>(loc, iotaN, y);
+
+    // GatherOp is happy about letting us index out of bounds values, but those
+    // values will be undefined. So we mask them later. Set up the boolean
+    // expression that tells us which entries, in the output shape, are out of
+    // bounds and thus become the padding_value.
+    Value x_in_bounds = rewriter.create<AndOp>(
+        loc,
+        rewriter.create<TF::GreaterEqualOp>(loc, b_false.getType(), n_plus_x,
+                                            b_zero),
+        rewriter.create<TF::LessOp>(loc, b_false.getType(), n_plus_x, b_cols));
+    Value y_in_bounds = rewriter.create<AndOp>(
+        loc,
+        rewriter.create<TF::GreaterEqualOp>(loc, b_false.getType(), n_plus_y,
+                                            b_zero),
+        rewriter.create<TF::LessOp>(loc, b_false.getType(), n_plus_y, b_rows));
+    Value in_bounds = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get(Shape({num_diags, max_diag_len}),
+                              rewriter.getIntegerType(1)),
+        rewriter.create<AndOp>(loc, x_in_bounds, y_in_bounds));
+
+    // Now combine x and y into the index data structure needed for gather.
+    Shape concat_shape({2, num_diags, max_diag_len});
+    Value start_indices = rewriter.create<ConcatenateOp>(
+        loc, RankedTensorType::get(concat_shape, rewriter.getIntegerType(32)),
+        mlir::ValueRange({n_plus_y, n_plus_x}),
+        mlir::IntegerAttr::get(rewriter.getIntegerType(64), 0));
+
+    // Shape of the final output. (Except for dimension folding in the
+    // single diagonal case.)
+    Shape output_shape;
+    for (int i = 0; i < num_dims - 2; i++) {
+      output_shape.push_back(input_type.getDimSize(i));
+    }
+    output_shape.push_back(num_diags);
+    output_shape.push_back(max_diag_len);
+    auto output_type = RankedTensorType::get(output_shape, element_type);
+
+    // A slice is the shape of what GatherOp copies per lookup. So the last
+    // two dimensions (M, N in the matrix-diag-part docs) are where we go
+    // through entry by entry.
+    ArrayRef<int64_t> input_shape = input_type.getShape();
+    Shape slice_sizes(input_shape.begin(), input_shape.end());
+    int slice_dimensions = slice_sizes.size();
+    slice_sizes[slice_dimensions - 2] = 1;
+    slice_sizes[slice_dimensions - 1] = 1;
+
+    // Dimensions of the input we won't see in the output (M and N).
+    SmallVector<int64_t, 2> collapsed_dims(
+        {slice_dimensions - 2, slice_dimensions - 1});
+
+    // Which dimensions (in the input) the two offset "columns" map to.
+    SmallVector<int64_t, 2> start_index_map({num_dims - 2, num_dims - 1});
+
+    // Gather the diagonal entries.
+    // TODO(kramm): For a single diagonal, this might be slower than the
+    //              mask + sum approach. Special-case num_diags==1?
+    auto dims_attr = GatherDimensionNumbers::get(
+        /*offset_dims=*/GetI64ElementsAttrForSeq(0, num_dims - 2, &rewriter),
+        /*collapsed_slice_dims=*/GetI64ElementsAttr(collapsed_dims, &rewriter),
+        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
+        /*index_vector_dim=*/rewriter.getI64IntegerAttr(0),
+        rewriter.getContext());
+    Value gather = rewriter.create<mhlo::GatherOp>(
+        loc, output_type, op.input(), start_indices, dims_attr,
+        GetI64ElementsAttr(slice_sizes, &rewriter));
+
+    // We now need to broadcast the "in_bounds" boolean expression, as well as
+    // the padding value, to do the final select.
+    Shape broadcast_bounds;
+    for (int i = 0; i < output_shape.size() - 2; i++) {
+      broadcast_bounds.push_back(output_shape[i]);
+    }
+    Value b_in_bounds = rewriter.create<BroadcastOp>(
+        loc, RankedTensorType::get(output_shape, rewriter.getIntegerType(1)),
+        in_bounds, GetI64ElementsAttr(broadcast_bounds, &rewriter));
+    Value b_padding = rewriter.create<BroadcastOp>(
+        loc, output_type, op.padding_value(),
+        GetI64ElementsAttr(output_shape, &rewriter));
+
+    // Replace all out-of-bounds values in the result with padding_value.
+    Value result = rewriter.create<SelectOp>(loc, output_type, b_in_bounds,
+                                             gather, b_padding);
+
+    if (num_diags == 1) {
+      // matrix_diag_part folds away the 1-sized band dimension if we only
+      // extract a single diagonal.
+      result = rewriter.create<ReshapeOp>(loc, op.getType(), result);
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
@@ -2367,19 +2630,21 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
     if (!input_ty) return failure();
 
     const int64_t rank = input_ty.getRank();
-    auto result_type = op.getResult().getType();
-    Operation *size =
-        GetScalarConstOfType(result_type.cast<TensorType>().getElementType(),
-                             op.getLoc(), 1, &rewriter);
+    auto result_ty = op.getResult().getType();
+    auto element_ty = result_ty.cast<TensorType>().getElementType();
+    Value size = GetScalarConstOfType(element_ty, op.getLoc(), 1, &rewriter);
     for (int64_t i = 0; i < rank; ++i) {
-      auto dim = rewriter.create<GetDimensionSizeOp>(
-          op.getLoc(), result_type, input,
-          rewriter.getIntegerAttr(rewriter.getIntegerType(32), i));
+      auto i32_ty = rewriter.getIntegerType(32);
+      auto size_ty = RankedTensorType::get({}, i32_ty);
+      auto dim_index = rewriter.getIntegerAttr(i32_ty, i);
+      Value dim = rewriter.create<GetDimensionSizeOp>(op.getLoc(), size_ty,
+                                                      input, dim_index);
+      dim = rewriter.create<mhlo::ConvertOp>(op.getLoc(), result_ty, dim);
       size = rewriter.create<chlo::BroadcastMulOp>(
-          op.getLoc(), size->getResult(0), dim.getResult(),
+          op.getLoc(), size, dim,
           /*DenseIntElementsAttr=*/DenseIntElementsAttr());
     }
-    rewriter.replaceOp(op, size->getResult(0));
+    rewriter.replaceOp(op, size);
 
     return success();
   }
@@ -2422,7 +2687,8 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                      rhs_type.getShape().drop_back(2),
                                      result_batch_shape_compile_time_extents);
   auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
-      loc, lhs_splitted.head(), rhs_splitted.head(),
+      loc, shape::ShapeType::get(rewriter->getContext()), lhs_splitted.head(),
+      rhs_splitted.head(),
       /*error=*/nullptr);
   // Lambda which handles the broadcasting of one side to the common
   // leading-batch dimensions.
@@ -2682,7 +2948,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     SmallVector<Value, 4> slices;
     slices.reserve(op.getNumResults());
 
-    for (int i = 0; i < op.getNumResults(); ++i) {
+    for (int i = 0, end = op.getNumResults(); i < end; ++i) {
       end_indices[dim_index] = begin_indices[dim_index] + split_sizes[i];
       slices.push_back(rewriter.create<mhlo::SliceOp>(
           op.getLoc(), op.value(), GetI64ElementsAttr(begin_indices, &rewriter),
@@ -2857,7 +3123,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     // verifier.
     int64_t slicing_dim_size =
         op.begin().getType().cast<RankedTensorType>().getShape()[0];
-    auto input_rank = input_shape.size();
+    const int input_rank = input_shape.size();
     for (int d = slicing_dim_size; d < input_rank; ++d) {
       // We only support slicing major dimensions, so minor dimensions after
       // slicing dimensions are all sliced with their full sizes.
@@ -2898,7 +3164,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     }
 
     // For non-slice dims, get the full slice of that dimension.
-    for (int d = slicing_dim_size; d < input_shape.size(); ++d) {
+    for (int d = slicing_dim_size, end = input_shape.size(); d < end; ++d) {
       slice_sizes.push_back(input_shape[d]);
       slice_begin_indices.push_back(zero);
     }
@@ -3594,7 +3860,8 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
         multiples.getType().getRank() != 1)
       return failure();
 
-    if (multiples.getNumElements() != input_shape.size()) return failure();
+    const int64_t input_shape_size = input_shape.size();
+    if (multiples.getNumElements() != input_shape_size) return failure();
 
     SmallVector<int64_t, 8> broadcasted_shape;
     SmallVector<int64_t, 4> broadcast_dimensions;
@@ -4381,7 +4648,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
     SmallVector<Value, 4> results;
     results.reserve(op.getNumResults());
 
-    for (int i = 0; i < op.getNumResults(); ++i) {
+    for (int i = 0, end = op.getNumResults(); i < end; ++i) {
       begin_indices[axis] = i;
       end_indices[axis] = i + 1;
 
@@ -5465,37 +5732,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   // Add lowering patterns to the list.
   OwningRewritePatternList patterns;
-  populateWithGenerated(context, &patterns);
-
-  // Add patterns that lower some of the high level TensorFlow ops to lower
-  // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
-  // here for lowering to HLO.
-  TF::PopulateLoweringTFPatterns(context, &patterns);
-  patterns.insert<
-      ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
-      ConvertBiasAddOp, ConvertBroadcastToOp, ConvertBF16FloorDivOp,
-      ConvertConv2DOp, ConvertConv3DOp, ConvertDepthConv2DOp,
-      ConvertConv2DBackpropFilterOp, ConvertConv3DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
-      ConvertCumsumOp, ConvertDiagPartOp, ConvertEinsumOp,
-      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
-      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
-      ConvertAvgPool2DOp, ConvertAvgPool3DOp, ConvertAvgPool2DGradOp,
-      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
-      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
-      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
-      ConvertDynamicRangeOp, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
-      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
-      ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
-      ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
-      ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
-      ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
-      ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertXlaShardingOp,
-      ConvertXlaDynamicUpdateSliceOp>(op->getContext());
+  PopulateLegalizeTfPatterns(context, &patterns);
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
@@ -5531,6 +5768,41 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   }
 
   return applyPartialConversion(op, target, patterns);
+}
+
+void PopulateLegalizeTfPatterns(MLIRContext *context,
+                                OwningRewritePatternList *patterns) {
+  populateWithGenerated(context, patterns);
+
+  // Add patterns that lower some of the high level TensorFlow ops to lower
+  // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
+  // here for lowering to HLO.
+  TF::PopulateLoweringTFPatterns(context, patterns);
+  patterns->insert<
+      ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
+      ConvertBiasAddOp, ConvertBroadcastToOp, ConvertBF16FloorDivOp,
+      ConvertConv2DOp, ConvertConv3DOp, ConvertDepthConv2DOp,
+      ConvertConv2DBackpropFilterOp, ConvertConv3DBackpropFilterOp,
+      ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
+      ConvertCumsumOp, ConvertDiagPartOp, ConvertEinsumOp,
+      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
+      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
+      ConvertAvgPool2DOp, ConvertAvgPool3DOp, ConvertAvgPool2DGradOp,
+      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
+      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
+      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
+      ConvertDynamicRangeOp, ConvertMatrixDiagPartV3Op, ConvertRangeOp,
+      ConvertSelectV2Op, ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
+      ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
+      ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
+      ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
+      ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
+      ConvertRandomShuffleOp, ConvertXlaShardingOp,
+      ConvertXlaDynamicUpdateSliceOp>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(

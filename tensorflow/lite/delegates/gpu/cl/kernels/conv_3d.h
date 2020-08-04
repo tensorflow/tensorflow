@@ -40,7 +40,6 @@ class Conv3D : public GPUOperation {
  public:
   Conv3D() = default;
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -105,6 +104,9 @@ class Conv3D : public GPUOperation {
                              const OperationDef& definition, int src_slices,
                              int dst_slices, bool x_kernel_is_1,
                              bool y_kernel_is_1, bool z_kernel_is_1) const;
+
+  std::string GenerateConv3D(const OperationDef& op_def, bool stride_correction,
+                             const Conv3D::ConvParams& conv_params);
 
   int3 stride_;
   int3 padding_;

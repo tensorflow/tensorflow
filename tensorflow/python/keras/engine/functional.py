@@ -33,6 +33,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training as training_lib
@@ -134,8 +135,9 @@ class Functional(training_lib.Model):
         (isinstance(self._nested_inputs, (list, tuple, dict)) and
          not any(nest.is_nested(t) for t in self._nested_inputs)))
 
-    if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
-      base_layer_utils.create_keras_history(self._nested_outputs)
+    if not keras_tensor.keras_tensors_enabled():
+      if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
+        base_layer_utils.create_keras_history(self._nested_outputs)
 
     self._validate_graph_inputs_and_outputs()
 
@@ -247,6 +249,32 @@ class Functional(training_lib.Model):
         RuntimeError: if called in Eager mode.
     """
     return nest.map_structure(backend.int_shape, self.input)
+
+  @property
+  def input_spec(self):
+    if hasattr(self, '_manual_input_spec'):
+      return self._manual_input_spec
+    if (isinstance(self._nested_inputs, (dict, list, tuple)) and
+        len(self._nested_inputs) != len(self.inputs)):
+      # Case where we have a nested structure.
+      # In such a case we can't safely run any checks.
+      return None
+    if isinstance(self._nested_inputs, dict):
+      # Case where `_nested_inputs` is a plain dict of Inputs.
+      names = sorted(self._nested_inputs.keys())
+      return [input_spec.InputSpec(
+          shape=shape_with_no_batch_size(self._nested_inputs[name]),
+          allow_last_axis_squeeze=True, name=name) for name in names]
+    else:
+      # Single input, or list / tuple of inputs.
+      # The data may be passed as a dict keyed by input name.
+      return [input_spec.InputSpec(
+          shape=shape_with_no_batch_size(x), allow_last_axis_squeeze=True,
+          name=x._keras_history.layer.name) for x in self.inputs]
+
+  @input_spec.setter
+  def input_spec(self, value):
+    self._manual_input_spec = value
 
   @property
   def output(self):
@@ -1029,26 +1057,6 @@ def _should_skip_first_node(layer):
           isinstance(layer._layers[0], input_layer_module.InputLayer))
 
 
-def _deserialize_keras_tensors(kwargs, layer_map):
-  """Deserializes Keras Tensors passed to `call`.."""
-
-  def _deserialize_keras_tensor(t):
-    """Deserializes a single Keras Tensor passed to `call`."""
-    if isinstance(t, tf_utils.ListWrapper):
-      t = t.as_list()
-      layer_name = t[0]
-      node_index = t[1]
-      tensor_index = t[2]
-
-      layer = layer_map[layer_name]
-      node = layer._inbound_nodes[node_index]
-      return nest.flatten(node.outputs)[tensor_index]
-    return t
-
-  kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
-  return nest.map_structure(_deserialize_keras_tensor, kwargs)
-
-
 def connect_ancillary_layers(model, created_layers):
   """Adds layers that are not connected to the outputs to the model."""
   # Layers not connected to outputs, such as those added in `add_loss`.
@@ -1107,6 +1115,25 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     if isinstance(layer, input_layer_module.InputLayer):
       return 0
     return node_index_map.get((layer.name, config_node_index), None)
+
+  def _deserialize_keras_tensors(kwargs, layer_map):
+    """Deserializes Keras Tensors passed to `call`.."""
+
+    def _deserialize_keras_tensor(t):
+      """Deserializes a single Keras Tensor passed to `call`."""
+      if isinstance(t, tf_utils.ListWrapper):
+        t = t.as_list()
+        layer_name = t[0]
+        node_index = t[1]
+        tensor_index = t[2]
+
+        layer = layer_map[layer_name]
+        node = layer._inbound_nodes[get_node_index(layer, node_index)]
+        return nest.flatten(node.outputs)[tensor_index]
+      return t
+
+    kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
+    return nest.map_structure(_deserialize_keras_tensor, kwargs)
 
   def process_node(layer, node_data):
     """Deserialize a node.
@@ -1312,3 +1339,12 @@ def get_network_config(network, serialize_layer_fn=None):
   model_outputs = tf_utils.convert_inner_node_data(model_outputs)
   config['output_layers'] = model_outputs
   return config
+
+
+def shape_with_no_batch_size(x):
+  if x.shape.rank is None:
+    return None
+  shape = x.shape.as_list()
+  if shape:
+    shape[0] = None
+  return shape

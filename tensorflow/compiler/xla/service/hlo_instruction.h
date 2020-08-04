@@ -1419,6 +1419,11 @@ class HloInstruction {
   std::unique_ptr<HloInstruction> Clone(
       const string& suffix = "clone", HloCloneContext* context = nullptr) const;
 
+  // Clones the HLO instruction as above but with new shape.
+  std::unique_ptr<HloInstruction> CloneWithNewShape(
+      const Shape& shape, const string& suffix = "clone",
+      HloCloneContext* context = nullptr) const;
+
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,

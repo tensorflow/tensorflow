@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -36,13 +36,11 @@ class TestLhloToLLVMPass
     ModuleOp m = getOperation();
 
     OwningRewritePatternList patterns;
-    LLVMTypeConverter converter(m.getContext());
+    LLVMTypeConverter converter(&getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
-    PopulateLhloToLLVMConversionPatterns(
-        LowerToLLVMOptions::getDefaultOptions(), &converter, &patterns);
-    mlir::populateLoopToStdConversionPatterns(patterns, &getContext());
-
-    mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
+    PopulateLhloToLLVMConversionPatterns(&converter, &patterns);
+    populateLoopToStdConversionPatterns(patterns, &getContext());
+    populateAffineToStdConversionPatterns(patterns, &getContext());
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
@@ -57,8 +55,9 @@ class TestLhloToLLVMPass
 
 }  // namespace
 
-static PassRegistration<TestLhloToLLVMPass> legalize_lhlo_pass(
-    "test-lhlo-legalize-to-llvm", "Legalize from LHLO dialect to LLVM.");
+std::unique_ptr<Pass> createTestLhloToLLVMPass() {
+  return std::make_unique<TestLhloToLLVMPass>();
+}
 
 }  // namespace lmhlo
 }  // namespace mlir

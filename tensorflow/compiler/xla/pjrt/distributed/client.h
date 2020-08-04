@@ -29,7 +29,10 @@ namespace xla {
 
 class DistributedRuntimeClient {
  public:
-  explicit DistributedRuntimeClient(std::shared_ptr<::grpc::Channel> channel);
+  DistributedRuntimeClient(std::shared_ptr<::grpc::Channel> channel,
+                           absl::Duration rpc_timeout);
+  explicit DistributedRuntimeClient(std::shared_ptr<::grpc::Channel> channel)
+      : DistributedRuntimeClient(channel, absl::Seconds(120)) {}
   ~DistributedRuntimeClient();
 
   xla::Status Connect(const LocalTopologyProto& local_topology,
@@ -42,7 +45,7 @@ class DistributedRuntimeClient {
 
  private:
   const std::unique_ptr<grpc::DistributedRuntimeService::Stub> stub_;
-  const absl::Duration rpc_timeout_ = absl::Seconds(120);
+  const absl::Duration rpc_timeout_;
 };
 
 }  // namespace xla

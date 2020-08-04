@@ -176,6 +176,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_GATHER:
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
       // If the op takes bool input, it is version 3.
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
