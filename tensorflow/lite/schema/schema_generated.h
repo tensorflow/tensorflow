@@ -4742,22 +4742,29 @@ flatbuffers::Offset<ConcatenationOptions> CreateConcatenationOptions(flatbuffers
 
 struct AddOptionsT : public flatbuffers::NativeTable {
   typedef AddOptions TableType;
+  bool pot_scale_int16;
   tflite::ActivationFunctionType fused_activation_function;
   AddOptionsT()
-      : fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : pot_scale_int16(true),
+        fused_activation_function(tflite::ActivationFunctionType_NONE) {
   }
 };
 
 struct AddOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef AddOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_FUSED_ACTIVATION_FUNCTION = 4
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_POT_SCALE_INT16 = 6
   };
+  bool pot_scale_int16() const {
+    return GetField<uint8_t>(VT_POT_SCALE_INT16, 0) != 0;
+  }
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            verifier.EndTable();
   }
@@ -5907,22 +5914,29 @@ flatbuffers::Offset<DepthToSpaceOptions> CreateDepthToSpaceOptions(flatbuffers::
 
 struct SubOptionsT : public flatbuffers::NativeTable {
   typedef SubOptions TableType;
+  bool pot_scale_int16;
   tflite::ActivationFunctionType fused_activation_function;
   SubOptionsT()
-      : fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : pot_scale_int16(true),
+        fused_activation_function(tflite::ActivationFunctionType_NONE) {
   }
 };
 
 struct SubOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SubOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_FUSED_ACTIVATION_FUNCTION = 4
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_POT_SCALE_INT16 = 6
   };
+  bool pot_scale_int16() const {
+    return GetField<uint8_t>(VT_POT_SCALE_INT16, 0) != 0;
+  }
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            verifier.EndTable();
   }
