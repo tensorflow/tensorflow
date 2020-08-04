@@ -58,18 +58,6 @@ class FileJournalWriter : public JournalWriter {
   std::unique_ptr<io::RecordWriter> writer_;
 };
 
-// NoopJournalWriter implements the JournalWriter interface, but doesn't
-// actually write journal entries anywhere.
-class NoopJournalWriter : public JournalWriter {
- public:
-  // Creates a journal writer which does nothing.
-  explicit NoopJournalWriter();
-  NoopJournalWriter(const NoopJournalWriter&) = delete;
-  NoopJournalWriter& operator=(const NoopJournalWriter&) = delete;
-
-  Status Write(Update update) override;
-};
-
 // Interface for reading from a journal.
 class JournalReader {
  public:

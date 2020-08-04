@@ -47,6 +47,10 @@ class DataServiceDispatcherImpl {
   explicit DataServiceDispatcherImpl(
       const experimental::DispatcherConfig& config);
 
+  // Starts the dispatcher. If there is a journal, this will read from the
+  // journal to restore the dispatcher's state.
+  Status Start();
+
   // See dispatcher.proto for API documentation.
 
   /// Worker-facing API.
@@ -126,6 +130,10 @@ class DataServiceDispatcherImpl {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
   Status Apply(const Update& update) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Applies a state update, but doesn't update the journal. Only meant to be
+  // used when recovering state when the dispatcher starts.
+  Status ApplyWithoutJournaling(const Update& update)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig& config_;
 
@@ -143,7 +151,8 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_
       TF_GUARDED_BY(mu_);
 
-  std::unique_ptr<JournalWriter> journal_writer_ TF_GUARDED_BY(mu_);
+  absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
+      TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);

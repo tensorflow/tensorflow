@@ -61,7 +61,7 @@ class DispatcherState {
   DispatcherState& operator=(const DispatcherState&) = delete;
 
   // Applies the given update to the dispatcher's state.
-  Status Apply(Update update, JournalWriter* journal_writer);
+  Status Apply(Update update);
 
   // A dataset registered with the dispatcher.
   struct Dataset {

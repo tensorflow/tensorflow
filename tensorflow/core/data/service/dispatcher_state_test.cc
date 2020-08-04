@@ -28,31 +28,28 @@ namespace data {
 namespace {
 Status RegisterDatasetWithIdAndFingerprint(int64 id, uint64 fingerprint,
                                            DispatcherState* state) {
-  NoopJournalWriter journal_writer;
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(id);
   register_dataset->set_fingerprint(fingerprint);
-  TF_RETURN_IF_ERROR(state->Apply(update, &journal_writer));
+  TF_RETURN_IF_ERROR(state->Apply(update));
   return Status::OK();
 }
 
 Status CreateAnonymousJob(int64 job_id, int64 dataset_id,
                           DispatcherState* state) {
-  NoopJournalWriter journal_writer;
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
   create_job->set_dataset_id(dataset_id);
   create_job->set_processing_mode(ProcessingModeDef::PARALLEL_EPOCHS);
-  TF_RETURN_IF_ERROR(state->Apply(update, &journal_writer));
+  TF_RETURN_IF_ERROR(state->Apply(update));
   return Status::OK();
 }
 
 Status CreateNamedJob(int64 job_id, int64 dataset_id,
                       DispatcherState::NamedJobKey named_job_key,
                       DispatcherState* state) {
-  NoopJournalWriter journal_writer;
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
@@ -61,16 +58,15 @@ Status CreateNamedJob(int64 job_id, int64 dataset_id,
   NamedJobKeyDef* key = create_job->mutable_named_job_key();
   key->set_name(named_job_key.name);
   key->set_index(named_job_key.index);
-  TF_RETURN_IF_ERROR(state->Apply(update, &journal_writer));
+  TF_RETURN_IF_ERROR(state->Apply(update));
   return Status::OK();
 }
 
 Status FinishJob(int64 job_id, DispatcherState* state) {
-  NoopJournalWriter journal_writer;
   Update update;
   FinishJobUpdate* finish_job = update.mutable_finish_job();
   finish_job->set_job_id(job_id);
-  TF_RETURN_IF_ERROR(state->Apply(update, &journal_writer));
+  TF_RETURN_IF_ERROR(state->Apply(update));
   return Status::OK();
 }
 }  // namespace
@@ -117,10 +113,9 @@ TEST(DispatcherState, NextAvailableDatasetId) {
 }
 
 TEST(DispatcherState, UnknownUpdate) {
-  NoopJournalWriter journal_writer;
   DispatcherState state;
   Update update;
-  Status s = state.Apply(update, &journal_writer);
+  Status s = state.Apply(update);
   EXPECT_EQ(s.code(), error::INTERNAL);
 }
 

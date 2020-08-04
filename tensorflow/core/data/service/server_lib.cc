@@ -82,6 +82,10 @@ void DispatchGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
   service_ = absl::make_unique<GrpcDispatcherImpl>(builder, config_).release();
 }
 
+Status DispatchGrpcDataServer::StartServiceInternal() {
+  return service_->Start();
+}
+
 Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   GetWorkersRequest req;
   GetWorkersResponse resp;
