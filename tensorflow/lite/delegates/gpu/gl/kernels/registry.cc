@@ -96,6 +96,7 @@ class Registry : public NodeShader {
     insert_op(Type::SOFTMAX, NewSoftmaxNodeShader);
 
     insert_elementwise_op(Type::ABS);
+    insert_elementwise_op(Type::COPY);
     insert_elementwise_op(Type::COS);
     insert_elementwise_op(Type::DIV);
     insert_elementwise_op(Type::ELU);
