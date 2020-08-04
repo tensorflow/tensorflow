@@ -4799,7 +4799,7 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   let hasCanonicalizer = 1;
 }
 
-def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, SameOperandsAndResultType, TF_CwiseUnary]> {
   let summary = "Computes natural logarithm of (1 + x) element-wise.";
 
   let description = [{

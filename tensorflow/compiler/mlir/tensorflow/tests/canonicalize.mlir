@@ -143,6 +143,19 @@ func @testConcatCanonicalization(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>)
   return %1 : tensor<2x2xi32>
 }
 
+// CHECK-LABEL: testConcatCwiseUnary
+func @testConcatCwiseUnary(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<i32>) -> tensor<?x2xf32> {
+
+  // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2)
+  // CHECK: %[[LOG1P:.*]] = "tf.Log1p"(%[[CONCAT]])
+  // CHECK: return %[[LOG1P]]
+  %0 = "tf.Log1p"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  %1 = "tf.Log1p"(%arg1) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  %2 = "tf.ConcatV2"(%0, %1, %arg2) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
+
+  return %2 : tensor<?x2xf32>
+}
+
 // CHECK-LABEL: testConcatCwiseBinaryOnInnerDim
 func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
   %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x2xf32> {

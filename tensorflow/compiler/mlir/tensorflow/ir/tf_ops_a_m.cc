@@ -514,6 +514,66 @@ void ConcatOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 namespace {
 
+// Hoist coefficient-wise unary operation out of the Concat op:
+//
+//   %0 = "tf.Log1p"(%arg_0)
+//   %1 = "tf.Log1p"(%arg_1)
+//   ...
+//   %n = "tf.Log1p"(%arg_n)
+//   %m = "tf.ConcatV2"(%0, %1, ..., %n, %axis)
+//
+// Rewrite it to:
+//
+//   %0 = "tf.ConcatV2"(%arg_0, %arg_1, ..., %arg_n, %axis)
+//   %1 = "tf.Log1p"(%0)
+class HoistCwiseUnaryOutOfConcat : public OpRewritePattern<TF::ConcatV2Op> {
+ public:
+  explicit HoistCwiseUnaryOutOfConcat(MLIRContext *context)
+      : OpRewritePattern<TF::ConcatV2Op>(context) {}
+  LogicalResult matchAndRewrite(TF::ConcatV2Op op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
+    TF::ConcatV2Op op, PatternRewriter &rewriter) const {
+  auto loc = op.getLoc();
+
+  // All concat operands must be defined by ops.
+  Operation *first_arg_op = op.values().front().getDefiningOp();
+  if (first_arg_op == nullptr) return failure();
+
+  // All concat operands must be produced by the coeff-wise unary operation.
+  if (!first_arg_op->hasTrait<OpTrait::TF::CwiseUnary>()) return failure();
+
+  // All concat operands must be defined by the op of same kind.
+  bool args_same_op = llvm::all_of(op.values(), [&](Value arg) -> bool {
+    Operation *arg_op = arg.getDefiningOp();
+    return arg_op && arg_op->getName() == first_arg_op->getName();
+  });
+  if (!args_same_op) return failure();
+
+  // Collect unary operations operands.
+  auto unary_operands = llvm::map_range(op.values(), [](Value arg) -> Value {
+    return arg.getDefiningOp()->getOperand(0);
+  });
+  SmallVector<Value, 8> unary_ops_args(unary_operands);
+
+  // Concatenate unary ops operands.
+  auto concat_unary_operands =
+      rewriter.create<ConcatV2Op>(loc, op.getType(), unary_ops_args, op.axis());
+
+  // Replace original concat with an unary op.
+  OperationState new_unary_op_state(loc, first_arg_op->getName().getStringRef(),
+                                    concat_unary_operands.getResult(),
+                                    op.getResult().getType(),
+                                    ArrayRef<NamedAttribute>());
+  Operation *new_unary_op = rewriter.createOperation(new_unary_op_state);
+
+  rewriter.replaceOp(op, new_unary_op->getResults());
+
+  return success();
+}
+
 // Hoist coefficient-wise binary operation out of the Concat op:
 //
 //   %0 = tf.Mul(%lhs_0, %rhs_0)
@@ -662,7 +722,8 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
 
 void ConcatV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                              MLIRContext *context) {
-  results.insert<HoistCwiseBinaryOutOfConcat>(context);
+  results.insert<HoistCwiseBinaryOutOfConcat, HoistCwiseUnaryOutOfConcat>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -77,6 +77,9 @@ def TF_CannotDuplicate : NativeOpTrait<"TF::CannotDuplicate">;
 // example tf.Sub operation.
 def TF_CwiseBinary : NativeOpTrait<"TF::CwiseBinary">;
 
+// Coefficient wise unary operation, for example tf.Sqrt operation.
+def TF_CwiseUnary : NativeOpTrait<"TF::CwiseUnary">;
+
 // Variant of broadcastable trait that considers TF's subtype behavior.
 class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
     TCOpResIsShapedTypePred<opId, resId>,
