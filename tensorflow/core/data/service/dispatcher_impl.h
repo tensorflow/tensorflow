@@ -124,6 +124,8 @@ class DataServiceDispatcherImpl {
   Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
                              ProcessingMode processing_mode, int64 dataset_id)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Applies a state update, updating both the journal and the in-memory state.
+  Status Apply(const Update& update) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig& config_;
 
@@ -141,6 +143,7 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_
       TF_GUARDED_BY(mu_);
 
+  std::unique_ptr<JournalWriter> journal_writer_ TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);

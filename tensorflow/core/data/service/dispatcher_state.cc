@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -24,7 +25,8 @@ namespace data {
 
 DispatcherState::DispatcherState() {}
 
-Status DispatcherState::Apply(Update update) {
+Status DispatcherState::Apply(Update update, JournalWriter* journal_writer) {
+  TF_RETURN_IF_ERROR(journal_writer->Write(update));
   switch (update.update_type_case()) {
     case Update::kRegisterDataset:
       RegisterDataset(update.register_dataset());

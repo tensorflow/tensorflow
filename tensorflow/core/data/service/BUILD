@@ -61,6 +61,7 @@ cc_library(
         ":dispatcher_proto_cc",
         ":dispatcher_state",
         ":grpc_util",
+        ":journal",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
         "//tensorflow/c:c_api_internal",
@@ -87,6 +88,7 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":data_service",
+        ":journal",
         ":journal_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -100,6 +102,7 @@ tf_cc_test(
     deps = [
         ":common_proto_cc",
         ":dispatcher_state",
+        ":journal",
         ":journal_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
