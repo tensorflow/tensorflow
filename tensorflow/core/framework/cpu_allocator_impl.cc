@@ -75,7 +75,7 @@ class CPUAllocator : public Allocator {
   string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    if (num_bytes > LargeAllocationWarningBytes() &&
+    if (num_bytes > static_cast<size_t>(LargeAllocationWarningBytes()) &&
         single_allocation_warning_count_ < kMaxSingleAllocationWarnings) {
       ++single_allocation_warning_count_;
       LOG(WARNING) << "Allocation of " << num_bytes << " exceeds "

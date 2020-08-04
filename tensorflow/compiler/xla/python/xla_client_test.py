@@ -115,6 +115,10 @@ def TestFactory(xla_backend, cloud_tpu=False):
     """Convenience wrapper to create Numpy arrays with a np.float32 dtype."""
     return np.array(*args, dtype=np.float32, **kwargs)
 
+  def NumpyArrayF64(*args, **kwargs):
+    """Convenience wrapper to create Numpy arrays with a np.float64 dtype."""
+    return np.array(*args, dtype=np.float64, **kwargs)
+
   def NumpyArrayS32(*args, **kwargs):
     """Convenience wrapper to create Numpy arrays with a np.int32 dtype."""
     return np.array(*args, dtype=np.int32, **kwargs)
@@ -882,11 +886,19 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.Abs(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.abs(arr)])
 
-    def testTanh(self):
+    def testTanhF32(self):
       c = self._NewComputation()
-      arr = NumpyArrayF32([3.3, 12.1])
+      arr = NumpyArrayF32([-0.2, 3.3, 12.1, 0.1, 0.0001])
       ops.Tanh(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.tanh(arr)])
+
+    def testTanhF64(self):
+      if self.backend.platform == "tpu":
+        self.skipTest("TPU doesn't support 64bit tanh")
+      c = self._NewComputation()
+      arr = NumpyArrayF64([-0.2, 3.3, 12.1, 0.1, 0.0001])
+      ops.Tanh(ops.Constant(c, arr))
+      self._ExecuteAndCompareClose(c, expected=[np.tanh(arr)], rtol=1e-12)
 
     def testTranspose(self):
 
@@ -1897,11 +1909,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
       out = ops.Add(p1, p2)
       c.setup_alias([], 0, [])
       c = c.build(out)
-      if self.backend.platform != "tpu":
-        with self.assertRaisesRegex(
-            RuntimeError, "Buffer aliasing is not supported "
-            "by XLA for non-TPU backends"):
-          self.backend.compile(c)
 
   tests.append(AliasTest)
 
@@ -1979,7 +1986,8 @@ def TestFactory(xla_backend, cloud_tpu=False):
     def testRoundTrip(self, dtype, shape):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
       x_ptr = x.__array_interface__["data"][0]
-      buffer = self.backend.buffer_from_pyval(x)
+      buffer = self.backend.buffer_from_pyval(
+          x, host_buffer_semantics=xla_client.HostBufferSemantics.ZERO_COPY)
       y = np.array(buffer, copy=False)
       y_ptr = y.__array_interface__["data"][0]
       np.testing.assert_array_equal(x, y)
@@ -1988,7 +1996,9 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertTrue((x_ptr & 15) != 0 or x_ptr == y_ptr)
       self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
 
-      buffer2 = self.backend.buffer_from_pyval(x, force_copy=True)
+      during_call = xla_client.HostBufferSemantics.IMMUTABLE_ONLY_DURING_CALL
+      buffer2 = self.backend.buffer_from_pyval(
+          x, host_buffer_semantics=during_call)
       z = np.array(buffer2, copy=False)
       self.assertNotEqual(x.__array_interface__["data"][0],
                           z.__array_interface__["data"][0])
@@ -2026,6 +2036,67 @@ def TestFactory(xla_backend, cloud_tpu=False):
       del server
 
   tests.append(ProfilerTest)
+
+  class TracebackTest(absltest.TestCase):
+
+    def setUp(self):
+      super(TracebackTest, self).setUp()
+      self.backend = xla_backend()
+
+    def testNoTracebacksIfDisabled(self):
+      with xla_client.tracebacks(enabled=False):
+        self.assertEqual(None, xla_client.Traceback.get_traceback())
+        buffer = self.backend.buffer_from_pyval(np.array(7, np.int32))
+        self.assertEqual(None, buffer.traceback)
+
+        b = xla_client.XlaBuilder("computation")
+        ops.Add(ops.Constant(b, np.int32(1)), ops.Constant(b, np.int32(2)))
+        e = self.backend.compile(b.build())
+        self.assertEqual(None, e.traceback)
+
+    def assertIsTracebackContaining(self, tb, function):
+      self.assertIsInstance(tb, xla_client.Traceback)
+      self.assertIn(function, str(tb))
+      self.assertTrue(any(f.function_name == function for f in tb.frames))
+
+    def testTracebacks(self):
+      with xla_client.tracebacks(enabled=True):
+        tb = xla_client.Traceback.get_traceback()
+        self.assertIsTracebackContaining(tb, "testTracebacks")
+
+        # Tracebacks are not implemented on the TPU driver extension's variant
+        # of buffers and executables.
+        if not isinstance(self.backend, xla_client.Client):
+          return
+
+        buffer = self.backend.buffer_from_pyval(np.array(7, np.int32))
+        self.assertIsTracebackContaining(buffer.traceback, "testTracebacks")
+
+        b = xla_client.XlaBuilder("computation")
+        ops.Add(ops.Constant(b, np.int32(1)), ops.Constant(b, np.int32(2)))
+        e = self.backend.compile(b.build())
+        self.assertIsTracebackContaining(e.traceback, "testTracebacks")
+
+    def testNestedFunction(self):
+
+      def AFunction():
+
+        def AnotherFunction():
+          return xla_client.Traceback.get_traceback()
+
+        return AnotherFunction()
+
+      with xla_client.tracebacks(enabled=True):
+        tb = AFunction()
+        self.assertIsInstance(tb, xla_client.Traceback)
+        frames = tb.frames
+        i = next(
+            i for (i, f) in enumerate(frames) if f.function_name == "AFunction")
+        self.assertEqual(frames[i - 1].function_name, "AnotherFunction")
+        self.assertEqual(frames[i + 1].function_name, "testNestedFunction")
+
+  tests.append(TracebackTest)
+
   return tests
 
 

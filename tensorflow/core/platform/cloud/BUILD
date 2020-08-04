@@ -20,6 +20,7 @@ package_group(
     packages = [
         "//learning/brain/tfrc/...",
         "//tensorflow/...",
+        "//third_party/gstpufs/...",
     ],
 )
 
@@ -102,6 +103,7 @@ cc_library(
         "//tensorflow/core/platform:retrying_utils",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/profiler/lib:traceme",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
@@ -138,6 +140,7 @@ cc_library(
         "//tensorflow/core/platform:retrying_utils",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/profiler/lib:traceme",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,

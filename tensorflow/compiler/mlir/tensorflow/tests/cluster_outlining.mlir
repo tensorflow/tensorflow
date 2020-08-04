@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-device-cluster-outlining | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -tf-device-cluster-outlining | FileCheck %s
 
 // Tests simple case of a single `tf_device.cluster`.
 

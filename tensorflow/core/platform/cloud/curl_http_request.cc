@@ -145,6 +145,8 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L));
 
   // TODO(b/74351157): Enable HTTP/2.
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
+                                           CURL_HTTP_VERSION_1_1));
 
   // Set up the progress meter.
   CHECK_CURL_OK(
@@ -166,7 +168,9 @@ CurlHttpRequest::~CurlHttpRequest() {
     libcurl_->curl_slist_free_all(resolve_list_);
   }
   if (put_body_) {
-    fclose(put_body_);
+    if (fclose(put_body_) != 0) {
+      LOG(ERROR) << "fclose() failed: " << strerror(errno);
+    }
   }
   if (curl_) {
     libcurl_->curl_easy_cleanup(curl_);
@@ -237,7 +241,9 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   is_method_set_ = true;
   method_ = RequestMethod::kPut;
   if (put_body_) {
-    fclose(put_body_);
+    if (fclose(put_body_) != 0) {
+      LOG(ERROR) << "fclose() failed: " << strerror(errno);
+    }
   }
   put_body_ = fopen(body_filepath.c_str(), "r");
   if (!put_body_) {

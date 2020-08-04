@@ -374,8 +374,8 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
   const int64 stride_w = GetTensorDim(strides, data_format, 'W');
   TF_REQUIRES(
       stride_n == 1 && stride_c == 1,
-      errors::InvalidArgument("Current implementation does not yet support "
-                              "strides in the batch and depth dimensions."));
+      errors::Unimplemented("Current implementation does not yet support "
+                            "strides in the batch and depth dimensions."));
   TF_REQUIRES(stride_h > 0 && stride_w > 0,
               errors::InvalidArgument(
                   "Row and column strides should be larger than 0."));
@@ -386,8 +386,8 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
   const int64 dilation_w = GetTensorDim(dilations, data_format, 'W');
   TF_REQUIRES(
       dilation_n == 1 && dilation_c == 1,
-      errors::InvalidArgument("Current implementation does not yet support "
-                              "dilations in the batch and depth dimensions."));
+      errors::Unimplemented("Current implementation does not yet support "
+                            "dilations in the batch and depth dimensions."));
   TF_REQUIRES(
       dilation_h > 0 && dilation_w > 0,
       errors::InvalidArgument("Dilated rates should be larger than 0."));

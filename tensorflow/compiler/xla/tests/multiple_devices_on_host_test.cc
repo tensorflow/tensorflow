@@ -45,7 +45,8 @@ void CompileAndExecute(
       xla::ClientLibrary::GetXlaService(client->platform())
           ->backend()
           .memory_allocator());
-  StatusOr<ScopedShapedBuffer> result = executable->Run({}, execute_options);
+  StatusOr<ScopedShapedBuffer> result =
+      executable->Run(absl::Span<const ShapedBuffer* const>(), execute_options);
   {
     absl::MutexLock lock(results_mutex);
     results->emplace_back(device_ordinal, std::move(result));

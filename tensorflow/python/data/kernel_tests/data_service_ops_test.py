@@ -21,16 +21,24 @@ import time
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute_options
+from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.service import server_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
@@ -56,18 +64,18 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       num_workers: The number of workers in the cluster.
 
     Returns:
-      A target for connecting to the service, e.g.
-      "grpc+local://localhost:2000".
+      A string for connecting to the tf.data service.
     """
-    self._master = server_lib.MasterServer(PROTOCOL)
-    master_address = self._master.target[len(PROTOCOL + "://"):]
-
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
     self._servers = []
     for _ in range(num_workers):
       self._servers.append(
-          server_lib.WorkerServer(PROTOCOL, master_address=master_address))
+          server_lib.WorkerServer(
+              port=0,
+              dispatcher_address=self._dispatcher._address,
+              protocol=PROTOCOL))
 
-    return self._master.target
+    return "{0}://{1}".format(PROTOCOL, self._dispatcher._address)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeBasic(self):
@@ -77,6 +85,71 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = _make_distributed_dataset(ds, service)
     results = [elem.numpy() for elem in ds]
     self.assertEqual(list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherPreemption(self):
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
+    self._worker = server_lib.WorkerServer(
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = _make_distributed_dataset(
+        ds, "{}://{}".format(PROTOCOL, self._dispatcher._address))
+    iterator = iter(ds)
+    results = []
+    results.append(next(iterator).numpy())
+    self._dispatcher._stop()
+    # After the dispatcher dies, the worker should continue providing the rest
+    # of the dataset's elements.
+    for _ in range(num_elements - 1):
+      results.append(next(iterator).numpy())
+    self.assertEqual(results, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeSparse(self):
+    service = self.create_cluster(1)
+    element = sparse_tensor.SparseTensor(
+        indices=[[0]],
+        values=constant_op.constant([0], dtype=dtypes.int32),
+        dense_shape=[1])
+    ds = dataset_ops.Dataset.from_tensors(element)
+    ds = _make_distributed_dataset(ds, service)
+    results = [sparse_ops.sparse_tensor_to_dense(elem) for elem in ds]
+    self.assertAllEqual(results, [[0]])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeRagged(self):
+    service = self.create_cluster(1)
+    ds = dataset_ops.Dataset.from_tensor_slices([1, 5, 3, 2, 8])
+    ds = ds.map(math_ops.range)
+    ds = ds.apply(batching.dense_to_ragged_batch(2))
+    ds = _make_distributed_dataset(ds, service)
+    results = [elem.to_tensor() for elem in ds]
+    self.assertAllEqual(results[0], [[0, 0, 0, 0, 0], [0, 1, 2, 3, 4]])
+    self.assertAllEqual(results[1], [[0, 1, 2], [0, 1, 0]])
+    self.assertAllEqual(results[2], [[0, 1, 2, 3, 4, 5, 6, 7]])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDifferentShuffleOrders(self):
+    random_seed.set_random_seed(None)
+    num_elements = 100
+    service = self.create_cluster(2)
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.shuffle(num_elements)
+    ds = _make_distributed_dataset(ds, service)
+    output = [elem.numpy() for elem in ds]
+
+    # The output will be two sequences of range(num_elements)
+    # non-deterministically interleaved together. If the orders of the elements
+    # were the same, first_order and second_order computed below will be equal.
+    first_order = {}
+    second_order = {}
+    for element in output:
+      if element in first_order:
+        second_order[element] = len(second_order)
+      else:
+        first_order[element] = len(first_order)
+    self.assertNotEqual(first_order, second_order)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testMultipleEpochs(self):
@@ -155,13 +228,13 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testAddWorkerMidJob(self):
-    self._master = server_lib.MasterServer(PROTOCOL)
-    master_address = self._master.target[len(PROTOCOL + "://"):]
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
     self._worker = server_lib.WorkerServer(
-        PROTOCOL, master_address=master_address)
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, self._master.target)
+    ds = _make_distributed_dataset(
+        ds, "{}://{}".format(PROTOCOL, self._dispatcher._address))
     iterator = iter(ds)
     results = []
     # Read halfway through the dataset.
@@ -169,10 +242,10 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       results.append(next(iterator).numpy())
 
     self._new_worker = server_lib.WorkerServer(
-        PROTOCOL, master_address=master_address)
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
 
-    # Wait for the new worker to register with the master.
-    while self._master.num_tasks() < 2:
+    # Wait for the new worker to register with the dispatcher.
+    while self._dispatcher._num_workers() < 2:
       time.sleep(10 / 1000)  # 10ms
 
     for elem in iterator:
@@ -184,13 +257,13 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(use_same_port=[True, False])))
   def testRestartWorker(self, use_same_port):
-    self._master = server_lib.MasterServer(PROTOCOL)
-    master_address = self._master.target[len(PROTOCOL + "://"):]
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
     self._worker = server_lib.WorkerServer(
-        PROTOCOL, master_address=master_address)
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, self._master.target)
+    ds = _make_distributed_dataset(
+        ds, "{}://{}".format(PROTOCOL, self._dispatcher._address))
     iterator = iter(ds)
     # Read halfway through the dataset.
     midpoint = num_elements // 2
@@ -200,19 +273,25 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Stop the original worker and start a new one.
     port = 0
     if use_same_port:
-      worker_address = self._worker.target[len(PROTOCOL + "://"):]
-      port = int(worker_address.split(":")[1])
-    self._worker.stop()
+      port = int(self._worker._address.split(":")[1])
+    self._worker._stop()
     self._new_worker = server_lib.WorkerServer(
-        PROTOCOL, master_address=master_address, port=port)
+        port=port,
+        dispatcher_address=self._dispatcher._address,
+        protocol=PROTOCOL)
+
+    # There may have been some elements prefetched from the first worker
+    # before it was stopped.
+    while True:
+      val = next(iterator).numpy()
+      if val == 0:
+        break
 
     # The dataset starts over now that we read from the new worker.
-    for i in range(num_elements):
+    # TODO(b/157086991): Iterate until end of sequence when we support
+    # detecting lost workers.
+    for i in range(1, num_elements // 2):
       val = next(iterator).numpy()
-      if val == midpoint and i != midpoint:
-        # There may have been one last element prefetched from the first worker
-        # before it was stopped.
-        val = next(iterator).numpy()
       self.assertEqual(i, val)
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -253,7 +332,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobName(self):
-    num_elements = 10
+    num_elements = 100
     service = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
     ds1 = _make_distributed_dataset(ds, service, job_name="job_name")
@@ -261,7 +340,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     iter1 = iter(ds1)
     iter2 = iter(ds2)
     results = []
-    for _ in range(3):
+    for _ in range(num_elements // 5):
       results.append(next(iter1).numpy())
       results.append(next(iter2).numpy())
     for elem in iter1:
@@ -296,7 +375,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobNameRepeat(self):
-    num_elements = 10
+    num_elements = 100
     num_repetitions = 3
     service = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
@@ -307,15 +386,43 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     results = []
     iter1 = iter(ds1)
     iter2 = iter(ds2)
-    for _ in range(((num_elements * num_repetitions) // 2) - 1):
+    for _ in range((num_elements * num_repetitions) // 5):
       results.append(next(iter1).numpy())
-    for _ in range(((num_elements * num_repetitions) // 2) - 1):
+    for _ in range((num_elements * num_repetitions) // 5):
       results.append(next(iter2).numpy())
     for elem in iter1:
       results.append(elem.numpy())
     for elem in iter2:
       results.append(elem.numpy())
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testApplyDeterminismOption(self):
+    elements = list(range(10))
+    service = self.create_cluster(1)
+
+    def dataset_fn(delay_ms):
+
+      def interleave_fn(x):
+        ds = dataset_ops.Dataset.from_tensors(x)
+        if math_ops.equal(x, 0):
+          ds = ds.apply(testing.sleep(delay_ms * 1000))
+        else:
+          ds = ds.apply(testing.sleep(0))
+        return ds
+
+      ds = dataset_ops.Dataset.from_tensor_slices(elements)
+      ds = ds.interleave(interleave_fn, cycle_length=10, num_parallel_calls=10)
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = False
+      ds = ds.with_options(opts)
+      ds = _make_distributed_dataset(ds, service)
+      return ds
+
+    self.checkDeterminism(
+        dataset_fn=dataset_fn,
+        expect_determinism=False,
+        expected_elements=elements)
 
   def run_stateful(self, external_state_policy):
     num_elements = 10
@@ -385,6 +492,98 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       ds = ds.apply(
           data_service_ops.distribute(
               processing_mode="invalid", service="grpc://localhost:5000"))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromDatasetId(self):
+    num_elements = 10
+    service = self.create_cluster(1)
+
+    ds = dataset_ops.Dataset.range(num_elements)
+    dataset_id = data_service_ops.register_dataset(service, ds)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", service, dataset_id, ds.element_spec)
+    self.assertDatasetProduces(from_dataset_id_ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromDatasetIdMultipleComponents(self):
+    num_elements = 10
+    service = self.create_cluster(1)
+
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = dataset_ops.Dataset.zip({"a": (ds, ds), "b": ds})
+    dataset_id = data_service_ops.register_dataset(service, ds)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", service, dataset_id, ds.element_spec)
+    output = self.getDatasetOutput(from_dataset_id_ds)
+    for i in range(num_elements):
+      self.assertEqual(i, output[i]["a"][0])
+      self.assertEqual(i, output[i]["a"][1])
+      self.assertEqual(i, output[i]["b"])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromDatasetIdWrongElementSpec(self):
+    num_elements = 10
+    service = self.create_cluster(1)
+
+    ds = dataset_ops.Dataset.range(num_elements)
+    dataset_id = data_service_ops.register_dataset(service, ds)
+    wrong_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", service, dataset_id, wrong_spec)
+    with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                "Expected a tensor of type variant"):
+      self.evaluate(self.getNext(from_dataset_id_ds)())
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromDatasetIdNotRegistered(self):
+    service = self.create_cluster(1)
+
+    dataset_id = 0
+    element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", service, dataset_id, element_spec)
+    with self.assertRaisesRegex(errors.NotFoundError, "Dataset id"):
+      self.evaluate(self.getNext(from_dataset_id_ds)())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCancellation(self):
+    self.skipTest("b/162521601")
+    sleep_microseconds = int(1e6) * 1000
+
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
+    self._worker = server_lib.WorkerServer(
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
+    # Create a dataset which produces the first element quickly, and the second
+    # element slowly. Fetching the first element triggers prefetching of the
+    # second element, which we should be able to cancel.
+    slow = dataset_ops.Dataset.range(1)
+    slow = slow.apply(testing.sleep(sleep_microseconds))
+    ds = dataset_ops.Dataset.range(1).concatenate(slow)
+    ds = _make_distributed_dataset(
+        ds, "{}://{}".format(PROTOCOL, self._dispatcher._address))
+    ds = ds.prefetch(1)
+    get_next = self.getNext(ds, requires_initialization=True)
+    self.assertEqual(0, self.evaluate(get_next()))
+    # Without properly implemented cancellation, we will hang here while trying
+    # to garbage collect the dataset iterator.
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRegisterEquivalentDatasets(self):
+    ds_1 = dataset_ops.Dataset.range(10)
+    ds_2 = dataset_ops.Dataset.range(10)
+    service = self.create_cluster(1)
+    id_1 = data_service_ops.register_dataset(service, ds_1)
+    id_2 = data_service_ops.register_dataset(service, ds_2)
+    self.assertEqual(id_1.numpy(), id_2.numpy())
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRegisterDifferentDatasets(self):
+    ds_1 = dataset_ops.Dataset.range(10)
+    ds_2 = dataset_ops.Dataset.range(20)
+    service = self.create_cluster(1)
+    id_1 = data_service_ops.register_dataset(service, ds_1)
+    id_2 = data_service_ops.register_dataset(service, ds_2)
+    self.assertNotEqual(id_1.numpy(), id_2.numpy())
 
 
 if __name__ == "__main__":

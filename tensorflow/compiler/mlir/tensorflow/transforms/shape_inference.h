@@ -30,9 +30,11 @@ namespace TF {
 // Given a list of refined shapes matching the function arguments of func, runs
 // shape inference over the function to propagate this updated information.
 // If arg_shapes are empty, then argument shapes will be left unchanged.
-LogicalResult InferShapeForFunction(FuncOp func,
-                                    ArrayRef<ArrayRef<int64_t>> arg_shapes,
-                                    int64_t graph_version);
+// TODO(b/154065712): Remove propagate_caller_callee_constants once using
+// SCCP pass instead.
+LogicalResult InferShapeForFunction(
+    FuncOp func, ArrayRef<ArrayRef<int64_t>> arg_shapes, int64_t graph_version,
+    bool propagate_caller_callee_constants = true);
 
 }  // namespace TF
 

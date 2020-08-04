@@ -366,5 +366,27 @@ bool AreCastCompatible(ArrayRef<Type> types) {
   return true;
 }
 
+ShapedType DropTypeSubTypes(ShapedType ty) {
+  Type element_ty = ty.getElementType();
+  auto subtype_ty = element_ty.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  if (!subtype_ty) return ty;
+
+  Type default_ty = GetDefaultTypeOf(subtype_ty);
+  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
+
+  return UnrankedTensorType::get(default_ty);
+}
+
+ShapedType DropRefType(ShapedType ty) {
+  Type element_ty = ty.getElementType();
+  TF::TensorFlowRefType ref_ty = element_ty.dyn_cast<TF::TensorFlowRefType>();
+  if (!ref_ty) return ty;
+
+  Type default_ty = TF::GetDefaultTypeOf(ref_ty);
+  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
+
+  return UnrankedTensorType::get(default_ty);
+}
+
 }  // namespace TF
 }  // namespace mlir

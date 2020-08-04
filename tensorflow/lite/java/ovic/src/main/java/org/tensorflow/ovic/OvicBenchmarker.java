@@ -57,19 +57,19 @@ public abstract class OvicBenchmarker {
   /** Total runtime in ns. */
   protected double totalRuntimeNano = 0.0;
   /** Total allowed runtime in ms. */
-  protected double wallTimeNano = 20000 * 30 * 1.0e6;
+  protected double wallTimeMilli = 20000 * 30.0;
   /** Record whether benchmark has started (used to skip the first image). */
   protected boolean benchmarkStarted = false;
 
   /**
    * Initializes an {@link OvicBenchmarker}
    *
-   * @param wallTimeNano: a double number specifying the total amount of time to benchmark.
+   * @param wallTimeMilli: a double number specifying the total amount of time to benchmark.
    */
-  public OvicBenchmarker(double wallTimeNano) {
+  protected OvicBenchmarker(double wallTimeMilli) {
     benchmarkStarted = false;
     totalRuntimeNano = 0.0;
-    this.wallTimeNano = wallTimeNano;
+    this.wallTimeMilli = wallTimeMilli;
   }
 
   /** Return the cumulative latency of all runs so far. */
@@ -79,13 +79,13 @@ public abstract class OvicBenchmarker {
 
   /** Check whether the benchmarker should stop. */
   public Boolean shouldStop() {
-    if (totalRuntimeNano >= wallTimeNano) {
+    if ((totalRuntimeNano * 1.0 / 1e6) >= wallTimeMilli) {
       Log.e(
           TAG,
-          "Total runtime (ms) "
-              + (totalRuntimeNano * 1.0e-6)
-              + " exceeded wall-time "
-              + (wallTimeNano * 1.0e-6));
+          "Total runtime "
+              + (totalRuntimeNano * 1.0 / 1e6)
+              + " exceeded walltime (ms) "
+              + wallTimeMilli);
       return true;
     }
     return false;

@@ -34,7 +34,7 @@ input_arrays = ['input_name']
 # A list of the names of the model's output tensors
 output_arrays = ['output_name']
 # Load and convert the frozen graph
-converter = tf.lite.TFLiteConverter.from_frozen_graph(
+converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
   graph_def_file, input_arrays, output_arrays)
 tflite_model = converter.convert()
 # Write the converted model to disk

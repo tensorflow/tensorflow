@@ -31,12 +31,28 @@ containers = {
         "digest": container_digests["cuda10.1-cudnn7-ubuntu16.04-manylinux2010-multipython"],
     },
 
-    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.rocm-ubuntu16.04
-    "rocm-ubuntu16.04": {
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda10.1-cudnn7-ubuntu18.04-manylinux2010-multipython.
+    "cuda10.1-cudnn7-ubuntu18.04-manylinux2010-multipython": {
         "registry": "gcr.io",
-        "repository": "tensorflow-testing/nosla-rocm-ubuntu16.04",
-        "digest": container_digests["rocm-ubuntu16.04"],
+        "repository": "tensorflow-testing/nosla-cuda10.1-cudnn7-ubuntu18.04-manylinux2010-multipython",
+        "digest": container_digests["cuda10.1-cudnn7-ubuntu18.04-manylinux2010-multipython"],
     },
+
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda11.0-cudnn8-ubuntu18.04-manylinux2010-multipython.
+    "cuda11.0-cudnn8-ubuntu18.04-manylinux2010-multipython": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/nosla-cuda11.0-cudnn8-ubuntu18.04-manylinux2010-multipython",
+        "digest": container_digests["cuda11.0-cudnn8-ubuntu18.04-manylinux2010-multipython"],
+    },
+
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.rocm-ubuntu18.04-manylinux2010-multipython.
+    "rocm-ubuntu18.04-manylinux2010-multipython": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/nosla-rocm-ubuntu18.04-manylinux2010-multipython",
+        "digest": container_digests["rocm-ubuntu18.04-manylinux2010-multipython"],
+    },
+
+    # Built by gunan@ from a private Dockerfile.
     "windows-1803": {
         "registry": "gcr.io",
         "repository": "tensorflow-testing/tf-win-rbe",

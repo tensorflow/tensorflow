@@ -24,19 +24,8 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/hello_world/model.h"
 
-// We need to keep the data array aligned on some architectures.
-#ifdef __has_attribute
-#define HAVE_ATTRIBUTE(x) __has_attribute(x)
-#else
-#define HAVE_ATTRIBUTE(x) 0
-#endif
-#if HAVE_ATTRIBUTE(aligned) || (defined(__GNUC__) && !defined(__clang__))
-#define DATA_ALIGN_ATTRIBUTE __attribute__((aligned(4)))
-#else
-#define DATA_ALIGN_ATTRIBUTE
-#endif
-
-const unsigned char g_model[] DATA_ALIGN_ATTRIBUTE = {
+// Keep model aligned to 8 bytes to guarantee aligned 64-bit accesses.
+alignas(8) const unsigned char g_model[] = {
     0x1c, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33, 0x00, 0x00, 0x12, 0x00,
     0x1c, 0x00, 0x04, 0x00, 0x08, 0x00, 0x0c, 0x00, 0x10, 0x00, 0x14, 0x00,
     0x00, 0x00, 0x18, 0x00, 0x12, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,

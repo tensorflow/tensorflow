@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [
@@ -55,5 +56,23 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         tf_grpc_cc_dependency(),
+    ],
+)
+
+tf_cc_test(
+    name = "grpc_eager_client_test",
+    size = "small",
+    srcs = [
+        "grpc_eager_client_test.cc",
+    ],
+    deps = [
+        ":grpc_eager_client",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
     ],
 )

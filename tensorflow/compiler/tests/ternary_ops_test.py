@@ -77,7 +77,6 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         np.int32(2),
         expected=np.array([1, 3, 5], dtype=np.int32))
 
-  @test_util.disable_mlir_bridge('TODO(b/155949336)')
   def testSelect(self):
     for dtype in self.numeric_types:
       self._testTernary(

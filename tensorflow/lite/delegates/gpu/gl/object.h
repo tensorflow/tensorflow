@@ -70,7 +70,7 @@ struct Object {
 
 // @return true if object is a reference.
 inline bool IsRef(const Object& object) {
-  return !absl::get_if<ObjectData>(&object.object);
+  return !absl::holds_alternative<ObjectData>(object.object);
 }
 
 inline ObjectRef GetRef(const Object& object) {

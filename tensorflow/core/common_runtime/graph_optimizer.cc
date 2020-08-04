@@ -42,7 +42,7 @@ void GraphOptimizer::Optimize(
     const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn,
     bool inline_multi_device_functions,
     bool inline_impl_selection_group_functions,
-    bool inline_with_single_device_body_placer) {
+    bool inline_with_single_device_body_placer, bool ignore_noinline) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -116,6 +116,11 @@ void GraphOptimizer::Optimize(
             .inline_impl_selection_group_functions = true;
       }
 
+      if (ignore_noinline) {
+        expand_inline_opts.multi_device_options.ignore_noinline = true;
+        expand_inline_opts.native_options.ignore_noinline = true;
+      }
+
       bool was_mutated = ExpandInlineFunctions(runtime, g, expand_inline_opts);
       if (was_mutated) {
         DumpGraph("ExpandInlineFunctions", g);
@@ -138,11 +143,11 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
                               const Device* device,
                               std::unique_ptr<Graph>* graph,
                               const Options& options) {
-  Optimize(runtime, env, device, graph, options.shape_map,
-           options.cse_consider_fn, options.cf_consider_fn,
-           options.inline_multi_device_functions,
-           options.inline_impl_selection_group_functions,
-           options.inline_with_single_device_body_placer);
+  Optimize(
+      runtime, env, device, graph, options.shape_map, options.cse_consider_fn,
+      options.cf_consider_fn, options.inline_multi_device_functions,
+      options.inline_impl_selection_group_functions,
+      options.inline_with_single_device_body_placer, options.ignore_noinline);
 }
 
 void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,

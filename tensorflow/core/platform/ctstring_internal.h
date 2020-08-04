@@ -136,7 +136,7 @@ typedef struct TF_TString {  // NOLINT
 // _Static_assert(CHAR_BIT == 8);
 // _Static_assert(sizeof(TF_TString) == 24);
 
-extern inline TF_TString_Type TF_TString_GetType(const TF_TString *str) {
+static inline TF_TString_Type TF_TString_GetType(const TF_TString *str) {
   return (TF_TString_Type)(str->u.raw.raw[0] & TF_TSTR_TYPE_MASK);  // NOLINT
 }
 
@@ -145,7 +145,7 @@ extern inline TF_TString_Type TF_TString_GetType(const TF_TString *str) {
 // and always byte-swapping on big endian, resulting in a simple 'bswap'+'shr'
 // (for architectures that have a bswap op).
 static inline size_t TF_TString_ToActualSizeT(size_t size) {
-#ifdef TF_TSTRING_LITTLE_ENDIAN
+#if TF_TSTRING_LITTLE_ENDIAN
   return size >> 2;
 #else   // TF_TSTRING_LITTLE_ENDIAN
   // 0xFF000000 or 0xFF00000000000000 depending on platform
@@ -157,7 +157,7 @@ static inline size_t TF_TString_ToActualSizeT(size_t size) {
 
 static inline size_t TF_TString_ToInternalSizeT(size_t size,
                                                 TF_TString_Type type) {
-#ifdef TF_TSTRING_LITTLE_ENDIAN
+#if TF_TSTRING_LITTLE_ENDIAN
   return (size << 2) | type;
 #else   // TF_TSTRING_LITTLE_ENDIAN
   // 0xFF000000 or 0xFF00000000000000 depending on platform
@@ -168,12 +168,11 @@ static inline size_t TF_TString_ToInternalSizeT(size_t size,
 #endif  // TF_TSTRING_LITTLE_ENDIAN
 }
 
-extern inline void TF_TString_Init(TF_TString *str) {
-  str->u.smll.size = 0;
-  str->u.smll.str[0] = '\0';
+static inline void TF_TString_Init(TF_TString *str) {
+  memset(str->u.raw.raw, 0, sizeof(TF_TString_Raw));
 }
 
-extern inline void TF_TString_Dealloc(TF_TString *str) {
+static inline void TF_TString_Dealloc(TF_TString *str) {
   if (TF_TString_GetType(str) == TF_TSTR_LARGE &&
       str->u.large.ptr != NULL) {  // NOLINT
     free(str->u.large.ptr);
@@ -181,7 +180,7 @@ extern inline void TF_TString_Dealloc(TF_TString *str) {
   }
 }
 
-extern inline size_t TF_TString_GetSize(const TF_TString *str) {
+static inline size_t TF_TString_GetSize(const TF_TString *str) {
   switch (TF_TString_GetType(str)) {
     case TF_TSTR_SMALL:
       return str->u.smll.size >> 2;
@@ -196,7 +195,7 @@ extern inline size_t TF_TString_GetSize(const TF_TString *str) {
   }
 }
 
-extern inline size_t TF_TString_GetCapacity(const TF_TString *str) {
+static inline size_t TF_TString_GetCapacity(const TF_TString *str) {
   switch (TF_TString_GetType(str)) {
     case TF_TSTR_SMALL:
       return TF_TString_SmallCapacity;
@@ -209,7 +208,7 @@ extern inline size_t TF_TString_GetCapacity(const TF_TString *str) {
   }
 }
 
-extern inline const char *TF_TString_GetDataPointer(const TF_TString *str) {
+static inline const char *TF_TString_GetDataPointer(const TF_TString *str) {
   switch (TF_TString_GetType(str)) {
     case TF_TSTR_SMALL:
       return str->u.smll.str;
@@ -225,7 +224,7 @@ extern inline const char *TF_TString_GetDataPointer(const TF_TString *str) {
   }
 }
 
-extern inline char *TF_TString_ResizeUninitialized(TF_TString *str,
+static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
                                                    size_t new_size) {
   size_t curr_size = TF_TString_GetSize(str);
   size_t copy_size = TF_min(new_size, curr_size);
@@ -288,7 +287,7 @@ extern inline char *TF_TString_ResizeUninitialized(TF_TString *str,
   return str->u.large.ptr;
 }
 
-extern inline char *TF_TString_GetMutableDataPointer(TF_TString *str) {
+static inline char *TF_TString_GetMutableDataPointer(TF_TString *str) {
   switch (TF_TString_GetType(str)) {
     case TF_TSTR_SMALL:
       return str->u.smll.str;
@@ -306,7 +305,7 @@ extern inline char *TF_TString_GetMutableDataPointer(TF_TString *str) {
   }
 }
 
-extern inline void TF_TString_Reserve(TF_TString *str, size_t new_cap) {
+static inline void TF_TString_Reserve(TF_TString *str, size_t new_cap) {
   TF_TString_Type curr_type = TF_TString_GetType(str);
 
   if (new_cap <= TF_TString_SmallCapacity) {
@@ -347,7 +346,7 @@ extern inline void TF_TString_Reserve(TF_TString *str, size_t new_cap) {
   str->u.large.cap = new_cap;
 }
 
-extern inline char *TF_TString_Resize(TF_TString *str, size_t new_size,
+static inline char *TF_TString_Resize(TF_TString *str, size_t new_size,
                                       char c) {
   size_t curr_size = TF_TString_GetSize(str);
   char *cstr = TF_TString_ResizeUninitialized(str, new_size);
@@ -359,7 +358,7 @@ extern inline char *TF_TString_Resize(TF_TString *str, size_t new_size,
   return cstr;
 }
 
-extern inline void TF_TString_AssignView(TF_TString *dst, const char *src,
+static inline void TF_TString_AssignView(TF_TString *dst, const char *src,
                                          size_t size) {
   TF_TString_Dealloc(dst);
 
@@ -367,7 +366,7 @@ extern inline void TF_TString_AssignView(TF_TString *dst, const char *src,
   dst->u.view.ptr = src;
 }
 
-extern inline void TF_TString_AppendN(TF_TString *dst, const char *src,
+static inline void TF_TString_AppendN(TF_TString *dst, const char *src,
                                       size_t src_size) {
   if (!src_size) return;
 
@@ -378,21 +377,21 @@ extern inline void TF_TString_AppendN(TF_TString *dst, const char *src,
   memcpy(dst_c + dst_size, src, src_size);
 }
 
-extern inline void TF_TString_Append(TF_TString *dst, const TF_TString *src) {
+static inline void TF_TString_Append(TF_TString *dst, const TF_TString *src) {
   const char *src_c = TF_TString_GetDataPointer(src);
   size_t size = TF_TString_GetSize(src);
 
   TF_TString_AppendN(dst, src_c, size);
 }
 
-extern inline void TF_TString_Copy(TF_TString *dst, const char *src,
+static inline void TF_TString_Copy(TF_TString *dst, const char *src,
                                    size_t size) {
   char *dst_c = TF_TString_ResizeUninitialized(dst, size);
 
   if (size) memcpy(dst_c, src, size);
 }
 
-extern inline void TF_TString_Assign(TF_TString *dst, const TF_TString *src) {
+static inline void TF_TString_Assign(TF_TString *dst, const TF_TString *src) {
   if (dst == src) return;
 
   TF_TString_Dealloc(dst);
@@ -421,7 +420,7 @@ extern inline void TF_TString_Assign(TF_TString *dst, const TF_TString *src) {
   }
 }
 
-extern inline void TF_TString_Move(TF_TString *dst, TF_TString *src) {
+static inline void TF_TString_Move(TF_TString *dst, TF_TString *src) {
   if (dst == src) return;
 
   TF_TString_Dealloc(dst);

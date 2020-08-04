@@ -124,6 +124,7 @@ cc_library(
     srcs = ["simple_selectors.cc"],
     hdrs = ["simple_selectors.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl/kernels:add",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_xy",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_z",
@@ -131,7 +132,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:lstm",
         "//tensorflow/lite/delegates/gpu/cl/kernels:max_unpooling",
         "//tensorflow/lite/delegates/gpu/cl/kernels:mean",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:multiply_add",
         "//tensorflow/lite/delegates/gpu/cl/kernels:padding",
         "//tensorflow/lite/delegates/gpu/cl/kernels:pooling",
         "//tensorflow/lite/delegates/gpu/cl/kernels:prelu",
@@ -150,6 +150,26 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "special_selector",
+    srcs = ["special_selector.cc"],
+    hdrs = ["special_selector.h"],
+    deps = [
+        ":subgraph",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl/kernels/special:depthwise_conv_plus_1x1_conv",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "@com_google_absl//absl/types:any",
     ],
 )
 

@@ -92,7 +92,8 @@ class IteratorResource : public ResourceBase {
           flr(flr),
           pflr(std::move(pflr)),
           function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
-          iterator(std::move(iterator)) {}
+          iterator(std::move(iterator)),
+          last_get_next_end_time_us(0) {}
 
     ~State() { cancellation_manager.StartCancel(); }
 
@@ -109,7 +110,28 @@ class IteratorResource : public ResourceBase {
     ResourceMgr resource_mgr;
     CancellationManager cancellation_manager;
     std::unique_ptr<DatasetBaseIterator> iterator;
+    uint64 last_get_next_end_time_us;
   };
+
+  // For thread-local record-keeping state
+  struct RecordCtx {
+    RecordCtx() : get_next_start_time_us(0), last_get_next_end_time_us(0) {}
+
+    uint64 get_next_start_time_us;
+    uint64 last_get_next_end_time_us;
+  };
+
+  // Copies relevant state to the RecordCtx
+  // Intended to be followed by RecordGetNextStart and RecordGetNextEnd.
+  // Recorded times must be measured after this call to enforce ordering.
+  RecordCtx CreateRecordCtx() TF_LOCKS_EXCLUDED(mu_);
+
+  // Records that GetNext() has started work.
+  void RecordGetNextStart(RecordCtx& record_ctx, const uint64 start_time_us);
+
+  // Records that GetNext() has ended work.
+  void RecordGetNextEnd(const RecordCtx& record_ctx, const uint64 end_time_us)
+      TF_LOCKS_EXCLUDED(mu_);
 
   UnboundedThreadPool unbounded_thread_pool_;
   mutex mu_;
@@ -216,12 +238,19 @@ class MakeIteratorOp : public HybridAsyncOpKernel {
 class IteratorGetNextOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
   AsyncOpKernel* AsAsync() override;
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override;
+
+ private:
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 class DeleteIteratorOp : public HybridAsyncOpKernel {

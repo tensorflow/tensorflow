@@ -59,9 +59,19 @@ TODO: Make invariants more structured so that we can reference them in ops.
 def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
   "TF::OperandsSameAsResultsTypeOrRef">;
 
+// Op has the same operand and result element types (or type itself, if scalar)
+// after resolving reference types (i.e., after converting reference types to
+// their corresponding TensorFlow or standard types).
+def TF_SameOperandsAndResultElementTypeResolveRef : NativeOpTrait<
+  "TF::SameOperandsAndResultElementTypeResolveRef">;
+
 // Layout agnostic operations do not depend on the operands data layout (data
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
+
+// Trait to indicate operations that cannot be duplicated as they might carry
+// certain state around within their implementations.
+def TF_CannotDuplicate : NativeOpTrait<"TF::CannotDuplicate">;
 
 // Variant of broadcastable trait that considers TF's subtype behavior.
 class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
@@ -79,6 +89,26 @@ class TF_AllTypesMatch<list<string> names> :
         "all of {" # StrJoin<names>.result # "} have dynamically equal types ",
         TF_AllTypesMatchPred<
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
+
+//===----------------------------------------------------------------------===//
+// TensorFlow op side effects
+//===----------------------------------------------------------------------===//
+
+class TF_ResourceBase<string resourceKind> :
+  Resource<!strconcat("::mlir::TF::ResourceEffects::", resourceKind)> {
+}
+
+def TF_VariableResource : TF_ResourceBase<"Variable">;
+def TF_StackResource : TF_ResourceBase<"Stack">;
+def TF_TensorArrayResource : TF_ResourceBase<"TensorArray">;
+
+def TF_VariableRead : MemRead<TF_VariableResource>;
+def TF_StackRead : MemRead<TF_StackResource>;
+def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
+
+def TF_VariableWrite : MemWrite<TF_VariableResource>;
+def TF_StackWrite : MemWrite<TF_StackResource>;
+def TF_TensorArrayWrite : MemWrite<TF_TensorArrayResource>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
@@ -312,7 +342,7 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
 // This returns a list of shapes so it is used for variadic operands that
 // can have different shapes.
 class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
-  "mlir::TF::OperandShapeRange",
+  "::mlir::TF::OperandShapeRange",
   "auto values = getODSOperands(" # idx # ");\n"
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
           "mlir::TF::OperandShapeIterator(values.end())};",

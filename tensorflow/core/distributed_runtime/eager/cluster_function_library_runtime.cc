@@ -66,13 +66,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
   core::RefCountPtr<eager::EagerClient> eager_client;
-  Device* device;
-  s = ctx_->FindDeviceFromName(target.c_str(), &device);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
-  s = ctx_->GetClient(device, &eager_client);
+  s = ctx_->GetClient(target, &eager_client);
   if (!s.ok()) {
     done(s);
     return;
@@ -87,8 +81,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   const FunctionLibraryDefinition& func_lib_def =
       options.lib_def ? *options.lib_def : lib_def;
 
-  EnqueueRequest* request = new EnqueueRequest;
-  EnqueueResponse* response = new EnqueueResponse;
+  auto request = std::make_shared<EnqueueRequest>();
+  auto response = std::make_shared<EnqueueResponse>();
 
   request->set_context_id(context_id_);
 
@@ -103,7 +97,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   StripDefaultAttributesInRegisterFunctionOp(register_function);
 
   eager_client->EnqueueAsync(
-      request, response,
+      request.get(), response.get(),
       [this, request, response, handle, released_op = released_op.release(),
        target, eager_client = eager_client.get(), done](const Status& s) {
         {
@@ -113,8 +107,6 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
                                       absl::WrapUnique(released_op));
         }
         done(s);
-        delete request;
-        delete response;
       });
 }
 
@@ -147,15 +139,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
     return;
   }
 
-  Device* device;
-  Status s = ctx_->FindDeviceFromName(function_data->target.c_str(), &device);
-  if (!s.ok()) {
-    done(errors::Internal("Failed to get device"));
-    return;
-  }
-
   EagerOperation* op = function_data->op.get();
-
   if (!op->Inputs().empty()) {
     done(errors::Internal("Inputs should not be set during instantiation."));
     return;
@@ -250,8 +234,8 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
     return;
   }
 
-  eager::EnqueueRequest* request = new eager::EnqueueRequest;
-  EnqueueResponse* response = new EnqueueResponse;
+  auto request = std::make_shared<EnqueueRequest>();
+  auto response = std::make_shared<EnqueueResponse>();
   request->set_context_id(context_id_);
   CleanupFunctionOp* cleanup_function =
       request->add_queue()->mutable_cleanup_function();
@@ -259,12 +243,9 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   // StreamingEnqueueAsync could be blocking when streaming RPC is disabled.
   // CleanUp() needs to be non-blocking since it would be invoked inside the
   // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
-  eager_client->EnqueueAsync(request, response,
-                             [request, response, done](const Status& status) {
-                               done(status);
-                               delete request;
-                               delete response;
-                             });
+  eager_client->EnqueueAsync(
+      request.get(), response.get(),
+      [request, response, done](const Status& status) { done(status); });
 }
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(

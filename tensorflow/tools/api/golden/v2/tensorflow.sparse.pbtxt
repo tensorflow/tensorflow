@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "cross"
-    argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'name\', \'separator\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "cross_hashed"
@@ -39,6 +39,10 @@ tf_module {
   member_method {
     name: "from_dense"
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "map_values"
+    argspec: "args=[\'op\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "mask"

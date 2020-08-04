@@ -52,7 +52,6 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
           ],
           mode=['graph', 'eager']))
   def testKerasOptimizerWithUnequalInput(self, distribution):
-    self.skipTest('b/130309197')
     with distribution.scope():
       var = variables.Variable(
           2.0, name='var', aggregation=variable_scope.VariableAggregation.SUM)
@@ -109,7 +108,6 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
           ],
           mode=['graph', 'eager']))
   def testOptimizerWithKerasModelAndNumpyArrays(self, distribution):
-    self.skipTest('b/130309197')
     with self.cached_session():
       with distribution.scope():
         model = get_model()

@@ -59,7 +59,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_absl//absl/strings",
     ],
 )
 

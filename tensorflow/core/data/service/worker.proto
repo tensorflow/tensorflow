@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+import "tensorflow/core/data/dataset.proto";
 import "tensorflow/core/data/service/common.proto";
 
 message ProcessTaskRequest {

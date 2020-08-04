@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-resource-op-lifting | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-resource-op-lifting | FILECHECK_OPTS="" FileCheck %s
 
 // Tests that resource load operations are hoisted.
 
@@ -147,8 +147,7 @@ func @cluster_with_loop() -> () {
   "tf_device.cluster"() ( {
     // CHECK: %[[WHILE:.*]]:2 = "tf.While"(%[[COUNT]], %[[READ]])
     %2:3 = "tf.While"(%0, %1, %unused)
-               {body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-                output_shapes = [#tf.shape<>, #tf.shape<>]}
+               {body = @while_body, cond = @while_cond, device = "", is_stateless = false}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK: tf_device.return %[[WHILE]]#1 : tensor<f32>
@@ -197,8 +196,7 @@ func @cluster_with_loop() -> () {
   "tf_device.cluster"() ( {
     // CHECK: %[[WHILE:.*]] = "tf.While"(%[[READ]])
     %1 = "tf.While"(%0) {
-      body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = [#tf.shape<>]}
+      body = @while_body, cond = @while_cond, device = "", is_stateless = false}
          : (tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK: tf_device.return %[[WHILE]] : tensor<f32>
@@ -239,8 +237,7 @@ func @cluster_with_loop() -> () {
   "tf_device.cluster"() ( {
     // CHECK: %[[WHILE:.*]] = "tf.While"(%[[READ]])
     %1 = "tf.While"(%0) {
-      body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = [#tf.shape<>]}
+      body = @while_body, cond = @while_cond, device = "", is_stateless = false}
          : (tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK: tf_device.return
@@ -278,8 +275,7 @@ func @cluster_with_nested_loop() -> () {
   "tf_device.cluster"() ( {
     // CHECK: %[[WHILE:.*]] = "tf.While"(%[[READ]])
     %2:2 = "tf.While"(%0, %1) {
-      body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = [#tf.shape<>, #tf.shape<>]}
+      body = @while_body, cond = @while_cond, device = "", is_stateless = false}
          : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK: tf_device.return %[[WHILE]] : tensor<f32>
@@ -295,8 +291,7 @@ func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf
     -> (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>) {
   // CHECK: %[[WHILE:.*]] = "tf.While"(%[[BARG0]])
   %0:2 = "tf.While"(%arg0, %arg1) {
-    body = @while_body1, cond = @while_cond1, device = "", is_stateless = false,
-    output_shapes = [#tf.shape<>, #tf.shape<>]}
+    body = @while_body1, cond = @while_cond1, device = "", is_stateless = false}
        : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
        -> (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
   // CHECK-NEXT: return %[[WHILE]]
@@ -334,8 +329,7 @@ func @cluster_with_loop() -> () {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   "tf_device.cluster"() ( {
     %1 = "tf.While"(%0) {
-      body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = [#tf.shape<>]}
+      body = @while_body, cond = @while_cond, device = "", is_stateless = false}
          : (tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
@@ -359,8 +353,7 @@ func @cluster_with_loop() -> () {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   "tf_device.cluster"() ( {
     %1 = "tf.While"(%0) {
-      body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = [#tf.shape<>]}
+      body = @while_body, cond = @while_cond, device = "", is_stateless = false}
          : (tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
@@ -384,8 +377,7 @@ func @cluster_with_loop() -> () {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   "tf_device.cluster"() ( {
     %1 = "tf.While"(%0) {
-      body = @while_body, cond = @while_cond, device = "", is_stateless = false,
-      output_shapes = [#tf.shape<>]}
+      body = @while_body, cond = @while_cond, device = "", is_stateless = false}
          : (tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
@@ -406,6 +398,61 @@ func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
 
 // -----
 
+// CHECK: func @cluster_with_case(%[[ARG0:.*]]: tensor<i32>) -> tensor<4xf32>
+func @cluster_with_case(%arg0: tensor<i32>) -> tensor<4xf32> {
+  // CHECK: %[[VH0:.*]] = "tf.VarHandleOp"()
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  // CHECK: %[[VH1:.*]] = "tf.VarHandleOp"()
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  // CHECK-DAG: %[[READ0:.*]] = "tf.ReadVariableOp"(%[[VH0]])
+  // CHECK-DAG: %[[READ1:.*]] = "tf.ReadVariableOp"(%[[VH1]])
+  // CHECK: %[[CLUSTER:.*]]:2 = "tf_device.cluster"()
+  %2 = "tf_device.cluster"() ( {
+    // CHECK: %[[CASE:.*]]:2 = "tf.Case"(%[[ARG0]], %[[READ0]], %[[READ1]])
+    %3:2 = "tf.Case"(%arg0, %0, %1) {branches = [@branch_0, @branch_1, @branch_2]}
+      : (tensor<i32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
+      -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>)
+    // CHECK-NEXT: %[[ADD:.*]] = "tf.AddV2"(%[[CASE]]#1, %[[CASE]]#0)
+    %4 = "tf.ReadVariableOp"(%3#0) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+    %5 = "tf.AddV2"(%4, %3#1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+    // CHECK-NEXT: tf_device.return %[[ADD]], %[[CASE]]#1
+    tf_device.return %5 : tensor<4xf32>
+  // CHECK: {cluster_attr = "cluster_attr"} : () -> (tensor<4xf32>, tensor<4xf32>)
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<4xf32>
+  // CHECK: "tf.AssignVariableOp"(%[[VH0]], %[[CLUSTER]]#1)
+  // CHECK: return %[[CLUSTER]]#0
+  return %2 : tensor<4xf32>
+}
+// CHECK: func @branch_0(%[[TARG0:.*]]: tensor<4xf32>, %[[TARG1:.*]]: tensor<4xf32>)
+func @branch_0(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) {
+  // CHECK-NEXT: %[[CONST:.*]] = "tf.Const"()
+  %constant = "tf.Const"() {value = dense<0.0> : tensor<4xf32>} : () -> tensor<4xf32>
+  "tf.AssignVariableOp"(%arg0, %constant) : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+  // CHECK-NEXT: return %[[CONST]], %[[CONST]]
+  return %arg0, %constant : tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>
+}
+// CHECK: func @branch_1(%[[EARG0:.*]]: tensor<4xf32>, %[[EARG1:.*]]: tensor<4xf32>)
+func @branch_1(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) {
+  %id = "tf.Identity"(%arg1) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %read = "tf.ReadVariableOp"(%id) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+  "tf.AssignVariableOp"(%arg0, %read) : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+  // CHECK-NEXT: return %[[EARG1]], %[[EARG1]]
+  return %arg0, %read : tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>
+}
+// CHECK: func @branch_2(%[[EARG0:.*]]: tensor<4xf32>, %[[EARG1:.*]]: tensor<4xf32>)
+func @branch_2(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) {
+  %id = "tf.Identity"(%arg1) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %read = "tf.ReadVariableOp"(%id) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+  "tf.AssignVariableOp"(%arg0, %read) : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>) -> ()
+  // CHECK-NEXT: return %[[EARG1]], %[[EARG1]]
+  return %arg0, %read : tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>
+}
+
+// -----
+
 // Tests that pass lifts resource reads from if branches.
 
 // CHECK: func @cluster_with_if(%[[ARG0:.*]]: tensor<i1>) -> tensor<4xf32>
@@ -420,7 +467,7 @@ func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
   %2 = "tf_device.cluster"() ( {
     // CHECK: %[[IF:.*]]:2 = "tf.If"(%[[ARG0]], %[[READ0]], %[[READ1]])
     %3:2 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
-        output_shapes = [#tf.shape<>, #tf.shape<4>], is_stateless = false}
+        is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
       -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>)
     // CHECK-NEXT: %[[ADD:.*]] = "tf.AddV2"(%[[IF]]#1, %[[IF]]#0)
@@ -468,7 +515,7 @@ func @cluster_with_nested_if(%arg0: tensor<i1>) -> tensor<f32> {
   %2 = "tf_device.cluster"() ( {
     // CHECK: %[[IF:.*]] = "tf.If"(%[[ARG0]], %[[READ0]])
     %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
-        output_shapes = [], is_stateless = false}
+        is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
       -> (tensor<*x!tf.resource<tensor<f32>>>)
     // CHECK-NEXT: %[[ADD:.*]] = "tf.AddV2"(%[[IF]], %[[IF]])
@@ -488,7 +535,7 @@ func @if_then(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.re
   // CHECK-NEXT: %[[IIF:.*]] = "tf.If"(%[[TARG0]], %[[TARG0]])
   %read = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
   %3 = "tf.If"(%read, %arg0) {then_branch = @inner_if_then, else_branch = @inner_if_else,
-      output_shapes = [], is_stateless = false}
+      is_stateless = false}
     : (tensor<f32>, tensor<*x!tf.resource<tensor<f32>>>)
     -> (tensor<*x!tf.resource<tensor<f32>>>)
   // CHECK-NEXT: return %[[IIF]]
@@ -524,9 +571,9 @@ func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   %2 = "tf_device.cluster"() ( {
-    // expected-error @+1 {{unsupported tf.IfOp output: resource does not alias a single input.}}
+    // expected-error @+1 {{unsupported output: resource does not alias a single input}}
     %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
-        output_shapes = [#tf.shape<>], is_stateless = false}
+        is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
       -> (tensor<*x!tf.resource<tensor<4xf32>>>)
     %4 = "tf.ReadVariableOp"(%3) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
@@ -541,6 +588,35 @@ func @if_then(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.
 func @if_else(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
     -> (tensor<*x!tf.resource<tensor<4xf32>>>) {
   return %arg1 : tensor<*x!tf.resource<tensor<4xf32>>>
+}
+
+// -----
+
+// Tests that the pass reports error if output does not alias input.
+
+func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %2 = "tf_device.cluster"() ( {
+    // expected-error @+1 {{unsupported output: resource does not alias input}}
+    %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
+        is_stateless = false}
+      : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
+      -> (tensor<*x!tf.resource<tensor<4xf32>>>)
+    %4 = "tf.ReadVariableOp"(%3) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+    tf_device.return %4 : tensor<4xf32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<4xf32>
+  return %2 : tensor<4xf32>
+}
+func @if_then(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>) {
+  %0 = "tf.foo"(%arg0) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<*x!tf.resource<tensor<4xf32>>>
+  return %0 : tensor<*x!tf.resource<tensor<4xf32>>>
+}
+func @if_else(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>) {
+  %0 = "tf.bar"(%arg0) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<*x!tf.resource<tensor<4xf32>>>
+  return %0 : tensor<*x!tf.resource<tensor<4xf32>>>
 }
 
 // -----
@@ -655,3 +731,29 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.res
   %0 = "tf._Unknown_"() : () -> tensor<*x!tf.resource<tensor<f32>>>
   return %0 : tensor<*x!tf.resource<tensor<f32>>>
 }
+
+// -----
+
+// Tests call op where it's result is the result of a tf.ReadVariableOp.
+
+// CHECK-LABEL: func @call_with_forwarded_read_only_result
+// CHECK-SAME: (%[[RESOURCE_ARG0:.*]]: tensor<*x!tf.resource<tensor<f32>>>)
+func @call_with_forwarded_read_only_result(%arg0: tensor<*x!tf.resource<tensor<f32>>>) {
+  // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[RESOURCE_ARG0]])
+  %0 = "tf_device.cluster"() ( {
+    // CHECK: %[[CALL:.*]] = "tf.StatefulPartitionedCall"(%[[READ]])
+    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
+    // CHECK-NEXT: tf_device.return %[[CALL]]
+    tf_device.return %1 : tensor<f32>
+  }) {} : () -> tensor<f32>
+  return
+}
+
+func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
+  %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
+  %1 = "tf.Identity"(%0) {device = ""} : (tensor<f32>) -> tensor<f32>
+  return %1 : tensor<f32>
+}
+
+// CHECK:      func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK-NEXT:   return %[[A0]]

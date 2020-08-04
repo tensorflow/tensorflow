@@ -24,6 +24,6 @@ limitations under the License.
 #include <cstdint>
 
 constexpr int g_yes_feature_data_slice_size = 40;
-extern const uint8_t g_yes_feature_data_slice[];
+extern const int8_t g_yes_feature_data_slice[];
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_SPEECH_MICRO_FEATURES_YES_FEATURE_DATA_SLICE_H_

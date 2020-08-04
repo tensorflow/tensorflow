@@ -24,6 +24,7 @@ from __future__ import print_function
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.feature_column import base_feature_layer as kfc
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.util.tf_export import keras_export
@@ -32,7 +33,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.experimental.SequenceFeatures')
-class SequenceFeatures(fc._BaseFeaturesLayer):
+class SequenceFeatures(kfc._BaseFeaturesLayer):
   """A layer for sequence input.
 
     All `feature_columns` must be sequence dense columns with the same
@@ -142,7 +143,7 @@ class SequenceFeatures(fc._BaseFeaturesLayer):
     sequence_lengths = []
 
     for column in self._feature_columns:
-      with ops.name_scope(column.name):
+      with backend.name_scope(column.name):
         try:
           dense_tensor, sequence_length = column.get_sequence_dense_tensor(
               transformation_cache, self._state_manager, training=training)
@@ -163,7 +164,7 @@ class SequenceFeatures(fc._BaseFeaturesLayer):
 
 def _assert_all_equal_and_return(tensors, name=None):
   """Asserts that all tensors are equal and returns the first one."""
-  with ops.name_scope(name, 'assert_all_equal', values=tensors):
+  with backend.name_scope(name or 'assert_all_equal'):
     if len(tensors) == 1:
       return tensors[0]
     assert_equal_ops = []

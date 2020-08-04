@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 
-#include "arm_nnfunctions.h"
+#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -36,8 +36,16 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
-      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+      if (output->type == kTfLiteInt16) {
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
+        // NOTE: Current int16_t softmax output does not require symmetric
+        // scaling
+        // - so no need to verify scale here.
+      } else {
+        TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+        TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
+      }
     }
     TF_LITE_ENSURE(context, (output->params.scale == 1.f / 256) ||
                                 (output->params.scale == 1.f / 255));
@@ -90,17 +98,21 @@ void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                                    GetTensorData<uint8_t>(input), output_shape,
                                    GetTensorData<uint8_t>(output));
   } else {
-    const unsigned int num_dims = NumDimensions(input);
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_ops::Softmax(
+          op_data, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+    } else {
+      const int trailing_dim = input_shape.DimensionsCount() - 1;
+      const int outer_size =
+          MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+      const int depth =
+          MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-    const int trailing_dim = input_shape.DimensionsCount() - 1;
-    const int outer_size =
-        MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-    const int depth =
-        MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-
-    arm_softmax_s8(GetTensorData<int8_t>(input), outer_size, depth,
-                   op_data.input_multiplier, op_data.input_left_shift,
-                   op_data.diff_min, GetTensorData<int8_t>(output));
+      arm_softmax_s8(GetTensorData<int8_t>(input), outer_size, depth,
+                     op_data.input_multiplier, op_data.input_left_shift,
+                     op_data.diff_min, GetTensorData<int8_t>(output));
+    }
   }
 }
 
@@ -132,16 +144,15 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace activations
 
-TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/activations::SoftmaxPrepare,
-                                 /*invoke=*/activations::SoftmaxEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_SOFTMAX() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/activations::SoftmaxPrepare,
+          /*invoke=*/activations::SoftmaxEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

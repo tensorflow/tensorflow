@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 
 package(
@@ -46,7 +46,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -94,6 +93,7 @@ cc_library(
     hdrs = ["traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":traceme_encode",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
@@ -112,6 +112,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "traceme_encode_test",
+    srcs = ["traceme_encode_test.cc"],
+    deps = [
+        ":traceme_encode",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "annotated_traceme",
     hdrs = ["annotated_traceme.h"],
@@ -125,10 +137,17 @@ cc_library(
     ],
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "scoped_annotation_headers",
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [":scoped_annotation"],
+cc_library(
+    name = "connected_traceme",
+    hdrs = ["connected_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":traceme",
+        ":traceme_encode",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 cc_library(
@@ -155,10 +174,12 @@ filegroup(
     name = "mobile_srcs",
     srcs = [
         "annotated_traceme.h",
+        "connected_traceme.h",
         "profiler_session.cc",
         "profiler_session.h",
         "scoped_annotation.h",
         "traceme.h",
+        "traceme_encode.h",
     ],
     visibility = ["//visibility:public"],
 )

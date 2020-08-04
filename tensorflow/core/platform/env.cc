@@ -214,7 +214,7 @@ bool Env::FilesExist(const std::vector<string>& files,
     }
     if (fs_status) {
       result &= fs_result;
-      for (int i = 0; i < itr.second.size(); ++i) {
+      for (size_t i = 0; i < itr.second.size(); ++i) {
         per_file_status[itr.second[i]] = fs_status->at(i);
       }
     } else if (!fs_result) {
@@ -544,15 +544,7 @@ Status ReadBinaryProto(Env* env, const string& fname,
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
-
-  // TODO(jiayq): the following coded stream is for debugging purposes to allow
-  // one to parse arbitrarily large messages for MessageLite. One most likely
-  // doesn't want to put protobufs larger than 64MB on Android, so we should
-  // eventually remove this and quit loud when a large protobuf is passed in.
   protobuf::io::CodedInputStream coded_stream(stream.get());
-  // Total bytes hard limit / warning limit are set to 1GB and 512MB
-  // respectively.
-  coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
   if (!proto->ParseFromCodedStream(&coded_stream) ||
       !coded_stream.ConsumedEntireMessage()) {

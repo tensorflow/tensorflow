@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import binascii
 import codecs
+import importlib
 import marshal
 import os
 import re
@@ -296,6 +297,15 @@ def class_and_config_for_serialized_keras_object(
     raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
 
   cls_config = config['config']
+  # Check if `cls_config` is a list. If it is a list, return the class and the
+  # associated class configs for recursively deserialization. This case will
+  # happen on the old version of sequential model (e.g. `keras_version` ==
+  # "2.0.6"), which is serialized in a different structure, for example
+  # "{'class_name': 'Sequential',
+  #   'config': [{'class_name': 'Embedding', 'config': ...}, {}, ...]}".
+  if isinstance(cls_config, list):
+    return (cls, cls_config)
+
   deserialized_objects = {}
   for key, item in cls_config.items():
     if isinstance(item, dict) and '__passive_serialization__' in item:
@@ -467,7 +477,7 @@ def has_arg(fn, name, accept_all=False):
   arg_spec = tf_inspect.getfullargspec(fn)
   if accept_all and arg_spec.varkw is not None:
     return True
-  return name in arg_spec.args
+  return name in arg_spec.args or name in arg_spec.kwonlyargs
 
 
 @keras_export('keras.utils.Progbar')
@@ -792,7 +802,31 @@ def populate_dict_with_module_objects(target_dict, modules, obj_filter):
       if obj_filter(obj):
         target_dict[name] = obj
 
-# Aliases
 
+class LazyLoader(python_types.ModuleType):
+  """Lazily import a module, mainly to avoid pulling in large dependencies."""
+
+  def __init__(self, local_name, parent_module_globals, name):
+    self._local_name = local_name
+    self._parent_module_globals = parent_module_globals
+    super(LazyLoader, self).__init__(name)
+
+  def _load(self):
+    """Load the module and insert it into the parent's globals."""
+    # Import the target module and insert it into the parent's namespace
+    module = importlib.import_module(self.__name__)
+    self._parent_module_globals[self._local_name] = module
+    # Update this object's dict so that if someone keeps a reference to the
+    #   LazyLoader, lookups are efficient (__getattr__ is only called on lookups
+    #   that fail).
+    self.__dict__.update(module.__dict__)
+    return module
+
+  def __getattr__(self, item):
+    module = self._load()
+    return getattr(module, item)
+
+
+# Aliases
 
 custom_object_scope = CustomObjectScope  # pylint: disable=invalid-name

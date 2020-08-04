@@ -148,34 +148,6 @@ TF_CAPI_EXPORT extern void TF_TensorBitcastFrom(const TF_Tensor* from,
                                                 int num_new_dims,
                                                 TF_Status* status);
 
-// --------------------------------------------------------------------------
-// Encode the string `src` (`src_len` bytes long) into `dst` in the format
-// required by TF_STRING tensors. Does not write to memory more than `dst_len`
-// bytes beyond `*dst`. `dst_len` should be at least
-// TF_StringEncodedSize(src_len).
-//
-// On success returns the size in bytes of the encoded string.
-// Returns an error into `status` otherwise.
-TF_CAPI_EXPORT extern size_t TF_StringEncode(const char* src, size_t src_len,
-                                             char* dst, size_t dst_len,
-                                             TF_Status* status);
-
-// Decode a string encoded using TF_StringEncode.
-//
-// On success, sets `*dst` to the start of the decoded string and `*dst_len` to
-// its length. Returns the number of bytes starting at `src` consumed while
-// decoding. `*dst` points to memory within the encoded buffer.  On failure,
-// `*dst` and `*dst_len` are undefined and an error is set in `status`.
-//
-// Does not read memory more than `src_len` bytes beyond `src`.
-TF_CAPI_EXPORT extern size_t TF_StringDecode(const char* src, size_t src_len,
-                                             const char** dst, size_t* dst_len,
-                                             TF_Status* status);
-
-// Return the size in bytes required to encode a string `len` bytes long into a
-// TF_STRING tensor.
-TF_CAPI_EXPORT extern size_t TF_StringEncodedSize(size_t len);
-
 // Returns bool iff this tensor is aligned.
 TF_CAPI_EXPORT extern bool TF_TensorIsAligned(const TF_Tensor*);
 

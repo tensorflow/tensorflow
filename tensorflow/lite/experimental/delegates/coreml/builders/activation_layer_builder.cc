@@ -41,7 +41,7 @@ CoreML::Specification::NeuralNetworkLayer* ActivationLayerBuilder::Build() {
       layer_->mutable_activation()->mutable_relu();
       break;
     // Relu1 and Relu6 layers are fully composed in PopulateSubgraph().
-    case kTfLiteActRelu1:  // clip(-1, 1)
+    case kTfLiteActReluN1To1:  // clip(-1, 1)
       layer_->mutable_unary()->set_alpha(-1);
       layer_->mutable_unary()->set_type(
           CoreML::Specification::UnaryFunctionLayerParams::THRESHOLD);
@@ -64,7 +64,7 @@ CoreML::Specification::NeuralNetworkLayer* ActivationLayerBuilder::Build() {
 }
 
 TfLiteStatus ActivationLayerBuilder::PopulateSubgraph(TfLiteContext* context) {
-  if (!(activation_ == kTfLiteActRelu6 || activation_ == kTfLiteActRelu1)) {
+  if (!(activation_ == kTfLiteActRelu6 || activation_ == kTfLiteActReluN1To1)) {
     builder_output_ = AddOutput();
     return kTfLiteOk;
   }
@@ -125,7 +125,7 @@ OpBuilder* CreateReluOpBuilder(GraphBuilder* graph_builder) {
 }
 
 OpBuilder* CreateReluN1To1OpBuilder(GraphBuilder* graph_builder) {
-  return new ActivationLayerBuilder(graph_builder, kTfLiteActRelu1);
+  return new ActivationLayerBuilder(graph_builder, kTfLiteActReluN1To1);
 }
 
 OpBuilder* CreateRelu6OpBuilder(GraphBuilder* graph_builder) {

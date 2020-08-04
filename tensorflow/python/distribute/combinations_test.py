@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import unittest
 
 from absl.testing import parameterized
@@ -104,6 +105,14 @@ class ClusterParametersShouldFailTest(test.TestCase, parameterized.TestCase):
   def testMultipleDistributionMultiWorker(self, ds1, ds2):
     # combinations library should raise an exception.
     pass
+
+  @combinations.generate(combinations.combine(num_workers=2,))
+  def testUseWithoutStrategy(self):
+    # There's no perfect way to check if the test runs in a subprocess. We
+    # approximate by checking the presence of TF_CONFIG, which is normally not
+    # set to the main process.
+    self.assertNotEqual(os.getenv("TF_CONFIG"), "")
+    raise ValueError("actually run")
 
 
 # Tests that we *actually* run the test method in multiple workers instead of

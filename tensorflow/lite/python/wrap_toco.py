@@ -44,10 +44,11 @@ def wrapped_get_potentially_supported_ops():
 
 
 def wrapped_experimental_mlir_quantize(input_data_str, disable_per_channel,
-                                       inference_type):
+                                       fully_quantize, inference_type):
   """Wraps experimental mlir quantize model."""
   return _pywrap_toco_api.ExperimentalMlirQuantizeModel(input_data_str,
                                                         disable_per_channel,
+                                                        fully_quantize,
                                                         inference_type)
 
 

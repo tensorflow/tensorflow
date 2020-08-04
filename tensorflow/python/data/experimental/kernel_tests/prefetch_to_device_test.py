@@ -201,6 +201,18 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testPrefetchToDevicePlacement(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.prefetch_to_device("/gpu:0"))
+
+    self.assertEqual(device_dataset._variant_tensor.device,
+                     "/job:localhost/replica:0/task:0/device:GPU:0")
+
 
 if __name__ == "__main__":
   test.main()

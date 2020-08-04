@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/flt_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -65,6 +64,7 @@ class CLKernel {
   int GetPrivateMemorySize() const { return private_memory_size_; }
   int GetMaxWorkGroupSize() const { return max_work_group_size_; }
 
+  int GetBindingCounter() const { return binding_counter_; }
   void ResetBindingCounter() { binding_counter_ = 0; }
 
   // Do not use this function
@@ -85,24 +85,6 @@ class CLKernel {
   cl_program program_ = nullptr;
   cl_kernel kernel_ = nullptr;
 };
-
-template <>
-absl::Status CLKernel::SetBytes<FLT>(int index, const FLT& value) const;
-
-template <>
-absl::Status CLKernel::SetBytes<FLT2>(int index, const FLT2& value) const;
-
-template <>
-absl::Status CLKernel::SetBytes<FLT4>(int index, const FLT4& value) const;
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT>(const FLT& value);
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT2>(const FLT2& value);
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT4>(const FLT4& value);
 
 }  // namespace cl
 }  // namespace gpu

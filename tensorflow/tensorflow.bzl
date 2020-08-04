@@ -59,7 +59,7 @@ load(
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.2.0"
+VERSION = "2.4.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 # Sanitize a dependency so that it works correctly from code that includes
@@ -220,7 +220,7 @@ def if_not_mobile(a):
 
 # Config setting selector used when building for products
 # which requires restricted licenses to be avoided.
-def if_not_lgpl_restricted(a):
+def if_not_mobile_or_arm_or_lgpl_restricted(a):
     _ = (a,)
     return select({
         "//conditions:default": [],
@@ -327,7 +327,7 @@ def tf_copts(
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
-        if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1"]) +
+        if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
         if_mkldnn_threadpool([
             "-DENABLE_MKLDNN_THREADPOOL",
             "-DENABLE_MKLDNN_V1",
@@ -354,9 +354,7 @@ def tf_copts(
     )
 
 def tf_openmp_copts():
-    # TODO(intel-mkl): Remove -fopenmp for threadpool after removing all
-    # omp pragmas in tensorflow/core.
-    return if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fopenmp"])
+    return (if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fno-openmp"]))
 
 def tfe_xla_copts():
     return select({
@@ -874,7 +872,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:ops"),
             clean_dep("//tensorflow/core:protos_all_cc"),
         ]) + if_android([
-            clean_dep("//tensorflow/core:android_tensorflow_lib"),
+            clean_dep("//tensorflow/core:portable_tensorflow_lib"),
         ]),
         copts = tf_copts(),
         alwayslink = 1,
@@ -891,7 +889,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:ops"),
             clean_dep("//tensorflow/core:protos_all_cc"),
         ]) + if_android([
-            clean_dep("//tensorflow/core:android_tensorflow_lib"),
+            clean_dep("//tensorflow/core:portable_tensorflow_lib"),
         ]),
         copts = tf_copts(),
         alwayslink = 1,
@@ -1767,16 +1765,52 @@ def transitive_hdrs(name, deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
     native.filegroup(name = name, srcs = [":" + name + "_gather"])
 
+# Bazel rule for collecting the transitive parameters from a set of dependencies into a library.
+# Propagates defines and includes.
+def _transitive_parameters_library_impl(ctx):
+    defines = depset(
+        transitive = [dep[CcInfo].compilation_context.defines for dep in ctx.attr.original_deps],
+    )
+    system_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.system_includes for dep in ctx.attr.original_deps],
+    )
+    includes = depset(
+        transitive = [dep[CcInfo].compilation_context.includes for dep in ctx.attr.original_deps],
+    )
+    quote_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.quote_includes for dep in ctx.attr.original_deps],
+    )
+    framework_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.framework_includes for dep in ctx.attr.original_deps],
+    )
+    return CcInfo(
+        compilation_context = cc_common.create_compilation_context(
+            defines = depset(direct = defines.to_list()),
+            system_includes = depset(direct = system_includes.to_list()),
+            includes = depset(direct = includes.to_list()),
+            quote_includes = depset(direct = quote_includes.to_list()),
+            framework_includes = depset(direct = framework_includes.to_list()),
+        ),
+    )
+
+_transitive_parameters_library = rule(
+    attrs = {
+        "original_deps": attr.label_list(
+            allow_empty = True,
+            allow_files = True,
+            providers = [CcInfo],
+        ),
+    },
+    implementation = _transitive_parameters_library_impl,
+)
+
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
 #
 # **NOTE**: The headers brought in are **NOT** fully transitive; certain
-# deep headers may be missing.  Furthermore, the `includes` argument of
-# cc_libraries in the dependencies are *not* going to be respected
-# when you use cc_header_only_library.  Some cases where this creates
-# problems include: Eigen, grpc, MLIR.  In cases such as these, you must
-# find a header-only version of the cc_library rule you care about and
-# link it *directly* in addition to your use of the cc_header_only_library
+# deep headers may be missing.  If this creates problems, you must find
+# a header-only version of the cc_library rule you care about and link it
+# *directly* in addition to your use of the cc_header_only_library
 # intermediary.
 #
 # For:
@@ -1785,11 +1819,15 @@ def transitive_hdrs(name, deps = [], **kwargs):
 #
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
+    _transitive_parameters_library(
+        name = name + "_gathered_parameters",
+        original_deps = deps,
+    )
     cc_library(
         name = name,
         hdrs = [":" + name + "_gather"],
         includes = includes,
-        deps = extra_deps,
+        deps = [":" + name + "_gathered_parameters"] + extra_deps,
         **kwargs
     )
 
@@ -1819,13 +1857,13 @@ def tf_custom_op_library_additional_deps_impl():
 # tf_collected_deps will be the union of the deps of the current target
 # and the tf_collected_deps of the dependencies of this target.
 def _collect_deps_aspect_impl(target, ctx):
-    alldeps = depset()
+    direct, transitive = [], []
     if hasattr(ctx.rule.attr, "deps"):
         for dep in ctx.rule.attr.deps:
-            alldeps = depset([dep.label], transitive = [alldeps])
+            direct.append(dep.label)
             if hasattr(dep, "tf_collected_deps"):
-                alldeps = depset(transitive = [alldeps, dep.tf_collected_deps])
-    return struct(tf_collected_deps = alldeps)
+                transitive.append(dep.tf_collected_deps)
+    return struct(tf_collected_deps = depset(direct = direct, transitive = transitive))
 
 collect_deps_aspect = aspect(
     attr_aspects = ["deps"],
@@ -1933,6 +1971,10 @@ register_extension_info(
 # Placeholder to use until bazel supports py_strict_library.
 def py_strict_library(name, **kwargs):
     native.py_library(name = name, **kwargs)
+
+# Placeholder to use until bazel supports py_strict_test.
+def py_strict_test(name, **kwargs):
+    py_test(name = name, **kwargs)
 
 def tf_custom_op_py_library(
         name,
@@ -2156,8 +2198,14 @@ def pywrap_tensorflow_macro(
 #    Note that this only works on Windows. See the definition of
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
-def py_test(deps = [], data = [], kernels = [], **kwargs):
+def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs):
     # Python version placeholder
+    if kwargs.get("python_version", None) == "PY3":
+        kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
+
+    if not exec_properties:
+        exec_properties = tf_exec_properties(kwargs)
+
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
@@ -2168,7 +2216,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
         }),
-        exec_properties = tf_exec_properties(kwargs),
+        exec_properties = exec_properties,
         **kwargs
     )
 
@@ -2218,6 +2266,15 @@ def tf_py_test(
         xla_enabled = False,
         grpc_enabled = False,
         tfrt_enabled = False,
+        # `tfrt_enabled` is set for some test targets, and if we enable
+        # TFRT tests just by that, this will enable TFRT builds for open source.
+        # TFRT open source is not fully integrated yet so we need a temporary
+        # workaround to enable TFRT only for internal builds. `tfrt_enabled_internal`
+        # will be set by `tensorflow.google.bzl`'s `tf_py_test` target, which is
+        # only applied for internal builds.
+        # TODO(b/156911178): Revert this temporary workaround once TFRT open source
+        # is fully integrated with TF.
+        tfrt_enabled_internal = False,
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
@@ -2261,7 +2318,13 @@ def tf_py_test(
         deps = depset(deps + xla_test_true_list),
         **kwargs
     )
-    if tfrt_enabled:
+    if tfrt_enabled_internal:
+        # None `main` defaults to `name` + ".py" in `py_test` target. However, since we
+        # are appending _tfrt. it becomes `name` + "_tfrt.py" effectively. So force
+        # set `main` argument without `_tfrt`.
+        if main == None:
+            main = name + ".py"
+
         py_test(
             name = name + "_tfrt",
             size = size,
@@ -2272,7 +2335,7 @@ def tf_py_test(
             kernels = kernels,
             main = main,
             shard_count = shard_count,
-            tags = tags,
+            tags = tags + ["tfrt"],
             visibility = [clean_dep("//tensorflow:internal")] +
                          additional_visibility,
             deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
@@ -2604,6 +2667,10 @@ def tf_version_info_genrule(name, out):
         arguments = "--generate \"$@\" --git_tag_override=${GIT_TAG_OVERRIDE:-}",
     )
 
+def _dict_to_kv(d):
+    """Convert a dictionary to a space-joined list of key=value pairs."""
+    return " " + " ".join(["%s=%s" % (k, v) for k, v in d.items()])
+
 def tf_py_build_info_genrule(name, out):
     _local_genrule(
         name = name,
@@ -2611,16 +2678,16 @@ def tf_py_build_info_genrule(name, out):
         exec_tool = "//tensorflow/tools/build_info:gen_build_info",
         arguments =
             "--raw_generate \"$@\" " +
-            " --is_config_cuda " + if_cuda("True", "False") +
-            " --is_config_rocm " + if_rocm("True", "False") +
-            " --key_value " +
-            if_cuda(" cuda_version_number=${TF_CUDA_VERSION:-} cudnn_version_number=${TF_CUDNN_VERSION:-} ", "") +
-            if_windows(" msvcp_dll_names=msvcp140.dll,msvcp140_1.dll ", "") +
-            if_windows_cuda(" ".join([
-                "nvcuda_dll_name=nvcuda.dll",
-                "cudart_dll_name=cudart64_$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
-                "cudnn_dll_name=cudnn64_${TF_CUDNN_VERSION:-}.dll",
-            ]), ""),
+            " --key_value" +
+            " is_rocm_build=" + if_rocm("True", "False") +
+            " is_cuda_build=" + if_cuda("True", "False") +
+            if_windows(_dict_to_kv({
+                "msvcp_dll_names": "msvcp140.dll,msvcp140_1.dll",
+            }), "") + if_windows_cuda(_dict_to_kv({
+                "nvcuda_dll_name": "nvcuda.dll",
+                "cudart_dll_name": "cudart{cuda_version}.dll",
+                "cudnn_dll_name": "cudnn{cudnn_version}.dll",
+            }), ""),
     )
 
 def cc_library_with_android_deps(
@@ -2845,7 +2912,35 @@ def if_cuda_or_rocm(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def tf_monitoring_deps():
+def tf_monitoring_framework_deps(link_to_tensorflow_framework = True):
+    """Get the monitoring libs that will be linked to the tensorflow framework.
+
+      Currently in OSS, the protos must be statically linked to the tensorflow
+      framework, whereas the grpc should not be linked here.
+    """
+    return select({
+        "//tensorflow:stackdriver_support": [
+            "@com_github_googlecloudplatform_tensorflow_gcp_tools//monitoring:stackdriver_exporter_protos",
+        ],
+        "//conditions:default": [],
+    })
+
+def tf_monitoring_python_deps():
+    """Get the monitoring libs that will be linked to the python wrapper.
+
+      Currently in OSS, the grpc must be statically linked to the python wrapper
+      whereas the protos should not be linked here.
+    """
+    return select({
+        "//tensorflow:stackdriver_support": [
+            "@com_github_googlecloudplatform_tensorflow_gcp_tools//monitoring:stackdriver_exporter",
+        ],
+        "//conditions:default": [],
+    })
+
+# Teams sharing the same repo can provide their own ops_to_register.h file using
+# this function, and pass in -Ipath/to/repo flag when building the target.
+def tf_selective_registration_deps():
     return []
 
 def tf_jit_compilation_passes_extra_deps():
@@ -2857,7 +2952,22 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def tfcompile_extra_flags():
+def tf_enable_mlir_bridge():
+    return select({
+        str(Label("//tensorflow:enable_mlir_bridge")): [
+            "//tensorflow/python:is_mlir_bridge_test_true",
+        ],
+        "//conditions:default": [],
+    })
+
+def if_tpu(if_true, if_false = []):
+    """Shorthand for select()ing whether to build for TPUs."""
+    return select({
+        str(Label("//tensorflow:with_tpu_support")): if_true,
+        "//conditions:default": if_false,
+    })
+
+def tfcompile_target_cpu():
     return ""
 
 def tf_external_workspace_visible(visibility):

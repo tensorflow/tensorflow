@@ -167,10 +167,12 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       const T* src_data = input_tensor.flat<T>().data();
 
       T* dst_data = output_tensor->flat<T>().data();
+      std::shared_ptr<stream> fwd_cpu_stream;
+      fwd_cpu_stream.reset(CreateStream(context, pooling_fwd->GetEngine()));
 
       if (int8_forward_inference) {
         // Execute pooling op
-        pooling_fwd->Execute(src_data, dst_data);
+        pooling_fwd->Execute(src_data, dst_data, nullptr, fwd_cpu_stream);
 
         // Pass min, max from input to output.
         const Tensor& min_input_t = MklGetInput(context, 1);
@@ -197,7 +199,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         T* ws_data =
             static_cast<T*>(dnn_data_wksp.GetOpMem().get_data_handle());
         // Execute pooling op.
-        pooling_fwd->Execute(src_data, dst_data, ws_data);
+        pooling_fwd->Execute(src_data, dst_data, ws_data, fwd_cpu_stream);
       }
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
@@ -310,8 +312,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right, ALGORITHM::pooling_max,
           prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md,
-          diff_dst_md);
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md);
 #else
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
@@ -322,6 +323,8 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       MklPoolingBwdPrimitive<T>* pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
+      std::shared_ptr<stream> bwd_cpu_stream;
+      bwd_cpu_stream.reset(CreateStream(context, pooling_bwd->GetEngine()));
       // Allocate output tensor and memory primitive.
       Tensor* output_tensor = nullptr;
       this->AllocateOutputTensor(context, *(pooling_bwd->GetPoolingBwdPd()),
@@ -335,8 +338,10 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       if (IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, pooling_bwd_pd,
                                      pooling_bwd)) {
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
-        grad_dnn_data.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-            GET_DIFF_DST_DESC_FROM_OP_PD(pooling_bwd_pd), cpu_engine_));
+        grad_dnn_data.CheckReorderToOpMem(
+            MEMORY_PD_WITHOUT_DATA(GET_DIFF_DST_DESC_FROM_OP_PD(pooling_bwd_pd),
+                                   cpu_engine_),
+            context);
         diff_dst_data =
             static_cast<T*>(grad_dnn_data.GetOpMem().get_data_handle());
       } else {
@@ -361,7 +366,8 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       T* diff_src_data = output_tensor->flat<T>().data();
 
       // Execute pooling op.
-      pooling_bwd->Execute(diff_dst_data, diff_src_data, ws_data);
+      pooling_bwd->Execute(diff_dst_data, diff_src_data, ws_data,
+                           bwd_cpu_stream);
     } catch (mkldnn::error& e) {
       string error_msg = "Status:" + std::to_string(e.status) +
                          ", message: " + string(e.message) + ". in file " +

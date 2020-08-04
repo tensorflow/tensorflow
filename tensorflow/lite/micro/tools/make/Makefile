@@ -6,6 +6,10 @@ endif
 TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 
+#  Override this on make command line to to parse thirdy party downloads during project generation 
+#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project 
+PARSE_THIRD_PARTY := 
+
 
 # Pull in some convenience functions.
 include $(MAKEFILE_DIR)/helper_functions.inc
@@ -70,9 +74,14 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
+CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
+               -Wshadow -Wunused-variable -Wmissing-field-initializers \
+               -Wunused-function
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
-CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY
-CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
+# TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
+# this flag is for an optimized micro runtime.
+CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
@@ -94,8 +103,10 @@ endif
 # runtime that can be linked in to other programs.
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
+# These two must be defined before we include the target specific Makefile.inc
+# because we filter out the examples that are not supported for those targets.
+# See targets/xtensa_xpg_makefile.inc for an example.
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -name Makefile.inc)
-
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \
@@ -105,15 +116,17 @@ $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 
 # TODO(b/152645559): move all benchmarks to benchmarks directory.
 MICROLITE_BENCHMARK_SRCS := \
-$(wildcard tensorflow/lite/micro/benchmarks/*.cc)
+$(wildcard tensorflow/lite/micro/benchmarks/*benchmark.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
+$(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
+$(wildcard tensorflow/lite/micro/testing/*model.cc) \
 tensorflow/lite/c/common.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
@@ -128,6 +141,7 @@ MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SR
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \
+$(wildcard tensorflow/lite/micro/benchmarks/*model_data.h) \
 $(wildcard tensorflow/lite/micro/kernels/*.h) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.h) \
 LICENSE \
@@ -137,6 +151,7 @@ tensorflow/lite/c/common.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
+tensorflow/lite/core/api/profiler.h \
 tensorflow/lite/core/api/tensor_utils.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
@@ -154,6 +169,7 @@ tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/hard_swish.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
@@ -161,6 +177,8 @@ tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
@@ -178,8 +196,10 @@ tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
-tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
+tensorflow/lite/kernels/internal/reference/tanh.h \
 tensorflow/lite/kernels/internal/cppmath.h \
+tensorflow/lite/kernels/internal/max.h \
+tensorflow/lite/kernels/internal/min.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
@@ -237,6 +257,7 @@ include $(MAKEFILE_DIR)/third_party_downloads.inc
 THIRD_PARTY_DOWNLOADS :=
 $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
 $(eval $(call add_third_party_download,$(FLATBUFFERS_URL),$(FLATBUFFERS_MD5),flatbuffers,))
+$(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
@@ -269,6 +290,10 @@ CXX := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
 CC := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
 AR := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
+# The default Makefile target(all) must appear before any target,
+# which is compiled if there's no command-line arguments.
+all: $(MICROLITE_LIB_PATH)
+
 # Load the examples.
 include $(MICRO_LITE_EXAMPLE_TESTS)
 
@@ -300,9 +325,6 @@ $(OBJDIR)%.o: %.c $(THIRD_PARTY_TARGETS)
 $(OBJDIR)%.o: %.S $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
-
-# The target that's compiled if there's no command-line arguments.
-all: $(MICROLITE_LIB_PATH)
 
 microlite: $(MICROLITE_LIB_PATH)
 
@@ -346,11 +368,9 @@ build: $(MICROLITE_BUILD_TARGETS)
 
 generate_projects: $(ALL_PROJECT_TARGETS)
 
-generate_non_kernel_projects: $(filter-out generate_kernel%,$(ALL_PROJECT_TARGETS))
+ARDUINO_PROJECT_TARGETS := $(foreach TARGET,$(ALL_PROJECT_TARGETS),$(if $(findstring _arduino,$(TARGET)),$(TARGET),))
 
-generate_non_test_projects: $(filter-out %_test%,$(ALL_PROJECT_TARGETS))
-
-generate_arduino_zip: generate_non_kernel_projects $(ARDUINO_LIBRARY_ZIPS)
+generate_arduino_zip: $(ARDUINO_PROJECT_TARGETS) $(ARDUINO_LIBRARY_ZIPS)
 	python tensorflow/lite/micro/tools/make/merge_arduino_zips.py $(PRJDIR)/tensorflow_lite.zip $(ARDUINO_LIBRARY_ZIPS)
 
 # Gets rid of all generated files.

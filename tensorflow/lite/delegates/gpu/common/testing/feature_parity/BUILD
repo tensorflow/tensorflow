@@ -24,10 +24,10 @@ cc_library(
     hdrs = ["utils.h"],
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )

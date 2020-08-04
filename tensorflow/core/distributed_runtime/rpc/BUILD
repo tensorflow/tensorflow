@@ -17,6 +17,7 @@ load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disa
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
+    "tf_protos_profiler_service",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -165,6 +166,26 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache_partial",
         "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/util:env_var",
+    ],
+)
+
+tf_cc_test(
+    name = "grpc_worker_cache_test",
+    size = "small",
+    srcs = [
+        "grpc_worker_cache_test.cc",
+    ],
+    deps = [
+        ":grpc_worker_cache",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime:test_utils",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
     ],
 )
 
@@ -315,9 +336,10 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache_wrapper",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_service_impl",
+        "//tensorflow/core/profiler/rpc:profiler_service_impl",
         tf_grpc_dependency(),
         tf_grpc_cc_dependency(),
-    ],
+    ] + tf_protos_profiler_service(),
     alwayslink = 1,
 )
 
@@ -462,6 +484,8 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:test_utils",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 

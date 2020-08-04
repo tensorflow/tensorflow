@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/hello_world/main_functions.h"
 
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/examples/hello_world/constants.h"
 #include "tensorflow/lite/micro/examples/hello_world/model.h"
 #include "tensorflow/lite/micro/examples/hello_world/output_handler.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -34,8 +34,12 @@ TfLiteTensor* output = nullptr;
 int inference_count = 0;
 
 // Create an area of memory to use for input, output, and intermediate arrays.
-// Finding the minimum value for your model may require some trial and error.
-constexpr int kTensorArenaSize = 2 * 1024;
+// Minimum arena size, at the time of writing. After allocating tensors
+// you can retrieve this value by invoking interpreter.arena_used_bytes().
+const int kModelArenaSize = 2468;
+// Extra headroom for model + alignment + future interpreter changes.
+const int kExtraArenaSize = 560 + 16 + 100;
+const int kTensorArenaSize = kModelArenaSize + kExtraArenaSize;
 uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
 
@@ -60,7 +64,7 @@ void setup() {
 
   // This pulls in all the operation implementations we need.
   // NOLINTNEXTLINE(runtime-global-variables)
-  static tflite::ops::micro::AllOpsResolver resolver;
+  static tflite::AllOpsResolver resolver;
 
   // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(

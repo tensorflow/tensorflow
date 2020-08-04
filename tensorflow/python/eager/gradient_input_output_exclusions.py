@@ -253,7 +253,8 @@ def _live_tensors(f, attr_name="inputs"):
       # Not a number, assuming it can be anything.
       return _ALL
     subscript_val, = subscript.qn
-    if not isinstance(subscript_val, qual_names.NumberLiteral):
+    if (not isinstance(subscript_val, qual_names.Literal) and
+        not isinstance(subscript_val.value, int)):
       # Not a number, assuming it can be anything.
       return _ALL
     input_output_indices.add(subscript_val.value)

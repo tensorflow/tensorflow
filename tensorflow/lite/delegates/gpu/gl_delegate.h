@@ -16,25 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_DELEGATE_H_
 
+#include <GLES3/gl31.h>
 #include <stdint.h>
 
-#include <GLES3/gl31.h>
 #include "absl/base/macros.h"
 #include "tensorflow/lite/c/common.h"
-
-#ifdef SWIG
-#define TFL_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TFL_COMPILE_LIBRARY
-#define TFL_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TFL_COMPILE_LIBRARY
-#else
-#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {

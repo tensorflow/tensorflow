@@ -72,6 +72,7 @@ load(
     "if_ios",
     "if_mobile",
     "if_not_windows",
+    "if_tpu",
     "tf_android_core_proto_headers",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -100,7 +101,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_monitoring_deps")
+load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
 
 # For platform specific build config
 load(
@@ -457,7 +458,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:common_shape_fns.h",
         "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
         "//tensorflow/core/framework:dataset.h",
-        "//tensorflow/core/framework:dataset_stateful_op_whitelist.h",
+        "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
         "//tensorflow/core/framework:device_base.h",
         "//tensorflow/core/framework:function.h",
         "//tensorflow/core/framework:function_handle_cache.h",
@@ -629,7 +630,6 @@ tf_gen_op_libs(
         "linalg_ops",
         "list_ops",
         "lookup_ops",
-        "logging_ops",
         "manip_ops",
         "math_ops",
         "mkl_nn_ops",
@@ -660,6 +660,19 @@ tf_gen_op_libs(
     deps = [
         ":lib",
         ":protos_all_cc",
+    ],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "logging_ops",
+    ],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+        # TODO(b/162630222): remove this dependency.
+        "//tensorflow/c/kernels:summary_op_lib",
     ],
 )
 
@@ -797,36 +810,7 @@ tf_gen_op_libs(
         "ragged_conversion_ops",
         "ragged_math_ops",
     ],
-    deps = [":ragged_to_dense_util"],
-)
-
-cc_library(
-    name = "ragged_to_dense_util",
-    srcs = [
-        "ops/ragged_to_dense_util.cc",
-    ],
-    hdrs = [
-        "ops/ragged_to_dense_util.h",
-    ],
-    deps = [
-        ":framework",
-        ":protos_all_cc",
-    ],
-)
-
-tf_cc_test(
-    name = "ragged_to_dense_util_test",
-    srcs = [
-        "ops/ragged_to_dense_util_test.cc",
-    ],
-    deps = [
-        ":framework",
-        ":protos_all_cc",
-        ":ragged_to_dense_util",
-        ":test",
-        ":testlib",
-        "@com_google_googletest//:gtest_main",
-    ],
+    deps = ["//tensorflow/core/util:ragged_to_dense_util"],
 )
 
 cc_library(
@@ -891,6 +875,7 @@ cc_library(
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_chromiumos(
         [],
@@ -908,6 +893,7 @@ cc_library(
             ":tpu_outfeed_ops_op_lib",
             ":tpu_ordinal_selector_ops_op_lib",
             ":tpu_replication_ops_op_lib",
+            "//tensorflow/core/tpu/ops",
         ],
     ) + if_mkl([
         ":mkl_array_ops_op_lib",
@@ -997,6 +983,7 @@ cc_library(
     name = "all_kernels_impl",
     visibility = [":__subpackages__"],
     deps = [
+        "//tensorflow/c/kernels:summary_op",
         "//tensorflow/c/kernels:bitcast_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
@@ -1093,6 +1080,8 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_op_kernels",
         "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
+    ]) + if_tpu([
+        "//tensorflow/core/tpu/kernels",
     ]),
 )
 
@@ -1294,7 +1283,6 @@ filegroup(
     srcs = [
         # Sources for which we do not yet have granular targets.
         "//tensorflow/c/eager:srcs",
-        "//tensorflow/c/experimental/saved_model/core:mobile_srcs_only_runtime",
         "//tensorflow/c:srcs",
         "//tensorflow/core/common_runtime:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime/eager:srcs",
@@ -1733,6 +1721,7 @@ filegroup(
         "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
         "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
+        "//tensorflow/core/lib/llvm_rtti:legacy_lib_core_all_headers",
         "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
         "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
@@ -1861,7 +1850,9 @@ cc_library(
         "//tensorflow/core/lib/io:random_inputstream",
         "//tensorflow/core/lib/io:record_reader",
         "//tensorflow/core/lib/io:record_writer",
+        "//tensorflow/core/lib/io:snappy_compression_options",
         "//tensorflow/core/lib/io:snappy_inputbuffer",
+        "//tensorflow/core/lib/io:snappy_inputstream",
         "//tensorflow/core/lib/io:snappy_outputbuffer",
         "//tensorflow/core/lib/io:table",
         "//tensorflow/core/lib/io:table_options",
@@ -1922,6 +1913,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
         "//tensorflow/core/platform:prefetch",
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:resource",
@@ -1950,7 +1942,7 @@ cc_library(
         "@zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
-    ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_deps(),
+    ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
@@ -2995,6 +2987,13 @@ filegroup(
         "lib/gif/testdata/optimized.gif",
         # BMP data
         "lib/bmp/testdata/lena.bmp",
+        "lib/bmp/testdata/rgb_small.bmp",
+        "lib/bmp/testdata/rgb_small_255.bmp",
+        "lib/bmp/testdata/rgba_small.bmp",
+        "lib/bmp/testdata/rgba_small_255.bmp",
+        "lib/bmp/testdata/grayscale_small.bmp",
+        "lib/bmp/testdata/grayscale_small_3channels.bmp",
+        "lib/bmp/testdata/grayscale_small_4channels.bmp",
         # SSIM, PSNR data
         "lib/ssim/testdata/checkerboard1.png",
         "lib/ssim/testdata/checkerboard2.png",

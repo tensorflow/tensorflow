@@ -75,9 +75,9 @@ class MomentumOptimizerTest(test.TestCase):
       # Check we have slots
       self.assertEqual(["momentum"], mom_opt.get_slot_names())
       slot0 = mom_opt.get_slot(var0, "momentum")
-      self.assertEquals(slot0.get_shape(), var0.get_shape())
+      self.assertEqual(slot0.get_shape(), var0.get_shape())
       slot1 = mom_opt.get_slot(var1, "momentum")
-      self.assertEquals(slot1.get_shape(), var1.get_shape())
+      self.assertEqual(slot1.get_shape(), var1.get_shape())
       if not context.executing_eagerly():
         self.assertFalse(slot0 in variables.trainable_variables())
         self.assertFalse(slot1 in variables.trainable_variables())
@@ -146,7 +146,7 @@ class MomentumOptimizerTest(test.TestCase):
       optimizer_variables = optimizer.variables()
       self.assertStartsWith(optimizer_variables[0].name, "var0")
       self.assertStartsWith(optimizer_variables[1].name, "var1")
-      self.assertEquals(2, len(optimizer_variables))
+      self.assertEqual(2, len(optimizer_variables))
 
     with ops.Graph().as_default():
       var2 = resource_variable_ops.ResourceVariable(
@@ -158,12 +158,12 @@ class MomentumOptimizerTest(test.TestCase):
       optimizer_variables = optimizer.variables()
       self.assertStartsWith(optimizer_variables[0].name, "var2")
       self.assertStartsWith(optimizer_variables[1].name, "var3")
-      self.assertEquals(2, len(optimizer_variables))
+      self.assertEqual(2, len(optimizer_variables))
 
-  @test_util.run_deprecated_v1
   def testNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      # train.MomentumOptimizer is V1 only API.
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -176,7 +176,7 @@ class MomentumOptimizerTest(test.TestCase):
         mom_op = momentum_lib.MomentumOptimizer(
             learning_rate=2.0, momentum=0.9, use_nesterov=True)
         opt_op = mom_op.minimize(cost, global_step, [var0, var1])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         for t in range(1, 5):
           opt_op.run()
           var0_np, accum0_np = self._update_nesterov_momentum_numpy(
@@ -187,10 +187,10 @@ class MomentumOptimizerTest(test.TestCase):
           self.assertAllClose(var0_np, self.evaluate(var0))
           self.assertAllClose(var1_np, self.evaluate(var1))
 
-  @test_util.run_deprecated_v1
   def testSparseNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      # train.MomentumOptimizer is V1 only API.
+      with ops.Graph().as_default(), self.cached_session():
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
@@ -218,7 +218,7 @@ class MomentumOptimizerTest(test.TestCase):
         grads_and_vars = [(y_feed, var0), (constant_op.constant(
             [3.0, 3.0], dtype=dtype), var1)]
         opt_update = mom_op.apply_gradients(grads_and_vars)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         for t in range(1, 5):
           opt_update.run(feed_dict={x_feed: grads[t - 1]})
           var0_np, accum0_np = self._update_nesterov_momentum_numpy(
@@ -282,10 +282,10 @@ class MomentumOptimizerTest(test.TestCase):
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))
 
-  @test_util.run_deprecated_v1
   def testTensorLearningRateAndMomentum(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      # train.MomentumOptimizer is V1 only API.
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -295,14 +295,14 @@ class MomentumOptimizerTest(test.TestCase):
             momentum=constant_op.constant(0.9))
         mom_update = mom_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Check we have slots
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         self.assertFalse(slot0 in variables.trainable_variables())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
         self.assertFalse(slot1 in variables.trainable_variables())
 
         # Fetch params to validate initial values
@@ -443,24 +443,24 @@ class MomentumOptimizerTest(test.TestCase):
     # pylint: enable=line-too-long
     return db_grad, db_out
 
-  @test_util.run_deprecated_v1
   def testLikeDistBeliefMom01(self):
-    with self.cached_session():
+    # train.MomentumOptimizer is V1 only API.
+    with ops.Graph().as_default(), self.cached_session():
       db_grad, db_out = self._dbParamsMom01()
       num_samples = len(db_grad)
       var0 = variables.Variable([0.0] * num_samples)
       grads0 = constant_op.constant([0.0] * num_samples)
       mom_opt = momentum_lib.MomentumOptimizer(learning_rate=0.1, momentum=0.1)
       mom_update = mom_opt.apply_gradients(zip([grads0], [var0]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for i in xrange(num_samples):
         mom_update.run(feed_dict={grads0: db_grad[i]})
         self.assertAllClose(np.array(db_out[i]), self.evaluate(var0))
 
-  @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      # train.MomentumOptimizer is V1 only API.
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable(array_ops.zeros([4, 2], dtype=dtype))
         var1 = variables.Variable(constant_op.constant(1.0, dtype, [4, 2]))
         grads0 = ops.IndexedSlices(
@@ -477,14 +477,14 @@ class MomentumOptimizerTest(test.TestCase):
             learning_rate=2.0, momentum=0.9)
         mom_update = mom_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Check we have slots
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
         self.assertAllClose([0, 0], self.evaluate(var0)[0])
@@ -539,10 +539,10 @@ class MomentumOptimizerTest(test.TestCase):
             ]),
             self.evaluate(var1)[2])
 
-  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      # train.MomentumOptimizer is V1 only API.
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -553,13 +553,13 @@ class MomentumOptimizerTest(test.TestCase):
             zip([grads0, grads1], [var0, var1]))
         mom_update2 = mom_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))

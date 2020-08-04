@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -82,8 +83,10 @@ struct SPMDCollectiveOpsCreator {
   std::function<HloInstruction*(SpmdBuilder*)> create_partition_id;
 
   // Function used to create a cross-partition all-reduce HLO.
-  std::function<HloInstruction*(SpmdBuilder*, HloInstruction* operand,
-                                HloComputation* reduction, int64 channel_id)>
+  std::function<HloInstruction*(
+      SpmdBuilder*, HloInstruction* operand, HloComputation* reduction,
+      const std::vector<std::vector<int64>>& partition_subgroups,
+      int64 channel_id)>
       create_cross_partition_all_reduce;
 
   // Function used to create a cross-partition collective-permute HLO.
@@ -96,10 +99,22 @@ struct SPMDCollectiveOpsCreator {
   // Function used to create a cross-partition all-to-all HLO.
   std::function<HloInstruction*(
       SpmdBuilder*, absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups, int64 channel_id,
-      absl::optional<int64> split_dimension)>
+      const std::vector<std::vector<int64>>& partition_subgroups,
+      int64 channel_id, absl::optional<int64> split_dimension)>
       create_cross_partition_all_to_all;
+
+  // Function used to create a cross-partition all-gather HLO. This is optional:
+  // if it is nullptr, the partitioner will use all-reduce instead.
+  std::function<HloInstruction*(
+      SpmdBuilder*, HloInstruction* operand, const Shape& ag_shape,
+      const std::vector<std::vector<int64>>& partition_subgroups,
+      int64 channel_id, int64 all_gather_dimension)>
+      create_cross_partition_all_gather;
 };
+
+// Create a default SPMDCollectiveOpsCreator.
+SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64 num_partitions,
+                                                        int64 num_replicas);
 
 // Logger to report memory usage during SPMD partitioning.
 class SpmdLogger {
@@ -153,6 +168,18 @@ class SpmdPartitioner : public HloModulePass {
                                       int64* next_channel_id,
                                       SpmdLogger* logger);
 
+  // Creates all-gather based on HloSharding. Can be overridden to customize.
+  // The default uses a single all-gather even if there are multiple sharded
+  // dimensions, and adds potential reshapes and transposes to achieve that.
+  // If it returns false, the partitioner will fall back to all-reduce.
+  // `selected_dims` specifies the dimensions along which the all-gather happens
+  // in the tiled sharding, which allows potentially creating a subgroup
+  // all-gather.
+  virtual HloInstruction* AllGatherShards(
+      SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
+      int64 channel_id, absl::Span<const int64> selected_dims,
+      const SPMDCollectiveOpsCreator& collectives_creator);
+
  protected:
   virtual std::unique_ptr<SpmdPartitioningVisitor> CreateVisitor(
       HloComputation* computation, int64 num_partitions, int64 num_replicas,
@@ -160,7 +187,6 @@ class SpmdPartitioner : public HloModulePass {
       int64* next_channel_id, SpmdLogger* logger,
       SpmdPartitionerOptions options);
 
- private:
   // Verify that the sharding of instructions in the module are valid, and also
   // fill in missing sharding information.
   Status PreprocessSharding(HloModule* module);
@@ -195,7 +221,12 @@ class PartitionedHlo {
           std::tuple<HloSharding, Window, WindowedInputShardReturnValue>>
           window_reshard_cache;
     };
+    // Use std::unordered_map for pointer stability.
     std::unordered_map<HloInstruction*, PerHloCache> per_hlo_cache;
+    // Caches for nested partitioning of grouped sharding. Each string key
+    // represents a unique way of grouping devices.
+    absl::flat_hash_map<std::string, std::unique_ptr<ReshardCache>>
+        groupd_caches;
   };
   struct PartitioningState {
     SpmdBuilder* b;
@@ -205,6 +236,7 @@ class PartitionedHlo {
     SPMDCollectiveOpsCreator collective_ops_creator;
     int64* next_channel_id;
     ReshardCache* reshard_cache;
+    SpmdPartitioner* partitioner;
   };
   PartitionedHlo(HloInstruction* hlo, Shape base_shape, PartitioningState state)
       : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {
@@ -222,8 +254,13 @@ class PartitionedHlo {
   // the reshard cache.
   PartitionedHlo Reshard(const HloSharding& target);
 
-  // Pads the garbage area of the output with the provided value.
-  PartitionedHlo PadWithValue(HloInstruction* pad_value) const;
+  // Pads the garbage area of the output with the provided value. Normally,
+  // unevenly partitioned dimensions are padded on the right, but this function
+  // allows specifying left-padded dimensions, which can be used during the
+  // handling of kReverse, etc.
+  PartitionedHlo PadWithValue(
+      HloInstruction* pad_value,
+      absl::Span<const int64> left_padded_dims = {}) const;
 
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }
@@ -242,21 +279,28 @@ class PartitionedHlo {
       const Window& window, const HloSharding& target,
       HloInstruction* pad_value, bool mask_invalid_region = true);
 
- private:
-  // Same as Reshard except that it does not explicitly modify the reshard
-  // cache, although it would indirectly modify by calling Replicate().
-  PartitionedHlo ReshardNoCache(const HloSharding& target);
+  const PartitioningState& state() const { return state_; }
 
   // Helper function to replicate the data on all devices. Could only modify
   // the reshard cache.
   PartitionedHlo Replicate();
+
+  // Helper function to replicate the data for partitions along the given dims.
+  HloInstruction* ReplicatePartial(absl::Span<const int64> dims);
+
+ private:
+  // Same as Reshard except that it does not explicitly modify the reshard
+  // cache, although it would indirectly modify by calling Replicate().
+  PartitionedHlo ReshardNoCache(const HloSharding& target);
 
   // Helper function to broadcast data from a single device to all devices.
   PartitionedHlo Broadcast() const;
 
   // Helper function to reshard the tensor using AllToAll (instead of the
   // default of Replicate followed by Slice).
-  PartitionedHlo ReshardWithAllToAll(const HloSharding& target) const;
+  PartitionedHlo ReshardWithAllToAll(
+      const HloSharding& target,
+      absl::Span<const std::pair<int64, int64>> source_target_dims) const;
 
   // Helper function to reshard the tensor using CollectivePermute.
   PartitionedHlo ReshardWithCollectivePermute(const HloSharding& target) const;
@@ -284,6 +328,22 @@ struct DotGeneralDimsMapping {
   std::vector<DimsMapping> contracting_dims;
   std::vector<DimsMapping> lhs_non_contracting_dims;
   std::vector<DimsMapping> rhs_non_contracting_dims;
+};
+
+struct ConvolutionDimsMapping {
+  // The dimension numbers for the operands and output corresponding to a
+  // logical dimension (e.g., batch, parallel, non-parallel). If an
+  // operand or the output doesn't have the logical dimension, it is set to
+  // -1.
+  struct DimsMapping {
+    int64 lhs;
+    int64 rhs;
+    int64 output;
+    // input mapped to index in input_spatial_dimensions().
+    int64 spatial;
+  };
+  std::vector<DimsMapping> parallel_spatial_dims;
+  std::vector<DimsMapping> non_parallel_spatial_dims;
 };
 
 class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
@@ -325,9 +385,6 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleReshape(HloInstruction* hlo) override;
   Status HandleIota(HloInstruction* hlo) override;
   Status HandlePartitionId(HloInstruction* hlo) override;
-
-  // Handles convolution where both LHS and RHS operands are tiled.
-  Status HandleConvolutionTiledLhsAndRhs(HloInstruction* hlo);
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   Status HandleDotHelper(
@@ -378,6 +435,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     state.collective_ops_creator = collective_ops_creator_;
     state.next_channel_id = next_channel_id_;
     state.reshard_cache = &reshard_cache_;
+    state.partitioner = partitioner_;
     return state;
   }
 
@@ -385,6 +443,16 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   StatusOr<bool> DoPartition(HloComputation* computation,
                              const HloSharding& root_sharding);
+
+  // Information about a loop created for windowed dot-general. Used when
+  // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
+  // finishes traversing the graph.
+  struct WindowedDotGeneralLoop {
+    HloInstruction* while_loop;
+    int64 windowed_operand;
+    bool windowed_in_contracting_dims;
+    bool windowed_in_batch_dims;
+  };
 
  private:
   Status Preprocess(HloInstruction* hlo) override;
@@ -414,15 +482,6 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // partitioned instruction.
   ConstHloInstructionMap<PartitionedHlo> partitioned_instructions_;
 
-  // Information about a loop created for windowed dot-general. Used when
-  // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
-  // finishes traversing the graph.
-  struct WindowedDotGeneralLoop {
-    HloInstruction* while_loop;
-    int64 windowed_operand;
-    bool windowed_in_contracting_dims;
-    bool windowed_in_batch_dims;
-  };
   std::vector<WindowedDotGeneralLoop> windowed_dot_general_loops_;
 
   HloInstruction* visiting_hlo_;

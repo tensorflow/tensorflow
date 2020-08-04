@@ -838,12 +838,13 @@ def If(cond, inputs, then_branch, else_branch, name=None):
     or else_branch(inputs).
   """
   # pylint: disable=protected-access
+  if isinstance(then_branch, function._DefinedFunction):
+    tlist = [_.type for _ in then_branch.definition.signature.output_arg]
+  else:
+    # We assume that `then_branch` is a ConcreteFunction here.
+    tlist = nest.flatten(then_branch.output_dtypes)
   return gen_functional_ops._if(
-      cond,
-      inputs, [_.type for _ in then_branch.definition.signature.output_arg],
-      then_branch,
-      else_branch,
-      name=name)
+      cond, inputs, tlist, then_branch, else_branch, name=name)
 
 
 def Gradient(inputs, f, name=None):

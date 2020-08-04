@@ -163,10 +163,7 @@ struct MatrixDiagPart<GPUDevice, T> {
   template struct MatrixDiag<GPUDevice, T>; \
   template struct MatrixDiagPart<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
-TF_CALL_bool(DEFINE_GPU_SPEC);
-TF_CALL_complex64(DEFINE_GPU_SPEC);
-TF_CALL_complex128(DEFINE_GPU_SPEC);
+TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_SPEC);
 
 }  // namespace functor
 }  // namespace tensorflow

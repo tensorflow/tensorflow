@@ -1128,6 +1128,10 @@ renames = {
         'tf.compat.v1.scatter_nd_add',
     'tf.scatter_nd_sub':
         'tf.compat.v1.scatter_nd_sub',
+    'tf.scatter_nd_max':
+        'tf.compat.v1.scatter_nd_max',
+    'tf.scatter_nd_min':
+        'tf.compat.v1.scatter_nd_min',
     'tf.scatter_nd_update':
         'tf.compat.v1.scatter_nd_update',
     'tf.scatter_sub':
@@ -1368,6 +1372,8 @@ renames = {
         'tf.compat.v1.tpu.shard',
     'tf.tpu.shutdown_system':
         'tf.compat.v1.tpu.shutdown_system',
+    'tf.tpu.XLAOptions':
+        'tf.compat.v1.tpu.XLAOptions',
     'tf.trace':
         'tf.linalg.trace',
     'tf.train.AdadeltaOptimizer':

@@ -35,10 +35,16 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/utils:data_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
+        "//third_party/py/numpy",
     ],
 )
 

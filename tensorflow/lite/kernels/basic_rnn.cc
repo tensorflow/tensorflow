@@ -79,8 +79,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     bias->dims->data[0]);
   TF_LITE_ENSURE_EQ(context, recurrent_weights->dims->data[1],
                     bias->dims->data[0]);
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, input_weights->type, recurrent_weights->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_weights->type,
+                          recurrent_weights->type);
   TF_LITE_ENSURE_EQ(context, NumDimensions(hidden_state), 2);
   TF_LITE_ENSURE_EQ(context, hidden_state->dims->data[0], batch_size);
   TF_LITE_ENSURE_EQ(context, hidden_state->dims->data[1], num_units);
@@ -288,8 +289,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                         accum_scratch, row_sums, &op_data->compute_row_sums);
     }
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input_weights->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(input_weights->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

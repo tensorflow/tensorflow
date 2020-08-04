@@ -56,6 +56,7 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
   Status HandleCompare(HloInstruction* instr) override;
   Status HandleConcatenate(HloInstruction* instr) override;
   Status HandleConstant(HloInstruction* instr) override;
+  Status HandleGather(HloInstruction* instr) override;
   Status HandleIota(HloInstruction* instr) override;
   Status HandleParameter(HloInstruction* instr) override;
   Status HandleReduce(HloInstruction* instr) override;

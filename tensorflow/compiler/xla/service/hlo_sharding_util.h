@@ -70,6 +70,12 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                             const Shape& target_shape,
                                             const HloSharding& sharding);
 
+// Returns the HloSharding with the tile dimensions and tile assignment
+// reversed based on the specified dimension numbers. In case of a tile
+// maximal sharding returns the original sharding.
+HloSharding ReverseSharding(const HloSharding& sharding,
+                            absl::Span<const int64> dimensions);
+
 // Returns a sharding tiled on unique dimension dim by reshaping the tile
 // assignment of the sharding argument. Only dimensions in the dims span
 // argument are considered for reshaping, the others are ignored.
@@ -120,6 +126,26 @@ HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
 // elements as "result".
 HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
                                          const HloInstruction& hlo);
+
+// Returns an output sharding of gather by passing through the data operand's
+// sharding.
+absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
+    const HloSharding& data_operand_sharding, const HloInstruction& hlo);
+
+// Returns a data operand sharding of gather by passing through the output's
+// sharding.
+absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
+    const HloSharding& output_sharding, const HloInstruction& hlo);
+
+// Returns an output sharding of scatter by passing through the update operand's
+// sharding.
+absl::optional<HloSharding> ScatterOutputShardingFromUpdate(
+    const HloSharding& update_sharding, const HloInstruction& hlo);
+
+// Returns an update operand sharding of scatter by passing through the output's
+// sharding.
+absl::optional<HloSharding> ScatterUpdateShardingFromOutput(
+    const HloSharding& output_sharding, const HloInstruction& hlo);
 
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.

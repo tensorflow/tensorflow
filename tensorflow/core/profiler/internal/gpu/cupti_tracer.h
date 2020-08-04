@@ -147,6 +147,8 @@ struct CuptiTracerOptions {
   std::vector<CUpti_ActivityKind> activities_selected;
   // Whether to call cuptiFinalize.
   bool cupti_finalize = false;
+  // Whether to call cuCtxSynchronize for each device before Stop().
+  bool sync_devices_before_stop = false;
 };
 
 struct CuptiTracerCollectorOptions {
@@ -219,7 +221,7 @@ class CuptiDriverApiHook {
   virtual Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                                  CUpti_CallbackId cbid,
                                  const CUpti_CallbackData* callback_info) = 0;
-  virtual Status Flush() = 0;
+  virtual Status SyncAndFlush() = 0;
 
  protected:
   static Status AddDriverApiCallbackEvent(

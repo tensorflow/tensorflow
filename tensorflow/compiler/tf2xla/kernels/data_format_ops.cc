@@ -106,8 +106,9 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
                 errors::InvalidArgument(
                     "Input must be a vector or matrix, but got shape ",
                     input_tensor_shape.DebugString()));
+    const int dim0 = input_tensor_shape.dim_size(0);
     OP_REQUIRES(
-        ctx, input_tensor_shape.dim_size(0) == 4,
+        ctx, dim0 == 2 || dim0 == 4,
         errors::InvalidArgument(
             "First dimension of input must be of size 4, but got shape ",
             input_tensor_shape.DebugString()));
@@ -118,10 +119,25 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
               "Second dimension of 2D input must be of size 2, but got shape ",
               input_tensor_shape.DebugString()));
     }
-    int32 dst_indices[4];
-    for (int i = 0; i < 4; ++i) {
-      for (int j = 0; j < 4; ++j) {
-        if (src_format_[i] == dst_format_[j]) {
+
+    string src_format_str = src_format_;
+    string dst_format_str = dst_format_;
+    if (dim0 == 2) {
+      // If the input is a vector of size 2, treat the two elements as spatial
+      // dimensions.
+      auto keep_only_spatial_dimensions = [](string* format_str) -> void {
+        auto new_end = std::remove_if(
+            format_str->begin(), format_str->end(),
+            [](const char dim) { return dim != 'H' && dim != 'W'; });
+        format_str->erase(new_end, format_str->end());
+      };
+      keep_only_spatial_dimensions(&src_format_str);
+      keep_only_spatial_dimensions(&dst_format_str);
+    }
+    std::vector<int32> dst_indices(dim0);
+    for (int i = 0; i < dim0; ++i) {
+      for (int j = 0; j < dim0; ++j) {
+        if (src_format_str[i] == dst_format_str[j]) {
           dst_indices[j] = i;
           break;
         }

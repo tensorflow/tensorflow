@@ -308,9 +308,12 @@ static port::Status InternalInit() {
 
   if (res == CUDA_SUCCESS) {
     return port::Status::OK();
+  } else if (res == CUDA_ERROR_SHARED_OBJECT_INIT_FAILED) {
+    LOG(WARNING) << "failed call to cuInit: " << ToString(res);
+  } else {
+    LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   }
 
-  LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   Diagnostician::LogDiagnosticInformation();
   return port::Status(port::error::ABORTED,
                       absl::StrCat("failed call to cuInit: ", ToString(res)));
@@ -713,13 +716,21 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
-/* static */ bool GpuDriver::CreateStream(GpuContext* context,
-                                          CUstream* stream) {
+/* static */ bool GpuDriver::CreateStream(GpuContext* context, CUstream* stream,
+                                          int priority) {
   // TODO(leary) can we switch this to CU_STREAM_NON_BLOCKING or will that mess
   // up synchronization with respect to memsets and any other things that have
   // to occur on the default stream?
   ScopedActivateContext activated{context};
-  CUresult res = cuStreamCreate(stream, 0);
+  CUresult res;
+  // If the priority is 0, then use the previous api to create the stream with
+  // the default priority for backward compatibility. Probably there is no
+  // difference in using the new api call but leaving it as is for now.
+  if (priority == 0) {
+    res = cuStreamCreate(stream, 0);
+  } else {
+    res = cuStreamCreateWithPriority(stream, 0, priority);
+  }
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not allocate CUDA stream for context "
                << context->context() << ": " << ToString(res);

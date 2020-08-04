@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CUSTOM_OPS_REGISTER_H_
 #define TENSORFLOW_LITE_KERNELS_CUSTOM_OPS_REGISTER_H_
 
-#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace ops {

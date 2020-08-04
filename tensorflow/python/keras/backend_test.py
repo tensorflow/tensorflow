@@ -169,7 +169,7 @@ class BackendUtilsTest(test.TestCase):
           sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_name(self):
-    with ops.name_scope('test_scope'):
+    with backend.name_scope('test_scope'):
       # Test that outer name scopes do not affect the learning phase's name.
       lp = backend.symbolic_learning_phase()
     self.assertEqual(lp.name, 'keras_learning_phase:0')
@@ -1677,8 +1677,10 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
         t, p, from_logits=True, axis=0),
     self.assertArrayNear(self.evaluate(result)[0], [.002, 0, .17], 1e-3)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_sparse_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    # This test only runs in graph because the TF op layer is not supported yet
+    # for sparse ops.
     t = backend.placeholder()
     p = backend.placeholder()
     o = backend.sparse_categorical_crossentropy(t, p)
@@ -1760,7 +1762,10 @@ class TestCTC(test.TestCase):
         -3.777835    # output beam 1
     ], np.float32)[np.newaxis, :]
 
-    decode_truth = [np.array([1, 0]), np.array([0, 1, 0])]
+    decode_truth = [
+        np.array([1, 0, -1, -1, -1, -1, -1]),
+        np.array([0, 1, 0, -1, -1, -1, -1])
+    ]
     beam_width = 2
     top_paths = 2
 
@@ -1870,6 +1875,8 @@ class TestRandomOps(test.TestCase):
 class FunctionTest(test.TestCase):
 
   def test_function_basics(self):
+    if context.executing_eagerly():
+      self.skipTest('eager backend.function does not support updates')
     x1 = backend.placeholder(shape=(), dtype='float32')
     x2 = backend.placeholder(shape=(), dtype='int32')
     v = backend.variable(10.)
@@ -1916,6 +1923,9 @@ class FunctionTest(test.TestCase):
     self.assertEqual(result, 4.)
 
   def test_tuple_updates(self):
+    if context.executing_eagerly():
+      self.skipTest('eager backend.function does not support updates')
+
     x_ph = backend.placeholder(ndim=2)
     v = backend.variable(np.ones((4, 2)))
     output = x_ph ** 2 + v
@@ -1929,7 +1939,7 @@ class FunctionTest(test.TestCase):
 
 class BackendGraphTests(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_function_placeholder_with_default(self):
     with backend.get_graph().as_default():
       x1 = array_ops.placeholder_with_default(
@@ -2124,8 +2134,8 @@ class ControlOpsTests(test.TestCase):
     def false_func():
       return y
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'Rank of `condition` should be less than'):
+    with self.assertRaisesRegex(ValueError,
+                                'Rank of `condition` should be less than'):
       backend.switch(backend.equal(x, x), false_func, true_func)
 
 

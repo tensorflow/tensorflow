@@ -261,7 +261,7 @@ void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
     Shape* shape = ShapeUtil::GetMutableSubshape(
         position.instruction->mutable_shape(), position.index);
     if (shape->has_layout()) {
-      shape->mutable_layout()->set_memory_space(buffer.color().value());
+      shape->mutable_layout()->set_memory_space(buffer.color());
     }
   }
 }
@@ -272,7 +272,7 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   proto.set_size(size_);
   proto.set_is_thread_local(is_thread_local_);
   proto.set_is_tuple(is_tuple_);
-  proto.set_color(color_.value());
+  proto.set_color(color_);
   if (is_entry_computation_parameter_) {
     proto.set_is_entry_computation_parameter(true);
     for (int64 idx : param_shape_index()) {
@@ -336,8 +336,8 @@ static const HloInstruction* GetOutputInstruction(
 string BufferAllocation::ToString() const {
   string output;
   StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
-  if (color().value() != 0) {
-    StrAppend(&output, ", color ", color().value());
+  if (color() != 0) {
+    StrAppend(&output, ", color ", color());
   }
   if (is_entry_computation_parameter()) {
     const HloInstruction* param = GetEntryParameterInstruction(*this);
@@ -607,9 +607,7 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
 // BufferAllocation.
 void BufferAssignment::CombineTempAllocations() {
   VLOG(1) << "CombineTempAllocations()";
-  flat_hash_map<BufferValue::Color, BufferAllocation,
-                BufferValue::Color::Hasher>
-      combined_allocation_map;
+  flat_hash_map<BufferValue::Color, BufferAllocation> combined_allocation_map;
 
   // Move all temp allocations into a single run at the end of the allocations
   // vector.
@@ -1059,8 +1057,8 @@ Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
 
       // The instruction or operand color is excluded because it was assigned by
       // memory_space_assignment.
-      if (excluded_colors.contains(instruction_buffer.color().value()) ||
-          excluded_colors.contains(operand_buffer.color().value())) {
+      if (excluded_colors.contains(instruction_buffer.color()) ||
+          excluded_colors.contains(operand_buffer.color())) {
         continue;
       }
 
@@ -1353,13 +1351,10 @@ Status BufferAssigner::AssignBuffersForComputations(
   return Status::OK();
 }
 
-flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>,
-              LogicalBuffer::Color::Hasher>
+flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>>
 BufferAssigner::SplitBuffersByColor(
     const flat_hash_set<const HloValue*>& buffers) {
-  flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>,
-                LogicalBuffer::Color::Hasher>
-      color_map;
+  flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>> color_map;
   for (auto buffer : buffers) {
     color_map[buffer->color()].insert(buffer);
   }
@@ -1374,8 +1369,7 @@ Status BufferAssigner::AssignPresetBuffers(
   }
 
   // Create an allocation for each preset color.
-  absl::flat_hash_map<LogicalBuffer::Color, BufferAllocation*,
-                      LogicalBuffer::Color::Hasher>
+  absl::flat_hash_map<LogicalBuffer::Color, BufferAllocation*>
       preset_allocations;
   for (auto& color_and_info : preset_assignments_->assignment_informations()) {
     LogicalBuffer::Color color(color_and_info.first);

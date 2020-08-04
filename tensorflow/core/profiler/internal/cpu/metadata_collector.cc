@@ -65,15 +65,13 @@ class MetadataCollector : public ProfilerInterface {
 
   Status CollectData(XSpace* space) override {
     if (!debug_info_.empty()) {
-      XPlane* plane = GetOrCreatePlane(space, kMetadataPlane);
-      plane->set_id(kMetadataPlaneId);
+      XPlane* plane = FindOrAddMutablePlaneWithName(space, kMetadataPlaneName);
       XPlaneBuilder xplane(plane);
+      const XStatMetadata& hlo_proto_stat =
+          *xplane.GetOrCreateStatMetadata(kHloProto);
       for (auto& p : debug_info_) {
-        std::string hlo_proto;
-        p.hlo_proto->SerializeToString(&hlo_proto);
+        xplane.AddStatValue(hlo_proto_stat, *p.hlo_proto);
         p.hlo_proto.reset();
-        xplane.AddStatValue(*xplane.GetOrCreateStatMetadata(kHloProto),
-                            std::move(hlo_proto), /*is_bytes=*/true);
       }
       debug_info_.clear();
     }

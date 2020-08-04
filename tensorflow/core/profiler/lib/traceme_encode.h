@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
-#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -28,7 +27,20 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-namespace internal {
+
+// An argument passed to TraceMeEncode.
+struct TraceMeArg {
+  // This constructor is required because absl::AlphaNum is non-copyable.
+  template <typename Value>
+  TraceMeArg(absl::string_view k, Value v) : key(k), value(v) {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(TraceMeArg);
+
+  absl::string_view key;
+  absl::AlphaNum value;
+};
+
+namespace traceme_internal {
 
 // Copies the contents of str to the address pointed by out.
 // Returns the address after the copy.
@@ -36,44 +48,95 @@ namespace internal {
 TF_ATTRIBUTE_ALWAYS_INLINE inline char* Append(char* out,
                                                absl::string_view str) {
   const size_t str_size = str.size();
-  if (str_size > 0) {
+  if (TF_PREDICT_TRUE(str_size > 0)) {
     memcpy(out, str.data(), str_size);
     out += str_size;
   }
   return out;
 }
 
-}  // namespace internal
-
-// Encodes an event name and arguments into a string stored by TraceMe.
-// Use within a lambda to avoid expensive operations when tracing is inactive.
-// Example Usage:
-//   TraceMe trace_me([&name, value1]() {
-//     return TraceMeEncode(name, {{"key1", value1}, {"key2", 42}});
-//   });
-inline std::string TraceMeEncode(
-    std::string name,
-    std::initializer_list<std::pair<absl::string_view, absl::AlphaNum>> args) {
+// Appends args encoded as TraceMe metadata to name.
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string AppendArgs(
+    std::string name, std::initializer_list<TraceMeArg> args) {
   if (TF_PREDICT_TRUE(args.size() > 0)) {
     const auto old_size = name.size();
     auto new_size = old_size + args.size() * 2 + 1;
     for (const auto& arg : args) {
-      new_size += arg.first.size() + arg.second.size();
+      new_size += arg.key.size() + arg.value.size();
     }
     name.resize(new_size);
     char* const begin = &name[0];
     char* out = begin + old_size;
     *out++ = '#';
     for (const auto& arg : args) {
-      out = internal::Append(out, arg.first);
+      out = Append(out, arg.key);
       *out++ = '=';
-      out = internal::Append(out, arg.second.Piece());
+      out = Append(out, arg.value.Piece());
       *out++ = ',';
     }
     *(out - 1) = '#';
     DCHECK_EQ(out, begin + new_size);
   }
   return name;
+}
+
+// Appends new_metadata to the metadata part of name.
+TF_ATTRIBUTE_ALWAYS_INLINE inline void AppendMetadata(
+    std::string* name, absl::string_view new_metadata) {
+  if (!TF_PREDICT_FALSE(new_metadata.empty())) {
+    if (!name->empty() && name->back() == '#') {  // name already has metadata
+      name->back() = ',';
+      if (TF_PREDICT_TRUE(new_metadata.front() == '#')) {
+        new_metadata.remove_prefix(1);
+      }
+    }
+    name->append(new_metadata.data(), new_metadata.size());
+  }
+}
+
+}  // namespace traceme_internal
+
+// Encodes an event name and arguments into TraceMe metadata.
+// Use within a lambda to avoid expensive operations when tracing is disabled.
+// Example Usage:
+//   TraceMe trace_me([value1]() {
+//     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
+//   });
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
+    std::string name, std::initializer_list<TraceMeArg> args) {
+  return traceme_internal::AppendArgs(std::move(name), args);
+}
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
+    absl::string_view name, std::initializer_list<TraceMeArg> args) {
+  return traceme_internal::AppendArgs(std::string(name), args);
+}
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
+    const char* name, std::initializer_list<TraceMeArg> args) {
+  return traceme_internal::AppendArgs(std::string(name), args);
+}
+
+// Encodes arguments into TraceMe metadata.
+// Use within a lambda to avoid expensive operations when tracing is disabled.
+// Example Usage:
+//   TraceMe trace_me("my_trace");
+//   ...
+//   trace_me.AppendMetadata([value1]() {
+//     return TraceMeEncode({{"key1", value1}, {"key2", 42}});
+//   });
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
+    std::initializer_list<TraceMeArg> args) {
+  return traceme_internal::AppendArgs(std::string(), args);
+}
+
+// Concatenates op_name and op_type.
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOp(
+    absl::string_view op_name, absl::string_view op_type) {
+  return absl::StrCat(op_name, ":", op_type);
+}
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOp(
+    std::string&& op_name, absl::string_view op_type) {
+  absl::StrAppend(&op_name, ":", op_type);
+  return op_name;
 }
 
 }  // namespace profiler

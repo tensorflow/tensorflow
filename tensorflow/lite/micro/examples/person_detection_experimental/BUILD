@@ -45,6 +45,23 @@ cc_library(
     ],
 )
 
+tflite_micro_cc_test(
+    name = "person_detection_test",
+    srcs = ["person_detection_test.cc"],
+    deps = [
+        ":model_settings",
+        ":person_detect_model_data",
+        ":simple_images_test_data",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro/testing:micro_test",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
 cc_library(
     name = "image_provider",
     srcs = [
@@ -56,7 +73,7 @@ cc_library(
     deps = [
         ":model_settings",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -69,6 +86,7 @@ tflite_micro_cc_test(
         ":image_provider",
         ":model_settings",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -84,7 +102,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -112,8 +130,9 @@ cc_binary(
         ":model_settings",
         ":person_detect_model_data",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

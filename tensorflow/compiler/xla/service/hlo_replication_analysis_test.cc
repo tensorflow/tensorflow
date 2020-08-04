@@ -586,5 +586,49 @@ ENTRY entry {
       FindInstruction(module.get(), "ar1"), {}));
 }
 
+TEST_F(HloReplicationAnalysisTest, GlobalIdAllGather) {
+  const string module_str = R"(
+HloModule GlobalIdAllGather
+
+ENTRY entry {
+  param = f32[1] parameter(0)
+  ag1 = f32[2] all-gather(param), replica_groups={{0,1},{2,3}}, dimensions={0},
+    use_global_device_ids=true, channel_id=1
+  ag2 = f32[2] all-gather(param), replica_groups={{0,2},{1,3}}, dimensions={0},
+    use_global_device_ids=true, channel_id=2
+  ag3 = f32[4] all-gather(param), replica_groups={{0,1,2,3}}, dimensions={0},
+    use_global_device_ids=true, channel_id=3
+  ROOT tuple = (f32[], f32[], f32[]) tuple(ag1, ag2, ag3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           module_str, /*replica_count=*/2));
+  auto config = module->config();
+  config.set_num_partitions(2);
+  module->set_config(config);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> replica_analysis,
+      HloReplicationAnalysis::Run(module.get(),
+                                  /*cross_partition_spmd=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> partition_analysis,
+      HloReplicationAnalysis::Run(module.get(),
+                                  /*cross_partition_spmd=*/true));
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "ag1"), {}));
+  EXPECT_TRUE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "ag2"), {}));
+  EXPECT_TRUE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "ag3"), {}));
+
+  EXPECT_TRUE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "ag1"), {}));
+  EXPECT_FALSE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "ag2"), {}));
+  EXPECT_TRUE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "ag3"), {}));
+}
+
 }  // namespace
 }  // namespace xla

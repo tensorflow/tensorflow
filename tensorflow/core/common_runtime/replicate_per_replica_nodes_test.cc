@@ -258,16 +258,24 @@ TEST(ReplicatePerReplicaNodesTest, NestedFunctions) {
       ReplicatePerReplicaNodesInFunctionGraph(composite_devices, &graph));
 
   {
-    // _Arg(TPU:0) -> Func(CPU:0) -> _Retval(CPU:0)
-    EXPECT_EQ(graph.num_op_nodes(), 4);
+    // _Arg(TPU:0), _Arg(TPU:1) -> Pack(CPU:0) -> Func(CPU:0) -> _Retval(CPU:0)
+    EXPECT_EQ(graph.num_op_nodes(), 5);
     GraphHelper helper(graph);
     helper.CheckAssignedDevice("arg/R0", "TPU:0");
     helper.CheckAssignedDevice("arg/R1", "TPU:1");
+    helper.CheckAssignedDevice("arg/Packed", "CPU:0");
     helper.CheckAssignedDevice("func", "CPU:0");
     helper.CheckAssignedDevice("ret", "CPU:0");
-    const EdgeSet& in_edges = helper.GetNodeByName("func")->in_edges();
-    EXPECT_EQ(in_edges.size(), 1);
-    EXPECT_EQ(helper.GetNodeByName("arg/R0"), (*in_edges.begin())->src());
+    const EdgeSet& packed_in_edges =
+        helper.GetNodeByName("arg/Packed")->in_edges();
+    EXPECT_EQ(packed_in_edges.size(), 2);
+    auto it = packed_in_edges.begin();
+    EXPECT_EQ(helper.GetNodeByName("arg/R0"), (*it++)->src());
+    EXPECT_EQ(helper.GetNodeByName("arg/R1"), (*it)->src());
+    const EdgeSet& func_in_edges = helper.GetNodeByName("func")->in_edges();
+    EXPECT_EQ(func_in_edges.size(), 1);
+    EXPECT_EQ(helper.GetNodeByName("arg/Packed"),
+              (*func_in_edges.begin())->src());
   }
 }
 

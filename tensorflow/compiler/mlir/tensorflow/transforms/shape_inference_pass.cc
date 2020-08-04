@@ -47,8 +47,15 @@ namespace {
 
 // This transformation pass propagate shapes on the TensorFlow graph.
 // It is a ModulePass in order to be able to change function types.
-struct ShapeInference
+class ShapeInference
     : public PassWrapper<ShapeInference, OperationPass<ModuleOp>> {
+ public:
+  ShapeInference() = default;
+  ShapeInference(const ShapeInference& that) {
+    propagate_caller_callee_constants_ =
+        that.propagate_caller_callee_constants_;
+  }
+
   void runOnOperation() override {
     auto module = getOperation();
     auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
@@ -58,10 +65,17 @@ struct ShapeInference
     }
     int64_t producer = producer_or.ValueOrDie();
     for (auto func : module.getOps<FuncOp>()) {
-      if (failed(InferShapeForFunction(func, /*arg_shapes=*/{}, producer)))
+      if (failed(InferShapeForFunction(func, /*arg_shapes=*/{}, producer,
+                                       propagate_caller_callee_constants_)))
         return signalPassFailure();
     }
   }
+
+ private:
+  Option<bool> propagate_caller_callee_constants_{
+      *this, "propagate-caller-callee-constants",
+      llvm::cl::desc("Propagate constants between callers and callees"),
+      llvm::cl::init(true)};
 };
 
 PassRegistration<ShapeInference> pass(

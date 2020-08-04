@@ -36,9 +36,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
+from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
 
@@ -56,20 +58,42 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir
   @test_util.run_v2_only
-  def testFloat(self, enable_mlir):
+  def testFloat(self, enable_mlir_converter):
     root = self._getSimpleVariableModel()
     input_data = tf.constant(1., shape=[1])
     concrete_func = root.f.get_concrete_function(input_data)
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = enable_mlir
+    converter.experimental_new_converter = enable_mlir_converter
     tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     self.assertEqual(expected_value.numpy(), actual_value)
+
+  @parameterized.named_parameters(
+      ('_INT8InputOutput', lite.constants.INT8),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
+  @test_util.run_v2_only
+  def testInvalidFloat(self, inference_input_output_type):
+    root = self._getSimpleVariableModel()
+    input_data = tf.constant(1., shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    # We don't support integer types as we don't have statistical information
+    # to quantize (only supported for post training integer quantization).
+    with self.assertRaises(ValueError) as error:
+      converter.inference_input_type = inference_input_output_type
+      converter.inference_output_type = inference_input_output_type
+      converter.convert()
+    self.assertEqual(
+        'The inference_input_type and inference_output_type '
+        'must be tf.float32.', str(error.exception))
 
   @test_util.run_v2_only
   def testScalarInput(self):
@@ -118,7 +142,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertIn('can only convert a single ConcreteFunction',
                   str(error.exception))
 
-  def _getCalibrationQuantizeModel(self):
+  def _getIntegerQuantizeModel(self):
     np.random.seed(0)
 
     root = tracking.AutoTrackable()
@@ -143,23 +167,23 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('EnableMlirQuantizer', True),  # enable mlir quantizer
       ('DisableMlirQuantizer', False))  # disable mlir quantizer
   def testPostTrainingCalibrateAndQuantize(self, mlir_quantizer):
-    func, calibration_gen = self._getCalibrationQuantizeModel()
+    func, calibration_gen = self._getIntegerQuantizeModel()
 
     # Convert float model.
     float_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    float_tflite = float_converter.convert()
-    self.assertTrue(float_tflite)
+    float_tflite_model = float_converter.convert()
+    self.assertIsNotNone(float_tflite_model)
 
     # Convert quantized model.
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
     quantized_converter._experimental_new_quantizer = mlir_quantizer
-    quantized_tflite = quantized_converter.convert()
-    self.assertTrue(quantized_tflite)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
 
     # The default input and output types should be float.
-    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
@@ -169,50 +193,193 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(np.float32, output_details[0]['dtype'])
 
     # Ensure that the quantized weights tflite model is smaller.
-    self.assertLess(len(quantized_tflite), len(float_tflite))
+    self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
 
   @parameterized.named_parameters(
-      ('EnableMlirQuantizer', True),  # enable mlir quantizer
-      ('DisableMlirQuantizer', False))  # disable mlir quantizer
-  def testCalibrateAndQuantizeBuiltinInt8(self, mlir_quantizer):
-    func, calibration_gen = self._getCalibrationQuantizeModel()
+      ('_INT8InputOutput', lite.constants.INT8),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
+  @test_util.run_v2_only
+  def testInvalidPostTrainingDynamicRangeQuantization(
+      self, inference_input_output_type):
+    func, _ = self._getIntegerQuantizeModel()
 
     # Convert float model.
-    float_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    float_tflite = float_converter.convert()
-    self.assertTrue(float_tflite)
+    converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    # We don't support integer types as we don't have statistical information
+    # to quantize (only supported for post training integer quantization).
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.inference_input_type = inference_input_output_type
+      quantized_converter.inference_output_type = inference_input_output_type
+      quantized_converter.convert()
+    self.assertEqual(
+        'The inference_input_type and inference_output_type '
+        'must be tf.float32.', str(error.exception))
+
+  @parameterized.named_parameters(
+      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT),
+      ('_INT8InputOutput', lite.constants.INT8),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
+  def testPostTrainingIntegerAllowFloatQuantization(
+      self, inference_input_output_type):
+    func, calibration_gen = self._getIntegerQuantizeModel()
+
+    # Convert float model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details[0]['dtype'])
+
+    # Ensure that the quantized tflite model is smaller.
+    self.assertLess(len(quantized_tflite_model), len(tflite_model))
+
+  def testPostTrainingIntegerAllowFloatQuantizationINT16InputOutput(self):
+    func, calibration_gen = self._getIntegerQuantizeModel()
+
+    # Convert float model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Post-training quantization 16x8 with float fallback allowed.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.\
+        EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+        lite.OpsSet.TFLITE_BUILTINS
+    ]
+    inference_input_output_type = lite.constants.INT16
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details[0]['dtype'])
+
+    # Ensure that the quantized tflite model is smaller.
+    self.assertLess(len(quantized_tflite_model), len(tflite_model))
+
+  def testPostTrainingIntegerQuant16x8MismatchInferenceParams(self):
+    # In this test we check that when we do 16x8 post-training
+    # quantization and set inference_input(output)_type to
+    # constants.INT8, we have an error.
+    func, calibration_gen = self._getIntegerQuantizeModel()
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.\
+          EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.inference_input_type = lite.constants.INT8
+      quantized_converter.inference_output_type = lite.constants.INT8
+      quantized_converter.convert()
+    self.assertEqual(
+        "The inference_input_type and inference_output_type "
+        "must be in ['tf.float32', 'tf.int16'].", str(error.exception))
+
+  @parameterized.named_parameters(
+      ('_DefaultFLOAT32InputOutput_UseTargetTypesFlag', lite.constants.FLOAT,
+       False, False),
+      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT, True, False),
+      ('_INT8InputOutput', lite.constants.INT8, True, False),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8, True, False),
+      ('_INT16InputOutput', lite.constants.INT16, True, True))
+  @test_util.run_v2_only
+  def testPostTrainingIntegerNoFloatQuantization(self,
+                                                 inference_input_output_type,
+                                                 use_target_ops_flag,
+                                                 quantization_16x8):
+    func, calibration_gen = self._getIntegerQuantizeModel()
+
+    # Convert float model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
     # Convert model by specifying target spec (instead of optimizations), since
     # when targeting an integer only backend, quantization is mandatory.
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    quantized_converter.target_spec.supported_ops = [
-        lite.OpsSet.TFLITE_BUILTINS_INT8
-    ]
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
-    quantized_converter._experimental_new_quantizer = mlir_quantizer
-    quantized_tflite = quantized_converter.convert()
-    self.assertTrue(quantized_tflite)
+    if use_target_ops_flag:
+      if quantization_16x8:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.\
+            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS_INT8
+        ]
+    else:
+      quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
 
-    # The default input and output types should be float.
-    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details[0]['dtype'])
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 1)
-    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details[0]['dtype'])
 
-    # Ensure that the quantized weights tflite model is smaller.
-    self.assertLess(len(quantized_tflite), len(float_tflite))
+    # Ensure that the quantized tflite model is smaller.
+    self.assertLess(len(quantized_tflite_model), len(tflite_model))
 
   def testCalibrateAndQuantizeBuiltinInt16(self):
-    func, calibration_gen = self._getCalibrationQuantizeModel()
+    func, calibration_gen = self._getIntegerQuantizeModel()
 
     # Convert float model.
     float_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    float_tflite = float_converter.convert()
-    self.assertTrue(float_tflite)
+    float_tflite_model = float_converter.convert()
+    self.assertIsNotNone(float_tflite_model)
 
     converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     # TODO(b/156309549): We should add INT16 to the builtin types.
@@ -222,13 +389,13 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter.representative_dataset = calibration_gen
     converter._experimental_calibrate_only = True
     calibrated_tflite = converter.convert()
-    quantized_tflite = mlir_quantize(calibrated_tflite,
-                                     inference_type=_types_pb2.QUANTIZED_INT16)
+    quantized_tflite_model = mlir_quantize(
+        calibrated_tflite, inference_type=_types_pb2.QUANTIZED_INT16)
 
-    self.assertTrue(quantized_tflite)
+    self.assertIsNotNone(quantized_tflite_model)
 
     # The default input and output types should be float.
-    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
@@ -238,7 +405,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(np.float32, output_details[0]['dtype'])
 
     # Ensure that the quantized weights tflite model is smaller.
-    self.assertLess(len(quantized_tflite), len(float_tflite))
+    self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
 
   def _getTrainingTimeQuantizedModel(self):
 
@@ -278,29 +445,43 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     return tf.keras.Sequential(QLinear(3, input_shape=(2,)))
 
+  @parameterized.named_parameters(
+      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT),
+      ('_INT8InputOutput', lite.constants.INT8),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
   @test_util.run_v2_only
-  def testTrainingTimeQuantizeConversion(self):
+  def testTrainingTimeQuantization(self, inference_input_output_type):
     model = self._getTrainingTimeQuantizedModel()
 
     float_converter = lite.TFLiteConverterV2.from_keras_model(model)
-    float_tflite = float_converter.convert()
-    self.assertTrue(float_tflite)
+    float_tflite_model = float_converter.convert()
+    self.assertIsNotNone(float_tflite_model)
 
     quantized_converter = lite.TFLiteConverterV2.from_keras_model(model)
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_tflite = quantized_converter.convert()
-    self.assertTrue(quantized_tflite)
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
 
-    # Ensure that the quantized weights tflite model is smaller.
-    self.assertLess(len(quantized_tflite), len(float_tflite))
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     input_details[0]['dtype'])
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual(inference_input_output_type.as_numpy_dtype,
+                     output_details[0]['dtype'])
 
-    interpreter = Interpreter(model_content=quantized_tflite)
-    self.assertEqual(np.float32, interpreter.get_input_details()[0]['dtype'])
+    # Ensure that the quantized tflite model is smaller.
+    self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
 
   @test_util.run_v2_only
   def testNewQuantizer(self):
     """Test the model quantized by the new converter."""
-    func, calibration_gen = self._getCalibrationQuantizeModel()
+    func, calibration_gen = self._getIntegerQuantizeModel()
 
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     quantized_converter.target_spec.supported_ops = [
@@ -321,13 +502,13 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
           np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
       old_value = self._evaluateTFLiteModel(old_tflite, [input_data])
       new_value = self._evaluateTFLiteModel(new_tflite, [input_data])
-      np.testing.assert_almost_equal(old_value, new_value, 1)
+      self.assertAllClose(old_value, new_value, atol=1e-01)
 
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir
   @test_util.run_v2_only
-  def testEmbeddings(self, enable_mlir):
+  def testEmbeddings(self, enable_mlir_converter):
     """Test model with embeddings."""
     input_data = tf.constant(
         np.array(np.random.random_sample((20)), dtype=np.int32))
@@ -353,13 +534,13 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = enable_mlir
+    converter.experimental_new_converter = enable_mlir_converter
     tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = root.func(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
-    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0], 5)
+    self.assertAllClose(expected_value.numpy(), actual_value[0], atol=1e-05)
 
   @test_util.run_v2_only
   def testGraphDebugInfo(self):
@@ -413,7 +594,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       self.assertLen(input_details, 2)
       self.assertStartsWith(input_details[0]['name'], 'inputA')
       self.assertEqual(np.float32, input_details[0]['dtype'])
-      self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+      self.assertAllEqual([1, 16, 16, 3], input_details[0]['shape'])
       self.assertEqual((0., 0.), input_details[0]['quantization'])
 
       self.assertStartsWith(
@@ -421,15 +602,34 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
           'inputB',
       )
       self.assertEqual(np.float32, input_details[1]['dtype'])
-      self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
+      self.assertTrue([1, 16, 16, 3], input_details[1]['shape'])
       self.assertEqual((0., 0.), input_details[1]['quantization'])
 
       output_details = interpreter.get_output_details()
       self.assertLen(output_details, 1)
       self.assertStartsWith(output_details[0]['name'], 'add')
       self.assertEqual(np.float32, output_details[0]['dtype'])
-      self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+      self.assertTrue([1, 16, 16, 3], output_details[0]['shape'])
       self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  @test_util.run_v2_only
+  def testTF1HubFormattedModel(self):
+    """Test a TF1 hub formatted model."""
+    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+
+    # TF1 hub model is based on V1 saved model and they omit the saved model
+    # schema version setting.
+    saved_model_proto = parse_saved_model(saved_model_dir)
+    saved_model_proto.saved_model_schema_version = 0
+
+    saved_model_pb_file_path = os.path.join(saved_model_dir, 'saved_model.pb')
+    with file_io.FileIO(saved_model_pb_file_path, 'wb') as writer:
+      writer.write(saved_model_proto.SerializeToString())
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
   @test_util.run_v2_only
   def testConstModel(self):
@@ -515,7 +715,6 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):
     root = self._getMultiFunctionModel()
-    input_data = tf.constant(1., shape=[1])
 
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
     save(root, save_dir)
@@ -636,7 +835,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, input_data)
     for tf_result, tflite_result in zip(expected_value, actual_value):
-      np.testing.assert_almost_equal(tf_result, tflite_result, 5)
+      self.assertAllClose(tf_result, tflite_result, atol=1e-05)
 
   @test_util.run_v2_only
   def testGraphDebugInfo(self):
@@ -651,6 +850,37 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_keras_model(model)
     converter.convert()
     self._assertValidDebugInfo(converter._debug_info)
+
+  @test_util.run_v2_only
+  def testKerasFallbackPath(self):
+    """Test keras model which failed when exporting to the saved model."""
+    input_data = tf.constant(
+        np.array(np.random.random_sample((20)), dtype=np.float32))
+
+    class Model(tf.keras.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        # A None name will cause a failure in exporting to a saved model.
+        self.shared_weights = self.add_weight(
+            name=None,
+            shape=(20, 1),
+            dtype=tf.float32,
+            initializer=tf.random_normal_initializer(
+                mean=0.0, stddev=300**(-0.5)))
+
+      def call(self, x):
+        return tf.add(self.shared_weights, x)
+
+    # Building the model.
+    model = Model()
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(input_data, input_data, epochs=1)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
 
 class ControlFlowTest(lite_v2_test_util.ModelTest):
@@ -682,14 +912,13 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(**input_data)
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data['x'], input_data['b']])[0]
-    np.testing.assert_almost_equal(expected_value.numpy(), actual_value)
+    self.assertAllClose(expected_value, actual_value)
 
   @test_util.run_v2_only
   def testStaticRnn(self):
@@ -709,14 +938,13 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)[0]
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     for expected, actual in zip(expected_value, actual_value):
-      np.testing.assert_almost_equal(expected.numpy(), actual)
+      self.assertAllClose(expected, actual)
 
   @test_util.run_v2_only
   def testWhileLoop(self):
@@ -739,13 +967,12 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)[0]
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
-    np.testing.assert_almost_equal(expected_value.numpy(), actual_value)
+    self.assertAllClose(expected_value, actual_value)
 
   @test_util.run_v2_only
   def testDynamicRnn(self):
@@ -763,18 +990,15 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     for expected, actual in zip(expected_value, actual_value):
-      if isinstance(expected, ops.EagerTensor):
-        expected = expected.numpy()
-      else:
-        expected = expected.c.numpy()
-      np.testing.assert_almost_equal(expected, actual)
+      if not isinstance(expected, ops.EagerTensor):
+        expected = expected.c
+      self.assertAllClose(expected, actual)
 
   @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
                                   ('SimpleRNN', recurrent.SimpleRNN),
@@ -793,13 +1017,12 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
     # Check values from converted model.
     expected_value = model.predict(input_data)
-    np.testing.assert_almost_equal(expected_value, actual_value, decimal=5)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
   @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
                                   ('SimpleRNN', recurrent.SimpleRNN),
@@ -815,13 +1038,12 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
     # Check values from converted model.
     expected_value = model.predict(input_data)
-    np.testing.assert_almost_equal(expected_value, actual_value, decimal=5)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
   @test_util.run_v2_only
   def testKerasBidirectionalRNN(self):
@@ -839,13 +1061,12 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
     # Check values from converted model.
     expected_value = model.predict(input_data)
-    np.testing.assert_almost_equal(expected_value, actual_value, decimal=5)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
 
 class GrapplerTest(lite_v2_test_util.ModelTest):
@@ -872,15 +1093,14 @@ class GrapplerTest(lite_v2_test_util.ModelTest):
 
     # Check values from converted model.
     expected_value = root.f(input_data)
-    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
-    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+    self.assertAllClose(expected_value, actual_value)
 
     # Enable hybrid quantization, same result
-    converter.experimental_new_converter = True
     converter.optimizations = [lite.Optimize.DEFAULT]
-    hybrid_tflite_model = converter.convert()
-    actual_value = self._evaluateTFLiteModel(hybrid_tflite_model, [input_data])
-    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
+    tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+    self.assertAllClose(expected_value, actual_value)
 
 
 class UnknownShapes(lite_v2_test_util.ModelTest):
@@ -900,21 +1120,21 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     concrete_func = model.get_concrete_function()
 
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)
     actual_value = self._evaluateTFLiteModel(
-        tflite_model, [input_data], input_shapes=[([-1, 4], [10, 4])])
-    np.testing.assert_almost_equal(
-        expected_value.numpy(), actual_value[0], decimal=6)
+        tflite_model, [input_data], input_shapes=[([-1, 4], [10, 4])])[0]
+    self.assertAllClose(expected_value, actual_value, atol=1e-06)
 
-  def _getQuantizedModel(self):
-    # Returns a model with tf.MatMul and unknown dimensions.
+  def _getIntegerQuantizeModelWithUnknownShapes(self):
+    np.random.seed(0)
+
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[None, 33], dtype=tf.float32)])
-    def model(in_tensor):
+    def model(input_tensor):
+      """Define a model with tf.MatMul and unknown shapes."""
       # We need the tensor to have more than 1024 elements for quantize_weights
       # to kick in. Thus, the [33, 33] shape.
       const_tensor = tf.constant(
@@ -923,12 +1143,14 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
           dtype=tf.float32,
           name='inputB')
 
-      shape = tf.shape(in_tensor)
+      shape = tf.shape(input_tensor)
       fill = tf.transpose(tf.fill(shape, 1.))
-      mult = tf.matmul(fill, in_tensor)
+      mult = tf.matmul(fill, input_tensor)
       return tf.matmul(mult, const_tensor)
 
-    concrete_func = model.get_concrete_function()
+    root = tracking.AutoTrackable()
+    root.f = model
+    concrete_func = root.f.get_concrete_function()
 
     def calibration_gen():
       for batch in range(5, 20, 5):
@@ -939,15 +1161,13 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
 
   @test_util.run_v2_only
   def testMatMulQuantize(self):
-    concrete_func, _ = self._getQuantizedModel()
+    concrete_func, _ = self._getIntegerQuantizeModelWithUnknownShapes()
     float_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
-    float_converter.experimental_new_converter = True
     float_tflite_model = float_converter.convert()
 
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
-    quantized_converter.experimental_new_converter = True
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_tflite_model = quantized_converter.convert()
 
@@ -957,24 +1177,23 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     input_details = quantized_interpreter.get_input_details()
     self.assertLen(input_details, 1)
     self.assertEqual(np.float32, input_details[0]['dtype'])
-    self.assertTrue((input_details[0]['shape_signature'] == [-1, 33]).all())
+    self.assertAllEqual([-1, 33], input_details[0]['shape_signature'])
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
 
   @test_util.run_v2_only
   def testMatMulCalibrateAndQuantize(self):
-    concrete_func, calibration_gen = self._getQuantizedModel()
+    concrete_func, calibration_gen = \
+        self._getIntegerQuantizeModelWithUnknownShapes()
     float_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
-    float_converter.experimental_new_converter = True
     float_tflite_model = float_converter.convert()
 
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
-    quantized_converter.experimental_new_converter = True
     quantized_tflite_model = quantized_converter.convert()
 
     # The default input and output types should be float.
@@ -983,7 +1202,7 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     input_details = quantized_interpreter.get_input_details()
     self.assertLen(input_details, 1)
     self.assertEqual(np.float32, input_details[0]['dtype'])
-    self.assertTrue((input_details[0]['shape_signature'] == [-1, 33]).all())
+    self.assertAllEqual([-1, 33], input_details[0]['shape_signature'])
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
@@ -1004,16 +1223,14 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     concrete_func = model.get_concrete_function()
 
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(input_data_1, input_data_2)
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data_1, input_data_2],
-        input_shapes=[([-1, 256, 256], [1, 256, 256])])
-    np.testing.assert_almost_equal(
-        expected_value.numpy(), actual_value[0], decimal=4)
+        input_shapes=[([-1, 256, 256], [1, 256, 256])])[0]
+    self.assertAllClose(expected_value, actual_value, atol=4)
 
   def testSizeInvalid(self):
 

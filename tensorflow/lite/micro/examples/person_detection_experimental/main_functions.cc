@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection_experimental/image_provider.h"
 #include "tensorflow/lite/micro/examples/person_detection_experimental/model_settings.h"
 #include "tensorflow/lite/micro/examples/person_detection_experimental/person_detect_model_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -33,7 +32,7 @@ const tflite::Model* model = nullptr;
 tflite::MicroInterpreter* interpreter = nullptr;
 TfLiteTensor* input = nullptr;
 
-// In order to use optimized tensorflow lite kernels, a signed int8 quantized
+// In order to use optimized tensorflow lite kernels, a signed int8_t quantized
 // model is preferred over the legacy unsigned model format. This means that
 // throughout this project, input images must be converted from unisgned to
 // signed format. The easiest and quickest way to convert from unsigned to
@@ -70,21 +69,14 @@ void setup() {
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
   //
-  // tflite::ops::micro::AllOpsResolver resolver;
+  // tflite::AllOpsResolver resolver;
   // NOLINTNEXTLINE(runtime-global-variables)
-  static tflite::MicroOpResolver<12> micro_op_resolver;
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-                               tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
-                               1, 3);
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D(), 1, 3);
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
-                               tflite::ops::micro::Register_AVERAGE_POOL_2D(),
-                               1, 2);
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
-                               tflite::ops::micro::Register_RESHAPE());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX(), 1, 3);
+  static tflite::MicroMutableOpResolver<5> micro_op_resolver;
+  micro_op_resolver.AddAveragePool2D();
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddDepthwiseConv2D();
+  micro_op_resolver.AddReshape();
+  micro_op_resolver.AddSoftmax();
 
   // Build an interpreter to run the model with.
   // NOLINTNEXTLINE(runtime-global-variables)

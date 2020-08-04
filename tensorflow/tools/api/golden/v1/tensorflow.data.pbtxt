@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "INFINITE_CARDINALITY"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "Iterator"
     mtype: "<type \'type\'>"
   }
@@ -27,6 +31,10 @@ tf_module {
   member {
     name: "TextLineDataset"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UNKNOWN_CARDINALITY"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "experimental"

@@ -51,15 +51,17 @@ cudnnStatus_t GetSymbolNotFoundError() { return CUDNN_STATUS_INTERNAL_ERROR; }
 #error cuDNN version earlier than 6 is not supported.
 #elif CUDNN_MAJOR < 7
 #include "tensorflow/stream_executor/cuda/cudnn_6_0.inc"
-#elif CUDNN_MINOR < 1
+#elif CUDNN_MAJOR == 7 && CUDNN_MINOR < 1
 #include "tensorflow/stream_executor/cuda/cudnn_7_0.inc"
 // 2 instead of 3: see https://github.com/tensorflow/tensorflow/issues/32350
-#elif CUDNN_MINOR < 2
+#elif CUDNN_MAJOR == 7 && CUDNN_MINOR < 2
 #include "tensorflow/stream_executor/cuda/cudnn_7_1.inc"
-#elif CUDNN_MINOR < 4
+#elif CUDNN_MAJOR == 7 && CUDNN_MINOR < 4
 #include "tensorflow/stream_executor/cuda/cudnn_7_3.inc"
-#elif CUDNN_MINOR < 6
+#elif CUDNN_MAJOR == 7 && CUDNN_MINOR < 6
 #include "tensorflow/stream_executor/cuda/cudnn_7_4.inc"
-#else
+#elif CUDNN_MAJOR == 7
 #include "tensorflow/stream_executor/cuda/cudnn_7_6.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cudnn_8_0.inc"
 #endif

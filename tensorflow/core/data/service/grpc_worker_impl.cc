@@ -26,11 +26,9 @@ using ::grpc::ServerContext;
 using ::grpc::Status;
 
 GrpcWorkerImpl::GrpcWorkerImpl(ServerBuilder* server_builder,
-                               const std::string& master_address,
-                               const std::string& protocol)
-    : impl_(master_address, protocol) {
+                               const experimental::WorkerConfig& config)
+    : impl_(config) {
   server_builder->RegisterService(this);
-  LOG(INFO) << "GrpcWorkerImpl: master address is " << master_address;
   VLOG(1) << "Registered data service worker";
 }
 

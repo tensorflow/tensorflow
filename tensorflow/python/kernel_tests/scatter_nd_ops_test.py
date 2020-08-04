@@ -96,6 +96,14 @@ def _NumpyDiv(ref, indices, updates):
   return _NumpyScatterNd(ref, indices, updates, lambda p, u: p / u)
 
 
+def _NumpyMin(ref, indices, updates):
+  return _NumpyScatterNd(ref, indices, updates, np.minimum)
+
+
+def _NumpyMax(ref, indices, updates):
+  return _NumpyScatterNd(ref, indices, updates, np.maximum)
+
+
 class StatefulScatterNdTest(test.TestCase):
 
   def _VariableRankTest(self,
@@ -142,7 +150,7 @@ class StatefulScatterNdTest(test.TestCase):
         np_scatter(new, indices, updates)
         # Scatter via tensorflow
         ref_var = variables.VariableV1(ref)
-        ref_var.initializer.run()
+        self.evaluate(ref_var.initializer)
         tf_scatter(ref_var, indices, updates).eval()
 
         # Compare
@@ -192,7 +200,7 @@ class StatefulScatterNdTest(test.TestCase):
     with self.session(use_gpu=True) as sess:
       self.evaluate(init)
       self.evaluate(scatter)
-      self.assertAllClose(ref.eval(), expected)
+      self.assertAllClose(ref, expected)
 
   def testSimple2(self):
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)
@@ -253,6 +261,8 @@ class StatefulScatterNdTest(test.TestCase):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
     self._ScatterRepeatIndicesTest(_NumpySub, state_ops.scatter_nd_sub)
+    self._ScatterRepeatIndicesTest(_NumpyMin, state_ops.scatter_nd_min)
+    self._ScatterRepeatIndicesTest(_NumpyMax, state_ops.scatter_nd_max)
     # TODO(ebrevdo): Re-enable when we need ScatterNdMul and ScatterNdDiv.
     # self._ScatterRepeatIndicesTest(_NumpyMul, state_ops.scatter_nd_mul)
     # self._ScatterRepeatIndicesTest(_NumpyDiv, state_ops.scatter_nd_div)
@@ -266,7 +276,7 @@ class StatefulScatterNdTest(test.TestCase):
   #     update1 = tf.compat.v1.scatter_nd_update(
   #         var, tf.constant(
   #             [[0]], dtype=tf.int64), [False])
-  #     var.initializer.run()
+  #     self.evaluate(var.initializer)
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
@@ -276,12 +286,13 @@ class StatefulScatterNdTest(test.TestCase):
     # scatter_nd ops is under control.
     #  tf.scatter_nd_mul, tf.scatter_nd_div,
     for op in (state_ops.scatter_nd_add, state_ops.scatter_nd_sub,
+               state_ops.scatter_nd_min, state_ops.scatter_nd_max,
                state_ops.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       with self.cached_session(use_gpu=False):
         ref = variables.VariableV1(params)
-        ref.initializer.run()
+        self.evaluate(ref.initializer)
 
         # Indices all in range, no problem.
         indices = np.array([[2], [0], [5]])
@@ -314,7 +325,7 @@ class StatefulScatterNdTest(test.TestCase):
         initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
         dtype=dtypes.float32)
     with self.cached_session():
-      res.initializer.run()
+      self.evaluate(res.initializer)
       with self.assertRaisesOpError("Output must be at least 1-D"):
         state_ops.scatter_nd_update(res, [[0]], [0.22]).eval()
 
@@ -329,7 +340,7 @@ class StatefulScatterNdTest(test.TestCase):
 
     expected_result = np.zeros([2, 2], dtype=np.int32)
     with self.cached_session():
-      ref.initializer.run()
+      self.evaluate(ref.initializer)
       self.assertAllEqual(expected_result, self.evaluate(scatter_update))
 
   @test_util.run_deprecated_v1
@@ -386,7 +397,7 @@ class StatefulScatterNdTest(test.TestCase):
       # We don't test the implementation; just test there's no failures.
       with self.cached_session(force_gpu=True):
         ref = variables.Variable(params)
-        ref.initializer.run()
+        self.evaluate(ref.initializer)
 
         # Indices all in range, no problem.
         indices = np.array([2, 0, 5])
@@ -545,7 +556,7 @@ class ScatterNdTest(test.TestCase):
     scatter = self.scatter_nd(indices, updates, shape)
 
     with self.cached_session():
-      self.assertEqual(scatter.eval().size, 0)
+      self.assertEqual(self.evaluate(scatter).size, 0)
 
   @test_util.run_deprecated_v1
   def testRank3InvalidShape1(self):
@@ -762,6 +773,22 @@ class ScatterNdTensorTest(test.TestCase):
       self.assertLess(err_assigned_wrt_updates, 2e-4)
       self.assertLess(err_added_wrt_updates, 2e-4)
       self.assertLess(err_subbed_wrt_updates, 2e-4)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateMinMax(self):
+    indices = constant_op.constant([[4], [3], [1], [7]])
+    updates = constant_op.constant([0, 2, -1, 1.2], dtype=dtypes.float32)
+    t = array_ops.ones([8], dtype=dtypes.float32)
+    assigned = array_ops.tensor_scatter_update(t, indices, updates)
+    min_result = array_ops.tensor_scatter_min(t, indices, updates)
+    max_result = array_ops.tensor_scatter_max(t, indices, updates)
+
+    self.assertAllEqual(assigned,
+                        constant_op.constant([1, -1, 1, 2, 0, 1, 1, 1.2]))
+    self.assertAllEqual(min_result,
+                        constant_op.constant([1, -1, 1, 1, 0, 1, 1, 1]))
+    self.assertAllEqual(max_result,
+                        constant_op.constant([1, 1, 1, 2, 1, 1, 1, 1.2]))
 
   def testTensorScatterUpdateWithForwarding(self):
     @def_function.function

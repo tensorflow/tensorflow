@@ -75,7 +75,8 @@ using gpuStream_t = hipStream_t;
 
 namespace tensorflow {
 
-inline string ConvertGPUSparseErrorToString(const gpusparseStatus_t status) {
+inline std::string ConvertGPUSparseErrorToString(
+    const gpusparseStatus_t status) {
   switch (status) {
 #define STRINGIZE(q) #q
 #define RETURN_IF_STATUS(err) \

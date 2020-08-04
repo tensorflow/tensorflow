@@ -25,53 +25,84 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import random
 
-from flatbuffers.python import flatbuffers
+import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
-TFLITE_FILE_IDENTIFIER = b'TFL3'
+_TFLITE_FILE_IDENTIFIER = b'TFL3'
+
+
+def convert_bytearray_to_object(model_bytearray):
+  """Converts a tflite model from a bytearray to an object for parsing."""
+  model_object = schema_fb.Model.GetRootAsModel(model_bytearray, 0)
+  return schema_fb.ModelT.InitFromObj(model_object)
 
 
 def read_model(input_tflite_file):
-  """Reads and parses a tflite model.
+  """Reads a tflite model as a python object.
 
   Args:
     input_tflite_file: Full path name to the input tflite file
 
   Raises:
-    RuntimeError: If input_tflite_file is not found.
+    RuntimeError: If input_tflite_file path is invalid.
     IOError: If input_tflite_file cannot be opened.
 
   Returns:
-    A python flatbuffer object corresponding to the input tflite file.
+    A python object corresponding to the input tflite file.
   """
   if not os.path.exists(input_tflite_file):
     raise RuntimeError('Input file not found at %r\n' % input_tflite_file)
   with open(input_tflite_file, 'rb') as file_handle:
-    file_data = bytearray(file_handle.read())
-  model_obj = schema_fb.Model.GetRootAsModel(file_data, 0)
-  return schema_fb.ModelT.InitFromObj(model_obj)
+    model_bytearray = bytearray(file_handle.read())
+  return convert_bytearray_to_object(model_bytearray)
 
 
-def write_model(model, output_tflite_file):
-  """Writes the model, a python flatbuffer object, into the output tflite file.
+def read_model_with_mutable_tensors(input_tflite_file):
+  """Reads a tflite model as a python object with mutable tensors.
+
+  Similar to read_model() with the addition that the returned object has
+  mutable tensors (read_model() returns an object with immutable tensors).
 
   Args:
-    model: tflite model
+    input_tflite_file: Full path name to the input tflite file
+
+  Raises:
+    RuntimeError: If input_tflite_file path is invalid.
+    IOError: If input_tflite_file cannot be opened.
+
+  Returns:
+    A mutable python object corresponding to the input tflite file.
+  """
+  return copy.deepcopy(read_model(input_tflite_file))
+
+
+def convert_object_to_bytearray(model_object):
+  """Converts a tflite model from an object to a bytearray."""
+  # Initial size of the buffer, which will grow automatically if needed
+  builder = flatbuffers.Builder(1024)
+  model_offset = model_object.Pack(builder)
+  builder.Finish(model_offset, file_identifier=_TFLITE_FILE_IDENTIFIER)
+  model_bytearray = bytes(builder.Output())
+  return model_bytearray
+
+
+def write_model(model_object, output_tflite_file):
+  """Writes the tflite model, a python object, into the output file.
+
+  Args:
+    model_object: A tflite model as a python object
     output_tflite_file: Full path name to the output tflite file.
 
   Raises:
-    IOError: If output_tflite_file cannot be opened.
+    IOError: If output_tflite_file path is invalid or cannot be opened.
   """
-  # Initial size of the buffer, which will grow automatically if needed
-  builder = flatbuffers.Builder(1024)
-  model_offset = model.Pack(builder)
-  builder.Finish(model_offset, file_identifier=TFLITE_FILE_IDENTIFIER)
-  model_data = builder.Output()
+  model_bytearray = convert_object_to_bytearray(model_object)
   with open(output_tflite_file, 'wb') as out_file:
-    out_file.write(model_data)
+    out_file.write(model_bytearray)
 
 
 def strip_strings(model):

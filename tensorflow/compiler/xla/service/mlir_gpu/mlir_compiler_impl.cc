@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -436,9 +436,10 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
       kernel, operand_to_value_map, ordered_operands, assignment, buffers));
 
   // Finally, create the thunk and set the launch dimensions.
-  auto thunk = absl::make_unique<gpu::KernelThunk>(
-      buffers, kernel.getName().str(), instr,
-      /*unroll_factor=*/1);
+  gpu::Thunk::ThunkInfo info;
+  info.hlo_instruction = instr;
+  auto thunk = absl::make_unique<gpu::KernelThunk>(info, buffers,
+                                                   kernel.getName().str());
 
   // Set launch bounds.
   mlir::gpu::KernelDim3 block = launchOp.getBlockSizeOperandValues();
@@ -489,8 +490,17 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   LhloDialectEmitter lhlo_emitter(&emission_context, *buffer_assignment,
                                   stream_exec->platform(), *mlir_module);
 
-  TF_RETURN_IF_ERROR(lhlo_emitter.EmitComputation(
-      *emission_context.getHloModule()->entry_computation()));
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<gpu::Thunk>>
+      hlo_to_thunk;
+  for (HloInstruction* instruction : hlo_schedule->ThunkLaunchOrder()) {
+    TF_RETURN_IF_ERROR(instruction->Visit(&lhlo_emitter));
+    gpu::ThunkSequence thunks = lhlo_emitter.ConsumeThunkSequence();
+    TF_RET_CHECK(thunks.size() <= 1) << instruction->ToString();
+    if (!thunks.empty()) {
+      auto thunk = std::move(thunks.front());
+      hlo_to_thunk[instruction] = std::move(thunk);
+    }
+  }
 
   TF_RETURN_IF_ERROR(
       module_hook_.invoke(IRHook::LoweringStage::LHLO, *mlir_module));
@@ -508,13 +518,26 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   TF_ASSIGN_OR_RETURN(OwningModuleRef kernel_module,
                       ExtractKernelModule(*mlir_module));
 
-  auto thunk_sequence = lhlo_emitter.ConsumeThunkSequence();
   for (auto entry : lhlo_emitter.InstructionToFunctionMap()) {
     TF_ASSIGN_OR_RETURN(
         auto thunk,
         TransformKernelToXlaThunk(entry.second, entry.first, *kernel_module,
                                   buffer_assignment.get()));
-    thunk_sequence->push_back(std::move(thunk));
+    hlo_to_thunk[entry.first] = std::move(thunk);
+  }
+
+  absl::flat_hash_map<const gpu::Thunk*, const HloInstruction*> thunk_to_hlo;
+  gpu::ThunkSequence thunk_sequence;
+  {
+    for (HloInstruction* hlo : hlo_schedule->ThunkLaunchOrder()) {
+      auto it = hlo_to_thunk.find(hlo);
+      if (it != hlo_to_thunk.end()) {
+        const HloInstruction* hlo = it->first;
+        auto& thunk = it->second;
+        thunk_to_hlo[thunk.get()] = hlo;
+        thunk_sequence.push_back(std::move(thunk));
+      }
+    }
   }
 
   TF_RETURN_IF_ERROR(
@@ -540,8 +563,8 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
                                     gpu::PtxOptsFromConfig(config)));
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      std::move(thunk_sequence), std::move(stream_assignment),
-      hlo_schedule->ThunkLaunchOrder());
+      std::make_unique<gpu::ThunkSequence>(std::move(thunk_sequence)),
+      std::move(stream_assignment), std::move(thunk_to_hlo));
 
   if (DumpingEnabledForHloModule(*emission_context.getHloModule())) {
     DumpToFileInDirOrStdout(*emission_context.getHloModule(), "",

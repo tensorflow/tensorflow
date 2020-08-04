@@ -595,7 +595,7 @@ class HloInstruction {
   // Creates a compare op, performing the comparison specified in direction.
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      ComparisonDirection direction);
+      Comparison::Direction direction);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
@@ -681,12 +681,19 @@ class HloInstruction {
       const absl::optional<int64>& channel_id,
       const absl::optional<int64>& split_dimension = absl::nullopt);
 
-  // Creates a communication instructions that permutes data cross replicas.
+  // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
   // target_replica_id in any pair, the output on that replica is a tensor
   // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
+      const Shape& shape, HloInstruction* operand,
+      const std::vector<std::pair<int64, int64>>& source_target_pairs,
+      const absl::optional<int64>& channel_id);
+
+  // Creates a communication instruction that initiates the start of
+  // CollectivePermute.
+  static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs,
       const absl::optional<int64>& channel_id);
@@ -1194,6 +1201,12 @@ class HloInstruction {
   // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
   Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
 
+  // Same as ReplaceAllUsesWith, but only replace given set of users.
+  Status ReplaceUsesWith(absl::Span<HloInstruction* const> users,
+                         HloInstruction* new_producer);
+  Status ReplaceAllUsesWithDifferentShape(
+      absl::Span<HloInstruction* const> users, HloInstruction* new_producer);
+
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
   // complete. If ignore_control_predecessors is true, instructions only
@@ -1405,6 +1418,11 @@ class HloInstruction {
   // Ignores the control predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> Clone(
       const string& suffix = "clone", HloCloneContext* context = nullptr) const;
+
+  // Clones the HLO instruction as above but with new shape.
+  std::unique_ptr<HloInstruction> CloneWithNewShape(
+      const Shape& shape, const string& suffix = "clone",
+      HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
@@ -1748,6 +1766,9 @@ class HloInstruction {
   // Returns the config for the Outfeed instruction.
   const string& outfeed_config() const;
 
+  // Delegates to HloOutfeedInstruction::set_outfeed_config.
+  void set_outfeed_config(const string& config);
+
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
 
@@ -1810,6 +1831,7 @@ class HloInstruction {
 
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;
+  PaddingConfig* mutable_padding_config();
 
   // Delegates to HloDynamicSliceInstruction::slice_sizes.
   int64 slice_sizes(int64 dimension) const;
@@ -1920,6 +1942,8 @@ class HloInstruction {
   };
 
  private:
+  friend class HloComputation;
+
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
@@ -1942,14 +1966,10 @@ class HloInstruction {
   virtual bool IsElementwiseImpl(
       const absl::optional<int64>& operand_idx) const;
 
-  // Prints an operand to a string.
+  // Prints an operand to a string. Accessed by friend class HloInstruction.
   virtual string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
-
-  // Allow HloInstruction to access the ToStringWithCanonicalNameMap() and
-  // OperandsToStringWithCanonicalNameMap() functions.
-  friend class HloComputation;
 
   // See comments on Identical().
   virtual bool IdenticalSlowPath(
@@ -1978,6 +1998,13 @@ class HloInstruction {
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
   Status GetBackendConfigInternal(tensorflow::protobuf::Message* proto) const;
+
+  // Mark this instruction as dead. Accessed by friend class HloInstruction.
+  void MarkAsDead() { marked_as_dead_ = true; }
+
+  // Has this instruction been marked as dead? Accessed by friend class
+  // HloInstruction.
+  bool IsMarkedAsDead() const { return marked_as_dead_; }
 
   int unique_id_;  // Unique to this HloInstruction within a HloModule
 
@@ -2059,6 +2086,10 @@ class HloInstruction {
   // The number of partitions per outer dimension (listed in order from
   // outer-most dimension first).
   std::vector<int64> outer_dimension_partitions_;
+
+  // Intrusive flag used by HloComputation, whether this instruction has
+  // been marked as dead.
+  bool marked_as_dead_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };

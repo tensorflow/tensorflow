@@ -101,25 +101,23 @@ TfLiteDelegatePtr CreateNNAPIDelegate() {
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
 #else
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
-#endif  // defined(__ANDROID__)
-}
-
-TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
-#if defined(__ANDROID__)
-  return TfLiteDelegatePtr(
-      new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
-        delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
-      });
-#else
   return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
 #if defined(__ANDROID__)
+TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
+  return TfLiteDelegatePtr(
+      new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+        delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+      });
+}
+#endif  // defined(__ANDROID__)
+
+#if defined(__ANDROID__)
 TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options) {
   return TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
-                           TfLiteGpuDelegateV2Delete);
+                           &TfLiteGpuDelegateV2Delete);
 }
 #endif  // defined(__ANDROID__)
 
@@ -184,7 +182,9 @@ TfLiteDelegatePtr CreateXNNPACKDelegate() {
 TfLiteDelegatePtr CreateXNNPACKDelegate(
     const TfLiteXNNPackDelegateOptions* xnnpack_options) {
   auto xnnpack_delegate = TfLiteXNNPackDelegateCreate(xnnpack_options);
-  return TfLiteDelegatePtr(xnnpack_delegate, TfLiteXNNPackDelegateDelete);
+  return TfLiteDelegatePtr(xnnpack_delegate, [](TfLiteDelegate* delegate) {
+    TfLiteXNNPackDelegateDelete(delegate);
+  });
 }
 
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {

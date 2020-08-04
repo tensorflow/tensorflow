@@ -305,24 +305,15 @@ class StridedSliceAssignOp : public OpKernel {
     Tensor tmp;
     if (isTensor) {
       const Tensor& input = context->input(0);
-      TensorShape shape = input.shape();
 
-      std::unique_ptr<Tensor> forwarded_input = context->forward_input(
-          0, 0, input.dtype(), shape, DEVICE_MEMORY, AllocatorAttributes());
-
-      if (forwarded_input == nullptr) {
-        Tensor* out;
-        // We were not able to forward the input, so we deep copy the tensor and
-        // set the output.
-        OP_REQUIRES_OK(context,
-                       context->allocate_output(0, input.shape(), &out));
-
+      int forwarded_input;
+      OP_REQUIRES_OK(context,
+                     context->forward_input_or_allocate_output(
+                         {0}, 0, input.shape(), &old_lhs, &forwarded_input));
+      if (forwarded_input < 0) {
         OP_REQUIRES_OK(context,
                        tensorflow::functor::DoCopy(
-                           context->eigen_device<Device>(), input, out));
-        old_lhs = out;
-      } else {
-        old_lhs = forwarded_input.get();
+                           context->eigen_device<Device>(), input, old_lhs));
       }
     } else {
       if (context->input_dtype(0) == DT_RESOURCE) {
@@ -440,8 +431,6 @@ class StridedSliceAssignOp : public OpKernel {
                           StridedSliceAssignOp<CPUDevice, type, true>)
 
 TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
-TF_CALL_uint32(REGISTER_STRIDED_SLICE);
-TF_CALL_uint64(REGISTER_STRIDED_SLICE);
 
 #undef REGISTER_STRIDED_SLICE
 
@@ -486,12 +475,9 @@ TF_CALL_uint64(REGISTER_STRIDED_SLICE);
                               .HostMemory("strides"),                   \
                           StridedSliceAssignOp<GPUDevice, type, true>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_bool(REGISTER_GPU);
 TF_CALL_int8(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

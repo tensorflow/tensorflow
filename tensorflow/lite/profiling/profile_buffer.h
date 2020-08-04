@@ -51,10 +51,11 @@ struct ProfileEvent {
   // The field containing the type of event. This must be one of the event types
   // in EventType.
   EventType event_type;
-  // Extra data describing the details of the event.
-  uint32_t event_metadata;
-  // The index of subgraph where an event came from.
-  uint32_t event_subgraph_index;
+  // Meta data associated w/ the event.
+  int64_t event_metadata;
+  // Note: if this is an OPERATOR_INVOKE_EVENT, 'extra_event_metadata' will
+  // represent the index of the subgraph that this event comes from.
+  int64_t extra_event_metadata;
 };
 
 // A ring buffer of profile events.
@@ -69,7 +70,7 @@ class ProfileBuffer {
   // buffer is disabled this has no affect.
   // The tag of the event should remain valid till the buffer is valid.
   uint32_t BeginEvent(const char* tag, ProfileEvent::EventType event_type,
-                      uint32_t event_metadata, uint32_t event_subgraph_index) {
+                      int64_t event_metadata1, int64_t event_metadata2) {
     if (!enabled_) {
       return kInvalidEventHandle;
     }
@@ -81,8 +82,8 @@ class ProfileBuffer {
     }
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
-    event_buffer_[index].event_subgraph_index = event_subgraph_index;
-    event_buffer_[index].event_metadata = event_metadata;
+    event_buffer_[index].event_metadata = event_metadata1;
+    event_buffer_[index].extra_event_metadata = event_metadata2;
     event_buffer_[index].begin_timestamp_us = timestamp;
     event_buffer_[index].end_timestamp_us = 0;
     if (event_type != Profiler::EventType::OPERATOR_INVOKE_EVENT) {
@@ -98,7 +99,8 @@ class ProfileBuffer {
   // Sets the end timestamp for event for the handle to current time.
   // If the buffer is disabled or previous event has been overwritten this
   // operation has not effect.
-  void EndEvent(uint32_t event_handle) {
+  void EndEvent(uint32_t event_handle, const int64_t* event_metadata1 = nullptr,
+                const int64_t* event_metadata2 = nullptr) {
     if (!enabled_ || event_handle == kInvalidEventHandle ||
         event_handle > current_index_) {
       return;
@@ -116,11 +118,17 @@ class ProfileBuffer {
         Profiler::EventType::OPERATOR_INVOKE_EVENT) {
       event_buffer_[event_index].end_mem_usage = memory::GetMemoryUsage();
     }
+    if (event_metadata1) {
+      event_buffer_[event_index].event_metadata = *event_metadata1;
+    }
+    if (event_metadata2) {
+      event_buffer_[event_index].extra_event_metadata = *event_metadata2;
+    }
   }
 
   void AddEvent(const char* tag, ProfileEvent::EventType event_type,
-                uint32_t event_metadata, uint64_t start, uint64_t end,
-                uint32_t event_subgraph_index) {
+                uint64_t start, uint64_t end, int64_t event_metadata1,
+                int64_t event_metadata2) {
     if (!enabled_) {
       return;
     }
@@ -131,8 +139,8 @@ class ProfileBuffer {
     }
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
-    event_buffer_[index].event_subgraph_index = event_subgraph_index;
-    event_buffer_[index].event_metadata = event_metadata;
+    event_buffer_[index].event_metadata = event_metadata1;
+    event_buffer_[index].extra_event_metadata = event_metadata2;
     event_buffer_[index].begin_timestamp_us = start;
     event_buffer_[index].end_timestamp_us = end;
     current_index_++;

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 
-#include "arm_nnfunctions.h"
+#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
 namespace ops {
@@ -40,18 +41,18 @@ struct OpData {
   // and the special 16-bit -> 16bit quantized path
   int input1_shift;
   int input2_shift;
-  int32 output_activation_min;
-  int32 output_activation_max;
+  int32_t output_activation_min;
+  int32_t output_activation_max;
 
   // These fields are used only in the general 8-bit -> 8bit quantized path
-  int32 input1_multiplier;
-  int32 input2_multiplier;
-  int32 output_multiplier;
+  int32_t input1_multiplier;
+  int32_t input2_multiplier;
+  int32_t output_multiplier;
   int output_shift;
   int left_shift;
-  int32 input1_offset;
-  int32 input2_offset;
-  int32 output_offset;
+  int32_t input1_offset;
+  int32_t input2_offset;
+  int32_t output_offset;
 };
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
@@ -170,6 +171,28 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->user_data != nullptr);
+  TFLITE_DCHECK(node->builtin_data != nullptr);
+
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  OpData* data = static_cast<OpData*>(node->user_data);
+  auto* params = reinterpret_cast<TfLiteAddParams*>(node->builtin_data);
+
+  TF_LITE_ENSURE_STATUS(
+      CalculateOpData(context, params, input1, input2, output, data));
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteAddParams*>(node->builtin_data);
 
@@ -177,14 +200,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  OpData data;
-  TF_LITE_ENSURE_STATUS(
-      CalculateOpData(context, params, input1, input2, output, &data));
+  TFLITE_DCHECK(node->user_data != nullptr);
+  const OpData* data = static_cast<const OpData*>(node->user_data);
 
   if (output->type == kTfLiteFloat32) {
-    EvalAdd(context, node, params, &data, input1, input2, output);
+    EvalAdd(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_OK(context, EvalAddQuantized(context, node, params, &data,
+    TF_LITE_ENSURE_OK(context, EvalAddQuantized(context, node, params, data,
                                                 input1, input2, output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
@@ -197,10 +219,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace add
 
-TfLiteRegistration* Register_ADD() {
-  static TfLiteRegistration r = {nullptr /* Init */, nullptr /* Free */,
-                                 nullptr /* Prepare */, add::Eval};
-  return &r;
+TfLiteRegistration Register_ADD() {
+  return {/*init=*/add::Init,
+          /*free=*/nullptr,
+          /*prepare=*/add::Prepare,
+          /*invoke=*/add::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

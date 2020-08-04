@@ -34,7 +34,6 @@ import subprocess
 import sys
 
 from absl import app
-from absl import flags as absl_flags
 import tensorflow.compat.v2 as tf
 
 from tensorflow.python.platform import tf_logging as logging
@@ -53,14 +52,6 @@ class TestCase(tf.test.TestCase):
     command_parts.append("--alsologtostderr")  # For visibility in sponge.
     for flag_key, flag_value in flags.items():
       command_parts.append("--%s=%s" % (flag_key, flag_value))
-
-    # TODO(b/143247229): Remove forwarding this flag once the BUILD rule
-    # `distribute_py_test()` stops setting it.
-    deepsea_flag_name = "register_deepsea_platform"
-    deepsea_flag_value = getattr(absl_flags.FLAGS, deepsea_flag_name, None)
-    if deepsea_flag_value is not None:
-      command_parts.append("--%s=%s" % (deepsea_flag_name,
-                                        str(deepsea_flag_value).lower()))
 
     env = dict(TF2_BEHAVIOR="enabled", SCRIPT_NAME=script_name)
     logging.info("Running %s with added environment variables %s" %

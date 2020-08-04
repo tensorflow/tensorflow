@@ -19,7 +19,7 @@ and assumed in the `/data/local/tmp` directory.
 
 To run the benchmark:
 
-```
+```sh
 adb shell /data/local/tmp/benchmark_model \
   --num_threads=4 \
   --graph=/data/local/tmp/tflite_models/${GRAPH} \
@@ -27,8 +27,8 @@ adb shell /data/local/tmp/benchmark_model \
   --num_runs=50
 ```
 
-To run with nnapi delegate, please set --use_nnapi=true. To run with gpu
-delegate, please set --use_gpu=true.
+To run with nnapi delegate, please set `--use_nnapi=true`. To run with gpu
+delegate, please set `--use_gpu=true`.
 
 The performance values below are measured on Android 10.
 

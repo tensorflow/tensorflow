@@ -24,7 +24,6 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -114,6 +113,7 @@ class MklDnnThreadPoolWrapper {
     return instance_;
   }
   MklDnnThreadPool* CreateThreadPoolPtr(OpKernelContext* ctx) {
+    mutex_lock l(m_);
     if (threadpool_map_.empty() ||
         threadpool_map_.find(ctx->device()) == threadpool_map_.end()) {
       auto tp_iface = new MklDnnThreadPool(ctx);
@@ -126,6 +126,7 @@ class MklDnnThreadPoolWrapper {
   }
 
  private:
+  mutex m_;
   std::unordered_map<DeviceBase*, MklDnnThreadPool*> threadpool_map_;
   MklDnnThreadPoolWrapper() {}
   MklDnnThreadPoolWrapper(const MklDnnThreadPoolWrapper&) = delete;

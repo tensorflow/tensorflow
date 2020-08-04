@@ -110,6 +110,19 @@ class MklConvFwdPrimitive : public MklPrimitive {
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const Tbias* bias_data, const Toutput* dst_data,
                std::shared_ptr<stream> fwd_stream) {
+    // TODO: Create a common function and avoid the duplicate code
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    context_.src_mem->set_data_handle(
+        static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
+    context_.filter_mem->set_data_handle(
+        static_cast<void*>(const_cast<Tfilter*>(filter_data)), *fwd_stream);
+    if (bias_data != nullptr) {
+      context_.bias_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tbias*>(bias_data)), *fwd_stream);
+    }
+    context_.dst_mem->set_data_handle(
+        static_cast<void*>(const_cast<Toutput*>(dst_data)), *fwd_stream);
+#else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)));
     context_.filter_mem->set_data_handle(
@@ -120,6 +133,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
+#endif  // ENABLE_MKLDNN_THREADPOOL
 #ifdef ENABLE_MKLDNN_V1
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
@@ -2309,10 +2323,19 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<quint8>("out_type"),
     NoOp);
 
-REGISTER_KERNEL_BUILDER(Name("_FusedDepthwiseConv2dNative")
+REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
+                            .TypeConstraint<bfloat16>("T"),
                         NoOp);
+
+#define REGISTER_NO_OP_CPU_2D_DEPTHWISE(T)                    \
+  REGISTER_KERNEL_BUILDER(Name("_FusedDepthwiseConv2dNative") \
+                              .Device(DEVICE_CPU)             \
+                              .TypeConstraint<T>("T"),        \
+                          NoOp);
+
+TF_CALL_float(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
+TF_CALL_bfloat16(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
 
 // Register templatized MKL kernels for non-fused and fused-versions of
 // QuantizedDepthwiseConv2D.
@@ -2367,14 +2390,6 @@ REGISTER_KERNEL_BUILDER(
     MklQuantizedConv2DReluOp<CPUDevice, quint8, qint32, quint8, quint8, true,
                              true>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("_MklFusedDepthwiseConv2dNative")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<float>("T")
-        .Label(mkl_op_registry::kMklLayoutDependentOpLabel),
-    MklFusedDepthwiseConvOp<CPUDevice, float, float, float, float, float, int32,
-                            false, true, true>);
-
 // Register 2D operations
 #define REGISTER_MKL_CPU_2D(T)                                                 \
   REGISTER_KERNEL_BUILDER(                                                     \
@@ -2426,13 +2441,20 @@ REGISTER_KERNEL_BUILDER(
 TF_CALL_float(REGISTER_MKL_CPU_2D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D);
 
-#define REGISTER_MKL_CPU_2D_DEPTHWISE(T)                       \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklDepthwiseConv2dNative")                        \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, true, false>);
+#define REGISTER_MKL_CPU_2D_DEPTHWISE(T)                                      \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklDepthwiseConv2dNative")                                       \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<T>("T")                                             \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                \
+      MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, true, false>); \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklFusedDepthwiseConv2dNative")                                  \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<T>("T")                                             \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                \
+      MklFusedDepthwiseConvOp<CPUDevice, T, T, T, T, T, int32, false, true,   \
+                              true>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);

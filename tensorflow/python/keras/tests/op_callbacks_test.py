@@ -25,7 +25,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.ops import script_ops
 from tensorflow.python.util import compat
 
@@ -43,6 +44,7 @@ _STATELESS_IF_OP = b"StatelessIf"
 _SWITCH_OP = b"Switch"
 _VAR_HANDLE_OP = b"VarHandleOp"
 _WHILE_OP = b"While"
+_CASE_OP = b"Case"
 
 
 class _NumpyFunctionCallback(object):
@@ -80,8 +82,9 @@ class _NumpyFunctionCallback(object):
       for output in outputs:
         if compat.as_bytes(op_type) in (_ENTER_OP, _EXIT_OP, _IF_OP, _MERGE_OP,
                                         _NEXT_ITERATION_OP, _STATELESS_IF_OP,
-                                        _SWITCH_OP, _WHILE_OP, _IDENTITY_OP,
-                                        _VAR_HANDLE_OP, _PLACEHOLDER_OP):
+                                        _SWITCH_OP, _WHILE_OP, _CASE_OP,
+                                        _IDENTITY_OP, _VAR_HANDLE_OP,
+                                        _PLACEHOLDER_OP):
           # TODO(cais): Overriding the output of StatelessIf, If and While ops
           # currently fails with error. Investigate (b/139668453).
           # Avoid instrumenting Identity ops as well, as they are inserted
@@ -126,13 +129,13 @@ class _NumpyFunctionCallback(object):
     self.graph_internal_ndarrays = {}
 
 
-class OpCallbacksTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class OpCallbacksTest(keras_parameterized.TestCase):
 
   def tearDown(self):
     op_callbacks.clear_op_callbacks()
     super(OpCallbacksTest, self).tearDown()
 
-  @test_util.run_in_graph_and_eager_modes
   def testKerasLSTMPredict(self):
     instrument = _NumpyFunctionCallback(float_only=True)
 
@@ -151,7 +154,6 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     # recorded by the callback.
     self.assertTrue(instrument.graph_internal_ndarrays)
 
-  @test_util.run_in_graph_and_eager_modes
   def testKeraModelFit(self):
     # TODO(cais): The purely PyFunc (numpy_function) based instrumentation
     # doesn't work for the entire Keras model and its fit() call, due to some

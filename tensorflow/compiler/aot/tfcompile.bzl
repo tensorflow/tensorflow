@@ -20,7 +20,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.bzl", "tfcompile_extra_flags")
+load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
 
 def tf_library(
         name,
@@ -188,7 +188,9 @@ def tf_library(
     # `find` on such an object.
     need_xla_data_proto = flags and flags.find("--gen_program_shape") != -1
 
-    flags = tfcompile_extra_flags() + flags
+    target_cpu = tfcompile_target_cpu()
+    extra_flags = "--target_cpu=" + target_cpu + " " if target_cpu else " "
+    flags = extra_flags + flags
 
     if enable_xla_hlo_profiling:
         profiling_flag = "--xla_hlo_profile"
@@ -432,5 +434,6 @@ def target_llvm_triple():
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
         "//tensorflow:macos": "x86_64-none-darwin",
         "//tensorflow:windows": "x86_64-none-windows",
+        "//tensorflow:linux_s390x": "systemz-none-linux-gnu",
         "//conditions:default": "x86_64-pc-linux",
     })

@@ -21,13 +21,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tfjs/transforms/passes.h"
-
-namespace mlir {
-/// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OperationPass<FuncOp>>
-CreateTFExecutorToControlDialectConversion();
-}  // namespace mlir
 
 namespace tensorflow {
 
@@ -50,7 +45,7 @@ void AddTFToTFJSConversionPasses(mlir::OpPassManager* pm) {
   // raise to executor dialect in order to use GraphDef converter
   pm->addNestedPass<mlir::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm->addNestedPass<mlir::FuncOp>(mlir::CreateBreakUpIslandsPass());
+  pm->addPass(mlir::CreateBreakUpIslandsPass());
 }
 
 }  // namespace tensorflow

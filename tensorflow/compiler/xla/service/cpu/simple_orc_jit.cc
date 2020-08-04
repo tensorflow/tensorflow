@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <list>
 #include <utility>
 
@@ -163,6 +164,7 @@ void SimpleOrcJIT::NotifyObjectFinalized(
   uint64_t key = static_cast<uint64_t>(
       reinterpret_cast<uintptr_t>(object.getData().data()));
   gdb_jit_event_listener_->notifyObjectLoaded(key, object, object_info);
+  size_of_generated_code_in_bytes_ += object.getData().size();
 }
 
 void SimpleOrcJIT::NotifyObjectFreed(const llvm::object::ObjectFile& object) {
@@ -223,6 +225,7 @@ namespace {
 bool RegisterKnownJITSymbols() {
   xla::CustomCallTargetRegistry* registry =
       xla::CustomCallTargetRegistry::Global();
+  registry->Register("printf", reinterpret_cast<void*>(&printf), "Host");
 
 #define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
   do {                                                                       \
@@ -238,6 +241,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireOutfeedBufferForPopulation);
   REGISTER_CPU_RUNTIME_SYMBOL(AllReduce);
   REGISTER_CPU_RUNTIME_SYMBOL(CollectivePermute);
+  REGISTER_CPU_RUNTIME_SYMBOL(AllToAll);
   REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);
@@ -246,6 +250,8 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulS32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF64);
@@ -257,6 +263,8 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulS32);
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);

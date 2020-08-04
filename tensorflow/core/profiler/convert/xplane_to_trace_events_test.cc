@@ -18,7 +18,9 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -26,10 +28,7 @@ namespace {
 
 void CreateXSpace(XSpace* space) {
   XPlaneBuilder host_plane(space->add_planes());
-  XPlaneBuilder device_plane(space->add_planes());
-
-  host_plane.SetName("cpu");
-  host_plane.SetId(0);
+  host_plane.SetName(kHostThreadsPlaneName);
   XLineBuilder thread1 = host_plane.GetOrCreateLine(10);
   thread1.SetName("thread1");
   XEventBuilder event1 =
@@ -47,8 +46,9 @@ void CreateXSpace(XSpace* space) {
   event2.ParseAndAddStatValue(*host_plane.GetOrCreateStatMetadata("tf_op"),
                               "Conv2D");
 
-  device_plane.SetName("gpu:0");
-  device_plane.SetId(1);
+  XPlaneBuilder device_plane(space->add_planes());
+  device_plane.SetName(GpuPlaneName(0));
+  device_plane.SetId(0);
   XLineBuilder stream1 = device_plane.GetOrCreateLine(30);
   stream1.SetName("gpu stream 1");
   XEventBuilder event3 =
@@ -67,8 +67,8 @@ TEST(ConvertXPlaneToTraceEvents, Convert) {
   ConvertXSpaceToTraceEvents(xspace, &trace);
 
   ASSERT_EQ(trace.devices_size(), 2);
-  EXPECT_EQ(trace.devices().at(0).resources_size(), 2);
-  EXPECT_EQ(trace.devices().at(1).resources_size(), 1);
+  EXPECT_EQ(trace.devices().at(kHostThreadsDeviceId).resources_size(), 2);
+  EXPECT_EQ(trace.devices().at(kFirstDeviceId).resources_size(), 1);
   EXPECT_EQ(trace.trace_events_size(), 3);
 }
 

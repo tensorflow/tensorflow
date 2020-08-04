@@ -169,14 +169,16 @@ class CudaSolver {
   // to the underlying Tensor to prevent it from being deallocated prematurely.
   template <typename Scalar>
   ScratchSpace<Scalar> GetScratchSpace(const TensorShape& shape,
-                                       const string& debug_info, bool on_host);
+                                       const std::string& debug_info,
+                                       bool on_host);
   template <typename Scalar>
-  ScratchSpace<Scalar> GetScratchSpace(int64 size, const string& debug_info,
+  ScratchSpace<Scalar> GetScratchSpace(int64 size,
+                                       const std::string& debug_info,
                                        bool on_host);
   // Returns a DeviceLapackInfo that will live for the duration of the
   // CudaSolver object.
   inline DeviceLapackInfo GetDeviceLapackInfo(int64 size,
-                                              const string& debug_info);
+                                              const std::string& debug_info);
 
   // Allocates a temporary tensor that will live for the duration of the
   // CudaSolver object.
@@ -377,12 +379,12 @@ class ScratchSpace {
   ScratchSpace(OpKernelContext* context, int64 size, bool on_host)
       : ScratchSpace(context, TensorShape({size}), "", on_host) {}
 
-  ScratchSpace(OpKernelContext* context, int64 size, const string& debug_info,
-               bool on_host)
+  ScratchSpace(OpKernelContext* context, int64 size,
+               const std::string& debug_info, bool on_host)
       : ScratchSpace(context, TensorShape({size}), debug_info, on_host) {}
 
   ScratchSpace(OpKernelContext* context, const TensorShape& shape,
-               const string& debug_info, bool on_host)
+               const std::string& debug_info, bool on_host)
       : context_(context), debug_info_(debug_info), on_host_(on_host) {
     AllocatorAttributes alloc_attr;
     if (on_host) {
@@ -411,7 +413,7 @@ class ScratchSpace {
   }
   int64 bytes() const { return scratch_tensor_.TotalBytes(); }
   int64 size() const { return scratch_tensor_.NumElements(); }
-  const string& debug_info() const { return debug_info_; }
+  const std::string& debug_info() const { return debug_info_; }
 
   Tensor& tensor() { return scratch_tensor_; }
   const Tensor& tensor() const { return scratch_tensor_; }
@@ -424,21 +426,22 @@ class ScratchSpace {
 
  private:
   OpKernelContext* context_;  // not owned
-  const string debug_info_;
+  const std::string debug_info_;
   const bool on_host_;
   Tensor scratch_tensor_;
 };
 
 class HostLapackInfo : public ScratchSpace<int> {
  public:
-  HostLapackInfo(OpKernelContext* context, int64 size, const string& debug_info)
+  HostLapackInfo(OpKernelContext* context, int64 size,
+                 const std::string& debug_info)
       : ScratchSpace<int>(context, size, debug_info, /* on_host */ true){};
 };
 
 class DeviceLapackInfo : public ScratchSpace<int> {
  public:
   DeviceLapackInfo(OpKernelContext* context, int64 size,
-                   const string& debug_info)
+                   const std::string& debug_info)
       : ScratchSpace<int>(context, size, debug_info, /* on_host */ false) {}
 
   // Allocates a new scratch space on the host and launches a copy of the
@@ -460,7 +463,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
 #if GOOGLE_CUDA
 template <typename Scalar>
 ScratchSpace<Scalar> CudaSolver::GetScratchSpace(const TensorShape& shape,
-                                                 const string& debug_info,
+                                                 const std::string& debug_info,
                                                  bool on_host) {
   ScratchSpace<Scalar> new_scratch_space(context_, shape, debug_info, on_host);
   scratch_tensor_refs_.emplace_back(new_scratch_space.tensor());
@@ -469,13 +472,13 @@ ScratchSpace<Scalar> CudaSolver::GetScratchSpace(const TensorShape& shape,
 
 template <typename Scalar>
 ScratchSpace<Scalar> CudaSolver::GetScratchSpace(int64 size,
-                                                 const string& debug_info,
+                                                 const std::string& debug_info,
                                                  bool on_host) {
   return GetScratchSpace<Scalar>(TensorShape({size}), debug_info, on_host);
 }
 
 inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
-    int64 size, const string& debug_info) {
+    int64 size, const std::string& debug_info) {
   DeviceLapackInfo new_dev_info(context_, size, debug_info);
   scratch_tensor_refs_.emplace_back(new_dev_info.tensor());
   return new_dev_info;

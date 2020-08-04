@@ -61,7 +61,8 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
   Status s;
   std::unique_ptr<CompositeDevice> composite_device =
       CompositeDevice::MakeDevice({device0->name(), device1->name()},
-                                  /*unique_device_id=*/0, &s);
+                                  /*unique_device_id=*/0,
+                                  device_mgr.HostCPU()->parsed_name(), &s);
   TF_ASSERT_OK(s);
 
   auto ctx = new EagerContext(

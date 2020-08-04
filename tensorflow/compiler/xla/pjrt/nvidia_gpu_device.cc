@@ -169,7 +169,7 @@ class NcclIdStore {
   const std::shared_ptr<DistributedRuntimeClient> client_;
 
   absl::Mutex mu_;
-  absl::flat_hash_map<std::string, std::string> cache_ GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, std::string> cache_ ABSL_GUARDED_BY(mu_);
 };
 
 StatusOr<std::string> NcclIdStore::GetNcclUniqueId(const NcclCliqueKey& key) {
@@ -316,6 +316,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
       "gpu", xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),
+      /*should_stage_host_to_device_transfers=*/true,
       /*gpu_run_options=*/std::move(gpu_run_options));
   return pyclient;
 }

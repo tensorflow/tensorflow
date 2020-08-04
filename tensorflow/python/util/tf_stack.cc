@@ -83,7 +83,8 @@ std::vector<FrameSummary> ExtractStack(ssize_t limit, const py::list& mappers,
   std::vector<FrameSummary> ret;
   // 16 is somewhat arbitrary, but TensorFlow stack traces tend to be deep.
   ret.reserve(limit < 0 ? 16 : static_cast<size_t>(limit));
-  for (; f != nullptr && (limit < 0 || ret.size() < limit); f = f->f_back) {
+  for (; f != nullptr && (limit < 0 || ret.size() < static_cast<size_t>(limit));
+       f = f->f_back) {
     const PyCodeObject* co = f->f_code;
     int lineno = PyFrame_GetLineNumber(const_cast<PyFrameObject*>(f));
     auto filename = py::reinterpret_borrow<py::str>(co->co_filename);

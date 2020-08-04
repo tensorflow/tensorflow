@@ -185,7 +185,8 @@ public final class Tensor {
       throw new IllegalArgumentException(
           "Null inputs are allowed only if the Tensor is bound to a buffer handle.");
     }
-    throwIfDataIsIncompatible(src);
+    throwIfTypeIsIncompatible(src);
+    throwIfSrcShapeIsIncompatible(src);
     if (isBuffer(src)) {
       setTo((Buffer) src);
     } else if (src.getClass().isArray()) {
@@ -247,7 +248,8 @@ public final class Tensor {
       throw new IllegalArgumentException(
           "Null outputs are allowed only if the Tensor is bound to a buffer handle.");
     }
-    throwIfDataIsIncompatible(dst);
+    throwIfTypeIsIncompatible(dst);
+    throwIfDstShapeIsIncompatible(dst);
     if (isBuffer(dst)) {
       copyTo((Buffer) dst);
     } else {
@@ -300,7 +302,7 @@ public final class Tensor {
   }
 
   /** Returns the type of the data. */
-  static DataType dataTypeOf(Object o) {
+  DataType dataTypeOf(Object o) {
     if (o != null) {
       Class<?> c = o.getClass();
       // For arrays, the data elements must be a *primitive* type, e.g., an
@@ -314,9 +316,15 @@ public final class Tensor {
         } else if (int.class.equals(c)) {
           return DataType.INT32;
         } else if (byte.class.equals(c)) {
+          // Byte array can be used for storing string tensors, especially for ParseExample op.
+          if (dtype == DataType.STRING) {
+            return DataType.STRING;
+          }
           return DataType.UINT8;
         } else if (long.class.equals(c)) {
           return DataType.INT64;
+        } else if (boolean.class.equals(c)) {
+          return DataType.BOOL;
         } else if (String.class.equals(c)) {
           return DataType.STRING;
         }
@@ -333,6 +341,8 @@ public final class Tensor {
           return DataType.UINT8;
         } else if (Long.class.equals(c) || o instanceof LongBuffer) {
           return DataType.INT64;
+        } else if (Boolean.class.equals(c)) {
+          return DataType.BOOL;
         } else if (String.class.equals(c)) {
           return DataType.STRING;
         }
@@ -343,8 +353,21 @@ public final class Tensor {
   }
 
   /** Returns the shape of an object as an int array. */
-  static int[] computeShapeOf(Object o) {
+  int[] computeShapeOf(Object o) {
     int size = computeNumDimensions(o);
+    if (dtype == DataType.STRING) {
+      Class<?> c = o.getClass();
+      if (c.isArray()) {
+        while (c.isArray()) {
+          c = c.getComponentType();
+        }
+        // If the given string data is stored in byte streams, the last array dimension should be
+        // treated as a value.
+        if (byte.class.equals(c)) {
+          --size;
+        }
+      }
+    }
     int[] dimensions = new int[size];
     fillShape(o, 0, dimensions);
     return dimensions;
@@ -387,11 +410,6 @@ public final class Tensor {
     }
   }
 
-  private void throwIfDataIsIncompatible(Object o) {
-    throwIfTypeIsIncompatible(o);
-    throwIfShapeIsIncompatible(o);
-  }
-
   private void throwIfTypeIsIncompatible(Object o) {
     // ByteBuffer payloads can map to any type, so exempt it from the check.
     if (isByteBuffer(o)) {
@@ -413,29 +431,58 @@ public final class Tensor {
     }
   }
 
-  private void throwIfShapeIsIncompatible(Object o) {
-    if (isBuffer(o)) {
-      Buffer oBuffer = (Buffer) o;
+  private void throwIfSrcShapeIsIncompatible(Object src) {
+    if (isBuffer(src)) {
+      Buffer srcBuffer = (Buffer) src;
       int bytes = numBytes();
       // Note that we allow the client to provide a ByteBuffer even for non-byte Tensors.
       // In such cases, we only care that the raw byte capacity matches the tensor byte capacity.
-      int oBytes = isByteBuffer(o) ? oBuffer.capacity() : oBuffer.capacity() * dtype.byteSize();
-      if (bytes != oBytes) {
+      int srcBytes =
+          isByteBuffer(src) ? srcBuffer.capacity() : srcBuffer.capacity() * dtype.byteSize();
+      if (bytes != srcBytes) {
         throw new IllegalArgumentException(
             String.format(
-                "Cannot convert between a TensorFlowLite buffer with %d bytes and a "
+                "Cannot copy to a TensorFlowLite tensor (%s) with %d bytes from a "
                     + "Java Buffer with %d bytes.",
-                bytes, oBytes));
+                name(), bytes, srcBytes));
       }
       return;
     }
-    int[] oShape = computeShapeOf(o);
-    if (!Arrays.equals(oShape, shapeCopy)) {
+    int[] srcShape = computeShapeOf(src);
+    if (!Arrays.equals(srcShape, shapeCopy)) {
       throw new IllegalArgumentException(
           String.format(
-              "Cannot copy between a TensorFlowLite tensor with shape %s and a Java object "
+              "Cannot copy to a TensorFlowLite tensor (%s) with shape %s from a Java object "
                   + "with shape %s.",
-              Arrays.toString(shapeCopy), Arrays.toString(oShape)));
+              name(), Arrays.toString(shapeCopy), Arrays.toString(srcShape)));
+    }
+  }
+
+  private void throwIfDstShapeIsIncompatible(Object dst) {
+    if (isBuffer(dst)) {
+      Buffer dstBuffer = (Buffer) dst;
+      int bytes = numBytes();
+      // Note that we allow the client to provide a ByteBuffer even for non-byte Tensors.
+      // In such cases, we only care that the raw byte capacity fits the tensor byte capacity.
+      // This is subtly different than Buffer *inputs*, where the size should be exact.
+      int dstBytes =
+          isByteBuffer(dst) ? dstBuffer.capacity() : dstBuffer.capacity() * dtype.byteSize();
+      if (bytes > dstBytes) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Cannot copy from a TensorFlowLite tensor (%s) with %d bytes to a "
+                    + "Java Buffer with %d bytes.",
+                name(), bytes, dstBytes));
+      }
+      return;
+    }
+    int[] dstShape = computeShapeOf(dst);
+    if (!Arrays.equals(dstShape, shapeCopy)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Cannot copy from a TensorFlowLite tensor (%s) with shape %s to a Java object "
+                  + "with shape %s.",
+              name(), Arrays.toString(shapeCopy), Arrays.toString(dstShape)));
     }
   }
 

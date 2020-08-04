@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -28,7 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
@@ -48,14 +49,14 @@ class QrOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testWrongDimensions(self):
-    # The input to svd should be a tensor of at least rank 2.
+    # The input to qr should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 "rank.* 2.*0"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "rank.* 2.*0"):
       linalg_ops.qr(scalar)
     vector = constant_op.constant([1., 2.])
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 "rank.* 2.*1"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "rank.* 2.*1"):
       linalg_ops.qr(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
@@ -170,18 +171,37 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
 
 
 class QrGradOpTest(test.TestCase):
-  pass
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testNotImplementedCheck(self):
+    # Test that the correct message is issued
+    np.random.seed(42)
+    matrix = constant_op.constant(
+        np.random.uniform(low=-1.0, high=1.0, size=(5, 2)).astype(np.float32))
+
+    def _NoGrad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        ret = linalg_ops.qr(x, full_matrices=True)
+      return tape.gradient(ret, x)
+
+    m = r"QrGrad not implemented when nrows > ncols and full_matrices is true."
+    with self.assertRaisesRegex(NotImplementedError, m):
+      _NoGrad(matrix)
 
 
 def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
 
-  @test_util.run_v1_only("b/120545219")
-  def Test(self):
-    np.random.seed(42)
+  def RandomInput():
     a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
     if dtype_ in [np.complex64, np.complex128]:
       a += 1j * np.random.uniform(
           low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    return a
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def Test(self):
+    np.random.seed(42)
     # Optimal stepsize for central difference is O(epsilon^{1/3}).
     epsilon = np.finfo(dtype_).eps
     delta = 0.1 * epsilon**(1.0 / 3.0)
@@ -189,23 +209,16 @@ def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
       tol = 3e-2
     else:
       tol = 1e-6
-    with self.session(use_gpu=True):
-      tf_a = constant_op.constant(a)
-      tf_b = linalg_ops.qr(tf_a, full_matrices=full_matrices_)
-      for b in tf_b:
-        x_init = np.random.uniform(
-            low=-1.0, high=1.0, size=shape_).astype(dtype_)
-        if dtype_ in [np.complex64, np.complex128]:
-          x_init += 1j * np.random.uniform(
-              low=-1.0, high=1.0, size=shape_).astype(dtype_)
-        theoretical, numerical = gradient_checker.compute_gradient(
-            tf_a,
-            tf_a.get_shape().as_list(),
-            b,
-            b.get_shape().as_list(),
-            x_init_value=x_init,
-            delta=delta)
-        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+    # TODO(b/157171666): Sadly we have to double the computation because
+    # gradient_checker_v2.compute_gradient expects a list of functions.
+    funcs = [
+        lambda a: linalg_ops.qr(a, full_matrices=full_matrices_)[0],
+        lambda a: linalg_ops.qr(a, full_matrices=full_matrices_)[1]
+    ]
+    for f in funcs:
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [RandomInput()], delta=delta)
+      self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
 
@@ -241,7 +254,7 @@ class QRBenchmark(test.Benchmark):
             low=-1.0, high=1.0, size=shape_).astype(np.float32)
         matrix = variables.Variable(matrix_value)
         q, r = linalg_ops.qr(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(q, r),
@@ -256,7 +269,7 @@ class QRBenchmark(test.Benchmark):
               low=-1.0, high=1.0, size=shape_).astype(np.float32)
           matrix = variables.Variable(matrix_value)
           q, r = linalg_ops.qr(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(q, r),
@@ -282,14 +295,13 @@ if __name__ == "__main__":
                                     use_static_shape))
 
   # TODO(pfau): Get working with complex types.
-  # TODO(pfau): Get working with full_matrices when rows != cols
-  # TODO(pfau): Get working when rows < cols
+  # TODO(pfau): Get working with full_matrices when rows > cols
   # TODO(pfau): Get working with shapeholders (dynamic shapes)
   for full_matrices in False, True:
     for dtype in np.float32, np.float64:
       for rows in 1, 2, 5, 10:
         for cols in 1, 2, 5, 10:
-          if rows == cols or (not full_matrices and rows > cols):
+          if rows <= cols or (not full_matrices and rows > cols):
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
               shape = batch_dims + (rows, cols)
               name = "%s_%s_full_%s" % (dtype.__name__,

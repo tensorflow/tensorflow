@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -543,4 +544,39 @@ INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpAlignCornersTestGpu,
                          ResizeBilinearOpAlignCornersTest,
                          ::testing::Values(TestDevice::GPU));
 #endif  // GOOGLE_CUDA
+
+class ResizeBM : public ResizeBilinearOpTest {
+ public:
+  void TestBody() override {}
+  void SetUpBenchmark(int input_width, int input_height, int num_channels,
+                      int output_width, int output_height) {
+    TF_EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("align_corners", align_corners_)
+                     .Attr("half_pixel_centers", half_pixel_centers_)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+    const TensorShape shape(
+        {/*batch_size*/ 1, input_width, input_height, num_channels});
+    SetRandomImageInput(shape);
+    AddInputFromArray<int32>(TensorShape({2}), {output_width, output_height});
+  }
+
+  using ResizeBilinearOpTest::RunOpKernel;
+};
+
+#ifdef PLATFORM_GOOGLE
+
+void BM_Resize(benchmark::State& state) {
+  ResizeBM bench;
+  bench.SetUpBenchmark(640, 480, 3, 1024, 768);
+  for (const auto _ : state) {
+    CHECK(bench.RunOpKernel().ok());
+  }
+}
+BENCHMARK(BM_Resize);
+
+#endif
+
 }  // namespace tensorflow

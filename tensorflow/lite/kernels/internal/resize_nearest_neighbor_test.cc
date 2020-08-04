@@ -42,7 +42,7 @@ void TestReferenceResizeNearestNeighbor(
   ASSERT_EQ(expected_output_data, output_data);
 }
 
-// Sanity test values are from
+// Consistency test values are from
 // third_party/tensorflow/core/kernels/resize_nearest_neighbor_op_test.cc.
 
 TEST(ResizeNearestNeighborReference, Test2x2To1x1) {

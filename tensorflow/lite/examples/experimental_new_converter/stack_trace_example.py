@@ -63,7 +63,6 @@ def test_from_saved_model():
 
   # load the model and convert
   converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_path)
-  converter.experimental_new_converter = True
   converter.convert()
 
 
@@ -78,7 +77,6 @@ def test_from_concrete_function():
 
   func = model.get_concrete_function()
   converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
-  converter.experimental_new_converter = True
   converter.convert()
 
 

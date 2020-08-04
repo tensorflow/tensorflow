@@ -432,6 +432,82 @@ class Conv2DTest(test.TestCase):
         expected=expected_output)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConv2DExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 3]
+    filter_in_sizes = [1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    conv1 = nn_ops.conv2d(
+        x1,
+        filter_in,
+        strides=[1, 1],
+        padding="VALID")
+    conv2 = nn_ops.conv2d(
+        x2,
+        filter_in,
+        strides=[1, 1],
+        padding="VALID")
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllEqual(
+        conv1,
+        self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvolutionClass2DExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 3]
+    filter_in_sizes = [1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    convolver1 = nn_ops.Convolution(
+        input_shape=x1.shape,
+        filter_shape=filter_in.shape,
+        strides=[1, 1],
+        padding="VALID")
+    self.assertEqual(convolver1.num_batch_dims, 1)
+    convolver2 = nn_ops.Convolution(
+        input_shape=x2.shape,
+        filter_shape=filter_in.shape,
+        strides=[1, 1],
+        padding="VALID")
+    self.assertEqual(convolver2.num_batch_dims, 2)
+    conv1 = convolver1(x1, filter_in)
+    conv2 = convolver2(x2, filter_in)
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllEqual(
+        conv1,
+        self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvolutionWith2SpatialDimensionsAndExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 3]
+    filter_in_sizes = [1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    conv1 = nn_ops.convolution(
+        x1,
+        filter_in,
+        strides=[1, 1],
+        padding="VALID")
+    conv2 = nn_ops.convolution(
+        x2,
+        filter_in,
+        strides=[1, 1],
+        padding="VALID")
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllEqual(
+        conv1,
+        self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Filter2x1Dilation(self):
     self._VerifyDilatedConvValues(
         tensor_in_sizes=[1, 4, 4, 1],
@@ -2446,79 +2522,138 @@ class Conv2DTest(test.TestCase):
           padding=[0, 0, 0, 0])
 
   @test_util.deprecated_graph_mode_only
-  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testOpEdgeCases(self):
     with self.cached_session() as sess:
       # Illegal strides.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "strides in the batch and depth"):
+      with self.assertRaisesRegex(errors_impl.UnimplementedError,
+                                  "strides in the batch and depth"):
+        input_placeholder = array_ops.placeholder(dtypes.float32)
+        input_val = np.ones([10, 10])
+        filter_placeholder = array_ops.placeholder(dtypes.float32)
+        filter_val = np.ones([10, 10])
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(dtypes.float32),
-                array_ops.placeholder(dtypes.float32),
+                input_placeholder,
+                filter_placeholder,
                 strides=[2, 1, 1, 1],
-                padding="SAME"))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "strides in the batch and depth"):
+                padding="SAME"),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
+      with self.assertRaisesRegex(errors_impl.UnimplementedError,
+                                  "strides in the batch and depth"):
+        input_placeholder = array_ops.placeholder(dtypes.float32)
+        filter_placeholder = array_ops.placeholder(dtypes.float32)
+        input_val = np.ones([10, 10])
+        filter_val = np.ones([10, 10])
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(dtypes.float32),
-                array_ops.placeholder(dtypes.float32),
+                input_placeholder,
+                filter_placeholder,
                 strides=[1, 1, 1, 2],
-                padding="SAME"))
+                padding="SAME"),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
 
       # Filter larger than input.
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        input_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[32, 20, 20, 3])
+        input_val = np.ones([32, 20, 20, 3])
+        filter_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[20, 21, 3, 2])
+        filter_val = np.ones([20, 21, 3, 2])
+
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(
-                    dtypes.float32, shape=[32, 20, 20, 3]),
-                array_ops.placeholder(
-                    dtypes.float32, shape=[20, 21, 3, 2]),
+                input_placeholder,
+                filter_placeholder,
                 strides=[1, 1, 1, 1],
-                padding="VALID"))
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+                padding="VALID"),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        input_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[32, 20, 20, 3])
+        input_val = np.ones([32, 20, 20, 3])
+        filter_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[21, 20, 3, 2])
+        filter_val = np.ones([21, 20, 3, 2])
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(
-                    dtypes.float32, shape=[32, 20, 20, 3]),
-                array_ops.placeholder(
-                    dtypes.float32, shape=[21, 20, 3, 2]),
+                input_placeholder,
+                filter_placeholder,
                 strides=[1, 1, 1, 1],
-                padding="VALID"))
+                padding="VALID"),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
 
       # Filter larger than input + padding.
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        input_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[32, 20, 20, 3])
+        input_val = np.ones([32, 20, 20, 3])
+        filter_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[24, 25, 3, 2])
+        filter_val = np.ones([24, 25, 3, 2])
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                array_ops.placeholder(dtypes.float32, shape=[24, 25, 3, 2]),
+                input_placeholder,
+                filter_placeholder,
                 strides=[1, 1, 1, 1],
-                padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
+                padding=[[0, 0], [2, 2], [2, 2], [0, 0]]),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
 
       # Negative padding during backprop.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "nonnegative"):
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "All elements of explicit_paddings must be nonnegative"):
+        filter_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[18, 18, 3, 2])
+        filter_val = np.ones([18, 18, 3, 2])
+        out_backprop = array_ops.placeholder(
+            dtypes.float32, shape=[32, 3, 2, 2])
+        out_backprop_val = np.ones([32, 3, 2, 2])
         sess.run(
             nn_ops.conv2d_backprop_input([32, 20, 20, 3],
-                                         array_ops.placeholder(
-                                             dtypes.float32,
-                                             shape=[18, 18, 3, 2]),
-                                         array_ops.placeholder(
-                                             dtypes.float32,
-                                             shape=[32, 3, 2, 2]),
+                                         filter_placeholder,
+                                         out_backprop,
                                          strides=[1, 1, 1, 1],
                                          padding=[[0, 0], [-1, 0], [0, 0],
-                                                  [0, 0]]))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "nonnegative"):
+                                                  [0, 0]]),
+            feed_dict={
+                filter_placeholder: filter_val,
+                out_backprop: out_backprop_val
+            })
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "All elements of explicit_paddings must be nonnegative"):
+        input_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[32, 20, 20, 3])
+        input_val = np.ones([32, 20, 20, 3])
+        out_backprop = array_ops.placeholder(
+            dtypes.float32, shape=[32, 3, 2, 2])
+        out_backprop_val = np.ones([32, 3, 2, 2])
         sess.run(
             nn_ops.conv2d_backprop_filter(
-                array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                [18, 18, 3, 2],
-                array_ops.placeholder(dtypes.float32, shape=[32, 3, 2, 2]),
+                input_placeholder, [18, 18, 3, 2],
+                out_backprop,
                 strides=[1, 1, 1, 1],
-                padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
+                padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]),
+            feed_dict={
+                input_placeholder: input_val,
+                out_backprop: out_backprop_val
+            })
 
 
 class DepthwiseConv2DTest(test.TestCase):
@@ -2867,7 +3002,7 @@ class Conv2DBenchmark(test.Benchmark):
         x = convolutional.conv2d(x, num_outputs, [1, kernel_w])
       outputs = x
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       num_iterations = 4
       for iter_index in xrange(num_iterations):
         start = time.time()
@@ -2883,7 +3018,7 @@ class Conv2DBenchmark(test.Benchmark):
     config.graph_options.rewrite_options.dependency_optimization = (
         rewriter_config_pb2.RewriterConfig.OFF)
     with session_lib.Session(config=config) as session:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.run_op_benchmark(
           session, op, burn_iters=burn_iters, min_iters=num_iters, name=name)
 

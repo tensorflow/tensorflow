@@ -99,7 +99,7 @@ class GlobalOpDispatcher(object):
     _GLOBAL_DISPATCHERS.append(self)
 
 
-def dispatch(op, *args, **kwargs):
+def dispatch(op, args, kwargs):
   """Returns the result from the first successful dispatcher for a given op.
 
   Calls the `handle` method of each `OpDispatcher` that has been registered
@@ -107,8 +107,8 @@ def dispatch(op, *args, **kwargs):
 
   Args:
     op: Python function: the operation to dispatch for.
-    *args: The arguments to the operation.
-    **kwargs: They keyword arguments to the operation.
+    args: The arguments to the operation.
+    kwargs: They keyword arguments to the operation.
 
   Returns:
     The result of the operation, or `NOT_SUPPORTED` if no registered
@@ -202,7 +202,7 @@ def add_dispatch_support(target):
     except (TypeError, ValueError):
       # Note: convert_to_eager_tensor currently raises a ValueError, not a
       # TypeError, when given unexpected types.  So we need to catch both.
-      result = dispatch(wrapper, *args, **kwargs)
+      result = dispatch(wrapper, args, kwargs)
       if result is not OpDispatcher.NOT_SUPPORTED:
         return result
       else:

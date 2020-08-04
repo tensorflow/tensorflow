@@ -24,7 +24,6 @@ namespace tflite {
 namespace delegates {
 namespace coreml {
 OpBuilder* GraphBuilder::AddBuilder(int builtin_code, const TfLiteNode* node) {
-  // Follow the ordering of TfLiteBuiltinOperator enum.
   switch (builtin_code) {
     case kTfLiteBuiltinAdd:
       return AddBuilder(CreateAddOpBuilder, node);
@@ -36,14 +35,24 @@ OpBuilder* GraphBuilder::AddBuilder(int builtin_code, const TfLiteNode* node) {
       return AddBuilder(CreateConvolutionOpBuilder, node);
     case kTfLiteBuiltinDepthwiseConv2d:
       return AddBuilder(CreateDepthwiseConvolutionOpBuilder, node);
+    // TODO(b/141490853): Add proper dequantize OpBuilder for int8/uint8 inputs.
+    case kTfLiteBuiltinDequantize:
+      // FP16 dequantize is claimed by the delegate to prevent them from running
+      // on CPU, but don't need to be excuted on the Core ML delegate either.
+      return AddBuilder(CreateDummyOpBuilder, node);
     case kTfLiteBuiltinFullyConnected:
       return AddBuilder(CreateFullyConnectedOpBuilder, node);
     case kTfLiteBuiltinLogistic:
       return AddBuilder(CreateLogisticOpBuilder, node);
     case kTfLiteBuiltinMaxPool2d:
       return AddBuilder(CreateMaxPool2dOpBuilder, node);
+    case kTfLiteBuiltinMirrorPad:
+      return AddBuilder(CreateMirrorPadOpBuilder, node);
     case kTfLiteBuiltinMul:
       return AddBuilder(CreateMulOpBuilder, node);
+    case kTfLiteBuiltinPad:
+    case kTfLiteBuiltinPadv2:
+      return AddBuilder(CreatePadOpBuilder, node);
     case kTfLiteBuiltinRelu:
       return AddBuilder(CreateReluOpBuilder, node);
     case kTfLiteBuiltinReluN1To1:
@@ -95,6 +104,7 @@ CoreML::Specification::Model* GraphBuilder::BuildModel() {
         CoreML::Specification::EXACT_ARRAY_MAPPING);
   } else {
     fprintf(stderr, "Unsupported Core ML version: %d\n", coreml_version_);
+    delete model;
     return nullptr;
   }
   auto* neural_network = model->mutable_neuralnetwork();

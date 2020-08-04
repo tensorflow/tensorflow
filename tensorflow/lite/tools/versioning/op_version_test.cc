@@ -67,6 +67,18 @@ void SimpleVersioningTest(BuiltinOperator op) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
+// Similar to SimpleVersioningTest function, but
+// op has 3 versions and the input type includes TensorType_INT16.
+void SimpleVersioningTestExtended(BuiltinOperator op) {
+  OpSignature fake_op_sig = {
+      .op = op,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  SimpleVersioningTest(op);
+}
+
 // Test version for a simple Op with 2 versions and the output type controls the
 void SimpleOutputVersioningTest(BuiltinOperator op) {
   OpSignature fake_op_sig = {
@@ -281,7 +293,7 @@ TEST(OpVersionTest, VersioningMinTest) {
 }
 
 TEST(OpVersionTest, VersioningMeanTest) {
-  SimpleVersioningTest(BuiltinOperator_MEAN);
+  SimpleVersioningTestExtended(BuiltinOperator_MEAN);
 }
 
 TEST(OpVersionTest, VersioningSumTest) {
@@ -294,6 +306,14 @@ TEST(OpVersionTest, VersioningAddTest) {
 
 TEST(OpVersionTest, VersioningSubTest) {
   SimpleVersioningTest(BuiltinOperator_SUB);
+}
+
+TEST(OpVersionTest, VersioningSub4Test) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_SUB,
+      .input_types = std::vector<TensorType>{TensorType_INT64},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 
 void SimpleMulVersioningTest(TensorType data_type, float multiplier,
@@ -361,6 +381,19 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   fake_op_sig.options.fully_connected = {
       false, FullyConnectedOptionsWeightsFormat_DEFAULT, true};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8,
+                                  TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  fake_op_sig.options.fully_connected = {
+      false, FullyConnectedOptionsWeightsFormat_DEFAULT, false, false};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig.options.fully_connected.asymmetric_quantize_inputs = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 9);
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
@@ -412,6 +445,15 @@ TEST(OpVersionTest, VersioningConv2DTest) {
       .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_2D,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  fake_op_sig.options.conv_2d.is_per_channel_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 
 TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
@@ -479,6 +521,8 @@ TEST(OpVersionTest, VersioningSVDFOperatorTest) {
       .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+  fake_op_sig.options.input_quantization.asymmetric_quantize_inputs = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 
   fake_op_sig = {
       .op = BuiltinOperator_SVDF,
@@ -489,6 +533,7 @@ TEST(OpVersionTest, VersioningSVDFOperatorTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
+
 TEST(OpVersionTest, VersioningDepthwiseConv2DTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_DEPTHWISE_CONV_2D,
@@ -497,6 +542,8 @@ TEST(OpVersionTest, VersioningDepthwiseConv2DTest) {
       .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+  fake_op_sig.options.depthwise_conv_2d.is_per_channel_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
 
   fake_op_sig = {
       .op = BuiltinOperator_DEPTHWISE_CONV_2D,

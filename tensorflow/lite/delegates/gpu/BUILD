@@ -80,6 +80,7 @@ objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
+    module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite:kernel_api",
@@ -89,6 +90,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
@@ -232,7 +234,14 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    deps = [
+    deps = select({
+        "//tensorflow/lite/delegates/gpu/cl:opencl_delegate_no_gl": [],
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/gpu/gl:api2",
+        ],
+    }) + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
@@ -243,10 +252,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/gl:api2",
         "//tensorflow/lite/kernels/internal:optimized_base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
     ],
 )

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -546,6 +547,19 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   };
 
   // ------------------------------------------------------------------------ //
+  // Helper function to get an input/output argument name by index. For
+  // functions instantiated from SymbolicGradien corresponding FunctionDef is
+  // empty, and argument name is unknown.
+
+  auto arg_name = [&](auto& args, size_t i) -> absl::string_view {
+    if (i < args.size()) {
+      return args[i].name();
+    } else {
+      return "<unknown>";
+    }
+  };
+
+  // ------------------------------------------------------------------------ //
   // Input edges. For data edges coming into "caller", we first compute the
   // <src>:<src_output> for the i-th input in "inputs".
   // If "caller" has any input control dependencies, we add a NoOp
@@ -663,11 +677,12 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   //
   // The added identity nodes depend on "input_control_node".
   VLOG(4) << "Add input Identity nodes for each function argument:";
+
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
     Node* n = input_identity("input", inputs[i], i);
     VLOG(4) << "    [index " << i << "] "
-            << fbody->fdef.signature().input_arg(i).name() << " as "
+            << arg_name(fbody->fdef.signature().input_arg(), i) << " as "
             << n->name() << " (input: " << inputs[i].name()
             << ", requested_device: " << n->requested_device() << ")";
 
@@ -704,6 +719,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // If `keep_node_fetchable` is `true` we always add an output control node, to
   // guarantee that executing a fetchable node will execute all side-effects.
   VLOG(4) << "Add output Identity nodes for each function output argument:";
+
   std::vector<Node*> outputs(caller->num_outputs());
   for (std::size_t i = 0; i < fbody->ret_nodes.size(); ++i) {
     Node* ret = node_map[fbody->ret_nodes[i]->id()];
@@ -718,7 +734,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     Node* n = output_identity("output", data, i);
     outputs[i] = n;
     VLOG(4) << "    [index " << i << "] "
-            << fbody->fdef.signature().output_arg(i).name() << " as "
+            << arg_name(fbody->fdef.signature().output_arg(), i) << " as "
             << n->name() << " (ret: " << data.node->name() << ":" << data.index
             << ", requested_device: " << n->requested_device() << ")";
     for (const Edge* e : ret->in_edges()) {

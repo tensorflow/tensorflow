@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -59,8 +60,8 @@ TEST(OpStatsToTfStats, GpuTfStats) {
   constexpr int64 kKernel3DurationNs = 10000;
 
   XSpace space;
-  XPlaneBuilder device_plane(space.add_planes());
-  device_plane.SetName(absl::StrCat(kGpuPlanePrefix, ":0"));
+  XPlaneBuilder device_plane(
+      GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
   XLineBuilder stream1 = device_plane.GetOrCreateLine(/*line_id=*/10);
   AddTensorFlowOpEvent(absl::StrCat(kTfOp1, ":", kTfOp1), kKernel1StartNs,
                        kKernel1DurationNs, /*on_device=*/true, kKernel1,
@@ -79,7 +80,7 @@ TEST(OpStatsToTfStats, GpuTfStats) {
                        kKernel3DurationNs, /*on_device=*/true, kKernel3,
                        &device_plane, &stream2);
 
-  const OpStats op_stats = ConvertXSpaceToOpStats(space);
+  const OpStats op_stats = ConvertXSpaceToOpStats(space, {OP_METRICS_DB});
   const TfStatsDatabase tf_stats = ConvertOpStatsToTfStats(op_stats);
 
   // TfOp1, TfOp2, Idle

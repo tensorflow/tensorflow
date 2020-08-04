@@ -107,10 +107,10 @@ class ResolveConstantConcatenationTest : public ::testing::Test {
   // together with 4 arrays as its inputs.
   // It receives the dimension of concatenation as input.
   void PrepareModel(Model* model, int axis) {
-    const string output_name("concat_op_output");
+    const std::string output_name("concat_op_output");
     model->flags.add_output_arrays(output_name);
-    std::vector<string> concat_input_names = {"array0", "array1", "array2",
-                                              "array3"};
+    std::vector<std::string> concat_input_names = {"array0", "array1", "array2",
+                                                   "array3"};
 
     const int kDim = 3;
     const int kElementPerDim = 2;
@@ -122,7 +122,7 @@ class ResolveConstantConcatenationTest : public ::testing::Test {
         {20., 21., 22., 23., 24., 25., 26., 27.},
         {30., 31., 32., 33., 34., 35., 36., 37.}};
     int cnt = 0;
-    for (const string& concat_input_name : concat_input_names) {
+    for (const std::string& concat_input_name : concat_input_names) {
       Array& in_array = model->GetOrCreateArray(concat_input_name);
       in_array.data_type = ArrayDataType::kFloat;
 

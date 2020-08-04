@@ -10,7 +10,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "num_segments"
@@ -56,6 +56,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentMeanWithNumSegments"
@@ -84,6 +97,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }

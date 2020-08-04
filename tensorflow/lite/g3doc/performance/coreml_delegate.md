@@ -1,8 +1,8 @@
-# Tensorflow Lite Core ML Delegate
+# Tensorflow Lite Core ML delegate
 
-TensorFlow Lite Core ML Delegate enables running TensorFlow Lite models on
-[Core ML framework](https://developer.apple.com/documentation/coreml),
-which results in faster model inference on iOS devices.
+The TensorFlow Lite Core ML delegate enables running TensorFlow Lite models on
+[Core ML framework](https://developer.apple.com/documentation/coreml), which
+results in faster model inference on iOS devices.
 
 Note: This delegate is in experimental (beta) phase.
 
@@ -19,19 +19,27 @@ Note: Core ML delegate supports Core ML version 2 and later.
 
 **Supported models**
 
-The Core ML delegate currently supports float32 models.
+The Core ML delegate currently supports float (FP32 and FP16) models.
 
 ## Trying the Core ML delegate on your own model
 
 The Core ML delegate is already included in nightly release of TensorFlow lite
 CocoaPods. To use Core ML delegate, change your TensorFlow lite pod
-(`TensorflowLiteC` for C++ API, and `TensorFlowLiteSwift` for Swift) version to
-`0.0.1-nightly` in your `Podfile`.
+(`TensorflowLiteC` for C API, and `TensorFlowLiteSwift` for Swift) version to
+`0.0.1-nightly` in your `Podfile`, and include subspec `CoreML`
 
 ```
 target 'YourProjectName'
   # pod 'TensorFlowLiteSwift'
-  pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
+  pod 'TensorFlowLiteSwift/CoreML', '~> 0.0.1-nightly'
+```
+
+OR
+
+```
+target 'YourProjectName'
+  # pod 'TensorFlowLiteSwift'
+  pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['CoreML']
 ```
 
 Note: After updating `Podfile`, you should run `pod update` to reflect changes.
@@ -151,16 +159,16 @@ if (delegate == nullptr) {
 interpreter->ModifyGraphWithDelegate(delegate);
 ```
 
-The delegate creation logic reads device's machine id (e.g. iPhone11,1)
-to determine its Neural Engine availability. See the
+The delegate creation logic reads device's machine id (e.g. iPhone11,1) to
+determine its Neural Engine availability. See the
 [code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/coreml/coreml_delegate.mm)
-for more detail. Alternatively, you can implement your own set of blacklist
+for more detail. Alternatively, you can implement your own set of denylist
 devices using other libraries such as
 [DeviceKit](https://github.com/devicekit/DeviceKit).
 
 ### Using older Core ML version
 
-Although iOS 13 supprots Core ML 3, the model might work better when it is
+Although iOS 13 supports Core ML 3, the model might work better when it is
 converted with Core ML 2 model specification. The target conversion version is
 set to the latest version by default, but you can change this by setting
 `coreMLVersion` (in Swift, `coreml_version` in C API) in the delegate option to
@@ -176,6 +184,7 @@ Following ops are supported by the Core ML delegate.
         1]`, `[B, 1, H, W]`, `[B, 1, 1, 1]`.
 *   AveragePool2D
 *   Concat
+    *   Concatenation should be done along the channel axis.
 *   Conv2D
     *   Weights and bias should be constant.
 *   DepthwiseConv2D
@@ -187,10 +196,16 @@ Following ops are supported by the Core ML delegate.
 *   Hardswish
 *   Logistic (aka Sigmoid)
 *   MaxPool2D
+*   MirrorPad
+    *   Only 4D input with `REFLECT` mode is supported. Padding should be
+        constant, and is only allowed for H and W dimensions.
 *   Mul
     *   Only certain shapes are broadcastable. In Core ML tensor layout,
         following tensor shapes are broadcastable. `[B, C, H, W]`, `[B, C, 1,
         1]`, `[B, 1, H, W]`, `[B, 1, 1, 1]`.
+*   Pad and PadV2
+    *   Only 4D input is supported. Padding should be constant, and is only
+        allowed for H and W dimensions.
 *   Relu
 *   ReluN1To1
 *   Relu6

@@ -29,13 +29,12 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.utils import conv_utils
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import serialization
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -53,22 +52,8 @@ sequential_lib = LazyLoader(
     "tensorflow.python.keras.engine.sequential")
 # pylint:enable=g-inconsistent-quotes
 
-# create lock file
-def create_lockfile(filepath):
-  lockfile_path = filepath + ".lock"
 
-  f = gfile.GFile(lockfile_path, 'w')
-  f.write(str(os.getpid()))
-  f.close()
-
-  return lockfile_path 
-
-def check_lockfile(filepath):
-  lockfile_path = filepath + ".lock"
-  return gfile.Exists(lockfile_path)
-
-def save_model_to_hdf5(model, filepath, overwrite=True, \
-                       lockfile=True, include_optimizer=True):
+def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
 
   The saved model contains:
@@ -88,9 +73,6 @@ def save_model_to_hdf5(model, filepath, overwrite=True, \
       overwrite: Whether we should overwrite any existing
           model at the target location, or instead
           ask the user with a manual prompt.
-      lockfile: Create a lockfile before saving the model
-          file to prevent from reading, while saving
-          is not done.
       include_optimizer: If True, save optimizer's state together.
 
   Raises:
@@ -117,10 +99,6 @@ def save_model_to_hdf5(model, filepath, overwrite=True, \
       if not proceed:
         return
 
-    # create lock file
-    if lockfile:
-      lockfile_path = create_lockfile(filepath)
-
     f = h5py.File(filepath, mode='w')
     opened_new_file = True
   else:
@@ -132,7 +110,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, \
     for k, v in model_metadata.items():
       if isinstance(v, (dict, list, tuple)):
         f.attrs[k] = json.dumps(
-            v, default=serialization.get_json_type).encode('utf8')
+            v, default=json_utils.get_json_type).encode('utf8')
       else:
         f.attrs[k] = v
 
@@ -150,10 +128,6 @@ def save_model_to_hdf5(model, filepath, overwrite=True, \
   finally:
     if opened_new_file:
       f.close()
-
-      # remove lock file
-      if lockfile:
-        gfile.Remove(lockfile_path)
 
 
 def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
@@ -189,10 +163,6 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
 
   opened_new_file = not isinstance(filepath, h5py.File)
   if opened_new_file:
-    # check if lock file exist
-    if check_lockfile(filepath):
-      raise ValueError('Cannot read from file at this time.')
-
     f = h5py.File(filepath, mode='r')
   else:
     f = filepath
@@ -203,7 +173,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     model_config = f.attrs.get('model_config')
     if model_config is None:
       raise ValueError('No model found in config file.')
-    model_config = json.loads(model_config.decode('utf-8'))
+    model_config = json_utils.decode(model_config.decode('utf-8'))
     model = model_config_lib.model_from_config(model_config,
                                                custom_objects=custom_objects)
 
@@ -217,11 +187,12 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
         logging.warning('No training configuration found in the save file, so '
                         'the model was *not* compiled. Compile it manually.')
         return model
-      training_config = json.loads(training_config.decode('utf-8'))
+      training_config = json_utils.decode(training_config.decode('utf-8'))
 
       # Compile model.
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config, custom_objects))
+      saving_utils.try_build_compiled_arguments(model)
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:
@@ -906,7 +877,7 @@ def _legacy_weights(layer):
       non_trainable_weights.
   """
   weights = layer.trainable_weights + layer.non_trainable_weights
-  if any([not isinstance(w, variables_module.Variable) for w in weights]):
+  if any(not isinstance(w, variables_module.Variable) for w in weights):
     raise NotImplementedError(
         'Save or restore weights that is not an instance of `tf.Variable` is '
         'not supported in h5, use `save_format=\'tf\'` instead. Got a model '

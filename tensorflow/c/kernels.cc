@@ -97,6 +97,11 @@ void TF_KernelBuilder_HostMemory(TF_KernelBuilder* kernel_builder,
   kernel_builder->cc_builder->HostMemory(arg_name);
 }
 
+void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder,
+                               int32_t priority_number) {
+  kernel_builder->cc_builder->Priority(priority_number);
+}
+
 namespace tensorflow {
 namespace {
 
@@ -234,6 +239,14 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
 DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType)
 DEFINE_TF_GETATTR(Int32, tensorflow::int32, int32_t)
 
+TF_StringView TF_OpKernelConstruction_GetName(TF_OpKernelConstruction* ctx) {
+  auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelConstruction*>(ctx);
+  TF_StringView string_view_of_name;
+  string_view_of_name.data = cc_ctx->def().name().data();
+  string_view_of_name.len = cc_ctx->def().name().length();
+  return string_view_of_name;
+}
+
 TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   return static_cast<TF_DataType>(cc_ctx->expected_output_dtype(i));
@@ -248,15 +261,22 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  tensorflow::AllocatorAttributes attr = cc_ctx->output_alloc_attr(index);
-  auto* allocator = cc_ctx->get_allocator(attr);
-  void* data = tensorflow::allocate_tensor("TF_AllocateOutput", len, allocator);
-  TF_Tensor* result = TF_NewTensor(dtype, dims, num_dims, data, len,
-                                   tensorflow::deallocate_buffer, allocator);
-  TF_SetOutput(context, index, result, status);
-  if (TF_GetCode(status) != TF_OK) {
-    TF_DeleteTensor(result);
+
+  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                "64-bit int types should match in size");
+  tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
+      reinterpret_cast<tensorflow::int64*>(dims), num_dims);
+  tensorflow::Tensor* tensor;
+  tensorflow::Status s = cc_ctx->allocate_output(
+      index, tensorflow::TensorShape(dimarray), &tensor);
+  if (!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
-  return result;
+  TF_Tensor* tf_tensor = TF_TensorFromTensor(*tensor, &s);
+  if (!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return nullptr;
+  }
+  return tf_tensor;
 }

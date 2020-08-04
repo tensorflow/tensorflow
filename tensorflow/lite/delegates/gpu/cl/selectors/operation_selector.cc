@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/default_selector.h"
@@ -37,23 +38,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-
-bool IsWidthBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
-         inputs[1]->tensor.shape.w == 1;
-}
-bool IsHeightBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
-         inputs[1]->tensor.shape.h == 1;
-}
-bool IsChannelsBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
-  return inputs.size() == 2 &&
-         inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
-         inputs[1]->tensor.shape.c == 1;
-}
-
 bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
                                    const CLDevice& device,
                                    const BHWC& dst_shape) {
@@ -74,6 +58,8 @@ bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
 }
 
 absl::Status WinogradFromNode(const CreationContext& creation_context,
+                              const std::vector<Value*>& inputs,
+                              const std::vector<Value*>& outputs,
                               const OperationDef& op_def, ModelHints hints,
                               const BHWC& input_shape, const BHWC& output_shape,
                               const Convolution2DAttributes& attr,
@@ -112,7 +98,7 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
   auto& winograd_up = gpu_subgraph->operations[0];
   RETURN_IF_ERROR(SelectWinograd4x4To36(
       creation_context, attr.padding, winograd_up_def, &winograd_up.operation));
-  winograd_up.input_ids = {0};
+  winograd_up.input_ids = {static_cast<int>(inputs[0]->id)};
   winograd_up.output_ids = {-1};
 
   OperationDef conv_def;
@@ -131,7 +117,7 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
   winograd_down_def.dst_tensors.push_back(op_def.dst_tensors[0]);
   auto& winograd_down = gpu_subgraph->operations[2];
   winograd_down.input_ids = {-2};
-  winograd_down.output_ids = {0};
+  winograd_down.output_ids = {static_cast<int>(outputs[0]->id)};
   auto bias_copy = attr.bias;
   if (bias_copy.shape.v < attr.weights.shape.o) {
     bias_copy.shape = Linear(attr.weights.shape.o);
@@ -155,34 +141,32 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
   auto op_type = OperationTypeFromString(node.operation.type);
   switch (op_type) {
     case OperationType::ADD: {
-      const auto attr =
-          absl::any_cast<AddAttributes>(node.operation.attributes);
-      const auto* adds =
-          absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-              &attr.param);
-      const auto* adds_scalar = absl::get_if<float>(&attr.param);
-      if (adds || adds_scalar) {
-        return SelectBroadcastAdd(attr, creation_context, op_def, gpu_op);
-      } else {
-        BroadcastSettings broadcast;
-        broadcast.width = IsWidthBroadcastedForSecondInput(inputs);
-        broadcast.height = IsHeightBroadcastedForSecondInput(inputs);
-        broadcast.channels = IsChannelsBroadcastedForSecondInput(inputs);
-        if (broadcast.width || broadcast.height || broadcast.channels) {
-          ElementwiseTwoInput operation =
-              CreateElementwiseTwoInput(op_def, op_type, broadcast);
-          *gpu_op =
-              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-        } else {
-          auto output = outputs[0];
-          std::vector<int> channels(inputs.size());
-          for (int i = 0; i < inputs.size(); ++i) {
-            channels[i] = inputs[i]->tensor.shape.c;
-          }
-          SelectAdd(op_def, channels, output->tensor.shape.c, gpu_op);
+      if (inputs.size() == 2 &&
+          (inputs[0]->tensor.shape.c == inputs[1]->tensor.shape.c ||
+           inputs[1]->tensor.shape.c == 1)) {
+        GPUOperation operation =
+            CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
+        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      } else if (inputs.size() >= 2) {
+        auto output = outputs[0];
+        std::vector<int> channels(inputs.size());
+        for (int i = 0; i < inputs.size(); ++i) {
+          channels[i] = inputs[i]->tensor.shape.c;
         }
+        SelectAdd(op_def, channels, output->tensor.shape.c, gpu_op);
+        return absl::OkStatus();
+      } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
+        GPUOperation operation;
+        RETURN_IF_ERROR(CreateElementwise(creation_context, op_def, op_type,
+                                          attr, &operation));
+        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       }
+      return absl::UnimplementedError(absl::StrCat(
+          "No support of ", node.operation.type, " with this parameters"));
     }
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
@@ -190,7 +174,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       for (int i = 0; i < inputs.size(); ++i) {
         channels[i] = inputs[i]->tensor.shape.c;
       }
-      return SelectConcat(attr, channels, op_def, gpu_op);
+      return SelectConcat(attr, channels, op_def,
+                          creation_context.device->GetInfo(), gpu_op);
     }
     case OperationType::CONVOLUTION_2D: {
       auto attr =
@@ -198,8 +183,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
       if (inputs.size() == 1) {
-        if (WinogradFromNode(creation_context, op_def, hints, input_shape,
-                             output_shape, attr, gpu_subgraph)
+        if (WinogradFromNode(creation_context, inputs, outputs, op_def, hints,
+                             input_shape, output_shape, attr, gpu_subgraph)
                 .ok()) {
           return absl::OkStatus();
         } else {
@@ -211,13 +196,13 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         auto weights_shape = inputs[1]->tensor.shape;
         TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
                                          TensorStorageType::BUFFER,
-                                         Layout::UNKNOWN};
+                                         Layout::BHWC};
         gpu_subgraph->operations.clear();
         gpu_subgraph->operations.resize(2);
         auto& converter_op = gpu_subgraph->operations[0];
         auto& conv_op = gpu_subgraph->operations[1];
-        conv_op.input_ids = {0, -1};
-        conv_op.output_ids = {0};
+        conv_op.input_ids = {static_cast<int>(inputs[0]->id), -1};
+        conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
         ConvWeightsDescription conv_weights_desc;
@@ -238,7 +223,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         converter_def.src_tensors.push_back(op_def.src_tensors[1]);
         converter_def.dst_tensors.push_back(weights_desc);
 
-        converter_op.input_ids = {1};
+        converter_op.input_ids = {static_cast<int>(inputs[1]->id)};
         converter_op.output_ids = {-1};
         return SelectConverterToConvWeights(conv_weights_desc, creation_context,
                                             converter_def, hints,
@@ -263,42 +248,26 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
                                   inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::LSTM: {
-      SelectLSTM(op_def, gpu_op);
+      SelectLSTM(op_def, creation_context.device->GetInfo(), gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
-      SelectMaxUnpooling(attr, op_def, gpu_op);
+      SelectMaxUnpooling(attr, op_def, creation_context.device->GetInfo(),
+                         gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      return SelectMean(attr, op_def, gpu_op);
+      return SelectMean(attr, op_def, creation_context.device->GetInfo(),
+                        gpu_op);
     }
-    case OperationType::MUL: {
-      if (node.operation.attributes.has_value()) {
-        auto attr =
-            absl::any_cast<MultiplyAttributes>(node.operation.attributes);
-
-        return SelectMultiplyScalar(attr, creation_context, op_def, gpu_op);
-      } else {
-        if (inputs.size() == 2) {
-          BroadcastSettings broadcast;
-          broadcast.width = IsWidthBroadcastedForSecondInput(inputs);
-          broadcast.height = IsHeightBroadcastedForSecondInput(inputs);
-          broadcast.channels = IsChannelsBroadcastedForSecondInput(inputs);
-          ElementwiseTwoInput operation =
-              CreateElementwiseTwoInput(op_def, op_type, broadcast);
-          *gpu_op =
-              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-          return absl::OkStatus();
-        } else {
-          return absl::UnimplementedError(
-              "No support of multiply with more than 2 inputs");
-        }
-        return absl::OkStatus();
-      }
+    case OperationType::MEAN_STDDEV_NORMALIZATION: {
+      MeanStdDevNormalization operation = CreateMeanStdDevNormalization(op_def);
+      *gpu_op =
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation));
+      return absl::OkStatus();
     }
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
@@ -308,7 +277,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node.operation.attributes);
-      SelectPooling(attr, op_def, gpu_op);
+      SelectPooling(attr, op_def, creation_context.device->GetInfo(), gpu_op);
       return absl::OkStatus();
     }
     case OperationType::PRELU: {
@@ -318,8 +287,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::QUANTIZE_AND_DEQUANTIZE: {
       auto attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
           node.operation.attributes);
-      return SelectQuantizeAndDequantize(attr, creation_context, op_def,
-                                         gpu_op);
+      SelectQuantizeAndDequantize(attr, creation_context, op_def, gpu_op);
+      return absl::OkStatus();
     }
     case OperationType::RELU: {
       auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
@@ -358,7 +327,9 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       return absl::OkStatus();
     }
     case OperationType::ABS:
+    case OperationType::COPY:
     case OperationType::COS:
+    case OperationType::ELU:
     case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
@@ -368,27 +339,33 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH: {
-      ElementwiseOneInput operation =
-          CreateElementwiseOneInput(op_def, op_type);
-      *gpu_op = absl::make_unique<ElementwiseOneInput>(std::move(operation));
+      GPUOperation operation = CreateElementwiseOneInput(op_def, op_type);
+      *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }
     case OperationType::DIV:
     case OperationType::MAXIMUM:
     case OperationType::MINIMUM:
+    case OperationType::MUL:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
-      BroadcastSettings broadcast;
-      broadcast.width = IsWidthBroadcastedForSecondInput(inputs);
-      broadcast.height = IsHeightBroadcastedForSecondInput(inputs);
-      broadcast.channels = IsChannelsBroadcastedForSecondInput(inputs);
-      const ElementwiseAttributes* attr =
-          absl::any_cast<ElementwiseAttributes>(&node.operation.attributes);
-      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
-          creation_context, op_def, op_type, broadcast, attr);
-      *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-      return absl::OkStatus();
+      if (inputs.size() == 2) {
+        GPUOperation operation =
+            CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
+        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
+        GPUOperation operation;
+        RETURN_IF_ERROR(CreateElementwise(creation_context, op_def, op_type,
+                                          attr, &operation));
+        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
+      }
+      return absl::UnimplementedError(absl::StrCat(
+          "No support of ", node.operation.type, " with this parameters"));
     }
     default:
       return SelectDefault(creation_context, op_def, hints, inputs, outputs,

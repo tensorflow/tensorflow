@@ -111,6 +111,9 @@ class StaticDeviceMgr : public DeviceMgr {
   TF_DISALLOW_COPY_AND_ASSIGN(StaticDeviceMgr);
 };
 
+// Size of stale device buffer for temporary storage of removed devices.
+static const size_t kStaleDeviceBufferSize = 8192;
+
 // Represents a dynamic set of devices
 class DynamicDeviceMgr : public DeviceMgr {
  public:
@@ -156,6 +159,28 @@ class DynamicDeviceMgr : public DeviceMgr {
       TF_GUARDED_BY(devices_mu_);
 
   mutable Device* cpu_device_ TF_GUARDED_BY(devices_mu_);
+
+  class DeviceCircularBuffer {
+   public:
+    DeviceCircularBuffer() : index_(0) {
+      devices_.resize(kStaleDeviceBufferSize);
+    }
+    void add(std::unique_ptr<Device> device) {
+      devices_[index_] = std::move(device);
+      index_ = (index_ + 1) % kStaleDeviceBufferSize;
+    }
+
+   private:
+    int index_;
+    std::vector<std::unique_ptr<Device>> devices_;
+  };
+
+  // Buffer to temporarily store the removed devices. Raw device pointers are
+  // accessible to DeviceSet, and if the function instantiation process directly
+  // access fields through the device set, the underlying device object must
+  // still be available to avoid segmentation fault. We keep the devices in this
+  // buffer only for that purpose.
+  DeviceCircularBuffer stale_devices_ TF_GUARDED_BY(devices_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DynamicDeviceMgr);
 };
