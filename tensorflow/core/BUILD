@@ -672,6 +672,7 @@ tf_gen_op_libs(
         ":lib",
         ":protos_all_cc",
         # TODO(b/162630222): remove this dependency.
+        "//tensorflow/c/kernels:merge_summary_op_lib",
         "//tensorflow/c/kernels:summary_op_lib",
     ],
 )

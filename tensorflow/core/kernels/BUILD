@@ -3883,8 +3883,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "summary_op",
     prefix = "summary_op",
-    deps = LOGGING_DEPS + ["//tensorflow/c/kernels:merge_summary_op_lib", 
-                           "//tensorflow/c/kernels:merge_summary_op"], 
+    deps = LOGGING_DEPS + ["//tensorflow/c/kernels:merge_summary_op"],
 )
 
 tf_kernel_library(

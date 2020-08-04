@@ -39,6 +39,19 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "merge_summary_op",
+    prefix = "merge_summary_op",
+    deps = [
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 tf_gen_op_libs(
     op_lib_names = ["bitcast"],
     deps = [
@@ -59,6 +72,15 @@ tf_gen_op_libs(
     ],
 )
 
+tf_gen_op_libs(
+    op_lib_names = ["merge_summary"],
+    deps = [
+        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_cc_test(
     name = "bitcast_op_test",
     srcs = ["bitcast_op_test.cc"],
@@ -71,25 +93,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
-
-tf_kernel_library(
-    name = "merge_summary_op",
-    prefix = "merge_summary_op",
-    deps = [
-        "//tensorflow/c:kernels",
-        "//tensorflow/c:tf_status",
-        "//tensorflow/c:tf_tensor",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_gen_op_libs(
-    op_lib_names = ["merge_summary"],
-    deps = [
-        "//tensorflow/c:tf_tensor",
-        "//tensorflow/c:ops",
 
 tf_cc_test(
     name = "summary_op_test",
