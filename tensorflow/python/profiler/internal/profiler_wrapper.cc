@@ -177,7 +177,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
   m.def("xspace_to_trace_events", [](const py::bytes& serialized_xspace_proto) {
     tensorflow::string content;
     tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(serialized_xspace_proto);
+    xspace.ParseFromString(std::string(serialized_xspace_proto));
     tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, &content);
     return py::bytes(content);
   });
@@ -185,7 +185,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
   m.def("xspace_to_overview_page",
         [](const py::bytes& serialized_xspace_proto) {
           tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(serialized_xspace_proto);
+          xspace.ParseFromString(std::string(serialized_xspace_proto));
           tensorflow::profiler::OverviewPage overview_page =
               tensorflow::profiler::ConvertOpStatsToOverviewPage(
                   ConvertXSpaceToOpStats(
@@ -196,7 +196,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
   m.def("xspace_to_input_pipeline",
         [](const py::bytes& serialized_xspace_proto) {
           tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(serialized_xspace_proto);
+          xspace.ParseFromString(std::string(serialized_xspace_proto));
           tensorflow::profiler::InputPipelineAnalysisResult input_pipeline =
               tensorflow::profiler::ConvertOpStatsToInputPipelineAnalysis(
                   ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB}));
@@ -205,7 +205,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
   m.def("xspace_to_tf_stats", [](const py::bytes& serialized_xspace_proto) {
     tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(serialized_xspace_proto);
+    xspace.ParseFromString(std::string(serialized_xspace_proto));
     tensorflow::profiler::TfStatsDatabase tf_stats_db =
         tensorflow::profiler::ConvertOpStatsToTfStats(
             ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB}));
@@ -214,7 +214,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
   m.def("xspace_to_kernel_stats", [](const py::bytes& serialized_xspace_proto) {
     tensorflow::profiler::XSpace xspace;
-    xspace.ParseFromString(serialized_xspace_proto);
+    xspace.ParseFromString(std::string(serialized_xspace_proto));
     tensorflow::profiler::OpStats op_stats =
         ConvertXSpaceToOpStats(xspace, {KERNEL_STATS_DB});
     return py::bytes(op_stats.kernel_stats_db().SerializeAsString());
@@ -223,7 +223,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
   m.def("xspace_to_memory_profile",
         [](const py::bytes& serialized_xspace_proto) {
           tensorflow::profiler::XSpace xspace;
-          xspace.ParseFromString(serialized_xspace_proto);
+          xspace.ParseFromString(std::string(serialized_xspace_proto));
           std::string json_output;
           tensorflow::profiler::ConvertXSpaceToMemoryProfileJson(xspace,
                                                                  &json_output);
