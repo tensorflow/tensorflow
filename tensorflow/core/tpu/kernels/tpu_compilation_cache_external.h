@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry_impl.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
@@ -45,6 +46,17 @@ namespace tpu {
 
 class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
  public:
+  using Status = ::stream_executor::port::Status;
+
+  class EntryRefImpl
+      : public CompilationCacheEntryRefImpl<TpuCompilationCacheEntry> {
+   public:
+    EntryRefImpl(TpuCompilationCacheInterface* parent, CompiledSubgraph* entry,
+                 int index);
+
+    TpuCompilationCacheEntry get() override;
+  };
+
   explicit TpuCompilationCacheExternal(int64 max_cache_size)
       : TpuCompilationCacheInterface(max_cache_size) {}
 

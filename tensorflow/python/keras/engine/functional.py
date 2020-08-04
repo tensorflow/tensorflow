@@ -135,8 +135,9 @@ class Functional(training_lib.Model):
         (isinstance(self._nested_inputs, (list, tuple, dict)) and
          not any(nest.is_nested(t) for t in self._nested_inputs)))
 
-    if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
-      base_layer_utils.create_keras_history(self._nested_outputs)
+    if not keras_tensor.keras_tensors_enabled():
+      if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
+        base_layer_utils.create_keras_history(self._nested_outputs)
 
     self._validate_graph_inputs_and_outputs()
 

@@ -337,6 +337,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
     if (auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
             i, "tf_saved_model.bound_input")) {
       if (!unique_bound_inputs.insert(attr.getValue()).second) {
+        if (module.getAttr("tf_saved_model.under_construction")) continue;
         return func.emitError()
                << "duplicate 'tf_saved_model.bound_input' binding";
       }

@@ -166,6 +166,7 @@ cc_library(
     srcs = ["cl_device.cc"],
     hdrs = ["cl_device.h"],
     deps = [
+        ":device_info",
         ":opencl_wrapper",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -252,6 +253,15 @@ flatbuffer_cc_library(
 )
 
 cc_library(
+    name = "device_info",
+    srcs = ["device_info.cc"],
+    hdrs = ["device_info.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "egl_sync",
     srcs = ["egl_sync.cc"],
     hdrs = ["egl_sync.h"],
@@ -259,7 +269,6 @@ cc_library(
         "EGL_EGLEXT_PROTOTYPES",
     ],
     deps = [
-        ":cl_device",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",
     ],

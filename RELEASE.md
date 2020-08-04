@@ -111,6 +111,9 @@
 *   Math and Linear Algebra:
     * <ADD RELEASE NOTES HERE>
 *   TPU Enhancements:
+    * Added support for the `beta` parameter of the FTRL optimizer for TPU
+      embeddings. Users of other TensorFlow platforms can implement equivalent
+      behavior by adjusting the `l2` parameter.
     * <ADD RELEASE NOTES HERE>
 *   XLA Support:
     * <ADD RELEASE NOTES HERE>

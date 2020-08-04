@@ -690,7 +690,7 @@ std::string Arguments::AddActiveArgument(const std::string& arg_name,
 
 void Arguments::ResolveArgsPass(const DeviceInfo& device_info,
                                 std::string* code) {
-  bool use_f32_for_half_arguments = device_info.vendor == Vendor::POWERVR;
+  bool use_f32_for_half_arguments = device_info.IsPowerVR();
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
   while (next_position != std::string::npos) {

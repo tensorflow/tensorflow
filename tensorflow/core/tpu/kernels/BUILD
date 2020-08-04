@@ -71,7 +71,6 @@ cc_library(
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/stream_executor/tpu:status_helper",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -93,8 +92,6 @@ tf_kernel_library(
     deps = [
         ":tpu_compilation_cache_factory",
         ":tpu_compilation_cache_interface",
-        ":tpu_compilation_cache_local_lookup",
-        ":tpu_compilation_cache_lookup",
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         "//tensorflow/c:tf_status",
@@ -211,14 +208,30 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_entry",
+    srcs = ["tpu_compilation_cache_entry.cc"],
     hdrs = [
         "tpu_compilation_cache_entry.h",
     ],
     deps = [
+        ":compiled_subgraph",
+        ":tpu_compilation_cache_proto_cc",
         ":tpu_executable_info_proto_cc",
-        ":tpu_program_group_interface",
+        ":tpu_program_group",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/platform:casts",
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_entry_impl",
+    srcs = [],
+    hdrs = ["tpu_compilation_cache_entry_impl.h"],
+    deps = [
+        ":compiled_subgraph",
+        ":tpu_compilation_cache_interface",
+        ":tpu_executable_info_proto_cc",
     ],
 )
 
@@ -289,8 +302,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/lib/core:status",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -330,7 +341,6 @@ cc_library(
     hdrs = ["tpu_compilation_cache_interface.h"],
     deps = [
         ":compiled_subgraph",
-        ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_key",
         ":tpu_compilation_cache_proto_cc",
         ":tpu_compilation_metrics_hdrs",
@@ -362,6 +372,7 @@ cc_library(
     deps = [
         ":compiled_subgraph",
         ":tpu_compilation_cache_entry",
+        ":tpu_compilation_cache_entry_impl",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_key",
         ":tpu_compilation_cache_proto_cc",
@@ -371,7 +382,6 @@ cc_library(
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
-        ":tpu_program_c_api_hdrs",
         ":tpu_program_group",
         ":tpu_util",
         ":trace_util_hdrs",
@@ -381,10 +391,10 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -605,7 +615,6 @@ cc_library(
     deps = [
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_external",
-        ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_local_lookup",
         ":tpu_compilation_cache_lookup",
         ":tpu_executable_info_proto_cc",

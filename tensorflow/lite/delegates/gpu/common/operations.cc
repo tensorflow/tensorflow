@@ -110,6 +110,8 @@ std::string ToString(enum OperationType op) {
       return "max_unpooling";
     case OperationType::MEAN:
       return "mean";
+    case OperationType::MEAN_STDDEV_NORMALIZATION:
+      return "mean_stddev_normalization";
     case OperationType::MINIMUM:
       return "minimum";
     case OperationType::MUL:
@@ -156,10 +158,9 @@ std::string ToString(enum OperationType op) {
       return "tanh";
     case OperationType::TRANSPOSE:
       return "transpose";
-    default:
-      break;
+    case OperationType::UNKNOWN:
+      return "unknown_operation";
   }
-  return "unknown_operation";
 }
 
 OperationType OperationTypeFromString(const std::string& name) {
@@ -185,6 +186,8 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
+          {"mean_stddev_normalization",
+           OperationType::MEAN_STDDEV_NORMALIZATION},
           {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
           {"pad", OperationType::PAD},

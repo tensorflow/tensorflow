@@ -113,7 +113,7 @@ bool HasSingleUse(FuncOp func) {
 
     // If no uses in this scope, continue looking in parent module
     SymbolTable::UseRange func_uses = func_uses_optional.getValue();
-    if (llvm::empty(func_uses)) continue;
+    if (func_uses.empty()) continue;
 
     // Check if multiple uses at this scope or another use already seen.
     if (!llvm::hasSingleElement(func_uses) || use_seen) return false;
