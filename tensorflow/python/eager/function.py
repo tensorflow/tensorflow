@@ -3336,7 +3336,7 @@ class Function(object):
 
       if ops.get_default_graph()._distribution_strategy_stack:
         self._traced_with_distribution_strategy = True
-        
+
       return graph_function, flat_args, flat_kwargs
 
 
