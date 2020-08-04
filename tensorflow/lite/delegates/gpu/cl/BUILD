@@ -166,6 +166,7 @@ cc_library(
     srcs = ["cl_device.cc"],
     hdrs = ["cl_device.h"],
     deps = [
+        ":device_info",
         ":opencl_wrapper",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -248,6 +249,15 @@ flatbuffer_cc_library(
     srcs = ["compiled_program_cache.fbs"],
     flatc_args = [
         "--scoped-enums",
+    ],
+)
+
+cc_library(
+    name = "device_info",
+    srcs = ["device_info.cc"],
+    hdrs = ["device_info.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
     ],
 )
 
