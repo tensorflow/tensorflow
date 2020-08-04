@@ -100,16 +100,14 @@ def normalize_element(element, element_signature=None):
     # Imported here to avoid circular dependency.
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
     for i, (t, spec) in enumerate(zip(components, flattened_signature)):
-      dtype = None
       try:
         if spec is None:
           spec = type_spec_from_value(t, use_fallback=False)
-        dtype = getattr(spec, "dtype", None)
       except TypeError:
         # TypeError indicates it was not possible to compute a `TypeSpec` for
         # the value. As a fallback try converting the value to a tensor.
         normalized_components.append(
-            ops.convert_to_tensor(t, name="component_%d" % i, dtype=dtype))
+            ops.convert_to_tensor(t, name="component_%d" % i))
       else:
         if isinstance(spec, sparse_tensor.SparseTensorSpec):
           normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
@@ -125,6 +123,7 @@ def normalize_element(element, element_signature=None):
         elif isinstance(t, composite_tensor.CompositeTensor):
           normalized_components.append(t)
         else:
+          dtype = getattr(spec, "dtype", None)
           normalized_components.append(
               ops.convert_to_tensor(t, name="component_%d" % i, dtype=dtype))
   return nest.pack_sequence_as(pack_as, normalized_components)
