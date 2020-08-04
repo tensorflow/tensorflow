@@ -257,8 +257,10 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
 #if defined(LIBTFTPU)
   VLOG(1) << "Removing existing proto compilation cache lookup if it exists";
-  OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuCompilationCacheLookup>(
-                          rmgr, tpu::kCompiledProtoCacheResourceName));
+  OP_REQUIRES_OK(
+      ctx, DeleteIfExists<tpu::TpuCompilationCacheLookup<
+               tpu::CompilationCacheEntryRef<tpu::TpuCompilationCacheEntry>>>(
+               rmgr, tpu::kCompiledProtoCacheResourceName));
 #endif
 
   if (enable_whole_mesh_compilations_) {
@@ -286,7 +288,9 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     local_compilation_cache->Unref();
 
 #if defined(LIBTFTPU)
-    tpu::TpuCompilationCacheLookup* proto_lookup;
+    tpu::TpuCompilationCacheLookup<
+        tpu::CompilationCacheEntryRef<tpu::TpuCompilationCacheEntry>>*
+        proto_lookup;
     proto_lookup =
         new tpu::TpuCompilationCacheLocalLookup(local_compilation_cache);
     OP_REQUIRES_OK(
