@@ -33,8 +33,11 @@ Status DispatcherState::Apply(Update update) {
     case Update::kCreateJob:
       CreateJob(update.create_job());
       break;
-    case Update::kFinishJob:
-      FinishJob(update.finish_job());
+    case Update::kCreateTask:
+      CreateTask(update.create_task());
+      break;
+    case Update::kFinishTask:
+      FinishTask(update.finish_task());
       break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
@@ -68,7 +71,6 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
                                    named_job_key);
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
-  LOG(INFO) << "Created a new job with id " << job_id;
   if (named_job_key.has_value()) {
     DCHECK(!named_jobs_.contains(named_job_key.value()));
     named_jobs_[named_job_key.value()] = job;
@@ -76,10 +78,31 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
 }
 
-void DispatcherState::FinishJob(const FinishJobUpdate& finish_job) {
-  int64 job_id = finish_job.job_id();
-  DCHECK(jobs_.contains(job_id));
-  jobs_[job_id]->finished = true;
+void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
+  int64 task_id = create_task.task_id();
+  auto& task = tasks_[task_id];
+  DCHECK_EQ(task, nullptr);
+  task = std::make_shared<Task>(task_id, create_task.job_id(),
+                                create_task.dataset_id(),
+                                create_task.worker_address());
+  tasks_by_job_[create_task.job_id()].push_back(task);
+  next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
+}
+
+void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
+  VLOG(2) << "Marking task " << finish_task.task_id() << " as finished";
+  int64 task_id = finish_task.task_id();
+  auto& task = tasks_[task_id];
+  DCHECK(task != nullptr);
+  task->finished = true;
+  bool all_finished = true;
+  for (const auto& task_for_job : tasks_by_job_[task->job_id]) {
+    if (!task_for_job->finished) {
+      all_finished = false;
+    }
+  }
+  VLOG(3) << "Job " << task->job_id << " finished: " << all_finished;
+  jobs_[task->job_id]->finished = all_finished;
 }
 
 int64 DispatcherState::NextAvailableDatasetId() const {
@@ -139,6 +162,34 @@ Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
 
 int64 DispatcherState::NextAvailableJobId() const {
   return next_available_job_id_;
+}
+
+Status DispatcherState::TaskFromId(int64 id,
+                                   std::shared_ptr<const Task>* task) const {
+  auto it = tasks_.find(id);
+  if (it == tasks_.end()) {
+    return errors::NotFound("Task ", id, " not found");
+  }
+  *task = it->second;
+  return Status::OK();
+}
+
+Status DispatcherState::TasksForJob(
+    int64 job_id, std::vector<std::shared_ptr<const Task>>* tasks) const {
+  auto it = tasks_by_job_.find(job_id);
+  if (it == tasks_by_job_.end()) {
+    return errors::NotFound("Job ", job_id, " not found");
+  }
+  tasks->clear();
+  tasks->reserve(it->second.size());
+  for (const auto& task : it->second) {
+    tasks->push_back(task);
+  }
+  return Status::OK();
+}
+
+int64 DispatcherState::NextAvailableTaskId() const {
+  return next_available_task_id_;
 }
 
 }  // namespace data

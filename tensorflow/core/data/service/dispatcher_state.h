@@ -110,6 +110,21 @@ class DispatcherState {
     bool finished = false;
   };
 
+  struct Task {
+    Task(int64 task_id, int64 job_id, int64 dataset_id,
+         const std::string& worker_address)
+        : task_id(task_id),
+          job_id(job_id),
+          dataset_id(dataset_id),
+          worker_address(worker_address) {}
+
+    const int64 task_id;
+    const int64 job_id;
+    const int64 dataset_id;
+    const std::string worker_address;
+    bool finished = false;
+  };
+
   // Returns the next available dataset id.
   int64 NextAvailableDatasetId() const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
@@ -128,11 +143,21 @@ class DispatcherState {
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.
   Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>* job) const;
 
+  // Returns the next available task id.
+  int64 NextAvailableTaskId() const;
+  // Gets a task by id. Returns NOT_FOUND if there is no such task.
+  Status TaskFromId(int64 id, std::shared_ptr<const Task>* task) const;
+  // Stores a list of all tasks for the given job to `*tasks`. Returns NOT_FOUND
+  // if there is no such job.
+  Status TasksForJob(int64 job_id,
+                     std::vector<std::shared_ptr<const Task>>* tasks) const;
+
  private:
   // Registers a dataset. The dataset must not already be registered.
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void CreateJob(const CreateJobUpdate& create_job);
-  void FinishJob(const FinishJobUpdate& finish_job);
+  void CreateTask(const CreateTaskUpdate& create_task);
+  void FinishTask(const FinishTaskUpdate& finish_task);
 
   int64 next_available_dataset_id_ = 0;
   // Registered datasets, keyed by dataset ids.
@@ -147,6 +172,12 @@ class DispatcherState {
   // Named jobs, keyed by their names and indices. Not all jobs have names, so
   // this is a subset of the jobs stored in `jobs_`.
   absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_;
+
+  int64 next_available_task_id_ = 0;
+  // Tasks, keyed by task ids.
+  absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_;
+  // Tasks, keyed by job ids.
+  absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_;
 };
 
 }  // namespace data

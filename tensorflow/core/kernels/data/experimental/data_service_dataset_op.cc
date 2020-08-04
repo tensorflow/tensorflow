@@ -195,6 +195,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
+      VLOG(1) << "Cancelling threads in DataServiceDataset::Iterator";
       cancelled_ = true;
       worker_thread_cv_.notify_all();
       manager_thread_cv_.notify_all();
@@ -295,7 +296,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // TODO(aaudibert): Instead of polling, have dispatcher send updates when
     // the list of tasks changes.
     void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
-      VLOG(3) << "Starting task thread manager";
+      auto cleanup =
+          gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
+      VLOG(1) << "Starting task thread manager";
       DataServiceDispatcherClient dispatcher(dataset()->address_,
                                              dataset()->protocol_);
       uint64 next_check = Env::Default()->NowMicros();
@@ -396,8 +399,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void RunWorkerThread(std::function<void()> done) {
-      auto cleanup = gtl::MakeCleanup([done = std::move(done)]() { done(); });
-      VLOG(3) << "Starting worker thread";
+      auto cleanup = gtl::MakeCleanup([done = std::move(done)]() {
+        done();
+        VLOG(1) << "Worker thread exiting";
+      });
+      VLOG(1) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
         {

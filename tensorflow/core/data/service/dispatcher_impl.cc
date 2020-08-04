@@ -43,13 +43,14 @@ namespace data {
 
 namespace {
 // The name of the journal directory inside the dispatcher's working directory.
-constexpr StringPiece kJournalDir = "journal";
+constexpr char kJournalDir[] = "journal";
 
 using Dataset = DispatcherState::Dataset;
 using NamedJobKey = DispatcherState::NamedJobKey;
 using Job = DispatcherState::Job;
+using Task = DispatcherState::Task;
 
-std::string JournalDir(StringPiece work_dir) {
+std::string JournalDir(const std::string& work_dir) {
   return io::JoinPath(work_dir, kJournalDir);
 }
 
@@ -115,8 +116,8 @@ Status DataServiceDispatcherImpl::RegisterWorker(
     if (job->finished) {
       continue;
     }
-    std::shared_ptr<Task> task = CreateTask(job, worker_address);
-
+    std::shared_ptr<const Task> task;
+    TF_RETURN_IF_ERROR(CreateTask(job, worker_address, &task));
     TaskDef* task_def = response->add_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));
@@ -134,35 +135,20 @@ Status DataServiceDispatcherImpl::RegisterWorker(
 Status DataServiceDispatcherImpl::WorkerUpdate(
     const WorkerUpdateRequest* request, WorkerUpdateResponse* response) {
   mutex_lock l(mu_);
-  int64 worker_id = request->worker_id();
   for (auto& update : request->updates()) {
     int64 task_id = update.task_id();
-    const auto it = tasks_.find(task_id);
-    if (it == tasks_.end()) {
-      return errors::NotFound("WorkerUpdate called for worker ", worker_id,
-                              " with unknown task id ", task_id);
-    }
-    std::shared_ptr<Task> task = it->second;
+    std::shared_ptr<const Task> task;
+    TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, &task));
     if (update.completed()) {
       if (task->finished) {
         VLOG(1) << "Received completion update for already-finished task "
                 << task->task_id << " on worker " << task->worker_address;
         continue;
       }
-      task->finished = true;
-      bool finished = true;
-      for (const auto& job_task : tasks_by_job_[task->job_id]) {
-        if (!job_task->finished) {
-          finished = false;
-          break;
-        }
-      }
-      if (finished) {
-        Update update;
-        FinishJobUpdate* finish_job = update.mutable_finish_job();
-        finish_job->set_job_id(task->job_id);
-        TF_RETURN_IF_ERROR(Apply(update));
-      }
+      Update update;
+      FinishTaskUpdate* finish_task = update.mutable_finish_task();
+      finish_task->set_task_id(task_id);
+      TF_RETURN_IF_ERROR(Apply(update));
       VLOG(3) << "Task " << task_id << " from job " << task->job_id
               << " completed";
     }
@@ -221,7 +207,7 @@ Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(), processing_mode,
                                  absl::optional<NamedJobKey>(), &job));
-    tasks = CreateTasksForJob(job);
+    TF_RETURN_IF_ERROR(CreateTasksForJob(job, &tasks));
   }
   response->set_job_id(job->job_id);
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
@@ -256,7 +242,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     }
     TF_RETURN_IF_ERROR(
         CreateJob(request->dataset_id(), requested_processing_mode, key, &job));
-    tasks = CreateTasksForJob(job);
+    TF_RETURN_IF_ERROR(CreateTasksForJob(job, &tasks));
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
   response->set_job_id(job->job_id);
@@ -320,28 +306,35 @@ Status DataServiceDispatcherImpl::CreateJob(
   return Status::OK();
 }
 
-std::vector<std::shared_ptr<const DataServiceDispatcherImpl::Task>>
-DataServiceDispatcherImpl::CreateTasksForJob(std::shared_ptr<const Job> job)
+Status DataServiceDispatcherImpl::CreateTasksForJob(
+    std::shared_ptr<const Job> job,
+    std::vector<std::shared_ptr<const Task>>* tasks)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::vector<std::shared_ptr<const Task>> tasks;
-  tasks.reserve(workers_.size());
+  tasks->clear();
+  tasks->reserve(workers_.size());
   for (const auto& it : workers_) {
     std::shared_ptr<Worker> worker = it.second;
-    tasks.push_back(CreateTask(job, worker->address));
+    std::shared_ptr<const Task> task;
+    TF_RETURN_IF_ERROR(CreateTask(job, worker->address, &task));
+    tasks->push_back(task);
   }
-  return tasks;
+  return Status::OK();
 }
 
-std::shared_ptr<DataServiceDispatcherImpl::Task>
-DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
-                                      const std::string& worker_address)
+Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
+                                             const std::string& worker_address,
+                                             std::shared_ptr<const Task>* task)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  int64 task_id = next_task_id_++;
-  DCHECK(!tasks_.contains(task_id));
-  tasks_[task_id] = std::make_shared<Task>(task_id, job->job_id,
-                                           job->dataset_id, worker_address);
-  tasks_by_job_[job->job_id].push_back(tasks_[task_id]);
-  return tasks_[task_id];
+  int64 task_id = state_.NextAvailableTaskId();
+  Update update;
+  CreateTaskUpdate* create_task = update.mutable_create_task();
+  create_task->set_task_id(task_id);
+  create_task->set_job_id(job->job_id);
+  create_task->set_dataset_id(job->dataset_id);
+  create_task->set_worker_address(worker_address);
+  TF_RETURN_IF_ERROR(Apply(update));
+  TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
+  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::AssignTasks(
@@ -393,24 +386,16 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
                                            GetTasksResponse* response) {
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job id " << request->job_id();
-  auto it = tasks_by_job_.find(request->job_id());
-  if (it == tasks_by_job_.end()) {
-    return errors::NotFound("GetTasks failed. Job id <", request->job_id(),
-                            "> not found.");
-  }
-  std::vector<std::shared_ptr<Task>>& tasks = it->second;
-  bool has_finished_tasks = false;
+  std::vector<std::shared_ptr<const Task>> tasks;
+  TF_RETURN_IF_ERROR(state_.TasksForJob(request->job_id(), &tasks));
   for (const auto& task : tasks) {
-    if (task->finished) {
-      has_finished_tasks = true;
-      continue;
-    }
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
     task_info->set_id(task->task_id);
   }
-  response->set_job_finished(has_finished_tasks &&
-                             response->task_info_size() == 0);
+  std::shared_ptr<const Job> job;
+  TF_RETURN_IF_ERROR(state_.JobFromId(request->job_id(), &job));
+  response->set_job_finished(job->finished);
   VLOG(3) << "Found " << response->task_info_size() << " tasks for job id "
           << request->job_id();
   return Status::OK();
