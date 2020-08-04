@@ -35,6 +35,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shape_to_descriptors",
+    srcs = ["shape_to_descriptors.cc"],
+    hdrs = [
+        "passes.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeToSCF",
+        "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:ShapeTransforms",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
 gentbl(
     name = "tf_framework_passes_inc_gen",
     tbl_outs = [("-gen-pass-decls -name TFFramework", "tf_framework_passes.h.inc")],
@@ -53,6 +74,7 @@ cc_library(
     hdrs = ["passes.h"],
     deps = [
         ":embed_tf_framework",
+        ":shape_to_descriptors",
         ":tf_framework_legalize_to_llvm",
         ":tf_framework_passes_inc_gen",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",

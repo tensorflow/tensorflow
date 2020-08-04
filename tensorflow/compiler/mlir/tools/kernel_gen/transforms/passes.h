@@ -23,6 +23,7 @@ namespace mlir {
 class ModuleOp;
 template <typename T>
 class OperationPass;
+class Pass;
 
 namespace kernel_gen {
 namespace tf_framework {
@@ -38,6 +39,14 @@ createTestTFFrameworkLegalizeToLLVMPass();
 std::unique_ptr<OperationPass<ModuleOp> > createEmbedTFFrameworkPass();
 
 }  // namespace tf_framework
+
+namespace transforms {
+
+// Pass to tranform shape computations in shape dialect to standard and scf
+// using memref descriptors.
+std::unique_ptr<Pass> CreateShapeToDescriptorsPass();
+
+}  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir
 

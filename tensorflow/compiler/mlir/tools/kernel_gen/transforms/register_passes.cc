@@ -18,12 +18,10 @@ limitations under the License.
 
 namespace mlir {
 namespace kernel_gen {
-namespace tf_framework {
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/tf_framework_passes.h.inc"
 
 bool register_all_passes = ([] { registerTFFrameworkPasses(); }(), true);
 
-}  // namespace tf_framework
 }  // namespace kernel_gen
 }  // namespace mlir
