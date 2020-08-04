@@ -3285,6 +3285,8 @@ class Function(object):
     if self.input_signature is None or args is not None or kwargs is not None:
       args, kwargs, flat_args, flat_kwargs = \
           self._function_spec.canonicalize_function_inputs(*args, **kwargs)
+    else:
+      flat_args, flat_kwargs = [], []
 
     cache_key = self._cache_key(args, kwargs)
 
@@ -3324,7 +3326,7 @@ class Function(object):
           and self.input_signature is None
           and call_context_key in self._function_cache.missed):
         return_function, _, _ = \
-            self.define_function_with_shape_relaxation(args, kwargs)
+            self._define_function_with_shape_relaxation(args, kwargs)
         #TODO(jlchu): Investigate modifying above function sig directly
         return return_function, flat_args, flat_kwargs
 
@@ -3334,7 +3336,7 @@ class Function(object):
 
       if ops.get_default_graph()._distribution_strategy_stack:
         self._traced_with_distribution_strategy = True
-
+        
       return graph_function, flat_args, flat_kwargs
 
 

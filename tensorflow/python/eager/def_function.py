@@ -861,7 +861,7 @@ class Function(object):
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._filtered_call(flat_args, flat_kwds)  # pylint: disable=protected-access
 
-    def fn_with_cond(*inner_args, **inner_kwds):
+    def fn_with_cond(inner_args, inner_kwds, inner_flat_args, inner_flat_kwds):
       """Conditionally runs initialization if it's needed."""
       condition = True
       for wr in self._created_variables:
@@ -910,15 +910,16 @@ class Function(object):
           condition,
           lambda: self._stateless_fn(*inner_args, **inner_kwds),
           functools.partial(self._concrete_stateful_fn._filtered_call,  # pylint: disable=protected-access
-                            inner_args, inner_kwds))
+                            inner_flat_args, inner_flat_kwds))
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds, _, _ = \
+    canon_args, canon_kwds, flat_args, flat_kwds = \
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             *args, **kwds)
-    # TODO(jlchu): fix arguments for this, two cases for fn_with_cond
-    return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
+    # TODO(jlchu): verify that mdofication to fn_with_cond works
+    return function_lib.defun(fn_with_cond)(canon_args, canon_kwds, 
+                                            flat_args, flat_kwds)
 
   @property
   def python_function(self):
