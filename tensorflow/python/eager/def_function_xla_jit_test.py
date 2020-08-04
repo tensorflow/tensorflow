@@ -39,9 +39,10 @@ from tensorflow.python.platform import test
 
 class DefFunctionTest(xla_test.XLATestCase):
 
-  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
-                                 ' functions')
   def testAutoclusteringWithTfFunction(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('Autoclustering does not run on TPU')
+
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(experimental_compile=False)
@@ -80,16 +81,16 @@ class DefFunctionTest(xla_test.XLATestCase):
         self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
 
   def testBasicInt32(self):
+    with ops.device('device:{}:0'.format(self.device)):
 
-    def fn(x, a):
-      return x + a
+      @def_function.function(experimental_compile=True)
+      def fn(x, a):
+        return x + a
 
-    xla_func = def_function.function(fn, experimental_compile=True)
-
-    inputs = constant_op.constant([1, 2, 2, 3, 3], dtype=dtypes.int32)
-    if not test.is_built_with_rocm():
-      # XLA support is not yet enabled for TF ROCm
-      self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
+      inputs = constant_op.constant([1, 2, 2, 3, 3], dtype=dtypes.int32)
+      if not test.is_built_with_rocm():
+        # XLA support is not yet enabled for TF ROCm
+        self.assertAllClose([2, 3, 3, 4, 4], fn(inputs, 1))
 
   def testDerivative(self):
     with ops.device('device:{}:0'.format(self.device)):
@@ -119,25 +120,24 @@ class DefFunctionTest(xla_test.XLATestCase):
 
   # Calling function with experimental_compile=True from
   # experimental_compile=False should compile the inner func.
-  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
-                                 ' functions')
   def testNestedCall(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('b/162800687: Inner function runs on host')
+
     with ops.device('device:{}:0'.format(self.device)):
 
+      @def_function.function(experimental_compile=True)
       def fn(x, a):
         return x + a
 
-      xla_func = def_function.function(fn, experimental_compile=True)
-
+      @def_function.function(experimental_compile=False)
       def fn2(x, a):
-        return xla_func(x, a)
-
-      func = def_function.function(fn2, experimental_compile=False)
+        return fn(x, a)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       if not test.is_built_with_rocm():
         # XLA support is not yet enabled for TF ROCm
-        self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
+        self.assertAllClose([2, 3, 3, 4, 4], fn2(inputs, 1))
 
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
                                  ' wrong status type')
@@ -268,9 +268,10 @@ class DefFunctionTest(xla_test.XLATestCase):
                                   'not compilable'):
         c.f1(inputs)
 
-  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
-                                 ' functions')
   def testMustBeConstantPropagation(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('b/162799319: Cannot resolve constant on TPU')
+
     with ops.device('device:{}:0'.format(self.device)):
       if test.is_built_with_rocm():
         return
@@ -292,6 +293,9 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/162271237): argmax gives different'
                                  ' results in MLIR-based bridge')
   def testArgMinMax(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('b/162800904: Tie resolution is wrong on TPU for tf.func')
+
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(experimental_compile=True)
@@ -429,6 +433,9 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertAllClose([5.0, 5.0, 5.0], g())
 
   def testCumsum(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('b/162771302: 64bit rewrite of cumsum not supported')
+
     with ops.device('device:{}:0'.format(self.device)):
 
       @def_function.function(experimental_compile=True)
@@ -438,8 +445,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       f64_input = constant_op.constant([1.1, 2.2, 3.3], dtype=dtypes.float64)
       self.assertAllClose([1.1, 3.3, 6.6], f(f64_input))
 
-  @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
-                                 ' functions')
   def testNoExcessiveRetracing(self):
     with ops.device('device:{}:0'.format(self.device)):
       inner_retracings = 0
@@ -501,6 +506,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       outer()
       self.assertAllClose(c.v, 3.52)
 
+  @test_util.disable_mlir_bridge('TODO(b/162801728): MLIR bridge causes '
+                                 ' invalid free on TPUs')
   def testUpdateVariableMultipleOutputs(self):
     with ops.device('device:{}:0'.format(self.device)):
       v = variables.Variable(3.1)
