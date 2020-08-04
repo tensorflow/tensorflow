@@ -440,6 +440,20 @@ void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
+void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
+                                     const char* path,
+                                     TF_ReadOnlyMemoryRegion* region,
+                                     TF_Status* status) {
+  // hadoopReadZero() technically supports this call with the following
+  // caveats:
+  // - It only works up to 2 GB. We'd have to Stat() the file to ensure that
+  //   it fits.
+  // - If not on the local filesystem, the entire file will be read, making
+  //   it inefficient for callers that assume typical mmap() behavior.
+  TF_SetStatus(status, TF_UNIMPLEMENTED,
+               "HDFS does not support ReadOnlyMemoryRegion");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_hadoop_filesystem
