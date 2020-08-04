@@ -81,11 +81,12 @@ bool IsCustomDevice(StringPiece device_name, const EagerContext& ctx) {
   return ctx.FindCustomDeviceFromName(string(device_name), &custom_device);
 }
 
-Status MaybePinSmallOpsToCpu(bool* result, StringPiece op_name,
-                             absl::Span<ImmediateExecutionTensorHandle*> args,
-                             const EagerContext& ctx) {
-  if (!ctx.PinSmallOpsToCPU() || IsFunction(op_name) ||
-      IsColocationExempt(op_name) || !IsPinnableOp(op_name)) {
+Status MaybePinSmallOpsToCpu(
+    bool* result, StringPiece op_name,
+    absl::Span<ImmediateExecutionTensorHandle* const> args,
+    StringPiece cpu_device_name) {
+  if (IsFunction(op_name) || IsColocationExempt(op_name) ||
+      !IsPinnableOp(op_name)) {
     *result = false;
     return Status::OK();
   }
@@ -104,16 +105,12 @@ Status MaybePinSmallOpsToCpu(bool* result, StringPiece op_name,
     const char* device_name = arg->DeviceName(&s);
     DataType dtype = arg->DataType();
     TF_RETURN_IF_ERROR(s);
-    if (IsCustomDevice(device_name, ctx)) {
-      *result = false;
-      return Status::OK();
-    }
 
     DVLOG(2) << "for op " << op_name << " input " << i << " "
              << DataTypeString(dtype) << " input device = " << device_name;
 
     // Input is on CPU.
-    if (device_name != ctx.HostCPU()->name()) {
+    if (device_name != cpu_device_name) {
       *result = false;
       return Status::OK();
     }

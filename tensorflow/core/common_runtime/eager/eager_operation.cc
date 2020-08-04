@@ -235,6 +235,14 @@ Status EagerOperation::InputLength(const char* input_name, int* length) {
   return Status::OK();
 }
 
+absl::Span<ImmediateExecutionTensorHandle* const> EagerOperation::GetInputs()
+    const {
+  // TODO(b/162536003): Remove reinterpret_cast.
+  return absl::MakeSpan(
+      reinterpret_cast<ImmediateExecutionTensorHandle* const*>(inputs_.data()),
+      inputs_.size());
+}
+
 Status EagerOperation::OutputLength(const char* output_name, int* length) {
   Status status;
   const tensorflow::OpDef* op_def = GetOpDef(&status);

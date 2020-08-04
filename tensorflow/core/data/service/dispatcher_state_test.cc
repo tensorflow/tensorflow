@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_state.h"
 
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"

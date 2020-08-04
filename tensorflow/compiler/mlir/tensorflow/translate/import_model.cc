@@ -3368,12 +3368,13 @@ SavedModelSignatureDefImporter::ConvertAssets() {
   results.reserve(asset_file_defs.size());
 
   mlir::OpBuilder builder(module_->getBodyRegion());
+  unsigned i = 0;  // Use to generate unique sym_name(s) for duplicate assets.
   for (const auto& asset : asset_file_defs) {
     auto asset_op = builder.create<mlir::tf_saved_model::AssetOp>(
         module_->getLoc(),
         /*sym_name=*/
         builder.getStringAttr(
-            absl::StrCat("__tf_saved_model_asset_", asset.filename())),
+            absl::StrCat("__tf_saved_model_asset", i++, "_", asset.filename())),
         /*filename=*/
         builder.getStringAttr(
             io::JoinPath(kSavedModelAssetsDirectory, asset.filename())));
@@ -3569,6 +3570,7 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
   pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
   pm.addPass(
       mlir::tf_saved_model::CreateLiftVariablesPass(bundle_.GetSession()));
+  pm.addPass(mlir::tf_saved_model::CreateDedupBoundInputBindingPass());
   if (mlir::failed(pm.run(*module_)))
     return diag_handler.Combine(errors::Internal("Failed to lift variables."));
 

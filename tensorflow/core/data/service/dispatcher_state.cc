@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/errors.h"
 

@@ -34,14 +34,11 @@ namespace cl {
 class Winograd4x4To36 : public GPUOperation {
  public:
   Winograd4x4To36() = default;
-  Winograd4x4To36(const OperationDef& definition, const Padding2D& padding)
-      : GPUOperation(definition), padding_(padding) {
-    work_group_size_ = int3(128, 1, 1);
-  }
+  Winograd4x4To36(const OperationDef& definition, const Padding2D& padding,
+                  const DeviceInfo& device_info);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Winograd4x4To36(Winograd4x4To36&& operation);
@@ -72,14 +69,11 @@ absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
 class Winograd36To4x4 : public GPUOperation {
  public:
   Winograd36To4x4() = default;
-  explicit Winograd36To4x4(const OperationDef& definition)
-      : GPUOperation(definition) {
-    work_group_size_ = int3(128, 1, 1);
-  }
+  Winograd36To4x4(const OperationDef& definition,
+                  const DeviceInfo& device_info);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Winograd36To4x4(Winograd36To4x4&& operation);

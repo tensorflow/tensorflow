@@ -40,6 +40,14 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
   let verifier = [{ return Verify(*this); }];
 }
 
+def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
+def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
+def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
+def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
+def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
+    HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
+]>;
+
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -52,7 +60,7 @@ def HLO_ConstOp : HLO_Op<"constant",
   );
 
   let results = (outs
-    HLO_Tensor:$output
+    HLO_StaticShapeTensor:$output
   );
 
   let builders = [OpBuilder<
@@ -656,7 +664,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
 
   let builders = [OpBuilder<
@@ -1067,7 +1075,10 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
     HLO_Tensor:$operand,
     I32Attr:$dimension
   );
-  let results = (outs HLO_IntTensor);
+  // TODO(hinsu): Allow 64-bit result types once XLA HLO dialect based on the
+  // XLA semantics is available. This limitation is because of the current XLA
+  // implementation.
+  let results = (outs I32Tensor);
 }
 
 def HLO_MapOp: HLO_Op<"map",
@@ -1375,7 +1386,8 @@ def HLO_FusionOp : HLO_Op<"fusion", []> {
   let regions = (region SizedRegion<1>:$fused_computation);
 
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands
+    Variadic<HLO_TensorOrTuple>:$operands,
+    OptionalAttr<HLO_FusionKindAttr>:$fusion_kind
   );
 
   let results = (outs

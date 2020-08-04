@@ -127,7 +127,7 @@ TEST(MergePaddingWithAdd, MergeAlignedPadding) {
   ASSERT_TRUE(graph.SetProducer(pad_node->id, padded->id).ok());
 
   auto add_node = graph.NewNode();
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   ASSERT_TRUE(graph.AddConsumer(add_node->id, padded->id).ok());
   ASSERT_TRUE(graph.AddConsumer(add_node->id, input1->id).ok());
   ASSERT_TRUE(graph.SetProducer(add_node->id, output->id).ok());
@@ -165,7 +165,7 @@ TEST(MergePaddingWithAdd, DoNotTrigger_AddWithAttributes) {
   ASSERT_TRUE(graph.SetProducer(pad_node->id, padded->id).ok());
 
   auto add_node = graph.NewNode();
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = Tensor<HWC, DataType::FLOAT32>();
   ASSERT_TRUE(graph.AddConsumer(add_node->id, padded->id).ok());
   ASSERT_TRUE(graph.AddConsumer(add_node->id, input1->id).ok());

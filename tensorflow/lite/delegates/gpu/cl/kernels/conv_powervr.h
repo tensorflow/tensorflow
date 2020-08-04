@@ -42,7 +42,6 @@ class ConvPowerVR : public GPUOperation {
  public:
   ConvPowerVR() = default;
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -137,6 +136,8 @@ class ConvPowerVR : public GPUOperation {
               const BHWC* dst_shape = nullptr);
   explicit ConvPowerVR(const OperationDef& definition);
 
+  void GenerateCode(const DeviceInfo& device_info);
+
   template <DataType T>
   absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
                           const tflite::gpu::Tensor<Linear, T>& biases,
@@ -176,12 +177,6 @@ class ConvPowerVR : public GPUOperation {
       const Convolution2DAttributes& attr, ConvPowerVR* result,
       const BHWC* dst_shape);
 
-  friend std::string GenerateConv(const CLDevice& device,
-                                  const OperationDef& op_def,
-                                  bool stride_correction,
-                                  const ConvParams& conv_params,
-                                  Arguments* args);
-
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
@@ -206,9 +201,9 @@ class ConvPowerVR : public GPUOperation {
                              bool different_weights_for_height,
                              const BHWC* dst_shape = nullptr) const;
 
-  std::string GenerateConv(const CLDevice& device, const OperationDef& op_def,
-                           bool stride_correction,
-                           const ConvPowerVR::ConvParams& conv_params);
+  std::string GenerateConv(const DeviceInfo& device_info,
+                           const OperationDef& op_def, bool stride_correction,
+                           const ConvParams& conv_params);
 
   int4 stride_padding_;
   int4 kernel_dilation_;

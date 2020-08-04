@@ -36,6 +36,8 @@ class CollectiveOpsTest(test.TestCase):
     self.assertEqual(len(cpus), 1)
     config.set_logical_device_configuration(cpus[0], [
         context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
         context.LogicalDeviceConfiguration()
     ])
     context.ensure_initialized()
@@ -77,6 +79,47 @@ class CollectiveOpsTest(test.TestCase):
     self.assertAllClose(run_all_reduce_1cpu(), [1.], rtol=1e-5, atol=1e-5)
     for result in run_all_reduce_2cpus():
       self.assertAllClose(result, [2.], rtol=1e-5, atol=1e-5)
+
+  @test_util.run_v2_only
+  def testInstanceKeyScopedUnderGroupKey(self):
+    self._setup_context()
+
+    @def_function.function
+    def single_all_reduce(in_value, group_size, group_key, instance_key):
+      return gen_collective_ops.collective_reduce_v2(
+          in_value, group_size, group_key, instance_key, merge_op='Add',
+          final_op='Id', communication_hint='auto')
+
+    @def_function.function
+    def run_all_reduce_4cpus_same_instance_key():
+      # Use a common instance key for both groups.
+      instance_key = constant_op.constant(0)
+      # We will create 2 groups each with 2 devices.
+      group_size = constant_op.constant(2)
+      # Group 0 comprises cpu:0 and cpu:1.
+      group0_key = constant_op.constant(0)
+      # Group 1 comprises cpu:2 and cpu:3.
+      group1_key = constant_op.constant(1)
+      collectives = []
+      with ops.device('/device:CPU:0'):
+        collectives.append(single_all_reduce(
+            constant_op.constant(1.), group_size, group0_key, instance_key))
+      with ops.device('/device:CPU:1'):
+        collectives.append(single_all_reduce(
+            constant_op.constant(2.), group_size, group0_key, instance_key))
+      with ops.device('/device:CPU:2'):
+        collectives.append(single_all_reduce(
+            constant_op.constant(3.), group_size, group1_key, instance_key))
+      with ops.device('/device:CPU:3'):
+        collectives.append(single_all_reduce(
+            constant_op.constant(4.), group_size, group1_key, instance_key))
+      return collectives
+
+    results = run_all_reduce_4cpus_same_instance_key()
+    self.assertAllClose(results[0], 3., rtol=1e-5, atol=1e-5)
+    self.assertAllClose(results[1], 3., rtol=1e-5, atol=1e-5)
+    self.assertAllClose(results[2], 7., rtol=1e-5, atol=1e-5)
+    self.assertAllClose(results[3], 7., rtol=1e-5, atol=1e-5)
 
 
 if __name__ == '__main__':

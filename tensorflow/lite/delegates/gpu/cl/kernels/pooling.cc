@@ -31,7 +31,9 @@ Pooling::Pooling(const OperationDef& definition,
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       kernel_size_(attr.kernel.w, attr.kernel.h, 0, 0),
       type_(attr.type),
-      output_indices_(attr.output_indices) {}
+      output_indices_(attr.output_indices) {
+  GenerateCode();
+}
 
 Pooling::Pooling(const OperationDef& definition,
                  const Pooling3DAttributes& attr)
@@ -41,7 +43,9 @@ Pooling::Pooling(const OperationDef& definition,
                -attr.padding.prepended.d, 0),
       kernel_size_(attr.kernel.w, attr.kernel.h, attr.kernel.d, 0),
       type_(attr.type),
-      output_indices_(attr.output_indices) {}
+      output_indices_(attr.output_indices) {
+  GenerateCode();
+}
 
 Pooling::Pooling(Pooling&& kernel)
     : GPUOperation(std::move(kernel)),
@@ -64,10 +68,9 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
 }
 
 std::string Pooling::GetAveragePoolingKernelCode(const OperationDef& op_def,
-                                                 bool stride_correction,
-                                                 const CLDevice& device) {
+                                                 bool stride_correction) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -344,33 +347,15 @@ std::string Pooling::GetMaxPoolingKernelCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status Pooling::Compile(const CreationContext& creation_context) {
-  std::string code;
+void Pooling::GenerateCode() {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  switch (type_) {
-    case PoolingType::AVERAGE:
-      code = GetAveragePoolingKernelCode(definition_, stride_correction,
-                                         *creation_context.device);
-      break;
-    case PoolingType::MAX:
-      code = GetMaxPoolingKernelCode(definition_, stride_correction,
-                                     output_indices_);
-      break;
-    default:
-      return absl::InvalidArgumentError(
-          "You should create another kernel with this params");
-      break;
+  if (type_ == PoolingType::AVERAGE) {
+    code_ = GetAveragePoolingKernelCode(definition_, stride_correction);
+  } else if (type_ == PoolingType::MAX) {
+    code_ = GetMaxPoolingKernelCode(definition_, stride_correction,
+                                    output_indices_);
   }
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status Pooling::BindArguments() {

@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
@@ -109,6 +110,19 @@ class SameOperandsAndResultElementTypeResolveRef
 // format), as and example all element wise operations are layout agnostic.
 template <typename ConcreteType>
 class LayoutAgnostic : public TraitBase<ConcreteType, LayoutAgnostic> {};
+
+// Trait to indicate operations that cannot be duplicated as they might carry
+// certain state around within their implementations.
+template <typename ConcreteType>
+class CannotDuplicate : public TraitBase<ConcreteType, CannotDuplicate> {
+ public:
+  static LogicalResult verifyTrait(Operation* op) {
+    if (MemoryEffectOpInterface::hasNoEffect(op))
+      return op->emitError(
+          "operations with no side effects cannot have CannotDuplicate trait");
+    return success();
+  }
+};
 
 }  // namespace TF
 }  // namespace OpTrait

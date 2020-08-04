@@ -181,6 +181,16 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
         // might be different on certain platforms.
         *out_tf_datatype = TF_INT64;
         break;
+      } else if (pyarray_type == NPY_INT) {
+        // NPY_INT is equivalent to NPY_INT32, while their enum values might be
+        // different on certain platforms.
+        *out_tf_datatype = TF_INT32;
+        break;
+      } else if (pyarray_type == NPY_UINT) {
+        // NPY_UINT is equivalent to NPY_UINT32, while their enum values might
+        // be different on certain platforms.
+        *out_tf_datatype = TF_UINT32;
+        break;
       }
       return errors::Internal("Unsupported numpy type: ",
                               numpy_type_name(pyarray_type));

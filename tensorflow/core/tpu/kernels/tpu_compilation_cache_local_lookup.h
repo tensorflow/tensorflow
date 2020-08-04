@@ -28,17 +28,24 @@ namespace tpu {
 // Class for looking up TPU programs when the execute and compile Op are in the
 // same address space. The proto is simply looked up in the compilation cache,
 // without any serialization taking place.
-class TpuCompilationCacheLocalLookup : public TpuCompilationCacheLookup {
+class TpuCompilationCacheLocalLookup
+    : public TpuCompilationCacheLookup<
+          CompilationCacheEntryRef<TpuCompilationCacheEntry>> {
  public:
+  using TpuCompilationCacheEntryRef =
+      ::tensorflow::tpu::CompilationCacheEntryRef<TpuCompilationCacheEntry>;
+  using EntryRefImpl =
+      ::tensorflow::tpu::TpuCompilationCacheExternal::EntryRefImpl;
+
   explicit TpuCompilationCacheLocalLookup(TpuCompilationCacheInterface* cache);
   ~TpuCompilationCacheLocalLookup() override;
 
   Status Lookup(const string& proto_key,
-                std::unique_ptr<CompilationCacheEntryRef>* entry,
+                std::unique_ptr<TpuCompilationCacheEntryRef>* entry,
                 CompilationCacheFetchTarget fetch_target) override;
 
   Status Lookup(int64 uid, int proto_index,
-                std::unique_ptr<CompilationCacheEntryRef>* entry,
+                std::unique_ptr<TpuCompilationCacheEntryRef>* entry,
                 CompilationCacheFetchTarget fetch_target) override;
 
   string DebugString() const override;

@@ -45,26 +45,26 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectLSTM(const OperationDef& op_def,
+void SelectLSTM(const OperationDef& op_def, const DeviceInfo& device_info,
                 std::unique_ptr<GPUOperation>* ptr) {
-  LSTM operation = CreateLSTM(op_def);
+  LSTM operation = CreateLSTM(op_def, device_info);
   *ptr = absl::make_unique<LSTM>(std::move(operation));
 }
 
 void SelectReLU(const CreationContext& creation_context,
                 const ReLUAttributes& attr, const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr) {
-  ReLU relu = CreateReLU(creation_context, op_def, attr);
-  *ptr = absl::make_unique<ReLU>(std::move(relu));
+  GPUOperation relu = CreateReLU(creation_context, op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(relu));
 }
 
 absl::Status SelectPReLU(const PReLUAttributes& attr,
                          const CreationContext& creation_context,
                          const OperationDef& op_def,
                          std::unique_ptr<GPUOperation>* ptr) {
-  PReLU operation;
+  GPUOperation operation;
   RETURN_IF_ERROR(CreatePReLU(creation_context, op_def, attr, &operation));
-  *ptr = absl::make_unique<PReLU>(std::move(operation));
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   return absl::OkStatus();
 }
 
@@ -83,8 +83,8 @@ void SelectMaxUnpooling(const MaxUnpooling2DAttributes& attr,
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
                int dst_channels, std::unique_ptr<GPUOperation>* ptr) {
-  Add operation = CreateAdd(op_def, channels, dst_channels);
-  *ptr = absl::make_unique<Add>(std::move(operation));
+  GPUOperation operation = CreateAdd(op_def, channels, dst_channels);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 absl::Status SelectResize(const Resize2DAttributes& attr,
@@ -151,11 +151,12 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
 }
 
 absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
+                        const DeviceInfo& device_info,
                         std::unique_ptr<GPUOperation>* ptr) {
   if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
     return absl::UnimplementedError("Mean operation supports only HW plane");
   }
-  Mean operation = CreateMean(op_def);
+  Mean operation = CreateMean(op_def, device_info);
   *ptr = absl::make_unique<Mean>(std::move(operation));
   return absl::OkStatus();
 }
@@ -200,15 +201,13 @@ absl::Status SelectWinograd36To4x4(
   return absl::OkStatus();
 }
 
-absl::Status SelectQuantizeAndDequantize(
-    const QuantizeAndDequantizeAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr) {
-  QuantizeAndDequantize operation;
-  RETURN_IF_ERROR(
-      CreateQuantizeAndDequantize(creation_context, op_def, attr, &operation));
-  *ptr = absl::make_unique<QuantizeAndDequantize>(std::move(operation));
-  return absl::OkStatus();
+void SelectQuantizeAndDequantize(const QuantizeAndDequantizeAttributes& attr,
+                                 const CreationContext& creation_context,
+                                 const OperationDef& op_def,
+                                 std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation =
+      CreateQuantizeAndDequantize(creation_context, op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 }  // namespace cl

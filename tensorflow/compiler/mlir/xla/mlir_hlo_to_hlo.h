@@ -37,6 +37,11 @@ Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
                            const tensorflow::XlaHelpers::ShapeRepresentationFn
                                shape_representation_fn = nullptr);
 
+// Converts a region to a computation. It returns a standalone module that
+// contains the converted region as the entry computation.
+Status ConvertRegionToComputation(mlir::Region* region,
+                                  ::xla::XlaComputation* func);
+
 // Creates XlaOp equivalent of a given MLIR operation using the operand info
 // from `value_lowering` map.
 llvm::Optional<::xla::XlaOp> CreateXlaOperator(

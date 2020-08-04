@@ -1059,7 +1059,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(history.history['loss'][0], 0.0)
 
     # Check the output dtype
-    self.assertEqual(model(array_ops.ones(3, 3)).dtype, dtypes.float16)
+    self.assertEqual(model(array_ops.ones((3, 10))).dtype, dtypes.float16)
 
     model = training_lib.Model.from_config(
         model.get_config(), custom_objects={'Double': Double})
@@ -1075,7 +1075,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(history.history['loss'][0], 0.0)
 
     # Check the output dtype
-    self.assertEqual(model(array_ops.ones(3, 3)).dtype, dtypes.float16)
+    self.assertEqual(model(array_ops.ones((3, 10))).dtype, dtypes.float16)
 
   @combinations.generate(combinations.keras_mode_combinations())
   def test_call_kwarg_nonserializable(self):
@@ -1793,8 +1793,8 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     network = functional.Functional.from_config(network.get_config())
 
     result_tensor = network({
-        'x': array_ops.ones((1, 1), 'float32'),
-        'y': array_ops.ones((1, 1), 'float32')
+        'x1': array_ops.ones((1, 1), 'float32'),
+        'x2': array_ops.ones((1, 1), 'float32')
     })
     result = self.evaluate(result_tensor)
     self.assertAllEqual(result, [[2.]])
@@ -2339,6 +2339,57 @@ class InputsOutputsErrorTest(keras_parameterized.TestCase):
     with self.assertRaisesRegex(
         TypeError, "('Keyword argument not understood:', 'output')"):
       models.Model(inputs=inputs, output=outputs)
+
+  def test_input_spec(self):
+    if not context.executing_eagerly():
+      return
+    inputs = input_layer_lib.Input((10,))
+    outputs = layers.Dense(10)(inputs)
+    model = models.Model(inputs, outputs)
+    with self.assertRaisesRegex(
+        ValueError, r'.*expected shape=.*'):
+      model(np.zeros((3, 11)))
+
+  def test_input_spec_list_of_inputs(self):
+    if not context.executing_eagerly():
+      return
+    input_1 = input_layer_lib.Input((10,), name='1')
+    input_2 = input_layer_lib.Input((5,), name='2')
+    x = layers.Concatenate()([input_1, input_2])
+    outputs = layers.Dense(10)(x)
+    model = models.Model([input_1, input_2], outputs)
+    with self.assertRaisesRegex(
+        ValueError, r'.*expects 2 input.*'):
+      model(np.zeros((3, 10)))
+    with self.assertRaisesRegex(
+        ValueError, r'.*expects 2 input.*'):
+      model([np.zeros((3, 10)), np.zeros((3, 5)), np.zeros((3, 10))])
+    with self.assertRaisesRegex(
+        ValueError, r'.*expected shape=.*'):
+      model([np.zeros((3, 10)), np.zeros((3, 6))])
+
+    # Test passing data via dict keyed by input name
+    with self.assertRaisesRegex(
+        ValueError, r'Missing data for input.*'):
+      model({'1': np.zeros((3, 10))})
+    with self.assertRaisesRegex(
+        ValueError, r'.*expected shape=.*'):
+      model({'1': np.zeros((3, 10)), '2': np.zeros((3, 6))})
+
+  def test_input_spec_dict(self):
+    if not context.executing_eagerly():
+      return
+    input_1 = input_layer_lib.Input((10,))
+    input_2 = input_layer_lib.Input((5,))
+    x = layers.Concatenate()([input_1, input_2])
+    outputs = layers.Dense(10)(x)
+    model = models.Model({'1': input_1, '2': input_2}, outputs)
+    with self.assertRaisesRegex(
+        ValueError, r'Missing data for input.*'):
+      model({'1': np.zeros((3, 10))})
+    with self.assertRaisesRegex(
+        ValueError, r'.*expected shape=.*'):
+      model({'1': np.zeros((3, 10)), '2': np.zeros((3, 6))})
 
 
 if __name__ == '__main__':

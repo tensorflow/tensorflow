@@ -39,6 +39,8 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
                               const experimental::DispatcherConfig& config);
   ~GrpcDispatcherImpl() override {}
 
+  Status Start();
+
 #define HANDLER(method)                               \
   grpc::Status method(grpc::ServerContext* context,   \
                       const method##Request* request, \

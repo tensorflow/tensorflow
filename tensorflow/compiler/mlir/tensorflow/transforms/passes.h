@@ -60,6 +60,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 
+// Guarantee that all FuncOp's have a single use.
+std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass();
+
 // Optional pass which will unroll BatchMatMul and use only MatMul
 std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass();
 
@@ -75,11 +78,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass();
 
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
-
-// Create a pass that convert ops that copy tensors between devices, e.g.
-// tf.Identity.
-std::unique_ptr<OperationPass<mlir::FuncOp>>
-CreateTensorDeviceCopyConversionPass();
 
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {

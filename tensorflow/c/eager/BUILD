@@ -550,7 +550,6 @@ tf_cuda_cc_test(
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
     tags = [
-        "no_oss",  # b/162361408
         "no_windows",
         "noasan",  # leaks gRPC server instances
     ],

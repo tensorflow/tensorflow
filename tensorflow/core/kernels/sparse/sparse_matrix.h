@@ -312,10 +312,10 @@ class CSRSparseMatrix {
     return batch_pointers_;
   }
 
-  string TypeName() const { return kTypeName; }
+  std::string TypeName() const { return kTypeName; }
 
   // TODO(ebrevdo): A better debug string.
-  string DebugString() const { return dense_shape_.DebugString(); }
+  std::string DebugString() const { return dense_shape_.DebugString(); }
 
   // Returns the number of elements.  This is equal to 1 if the
   // CSRSparseMatrix is a singleton matrix (dense_shape is length 2).

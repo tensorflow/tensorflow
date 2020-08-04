@@ -162,7 +162,11 @@ absl::Status TensorDescriptor::PerformSelector(
     *result = "channels";
     return absl::OkStatus();
   } else if (selector == "Batch") {
-    *result = "batch";
+    if (HasAxis(Axis::BATCH)) {
+      *result = "batch";
+    } else {
+      *result = "1";
+    }
     return absl::OkStatus();
   } else if (selector == "Depth") {
     *result = "depth";

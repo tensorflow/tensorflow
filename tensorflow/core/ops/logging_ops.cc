@@ -87,13 +87,6 @@ REGISTER_OP("TensorSummary")
     .Attr("display_name: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("ScalarSummary")
-    .Input("tags: string")
-    .Input("values: T")
-    .Output("summary: string")
-    .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("HistogramSummary")
     .Input("tag: string")
     .Input("values: T")

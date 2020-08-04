@@ -40,6 +40,12 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
   } else {
     weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
   }
+
+  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type_);
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+  }
 }
 
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
@@ -57,8 +63,7 @@ ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
 }
 
 std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
-    const OperationDef& op_def,
-    ConvolutionTransposed4x4::WeightsUploadType weights_upload_type) {
+    const OperationDef& op_def, WeightsUploadType weights_upload_type) {
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
@@ -288,28 +293,6 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
   c += "  }\n";
   c += "}\n";
   return c;
-}
-
-absl::Status ConvolutionTransposed4x4::Compile(
-    const CreationContext& creation_context) {
-  std::string code =
-      GenerateConvolutionTransposedCode(definition_, weights_upload_type_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_));
-  return absl::OkStatus();
 }
 
 absl::Status ConvolutionTransposed4x4::BindArguments() {

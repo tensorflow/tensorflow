@@ -30,22 +30,34 @@ from tensorflow.python.training import coordinator
 from tensorflow.python.util import nest
 
 
+class MockCancellationManager(object):
+
+  def __init__(self):
+    self.cancelled = False
+
+  def start_cancel(self):
+    self.cancelled = True
+
+  def get_cancelable_function(self, func):
+    return func
+
+
 class CoordinatedClosureQueueTest(test.TestCase):
 
   def testBasic(self):
-    queue = client._CoordinatedClosureQueue()
+    queue = client._CoordinatedClosureQueue(MockCancellationManager())
     closure1 = self._create_closure()
     queue.put(closure1)
     self.assertIs(closure1, queue.get())
     self.assertFalse(queue.done())
     queue.put_back(closure1)
     self.assertEqual(closure1, queue.get())
-    queue.mark_finished(closure1)
+    queue.mark_finished()
     self.assertTrue(queue.done())
     queue.wait()
 
   def testProcessAtLeaseOnce(self):
-    closure_queue = client._CoordinatedClosureQueue()
+    closure_queue = client._CoordinatedClosureQueue(MockCancellationManager())
     labels = ['A', 'B', 'C', 'D', 'E']
     processed_count = collections.defaultdict(int)
 
@@ -63,7 +75,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
             closure_queue.put_back(closure)
             continue
           closure._function()
-          closure_queue.mark_finished(closure)
+          closure_queue.mark_finished()
 
     def get_func(label):
 
@@ -76,7 +88,8 @@ class CoordinatedClosureQueueTest(test.TestCase):
       return func
 
     for label in labels:
-      closure_queue.put(client.Closure(get_func(label)))
+      closure_queue.put(
+          client.Closure(get_func(label), MockCancellationManager()))
     t1 = threading.Thread(target=process_queue, daemon=True)
     t1.start()
     t2 = threading.Thread(target=process_queue, daemon=True)
@@ -93,7 +106,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     coord.join([t1, t2])
 
   def testNotifyBeforeWait(self):
-    closure_queue = client._CoordinatedClosureQueue()
+    closure_queue = client._CoordinatedClosureQueue(MockCancellationManager())
 
     def func():
       logging.info('func running')
@@ -102,10 +115,10 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     def process_queue():
       with coord.stop_on_exception():
-        closure = closure_queue.get()
-        closure_queue.mark_finished(closure)
+        closure_queue.get()
+        closure_queue.mark_finished()
 
-    closure_queue.put(client.Closure(func))
+    closure_queue.put(client.Closure(func, MockCancellationManager()))
     t = threading.Thread(target=process_queue)
     t.start()
     coord.join([t])
@@ -114,8 +127,30 @@ class CoordinatedClosureQueueTest(test.TestCase):
     # doesn't time out.
     closure_queue.wait()
 
+  def _assert_one_unblock_the_other(self, first_fn, second_fn):
+    """Asserts `second_fn` wouldn't return before `first_fn` is finished."""
+    first_fn_done = threading.Event()
+    second_fn_done = threading.Event()
+    coord = coordinator.Coordinator(clean_stop_exception_types=[])
+
+    def wrapped_first_fn():
+      with coord.stop_on_exception():
+        self.assertFalse(second_fn_done.is_set())
+        first_fn()
+        first_fn_done.set()
+
+    self.assertFalse(first_fn_done.is_set())
+    t = threading.Thread(target=wrapped_first_fn)
+    t.start()
+
+    second_fn()
+    self.assertTrue(first_fn_done.is_set())
+    second_fn_done.set()
+
+    coord.join([t])
+
   def testWaitRaiseErrorAfterMarkFailure(self):
-    closure_queue = client._CoordinatedClosureQueue()
+    closure_queue = client._CoordinatedClosureQueue(MockCancellationManager())
     closure_queue.put(self._create_closure())
     closure = closure_queue.get()
 
@@ -126,22 +161,17 @@ class CoordinatedClosureQueueTest(test.TestCase):
     # all inflight closures are finished.
 
     def mark_finished_fn():
-      with coord.stop_on_exception():
-        self.assertFalse(wait_finish_event.is_set())
-        try:
-          raise ValueError('Some error.')
-        except ValueError as e:
-          closure_queue.mark_failed(e, closure)
-        wait_finish_event.wait()
+      try:
+        raise ValueError('Some error.')
+      except ValueError as e:
+        closure_queue.mark_failed(e)
 
-    t = threading.Thread(target=mark_finished_fn)
-    t.start()
+    def wait_fn():
+      with self.assertRaises(ValueError):
+        closure_queue.wait()
 
-    with self.assertRaises(ValueError):
-      closure_queue.wait()
-    wait_finish_event.set()
+    self._assert_one_unblock_the_other(mark_finished_fn, wait_fn)
 
-    coord.join([t])
     self.assertTrue(closure_queue.done())
 
   def _create_closure(self):
@@ -150,10 +180,10 @@ class CoordinatedClosureQueueTest(test.TestCase):
     def some_function():
       return 1.0
 
-    return client.Closure(some_function)
+    return client.Closure(some_function, MockCancellationManager())
 
   def _put_two_closures_and_get_one(self):
-    closure_queue = client._CoordinatedClosureQueue()
+    closure_queue = client._CoordinatedClosureQueue(MockCancellationManager())
     closure1 = self._create_closure()
     closure_queue.put(closure1)
 
@@ -166,9 +196,9 @@ class CoordinatedClosureQueueTest(test.TestCase):
     return closure_queue, closure1, closure2
 
   def testPutRaiseError(self):
-    closure_queue, closure1, closure2 = self._put_two_closures_and_get_one()
+    closure_queue, _, closure2 = self._put_two_closures_and_get_one()
 
-    closure_queue.mark_failed(ValueError(), closure1)
+    closure_queue.mark_failed(ValueError())
 
     with self.assertRaises(ValueError):
       closure_queue.put(self._create_closure())
@@ -185,9 +215,9 @@ class CoordinatedClosureQueueTest(test.TestCase):
     closure_queue.put(self._create_closure())
 
   def testWaitRaiseError(self):
-    closure_queue, closure1, closure2 = self._put_two_closures_and_get_one()
+    closure_queue, _, closure2 = self._put_two_closures_and_get_one()
 
-    closure_queue.mark_failed(ValueError(), closure1)
+    closure_queue.mark_failed(ValueError())
 
     with self.assertRaises(ValueError):
       closure_queue.wait()
@@ -203,15 +233,22 @@ class CoordinatedClosureQueueTest(test.TestCase):
     closure_queue.wait()
 
   def testDoneRaiseError(self):
-    closure_queue, closure1, _ = self._put_two_closures_and_get_one()
-    closure_queue.get()
+    closure_queue, _, _ = self._put_two_closures_and_get_one()
 
     self.assertFalse(closure_queue.done())
-    closure_queue.mark_failed(ValueError(), closure1)
+    closure_queue.mark_failed(ValueError())
     with self.assertRaises(ValueError):
       closure_queue.done()
 
-  def _test_error_reporting_and_cancel_flow(self, call_wait):
+  def _set_error(self, closure_queue, closure, error):
+    try:
+      raise error
+    except Exception as e:  # pylint: disable=broad-except
+      nest.map_structure(lambda x: x._set_error(e),
+                         closure._output_remote_values)
+      closure_queue.mark_failed(e)
+
+  def _test_cancel_closure_when_error(self, call_wait):
     closure_queue, closure1, closure2 = self._put_two_closures_and_get_one()
     closure_queue.put(self._create_closure())
     closure_queue.get()
@@ -219,34 +256,37 @@ class CoordinatedClosureQueueTest(test.TestCase):
     self.assertEqual(closure_queue._inflight_closure_count, 2)
 
     # Simulating closure1 fails.
-    try:
-      raise ValueError('Some error.')
-    except ValueError as e:
-      nest.map_structure(lambda x: x._set_error(e),
-                         closure1._output_remote_values)
-      self.assertEqual(closure_queue._error_generation, 0)  # pylint: disable=g-assert-in-except
-      closure_queue.mark_failed(e, closure1)
-      self.assertEqual(closure_queue._error_generation, 1)
-    # At this moment, there are one inflight, nothing
-    # in queue (because the ones in queue should have been removed and
-    # cancelled).
-    self.assertTrue(closure_queue._queue.empty())
-    # Doesn't include out of generation closures.
+    self._set_error(closure_queue, closure1, ValueError('Some error.'))
+
+    # At this moment, there are one inflight, one in queue.
+    self.assertEqual(closure_queue._queue.qsize(), 1)
     self.assertEqual(closure_queue._inflight_closure_count, 1)
 
-    coord = coordinator.Coordinator(clean_stop_exception_types=[])
     closure3 = self._create_closure()
 
-    with self.assertRaises(ValueError):
-      # Verifying `wait()` or `put()` raises even if one closure is in
-      # flight.
-      if call_wait:
-        closure_queue.wait()
-      else:
-        closure_queue.put(closure3)
-    # At this moment, there is one inflight, nothing in queue.
+    def fake_cancellation():
+      self._set_error(closure_queue, closure2,
+                      ValueError('Fake cancellation error.'))
+
+    def report_error():
+      # It should not report the fake cancellation error.
+      with self.assertRaisesRegex(ValueError, 'Some error.'):
+        # Verifying `wait()` or `put()` raises even if one closure is in
+        # flight.
+        if call_wait:
+          closure_queue.wait()
+        else:
+          closure_queue.put(closure3)
+
+    self._assert_one_unblock_the_other(fake_cancellation, report_error)
+
+    # Cancellation manager has been called.
+    self.assertTrue(closure_queue._cancellation_mgr.cancelled)
+
+    # At this moment, there is zero inflight, nothing in queue.
     self.assertTrue(closure_queue._queue.empty())
-    self.assertEqual(closure_queue._inflight_closure_count, 1)
+    self.assertEqual(closure_queue._inflight_closure_count, 0)
+    self.assertIsNone(closure_queue._error)
 
     # This asserts that closure1 has errored.
     with self.assertRaisesRegex(ValueError, 'Some error.'):
@@ -260,107 +300,36 @@ class CoordinatedClosureQueueTest(test.TestCase):
           'function.'):
         closure3._fetch_output_remote_values()
 
-    # Closure2 is inflight, so it shouldn't be ready.
+    # Closure2 was an inflight closure when it got cancelled.
     self.assertEqual(closure2._output_remote_values._status,
-                     client._RemoteValueStatus.NOT_READY)
-
-    # And `wait` should block because closure2 is not back yet.
-    self.assertFalse(closure_queue.wait(timeout=20))
-
-    # Now let's assume that closure2 isn't successful due to worker preemption,
-    # and now it's attempted to be put back, but ends up getting cancelled.
-    self.assertEqual(closure2._error_generation, 0)
-    self.assertEqual(closure_queue._error_generation, 1)
-    closure_queue.put_back(closure2)
-
-    with self.assertRaisesRegex(
-        client.FunctionRetryableError,
-        'The corresponding function is cancelled. Please reschedule the '
-        'function.'):
+                     client._RemoteValueStatus.READY)
+    with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
       closure2._fetch_output_remote_values()
 
-    # At this moment, there is nothing inflight, and the queue is also empty
-    # (because closure2 should not be added back to the queue).
-    self.assertTrue(closure_queue._queue.empty())
-    self.assertEqual(closure_queue._inflight_closure_count, 0)
+    # This asserts that the queue has a clear state.
+    self.testBasic()
 
-    closure4 = self._create_closure()
+  def testWaitRaiseErrorAfterCancelClosure(self):
+    self._test_cancel_closure_when_error(call_wait=True)
 
-    e = threading.Event()
-
-    def get_fn():
-      with coord.stop_on_exception():
-        # This should end up getting closure4, not closure2, because closure2
-        # has been cancelled and should not be got.
-        closure_got = closure_queue.get()
-        e.set()
-        self.assertEqual(closure_got._error_generation, 1)
-        self.assertEqual(closure_queue._error_generation, 1)
-        self.assertIs(closure4, closure_got)
-        self.assertIsNot(closure2, closure_got)
-
-    t = threading.Thread(target=get_fn)
-    t.start()
-
-    time.sleep(10)
-
-    # Make sure `closure_got = closure_queue.get()` is unblocked as a result of
-    # `closure_queue.put(closure4)`.
-    self.assertFalse(e.is_set())
-    closure_queue.put(closure4)
-    self.assertTrue(e.wait())
-    coord.join([t])
-
-    self.assertEqual(closure_queue._inflight_closure_count, 1)
-    closure_queue.mark_finished(closure4)
-    # The queue is now cleared and nothing inflight.
-    self.assertEqual(closure_queue._inflight_closure_count, 0)
-    closure_queue.wait()
-
-  def testWaitRaiseErrorAfterAnErrorIsReported(self):
-    self._test_error_reporting_and_cancel_flow(call_wait=True)
-
-  def testPutRaiseErrorAfterAnErrorIsReported(self):
-    self._test_error_reporting_and_cancel_flow(call_wait=False)
+  def testPutRaiseErrorAfterCancelClosure(self):
+    self._test_cancel_closure_when_error(call_wait=False)
 
   def testStateIsRestoredAfterJoinIsCalled(self):
-    closure_queue, closure1, closure2 = self._put_two_closures_and_get_one()
-    closure_queue.get()
-    self.assertEqual(closure_queue._inflight_closure_count, 2)
-    closure_queue.mark_failed(ValueError('test error'), closure1)
+    closure_queue, _, _ = self._put_two_closures_and_get_one()
+    self.assertEqual(closure_queue._inflight_closure_count, 1)
+    closure_queue.mark_failed(ValueError('test error'))
     with self.assertRaises(ValueError):
       closure_queue.put(self._create_closure())
-    closure_queue.mark_failed(ValueError('test error'), closure2)
 
-    # closure2's error is previous generation so should not raise at this
-    # following put, and _error should have been cleared.
+    # Its error should have been cleared.
     self.assertIsNone(closure_queue._error)
     closure_queue.put(self._create_closure())
     self.assertIsNone(closure_queue._error)
-
-  def testStateIsRestoredAfterJoinIsCalled_WaitShouldReturn(self):
-    closure_queue, closure1, closure2 = self._put_two_closures_and_get_one()
-    closure_queue.put(self._create_closure())
-    closure_queue.get()  # got closure2
-    self.assertFalse(closure_queue._queue.empty())  # still has closure3
-    self.assertEqual(closure_queue._inflight_closure_count, 2)  # closure1,2
-    closure_queue.mark_failed(ValueError('test error'), closure1)
-    self.assertTrue(closure_queue._queue.empty())  # closure3 cancelled
-    self.assertEqual(closure_queue._inflight_closure_count, 1)
-    with self.assertRaises(ValueError):
-      closure_queue.wait()  # reports error from closure1
-
-    # `wait` should block because closure2 is not back yet, even if closure2
-    # was sent inflight before the error.
-    self.assertFalse(closure_queue.wait(timeout=20))
-    self.assertEqual(closure_queue._inflight_closure_count, 1)
-    closure_queue.mark_finished(closure2)
-    closure_queue.wait()  # wait should pass immediately
-    self.assertEqual(closure_queue._inflight_closure_count, 0)
 
   def testThreadSafey(self):
     thread_count = 10
-    queue = client._CoordinatedClosureQueue()
+    queue = client._CoordinatedClosureQueue(MockCancellationManager())
 
     # Each thread performs 20 queue actions: 10 are `put_back` and 10 are
     # `mark_finished`.
@@ -372,7 +341,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
         if i % 2 == 0:
           queue.put_back(closure)
         else:
-          queue.mark_finished(closure)
+          queue.mark_finished()
 
     threads = [threading.Thread(target=func) for i in range(thread_count)]
     for t in threads:

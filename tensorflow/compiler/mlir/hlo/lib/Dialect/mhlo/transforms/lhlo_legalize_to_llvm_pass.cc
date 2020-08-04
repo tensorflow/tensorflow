@@ -36,13 +36,11 @@ class TestLhloToLLVMPass
     ModuleOp m = getOperation();
 
     OwningRewritePatternList patterns;
-    LLVMTypeConverter converter(m.getContext());
+    LLVMTypeConverter converter(&getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
-    PopulateLhloToLLVMConversionPatterns(
-        LowerToLLVMOptions::getDefaultOptions(), &converter, &patterns);
-    mlir::populateLoopToStdConversionPatterns(patterns, &getContext());
-
-    mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
+    PopulateLhloToLLVMConversionPatterns(&converter, &patterns);
+    populateLoopToStdConversionPatterns(patterns, &getContext());
+    populateAffineToStdConversionPatterns(patterns, &getContext());
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
