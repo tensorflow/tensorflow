@@ -113,17 +113,16 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   // because of an invalid values argument.  
   StatusWrapper allocation_status_wrapper;
   TensorWrapper summary_tensor_wrapper; 
-  TF_Tensor* summary_tensor= TF_AllocateOutput(ctx, 0,
+  summary_tensor_wrapper.t = TF_AllocateOutput(ctx, 0,
       TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
       sizeof(tensorflow::tstring), allocation_status_wrapper.s);
-  summary_tensor_wrapper.t = summary_tensor;
 
   if (TF_GetCode(allocation_status_wrapper.s) != TF_OK){ 
     TF_OpKernelContext_Failure(ctx, allocation_status_wrapper.s);
     return; 
   }
   tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
-      TF_TensorData(summary_tensor)); 
+      TF_TensorData(summary_tensor_wrapper.t)); 
   CHECK(SerializeToTString(s, output_tstring));
 }
 
@@ -151,14 +150,14 @@ void RegisterHistogramSummaryOpKernel() {
 // register the Histogram Summary kernel.                                                          
 TF_ATTRIBUTE_UNUSED static bool  IsHistogramSummaryOpKernelRegistered = []() {                  
   if (SHOULD_REGISTER_OP_KERNEL("HistogramSummary")) {
-    // RegisterHistogramSummaryOpKernel<tensorflow::int64>();    
-    // RegisterHistogramSummaryOpKernel<tensorflow::uint64>();       
-    // RegisterHistogramSummaryOpKernel<tensorflow::int32>();   
-    // RegisterHistogramSummaryOpKernel<tensorflow::uint32>(); 
-    // RegisterHistogramSummaryOpKernel<tensorflow::uint16>();   
-    // RegisterHistogramSummaryOpKernel<tensorflow::int16>();   
-    // RegisterHistogramSummaryOpKernel<tensorflow::int8>();  
-    // RegisterHistogramSummaryOpKernel<tensorflow::uint8>();   
+    RegisterHistogramSummaryOpKernel<tensorflow::int64>();    
+    RegisterHistogramSummaryOpKernel<tensorflow::uint64>();       
+    RegisterHistogramSummaryOpKernel<tensorflow::int32>();   
+    RegisterHistogramSummaryOpKernel<tensorflow::uint32>(); 
+    RegisterHistogramSummaryOpKernel<tensorflow::uint16>();   
+    RegisterHistogramSummaryOpKernel<tensorflow::int16>();   
+    RegisterHistogramSummaryOpKernel<tensorflow::int8>();  
+    RegisterHistogramSummaryOpKernel<tensorflow::uint8>();   
     RegisterHistogramSummaryOpKernel<Eigen::half>();   
     RegisterHistogramSummaryOpKernel<tensorflow::bfloat16>();   
     RegisterHistogramSummaryOpKernel<float>();   
