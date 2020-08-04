@@ -366,13 +366,15 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     logging.info("Using MirroredStrategy with remote devices %r", devices)
 
-  def _input_workers_with_options(self, options=None):
+  def _input_workers_with_options(self, options=None, input_workers_devices=None):
+    if not self._input_workers_devices:
+      input_workers_devices = self._input_workers_devices
     if not options or options.experimental_prefetch_to_device:
-      return input_lib.InputWorkers(self._input_workers_devices)
+      return input_lib.InputWorkers(input_workers_devices)
     else:
       return input_lib.InputWorkers(
           [(host_device, (host_device,) * len(compute_devices)) for
-           host_device, compute_devices in self._input_workers_devices])
+           host_device, compute_devices in input_workers_devices])
 
   @property
   def _input_workers(self):
@@ -482,7 +484,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     input_contexts = []
-    input_workers = self._input_workers_with_options(options)
+    input_workers = self._input_workers_with_options(
+        options, input_workers_devices)
     num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(
@@ -495,7 +498,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         input_workers,
         input_contexts,
         self._container_strategy(),
-        replication_mode)
+        options.replication_mode)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []

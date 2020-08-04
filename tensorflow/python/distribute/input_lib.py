@@ -35,7 +35,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
-from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute.distribute_lib import InputReplicationMode
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -108,7 +108,7 @@ def get_distributed_datasets_from_function(dataset_fn,
                                            input_workers,
                                            input_contexts,
                                            strategy,
-                                           replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+                                           replication_mode=InputReplicationMode.PER_WORKER):
   """Returns a distributed dataset from the given input function.
 
   This is a common function that is used by all strategies to return a
@@ -132,7 +132,7 @@ def get_distributed_datasets_from_function(dataset_fn,
     A distributed dataset instance.
   """
   if tf2.enabled():
-    if replication_mode == distribute_lib.InputReplicationMode.PER_WORKER:
+    if replication_mode == InputReplicationMode.PER_WORKER:
       return DistributedDatasetsFromFunction(
           dataset_fn,
           input_workers,

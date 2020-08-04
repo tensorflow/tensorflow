@@ -620,6 +620,7 @@ class RunOptions(
 class InputOptions(
     collections.namedtuple("InputOptions", [
         "experimental_prefetch_to_device",
+        "replication_mode",
     ])):
   """Run options for `experimental_distribute_dataset(s_from_function)`.
 
@@ -637,7 +638,8 @@ class InputOptions(
       strategy.experimental_distribute_dataset(
           dataset,
           tf.distribute.InputOptions(
-              experimental_prefetch_to_device=False)))
+              experimental_prefetch_to_device=False,
+              replication_mode=InputReplicationMode.PER_WORKER)))
   ```
 
   Attributes:
@@ -645,9 +647,11 @@ class InputOptions(
       elements will be prefetched to accelerator device memory. When False,
       dataset elements are prefetched to host device memory. Must be False when
       using TPUEmbedding API.
+      replication_mode: Replication mode for the input function.
   """
 
-  def __new__(cls, experimental_prefetch_to_device=True):
+  def __new__(cls, experimental_prefetch_to_device=True,
+              replication_mode=InputReplicationMode.PER_WORKER):
     return super(InputOptions, cls).__new__(cls,
                                             experimental_prefetch_to_device)
 
@@ -1062,7 +1066,6 @@ class StrategyBase(object):
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
         the rules stated above.
-      replication_mode: Replication mode for the input function.
       options: `tf.distribute.InputOptions` used to control options on how this
         dataset is distributed.
 
