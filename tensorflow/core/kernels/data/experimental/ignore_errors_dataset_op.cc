@@ -25,28 +25,23 @@ namespace {
 class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit IgnoreErrorsDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        op_version_(ctx->def().op() == "IgnoreErrorsDatasetV2" ? 2 : 1) {}
+      : UnaryDatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("log_warning", &log_warning_));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    bool log_warning = false;
-    if (op_version_ > 1) {
-      OP_REQUIRES_OK(
-          ctx, ParseScalarArgument<bool>(ctx, "log_warning", &log_warning));
-    }
-    *output = new Dataset(ctx, input, log_warning, op_version_);
+    *output = new Dataset(ctx, input, log_warning_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
-                     bool log_warning, int op_version)
+                     const bool log_warning)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          log_warning_(log_warning),
-          op_version_(op_version) {
+          log_warning_(log_warning) {
       input_->Ref();
     }
 
@@ -80,17 +75,12 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      Node* log_warning = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-      TF_RETURN_IF_ERROR(b->AddScalar(log_warning_, &log_warning));
-      if (op_version_ > 1) {
-        TF_RETURN_IF_ERROR(b->AddDataset(this,
-                                         {std::make_pair(0, input_graph_node),
-                                          std::make_pair(1, log_warning)},
-                                         {}, {}, output));
-      } else {
-        TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
-      }
+      AttrValue log_warning_attr;
+      b->BuildAttrValue<bool>(log_warning_, &log_warning_attr);
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {std::make_pair(0, input_graph_node)}, {},
+                        {{"log_warning", log_warning_attr}}, output));
       return Status::OK();
     }
 
@@ -167,14 +157,11 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
     const DatasetBase* const input_;
     const bool log_warning_;
-    const int op_version_;
   };
-  const int op_version_;
+  bool log_warning_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("IgnoreErrorsDataset").Device(DEVICE_CPU),
-                        IgnoreErrorsDatasetOp);
-REGISTER_KERNEL_BUILDER(Name("IgnoreErrorsDatasetV2").Device(DEVICE_CPU),
                         IgnoreErrorsDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalIgnoreErrorsDataset").Device(DEVICE_CPU),
