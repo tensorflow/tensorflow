@@ -851,6 +851,7 @@ py_library(
 distribute_py_test(
     name = "strategy_combinations_test",
     srcs = ["strategy_combinations_test.py"],
+    disable_mlir_bridge = False,
     python_version = "PY3",
     deps = [
         ":combinations",
@@ -905,6 +906,7 @@ cuda_py_test(
 distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
+    disable_mlir_bridge = False,
     main = "checkpointing_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -920,6 +922,7 @@ distribute_py_test(
 distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
+    disable_mlir_bridge = False,
     main = "input_lib_test.py",
     shard_count = 10,
     tags = [
@@ -1116,6 +1119,7 @@ distribute_py_test(
     name = "values_test",
     size = "medium",
     srcs = ["values_test.py"],
+    disable_mlir_bridge = False,
     main = "values_test.py",
     shard_count = 5,
     tags = [
@@ -1173,6 +1177,7 @@ distribute_py_test(
 distribute_py_test(
     name = "distribute_utils_test",
     srcs = ["distribute_utils_test.py"],
+    disable_mlir_bridge = False,
     main = "distribute_utils_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1238,6 +1243,7 @@ distribute_py_test(
     name = "ps_values_test",
     size = "medium",
     srcs = ["ps_values_test.py"],
+    disable_mlir_bridge = False,
     main = "ps_values_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1257,6 +1263,7 @@ distribute_py_test(
 distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
+    disable_mlir_bridge = False,
     main = "moving_averages_test.py",
     deps = [
         ":combinations",
@@ -1274,6 +1281,7 @@ distribute_py_test(
 distribute_py_test(
     name = "custom_training_loop_gradient_test",
     srcs = ["custom_training_loop_gradient_test.py"],
+    disable_mlir_bridge = False,
     main = "custom_training_loop_gradient_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1472,6 +1480,7 @@ distribute_py_test(
 distribute_py_test(
     name = "zero_batch_test",
     srcs = ["zero_batch_test.py"],
+    disable_mlir_bridge = False,
     main = "zero_batch_test.py",
     deps = [
         ":combinations",
@@ -1671,6 +1680,7 @@ py_test(
 distribute_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
+    disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 2,
     tags = [
@@ -1703,6 +1713,7 @@ distribute_py_test(
 distribute_py_test(
     name = "tf_function_test",
     srcs = ["tf_function_test.py"],
+    disable_mlir_bridge = False,
     main = "tf_function_test.py",
     tags = [
         "multi_and_single_gpu",

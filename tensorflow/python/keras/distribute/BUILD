@@ -144,6 +144,7 @@ cuda_py_test(
 distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
+    disable_mlir_bridge = False,
     main = "checkpointing_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -221,6 +222,7 @@ distribute_py_test(
 distribute_py_test(
     name = "custom_training_loop_metrics_test",
     srcs = ["custom_training_loop_metrics_test.py"],
+    disable_mlir_bridge = False,
     main = "custom_training_loop_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -267,6 +269,7 @@ distribute_py_test(
 distribute_py_test(
     name = "custom_training_loop_optimizer_test",
     srcs = ["custom_training_loop_optimizer_test.py"],
+    disable_mlir_bridge = False,
     main = "custom_training_loop_optimizer_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -311,6 +314,7 @@ py_library(
 distribute_py_test(
     name = "keras_premade_models_test",
     srcs = ["keras_premade_models_test.py"],
+    disable_mlir_bridge = False,
     full_precision = True,
     main = "keras_premade_models_test.py",
     shard_count = 4,
@@ -347,6 +351,7 @@ distribute_py_test(
 distribute_py_test(
     name = "distributed_training_utils_test",
     srcs = ["distributed_training_utils_test.py"],
+    disable_mlir_bridge = False,
     full_precision = True,
     main = "distributed_training_utils_test.py",
     deps = [
@@ -389,6 +394,7 @@ distribute_py_test(
     name = "keras_dnn_correctness_test",
     size = "medium",
     srcs = ["keras_dnn_correctness_test.py"],
+    disable_mlir_bridge = False,
     full_precision = True,
     main = "keras_dnn_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
@@ -426,6 +432,7 @@ distribute_py_test(
     name = "keras_image_model_correctness_test",
     size = "medium",
     srcs = ["keras_image_model_correctness_test.py"],
+    disable_mlir_bridge = False,
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
     shard_count = 16,
@@ -444,6 +451,7 @@ distribute_py_test(
 distribute_py_test(
     name = "keras_metrics_test",
     srcs = ["keras_metrics_test.py"],
+    disable_mlir_bridge = False,
     main = "keras_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -484,6 +492,7 @@ distribute_py_test(
     name = "keras_save_load_test",
     size = "medium",
     srcs = ["keras_save_load_test.py"],
+    disable_mlir_bridge = False,
     full_precision = True,
     main = "keras_save_load_test.py",
     shard_count = 7,
@@ -500,6 +509,7 @@ distribute_py_test(
     name = "keras_stateful_lstm_model_correctness_test",
     size = "medium",
     srcs = ["keras_stateful_lstm_model_correctness_test.py"],
+    disable_mlir_bridge = False,
     full_precision = True,
     main = "keras_stateful_lstm_model_correctness_test.py",
     shard_count = 4,
@@ -749,6 +759,7 @@ distribute_py_test(
     name = "saved_model_save_load_test",
     size = "medium",
     srcs = ["saved_model_save_load_test.py"],
+    disable_mlir_bridge = False,
     full_precision = True,
     main = "saved_model_save_load_test.py",
     shard_count = 7,
@@ -766,6 +777,7 @@ distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
+    disable_mlir_bridge = False,
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
     shard_count = 7,
