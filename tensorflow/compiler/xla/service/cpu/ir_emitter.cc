@@ -2390,7 +2390,8 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
 Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   const HloInstruction* input = hlo->operand(0);
-  int64 k = hlo->shape().tuple_shapes(0).dimensions(1);
+  const int64 k = hlo->shape().tuple_shapes(0).dimensions().back();
+  const bool has_batch = hlo->shape().tuple_shapes(0).dimensions_size() == 2;
   TF_RET_CHECK(input->shape().element_type() == F32);
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
       hlo->shape().tuple_shapes(0).layout()));
@@ -2412,9 +2413,9 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   llvm::Value* out_indices_ptr =
       EmitBufferPointer(out_indices_slice, hlo->shape().tuple_shapes(1));
   EmitCallToFunc(runtime::kTopKF32SymbolName,
-                 {b_.getInt64(input->shape().dimensions(0)),
-                  b_.getInt64(input->shape().dimensions(1)), b_.getInt64(k),
-                  values_ptr, out_values_ptr, out_indices_ptr},
+                 {b_.getInt64(has_batch ? input->shape().dimensions(0) : 1),
+                  b_.getInt64(input->shape().dimensions().back()),
+                  b_.getInt64(k), values_ptr, out_values_ptr, out_indices_ptr},
                  b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(hlo), {out_values_ptr, out_indices_ptr},

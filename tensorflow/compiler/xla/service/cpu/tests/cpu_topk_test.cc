@@ -27,7 +27,34 @@ namespace {
 
 using CpuTopKTest = CpuCodegenTest;
 
-TEST_F(CpuTopKTest, CallRuntime) {
+TEST_F(CpuTopKTest, CallRuntimeUnbatched) {
+  XlaBuilder builder(TestName());
+  XlaOp input =
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {100}), "input");
+  TopK(input, 10);
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation xla_computation, builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(ProgramShape program_shape,
+                          xla_computation.GetProgramShape());
+  HloModuleConfig config(program_shape);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, HloModule::CreateFromProto(xla_computation.proto(), config));
+
+  constexpr char filecheck_pattern[] = R"(
+    CHECK: call void @__xla_cpu_runtime_TopKF32(i64 1, i64 100, i64 10,
+  )";
+
+  CpuAotCompilationOptions options{
+      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
+      /*features=*/"",
+      /*entry_point_name=*/"entry",
+      /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
+
+  CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
+                                /*match_optimized_ir=*/true);
+}
+
+TEST_F(CpuTopKTest, CallRuntimeBatched) {
   XlaBuilder builder(TestName());
   XlaOp input =
       Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {5, 100}), "input");

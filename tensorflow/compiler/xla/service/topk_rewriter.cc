@@ -75,11 +75,11 @@ StatusOr<bool> TopkRewriter::Run(HloModule* module) {
       HloIotaInstruction* iota =
           DynCast<HloIotaInstruction>(sort->mutable_operand(1));
       const PrimitiveType element_type = data->shape().element_type();
-      if (data->shape().rank() != 2 ||
+      if ((data->shape().rank() != 1 && data->shape().rank() != 2) ||
           (element_type != F32 && element_type != BF16)) {
         continue;
       }
-      if (iota == nullptr || iota->shape().rank() != 2 ||
+      if (iota == nullptr || iota->shape().rank() != data->shape().rank() ||
           iota->shape().element_type() != S32 ||
           iota->opcode() != HloOpcode::kIota ||
           iota->iota_dimension() != sort->sort_dimension()) {
@@ -90,6 +90,7 @@ StatusOr<bool> TopkRewriter::Run(HloModule* module) {
       }
       const int64 sort_dim = sort->sort_dimension();
       const int64 batch_dim = sort_dim == 1 ? 0 : 1;
+      const bool has_batch = data->shape().rank() == 2;
 
       bool supported = true;
       absl::optional<int64> k;
@@ -113,8 +114,8 @@ StatusOr<bool> TopkRewriter::Run(HloModule* module) {
           supported = false;
           break;
         }
-        if (slice->slice_limits(batch_dim) !=
-            slice->operand(0)->shape().dimensions(batch_dim)) {
+        if (has_batch && slice->slice_limits(batch_dim) !=
+                             slice->operand(0)->shape().dimensions(batch_dim)) {
           // Slicing along the batch dimension isn't supported.
           supported = false;
           break;
@@ -136,18 +137,24 @@ StatusOr<bool> TopkRewriter::Run(HloModule* module) {
         continue;
       }
 
-      const int64 batch_size = sort->operand(0)->shape().dimensions(batch_dim);
+      const int64 batch_size =
+          has_batch ? sort->operand(0)->shape().dimensions(batch_dim) : 1;
       const int64 input_size = sort->operand(0)->shape().dimensions(sort_dim);
       HloInstruction* input = sort->mutable_operand(0);
-      if (sort_dim == 0) {
+      if (has_batch && sort_dim == 0) {
         input = comp->AddInstruction(HloInstruction::CreateTranspose(
             ShapeUtil::MakeShape(element_type, {batch_size, input_size}), input,
             {1, 0}));
       }
 
-      Shape topk_shape = ShapeUtil::MakeTupleShape(
-          {ShapeUtil::MakeShape(element_type, {batch_size, k.value()}),
-           ShapeUtil::MakeShape(S32, {batch_size, k.value()})});
+      Shape topk_shape =
+          has_batch ? ShapeUtil::MakeTupleShape(
+                          {ShapeUtil::MakeShape(element_type,
+                                                {batch_size, k.value()}),
+                           ShapeUtil::MakeShape(S32, {batch_size, k.value()})})
+                    : ShapeUtil::MakeTupleShape(
+                          {ShapeUtil::MakeShape(element_type, {k.value()}),
+                           ShapeUtil::MakeShape(S32, {k.value()})});
       HloInstruction* topk = comp->AddInstruction(
           HloInstruction::CreateCustomCall(topk_shape, {input}, "TopK"));
       HloInstruction* value_gte =
@@ -157,7 +164,7 @@ StatusOr<bool> TopkRewriter::Run(HloModule* module) {
           comp->AddInstruction(HloInstruction::CreateGetTupleElement(
               topk->shape().tuple_shapes(1), topk, 1));
 
-      if (sort_dim == 0) {
+      if (has_batch && sort_dim == 0) {
         value_gte = comp->AddInstruction(HloInstruction::CreateTranspose(
             ShapeUtil::MakeShape(element_type, {k.value(), batch_size}),
             value_gte, {1, 0}));
