@@ -117,6 +117,22 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAddition) {
                   m::ConstantScalar(0.125))));
 }
 
+// (Abs(A)) * (Abs(A)) => (A*A)
+TEST_F(AlgebraicSimplifierTest, SquareOfAbs) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = f32[] parameter(0)
+      a = f32[] abs(p)
+      ROOT z = f32[] multiply(a, a)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
+}
+
 // (A*C1) * (B*C2) => (A*B)*(C1*C2)
 TEST_F(AlgebraicSimplifierTest, MultiplyChain) {
   const char* kModuleStr = R"(
