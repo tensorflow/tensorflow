@@ -964,6 +964,39 @@ TEST_F(OpLevelCostEstimatorTest, UnaryOpExecutionTime) {
   }
 }
 
+TEST_F(OpLevelCostEstimatorTest, BinaryOpExecutionTime) {
+  std::vector<std::pair<std::string, int>> binary_ops = {
+      {"Select", 1},
+      {"SelectV2", 1},
+      {"SquaredDifference", 2},
+      {"Where", 1},
+  };
+
+  const int kTensorSize1 = 1000;
+  const int kTensorSize2 = 2;
+  for (auto binary_op : binary_ops) {
+    OpContext op_context =
+        DescribeBinaryOp(binary_op.first, kTensorSize1, kTensorSize2);
+
+    const int kExpectedMemoryTime = 3600;
+    int expected_compute_time = std::ceil(
+        binary_op.second * kTensorSize1 * kTensorSize2 * 2 /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(kExpectedMemoryTime), cost.memory_time)
+        << binary_op.first;
+    EXPECT_EQ(Costs::Duration(expected_compute_time), cost.compute_time)
+        << binary_op.first;
+    EXPECT_EQ(Costs::Duration(expected_compute_time + kExpectedMemoryTime),
+              cost.execution_time)
+        << binary_op.first;
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+}
+
 TEST_F(OpLevelCostEstimatorTest, BroadcastAddExecutionTime) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
