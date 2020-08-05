@@ -5,6 +5,10 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -558,6 +562,7 @@ py_library(
         ":forwardprop_util",
         ":graph_only_ops",
         ":tape",
+        ":_concrete_function",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -571,6 +576,16 @@ py_library(
         "//tensorflow/python/saved_model:save_options",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+pybind_extension(
+    name = "_concrete_function",
+    srcs = ["function.cc"],
+    module_name = "_concrete_function",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

@@ -2166,27 +2166,14 @@ class ConcreteFunction(object):
     Returns:
       The actual call output.
     """
-    # TODO(jlchu): implement in C++.
-    if self._func_graph.structured_outputs is None:
-      return result
-
-    if result:
-      if self._ndarrays_list:
-        return [np_arrays.tensor_to_ndarray(o) for o in result]
-      elif self._ndarray_singleton:
-        return np_arrays.tensor_to_ndarray(result[0])
-
-    # Replace outputs with results, skipping over any 'None' values.
-    outputs_list = nest.flatten(
-        self._func_graph.structured_outputs, expand_composites=True)
-    j = 0
-    for i, o in enumerate(outputs_list):
-      if o is not None:
-        outputs_list[i] = result[j]
-        j += 1
-    ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
-                                outputs_list, expand_composites=True)
-    return ret
+    # TODO(jlchu): Look into lazy loading of np_arrays in _concrete_function
+    # so that the following import and class initializations can be moved to
+    # global locations.
+    from tensorflow.python.eager import _concrete_function
+    self._cpp_class = _concrete_function.ConcreteFunction()
+    return self._cpp_class._build_call_outputs(
+        result, self._func_graph.structured_outputs,
+        self._ndarrays_list, self._ndarray_singleton)
 
   @property
   def _as_name_attr_list(self):
