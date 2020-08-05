@@ -376,7 +376,7 @@ class AddOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::ADD);
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    AddAttributes attr;
+    ElementwiseAttributes attr;
     RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
     node->operation.attributes = std::move(attr);
     const TfLiteAddParams* tf_options;
@@ -847,6 +847,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                                                         /*outputs=*/1));
       ElementwiseAttributes attr;
       RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
+      attr.runtime_tensor_is_second =
+          IsConstantTensor(reader->GetInputTensor(0));
       node->operation.attributes = std::move(attr);
     } else {
       return absl::InvalidArgumentError("Incorrect operation type passed");
@@ -1255,7 +1257,7 @@ class MulOperationParser : public TFLiteOperationParser {
                                    const TfLiteIntArray* constant_dims,
                                    GraphFloat32* graph, ObjectReader* reader) {
     RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
-    MultiplyAttributes attr;
+    ElementwiseAttributes attr;
     if (constant_dims->size <= 0 || NumElements(constant_dims) == 1) {
       Tensor<Scalar, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));

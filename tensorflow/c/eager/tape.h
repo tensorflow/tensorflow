@@ -177,12 +177,12 @@ class GradientTape {
 template <typename Gradient>
 class ForwardFunction
     : public std::function<Status(const std::vector<Gradient*>&,
-                                  std::vector<Gradient*>*)> {
+                                  std::vector<Gradient*>*, bool)> {
  public:
   template <typename lambda_type>
   explicit ForwardFunction(lambda_type lambda)
       : std::function<Status(const std::vector<Gradient*>&,
-                             std::vector<Gradient*>*)>(lambda) {}
+                             std::vector<Gradient*>*, bool)>(lambda) {}
 };
 
 // Computes Jacobian-vector products using forward-mode automatic
@@ -205,8 +205,9 @@ class ForwardAccumulator {
   // Does not take ownership of `vspace`, which must outlive the
   // ForwardAccumulator.
   explicit ForwardAccumulator(
-      const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace)
-      : vspace_(vspace) {
+      const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace,
+      bool use_batch)
+      : vspace_(vspace), use_batch_(use_batch) {
     call_state_.emplace(nullptr, false);
   }
 
@@ -313,6 +314,9 @@ class ForwardAccumulator {
   // Not owned; provides operations on Tensors which are currently only
   // available in language bindings (e.g. Python).
   const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace_;
+
+  // Decides if tangents are vectorized or not
+  bool use_batch_;
 
   struct AccumulatorCallState {
     AccumulatorCallState(
@@ -1062,7 +1066,8 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
         output_tensors, backward_function_getter, backward_function_deleter,
         in_grads, &forward_grads));
   } else {
-    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads));
+    TF_RETURN_IF_ERROR(
+        (*forward_function)(in_grads, &forward_grads, use_batch_));
   }
   for (int i = 0; i < forward_grads.size(); ++i) {
     if (forward_grads[i] != nullptr) {

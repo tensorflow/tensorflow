@@ -47,7 +47,7 @@ load(
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
-    "if_mkl_v1_open_source_only",
+    "if_mkl_v1",
     "if_mkldnn_threadpool",
 )
 load(
@@ -220,7 +220,7 @@ def if_not_mobile(a):
 
 # Config setting selector used when building for products
 # which requires restricted licenses to be avoided.
-def if_not_lgpl_restricted(a):
+def if_not_mobile_or_arm_or_lgpl_restricted(a):
     _ = (a,)
     return select({
         "//conditions:default": [],
@@ -327,12 +327,8 @@ def tf_copts(
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
-        if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
-        if_mkldnn_threadpool([
-            "-DENABLE_MKLDNN_THREADPOOL",
-            "-DENABLE_MKLDNN_V1",
-            "-DINTEL_MKL_DNN_ONLY",
-        ]) +
+        if_mkl_v1(["-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
+        if_mkldnn_threadpool(["-DENABLE_MKLDNN_THREADPOOL"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_ngraph(["-DINTEL_NGRAPH=1"]) +
         if_android_arm(["-mfpu=neon"]) +

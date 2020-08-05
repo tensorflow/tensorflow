@@ -847,6 +847,13 @@ func @tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>
 
 // -----
 
+func @tuple_token(%arg0: tensor<f32>, %arg1: !mhlo.token) -> tuple<tensor<f32>, !mhlo.token> {
+  %0 = "mhlo.tuple"(%arg0, %arg1) : (tensor<f32>, !mhlo.token) -> tuple<tensor<f32>, !mhlo.token>
+  return %0 : tuple<tensor<f32>, !mhlo.token>
+}
+
+// -----
+
 func @tuple_arg_size_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>> {
   // expected-error@+1 {{has return type tuple<tensor<f32>, tensor<f32>, tensor<f32>>, but expected tuple<tensor<f32>, tensor<f32>>}}
   %0 = "mhlo.tuple"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
@@ -939,7 +946,23 @@ func @constants() -> () {
 
 func @constant_invalid() -> () {
   // expected-error@+1 {{op failed to verify that all of {value, output} have same type}}
-  %0 = "mhlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<*xi32>)
+  %0 = "mhlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<3xi32>)
+  return
+}
+
+// -----
+
+func @constant_invalid() -> () {
+  // expected-error@+1 {{op result #0 must be statically shaped tensor}}
+  %0 = "mhlo.constant"() {value = dense<1> : tensor<i32>} : () -> tensor<?xi32>
+  return
+}
+
+// -----
+
+func @constant_invalid() -> () {
+  // expected-error@+1 {{elements literal type must have static shape}}
+  %0 = "mhlo.constant"() {value = dense<1> : tensor<?xi32>} : () -> tensor<?xi32>
   return
 }
 

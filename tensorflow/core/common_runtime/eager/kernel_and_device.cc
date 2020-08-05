@@ -395,13 +395,25 @@ void KernelAndDeviceFunc::RunAsync(
       },
       profiler::ContextType::kTfExecutor, opts->step_id,
       profiler::TraceMeLevel::kInfo);
-  pflr_->Run(*opts, handle_, inputs, outputs,
-             [opts, rendezvous, local_cm, step_container, this,
-              done = std::move(done)](const Status& s) {
+  std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
+  pflr_->Run(*opts, handle_, inputs, function_rets,
+             [opts, outputs, function_rets, rendezvous, local_cm,
+              step_container, this, done = std::move(done)](const Status& s) {
                rendezvous->Unref();
                if (step_container == nullptr) {
                  this->step_container_.CleanUp();
                }
+               if (s.ok()) {
+                 // TODO(b/162618595): Change the type of `outputs` to
+                 // support TensorShapes for remote outputs and remove the
+                 // FunctionRet to Tensor conversion here.
+                 for (const auto& ret : *function_rets) {
+                   if (ret.index() == 0) {
+                     outputs->push_back(absl::get<Tensor>(ret));
+                   }
+                 }
+               }
+               delete function_rets;
                done(s);
              });
 }

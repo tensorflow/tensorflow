@@ -98,6 +98,11 @@ Resources = collections.namedtuple('Resources', [
 # "medium" timeout of the test runs.
 _DEFAULT_TIMEOUT_SEC = 200
 
+# The timeout in seconds to wait to force kill a child process. When a child
+# process times out we first try to SIGTERM it so that it has a chance to dump
+# stacktraces. However dumping stacktrace can take a long time.
+_FORCE_KILL_WAIT_SEC = 30
+
 
 class MultiProcessRunner(object):
   """A utility class to start multiple processes to simulate a cluster.
@@ -519,6 +524,12 @@ class MultiProcessRunner(object):
         if all(p.exitcode is not None for p in self._processes.values()):
           return
 
+  def _reraise_if_subprocess_error(self, process_statuses):
+    for process_status in process_statuses.values():
+      assert isinstance(process_status, _ProcessStatusInfo)
+      if not process_status.is_successful:
+        six.reraise(*process_status.exc_info)
+
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
 
@@ -571,9 +582,18 @@ class MultiProcessRunner(object):
       # Timeout. Force termination to dump worker processes stack trace.
       with self._process_lock:
         self._auto_restart = False
+      logging.error('Timeout when joining for child processes. Terminating...')
       self.terminate_all(sig=signal.SIGTERM)
-      self._watchdog_thread.join()
+      # Wait for the processes to terminate by themselves first, so they have a
+      # chance to dump stacktraces. After _FORCE_KILL_WAIT_SEC, we SIGKILL them.
+      self._watchdog_thread.join(_FORCE_KILL_WAIT_SEC)
+      if self._watchdog_thread.is_alive():
+        logging.error('Timeout when waiting for child processes to '
+                      'print stacktrace. Sending SIGKILL...')
+        self.terminate_all()
+        self._watchdog_thread.join()
       process_statuses = self._get_process_statuses()
+      self._reraise_if_subprocess_error(process_statuses)
       raise SubprocessTimeoutError('one or more subprocesses timed out.',
                                    self._get_mpr_result(process_statuses))
 
@@ -581,10 +601,7 @@ class MultiProcessRunner(object):
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
 
     process_statuses = self._get_process_statuses()
-    for process_status in process_statuses.values():
-      assert isinstance(process_status, _ProcessStatusInfo)
-      if not process_status.is_successful:
-        six.reraise(*process_status.exc_info)
+    self._reraise_if_subprocess_error(process_statuses)
 
     # Checking all the processes that are expected to exit properly.
     for (task_type, task_id), p in self._processes.items():

@@ -2419,7 +2419,8 @@ tensorflow::Status ParseTangentOutputs(
 tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
                                    PyObject* inputs, PyObject* results,
                                    const std::vector<PyObject*>& input_tangents,
-                                   std::vector<PyObject*>* output_tangents) {
+                                   std::vector<PyObject*>* output_tangents,
+                                   bool use_batch) {
   if (forward_gradient_function == nullptr) {
     return tensorflow::errors::Internal(
         "No forward gradient function registered.");
@@ -2430,9 +2431,10 @@ tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
   // Normalize the input sequence to a tuple so it works with function
   // caching; otherwise it may be an opaque _InputList object.
   tensorflow::Safe_PyObjectPtr input_tuple(PySequence_Tuple(inputs));
+  PyObject* to_batch = (use_batch) ? Py_True : Py_False;
   tensorflow::Safe_PyObjectPtr callback_args(
-      Py_BuildValue("OOOOO", op_name, attrs, input_tuple.get(), results,
-                    py_input_tangents.get()));
+      Py_BuildValue("OOOOOO", op_name, attrs, input_tuple.get(), results,
+                    py_input_tangents.get(), to_batch));
   tensorflow::Safe_PyObjectPtr py_result(
       PyObject_CallObject(forward_gradient_function, callback_args.get()));
   if (py_result == nullptr || PyErr_Occurred()) {
@@ -2555,7 +2557,8 @@ PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
   } else {
     tensorflow::eager::ForwardFunction<PyObject> wrapped_forward_function(
         [forward_function](const std::vector<PyObject*>& input_tangents,
-                           std::vector<PyObject*>* output_tangents) {
+                           std::vector<PyObject*>* output_tangents,
+                           bool use_batch = false) {
           return CallOpSpecificJVPFunction(forward_function, input_tangents,
                                            output_tangents);
         });
@@ -2797,7 +2800,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   return PyList_New(0);
 }
 
-PyObject* TFE_Py_ForwardAccumulatorNew() {
+PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
   TFE_Py_ForwardAccumulator_Type.tp_new = PyType_GenericNew;
   if (PyType_Ready(&TFE_Py_ForwardAccumulator_Type) < 0) return nullptr;
   TFE_Py_ForwardAccumulator* accumulator =
@@ -2808,7 +2811,7 @@ PyObject* TFE_Py_ForwardAccumulatorNew() {
             "ForwardAccumulator requires a PyVSpace to be registered."),
         nullptr);
   }
-  accumulator->accumulator = new ForwardAccumulator(*py_vspace);
+  accumulator->accumulator = new ForwardAccumulator(*py_vspace, use_batch);
   return reinterpret_cast<PyObject*>(accumulator);
 }
 
@@ -3166,9 +3169,9 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   tensorflow::eager::ForwardFunction<PyObject> py_forward_function(
       [op_name, attrs, inputs, results](
           const std::vector<PyObject*>& input_tangents,
-          std::vector<PyObject*>* output_tangents) {
+          std::vector<PyObject*>* output_tangents, bool use_batch) {
         return CallJVPFunction(op_name, attrs, inputs, results, input_tangents,
-                               output_tangents);
+                               output_tangents, use_batch);
       });
   tensorflow::eager::ForwardFunction<PyObject>* forward_function;
   if (c_op_name == "While" || c_op_name == "StatelessWhile" ||

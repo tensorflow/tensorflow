@@ -69,6 +69,17 @@ def TF_SameOperandsAndResultElementTypeResolveRef : NativeOpTrait<
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 
+// Trait to indicate operations that cannot be duplicated as they might carry
+// certain state around within their implementations.
+def TF_CannotDuplicate : NativeOpTrait<"TF::CannotDuplicate">;
+
+// Coefficient wise binary operation with implicit broadcasting support, for
+// example tf.Sub operation.
+def TF_CwiseBinary : NativeOpTrait<"TF::CwiseBinary">;
+
+// Coefficient wise unary operation, for example tf.Sqrt operation.
+def TF_CwiseUnary : NativeOpTrait<"TF::CwiseUnary">;
+
 // Variant of broadcastable trait that considers TF's subtype behavior.
 class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
     TCOpResIsShapedTypePred<opId, resId>,

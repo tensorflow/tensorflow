@@ -49,6 +49,8 @@ class BaseDenseAttention(Layer):
       flow of information from the future towards the past.
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
+    return_attention_scores: bool, it `True`, returns the attention scores
+      (after masking and softmax) as an additional output argument.
 
   Call Arguments:
 
@@ -68,15 +70,19 @@ class BaseDenseAttention(Layer):
     training: Python boolean indicating whether the layer should behave in
       training mode (adding dropout) or in inference mode (no dropout).
 
-  Output shape:
+  Output:
 
     Attention outputs of shape `[batch_size, Tq, dim]`.
+    [Optional] Attention scores after masking and softmax with shape
+      `[batch_size, Tq, Tv]`.
   """
 
-  def __init__(self, causal=False, dropout=0.0, **kwargs):
+  def __init__(self, causal=False, dropout=0.0, return_attention_scores=False,
+               **kwargs):
     super(BaseDenseAttention, self).__init__(**kwargs)
     self.causal = causal
     self.dropout = dropout
+    self.return_attention_scores = return_attention_scores
     self.supports_masking = True
 
   def _calculate_scores(self, query, key):
@@ -115,6 +121,8 @@ class BaseDenseAttention(Layer):
 
     Returns:
       Tensor of shape `[batch_size, Tq, dim]`.
+      Attention scores after masking and softmax with shape
+        `[batch_size, Tq, Tv]`.
     """
     if scores_mask is not None:
       padding_mask = math_ops.logical_not(scores_mask)
@@ -129,7 +137,7 @@ class BaseDenseAttention(Layer):
 
     weights = control_flow_util.smart_cond(training, dropped_weights,
                                            lambda: array_ops.identity(weights))
-    return math_ops.matmul(weights, value)
+    return math_ops.matmul(weights, value), weights
 
   # TODO(b/125916026): Consider exposing a __call__ method with named args.
   def call(self, inputs, mask=None, training=None):
@@ -156,12 +164,14 @@ class BaseDenseAttention(Layer):
     else:
       causal_mask = None
     scores_mask = _merge_masks(v_mask, causal_mask)
-    result = self._apply_scores(
+    result, attention_scores = self._apply_scores(
         scores=scores, value=v, scores_mask=scores_mask, training=training)
     if q_mask is not None:
       # Mask of shape [batch_size, Tq, 1].
       q_mask = array_ops.expand_dims(q_mask, axis=-1)
       result *= math_ops.cast(q_mask, dtype=result.dtype)
+    if self.return_attention_scores:
+      return result, attention_scores
     return result
 
   def compute_mask(self, inputs, mask=None):
@@ -199,6 +209,7 @@ class BaseDenseAttention(Layer):
     config = {
         'causal': self.causal,
         'dropout': self.dropout,
+        'return_attention_scores': self.return_attention_scores,
     }
     base_config = super(BaseDenseAttention, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -228,6 +239,8 @@ class Attention(BaseDenseAttention):
       flow of information from the future towards the past.
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
+    return_attention_scores: bool, it `True`, returns the attention scores
+      (after masking and softmax) as an additional output argument.
 
   Call Arguments:
 
@@ -247,9 +260,11 @@ class Attention(BaseDenseAttention):
     training: Python boolean indicating whether the layer should behave in
       training mode (adding dropout) or in inference mode (no dropout).
 
-  Output shape:
+  Output:
 
     Attention outputs of shape `[batch_size, Tq, dim]`.
+    [Optional] Attention scores after masking and softmax with shape
+      `[batch_size, Tq, Tv]`.
 
   The meaning of `query`, `value` and `key` depend on the application. In the
   case of text similarity, for example, `query` is the sequence embeddings of
@@ -363,6 +378,8 @@ class AdditiveAttention(BaseDenseAttention):
       flow of information from the future towards the past.
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
+    return_attention_scores: bool, it `True`, returns the attention scores
+      (after masking and softmax) as an additional output argument.
 
   Call Arguments:
 
@@ -382,9 +399,11 @@ class AdditiveAttention(BaseDenseAttention):
     training: Python boolean indicating whether the layer should behave in
       training mode (adding dropout) or in inference mode (no dropout).
 
-  Output shape:
+  Output:
 
     Attention outputs of shape `[batch_size, Tq, dim]`.
+    [Optional] Attention scores after masking and softmax with shape
+      `[batch_size, Tq, Tv]`.
 
   The meaning of `query`, `value` and `key` depend on the application. In the
   case of text similarity, for example, `query` is the sequence embeddings of

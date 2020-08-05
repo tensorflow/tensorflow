@@ -1239,7 +1239,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
 
-      with self.assertRaisesRegex(ValueError, 'incompatible with the layer'):
+      with self.assertRaisesRegex(ValueError, 'is incompatible with'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(

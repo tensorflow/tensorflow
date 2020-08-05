@@ -269,6 +269,7 @@ cc_library(
     hdrs = ["tpu_platform_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tpu_topology_external",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor",
     ],

@@ -114,6 +114,7 @@ class Sequential(functional.Functional):
     # Skip the init in FunctionalModel since model doesn't have input/output yet
     super(functional.Functional, self).__init__(  # pylint: disable=bad-super-call
         name=name, autocast=False)
+    base_layer.keras_api_gauge.get_cell('Sequential').set(True)
     self.supports_masking = True
     self._compute_output_and_mask_jointly = True
     self._auto_track_sub_layers = False
@@ -495,9 +496,15 @@ class Sequential(functional.Functional):
 
   @property
   def input_spec(self):
+    if hasattr(self, '_manual_input_spec'):
+      return self._manual_input_spec
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @input_spec.setter
+  def input_spec(self, value):
+    self._manual_input_spec = value
 
   @property
   def _trackable_saved_model_saver(self):

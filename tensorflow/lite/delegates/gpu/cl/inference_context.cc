@@ -390,9 +390,7 @@ void InferenceContext::Merge() {
       continue;
     }
     auto& linkable_node = nodes_[next_nodes[0]];
-    auto* elementwise =
-        dynamic_cast<ElementwiseOperation*>(linkable_node.operations[0].get());
-    if (!elementwise || !elementwise->IsLinkable() ||
+    if (!linkable_node.operations[0]->IsLinkable() ||
         linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
       continue;
@@ -410,9 +408,7 @@ void InferenceContext::Merge() {
   }
   for (auto& node : nodes_) {
     for (int j = 1; j < node.operations.size(); ++j) {
-      auto* elementwise =
-          dynamic_cast<ElementwiseOperation*>(node.operations[j].get());
-      node.operations[0]->AddOperation(elementwise);
+      node.operations[0]->AddOperation(node.operations[j].get());
     }
   }
 }

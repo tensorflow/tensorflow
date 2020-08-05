@@ -80,7 +80,7 @@ absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
 
 absl::Status GenerateMultiplyScalarCode(
     const NodeShader::GenerationContext& ctx, GeneratedCode* generated_code) {
-  const auto& attr = absl::any_cast<const MultiplyAttributes&>(ctx.op_attr);
+  const auto& attr = absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
   auto muls = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
   auto scalar = absl::get_if<float>(&attr.param);
 

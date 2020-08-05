@@ -2036,20 +2036,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "gather_op_test",
-    size = "medium",
-    srcs = ["gather_op_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
     name = "gradient_correctness_test",
     size = "small",
     srcs = ["gradient_correctness_test.py"],
@@ -2452,18 +2438,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "session_ops_test",
-    size = "small",
-    srcs = ["session_ops_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session_ops",
     ],
 )
 

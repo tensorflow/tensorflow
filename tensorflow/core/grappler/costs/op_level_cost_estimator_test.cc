@@ -939,24 +939,29 @@ TEST_F(OpLevelCostEstimatorTest, SquaredDifferenceExecutionTime) {
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
 }
 
-TEST_F(OpLevelCostEstimatorTest, ReluExecutionTime) {
-  auto cost = PredictCosts(DescribeUnaryOp("Relu", 1000));
-  EXPECT_EQ(Costs::Duration(800), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(100), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(900), cost.execution_time);
-  EXPECT_EQ(1, cost.num_ops_total);
-  EXPECT_FALSE(cost.inaccurate);
-  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
-}
+TEST_F(OpLevelCostEstimatorTest, UnaryOpExecutionTime) {
+  std::vector<std::pair<std::string, int>> unary_ops = {
+      {"All", 1},  {"ArgMax", 1}, {"Cast", 1},  {"Max", 1}, {"Min", 1},
+      {"Prod", 1}, {"Relu", 1},   {"Relu6", 1}, {"Sum", 1}, {"TopKV2", 1}};
 
-TEST_F(OpLevelCostEstimatorTest, CastExecutionTime) {
-  auto cost = PredictCosts(DescribeUnaryOp("Cast", 1000));
-  EXPECT_EQ(Costs::Duration(800), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(100), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(900), cost.execution_time);
-  EXPECT_EQ(1, cost.num_ops_total);
-  EXPECT_FALSE(cost.inaccurate);
-  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  const int kTensorSize = 1000;
+  for (auto unary_op : unary_ops) {
+    OpContext op_context = DescribeUnaryOp(unary_op.first, kTensorSize);
+
+    const int kExpectedMemoryTime = 800;
+    int expected_compute_time = std::ceil(
+        unary_op.second * kTensorSize /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(expected_compute_time + kExpectedMemoryTime));
+    EXPECT_EQ(cost.num_ops_total, 1);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+    EXPECT_FALSE(cost.inaccurate);
+  }
 }
 
 TEST_F(OpLevelCostEstimatorTest, BroadcastAddExecutionTime) {

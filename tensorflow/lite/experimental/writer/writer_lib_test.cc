@@ -47,6 +47,7 @@ TEST(Writer, FloatModelTest) {
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
   const TfLiteRegistration* reg = resolver.FindOp(BuiltinOperator_ADD, 1);
   interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0,
                                     reinterpret_cast<void*>(builtin_data), reg);
@@ -84,6 +85,7 @@ TEST(Writer, CustomInputOutputTest) {
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
   const TfLiteRegistration* reg = resolver.FindOp(BuiltinOperator_ADD, 1);
   interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0,
                                     reinterpret_cast<void*>(builtin_data), reg);
@@ -131,6 +133,7 @@ TEST(Writer, CustomInputOutputErrorCasesTest) {
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
   const TfLiteRegistration* reg = resolver.FindOp(BuiltinOperator_ADD, 1);
   interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0,
                                     reinterpret_cast<void*>(builtin_data), reg);
@@ -173,6 +176,7 @@ TEST(Writer, PerTensorQuantizedModelTest) {
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
   const TfLiteRegistration* reg = resolver.FindOp(BuiltinOperator_ADD, 1);
   interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0,
                                     reinterpret_cast<void*>(builtin_data), reg);

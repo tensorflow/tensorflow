@@ -97,7 +97,6 @@ cc_test(
     srcs = ["model_test.cc"],
     deps = [
         ":model",
-        ":status",
         "@com_google_googletest//:gtest_main",
     ],
 )

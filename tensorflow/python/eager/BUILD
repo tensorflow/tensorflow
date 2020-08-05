@@ -853,12 +853,10 @@ tf_py_test(
 tf_xla_py_test(
     name = "def_function_xla_jit_test",
     srcs = ["def_function_xla_jit_test.py"],
-    enable_mlir_bridge = True,
-    enabled_backends = [
-        # TODO(b/162438052): Enable the test on TPU.
-        "cpu",
-        "gpu",
+    disabled_backends = [
+        "cpu_ondemand",
     ],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_mac",

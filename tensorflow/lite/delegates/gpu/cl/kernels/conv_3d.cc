@@ -175,7 +175,15 @@ Conv3D::Conv3D(const OperationDef& definition,
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
                    attr.weights.shape.d),
       dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d),
-      conv_params_(GuessBestParams(device, definition, attr)) {}
+      conv_params_(GuessBestParams(device, definition, attr)) {
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateConv3D(definition_, stride_correction, conv_params_);
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+  }
+}
 
 Conv3D::Conv3D(Conv3D&& operation)
     : GPUOperation(std::move(operation)),
@@ -195,29 +203,6 @@ Conv3D& Conv3D::operator=(Conv3D&& operation) {
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
-}
-
-absl::Status Conv3D::Compile(const CreationContext& creation_context) {
-  const bool stride_correction =
-      definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code =
-      GenerateConv3D(definition_, stride_correction, conv_params_);
-  work_group_size_ = conv_params_.work_group_size;
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status Conv3D::BindArguments() {

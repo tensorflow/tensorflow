@@ -197,8 +197,6 @@ Status DataServiceWorkerImpl::Register() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   for (const TaskDef& task : resp.tasks()) {
     TF_RETURN_IF_ERROR(ProcessTaskInternal(task));
   }
-  worker_id_ = resp.worker_id();
-  VLOG(3) << "Registered worker with id " << resp.worker_id();
   return Status::OK();
 }
 
@@ -207,7 +205,6 @@ Status DataServiceWorkerImpl::SendTaskUpdate() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           << " task updates to dispatcher";
   TF_RETURN_IF_ERROR(EnsureDispatcherStubInitialized());
   WorkerUpdateRequest req;
-  req.set_worker_id(worker_id_);
   for (int task_id : pending_completed_tasks_) {
     TaskProgress* update = req.add_updates();
     update->set_task_id(task_id);

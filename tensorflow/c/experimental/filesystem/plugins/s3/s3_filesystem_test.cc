@@ -439,6 +439,51 @@ TEST_F(S3FilesystemTest, StatFile) {
   EXPECT_FALSE(stat.is_directory);
 }
 
+TEST_F(S3FilesystemTest, SimpleCopyFile) {
+  const std::string src = GetURIForPath("SimpleCopySrc");
+  const std::string dst = GetURIForPath("SimpleCopyDst");
+  WriteString(src, "test");
+  ASSERT_TF_OK(status_);
+
+  tf_s3_filesystem::CopyFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(result, "test");
+}
+
+TEST_F(S3FilesystemTest, RenameFile) {
+  const std::string src = GetURIForPath("RenameFileSrc");
+  const std::string dst = GetURIForPath("RenameFileDst");
+  WriteString(src, "test");
+  ASSERT_TF_OK(status_);
+
+  tf_s3_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test", result);
+}
+
+TEST_F(S3FilesystemTest, RenameFileOverwrite) {
+  const std::string src = GetURIForPath("RenameFileOverwriteSrc");
+  const std::string dst = GetURIForPath("RenameFileOverwriteDst");
+
+  WriteString(src, "test_old");
+  ASSERT_TF_OK(status_);
+  WriteString(dst, "test_new");
+  ASSERT_TF_OK(status_);
+
+  tf_s3_filesystem::PathExists(filesystem_, dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_s3_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test_old", result);
+}
+
 // Test against large file.
 TEST_F(S3FilesystemTest, ReadLargeFile) {
   auto local_path = GetLocalLargeFile();
@@ -456,6 +501,29 @@ TEST_F(S3FilesystemTest, ReadLargeFile) {
   server_content = ReadAllInChunks(server_path, buffer_size, false);
   ASSERT_TF_OK(status_);
   EXPECT_EQ(local_content, server_content);
+}
+
+TEST_F(S3FilesystemTest, CopyLargeFile) {
+  auto server_path = GetServerLargeFile();
+  if (server_path.empty()) GTEST_SKIP();
+
+  auto path = GetURIForPath("CopyLargeFile");
+  constexpr size_t buffer_size = 5 * 1024 * 1024;
+  auto s3_file =
+      static_cast<tf_s3_filesystem::S3File*>(filesystem_->plugin_filesystem);
+  s3_file->multi_part_chunk_sizes[Aws::Transfer::TransferDirection::UPLOAD] =
+      buffer_size;
+  tf_s3_filesystem::CopyFile(filesystem_, server_path.c_str(), path.c_str(),
+                             status_);
+  EXPECT_TF_OK(status_);
+
+  auto server_size =
+      tf_s3_filesystem::GetFileSize(filesystem_, server_path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  auto actual_size =
+      tf_s3_filesystem::GetFileSize(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(server_size, actual_size);
 }
 
 }  // namespace

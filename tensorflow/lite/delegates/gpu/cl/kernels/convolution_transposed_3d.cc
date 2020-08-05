@@ -30,15 +30,28 @@ namespace cl {
 
 ConvolutionTransposed3D::ConvolutionTransposed3D(
     const OperationDef& definition,
-    const ConvolutionTransposed3DAttributes& attr, const CLDevice& device)
+    const ConvolutionTransposed3DAttributes& attr,
+    const DeviceInfo& device_info)
     : GPUOperation(definition),
-      weights_are_buffer_(device.IsMali()),
+      weights_are_buffer_(device_info.IsMali()),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
                    attr.weights.shape.d),
       stride_(attr.stride.w, attr.stride.h, attr.stride.d),
       padding_(attr.padding.prepended.w, attr.padding.prepended.h,
                attr.padding.prepended.d),
-      block_size_(2, 2, 1, 2) {}
+      block_size_(2, 2, 1, 2) {
+  code_ = GenerateConvolutionTransposed3DCode(definition_, weights_are_buffer_,
+                                              block_size_);
+  if (device_info.IsPowerVR() && block_size_.y != 1) {
+    bool is_texture3d = definition_.src_tensors[0].storage_type ==
+                        TensorStorageType::TEXTURE_3D;
+    bool is_texture_array = definition_.src_tensors[0].storage_type ==
+                            TensorStorageType::TEXTURE_ARRAY;
+    if (is_texture3d || is_texture_array) {
+      compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
+    }
+  }
+}
 
 ConvolutionTransposed3D::ConvolutionTransposed3D(
     ConvolutionTransposed3D&& operation)
@@ -63,10 +76,10 @@ ConvolutionTransposed3D& ConvolutionTransposed3D::operator=(
 }
 
 std::string ConvolutionTransposed3D::GenerateConvolutionTransposed3DCode(
-    const OperationDef& op_def, const CLDevice& device, bool weights_are_buffer,
+    const OperationDef& op_def, bool weights_are_buffer,
     const int4& block_size) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   AddSrcTensor("src_tensor", src_desc);
 
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
@@ -356,32 +369,6 @@ std::string ConvolutionTransposed3D::GenerateConvolutionTransposed3DCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed3D::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateConvolutionTransposed3DCode(
-      definition_, *creation_context.device, weights_are_buffer_, block_size_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (creation_context.device->IsPowerVR() && block_size_.y != 1) {
-    bool is_texture3d = definition_.src_tensors[0].storage_type ==
-                        TensorStorageType::TEXTURE_3D;
-    bool is_texture_array = definition_.src_tensors[0].storage_type ==
-                            TensorStorageType::TEXTURE_ARRAY;
-    if (is_texture3d || is_texture_array) {
-      options.push_back(CompilerOptions::CL_OPT_DISABLE);
-    }
-  }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 absl::Status ConvolutionTransposed3D::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
   RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
@@ -416,7 +403,8 @@ absl::Status CreateConvolutionTransposed3D(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr,
     ConvolutionTransposed3D* result) {
-  *result = ConvolutionTransposed3D(definition, attr, *creation_context.device);
+  *result = ConvolutionTransposed3D(definition, attr,
+                                    creation_context.device->GetInfo());
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 

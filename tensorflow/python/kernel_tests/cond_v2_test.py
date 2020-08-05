@@ -147,7 +147,7 @@ class CondV2Test(test.TestCase):
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.0)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       op = v.assign_add(1.0)
 
       def true_branch():
@@ -1237,6 +1237,30 @@ class CondV2Test(test.TestCase):
     self.assertEqual(len(if_op.outputs), 1)
     # pylint: enable=g-deprecated-assert
 
+  def testIsControlFlowGraph(self):
+    x = constant_op.constant(1.0, name="x")
+
+    @def_function.function
+    def f(c):
+
+      def then_branch():
+        i = x + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      def else_branch():
+        i = x + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      return cond_v2.cond_v2(c, then_branch, else_branch)
+
+    i = f(constant_op.constant(True))
+    self.assertEqual(self.evaluate(i), 2.0)
+
+    i = f(constant_op.constant(False))
+    self.assertEqual(self.evaluate(i), 2.0)
+
 
 class CondV2CollectionTest(test.TestCase):
 
@@ -1254,7 +1278,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.add(x_const, y_const)
 
         cnd = cond_v2.cond_v2(constant_op.constant(True), fn, fn)
-        self.assertEqual(cnd.eval(), 7)
+        self.assertEqual(self.evaluate(cnd), 7)
 
   def testCollectionTensorValueAccessInCond(self):
     """Read tensors from collections inside of cond_v2 & use them."""
@@ -1271,7 +1295,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.add(x_read, y_read)
 
         cnd = cond_v2.cond_v2(math_ops.less(x, y), fn, fn)
-        self.assertEqual(cnd.eval(), 7)
+        self.assertEqual(self.evaluate(cnd), 7)
 
   def testCollectionIntValueWriteInCond(self):
     """Make sure Int writes to collections work inside of cond_v2."""
@@ -1289,7 +1313,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.mul(x, z)
 
         cnd = cond_v2.cond_v2(constant_op.constant(True), true_fn, false_fn)
-        self.assertEqual(cnd.eval(), 14)
+        self.assertEqual(self.evaluate(cnd), 14)
 
         read_z_collection = ops.get_collection("z")
         self.assertEqual(read_z_collection, [7])
@@ -1363,11 +1387,11 @@ class CondV2ContainerTest(test.TestCase):
         with ops.container("l1"):
           cnd_true = cond_v2.cond_v2(
               constant_op.constant(True), true_fn, false_fn)
-          self.assertEqual(cnd_true.eval(), 2)
+          self.assertEqual(self.evaluate(cnd_true), 2)
 
           cnd_false = cond_v2.cond_v2(
               constant_op.constant(False), true_fn, false_fn)
-          self.assertEqual(cnd_false.eval(), 6)
+          self.assertEqual(self.evaluate(cnd_false), 6)
 
           v4 = variables.Variable([3])
           q4 = data_flow_ops.FIFOQueue(1, dtypes.float32)

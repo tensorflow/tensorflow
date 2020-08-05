@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/experimental/saved_model/public/function_metadata.h"
-#include "tensorflow/c/experimental/saved_model/public/tensorhandle_list.h"
 
 #ifdef __cplusplus
 extern "C" {

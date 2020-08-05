@@ -1,3 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
@@ -13,5 +16,17 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "session_ops_test",
+    size = "small",
+    srcs = ["session_ops_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session_ops",
     ],
 )

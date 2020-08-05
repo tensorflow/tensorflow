@@ -51,7 +51,7 @@ TEST(AddQuantAdjustments, OneNode) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(8);
   add_tensor.data.resize(8);
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
   auto add_node = graph.NewNode();
   add_node->operation.type = ToString(OperationType::ADD);
@@ -95,7 +95,7 @@ TEST(AddQuantAdjustments, GeneralCase) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(8);
   add_tensor.data.resize(8);
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
   auto add1_node = graph.NewNode();
   add1_node->operation.type = ToString(OperationType::ADD);

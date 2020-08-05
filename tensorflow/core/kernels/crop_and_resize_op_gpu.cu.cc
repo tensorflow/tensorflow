@@ -352,7 +352,7 @@ struct CropAndResize<GPUDevice, T> {
                   typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
-                  const string& method_name, float extrapolation_value,
+                  const std::string& method_name, float extrapolation_value,
                   typename TTypes<float, 4>::Tensor crops) {
     const int batch = image.dimension(0);
     const int image_height = image.dimension(1);
@@ -391,7 +391,7 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
                   typename TTypes<T, 4>::Tensor grads_image,
-                  const string& method_name) {
+                  const std::string& method_name) {
     const int batch = grads_image.dimension(0);
     const int image_height = grads_image.dimension(1);
     const int image_width = grads_image.dimension(2);

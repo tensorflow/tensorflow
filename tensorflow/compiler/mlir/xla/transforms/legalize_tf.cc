@@ -2630,19 +2630,21 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
     if (!input_ty) return failure();
 
     const int64_t rank = input_ty.getRank();
-    auto result_type = op.getResult().getType();
-    Operation *size =
-        GetScalarConstOfType(result_type.cast<TensorType>().getElementType(),
-                             op.getLoc(), 1, &rewriter);
+    auto result_ty = op.getResult().getType();
+    auto element_ty = result_ty.cast<TensorType>().getElementType();
+    Value size = GetScalarConstOfType(element_ty, op.getLoc(), 1, &rewriter);
     for (int64_t i = 0; i < rank; ++i) {
-      auto dim = rewriter.create<GetDimensionSizeOp>(
-          op.getLoc(), result_type, input,
-          rewriter.getIntegerAttr(rewriter.getIntegerType(32), i));
+      auto i32_ty = rewriter.getIntegerType(32);
+      auto size_ty = RankedTensorType::get({}, i32_ty);
+      auto dim_index = rewriter.getIntegerAttr(i32_ty, i);
+      Value dim = rewriter.create<GetDimensionSizeOp>(op.getLoc(), size_ty,
+                                                      input, dim_index);
+      dim = rewriter.create<mhlo::ConvertOp>(op.getLoc(), result_ty, dim);
       size = rewriter.create<chlo::BroadcastMulOp>(
-          op.getLoc(), size->getResult(0), dim.getResult(),
+          op.getLoc(), size, dim,
           /*DenseIntElementsAttr=*/DenseIntElementsAttr());
     }
-    rewriter.replaceOp(op, size->getResult(0));
+    rewriter.replaceOp(op, size);
 
     return success();
   }
@@ -2685,7 +2687,8 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                      rhs_type.getShape().drop_back(2),
                                      result_batch_shape_compile_time_extents);
   auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
-      loc, lhs_splitted.head(), rhs_splitted.head(),
+      loc, shape::ShapeType::get(rewriter->getContext()), lhs_splitted.head(),
+      rhs_splitted.head(),
       /*error=*/nullptr);
   // Lambda which handles the broadcasting of one side to the common
   // leading-batch dimensions.

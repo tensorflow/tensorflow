@@ -24,6 +24,11 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+Reshapex4::Reshapex4(const OperationDef& definition)
+    : GPUOperation(definition) {
+  code_ = GetReshapeCode(definition_);
+}
+
 Reshapex4::Reshapex4(Reshapex4&& operation)
     : GPUOperation(std::move(operation)) {}
 
@@ -75,19 +80,6 @@ std::string Reshapex4::GetReshapeCode(const OperationDef& op_def) {
   c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
   c += "}\n";
   return c;
-}
-
-absl::Status Reshapex4::Compile(const CreationContext& creation_context) {
-  std::string code = GetReshapeCode(definition_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 int3 Reshapex4::GetGridSize() const {

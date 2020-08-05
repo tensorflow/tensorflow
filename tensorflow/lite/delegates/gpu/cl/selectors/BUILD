@@ -108,6 +108,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_common",
         "//tensorflow/lite/delegates/gpu/cl/kernels:elementwise",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:mean_stddev_normalization",
         "//tensorflow/lite/delegates/gpu/cl/selectors:default_selector",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",

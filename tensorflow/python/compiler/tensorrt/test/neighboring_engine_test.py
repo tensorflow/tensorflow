@@ -61,6 +61,12 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
         "TRTEngineOp_1": ["weights", "conv"]
     }
 
+  def ShouldRunTest(self, run_params):
+    # TODO(b/162447069): Enable the test for TRT 7.1.3.
+    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
+      return (False, "Skip test due to b/162447069")
+    return super().ShouldRunTest(run_params)
+
 
 if __name__ == "__main__":
   test.main()

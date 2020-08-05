@@ -40,7 +40,6 @@ class ConvolutionTransposed4x4 : public GPUOperation {
   absl::Status Tune(const TuningParameters& params) override {
     return absl::OkStatus();
   }
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -73,8 +72,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
                             absl::Span<T> dst);
 
   std::string GenerateConvolutionTransposedCode(
-      const OperationDef& op_def,
-      ConvolutionTransposed4x4::WeightsUploadType weights_upload_type);
+      const OperationDef& op_def, WeightsUploadType weights_upload_type);
 
   WeightsUploadType weights_upload_type_;
 };

@@ -28,25 +28,25 @@ namespace gpu {
 namespace cl {
 
 ConvolutionTransposedThin::ConvolutionTransposedThin(
-    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
-    : GPUOperation(definition),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
-      src_channels_(attr.weights.shape.i),
-      dst_channels_(attr.weights.shape.o) {}
+    const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
+    const DeviceInfo& device_info)
+    : GPUOperation(definition) {
+  code_ = GenerateConvolutionTransposedCode(
+      definition_, DivideRoundUp(attr.weights.shape.i, 4), attr.weights.shape.o,
+      int2(attr.weights.shape.w, attr.weights.shape.h));
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device_info.IsAdreno3xx()) {
+    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+  }
+}
 
 ConvolutionTransposedThin::ConvolutionTransposedThin(
     ConvolutionTransposedThin&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_size_(operation.kernel_size_),
-      src_channels_(operation.src_channels_),
-      dst_channels_(operation.dst_channels_) {}
+    : GPUOperation(std::move(operation)) {}
 
 ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
     ConvolutionTransposedThin&& operation) {
   if (this != &operation) {
-    std::swap(kernel_size_, operation.kernel_size_);
-    std::swap(src_channels_, operation.src_channels_);
-    std::swap(dst_channels_, operation.dst_channels_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -151,29 +151,6 @@ std::string ConvolutionTransposedThin::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposedThin::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateConvolutionTransposedCode(
-      definition_, DivideRoundUp(src_channels_, 4), dst_channels_,
-      kernel_size_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsAdreno3xx()) {
-    options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
-  }
-
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 int3 ConvolutionTransposedThin::GetGridSize() const {
   const int grid_x = src_[0]->Width() * dst_[0]->Batch();
   const int grid_y = src_[0]->Height();
@@ -197,7 +174,8 @@ absl::Status CreateConvolutionTransposedThin(
     return absl::InvalidArgumentError(
         "ConvolutionTransposedThin doesn't support this attributes");
   }
-  *result = ConvolutionTransposedThin(definition, attr);
+  *result = ConvolutionTransposedThin(definition, attr,
+                                      creation_context.device->GetInfo());
   RETURN_IF_ERROR(
       result->UploadData(attr.weights, attr.bias, creation_context.context));
   return absl::OkStatus();

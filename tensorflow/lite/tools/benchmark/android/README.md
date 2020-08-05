@@ -27,12 +27,9 @@ to edit the `WORKSPACE` to configure the android NDK/SDK.
 
 ```
 bazel build -c opt \
-  --config=monolithic \
   --config=android_arm64 \
-  --cxxopt='--std=c++14' \
   tensorflow/lite/tools/benchmark/android:benchmark_model
 ```
-Note: "--config=monolithic" was added to support TF ops via [Flex delegate](https://www.tensorflow.org/lite/guide/ops_select).
 
 (Optional) To enable Hexagon delegate with `--use_hexagon=true` option, you can
 download and install the libraries as the guided in [hexagon delegate]
