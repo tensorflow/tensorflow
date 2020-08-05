@@ -46,9 +46,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#if !defined(PLATFORM_WINDOWS)
-#include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
-#endif  // !PLATFORM_WINDOWS
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // !IS_MOBILE_PLATFORM
 

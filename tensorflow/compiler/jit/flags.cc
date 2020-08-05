@@ -268,10 +268,4 @@ void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
   AppendMarkForCompilationPassFlagsInternal(flag_list);
 }
 
-static bool xla_is_enabled = false;
-
-void SetXlaIsEnabled() { xla_is_enabled = true; }
-
-bool IsXlaEnabled() { return xla_is_enabled; }
-
 }  // namespace tensorflow
