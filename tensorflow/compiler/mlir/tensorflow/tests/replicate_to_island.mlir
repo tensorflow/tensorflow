@@ -223,3 +223,36 @@ func @replica_id_attr_added(%arg0: tensor<!tf.string>, %arg1: tensor<!tf.string>
 // CHECK:      "tf.A"
 // CHECK-NOT:   _xla_replica_id
 // CHECK:      tf_executor.fetch
+
+
+// Tests device ordinals are added to `tf._XlaSendFromHost`/`tf._XlaRecvAtHost`
+// based on the first TPU core device id.
+// CHECK-LABEL: func @device_ordinals
+func @device_ordinals(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      tf_device.replicate([%arg0, %arg0] as %arg2: tensor<f32>) {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
+        %0 = "tf._XlaRecvAtHost"(%arg1) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_send_0"} : (tensor<2x!tf.string>) -> tensor<f32>
+        "tf._XlaSendFromHost"(%0, %arg1) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_recv_0"} : (tensor<f32>, tensor<2x!tf.string>) -> ()
+        "tf.NoOp"() : () -> ()
+        tf_device.return
+      }
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK:      tf_executor.island
+// CHECK:      "tf._XlaRecvAtHost"
+// CHECK-SAME:   device_ordinal = 1
+// CHECK:      "tf._XlaSendFromHost"
+// CHECK-SAME:   device_ordinal = 1
+// CHECK:      "tf.NoOp"
+// CHECK:      tf_executor.island
+// CHECK:      "tf._XlaRecvAtHost"
+// CHECK-SAME:   device_ordinal = 2
+// CHECK:      "tf._XlaSendFromHost"
+// CHECK-SAME:   device_ordinal = 2
+// CHECK:      "tf.NoOp"

@@ -191,8 +191,8 @@ void* TF_LoadSharedLibrary(const char* library_filename, TF_Status* status) {
   void* handle = nullptr;
   TF_SetStatus(status, TF_OK, "");
   ::tensorflow::Set_TF_Status_from_Status(
-      status,
-      ::tensorflow::Env::Default()->LoadLibrary(library_filename, &handle));
+      status, ::tensorflow::Env::Default()->LoadDynamicLibrary(library_filename,
+                                                               &handle));
   return handle;
 }
 

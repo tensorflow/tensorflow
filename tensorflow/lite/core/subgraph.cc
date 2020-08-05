@@ -637,6 +637,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
 
   next_execution_plan_index_to_prepare_ = 0;
   next_execution_plan_index_to_plan_allocation_ = 0;
+  next_original_execution_plan_index_to_prepare_ = 0;
   if (memory_planner_) {
     TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
   }
@@ -829,13 +830,14 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
 }
 
 TfLiteStatus Subgraph::PrepareOpsStartingAt(
-    int first_execution_plan_index, int* last_execution_plan_index_prepared) {
+    int first_execution_plan_index, const std::vector<int>& execution_plan,
+    int* last_execution_plan_index_prepared) {
   if (first_execution_plan_index == 0) {
     has_dynamic_tensors_ = false;
   }
   for (int execution_plan_index = first_execution_plan_index;
-       execution_plan_index < execution_plan_.size(); execution_plan_index++) {
-    int node_index = execution_plan_[execution_plan_index];
+       execution_plan_index < execution_plan.size(); execution_plan_index++) {
+    int node_index = execution_plan[execution_plan_index];
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
@@ -867,10 +869,33 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
     memory_planner_->PlanAllocations();
   }
 
-  int last_exec_plan_index_prepared = 0;
+  // Prepare original execution plan if any applied delegate wants it.
+  // If any of the delegates is immutable, this won't be triggered
+  // post-delegation (since we undo/redo delegation). For all other cases, other
+  // delegates that do shape propagation themselves would still be able to.
+  bool prepare_original_plan = false;
+  if (!pre_delegation_execution_plan_.empty()) {
+    for (int i = 0; i < delegates_applied_.size(); ++i) {
+      if ((delegates_applied_[i]->flags &
+           kTfLiteDelegateFlagsRequirePropagatedShapes)) {
+        prepare_original_plan = true;
+        break;
+      }
+    }
+  }
+  if (prepare_original_plan) {
+    int last_original_exec_plan_index_prepared = 0;
+    TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
+        next_execution_plan_index_to_prepare_, pre_delegation_execution_plan_,
+        &last_original_exec_plan_index_prepared));
+    next_original_execution_plan_index_to_prepare_ =
+        last_original_exec_plan_index_prepared + 1;
+  }
 
-  TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
-      next_execution_plan_index_to_prepare_, &last_exec_plan_index_prepared));
+  int last_exec_plan_index_prepared = 0;
+  TF_LITE_ENSURE_STATUS(
+      PrepareOpsStartingAt(next_execution_plan_index_to_prepare_,
+                           execution_plan_, &last_exec_plan_index_prepared));
   next_execution_plan_index_to_prepare_ = last_exec_plan_index_prepared + 1;
 
   TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(
@@ -1366,8 +1391,9 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 
   if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
     int last_execution_plan_index_prepared;
-    TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
-                                     0, &last_execution_plan_index_prepared));
+    TF_LITE_ENSURE_OK(
+        &context_, PrepareOpsStartingAt(0, execution_plan_,
+                                        &last_execution_plan_index_prepared));
     if (has_dynamic_tensors_) {
       // Make sure that we are in a defined ready state before returning.
       // Plan and allocate tensors before returning.

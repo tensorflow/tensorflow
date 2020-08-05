@@ -89,8 +89,13 @@ bool GPUCompatibilityList::Includes(
   return variables[gpu::kStatus] == std::string(gpu::kStatusSupported);
 }
 
-bool GPUCompatibilityList::IsDatabaseLoaded() const {
-  return database_ != nullptr;
+TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
+    const AndroidInfo& /* android_info */,
+    const ::tflite::gpu::GpuInfo& /* gpu_info */) const {
+  // This method is for forwards-compatibility: the list may later include
+  // information about which backend to choose (OpenGL/OpenCL/Vulkan) or other
+  // options.
+  return TfLiteGpuDelegateOptionsV2Default();
 }
 
 }  // namespace acceleration

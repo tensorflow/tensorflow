@@ -414,7 +414,7 @@ class MultiProcessRunnerTest(test.TestCase):
         multi_worker_test_base.create_cluster_spec(num_workers=1),
         auto_restart=True)
     mpr.start()
-    with self.assertRaises(multi_process_runner.SubprocessTimeoutError):
+    with self.assertRaises(ValueError):
       mpr.join(timeout=10)
 
   def test_auto_restart_and_chief(self):
@@ -477,6 +477,38 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr.terminate('worker', 0)
     mpr.join(timeout=20)
     self.assertEqual(counter.value, 2)
+
+  def test_error_reporting_overrides_timeout_reporting(self):
+
+    def proc_func():
+      if self._worker_idx() == 1:
+        time.sleep(10000)
+      raise ValueError('Worker 0 errored')
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func,
+        multi_worker_test_base.create_cluster_spec(num_workers=2))
+    mpr.start()
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'Worker 0 errored'):
+      mpr.join(timeout=20)
+
+  def test_process_exists(self):
+
+    def proc_func():
+      time.sleep(100000)
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func,
+        multi_worker_test_base.create_cluster_spec(num_workers=1))
+    mpr.start()
+    self.assertTrue(mpr.process_exists('worker', 0))
+    mpr.terminate('worker', 0)
+    # Worker 0 should exit at some point, or else the test would time out.
+    while mpr.process_exists('worker', 0):
+      time.sleep(1)
 
 
 class MultiProcessPoolRunnerTest(test.TestCase):

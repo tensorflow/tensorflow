@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -45,6 +46,7 @@ namespace TFDevice {
 namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kReplicaIdAttr[] = "_xla_replica_id";
+constexpr char kDeviceOrdinalAttr[] = "device_ordinal";
 
 struct ReplicateToIslandPass
     : public PassWrapper<ReplicateToIslandPass, FunctionPass> {
@@ -55,6 +57,11 @@ struct ReplicateToIslandPass
 bool RequiresReplicaIDAttribute(Operation* op) {
   return llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
                    TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op);
+}
+
+bool RequiresDeviceOrdinalAttribute(Operation* op) {
+  return llvm::isa<TF::_XlaSendFromHostOp>(op) ||
+         llvm::isa<TF::_XlaRecvAtHostOp>(op);
 }
 
 // Adds integer attribute that represents replica id for replicated ops that
@@ -125,6 +132,20 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
               kDeviceAttr,
               device_by_replica.cast<ArrayAttr>()[i].cast<StringAttr>());
       });
+
+      if (auto tpu_replica_0 =
+              devices.getValue().get("TPU_REPLICATED_CORE_0")) {
+        int64_t device_ordinal = 0;
+        tensorflow::GetDeviceOrdinalFromDeviceString(
+            replicate_op.getLoc(),
+            tpu_replica_0.cast<ArrayAttr>()[i].cast<StringAttr>().getValue(),
+            &device_ordinal);
+        replica.walk([&](Operation* op) {
+          if (RequiresDeviceOrdinalAttribute(op))
+            op->setAttr(kDeviceOrdinalAttr,
+                        builder->getI64IntegerAttr(device_ordinal));
+        });
+      }
     }
 
     replicas.push_back(replica);

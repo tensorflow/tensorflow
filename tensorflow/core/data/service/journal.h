@@ -32,7 +32,7 @@ class JournalWriter {
  public:
   virtual ~JournalWriter() = default;
   // Writes and syncs an update to the journal.
-  virtual Status Write(Update update) = 0;
+  virtual Status Write(const Update& update) = 0;
 };
 
 // FileJournalWriter is not thread-safe, requiring external synchronization when
@@ -46,7 +46,7 @@ class FileJournalWriter : public JournalWriter {
   FileJournalWriter(const FileJournalWriter&) = delete;
   FileJournalWriter& operator=(const FileJournalWriter&) = delete;
 
-  Status Write(Update update) override;
+  Status Write(const Update& update) override;
 
  private:
   // Initializes the writer if it is not yet initialized.

@@ -31,16 +31,19 @@ from tensorflow.python.training.server_lib import ClusterSpec
 
 class MetricUtilsTest(test.TestCase):
 
+  def get_rpc_layer(self):
+    return 'grpc'
+
   def testClientMetrics(self):
     metric_utils.enable_metrics = True
 
     cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=1, num_ps=1, rpc_layer='grpc')
+        num_workers=1, num_ps=1, rpc_layer=self.get_rpc_layer())
     cluster_def['chief'] = [
         'localhost:%d' % multi_worker_test_base.pick_unused_port()
     ]
     cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer='grpc')
+        ClusterSpec(cluster_def), rpc_layer=self.get_rpc_layer())
     cluster = client.Cluster(cluster_resolver)
 
     @def_function.function

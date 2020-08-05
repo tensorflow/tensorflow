@@ -1211,7 +1211,8 @@ void LoadDynamicKernelsInternal() {
         if (s.ok() || override_abi_check) {
           // TODO(gunan): Store the handles to the opened files.
           void* unused_filehandle;
-          TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+          TF_CHECK_OK(
+              env->LoadDynamicLibrary(fullpath.c_str(), &unused_filehandle));
         } else {
           LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
                        << s.error_message();

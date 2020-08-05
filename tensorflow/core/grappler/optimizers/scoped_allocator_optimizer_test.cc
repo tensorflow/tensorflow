@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -108,7 +109,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   // Constructs the following graph.
   // (Flow is top to bottom, like nature intends.)
   //
-  // a, b, and c are constants.  s is an Add op.  a1, a2, and a3 are Abs ops.
+  // a, b, and c are placeholders.  s is an Add op.  a1, a2, and a3 are Abs ops.
   // r1, r2, and r3 are Reshape ops.
   //
   // After this graph undergoes SA optimization, we expect a, b, and s to be
@@ -132,12 +133,12 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     Scope s = Scope::NewRootScope();
     s = s.WithDevice("/job:localhost/replica:0/task:0/device:CPU:0");
 
-    Output a =
-        ops::Const<float>(s.WithOpName("a"), {1.0, 0.0, 0.0, -1.0}, {2, 2});
-    Output b =
-        ops::Const<float>(s.WithOpName("b"), {1.0, -2.0, 3.0, 4.0}, {2, 2});
-    Output c =
-        ops::Const<float>(s.WithOpName("c"), {-5.0, -2.0, 0.0, -2.0}, {2, 2});
+    Output a = ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                                ops::Placeholder::Shape({2, 2}));
+    Output b = ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                                ops::Placeholder::Shape({2, 2}));
+    Output c = ops::Placeholder(s.WithOpName("c"), DT_FLOAT,
+                                ops::Placeholder::Shape({2, 2}));
     Output s1 = ops::Add(s.WithOpName("s1"), b, c);
     Output a1 = ops::Abs(s.WithOpName("a1"), a);
     Output a2 = ops::Abs(s.WithOpName("a2"), b);
@@ -167,14 +168,14 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     Scope s = Scope::NewRootScope();
     s = s.WithDevice("/job:localhost/replica:0/task:0/device:CPU:0");
 
-    Output a =
-        ops::Const<float>(s.WithOpName("a"), {0.0, 0.0, 0.0, 0.0}, {2, 2});
-    Output b =
-        ops::Const<float>(s.WithOpName("b"), {0.0, 0.0, 0.0, 0.0}, {2, 2});
-    Output ctl1 =
-        ops::Const<float>(s.WithOpName("ctl1"), {0.0, 0.0, 0.0, 0.0}, {2, 2});
-    Output ctl2 =
-        ops::Const<float>(s.WithOpName("ctl2"), {0.0, 0.0, 0.0, 0.0}, {2, 2});
+    Output a = ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                                ops::Placeholder::Shape({2, 2}));
+    Output b = ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                                ops::Placeholder::Shape({2, 2}));
+    Output ctl1 = ops::Placeholder(s.WithOpName("ctl1"), DT_FLOAT,
+                                   ops::Placeholder::Shape({2, 2}));
+    Output ctl2 = ops::Placeholder(s.WithOpName("ctl2"), DT_FLOAT,
+                                   ops::Placeholder::Shape({2, 2}));
     Output a1 = ops::Abs(s.WithOpName("a1").WithControlDependencies({ctl1}), a);
     Output a2 = ops::Abs(s.WithOpName("a2").WithControlDependencies({ctl2}), b);
     Output o1 = ops::Reshape(s.WithOpName("o1"), a1, {1, 4});
@@ -235,6 +236,33 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     Output r4 = ops::Reshape(sub_scope.WithOpName("r4"), a4, {4, 1});
 
     TF_CHECK_OK(root_scope.ToGraphDef(graph_def));
+  }
+
+  // Constructs the following graph.
+  //
+  // c1 and c2 are Const ops.  a1 and a2 are Abs ops.
+  // We expect the optimizer to fail, because Const ops do not allocate their
+  // output on every Compute, and hence are not compatible with ScopedAllocator.
+  /*
+          c1   c2
+          |    |
+          a1   a2
+          |    |
+          r1   r2
+  */
+  void BuildConstGraph(GraphDef* graph_def, bool forward) {
+    Scope s = Scope::NewRootScope();
+    s = s.WithDevice("/job:localhost/replica:0/task:0/device:CPU:0");
+
+    Output c1 =
+        ops::Const<float>(s.WithOpName("c1"), {1.0, 0.0, 0.0, -1.0}, {2, 2});
+    Output c2 =
+        ops::Const<float>(s.WithOpName("c2"), {1.0, -2.0, 3.0, 4.0}, {2, 2});
+    Output a1 = ops::Abs(s.WithOpName("a1"), c1);
+    Output a2 = ops::Abs(s.WithOpName("a2"), c2);
+    Output r1 = ops::Reshape(s.WithOpName("r1"), a1, {1, 4});
+    Output r2 = ops::Reshape(s.WithOpName("r2"), a2, {4, 1});
+    TF_CHECK_OK(s.ToGraphDef(graph_def));
   }
 
   void SetShapes(GraphDef* graph_def) {
@@ -529,6 +557,25 @@ TEST_F(ScopedAllocatorOptimizerTest, ControlEdgeRewire) {
   EXPECT_EQ(NumControlOutputs(*sa_split, node_map), 2);
   EXPECT_EQ(NumControlInputs(&node_map, "ctl3"), 1);
   EXPECT_EQ(NumControlInputs(&node_map, "ctl4"), 1);
+}
+
+// Test that the optimization fails when any input is a Const op.
+TEST_F(ScopedAllocatorOptimizerTest, ConstInput) {
+  GrapplerItem item;
+  BuildConstGraph(&item.graph, false);
+  SetShapes(&item.graph);
+
+  ScopedAllocatorOptions opts;
+  opts.add_enable_op("Abs");
+  ScopedAllocatorOptimizer sao(RewriterConfig::ON, opts);
+  ScopedAllocatorOptimizer::OpNameSet ons;
+  ons.insert("Abs");
+
+  GraphDef optimized_graph;
+  auto status = sao.Optimize(nullptr /*cluster*/, item, &optimized_graph);
+  EXPECT_EQ(status.code(), tensorflow::error::ABORTED);
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "does not use AllocatorAttributes"));
 }
 
 }  // namespace

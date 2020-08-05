@@ -4000,8 +4000,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  This operator is similar to the unsorted segment sum operator found
-  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  This operator is similar to the `tf.math.unsorted_segment_sum` operator.
   Instead of computing the sum over segments, it computes the mean of all
   entries belonging to a segment such that:
 
@@ -4047,8 +4046,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  This operator is similar to the unsorted segment sum operator found
-  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  This operator is similar to the `tf.math.unsorted_segment_sum` operator.
   Additionally to computing the sum over segments, it divides the results by
   sqrt(N).
 

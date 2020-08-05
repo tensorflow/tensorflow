@@ -195,6 +195,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
+      VLOG(1) << "Cancelling threads in DataServiceDataset::Iterator";
       cancelled_ = true;
       worker_thread_cv_.notify_all();
       manager_thread_cv_.notify_all();
@@ -295,7 +296,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // TODO(aaudibert): Instead of polling, have dispatcher send updates when
     // the list of tasks changes.
     void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
-      VLOG(3) << "Starting task thread manager";
+      auto cleanup =
+          gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
+      VLOG(1) << "Starting task thread manager";
       DataServiceDispatcherClient dispatcher(dataset()->address_,
                                              dataset()->protocol_);
       uint64 next_check = Env::Default()->NowMicros();
@@ -335,7 +338,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       absl::flat_hash_map<int64, TaskInfo> task_id_to_task;
       for (auto& task : tasks) {
-        task_id_to_task[task.id()] = task;
+        task_id_to_task[task.task_id()] = task;
       }
       mutex_lock l(mu_);
       job_finished_ = job_finished;
@@ -368,8 +371,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           get_next_cv_.notify_all();
           continue;
         }
-        tasks_.push_back(std::make_shared<Task>(
-            task_info.id(), task_info.worker_address(), std::move(worker)));
+        tasks_.push_back(std::make_shared<Task>(task_info.task_id(),
+                                                task_info.worker_address(),
+                                                std::move(worker)));
       }
       if (dataset()->max_outstanding_requests_ == model::kAutotune) {
         // Adjust max_outstanding_requests to account for newly added tasks.
@@ -396,8 +400,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void RunWorkerThread(std::function<void()> done) {
-      auto cleanup = gtl::MakeCleanup([done = std::move(done)]() { done(); });
-      VLOG(3) << "Starting worker thread";
+      auto cleanup = gtl::MakeCleanup([done = std::move(done)]() {
+        done();
+        VLOG(1) << "Worker thread exiting";
+      });
+      VLOG(1) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
         {

@@ -404,6 +404,7 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_llvm",
     srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_llvm.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
     deps = [
         ":lhlo",
         "@llvm-project//mlir:IR",
@@ -805,13 +806,6 @@ cc_library(
         ":transform_unranked_hlo",
         "@llvm-project//mlir:Pass",
     ],
-)
-
-cc_library(
-    name = "register_all_passes",
-    srcs = ["lib/Dialect/mhlo/transforms/register_all_passes.cc"],
-    deps = [":all_passes"],
-    alwayslink = 1,
 )
 
 cc_binary(
