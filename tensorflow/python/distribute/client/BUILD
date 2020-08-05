@@ -49,7 +49,6 @@ tf_py_test(
     srcs = ["client_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = ["no_windows"],  # TODO(b/162751266)
     deps = [
         ":client",
         "//tensorflow/python:client_testlib",
