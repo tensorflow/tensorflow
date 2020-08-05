@@ -128,7 +128,7 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
 //   return x / y;
 // }
 //
-// BraodcastToDimensions is used to compute the broadcast attr to higher
+// BroadcastToDimensions is used to compute the broadcast attr to higher
 // dimensions. This computes the broadcast of 'l' to broadcast('l', 'r')
 // without returning the broadcast of 'r' to broadcast('l', 'r').
 //
@@ -143,14 +143,14 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (HLOClient_BroadcastCompareOp $r, (HLO_ConstOp (GetScalarOfType<0> $r)),
            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
           (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ),
-        (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
-          (HLOClient_BroadcastDivOp
-           (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
+         (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
+         (HLOClient_BroadcastDivOp
+          (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
                        (HLOClient_BroadcastSubOp (HLO_AbsOp $r),
                         (HLO_ConstOp (GetScalarOfType<1> $r)),
                         (NullDenseIntElementsAttr)),
                      (BinBroadcastDimensions $l, $r))),
-           (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs))),
+          (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs))),
         [(SignedIntTensor $l)]>;
 
 // Performs a substitution of FloorMod designed to correct for possibly negative
@@ -175,8 +175,8 @@ def : Pat<(TF_FloorModOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT),
          (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_COMPARISON_DIRECTION_NE),
         (NullDenseIntElementsAttr)),
-        (HLOClient_BroadcastAddOp $r,
-         $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
+       (HLOClient_BroadcastAddOp $r,
+        $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
 
 //===----------------------------------------------------------------------===//
 // Logical & bitwise binary op patterns.
