@@ -28,29 +28,28 @@ limitations under the License.
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-// Wrappers to delete resources once the resource is out of scope. 
-struct TensorWrapper { 
-  TF_Tensor* t; 
-  TensorWrapper() : t(nullptr) {}
-  ~TensorWrapper() { 
-    TF_DeleteTensor(t);
-  }
+namespace { 
+
+// Operators used to create a std::unique_ptr for TF_Tensor and TF_Status.
+struct TFTensorDeleter { 
+  void operator() (TF_Tensor* tf_tensor) const { TF_DeleteTensor(tf_tensor); }
+}; 
+
+struct TFStatusDeleter { 
+  void operator() (TF_Status* tf_status) const { TF_DeleteStatus(tf_status); }
 };
 
-struct StatusWrapper { 
-  TF_Status* s; 
-  StatusWrapper() { 
-    s = TF_NewStatus(); 
-  }
-  ~StatusWrapper() { 
-    TF_DeleteStatus(s);
-  }
-};
+// Struct that wraps TF_Tensor and TF_Status to delete once out of scope.
+using Safe_TF_TensorPtr = std::unique_ptr<TF_Tensor, TFTensorDeleter>; 
+using Safe_TF_StatusPtr = std::unique_ptr<TF_Status, TFStatusDeleter>; 
+
+// Used to pass the operation node name from kernel construction to 
+// kernel computation. 
 typedef struct HistogramSummaryOp {
   std::string op_node_name; 
 };
 
-static void* HistogramSummaryOp_Create(TF_OpKernelConstruction* ctx) {
+void* HistogramSummaryOp_Create(TF_OpKernelConstruction* ctx) {
   HistogramSummaryOp* kernel = new HistogramSummaryOp; 
   TF_StringView string_view_name = TF_OpKernelConstruction_GetName(ctx); 
   kernel->op_node_name = std::string(string_view_name.data, 
@@ -58,46 +57,48 @@ static void* HistogramSummaryOp_Create(TF_OpKernelConstruction* ctx) {
   return kernel; 
 }
 
-static void HistogramSummaryOp_Delete(void* kernel) {
+void HistogramSummaryOp_Delete(void* kernel) {
   delete static_cast<HistogramSummaryOp*>(kernel); 
 }
 
 template<typename T>
-static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   HistogramSummaryOp* k = static_cast<HistogramSummaryOp*>(kernel);
-  TensorWrapper tags_wrapper; 
-  TensorWrapper values_wrapper; 
-  StatusWrapper status_wrapper;
-  TF_GetInput(ctx, 0, &tags_wrapper.t, status_wrapper.s);
-  if (TF_GetCode(status_wrapper.s) != TF_OK) { 
-    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
+  TF_Tensor* tags; 
+  TF_Tensor* values; 
+  Safe_TF_StatusPtr status(TF_NewStatus());
+  TF_GetInput(ctx, 0, &tags, status.get());
+  Safe_TF_TensorPtr safe_tags_ptr(tags); 
+  if (TF_GetCode(status.get()) != TF_OK) { 
+    TF_OpKernelContext_Failure(ctx, status.get());
     return; 
   }
-  TF_GetInput(ctx, 1, &values_wrapper.t, status_wrapper.s);
-  if (TF_GetCode(status_wrapper.s) != TF_OK) { 
-    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
+  TF_GetInput(ctx, 1, &values, status.get());
+  Safe_TF_TensorPtr safe_values_ptr(values); 
+  if (TF_GetCode(status.get()) != TF_OK) { 
+    TF_OpKernelContext_Failure(ctx, status.get());
     return; 
   }
-  if (TF_NumDims(tags_wrapper.t) != 0) { 
-    TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, "tags must be scalar");
-    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
+  if (TF_NumDims(safe_tags_ptr.get()) != 0) { 
+    TF_SetStatus(status.get(), TF_INVALID_ARGUMENT, "tags must be scalar");
+    TF_OpKernelContext_Failure(ctx, status.get());
     return; 
   }
   // Cast values to array to access tensor elements by index 
-  auto values_array = static_cast<T*>(TF_TensorData(values_wrapper.t)); 
+  auto values_array = static_cast<T*>(TF_TensorData(safe_values_ptr.get())); 
   tensorflow::histogram::Histogram histo; 
-  for (int i = 0; i < TF_TensorElementCount(values_wrapper.t); ++i) { 
+  for (int i = 0; i < TF_TensorElementCount(safe_values_ptr.get()); ++i) { 
     const double double_val = static_cast<double>(values_array[i]); 
     if (Eigen::numext::isnan(double_val)) { 
       std::ostringstream err; 
       err << "Nan in summary histogram for: " << k->op_node_name; 
-      TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
+      TF_SetStatus(status.get(), TF_INVALID_ARGUMENT, err.str().c_str());
       return;
     }
     else if (Eigen::numext::isinf(double_val)) { 
       std::ostringstream err; 
       err << "Infinity in Histogram for: " << k->op_node_name; 
-      TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
+      TF_SetStatus(status.get(), TF_INVALID_ARGUMENT, err.str().c_str());
       return; 
     }
     histo.Add(double_val);
@@ -105,21 +106,21 @@ static void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   tensorflow::Summary s; 
   tensorflow::Summary::Value* v = s.add_value(); 
   const tensorflow::tstring& tag = *(static_cast<tensorflow::tstring*>(
-      TF_TensorData(tags_wrapper.t))); 
+      TF_TensorData(safe_tags_ptr.get()))); 
   v->set_tag(tag.data(), tag.size()); 
   histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */); 
 
-  TensorWrapper summary_tensor_wrapper; 
-  summary_tensor_wrapper.t = TF_AllocateOutput(ctx, 0,
-      TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
-      sizeof(tensorflow::tstring), status_wrapper.s);
+  Safe_TF_TensorPtr summary_tensor(TF_AllocateOutput(
+      /*context=*/ctx, /*index=*/0, /*dtype=*/TF_ExpectedOutputDataType(
+      ctx, 0), /*dims=*/nullptr, /*num_dims=*/0, 
+      /*len=*/sizeof(tensorflow::tstring), status.get()));
 
-  if (TF_GetCode(status_wrapper.s) != TF_OK){ 
-    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
+  if (TF_GetCode(status.get()) != TF_OK){ 
+    TF_OpKernelContext_Failure(ctx, status.get());
     return; 
   }
   tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
-      TF_TensorData(summary_tensor_wrapper.t)); 
+      TF_TensorData(summary_tensor.get())); 
   CHECK(SerializeToTString(s, output_tstring));
 }
 
@@ -162,3 +163,4 @@ TF_ATTRIBUTE_UNUSED static bool  IsHistogramSummaryOpKernelRegistered = []() {
   }                                                                           
   return true;                                                                
 }(); 
+} // namespace
