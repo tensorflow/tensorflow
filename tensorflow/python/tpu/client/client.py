@@ -48,8 +48,8 @@ def _environment_discovery_url():
 
 def _gce_metadata_endpoint():
   return 'http://' + os.environ.get(
-    _GCE_METADATA_URL_ENV_VARIABLE,
-    'metadata.google.internal')
+      _GCE_METADATA_URL_ENV_VARIABLE,
+      'metadata.google.internal')
 
 
 def _request_compute_metadata(path):
