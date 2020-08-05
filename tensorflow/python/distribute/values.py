@@ -1526,22 +1526,5 @@ class OnWritePolicy(AutoPolicy):
     return _on_write_update_replica(var, update_fn, value, **kwargs)
 
 
-# Utility functions
-# Return True if the Value is Mirrored or the Variable is replicated and kept in
-# sync.
-def _is_mirrored(val):
-  if isinstance(val, DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return val._policy._is_mirrored()  # pylint: disable=protected-access
-  return isinstance(val, Mirrored)
-
-
-def _is_sync_on_read(val):
-  if isinstance(val, DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return not val._policy._is_mirrored()  # pylint: disable=protected-access
-  return not isinstance(val, Mirrored)
-
-
 def _in_update_replica():
   return distribute_lib.get_update_replica_id() is not None
