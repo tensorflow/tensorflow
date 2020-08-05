@@ -2744,6 +2744,7 @@ def _minimize(strategy, tape, optimizer, loss, trainable_variables):
                                                    trainable_variables))
   if isinstance(optimizer, lso.LossScaleOptimizer):
     gradients = optimizer.get_unscaled_gradients(gradients)
+  gradients = optimizer._clip_gradients(gradients)  # pylint: disable=protected-access
   if trainable_variables:
     if aggregate_grads_outside_optimizer:
       optimizer.apply_gradients(

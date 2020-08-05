@@ -41,6 +41,7 @@ from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients
@@ -331,6 +332,15 @@ class OptimizerV2(trackable.Trackable):
       raise ValueError("decay cannot be less than 0: {}".format(decay))
     self._initial_decay = decay
 
+    # Set the gradient clipping properties
+    self.clipnorm = kwargs.pop("clipnorm", None)
+    self.clipvalue = kwargs.pop("clipvalue", None)
+    if ((self.clipnorm is not None or self.clipvalue is not None)
+        and distribute_ctx.has_strategy()):
+      raise ValueError("Gradient clipping in the optimizer "
+                       "(by setting clipnorm or clipvalue) is currently "
+                       "unsupported when using a distribution strategy.")
+
     self._hypers_created = False
 
     # Store the distribution strategy object if the optimizer is created inside
@@ -339,33 +349,6 @@ class OptimizerV2(trackable.Trackable):
       self._distribution_strategy = distribute_ctx.get_strategy()
     else:
       self._distribution_strategy = None
-
-    # Set the gradient clipping properties
-    self._clipnorm = kwargs.pop("clipnorm", None)
-    self._clipvalue = kwargs.pop("clipvalue", None)
-
-    # Configure gradient transforms.
-    self._transform_gradients_fns = []
-
-    if self._clipnorm is not None:
-      self._transform_gradients_fns.append(
-          optimizer_utils.make_gradient_clipnorm_fn(self._clipnorm))
-    if self._clipvalue is not None:
-      self._transform_gradients_fns.append(
-          optimizer_utils.make_gradient_clipvalue_fn(self._clipvalue))
-
-  @property
-  def clipnorm(self):
-    """`float` or `None`. If set, clips gradients to this maximum norm."""
-    return self._clipnorm
-
-  @property
-  def clipvalue(self):
-    """`float` or `None`.
-
-    If set, clips gradients to this maximum absolute value.
-    """
-    return self._clipvalue
 
   def minimize(self, loss, var_list, grad_loss=None, name=None, tape=None):
     """Minimize `loss` by updating `var_list`.
@@ -401,6 +384,26 @@ class OptimizerV2(trackable.Trackable):
     grads_and_vars = self._compute_gradients(
         loss, var_list=var_list, grad_loss=grad_loss, tape=tape)
     return self.apply_gradients(grads_and_vars, name=name)
+
+  def _clip_gradients(self, grads):
+    """Clip gradients according to the clipnorm and clipvalue attributes."""
+    if self.clipnorm is not None:
+      if distribute_ctx.has_strategy():
+        raise ValueError("Gradient clipping in the optimizer "
+                         "(by setting clipnorm or clipvalue) is currently "
+                         "unsupported when using a distribution strategy.")
+      grads = [None if g is None else clip_ops.clip_by_norm(g, self.clipnorm)
+               for g in grads]
+    if self.clipvalue is not None:
+      if distribute_ctx.has_strategy():
+        raise ValueError("Gradient clipping in the optimizer "
+                         "(by setting clipnorm or clipvalue) is currently "
+                         "unsupported when using a distribution strategy.")
+      v = self.clipvalue
+      grads = [
+          None if g is None else clip_ops.clip_by_value(g, -v, v) for g in grads
+      ]
+    return grads
 
   def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
     """Compute gradients of `loss` for the variables in `var_list`.
@@ -451,6 +454,8 @@ class OptimizerV2(trackable.Trackable):
     var_list = nest.flatten(var_list)
     with ops.name_scope_v2(self._name + "/gradients"):
       grads = tape.gradient(loss, var_list, grad_loss)
+      # TODO(omalleyt): Move to post-aggregation.
+      grads = self._clip_gradients(grads)
     grads_and_vars = list(zip(grads, var_list))
 
     self._assert_valid_dtypes([
@@ -458,12 +463,6 @@ class OptimizerV2(trackable.Trackable):
         if g is not None and v.dtype != dtypes.resource
     ])
 
-    return grads_and_vars
-
-  def _transform_gradients(self, grads_and_vars):
-    """Transformations to apply aggregated gradients."""
-    for fn in self._transform_gradients_fns:
-      grads_and_vars = fn(grads_and_vars)
     return grads_and_vars
 
   def get_gradients(self, loss, params):
@@ -484,15 +483,14 @@ class OptimizerV2(trackable.Trackable):
     with backend.get_graph().as_default(), backend.name_scope(self._name +
                                                               "/gradients"):
       grads = gradients.gradients(loss, params)
-      grads_and_vars = list(zip(grads, params))
-      for grad, param in grads_and_vars:
+      for grad, param in zip(grads, params):
         if grad is None:
           raise ValueError("Variable {} has `None` for gradient. "
                            "Please make sure that all of your ops have a "
                            "gradient defined (i.e. are differentiable). "
                            "Common ops without gradient: "
                            "K.argmax, K.round, K.eval.".format(param))
-      grads = [g for g, _ in grads_and_vars]
+      grads = self._clip_gradients(grads)
     return grads
 
   def apply_gradients(self,
@@ -536,23 +534,10 @@ class OptimizerV2(trackable.Trackable):
       ValueError: If none of the variables have gradients.
       RuntimeError: If called in a cross-replica context.
     """
-    if distribute_ctx.in_cross_replica_context():
-      raise RuntimeError(
-          "`apply_gradients() cannot be called in cross-replica context. "
-          "Use `tf.distribute.Strategy.run` to enter replica "
-          "context.")
-
-    strategy = distribute_ctx.get_strategy()
-    if (not experimental_aggregate_gradients and strategy and
-        isinstance(strategy.extended,
-                   parameter_server_strategy.ParameterServerStrategyExtended)):
-      raise NotImplementedError(
-          "`experimental_aggregate_gradients=False is not supported for "
-          "ParameterServerStrategy and CentralStorageStrategy")
-
     grads_and_vars = optimizer_utils.filter_empty_gradients(grads_and_vars)
-    var_list = [v for _, v in grads_and_vars]
-    with ops.name_scope_v2(self._name):
+    var_list = [v for (_, v) in grads_and_vars]
+
+    with backend.name_scope(self._name):
       # Create iteration if necessary.
       with ops.init_scope():
         self._create_all_weights(var_list)
@@ -562,12 +547,25 @@ class OptimizerV2(trackable.Trackable):
         # gradients
         return control_flow_ops.no_op()
 
-      if experimental_aggregate_gradients:
-        reduced_grads = self._aggregate_gradients(grads_and_vars)
-        grads_and_vars = list(zip(reduced_grads, var_list))
-      grads_and_vars = self._transform_gradients(grads_and_vars)
+      if distribute_ctx.in_cross_replica_context():
+        raise RuntimeError(
+            "`apply_gradients() cannot be called in cross-replica context. "
+            "Use `tf.distribute.Strategy.run` to enter replica "
+            "context.")
+
+      strategy = distribute_ctx.get_strategy()
+      if (not experimental_aggregate_gradients and strategy and isinstance(
+          strategy.extended,
+          parameter_server_strategy.ParameterServerStrategyExtended)):
+        raise NotImplementedError(
+            "`experimental_aggregate_gradients=False is not supported for "
+            "ParameterServerStrategy and CentralStorageStrategy")
 
       apply_state = self._prepare(var_list)
+      if experimental_aggregate_gradients:
+        reduced_grads = self._aggregate_gradients(grads_and_vars)
+        var_list = [v for _, v in grads_and_vars]
+        grads_and_vars = list(zip(reduced_grads, var_list))
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
           args=(grads_and_vars,),

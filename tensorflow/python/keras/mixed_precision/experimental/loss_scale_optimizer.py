@@ -258,8 +258,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
                        'clipvalue %s' % (optimizer, optimizer.clipvalue))
     self._raise_if_strategy_unsupported()
 
-    self._clipnorm = None
-    self._clipvalue = None
+    self.clipnorm = None
+    self.clipvalue = None
 
     self._optimizer = optimizer
     self._loss_scale = keras_loss_scale_module.get(loss_scale)

@@ -22,7 +22,6 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
@@ -1863,36 +1862,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.predict(x, batch_size=2, callbacks=[bc])
     self.assertEqual(bc.predict_begin_batches, [0])
     self.assertEqual(bc.predict_end_batches, [24])
-
-  @combinations.generate(
-      combinations.combine(distribution=all_strategies, mode=['eager']))
-  def test_gradient_clipping(self, distribution):
-
-    class MyLayer(keras.layers.Layer):
-
-      def build(self, _):
-        self.v1 = variables.Variable(1.)
-        self.v2 = variables.Variable(1.)
-
-      def call(self, x):
-        return 3 * self.v1 - 3 * self.v2
-
-    x, y = np.ones((10, 1)), np.ones((10, 1))
-
-    with distribution.scope():
-      layer = MyLayer()
-      model = keras.Sequential([layer])
-      optimizer = gradient_descent_keras.SGD(1., clipnorm=2., clipvalue=2.)
-    model.compile(optimizer, 'mae')
-
-    if isinstance(distribution,
-                  central_storage_strategy.CentralStorageStrategy):
-      with self.assertRaisesRegex(ValueError, 'not supported'):
-        model.fit(x, y, batch_size=10, epochs=1)
-    else:
-      model.fit(x, y, batch_size=10, epochs=1)
-      self.assertAllClose(self.evaluate(layer.v1), 3.)
-      self.assertAllClose(self.evaluate(layer.v2), -1.)
 
   @combinations.generate(
       combinations.times(
