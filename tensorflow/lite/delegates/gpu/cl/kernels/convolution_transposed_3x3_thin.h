@@ -37,8 +37,6 @@ namespace cl {
 class ConvolutionTransposed3x3Thin : public GPUOperation {
  public:
   ConvolutionTransposed3x3Thin() = default;
-  absl::Status Compile(const CreationContext& creation_context) override;
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -66,16 +64,16 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
-  int src_channels_;
-  int dst_channels_;
+  std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
+                                                int src_depth, int dst_depth);
 };
 
 template <DataType T>
 absl::Status ConvolutionTransposed3x3Thin::UploadData(
     const tflite::gpu::Tensor<OHWI, T>& weights,
     const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
-  const int src_depth = DivideRoundUp(src_channels_, 4);
-  const int dst_depth = DivideRoundUp(dst_channels_, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 3;  //  This operation support only 3x3 kernel
   const int kernel_y = 3;
   const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
@@ -128,8 +126,8 @@ absl::Status ConvolutionTransposed3x3Thin::UploadData(
 template <DataType S, typename T>
 void ConvolutionTransposed3x3Thin::RearrangeWeightsData(
     const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int src_depth = DivideRoundUp(src_channels_, 4);
-  const int dst_depth = DivideRoundUp(dst_channels_, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 3;
   const int kernel_y = 3;
 
@@ -148,7 +146,7 @@ void ConvolutionTransposed3x3Thin::RearrangeWeightsData(
             for (int i = 0; i < 4; ++i) {
               const int s_ch = s * 4 + i;
               const int d_ch = d * 4 + j;
-              if (s_ch < src_channels_ && d_ch < dst_channels_) {
+              if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
                 const int f_index = weights.shape.LinearIndex(
                     {d_ch, kernel_index_y, kernel_index_x, s_ch});
                 filters[i][j] = weights.data[f_index];

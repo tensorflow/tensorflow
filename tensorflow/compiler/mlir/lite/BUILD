@@ -270,6 +270,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/core:framework",
+        "@flatbuffers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
@@ -452,8 +453,9 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        "@com_google_absl//absl/base",
+        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

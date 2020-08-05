@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_executable.h"
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/core/platform/fingerprint.h"
 
 namespace xla {
 
@@ -23,16 +24,22 @@ namespace py = pybind11;
 
 PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
                            std::unique_ptr<PjRtExecutable> executable,
-                           std::shared_ptr<Traceback> traceback)
+                           std::shared_ptr<Traceback> traceback,
+                           absl::optional<std::string> fingerprint)
     : client_(std::move(client)),
       executable_(std::move(executable)),
-      traceback_(std::move(traceback)) {
+      traceback_(std::move(traceback)),
+      fingerprint_(std::move(fingerprint)) {
   CHECK(PyGILState_Check());
   next_ = client_->executables_;
   client_->executables_ = this;
   prev_ = nullptr;
   if (next_) {
     next_->prev_ = this;
+  }
+  if (fingerprint_) {
+    VLOG(1) << "Fingerprint for executable " << executable_->name() << ": "
+            << *fingerprint_;
   }
 }
 
@@ -65,6 +72,9 @@ StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::Execute(
     py::gil_scoped_release gil_release;
     ExecuteOptions options;
     options.untuple_result = true;
+    if (fingerprint_) {
+      options.launch_id = tensorflow::Fingerprint32(*fingerprint_);
+    }
     std::vector<PjRtBuffer*> arg_buffers(args.size());
     absl::c_transform(args, arg_buffers.begin(),
                       [](PyBuffer* buf) { return buf->buffer(); });
@@ -89,6 +99,9 @@ PyExecutable::ExecuteOnLocalDevices(
     py::gil_scoped_release gil_release;
     ExecuteOptions options;
     options.untuple_result = true;
+    if (fingerprint_) {
+      options.launch_id = tensorflow::Fingerprint32(*fingerprint_);
+    }
     std::vector<std::vector<PjRtBuffer*>> arg_buffers(args.size());
     for (int computation = 0; computation < args.size(); ++computation) {
       arg_buffers[computation].resize(args[computation].size());

@@ -46,8 +46,8 @@ auto* tf_data_service_created =
 }  // namespace
 
 DataServiceWorkerImpl::DataServiceWorkerImpl(
-    const std::string& dispatcher_address, const std::string& protocol)
-    : dispatcher_address_(dispatcher_address), protocol_(protocol) {
+    const experimental::WorkerConfig& config)
+    : config_(config) {
   tf_data_service_created->GetCell()->Set(true);
 }
 
@@ -68,7 +68,7 @@ void DataServiceWorkerImpl::Start(const std::string& worker_address) {
   Status s = Register();
   while (!s.ok()) {
     LOG(WARNING) << "Failed to register with dispatcher at "
-                 << dispatcher_address_ << ": " << s;
+                 << config_.dispatcher_address() << ": " << s;
     Env::Default()->SleepForMicroseconds(kHeartbeatIntervalMicros);
     s = Register();
   }
@@ -173,17 +173,17 @@ Status DataServiceWorkerImpl::EnsureDispatcherStubInitialized()
   if (!dispatcher_stub_) {
     ::grpc::ChannelArguments args;
     std::shared_ptr<::grpc::ChannelCredentials> credentials;
-    TF_RETURN_IF_ERROR(
-        CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
-    auto channel =
-        ::grpc::CreateCustomChannel(dispatcher_address_, credentials, args);
+    TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
+        config_.protocol(), &credentials));
+    auto channel = ::grpc::CreateCustomChannel(config_.dispatcher_address(),
+                                               credentials, args);
     dispatcher_stub_ = DispatcherService::NewStub(channel);
   }
   return Status::OK();
 }
 
 Status DataServiceWorkerImpl::Register() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  VLOG(3) << "Registering with dispatcher at " << dispatcher_address_;
+  VLOG(3) << "Registering with dispatcher at " << config_.dispatcher_address();
   TF_RETURN_IF_ERROR(EnsureDispatcherStubInitialized());
   RegisterWorkerRequest req;
   req.set_worker_address(worker_address_);
@@ -197,8 +197,6 @@ Status DataServiceWorkerImpl::Register() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   for (const TaskDef& task : resp.tasks()) {
     TF_RETURN_IF_ERROR(ProcessTaskInternal(task));
   }
-  worker_id_ = resp.worker_id();
-  VLOG(3) << "Registered worker with id " << resp.worker_id();
   return Status::OK();
 }
 
@@ -207,7 +205,6 @@ Status DataServiceWorkerImpl::SendTaskUpdate() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           << " task updates to dispatcher";
   TF_RETURN_IF_ERROR(EnsureDispatcherStubInitialized());
   WorkerUpdateRequest req;
-  req.set_worker_id(worker_id_);
   for (int task_id : pending_completed_tasks_) {
     TaskProgress* update = req.add_updates();
     update->set_task_id(task_id);
@@ -238,6 +235,7 @@ void DataServiceWorkerImpl::HeartbeatThread() {
     Status s = SendTaskUpdate();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
+      Env::Default()->SleepForMicroseconds(kHeartbeatIntervalMicros);
     }
   }
 }

@@ -99,7 +99,6 @@ cc_library(
         "-lpthread",
     ],
     deps = [
-        ":Analysis",
         ":IR",
         ":Support",
         "@llvm-project//llvm:Support",
@@ -344,11 +343,11 @@ gentbl(
 )
 
 gentbl(
-    name = "LoopPassIncGen",
+    name = "SCFPassIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name SCF",
             "include/mlir/Dialect/SCF/Passes.h.inc",
         ),
     ],
@@ -370,9 +369,9 @@ cc_library(
     deps = [
         ":Affine",
         ":IR",
-        ":LoopPassIncGen",
         ":Pass",
         ":SCFDialect",
+        ":SCFPassIncGen",
         ":StandardOps",
         ":Transforms",
         "@llvm-project//llvm:Support",
@@ -510,7 +509,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name Affine",
             "include/mlir/Dialect/Affine/Passes.h.inc",
         ),
     ],
@@ -552,7 +551,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name Conversion",
             "include/mlir/Conversion/Passes.h.inc",
         ),
     ],
@@ -560,6 +559,35 @@ gentbl(
     td_file = "include/mlir/Conversion/Passes.td",
     td_srcs = [
         ":PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "ConversionPasses",
+    hdrs = ["include/mlir/Conversion/Passes.h"],
+    includes = ["include"],
+    deps = [
+        ":AVX512ToLLVM",
+        ":AffineToStandard",
+        ":ConversionPassIncGen",
+        ":GPUToGPURuntimeTransforms",
+        ":GPUToNVVMTransforms",
+        ":GPUToROCDLTransforms",
+        ":GPUToSPIRVTransforms",
+        ":GPUToVulkanTransforms",
+        ":LinalgToLLVM",
+        ":LinalgToSPIRV",
+        ":LinalgToStandard",
+        ":SCFToGPUPass",
+        ":SCFToStandard",
+        ":SPIRVToLLVM",
+        ":ShapeToSCF",
+        ":ShapeToStandard",
+        ":StandardToLLVM",
+        ":StandardToSPIRVTransforms",
+        ":VectorToLLVM",
+        ":VectorToROCDL",
+        ":VectorToSCF",
     ],
 )
 
@@ -628,7 +656,9 @@ cc_library(
         ":EDSC",
         ":IR",
         ":LoopLikeInterface",
+        ":Pass",
         ":SCFIncGen",
+        ":SCFPassIncGen",
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
@@ -759,29 +789,9 @@ cc_library(
         ":Pass",
         ":SCFDialect",
         ":Shape",
-        ":ShapeToStandardPatternsIncGen",
         ":StandardOps",
         ":Support",
         ":Transforms",
-    ],
-)
-
-gentbl(
-    name = "ShapeToStandardPatternsIncGen",
-    strip_include_prefix = "include/mlir/Conversion/ShapeToStandard",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "include/mlir/Conversion/ShapeToStandard/ShapeToStandardPatterns.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "lib/Conversion/ShapeToStandard/ShapeToStandardPatterns.td",
-    td_srcs = [
-        ":StdOpsTdFiles",
-        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
-        "include/mlir/Interfaces/InferTypeOpInterface.td",
     ],
 )
 
@@ -808,7 +818,7 @@ gentbl(
     name = "ShapeTransformsPassIncGen",
     strip_include_prefix = "include",
     tbl_outs = [(
-        "-gen-pass-decls",
+        "-gen-pass-decls -name Shape",
         "include/mlir/Dialect/Shape/Transforms/Passes.h.inc",
     )],
     tblgen = ":mlir-tblgen",
@@ -829,7 +839,7 @@ cc_library(
         ":Pass",
         ":Shape",
         ":ShapeTransformsPassIncGen",
-        ":Support",
+        ":StandardOps",
         ":Transforms",
     ],
 )
@@ -867,7 +877,7 @@ gentbl(
     name = "StandardOpsTransformsPassIncGen",
     strip_include_prefix = "include",
     tbl_outs = [(
-        "-gen-pass-decls",
+        "-gen-pass-decls -name Standard",
         "include/mlir/Dialect/StandardOps/Transforms/Passes.h.inc",
     )],
     tblgen = ":mlir-tblgen",
@@ -917,12 +927,12 @@ cc_library(
         ":DialectUtils",
         ":EDSC",
         ":IR",
+        ":SCFDialect",
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
         ":VectorInterfaces",
         ":VectorOpsIncGen",
-        ":VectorTransformPatternsIncGen",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1108,7 +1118,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name LLVM",
             "include/mlir/Dialect/LLVMIR/Transforms/Passes.h.inc",
         ),
     ],
@@ -1227,7 +1237,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name GPU",
             "include/mlir/Dialect/GPU/Passes.h.inc",
         ),
     ],
@@ -1917,6 +1927,7 @@ cc_library(
         ":SPIRVCanonicalizationIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
+        ":SPIRVPassIncGen",
         ":SPIRVSerializationGen",
         ":SPIRVTargetAndABIStructGen",
         ":SideEffectInterfaces",
@@ -1931,7 +1942,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name SPIRV",
             "include/mlir/Dialect/SPIRV/Passes.h.inc",
         ),
     ],
@@ -2062,11 +2073,12 @@ cc_library(
         ":Analysis",
         ":ControlFlowInterfaces",
         ":IR",
-        ":LoopLikeInterface",
+        ":Pass",
         ":SCFDialect",
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        ":TransformsPassIncGen",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -2193,7 +2205,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name Transforms",
             "include/mlir/Transforms/Passes.h.inc",
         ),
     ],
@@ -2730,6 +2742,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Analysis",
+        ":ConversionPasses",
         ":GPUToGPURuntimeTransforms",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
@@ -2762,6 +2775,7 @@ cc_library(
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestTransforms",
+        "@llvm-project//mlir/test:TestTypeDialect",
     ],
 )
 
@@ -2809,8 +2823,9 @@ cc_library(
         ":AVX512ToLLVM",
         ":Affine",
         ":AffinePassIncGen",
+        ":AffineToStandard",
         ":AffineTransforms",
-        ":ConversionPassIncGen",
+        ":ConversionPasses",
         ":GPUDialect",
         ":GPUPassIncGen",
         ":GPUToGPURuntimeTransforms",
@@ -2830,13 +2845,13 @@ cc_library(
         ":LinalgToSPIRV",
         ":LinalgToStandard",
         ":LinalgTransforms",
-        ":LoopPassIncGen",
         ":NVVMDialect",
         ":OpenMPDialect",
         ":QuantOps",
         ":QuantPassIncGen",
         ":ROCDLDialect",
         ":SCFDialect",
+        ":SCFPassIncGen",
         ":SCFToGPUPass",
         ":SCFToStandard",
         ":SCFTransforms",
@@ -2911,6 +2926,7 @@ cc_binary(
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestTransforms",
+        "@llvm-project//mlir/test:TestTypeDialect",
     ],
 )
 
@@ -3232,7 +3248,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name Quant",
             "include/mlir/Dialect/Quant/Passes.h.inc",
         ),
     ],
@@ -3527,7 +3543,7 @@ gentbl(
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls",
+            "-gen-pass-decls -name Linalg",
             "include/mlir/Dialect/Linalg/Passes.h.inc",
         ),
     ],
@@ -3620,34 +3636,6 @@ gentbl(
     td_file = "include/mlir/Dialect/Vector/VectorOps.td",
     td_srcs = [
         ":VectorOpsTdFiles",
-    ],
-)
-
-filegroup(
-    name = "VectorTransformPatternsTdFiles",
-    srcs = [
-        "include/mlir/Dialect/Vector/VectorTransformPatterns.td",
-        ":AffineOpsTdFiles",
-        ":LinalgOpsTdFiles",
-        ":LinalgStructuredOpsTdFiles",
-        ":OpBaseTdFiles",
-        ":StdOpsTdFiles",
-        ":VectorOpsTdFiles",
-    ],
-)
-
-gentbl(
-    name = "VectorTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "include/mlir/Dialect/Vector/VectorTransformPatterns.h.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Vector/VectorTransformPatterns.td",
-    td_srcs = [
-        ":VectorTransformPatternsTdFiles",
     ],
 )
 

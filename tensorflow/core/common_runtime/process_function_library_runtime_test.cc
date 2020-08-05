@@ -1188,6 +1188,28 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresent) {
   EXPECT_EQ(session_metadata.version(), read_metadata.version());
 }
 
+TEST_F(ProcessFunctionLibraryRuntimeTest, CompositeDevicesAfterCloning) {
+  Init({AddVarAcrossDevices()});
+
+  Status s;
+  std::unique_ptr<CompositeDevice> composite_device =
+      CompositeDevice::MakeDevice({device0_->name(), device1_->name()},
+                                  /*unique_device_id=*/0,
+                                  device_mgr_->HostCPU()->parsed_name(), &s);
+  TF_ASSERT_OK(s);
+  AddCompositeDevice(composite_device.get());
+
+  auto* flr = proc_flr_->GetFLR("/job:a/replica:0/task:0/cpu:0");
+  ASSERT_NE(nullptr, flr);
+  std::unique_ptr<FunctionLibraryDefinition> cloned_lib_def;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> cloned_proc_flr;
+  FunctionLibraryRuntime* cloned_flr;
+  TF_ASSERT_OK(flr->Clone(&cloned_lib_def, &cloned_proc_flr, &cloned_flr));
+  EXPECT_EQ(
+      cloned_proc_flr->device_set()->FindDeviceByName(composite_device->name()),
+      composite_device.get());
+}
+
 TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresentAfterCloning) {
   const SessionMetadata session_metadata = GenerateSessionMetadata();
   Init({SessionMetadataReaderOpFn()}, &session_metadata);

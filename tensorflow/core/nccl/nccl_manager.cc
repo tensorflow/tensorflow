@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
@@ -666,6 +667,20 @@ void NcclManager::RunCollective(Collective* collective) {
   collective->Unref();
 }
 
+namespace {
+// For tracing purpose.
+size_t ComputeBufferSize(const NcclManager::Participant* p,
+                         DataType data_type) {
+  size_t num_elements = 0;
+  if (p->output) {
+    num_elements += p->output->NumElements();
+  } else if (p->input) {
+    num_elements += p->input->NumElements();
+  }
+  return num_elements * DataTypeSize(data_type);
+}
+}  // namespace
+
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 #if TENSORFLOW_USE_ROCM
   se::Stream* comm_stream = nccl_stream->stream;
@@ -713,7 +728,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclAllReduce");
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclAllReduce",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "all_reduce"}});
+        });
         nccl_result = ncclAllReduce(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, collective->reduction_op,
                                     nccl_comm, *cu_stream);
@@ -745,7 +765,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclBroadcast");
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclBroadcast",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "broadcast"}});
+        });
         nccl_result =
             ncclBroadcast(sendbuff, recvbuff, num_elements, data_type,
                           collective->root_rank, nccl_comm, *cu_stream);
@@ -756,7 +781,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         void* recvbuff =
             p->output ? const_cast<char*>(p->output->tensor_data().data())
                       : nullptr;
-        profiler::TraceMe trace_me("ncclReduce");
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "buffer_size",
+              {{"output_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "reduce"}});
+        });
         nccl_result = ncclReduce(sendbuff, recvbuff, p->input->NumElements(),
                                  data_type, collective->reduction_op,
                                  collective->root_rank, nccl_comm, *cu_stream);
@@ -773,7 +803,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " recvcount " << p->output->NumElements() << " nccl_comm "
                 << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclAllGather");
+        profiler::AnnotatedTraceMe traceme([&] {
+          return profiler::TraceMeEncode(
+              "ncclAllGather",
+              {{"buffer_size", ComputeBufferSize(p, collective->data_type)},
+               {"collective_type", "all_gather"}});
+        });
         nccl_result = ncclAllGather(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, nccl_comm, *cu_stream);
         break;

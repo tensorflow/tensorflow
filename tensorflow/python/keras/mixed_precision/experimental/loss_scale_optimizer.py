@@ -258,8 +258,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
                        'clipvalue %s' % (optimizer, optimizer.clipvalue))
     self._raise_if_strategy_unsupported()
 
-    self.clipnorm = None
-    self.clipvalue = None
+    self._clipnorm = None
+    self._clipvalue = None
 
     self._optimizer = optimizer
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
@@ -348,7 +348,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         for g in grads
     ]
 
-  def _compute_gradients(self, loss, var_list, grad_loss=None):
+  def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
     loss = self.get_scaled_loss(loss)
     grads_and_vars = self._optimizer._compute_gradients(loss, var_list,  # pylint: disable=protected-access
                                                         grad_loss)
@@ -406,8 +406,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # DistributionStrategy does not support having a cond in a replica context
     # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
     # calls `merge_call`.
-    maybe_apply_op = smart_cond.smart_cond(should_apply_grads,
-                                           apply_fn,
+    maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
                                            do_not_apply_fn)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 

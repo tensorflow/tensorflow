@@ -82,6 +82,7 @@ class Registry : public NodeShader {
     insert_op(Type::FULLY_CONNECTED, NewFullyConnectedNodeShader);
     insert_op(Type::LSTM, NewLstmNodeShader);
     insert_op(Type::MEAN, NewMeanNodeShader);
+    // TODO(b/162763635): implement MeanStddevNormalization for OpenGL.
     insert_op(Type::MUL, NewMultiplyNodeShader);
     insert_op(Type::PAD, NewPadNodeShader);
     insert_op(Type::POOLING_2D, NewPoolingNodeShader);
@@ -95,6 +96,7 @@ class Registry : public NodeShader {
     insert_op(Type::SOFTMAX, NewSoftmaxNodeShader);
 
     insert_elementwise_op(Type::ABS);
+    insert_elementwise_op(Type::COPY);
     insert_elementwise_op(Type::COS);
     insert_elementwise_op(Type::DIV);
     insert_elementwise_op(Type::ELU);

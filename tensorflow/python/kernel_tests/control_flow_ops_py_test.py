@@ -1505,7 +1505,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   def testWhileExternalControlDependencies(self):
     with self.cached_session():
       v = variables.Variable(0.0)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       increment = v.assign_add(1.0).read_value()
 
       def body_fn(i):
@@ -1521,7 +1521,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   def testWhileExternalControlDependenciesNoInput(self):
     with self.cached_session():
       v = variables.Variable(0.0)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       # TODO(apassos): figure out why the reading is necessary here.
       increment = v.assign_add(1.0).read_value()
 

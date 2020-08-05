@@ -101,7 +101,7 @@ AbstractTensorHandle* TapeTensor::ZerosLike() const {
   }
   if (isa<tracing::TracingOperation>(op.get())) {
     s = dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
-        absl::StrCat("OnesLike", ToId(handle_)).c_str());
+        absl::StrCat("ZerosLike", ToId(handle_)).c_str());
     if (!s.ok()) {
       return nullptr;
     }

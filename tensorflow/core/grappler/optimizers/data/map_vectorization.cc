@@ -103,7 +103,8 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
 
   // Set return values to match output names
   string output_prefix = strings::StrCat(map_defun_node->name(), ":output:");
-  for (size_t i = 0; i < vectorized_func->signature().output_arg_size(); ++i) {
+  for (size_t i = 0, end = vectorized_func->signature().output_arg_size();
+       i < end; ++i) {
     const auto& output_arg = vectorized_func->signature().output_arg(i);
     (*vectorized_func->mutable_ret())[output_arg.name()] =
         strings::StrCat(output_prefix, i);
@@ -238,7 +239,7 @@ Status AddNewBatchNode(const NodeDef& old_batch_node, const NodeDef& input_node,
     }
   }
 
-  for (size_t i = 0; i < input_shapes.size(); ++i) {
+  for (size_t i = 0, end = input_shapes.size(); i < end; ++i) {
     // Note: We already checked earlier that input shapes are all fully defined.
     TensorShapeProto* shape = output_shapes_attr.mutable_list()->add_shape();
     TensorShapeProto_Dim* dim = shape->add_dim();

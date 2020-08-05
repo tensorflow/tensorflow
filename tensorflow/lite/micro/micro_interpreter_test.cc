@@ -121,6 +121,99 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
   TF_LITE_MICRO_EXPECT_EQ(tflite::testing::MockCustom::freed_, true);
 }
 
+TF_LITE_MICRO_TEST(TestMultiTenantInterpreter) {
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
+  constexpr size_t arena_size = 8192;
+  uint8_t arena[arena_size];
+
+  size_t simple_model_head_usage = 0, complex_model_head_usage = 0;
+
+  // Get simple_model_head_usage.
+  {
+    tflite::RecordingMicroAllocator* allocator =
+        tflite::RecordingMicroAllocator::Create(arena, arena_size,
+                                                micro_test::reporter);
+    const tflite::Model* model0 = tflite::testing::GetSimpleMockModel();
+    tflite::MicroInterpreter interpreter0(model0, op_resolver, allocator,
+                                          micro_test::reporter);
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter0.AllocateTensors());
+    simple_model_head_usage =
+        allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes();
+
+    TfLiteTensor* input = interpreter0.input(0);
+    TfLiteTensor* output = interpreter0.output(0);
+    input->data.i32[0] = 21;
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter0.Invoke());
+    TF_LITE_MICRO_EXPECT_EQ(42, output->data.i32[0]);
+  }
+
+  // Shared allocator for various models.
+  tflite::RecordingMicroAllocator* allocator =
+      tflite::RecordingMicroAllocator::Create(arena, arena_size,
+                                              micro_test::reporter);
+
+  // Get complex_model_head_usage. No head space reuse since it's the first
+  // model allocated in the `allocator`.
+  const tflite::Model* model1 = tflite::testing::GetComplexMockModel();
+  tflite::MicroInterpreter interpreter1(model1, op_resolver, allocator,
+                                        micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter1.AllocateTensors());
+  TfLiteTensor* input1 = interpreter1.input(0);
+  TfLiteTensor* output1 = interpreter1.output(0);
+  complex_model_head_usage =
+      allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes();
+
+  // Allocate simple model from the same `allocator`. Some head space will
+  // be reused thanks to multi-tenant TFLM support. Also makes sure that
+  // the output is correct.
+  const tflite::Model* model2 = tflite::testing::GetSimpleMockModel();
+  tflite::MicroInterpreter interpreter2(model2, op_resolver, allocator,
+                                        micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter2.AllocateTensors());
+  TfLiteTensor* input2 = interpreter2.input(0);
+  TfLiteTensor* output2 = interpreter2.output(0);
+  // Verify that 1 + 1 < 2.
+  size_t multi_tenant_head_usage =
+      allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes();
+  TF_LITE_MICRO_EXPECT_LE(multi_tenant_head_usage,
+                          complex_model_head_usage + simple_model_head_usage);
+
+  // Now we have model1 and model2 sharing the same `allocator`.
+  // Let's make sure that they can produce correct results.
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, input1->type);
+  input1->data.i32[0] = 10;
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter1.Invoke());
+  // Output tensor for the first model.
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, output1->type);
+  TF_LITE_MICRO_EXPECT_EQ(10, output1->data.i32[0]);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, input2->type);
+  input2->data.i32[0] = 21;
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter2.Invoke());
+  // Output for the second model.
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, output2->type);
+  TF_LITE_MICRO_EXPECT_EQ(42, output2->data.i32[0]);
+
+  // Allocate another complex model from the `allocator` will not increase
+  // head space usage.
+  const tflite::Model* model3 = tflite::testing::GetComplexMockModel();
+  tflite::MicroInterpreter interpreter3(model3, op_resolver, allocator,
+                                        micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter3.AllocateTensors());
+  TfLiteTensor* input3 = interpreter3.input(0);
+  TfLiteTensor* output3 = interpreter3.output(0);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, input3->type);
+  input3->data.i32[0] = 10;
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter3.Invoke());
+  // Output tensor for the third model.
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, output3->type);
+  TF_LITE_MICRO_EXPECT_EQ(10, output3->data.i32[0]);
+  // No increase on the head usage as we're reusing the space.
+  TF_LITE_MICRO_EXPECT_EQ(
+      multi_tenant_head_usage,
+      allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes());
+}
+
 TF_LITE_MICRO_TEST(TestKernelMemoryPlanning) {
   const tflite::Model* model = tflite::testing::GetSimpleStatefulModel();
   TF_LITE_MICRO_EXPECT_NE(nullptr, model);
@@ -388,8 +481,8 @@ TF_LITE_MICRO_TEST(TestInterpreterDoesNotAllocateUntilInvoke) {
       static_cast<size_t>(0));
 
   // TODO(b/160160549): This check is mostly meaningless right now because the
-  // operator creation in our mock models is inconsistent.  Revisit what this
-  // check should be once the mock models are properly created.
+  // operator creation in our mock models is inconsistent.  Revisit what
+  // this check should be once the mock models are properly created.
   TF_LITE_MICRO_EXPECT_EQ(
       allocator->GetRecordedAllocation(tflite::RecordedAllocationType::kOpData)
           .used_bytes,

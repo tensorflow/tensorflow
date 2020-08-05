@@ -351,7 +351,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
   cond.setType(FunctionType::get(append_types(cond.getType().getInputs()),
                                  cond.getType().getResults(),
                                  cond.getContext()));
-  for (int64_t i = 0; i < state_vars.size(); ++i) {
+  for (int64_t i = 0, end = state_vars.size(); i < end; ++i) {
     int64_t arg_index = body.getNumArguments() - state_vars.size() + i;
     TF::VarHandleOp state_var = state_vars[i];
     auto device_attr = state_var.getAttr(kDeviceAttr);
@@ -452,9 +452,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
     return;
 
-  auto module = while_op.getParentOfType<ModuleOp>();
-  auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
-  auto cond = llvm::cast<FuncOp>(module.lookupSymbol(while_op.cond()));
+  FuncOp body = while_op.body_func();
+  FuncOp cond = while_op.cond_func();
 
   // Analyze the formattable inputs.
   auto execute_arg_to_outer_args =

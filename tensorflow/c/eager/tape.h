@@ -177,12 +177,12 @@ class GradientTape {
 template <typename Gradient>
 class ForwardFunction
     : public std::function<Status(const std::vector<Gradient*>&,
-                                  std::vector<Gradient*>*)> {
+                                  std::vector<Gradient*>*, bool)> {
  public:
   template <typename lambda_type>
   explicit ForwardFunction(lambda_type lambda)
       : std::function<Status(const std::vector<Gradient*>&,
-                             std::vector<Gradient*>*)>(lambda) {}
+                             std::vector<Gradient*>*, bool)>(lambda) {}
 };
 
 // Computes Jacobian-vector products using forward-mode automatic
@@ -205,8 +205,9 @@ class ForwardAccumulator {
   // Does not take ownership of `vspace`, which must outlive the
   // ForwardAccumulator.
   explicit ForwardAccumulator(
-      const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace)
-      : vspace_(vspace) {
+      const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace,
+      bool use_batch)
+      : vspace_(vspace), use_batch_(use_batch) {
     call_state_.emplace(nullptr, false);
   }
 
@@ -313,6 +314,9 @@ class ForwardAccumulator {
   // Not owned; provides operations on Tensors which are currently only
   // available in language bindings (e.g. Python).
   const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace_;
+
+  // Decides if tangents are vectorized or not
+  bool use_batch_;
 
   struct AccumulatorCallState {
     AccumulatorCallState(
@@ -573,7 +577,7 @@ Status InitialGradients(
     gtl::ArraySlice<Gradient*> output_gradients, const TensorTape& tensor_tape,
     const OpTape<BackwardFunction, TapeTensor>& op_tape,
     std::unordered_map<int64, std::vector<Gradient*>>* result) {
-  for (int i = 0; i < target_tensor_ids.size(); ++i) {
+  for (int i = 0, end = target_tensor_ids.size(); i < end; ++i) {
     const int64 id = target_tensor_ids[i];
     if (output_gradients.empty() || output_gradients[i] == nullptr) {
       auto tensor_it = tensor_tape.find(id);
@@ -699,7 +703,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     std::vector<Gradient*> out_gradients;
     out_gradients.reserve(trace.output_tensor_info.size());
     std::vector<int64> unneeded_gradients;
-    for (int i = 0; i < trace.input_tensor_id.size(); i++) {
+    for (int i = 0, end = trace.input_tensor_id.size(); i < end; i++) {
       const auto& in_tensor_id = trace.input_tensor_id[i];
       if (tensor_tape_.find(in_tensor_id) == tensor_tape_.end() &&
           sources_set.find(in_tensor_id) == sources_set.end()) {
@@ -709,7 +713,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
 
     bool any_gradient_nonzero = false;
     std::vector<int> zero_indices;
-    for (int i = 0; i < trace.output_tensor_info.size(); ++i) {
+    for (int i = 0, end = trace.output_tensor_info.size(); i < end; ++i) {
       const int64 id = trace.output_tensor_info[i].GetID();
       auto grad_it = gradients.find(id);
       if (grad_it == gradients.end()) {
@@ -775,7 +779,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     }
     VLOG(1) << "Got " << in_gradients.size() << " in_gradients for "
             << trace.input_tensor_id.size() << " sources";
-    for (int i = 0; i < in_gradients.size(); ++i) {
+    for (int i = 0, end = in_gradients.size(); i < end; ++i) {
       const int64 id = trace.input_tensor_id[i];
       if (in_gradients[i] != nullptr) {
         auto& unaggregated_grads = gradients[id];
@@ -968,7 +972,7 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
   targets.reserve(grad.size());
   used_in_grads.reserve(grad.size());
   std::unordered_map<int64, TapeTensor> sources_that_are_targets;
-  for (int grad_index = 0; grad_index < grad.size(); ++grad_index) {
+  for (int grad_index = 0, end = grad.size(); grad_index < end; ++grad_index) {
     Gradient* grad_tensor = grad[grad_index];
     if (grad_tensor != nullptr) {
       int64 tensor_id = vspace_.TensorId(grad_tensor);
@@ -1062,7 +1066,8 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
         output_tensors, backward_function_getter, backward_function_deleter,
         in_grads, &forward_grads));
   } else {
-    TF_RETURN_IF_ERROR((*forward_function)(in_grads, &forward_grads));
+    TF_RETURN_IF_ERROR(
+        (*forward_function)(in_grads, &forward_grads, use_batch_));
   }
   for (int i = 0; i < forward_grads.size(); ++i) {
     if (forward_grads[i] != nullptr) {

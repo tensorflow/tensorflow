@@ -17,21 +17,6 @@ cc_library(
 )
 
 gentbl(
-    name = "TestVectorTransformPatternsIncGen",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/DeclarativeTransforms/TestVectorTransformPatterns.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/DeclarativeTransforms/TestVectorTransformPatterns.td",
-    td_srcs = [
-        "@llvm-project//mlir:VectorTransformPatternsTdFiles",
-    ],
-)
-
-gentbl(
     name = "TestOpsIncGen",
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
@@ -115,7 +100,6 @@ cc_library(
         "lib/Dialect/Test/TestTypes.h",
     ],
     includes = [
-        "lib/DeclarativeTransforms",
         "lib/Dialect/Test",
     ],
     deps = [
@@ -144,6 +128,7 @@ cc_library(
         "lib/IR/TestMatchers.cpp",
         "lib/IR/TestSideEffects.cpp",
         "lib/IR/TestSymbolUses.cpp",
+        "lib/IR/TestTypes.cpp",
     ],
     deps = [
         ":TestDialect",
@@ -187,7 +172,6 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
-        ":TestVectorTransformPatternsIncGen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:Analysis",
@@ -238,9 +222,22 @@ cc_library(
         "lib/Dialect/SPIRV/*.cpp",
     ]),
     deps = [
+        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SPIRVDialect",
         "@llvm-project//mlir:SPIRVLowering",
+    ],
+)
+
+cc_library(
+    name = "TestTypeDialect",
+    srcs = glob([
+        "lib/Dialect/LLVMIR/*.cpp",
+    ]),
+    deps = [
+        ":TestDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
     ],
 )

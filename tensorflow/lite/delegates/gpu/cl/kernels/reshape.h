@@ -27,17 +27,18 @@ namespace cl {
 
 class Reshape : public GPUOperation {
  public:
-  explicit Reshape(const OperationDef& definition) : GPUOperation(definition) {}
+  explicit Reshape(const OperationDef& definition);
 
-  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Reshape(Reshape&& operation);
   Reshape& operator=(Reshape&& operation);
   Reshape(const Reshape&) = delete;
   Reshape& operator=(const Reshape&) = delete;
+
+ private:
+  std::string GetReshapeCode(const OperationDef& op_def);
 };
 
 Reshape CreateReshape(const OperationDef& definition);

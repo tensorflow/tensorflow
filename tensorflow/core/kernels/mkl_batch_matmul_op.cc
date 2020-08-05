@@ -15,20 +15,26 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
-// This file uses MKL CBLAS batched xGEMM for acceleration of TF Batch
-// Matrix-Matrix Multiplication (MatMul) operations.
-// We currently register this kernel only for MKL supported data
-// types (float, double, complex64, complex128). The macro INTEL_MKL is defined
-// by the build system only when MKL is chosen as an option at configure stage
-// and when it is undefined at build time, this file becomes an empty
-// compilation unit
+// This file uses both oneDNN and MKL CBLAS batched xGEMM for acceleration of
+// Batch Matrix-Matrix Multiplication (MatMul) operations.
+// We currently register this kernel only for oneDNN supported data
+// types (float, bfloat16). This file can be built with and without the use of
+// the binary MKL CBLAS calls, controlled by the macro INTEL_MKL_DNN_ONLY.
+// If INTEL_MKL_DNN_ONLY is defined, only oneDNN is used. For cases not
+// supported by oneDNN (ex. Batchmatmul with broadcasting) we fall back to the
+// default CPU implementation.
+// if INTEL_MKL_DNN_ONLY is not defined, both oneDNN and MKL CBLAS
+// implementations are used. This is only temporary, once we are able handle all
+// cases with oneDNN, CBLAS calls will be removed.
 
 #define EIGEN_USE_THREADS
 
 #if defined(INTEL_MKL)
 #include <vector>
 
+#if !defined(INTEL_MKL_DNN_ONLY)
 #include "mkl_cblas.h"
+#endif  // !INTEL_MKL_DNN_ONLY
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -105,14 +111,14 @@ class BatchMatMulMkl : public OpKernel {
             "In[0] and In[1] must have compatible batch dimensions: ",
             lhs.shape().DebugString(), " vs. ", rhs.shape().DebugString()));
 
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#if defined(INTEL_MKL_DNN_ONLY)
     if (bcast.IsBroadcastingRequired()) {
       // Calling Eigen Kernel for broadcasting case and return. Eigen does
       // not have BF16 support, so we have to fail graciously in that case.
       eigen_batch_mm_v2_.Compute(ctx);
       return;
     }
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // INTEL_MKL_DNN_ONLY
     TensorShape out_shape = bcast.output_batch_shape();
     auto batch_size = bcast.output_batch_size();
 
@@ -158,11 +164,11 @@ class BatchMatMulMkl : public OpKernel {
     std::vector<MKL_INT> ldc_array(batch_size, N);
     std::vector<MKL_INT> group_size(1, batch_size);
 
-    bool threadpool_enabled = false;
-#ifdef ENABLE_MKLDNN_THREADPOOL
-    threadpool_enabled = true;
-#endif  // ENABLE_MKLDNN_THREADPOOL
-    if (std::is_same<Scalar, bfloat16>::value || threadpool_enabled) {
+    bool bcast_not_supported = false;
+#if defined(INTEL_MKL_DNN_ONLY)
+    bcast_not_supported = true;
+#endif  // INTEL_MKL_DNN_ONLY
+    if (std::is_same<Scalar, bfloat16>::value || bcast_not_supported) {
       // DNNL bfloat16 API requires a, b, and c as pointers to tensors
       // represented as flat-byte array.
       const Scalar* a = nullptr;
@@ -227,7 +233,7 @@ class BatchMatMulMkl : public OpKernel {
       const std::vector<MKL_INT>& ldb_Array, float** C_Array,
       const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
       const std::vector<MKL_INT>& group_size, OpKernelContext* ctx) {
-#ifndef ENABLE_MKLDNN_THREADPOOL
+#if !defined(INTEL_MKL_DNN_ONLY)
     std::vector<CBLAS_TRANSPOSE> TransA_Array(
         group_size[0], TransA ? CblasTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_Array(
@@ -249,7 +255,7 @@ class BatchMatMulMkl : public OpKernel {
     dnnl_gemm_batch<float>(TransA_Array, TransB_Array, M_Array, N_Array,
                            K_Array, alpha_Array, *A_Array, *B_Array, beta_Array,
                            *C_Array, group_count, group_size, ctx);
-#endif  // !ENABLE_MKLDNN_THREADPOOL
+#endif  // !INTEL_MKL_DNN_ONLY
   }
 // BatchMatMul BFloat16 support only exists in DNNL 1.2 onwards.
 #if defined(ENABLE_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)

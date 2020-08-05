@@ -102,52 +102,6 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         windowed_dot_general_loops) {
   const HloSharding& lhs_sharding = lhs.sharding();
   const HloSharding& rhs_sharding = rhs.sharding();
-
-  // Similar to hlo_sharding_util::TransposeSharding(), but allows
-  // removing/adding non-partitioned dimensions.
-  auto transpose_sharding =
-      [&](const HloSharding& source, absl::Span<int64 const> src_to_tgt,
-          absl::Span<int64 const> tgt_to_src) -> absl::optional<HloSharding> {
-    if (source.IsTileMaximal()) {
-      return source;
-    }
-    std::vector<int64> tgt_dims_skipping_new(tgt_to_src.size(), -1);
-    int64 skipped_tgt_dims = 0;
-    for (int64 i = 0; i < tgt_to_src.size(); ++i) {
-      if (tgt_to_src[i] < 0) {
-        skipped_tgt_dims++;
-      } else {
-        tgt_dims_skipping_new[i] = i - skipped_tgt_dims;
-      }
-    }
-    int64 skipped_src_dims = absl::c_count(src_to_tgt, -1);
-    std::vector<int64> perm(src_to_tgt.size());
-    for (int64 i = 0; i < src_to_tgt.size(); ++i) {
-      if (src_to_tgt[i] < 0) {
-        if (source.tile_assignment().dim(i) > 1) {
-          return absl::nullopt;
-        }
-        perm[src_to_tgt.size() - skipped_src_dims] = i;
-        skipped_src_dims--;
-      } else {
-        perm[tgt_dims_skipping_new[src_to_tgt[i]]] = i;
-      }
-    }
-    auto tgt_sharding = hlo_sharding_util::TransposeSharding(source, perm);
-    if (skipped_tgt_dims == 0) {
-      return tgt_sharding;
-    }
-    auto reshape_tiles = tgt_sharding.tile_assignment();
-    std::vector<int64> tgt_tiles(tgt_to_src.size(), 1);
-    for (int64 i = 0; i < tgt_tiles.size(); ++i) {
-      if (tgt_to_src[i] >= 0) {
-        tgt_tiles[i] = reshape_tiles.dim(tgt_dims_skipping_new[i]);
-      }
-    }
-    reshape_tiles.Reshape(tgt_tiles);
-    return HloSharding::Tile(reshape_tiles);
-  };
-
   std::vector<int64> lhs_to_rhs_indices(lhs.base_shape().rank(), -1);
   std::vector<int64> lhs_to_output_indices(lhs.base_shape().rank(), -1);
   std::vector<int64> rhs_to_lhs_indices(rhs.base_shape().rank(), -1);
@@ -182,17 +136,23 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     populate_indices_mapping(mapping);
   }
   auto lhs_sharding_transposed_to_match_rhs =
-      transpose_sharding(lhs_sharding, lhs_to_rhs_indices, rhs_to_lhs_indices);
+      TransposeShardingWithCollapsedDims(lhs_sharding, lhs_to_rhs_indices,
+                                         rhs_to_lhs_indices);
   auto rhs_sharding_transposed_to_match_lhs =
-      transpose_sharding(rhs_sharding, rhs_to_lhs_indices, lhs_to_rhs_indices);
-  auto lhs_sharding_transposed_to_match_output = transpose_sharding(
-      lhs_sharding, lhs_to_output_indices, output_to_lhs_indices);
-  auto rhs_sharding_transposed_to_match_output = transpose_sharding(
-      rhs_sharding, rhs_to_output_indices, output_to_rhs_indices);
-  auto output_sharding_transposed_to_match_lhs = transpose_sharding(
-      output_sharding, output_to_lhs_indices, lhs_to_output_indices);
-  auto output_sharding_transposed_to_match_rhs = transpose_sharding(
-      output_sharding, output_to_rhs_indices, rhs_to_output_indices);
+      TransposeShardingWithCollapsedDims(rhs_sharding, rhs_to_lhs_indices,
+                                         lhs_to_rhs_indices);
+  auto lhs_sharding_transposed_to_match_output =
+      TransposeShardingWithCollapsedDims(lhs_sharding, lhs_to_output_indices,
+                                         output_to_lhs_indices);
+  auto rhs_sharding_transposed_to_match_output =
+      TransposeShardingWithCollapsedDims(rhs_sharding, rhs_to_output_indices,
+                                         output_to_rhs_indices);
+  auto output_sharding_transposed_to_match_lhs =
+      TransposeShardingWithCollapsedDims(output_sharding, output_to_lhs_indices,
+                                         lhs_to_output_indices);
+  auto output_sharding_transposed_to_match_rhs =
+      TransposeShardingWithCollapsedDims(output_sharding, output_to_rhs_indices,
+                                         rhs_to_output_indices);
 
   // LHS and RHS are partitioned the same way and only partitioned in batch
   // dimensions.

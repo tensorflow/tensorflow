@@ -194,7 +194,7 @@ Status ComputeSliceSize(const Scope& host_scope,
   ConstantCache constant_pool(host_scope, control_deps);
 
   std::vector<Output> slice_size;
-  for (int i = 0; i < slice_inputs.size_as_vector.size(); i++) {
+  for (int i = 0, end = slice_inputs.size_as_vector.size(); i < end; i++) {
     if (slice_inputs.size_as_vector[i] >= 0) {
       slice_size.push_back(
           constant_pool.Get1DHostConstant(slice_inputs.size_as_vector[i]));

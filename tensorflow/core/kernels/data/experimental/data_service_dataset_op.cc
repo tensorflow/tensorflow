@@ -185,20 +185,29 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     ~Iterator() override {
-      mutex_lock l(mu_);
       VLOG(1) << "Destroying data service dataset iterator for job id "
               << job_id_;
+      CancelThreads();
+      if (deregister_fn_) deregister_fn_();
+      // Thread destructors will block until the threads finish, no need to wait
+      // here.
+    }
+
+    void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
+      VLOG(1) << "Cancelling threads in DataServiceDataset::Iterator";
       cancelled_ = true;
       worker_thread_cv_.notify_all();
       manager_thread_cv_.notify_all();
       get_next_cv_.notify_all();
-      // Thread destructors will block until the threads finish, no need to wait
-      // here.
     }
 
     Status Initialize(IteratorContext* ctx) override {
       VLOG(3) << "Connecting to " << dataset()->address_
               << " in data service dataset op";
+      TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+          ctx->cancellation_manager(), [this]() { CancelThreads(); },
+          &deregister_fn_));
       DataServiceDispatcherClient dispatcher(dataset()->address_,
                                              dataset()->protocol_);
       if (dataset()->job_name_.empty()) {
@@ -287,7 +296,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // TODO(aaudibert): Instead of polling, have dispatcher send updates when
     // the list of tasks changes.
     void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
-      VLOG(3) << "Starting task thread manager";
+      auto cleanup =
+          gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
+      VLOG(1) << "Starting task thread manager";
       DataServiceDispatcherClient dispatcher(dataset()->address_,
                                              dataset()->protocol_);
       uint64 next_check = Env::Default()->NowMicros();
@@ -327,7 +338,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       absl::flat_hash_map<int64, TaskInfo> task_id_to_task;
       for (auto& task : tasks) {
-        task_id_to_task[task.id()] = task;
+        task_id_to_task[task.task_id()] = task;
       }
       mutex_lock l(mu_);
       job_finished_ = job_finished;
@@ -360,8 +371,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           get_next_cv_.notify_all();
           continue;
         }
-        tasks_.push_back(std::make_shared<Task>(
-            task_info.id(), task_info.worker_address(), std::move(worker)));
+        tasks_.push_back(std::make_shared<Task>(task_info.task_id(),
+                                                task_info.worker_address(),
+                                                std::move(worker)));
       }
       if (dataset()->max_outstanding_requests_ == model::kAutotune) {
         // Adjust max_outstanding_requests to account for newly added tasks.
@@ -388,8 +400,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void RunWorkerThread(std::function<void()> done) {
-      auto cleanup = gtl::MakeCleanup([done = std::move(done)]() { done(); });
-      VLOG(3) << "Starting worker thread";
+      auto cleanup = gtl::MakeCleanup([done = std::move(done)]() {
+        done();
+        VLOG(1) << "Worker thread exiting";
+      });
+      VLOG(1) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
         {
@@ -531,6 +546,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     condition_variable worker_thread_cv_ TF_GUARDED_BY(mu_);
     condition_variable manager_thread_cv_ TF_GUARDED_BY(mu_);
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
 
     int64 outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
     // max_outstanding_requests controls how many elements may be held in memory

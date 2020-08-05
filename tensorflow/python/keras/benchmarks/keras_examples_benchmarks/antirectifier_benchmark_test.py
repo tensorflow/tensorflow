@@ -53,7 +53,7 @@ class AntirectifierBenchmark(tf.test.Benchmark):
   #   optimizer: Optimizer for model.
   #   Check more details in `measure_performance()` method of
   #   benchmark_util.
-  def benchmark_pixel_cnn_bs_128(self):
+  def benchmark_antirectifier_bs_128(self):
     """Measure performance with batch_size=128 and run_iters=2."""
     batch_size = 128
     run_iters = 2
@@ -70,7 +70,7 @@ class AntirectifierBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_pixel_cnn_bs_256(self):
+  def benchmark_antirectifier_bs_256(self):
     """Measure performance with batch_size=256 and run_iters=3."""
     batch_size = 256
     run_iters = 3
@@ -87,7 +87,7 @@ class AntirectifierBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_pixel_cnn_bs_512(self):
+  def benchmark_antirectifier_bs_512(self):
     """Measure performance with batch_size=512 and run_iters=4."""
     batch_size = 512
     run_iters = 4
@@ -97,6 +97,28 @@ class AntirectifierBenchmark(tf.test.Benchmark):
         y=self.y_train,
         batch_size=batch_size,
         run_iters=run_iters,
+        optimizer="rmsprop",
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=["sparse_categorical_accuracy"])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+
+  def benchmark_antirectifier_bs_512_gpu_2(self):
+    """Measure performance with batch_size=512, run_iters=4, gpu=2 and
+
+    distribution_strategy=`mirrored`.
+    """
+    batch_size = 512
+    run_iters = 4
+    metrics, wall_time, extras = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.x_train,
+        y=self.y_train,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        num_gpus=2,
+        distribution_strategy="mirrored",
         optimizer="rmsprop",
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=["sparse_categorical_accuracy"])

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
+#include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -46,6 +47,10 @@ class DataServiceDispatcherImpl {
   explicit DataServiceDispatcherImpl(
       const experimental::DispatcherConfig& config);
 
+  // Starts the dispatcher. If there is a journal, this will read from the
+  // journal to restore the dispatcher's state.
+  Status Start();
+
   // See dispatcher.proto for API documentation.
 
   /// Worker-facing API.
@@ -66,166 +71,66 @@ class DataServiceDispatcherImpl {
                     GetWorkersResponse* response);
 
  private:
-  class Worker {
-   public:
-    Worker(int64 worker_id, const std::string address)
-        : worker_id_(worker_id), address_(address) {}
-
-    int64 worker_id() { return worker_id_; }
-    std::string address() { return address_; }
-    WorkerService::Stub* stub() { return stub_.get(); }
-    void set_stub(std::unique_ptr<WorkerService::Stub> stub) {
-      stub_ = std::move(stub);
-    }
-
-    std::string DebugString() {
-      return absl::StrCat("id: ", worker_id_, " address: ", address_);
-    }
-
-   private:
-    const int64 worker_id_;
-    const std::string address_;
-    std::unique_ptr<WorkerService::Stub> stub_;
-  };
-
-  class Dataset {
-   public:
-    Dataset(int64 dataset_id, int64 fingerprint, const DatasetDef& dataset_def)
-        : dataset_id_(dataset_id),
-          fingerprint_(fingerprint),
-          dataset_def_(dataset_def) {}
-
-    int64 dataset_id() const { return dataset_id_; }
-    int64 fingerprint() const { return fingerprint_; }
-    const DatasetDef& dataset_def() { return dataset_def_; }
-
-   private:
-    const int64 dataset_id_;
-    const int64 fingerprint_;
-    const DatasetDef dataset_def_;
-  };
-
-  class Job {
-   public:
-    Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
-        absl::optional<absl::string_view> job_name)
-        : job_id_(job_id),
-          dataset_id_(dataset_id),
-          processing_mode_(processing_mode),
-          job_name_(job_name) {}
-
-    int64 job_id() const { return job_id_; }
-    int64 dataset_id() const { return dataset_id_; }
-    ProcessingMode processing_mode() const { return processing_mode_; }
-    absl::optional<std::string> name() const { return job_name_; }
-    const std::vector<int64>& task_ids() const { return task_ids_; }
-    void add_task_id(int64 task_id) { task_ids_.push_back(task_id); }
-    void task_finished(int64 task_id) {
-      finished_tasks_.push_back(task_id);
-      if (finished_tasks_.size() == task_ids_.size()) {
-        finished_ = true;
-      }
-    }
-    bool finished() const { return finished_; }
-
-   private:
-    const int64 job_id_;
-    const int64 dataset_id_;
-    const ProcessingMode processing_mode_;
-    const absl::optional<std::string> job_name_;
-    std::vector<int64> task_ids_;
-    std::vector<int64> finished_tasks_;
-    bool finished_ = false;
-  };
-
-  class NamedJobKey {
-   public:
-    NamedJobKey(absl::string_view name, int64 index)
-        : name_(name), index_(index) {}
-
-    friend bool operator==(const NamedJobKey& lhs, const NamedJobKey& rhs) {
-      return lhs.name_ == rhs.name_ && lhs.index_ == rhs.index_;
-    }
-
-    template <typename H>
-    friend H AbslHashValue(H h, const NamedJobKey& k) {
-      return H::combine(std::move(h), k.name_, k.index_);
-    }
-
-   private:
-    const std::string name_;
-    const int64 index_;
-  };
-
-  class Task {
-   public:
-    Task(int64 task_id, int64 job_id, int64 dataset_id,
-         const std::string& worker_address)
-        : task_id_(task_id),
-          job_id_(job_id),
-          dataset_id_(dataset_id),
-          worker_address_(worker_address) {}
-
-    int64 task_id() const { return task_id_; }
-    int64 job_id() const { return job_id_; }
-    int64 dataset_id() const { return dataset_id_; }
-    std::string worker_address() const { return worker_address_; }
-
-   private:
-    const int64 task_id_;
-    const int64 job_id_;
-    const int64 dataset_id_;
-    const std::string worker_address_;
-  };
-
-  // Registers a dataset with the given fingerprint, returning a new dataset id.
-  int64 RegisterDataset(uint64 fingerprint, const DatasetDef& dataset)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Initializes a workers stub, if it hasn't been initialized already.
-  Status EnsureWorkerStubInitialized(Worker* worker);
-  // Instructs a worker to begin processing a task.
-  Status AllocateTaskToWorker(const Task& task_id, Worker* worker)
+  // Registers a dataset with the given fingerprint, storing the new dataset's
+  // id in `*dataset-id`.
+  Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
+                         int64* dataset_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
+  // stub and stores it in `worker_stubs_`.
+  Status GetOrCreateWorkerStub(const std::string& worker_address,
+                               WorkerService::Stub** out_stub)
       LOCKS_EXCLUDED(mu_);
-  // Creates a job and stores its job_id in `*job_id`.
+  // Creates a job and stores it in `*job`. This method updates the
+  // dispatcher state with the new job, but does not assign tasks to workers.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                   absl::optional<std::string> job_name, int64* out_job_id)
-      LOCKS_EXCLUDED(mu_);
-  // Creates a new task for a job, returning a reference to the task.
-  const Task& CreateTask(Job* job, const std::string& worker_address)
-      LOCKS_EXCLUDED(mu_);
-  // Same as `CreateTask`, but expects that the dispatcher lock is already held.
-  const Task& CreateTaskLocked(Job* job, const std::string& worker_address)
+                   absl::optional<DispatcherState::NamedJobKey> named_job_key,
+                   std::shared_ptr<const DispatcherState::Job>* job)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Creates one task for each worker, for the given job. The created tasks are
+  // stored in `*tasks`. This method only updates dispatcher metadata with the
+  // new tasks, but doesn't assign the tasks to the workers.
+  Status CreateTasksForJob(
+      std::shared_ptr<const DispatcherState::Job> job,
+      std::vector<std::shared_ptr<const DispatcherState::Task>>* tasks)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Creates a new task for a job, storing the created task in `*task`.
+  Status CreateTask(std::shared_ptr<const DispatcherState::Job> job,
+                    const std::string& worker_address,
+                    std::shared_ptr<const DispatcherState::Task>* task);
+  // Assigns the list of tasks to the workers indicated by their
+  // `worker_address` fields.
+  Status AssignTasks(
+      std::vector<std::shared_ptr<const DispatcherState::Task>> tasks)
+      LOCKS_EXCLUDED(mu_);
+  // Assigns a task to the worker indicated by its `worker_address` field.
+  Status AssignTask(std::shared_ptr<const DispatcherState::Task> task)
+      LOCKS_EXCLUDED(mu_);
   // Validates that an existing job matches the given processing_mode and
   // dataset_id, returning an error status describing any difference.
-  Status ValidateMatchingJob(const Job& job, ProcessingMode processing_mode,
-                             int64 dataset_id);
+  Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
+                             ProcessingMode processing_mode, int64 dataset_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Applies a state update, updating both the journal and the in-memory state.
+  Status Apply(const Update& update) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Applies a state update, but doesn't update the journal. Only meant to be
+  // used when recovering state when the dispatcher starts.
+  Status ApplyWithoutJournaling(const Update& update)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig& config_;
 
   mutex mu_;
 
-  int64 next_worker_id_ TF_GUARDED_BY(mu_) = 0;
-  int64 next_dataset_id_ TF_GUARDED_BY(mu_) = 0;
-  int64 next_job_id_ TF_GUARDED_BY(mu_) = 0;
   int64 next_task_id_ TF_GUARDED_BY(mu_) = 0;
 
-  // Registered workers.
-  std::vector<std::shared_ptr<Worker>> workers_ TF_GUARDED_BY(mu_);
-  // Registered datasets, keyed by dataset ids.
-  absl::flat_hash_map<int64, std::shared_ptr<Dataset>> datasets_by_id_
+  // Cached worker stubs for communicating with workers.
+  absl::flat_hash_map<std::string, std::unique_ptr<WorkerService::Stub>>
+      worker_stubs_ TF_GUARDED_BY(mu_);
+
+  absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
-  // Registered datasets, keyed by dataset fingerprints.
-  absl::flat_hash_map<uint64, std::shared_ptr<Dataset>> datasets_by_fingerprint_
-      TF_GUARDED_BY(mu_);
-  // Information about jobs, keyed by job ids.
-  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_ TF_GUARDED_BY(mu_);
-  // Information about tasks, keyed by task ids.
-  absl::flat_hash_map<int64, Task> tasks_ TF_GUARDED_BY(mu_);
-  // Named jobs, keyed by their names and indices. Not all jobs have names, so
-  // this is a subset of the jobs stored in `jobs_`.
-  absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_
-      TF_GUARDED_BY(mu_);
+  DispatcherState state_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

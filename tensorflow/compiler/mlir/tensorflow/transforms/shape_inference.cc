@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -243,14 +244,11 @@ bool RefineResultType(Operation* op, Value result,
 
 // Infers the shape from a (Stateful)PartionedCall operation by looking up the
 // called function and propagating the return type.
-bool InferShapeForCall(Operation* op) {
-  auto call_op = cast<CallOpInterface>(op);
-  CallInterfaceCallable callable = call_op.getCallableForCallee();
-  SymbolRefAttr sym = callable.dyn_cast<SymbolRefAttr>();
-  if (!sym) return false;
-  FuncOp func = dyn_cast<FuncOp>(SymbolTable::lookupNearestSymbolFrom(op, sym));
+bool InferShapeForCall(CallOpInterface call_op) {
+  FuncOp func = dyn_cast<FuncOp>(call_op.resolveCallable());
   if (!func) return false;
 
+  Operation* op = call_op.getOperation();
   bool changed = false;
   // Map each of the results of the call to the returned type of the
   // function.
@@ -533,7 +531,7 @@ class ShapeInference {
   //      like predicate).
   LogicalResult PropagateShapeToFunctions(
       ModuleOp module, Operation::operand_type_range input_types,
-      ArrayRef<StringRef> func_names, int64_t max_iteration);
+      ArrayRef<FuncOp> functions, int64_t max_iteration);
 
   // Propagates shapes to regions given the shapes of the inputs of the regions.
   // All regions provided in `regions` are assumed to have inputs of type
@@ -555,13 +553,13 @@ class ShapeInference {
   //
   // TODO(b/154065712): Move this to a more general inter-procedural constant
   // folding pass.
-  void PropagateConstantToCallee(CallOpInterface call_op,
-                                 SymbolRefAttr callee_sym, ModuleOp module);
+  void PropagateConstantToCallee(CallOpInterface call_op, FuncOp func,
+                                 ModuleOp module);
 
   // Propagates any constant return value of the callee function to the call
   // op's corresponding result.
-  void PropagateConstantFromCallee(CallOpInterface call_op,
-                                   SymbolRefAttr callee_sym, ModuleOp module);
+  void PropagateConstantFromCallee(CallOpInterface call_op, FuncOp func,
+                                   ModuleOp module);
 
   // Tries to compute the result of folding the op. This doesn't actually
   // perform constant folding, it is just computes the equivalent constants.
@@ -779,9 +777,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
 
   // Handle call operations by looking up callee and infering return shape as
   // needed.
-  if (isa<PartitionedCallOp, StatefulPartitionedCallOp, TPUPartitionedCallOp>(
-          op))
-    return InferShapeForCall(op);
+  if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
 
   // tf.Cast are only inferred if they have at least one user in the TF dialect
   // or feeding into the function return. This is necessary to avoid inserting
@@ -984,14 +980,13 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
 
 LogicalResult ShapeInference::PropagateShapeToFunctions(
     ModuleOp module, Operation::operand_type_range input_types,
-    ArrayRef<StringRef> func_names, int64_t max_iteration) {
+    ArrayRef<FuncOp> functions, int64_t max_iteration) {
   bool all_succeeded = true;
   auto types = llvm::to_vector<4>(input_types);
   // If shape propagation fails for one function, return failure, but do not
   // early exit and attempt to propagate shapes for all provided functions to
   // have a best-effort propagation.
-  for (auto func_name : func_names) {
-    FuncOp func = module.lookupSymbol<FuncOp>(func_name);
+  for (FuncOp func : functions) {
     auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
     if (!llvm::hasSingleElement(func_uses.getValue())) {
       int num_uses = std::distance(func_uses->begin(), func_uses->end());
@@ -1046,12 +1041,9 @@ LogicalResult ShapeInference::PropagateShapeToRegions(
 }
 
 void ShapeInference::PropagateConstantToCallee(CallOpInterface call_op,
-                                               SymbolRefAttr callee_sym,
-                                               ModuleOp module) {
-  auto func = module.lookupSymbol<FuncOp>(callee_sym.getRootReference());
+                                               FuncOp func, ModuleOp module) {
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
-  int num_uses = std::distance(func_uses->begin(), func_uses->end());
-  if (num_uses != 1) return;
+  if (!llvm::hasSingleElement(func_uses.getValue())) return;
 
   OpBuilder builder(&func.front().front());
   Operation* op = call_op.getOperation();
@@ -1077,9 +1069,7 @@ void ShapeInference::PropagateConstantToCallee(CallOpInterface call_op,
 }
 
 void ShapeInference::PropagateConstantFromCallee(CallOpInterface call_op,
-                                                 SymbolRefAttr callee_sym,
-                                                 ModuleOp module) {
-  auto func = module.lookupSymbol<FuncOp>(callee_sym.getRootReference());
+                                                 FuncOp func, ModuleOp module) {
   // If the return value is a constant, use the constant as the value of
   // the call return.
   Operation* op = call_op.getOperation();
@@ -1111,28 +1101,29 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
   if (auto if_op = dyn_cast<TF::IfOp>(op)) {
     return PropagateShapeToFunctions(
         module, drop_begin(if_op.getOperandTypes(), 1),
-        {if_op.then_branch(), if_op.else_branch()}, max_iteration);
+        {if_op.then_func(), if_op.else_func()}, max_iteration);
   } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
-    SmallVector<StringRef, 4> branches;
-    for (Attribute branch : case_op.branches())
-      branches.push_back(branch.cast<FlatSymbolRefAttr>().getValue());
+    SmallVector<FuncOp, 4> branches;
+    for (Attribute branch : case_op.branches()) {
+      auto sym = branch.cast<FlatSymbolRefAttr>();
+      branches.push_back(SymbolTable::lookupNearestSymbolFrom<FuncOp>(op, sym));
+    }
     return PropagateShapeToFunctions(module,
                                      drop_begin(case_op.getOperandTypes(), 1),
                                      branches, max_iteration);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-    return PropagateShapeToFunctions(module, while_op.getOperandTypes(),
-                                     {while_op.cond(), while_op.body()},
-                                     max_iteration);
+    return PropagateShapeToFunctions(
+        module, while_op.getOperandTypes(),
+        {while_op.cond_func(), while_op.body_func()}, max_iteration);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-    CallInterfaceCallable callable = call_op.getCallableForCallee();
-    if (SymbolRefAttr sym = callable.dyn_cast<SymbolRefAttr>()) {
-      PropagateConstantToCallee(call_op, sym, module);
-      if (failed(PropagateShapeToFunctions(
-              module, call_op.getArgOperands().getTypes(),
-              {sym.getRootReference()}, max_iteration))) {
+    if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable())) {
+      PropagateConstantToCallee(call_op, func, module);
+      if (failed(PropagateShapeToFunctions(module,
+                                           call_op.getArgOperands().getTypes(),
+                                           {func}, max_iteration))) {
         return failure();
       }
-      PropagateConstantFromCallee(call_op, sym, module);
+      PropagateConstantFromCallee(call_op, func, module);
       return success();
     }
   }

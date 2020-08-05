@@ -23,17 +23,17 @@ limitations under the License.
 #include <numeric>
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
 
 using mlir::FunctionPass;
 using mlir::OwningRewritePatternList;
@@ -41,9 +41,9 @@ using mlir::PassRegistration;
 using mlir::PassWrapper;
 
 namespace {
-class LowerComplex : public PassWrapper<LowerComplex, FunctionPass> {
+class LowerComplexPass : public PassWrapper<LowerComplexPass, FunctionPass> {
  public:
-  explicit LowerComplex() : PassWrapper<LowerComplex, FunctionPass>() {}
+  explicit LowerComplexPass() : PassWrapper<LowerComplexPass, FunctionPass>() {}
 
   /// Performs the lowering to MHLO dialect.
   void runOnFunction() override;
@@ -54,7 +54,7 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
-#include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_lower_complex.inc"
+#include "generated_lower_complex.inc"
 
 }  // end anonymous namespace
 
@@ -66,7 +66,7 @@ void PopulateComplexLoweringPatterns(MLIRContext* context,
 }  // end namespace mlir
 
 // Lowers the complex operations that can be represented using other operations.
-void LowerComplex::runOnFunction() {
+void LowerComplexPass::runOnFunction() {
   // Add lowering patterns to the list.
   OwningRewritePatternList patterns;
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
@@ -74,6 +74,6 @@ void LowerComplex::runOnFunction() {
   applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
-static PassRegistration<LowerComplex> pass(
-    "mhlo-test-lower-complex",
-    "Lower complex operations into non-complex operations");
+std::unique_ptr<FunctionPass> mlir::mhlo::createLowerComplexPass() {
+  return std::make_unique<LowerComplexPass>();
+}

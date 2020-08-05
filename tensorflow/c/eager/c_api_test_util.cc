@@ -157,7 +157,7 @@ TFE_TensorHandle* TestVariable(TFE_Context* ctx, float value,
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
   TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "", 0);
+  TFE_OpSetAttrString(op, "container", "localhost", 0);
   TFE_OpSetAttrString(op, "shared_name", "", 0);
   if (!device_name.empty()) {
     TFE_OpSetDevice(op, device_name.c_str(), status);

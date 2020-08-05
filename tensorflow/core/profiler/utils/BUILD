@@ -407,6 +407,17 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "kernel_stats_utils_test",
+    srcs = ["kernel_stats_utils_test.cc"],
+    deps = [
+        ":kernel_stats_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+    ],
+)
+
 cc_library(
     name = "tfstreamz_utils",
     srcs = ["tfstreamz_utils.cc"],

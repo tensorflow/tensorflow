@@ -119,6 +119,8 @@ struct PjRtCrossHostRecvBuffer {
 using PjRtCrossHostRecvNotifier =
     std::function<void(StatusOr<std::vector<PjRtCrossHostRecvBuffer>>&&)>;
 
+class PjRtExecutable;
+
 // Encapsulates the state of Python session with XLA.
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
@@ -180,6 +182,13 @@ class PjRtClient {
   // reflects the option that executable was compiled with.
   virtual StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
       const LocalExecutable& executable, bool tuple_inputs) const;
+
+  // Generates a unique fingerprint for `executable`. See
+  // PjRtExecutable::fingerprint_.
+  virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+      const PjRtExecutable& executable) const {
+    return absl::optional<std::string>();
+  }
 
  protected:
   friend class PjRtBuffer;
@@ -668,6 +677,11 @@ struct ExecuteOptions {
   // If true, the computation must return a tuple, which will be destructured
   // into its elements.
   bool untuple_result = false;
+  // If non-zero, identifies this execution as part of a potentially
+  // multi-device launch. This can be used to detect scheduling errors, e.g. if
+  // multi-host programs are launched in different orders on different hosts,
+  // the launch IDs may be used by the runtime to detect the mismatch.
+  int32 launch_id = 0;
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -686,6 +700,8 @@ class PjRtExecutable {
                  std::shared_ptr<DeviceAssignment> device_assignment,
                  std::vector<std::pair<int, int>> local_logical_device_ids,
                  std::vector<Device*> local_devices, PjRtClient* client);
+
+  virtual ~PjRtExecutable() = default;
 
   PjRtClient* client() const { return client_; }
 
@@ -744,12 +760,14 @@ class PjRtExecutable {
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(PjRtClient* client, bool tuple_inputs);
+
   StatusOr<ScopedShapedBuffer> EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, Device* device,
       std::vector<PjRtBuffer::ScopedHold>* device_buffers,
       std::shared_ptr<DeviceAssignment> device_assignment) const;
+
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,

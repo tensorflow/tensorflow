@@ -28,11 +28,9 @@ namespace cl {
 
 class SpaceToDepth : public GPUOperation {
  public:
-  SpaceToDepth(const OperationDef& op_def, const SpaceToDepthAttributes& attr)
-      : GPUOperation(op_def), attr_(attr) {}
+  SpaceToDepth(const OperationDef& op_def, const SpaceToDepthAttributes& attr);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   SpaceToDepth(SpaceToDepth&& operation);
   SpaceToDepth& operator=(SpaceToDepth&& operation);
@@ -40,6 +38,8 @@ class SpaceToDepth : public GPUOperation {
   SpaceToDepth& operator=(const SpaceToDepth&) = delete;
 
  private:
+  std::string GetSpaceToDepthCode(const OperationDef& op_def);
+
   SpaceToDepthAttributes attr_;
 };
 

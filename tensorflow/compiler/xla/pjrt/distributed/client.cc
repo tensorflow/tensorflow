@@ -23,8 +23,9 @@ limitations under the License.
 namespace xla {
 
 DistributedRuntimeClient::DistributedRuntimeClient(
-    std::shared_ptr<::grpc::Channel> channel)
-    : stub_(grpc::DistributedRuntimeService::NewStub(std::move(channel))) {}
+    std::shared_ptr<::grpc::Channel> channel, absl::Duration rpc_timeout)
+    : stub_(grpc::DistributedRuntimeService::NewStub(std::move(channel))),
+      rpc_timeout_(rpc_timeout) {}
 DistributedRuntimeClient::~DistributedRuntimeClient() = default;
 
 xla::Status DistributedRuntimeClient::Connect(

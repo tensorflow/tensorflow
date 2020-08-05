@@ -1750,10 +1750,10 @@ void HloInstruction::DetachFromOperandsAndUsers() {
   }
 }
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone(
-    const string& suffix, HloCloneContext* context) const {
+std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
+    const Shape& shape, const string& suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewOperands(shape_, operands_, context);
+      CloneWithNewOperands(shape, operands_, context);
   if (suffix.empty()) {
     clone->name_ = name();
   } else {
@@ -1787,6 +1787,13 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(
       }
     }
   }
+  return clone;
+}
+
+std::unique_ptr<HloInstruction> HloInstruction::Clone(
+    const string& suffix, HloCloneContext* context) const {
+  std::unique_ptr<HloInstruction> clone =
+      CloneWithNewShape(shape_, suffix, context);
   return clone;
 }
 
@@ -2200,7 +2207,7 @@ Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
 Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
   for (HloInstruction* user : users) {
-    TF_RETURN_IF_ERROR(ReplaceUseWith(user, new_producer));
+    TF_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
   }
 
   if (parent_ && parent_->root_instruction() == this) {

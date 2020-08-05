@@ -772,11 +772,6 @@ class TPUStrategyDistributionTest(
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
-  # TODO(b/158110684): enable this test.
-  def disable_test_numpy_dataset(self):
-    strategy = get_tpu_strategy()
-    self._test_numpy_dataset(strategy)
-
   def test_make_input_fn_iterable(self):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
@@ -803,9 +798,29 @@ class TPUStrategyDistributionTest(
         distribution.extended.worker_devices,
         expected_values)
 
+  def test_num_replicas_in_sync(self):
+    strategy = get_tpu_strategy()
+    self.assertEqual(2, strategy.num_replicas_in_sync)
+
+  def test_call_and_merge_exceptions(self):
+    strategy = get_tpu_strategy()
+    self._test_call_and_merge_exceptions(strategy)
+
+  def test_numpy_dataset(self):
+    strategy = get_tpu_strategy()
+    self._test_numpy_dataset(strategy, run_in_function=True)
+
+  def test_global_step_update(self):
+    strategy = get_tpu_strategy()
+    self._test_global_step_update(strategy)
+
   def test_run(self):
     strategy = get_tpu_strategy()
     self._test_run(strategy, run_in_function=True)
+
+  def test_summary_for_replica_zero_only(self):
+    strategy = get_tpu_strategy()
+    self._test_summary_for_replica_zero_only(strategy)
 
   def test_all_reduce_sum(self):
     strategy = get_tpu_strategy()

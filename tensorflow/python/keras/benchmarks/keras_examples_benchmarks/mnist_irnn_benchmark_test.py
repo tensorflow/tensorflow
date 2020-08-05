@@ -112,6 +112,28 @@ class IRNNMnistBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
+  def benchmark_irnn_mnist_bs_1024_gpu_3(self):
+    """Measure performance with batch_size=1024, run_iters=3, gpu=3 and
+
+    distribution_strategy='mirrored'
+    """
+    batch_size = 1024
+    run_iters = 3
+    metrics, wall_time, extras = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.x_train,
+        y=self.y_train,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        num_gpus=3,
+        distribution_strategy='mirrored',
+        optimizer=tf.keras.optimizers.RMSprop(learning_rate=self.learning_rate),
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+
 
 if __name__ == '__main__':
   tf.test.main()

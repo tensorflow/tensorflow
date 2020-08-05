@@ -26,7 +26,6 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
-from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
@@ -72,7 +71,6 @@ def strategy_with_var_policy():
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           strategy_combinations.tpu_strategy,
           strategy_combinations.tpu_strategy_packed_var,
-          strategy_combinations.central_storage_strategy_with_two_gpus,
       ],
       mode=["graph", "eager"],
       use_var_policy=[True, False])
@@ -97,8 +95,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       sess.run({"complicated": mirrored})
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssign(self, distribution, experimental_run_tf_function,
-                 use_var_policy):
+  def testAssign(self, distribution, experimental_run_tf_function):
 
     def assign(fn, v, update_value, cross_replica):
       update_fn = lambda: getattr(v, fn)(update_value)
@@ -138,8 +135,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
                             self.evaluate(array_ops.ones_like(component)))
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssignOnWriteVar(self, distribution, experimental_run_tf_function,
-                           use_var_policy):
+  def testAssignOnWriteVar(self, distribution, experimental_run_tf_function):
 
     with distribution.scope():
       v_to_assign = variable_scope.variable(
@@ -184,8 +180,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(2.0, self.evaluate(component.read_value()))
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssignPerReplicaVal(self, distribution, experimental_run_tf_function,
-                              use_var_policy):
+  def testAssignPerReplicaVal(self, distribution, experimental_run_tf_function):
 
     if isinstance(distribution, _TPU_STRATEGIES):
       self.skipTest("Assigning PerReplica values is not supported. See"
@@ -243,7 +238,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(expected, self.evaluate(component.read_value()))
 
   @combinations.generate(strategy_with_var_policy())
-  def testValueInReplicaContext(self, distribution, use_var_policy):
+  def testValueInReplicaContext(self, distribution):
     with distribution.scope():
       v = variables_lib.Variable(
           1., aggregation=variables_lib.VariableAggregation.MEAN)
@@ -262,8 +257,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testReadValueInReplicaContext(self, distribution,
-                                    experimental_run_tf_function,
-                                    use_var_policy):
+                                    experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.NONE,
         variables_lib.VariableAggregation.SUM,
@@ -288,8 +282,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testReadValueInCrossReplicaContext(self, distribution,
-                                         experimental_run_tf_function,
-                                         use_var_policy):
+                                         experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.NONE,
         variables_lib.VariableAggregation.SUM,
@@ -314,7 +307,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
                          self.evaluate(results))
 
   @combinations.generate(strategy_with_var_policy())
-  def testAssignOutOfScope(self, distribution, use_var_policy):
+  def testAssignOutOfScope(self, distribution):
     with distribution.scope():
       mirrored = variables_lib.Variable(1.)
     self.evaluate(mirrored.assign(3.))
@@ -323,8 +316,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(component.read_value()), 3.)
 
   @combinations.generate(strategy_with_var_policy())
-  def testAssignAggregationMeanDTypeNonFloat(self, distribution,
-                                             use_var_policy):
+  def testAssignAggregationMeanDTypeNonFloat(self, distribution):
     if isinstance(distribution, _TPU_STRATEGIES):
       self.skipTest("Fix sponge/6e8ab540-4c0f-4da5-aedf-86505ff810c9 before "
                     "reenabling test.")
@@ -381,8 +373,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(v.read_value()), 4)
 
   @combinations.generate(strategy_with_var_policy())
-  def testInitializedToSameValueInsideEagerRun(self, distribution,
-                                               use_var_policy):
+  def testInitializedToSameValueInsideEagerRun(self, distribution):
     if not context.executing_eagerly(): self.skipTest("eager only test")
     v = [None]
 
@@ -401,7 +392,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(vals[0], vals[1])
 
   @combinations.generate(strategy_with_var_policy())
-  def testAggregationOnlyFirstReplica(self, distribution, use_var_policy):
+  def testAggregationOnlyFirstReplica(self, distribution):
     with distribution.scope():
       v = variable_scope.variable(
           15.,
@@ -422,7 +413,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
         per_replica_results)
 
   @combinations.generate(strategy_with_var_policy())
-  def testInitScope(self, distribution, use_var_policy):
+  def testInitScope(self, distribution):
     if not context.executing_eagerly(): self.skipTest("eager only")
 
     class C(object):
@@ -450,7 +441,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 2], per_replica_results)
 
   @combinations.generate(strategy_with_var_policy())
-  def testOperatorOverride(self, distribution, use_var_policy):
+  def testOperatorOverride(self, distribution):
 
     with distribution.scope():
       v = variable_scope.variable(
@@ -663,26 +654,6 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
       self.evaluate(v2.scatter_min(value))
       self.assertAllEqual([1, 1, 1], self.evaluate(v2.read_value()))
-
-
-def _make_replica_local(method, strategy=None):
-  if strategy is None:
-    devices = ("/device:GPU:0", "/device:CPU:0")
-  else:
-    devices = strategy.extended.worker_devices
-
-  v = []
-  for d, n, init in zip(devices, ["v", "v/replica"], [1., 2.]):
-    with ops.device(d):
-      v.append(variable_scope.get_variable(
-          name=n, initializer=init, use_resource=True))
-
-  if (strategy is not None) and isinstance(strategy, _TPU_STRATEGIES):
-    var_cls = tpu_values.TPUSyncOnReadVariable
-  else:
-    var_cls = values.SyncOnReadVariable
-  replica_local = var_cls(strategy, v, method)
-  return v, replica_local
 
 
 class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
@@ -1257,13 +1228,6 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(NotImplementedError):
       self.evaluate(distribution.run(v.scatter_min, args=(delta,)))
-
-
-def _make_index_slices(vals, indices, dense_shape=None):
-  if dense_shape:
-    dense_shape = array_ops.identity(dense_shape)
-  return indexed_slices.IndexedSlices(
-      array_ops.identity(vals), array_ops.identity(indices), dense_shape)
 
 
 if __name__ == "__main__":

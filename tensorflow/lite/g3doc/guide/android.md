@@ -143,7 +143,7 @@ directory instead (-v hostDir:/tmp).
     license):
 
 ```shell
-android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}’
+android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}
 ```
 
 You can now proceed to the "Build and Install" section. After you are finished

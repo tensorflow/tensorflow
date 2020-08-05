@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -247,6 +248,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                                          opts.worker_service_options)
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
+
+  profiler_service_ = CreateProfilerService();
+  builder.RegisterService(profiler_service_.get());
 
   // extra service:
   if (opts.service_func != nullptr) {

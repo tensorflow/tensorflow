@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -45,6 +46,16 @@ limitations under the License.
 namespace xla {
 
 class XlaBuilder;
+class XlaOp;
+
+namespace internal {
+
+XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
+                            absl::Span<const XlaOp> operands,
+                            absl::string_view fusion_kind,
+                            const XlaComputation& fused_computation);
+
+}  // namespace internal
 
 // This represents an instruction that has been enqueued using the XlaBuilder.
 // This is used to pass to subsequent computations that depends upon the
@@ -339,12 +350,16 @@ class XlaBuilder {
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   //
-  // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
-  // be aliased with output. If a buffer is not donated at runtime, a copy will
-  // be inserted by XLA to prevent buffer clobbering.
+  // Note: Except when 'must-alias' is true, alias is assumed to be 'may-alias'
+  // and only donated buffer at runtime will be aliased with output. If a buffer
+  // is not donated at runtime, a copy will be inserted by XLA to prevent buffer
+  // clobbering.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                  const ShapeIndex& param_index) {
-    input_output_aliases_.push_back({output_index, param_number, param_index});
+                  const ShapeIndex& param_index,
+                  HloInputOutputAliasConfig::AliasKind kind =
+                      HloInputOutputAliasConfig::AliasKind::kMayAlias) {
+    input_output_aliases_.push_back(
+        {output_index, param_number, param_index, kind});
   }
 
   // Describes an input/output alias as inserted by the SetUpAlias() API.
@@ -355,6 +370,8 @@ class XlaBuilder {
     int64 param_number;
     // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
+    // Specifies if the alias is a must alias or may alias.
+    HloInputOutputAliasConfig::AliasKind kind;
   };
 
   // Looks up the HloInstruction and sets the frontend attribute "attribute" to
@@ -629,6 +646,8 @@ class XlaBuilder {
   XlaOp ConvertElementType(XlaOp operand, PrimitiveType new_element_type);
 
   XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
+  virtual StatusOr<XlaOp> BitcastConvertTypeInternal(const Shape& shape,
+                                                     XlaOp operand);
 
   XlaOp Transpose(XlaOp operand, absl::Span<const int64> permutation);
   virtual StatusOr<XlaOp> TransposeInternal(
@@ -640,6 +659,10 @@ class XlaBuilder {
 
   XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
              int64 dimension = -1, bool is_stable = false);
+  virtual StatusOr<XlaOp> SortInternal(const Shape& shape,
+                                       absl::Span<const XlaOp> operands,
+                                       const XlaComputation& comparator,
+                                       int64 dimension, bool is_stable);
 
   XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
 
@@ -656,6 +679,9 @@ class XlaBuilder {
 
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
+  virtual StatusOr<XlaOp> WhileInternal(const Shape& shape,
+                                        const XlaComputation& condition,
+                                        const XlaComputation& body, XlaOp init);
 
   XlaOp Conditional(XlaOp predicate, XlaOp true_operand,
                     const XlaComputation& true_computation, XlaOp false_operand,
@@ -1213,6 +1239,10 @@ class XlaBuilder {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
+
+  friend XlaOp internal::XlaBuilderBuildFusion(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      absl::string_view fusion_kind, const XlaComputation& fused_computation);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
