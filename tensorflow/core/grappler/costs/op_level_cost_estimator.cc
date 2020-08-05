@@ -73,6 +73,7 @@ constexpr char kSize[] = "Size";
 constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
 constexpr char kGather[] = "Gather";
+constexpr char kGatherNd[] = "GatherNd";
 constexpr char kGatherV2[] = "GatherV2";
 constexpr char kScatterAdd[] = "ScatterAdd";
 constexpr char kScatterDiv[] = "ScatterDiv";
@@ -82,6 +83,7 @@ constexpr char kScatterMul[] = "ScatterMul";
 constexpr char kScatterSub[] = "ScatterSub";
 constexpr char kScatterUpdate[] = "ScatterUpdate";
 constexpr char kSlice[] = "Slice";
+constexpr char kStridedSlice[] = "StridedSlice";
 constexpr char kSpaceToDepth[] = "SpaceToDepth";
 constexpr char kTranspose[] = "Transpose";
 constexpr char kMaxPool[] = "MaxPool";
@@ -402,6 +404,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
   device_cost_impl_.emplace(kGather,
                             wrap(&OpLevelCostEstimator::PredictGatherOrSlice));
+  device_cost_impl_.emplace(kGatherNd,
+                            wrap(&OpLevelCostEstimator::PredictGatherOrSlice));
   device_cost_impl_.emplace(kGatherV2,
                             wrap(&OpLevelCostEstimator::PredictGatherOrSlice));
   device_cost_impl_.emplace(kScatterAdd,
@@ -420,6 +424,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                             wrap(&OpLevelCostEstimator::PredictScatter));
 
   device_cost_impl_.emplace(kSlice,
+                            wrap(&OpLevelCostEstimator::PredictGatherOrSlice));
+  device_cost_impl_.emplace(kStridedSlice,
                             wrap(&OpLevelCostEstimator::PredictGatherOrSlice));
 
   device_cost_impl_.emplace(kPlaceholder,
@@ -1799,15 +1805,20 @@ Costs OpLevelCostEstimator::PredictGatherOrSlice(
 
   const double output_size = CalculateOutputSize(op_info, &unknown_shapes);
   double input_size = output_size;
+  int begin_input_index = 1, end_input_index;
   if (op_info.op() == "Slice") {
-    // Add 'begin' & 'size' tensors sizes.
-    input_size +=
-        CalculateTensorElementCount(op_info.inputs(1), &unknown_shapes) +
-        CalculateTensorElementCount(op_info.inputs(2), &unknown_shapes);
+    // Slice: 'input' (omitted), 'begin', 'size'
+    end_input_index = 3;
+  } else if (op_info.op() == "StridedSlice") {
+    // StridedSlice: 'input' (omitted), 'begin', 'end', 'strides'
+    end_input_index = 4;
   } else {
-    // Assuming this is "Gather" or "GatherV2" op, add 'indices' size.
+    // Gather, GatherV2, GatherNd: 'params' (omitted), 'indices'
+    end_input_index = 2;
+  }
+  for (int i = begin_input_index; i < end_input_index; ++i) {
     input_size +=
-        CalculateTensorElementCount(op_info.inputs(1), &unknown_shapes);
+        CalculateTensorElementCount(op_info.inputs(i), &unknown_shapes);
   }
 
   Costs costs =

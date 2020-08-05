@@ -641,22 +641,26 @@ TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
 }
 
 TEST_F(OpLevelCostEstimatorTest, TestGatherCosts) {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("Gather");
+  std::vector<std::string> gather_ops = {"Gather", "GatherNd", "GatherV2"};
 
-  // Huge first input shouldn't affect Gather execution and memory costs.
-  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
-  DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
-  DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
+  for (const auto& op : gather_ops) {
+    OpContext op_context;
+    SetCpuDevice(&op_context.op_info);
+    op_context.op_info.set_op(op);
 
-  auto cost = estimator_.PredictCosts(op_context);
-  EXPECT_EQ(Costs::Duration(130), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(16), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(146), cost.execution_time);
-  EXPECT_EQ(1, cost.num_ops_total);
-  EXPECT_FALSE(cost.inaccurate);
-  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+    // Huge first input shouldn't affect Gather execution and memory costs.
+    DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+    DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
+    DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
+
+    auto cost = estimator_.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(130), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(16), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(146), cost.execution_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
 }
 
 TEST_F(OpLevelCostEstimatorTest, TestGatherCostsWithoutOutput) {
@@ -684,6 +688,27 @@ TEST_F(OpLevelCostEstimatorTest, TestSliceCosts) {
 
   // Huge first input shouldn't affect Slice execution and memory costs.
   DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankOutput({10, 10}, DT_FLOAT, &op_context.op_info);
+
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(81), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(10), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(91), cost.execution_time);
+  EXPECT_EQ(1, cost.num_ops_total);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
+TEST_F(OpLevelCostEstimatorTest, TestStridedSliceCosts) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("StridedSlice");
+
+  // Huge first input shouldn't affect StridedSlice execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
   DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
   DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
   DescribeArbitraryRankOutput({10, 10}, DT_FLOAT, &op_context.op_info);
