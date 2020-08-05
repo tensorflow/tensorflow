@@ -46,6 +46,7 @@ namespace {
 constexpr char kJournalDir[] = "journal";
 
 using Dataset = DispatcherState::Dataset;
+using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
 using Job = DispatcherState::Job;
 using Task = DispatcherState::Task;
@@ -77,10 +78,16 @@ DataServiceDispatcherImpl::DataServiceDispatcherImpl(
 }
 
 Status DataServiceDispatcherImpl::Start() {
-  if (config_.work_dir().empty()) {
+  if (!config_.fault_tolerant_mode()) {
+    LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
+                 "not be able to recover its state on restart.";
     return Status::OK();
   }
   mutex_lock l(mu_);
+  if (config_.work_dir().empty()) {
+    return errors::InvalidArgument(
+        "fault_tolerant_mode is True, but no work_dir is configured.");
+  }
   Update update;
   bool end_of_journal = false;
   FileJournalReader reader(Env::Default(), JournalDir(config_.work_dir()));
@@ -104,12 +111,16 @@ Status DataServiceDispatcherImpl::RegisterWorker(
   VLOG(3) << "Received register worker request";
   mutex_lock l(mu_);
   std::string worker_address = request->worker_address();
-  if (!workers_.contains(worker_address)) {
-    workers_[worker_address] =
-        std::make_shared<Worker>(next_worker_id_++, worker_address);
+  std::shared_ptr<const Worker> worker;
+  Status s = state_.WorkerFromAddress(worker_address, &worker);
+  if (errors::IsNotFound(s)) {
+    Update update;
+    update.mutable_register_worker()->set_worker_address(worker_address);
+    TF_RETURN_IF_ERROR(Apply(update));
+  } else if (!s.ok()) {
+    return s;
   }
-  int64 worker_id = workers_[worker_address]->worker_id;
-  response->set_worker_id(worker_id);
+
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
   // Allocate tasks to the worker.
   for (const auto& job : jobs) {
@@ -127,8 +138,7 @@ Status DataServiceDispatcherImpl::RegisterWorker(
     task_def->set_task_id(task->task_id);
   }
 
-  VLOG(1) << "Registered worker at address " << request->worker_address()
-          << " with id " << worker_id;
+  VLOG(1) << "Registered worker at address " << request->worker_address();
   return Status::OK();
 }
 
@@ -146,8 +156,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
         continue;
       }
       Update update;
-      FinishTaskUpdate* finish_task = update.mutable_finish_task();
-      finish_task->set_task_id(task_id);
+      update.mutable_finish_task()->set_task_id(task_id);
       TF_RETURN_IF_ERROR(Apply(update));
       VLOG(3) << "Task " << task_id << " from job " << task->job_id
               << " completed";
@@ -310,10 +319,10 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::shared_ptr<const Job> job,
     std::vector<std::shared_ptr<const Task>>* tasks)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
   tasks->clear();
-  tasks->reserve(workers_.size());
-  for (const auto& it : workers_) {
-    std::shared_ptr<Worker> worker = it.second;
+  tasks->reserve(workers.size());
+  for (const auto& worker : workers) {
     std::shared_ptr<const Task> task;
     TF_RETURN_IF_ERROR(CreateTask(job, worker->address, &task));
     tasks->push_back(task);
@@ -345,10 +354,28 @@ Status DataServiceDispatcherImpl::AssignTasks(
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::EnsureWorkerStubInitialized(Worker* worker) {
-  if (!worker->stub) {
-    TF_RETURN_IF_ERROR(
-        CreateWorkerStub(worker->address, config_.protocol(), &worker->stub));
+Status DataServiceDispatcherImpl::GetOrCreateWorkerStub(
+    const std::string& worker_address, WorkerService::Stub** out_stub)
+    LOCKS_EXCLUDED(mu_) {
+  {
+    mutex_lock l(mu_);
+    auto it = worker_stubs_.find(worker_address);
+    if (it != worker_stubs_.end()) {
+      *out_stub = it->second.get();
+      return Status::OK();
+    }
+  }
+  std::unique_ptr<WorkerService::Stub> stub;
+  TF_RETURN_IF_ERROR(
+      CreateWorkerStub(worker_address, config_.protocol(), &stub));
+  {
+    mutex_lock l(mu_);
+    // A concurrent call could have already created the stub.
+    auto& worker = worker_stubs_[worker_address];
+    if (worker == nullptr) {
+      worker = std::move(stub);
+    }
+    *out_stub = worker.get();
   }
   return Status::OK();
 }
@@ -359,25 +386,21 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   ProcessTaskRequest req;
   TaskDef* task_def = req.mutable_task();
   task_def->set_dataset_id(task->dataset_id);
-  std::shared_ptr<Worker> worker;
   {
     mutex_lock l(mu_);
-    worker = workers_[task->worker_address];
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, &dataset));
     *task_def->mutable_dataset() = dataset->dataset_def;
   }
-  if (!worker) {
-    return errors::NotFound("No worker found for address ",
-                            task->worker_address);
-  }
   task_def->set_task_id(task->task_id);
   ProcessTaskResponse resp;
-  TF_RETURN_IF_ERROR(EnsureWorkerStubInitialized(worker.get()));
-  grpc::Status s = worker->stub->ProcessTask(&client_ctx, req, &resp);
+  WorkerService::Stub* stub;
+  TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, &stub));
+  grpc::Status s = stub->ProcessTask(&client_ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError(
-        absl::StrCat("Failed to submit task to worker ", worker->address), s);
+        absl::StrCat("Failed to submit task to worker ", task->worker_address),
+        s);
   }
   return Status::OK();
 }
@@ -391,7 +414,8 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
-    task_info->set_id(task->task_id);
+    task_info->set_task_id(task->task_id);
+    task_info->set_job_id(task->job_id);
   }
   std::shared_ptr<const Job> job;
   TF_RETURN_IF_ERROR(state_.JobFromId(request->job_id(), &job));
@@ -405,13 +429,12 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
                                              GetWorkersResponse* response) {
   mutex_lock l(mu_);
   VLOG(3) << "Enter GetWorkers";
-  for (const auto& it : workers_) {
-    std::shared_ptr<Worker> worker = it.second;
+  std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
+  for (const auto& worker : workers) {
     WorkerInfo* info = response->add_workers();
     info->set_address(worker->address);
-    info->set_id(worker->worker_id);
   }
-  VLOG(3) << "Returning list of " << workers_.size()
+  VLOG(3) << "Returning list of " << response->workers_size()
           << " workers from GetWorkers";
   return Status::OK();
 }

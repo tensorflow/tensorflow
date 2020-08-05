@@ -30,6 +30,9 @@ Status DispatcherState::Apply(Update update) {
     case Update::kRegisterDataset:
       RegisterDataset(update.register_dataset());
       break;
+    case Update::kRegisterWorker:
+      RegisterWorker(update.register_worker());
+      break;
     case Update::kCreateJob:
       CreateJob(update.create_job());
       break;
@@ -59,6 +62,13 @@ void DispatcherState::RegisterDataset(
   next_available_dataset_id_ = std::max(next_available_dataset_id_, id + 1);
 }
 
+void DispatcherState::RegisterWorker(
+    const RegisterWorkerUpdate& register_worker) {
+  std::string address = register_worker.worker_address();
+  DCHECK(!workers_.contains(address));
+  workers_[address] = std::make_shared<Worker>(address);
+}
+
 void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   int64 job_id = create_job.job_id();
   absl::optional<NamedJobKey> named_job_key;
@@ -71,6 +81,7 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
                                    named_job_key);
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
+  tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
   if (named_job_key.has_value()) {
     DCHECK(!named_jobs_.contains(named_job_key.value()));
     named_jobs_[named_job_key.value()] = job;
@@ -127,6 +138,26 @@ Status DispatcherState::DatasetFromFingerprint(
   }
   *dataset = it->second;
   return Status::OK();
+}
+
+Status DispatcherState::WorkerFromAddress(
+    const std::string& address, std::shared_ptr<const Worker>* worker) const {
+  auto it = workers_.find(address);
+  if (it == workers_.end()) {
+    return errors::NotFound("Worker with address ", address, " not found.");
+  }
+  *worker = it->second;
+  return Status::OK();
+}
+
+std::vector<std::shared_ptr<const DispatcherState::Worker>>
+DispatcherState::ListWorkers() const {
+  std::vector<std::shared_ptr<const Worker>> workers;
+  workers.reserve(workers_.size());
+  for (const auto& it : workers_) {
+    workers.push_back(it.second);
+  }
+  return workers;
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>

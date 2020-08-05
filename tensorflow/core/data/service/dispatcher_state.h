@@ -48,11 +48,6 @@ namespace data {
 //     DispatcherImpl and for providing DispatcherImpl with read-only access to
 //     the state.
 //
-// Note that not all state needs to be journaled, and in general we journal
-// as little state as possible. For example, worker and task state doesn't need
-// to be journaled because we can recover that information from workers when
-// they reconnect to a restarted dispatcher.
-//
 // DispatcherState is thread-compatible but not thread-safe.
 class DispatcherState {
  public:
@@ -65,7 +60,8 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    Dataset(int64 dataset_id, int64 fingerprint, const DatasetDef& dataset_def)
+    explicit Dataset(int64 dataset_id, int64 fingerprint,
+                     const DatasetDef& dataset_def)
         : dataset_id(dataset_id),
           fingerprint(fingerprint),
           dataset_def(dataset_def) {}
@@ -75,10 +71,17 @@ class DispatcherState {
     const DatasetDef dataset_def;
   };
 
+  // A worker registered with the dispatcher.
+  struct Worker {
+    explicit Worker(const std::string& address) : address(address) {}
+
+    const std::string address;
+  };
+
   // A key for identifying a named job. The key contains a user-specified name,
   // as well as an index describing which iteration of the job we are on.
   struct NamedJobKey {
-    NamedJobKey(absl::string_view name, int64 index)
+    explicit NamedJobKey(absl::string_view name, int64 index)
         : name(name), index(index) {}
 
     friend bool operator==(const NamedJobKey& lhs, const NamedJobKey& rhs) {
@@ -96,8 +99,8 @@ class DispatcherState {
 
   // A job for processing a dataset.
   struct Job {
-    Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
-        absl::optional<NamedJobKey> named_job_key)
+    explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
+                 absl::optional<NamedJobKey> named_job_key)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
@@ -111,8 +114,8 @@ class DispatcherState {
   };
 
   struct Task {
-    Task(int64 task_id, int64 job_id, int64 dataset_id,
-         const std::string& worker_address)
+    explicit Task(int64 task_id, int64 job_id, int64 dataset_id,
+                  const std::string& worker_address)
         : task_id(task_id),
           job_id(job_id),
           dataset_id(dataset_id),
@@ -134,6 +137,12 @@ class DispatcherState {
   Status DatasetFromFingerprint(uint64 fingerprint,
                                 std::shared_ptr<const Dataset>* dataset) const;
 
+  // Gets a worker by address. Returns NOT_FOUND if there is no such worker.
+  Status WorkerFromAddress(const std::string& address,
+                           std::shared_ptr<const Worker>* worker) const;
+  // Lists all workers registered with the dispatcher.
+  std::vector<std::shared_ptr<const Worker>> ListWorkers() const;
+
   // Returns the next available job id.
   int64 NextAvailableJobId() const;
   // Returns a list of all jobs.
@@ -153,8 +162,8 @@ class DispatcherState {
                      std::vector<std::shared_ptr<const Task>>* tasks) const;
 
  private:
-  // Registers a dataset. The dataset must not already be registered.
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
+  void RegisterWorker(const RegisterWorkerUpdate& register_worker);
   void CreateJob(const CreateJobUpdate& create_job);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
@@ -165,6 +174,9 @@ class DispatcherState {
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
       datasets_by_fingerprint_;
+
+  // Registered workers, keyed by address.
+  absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
 
   int64 next_available_job_id_ = 0;
   // Jobs, keyed by job ids.

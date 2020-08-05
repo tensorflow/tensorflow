@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/dispatcher_state.h"
 
+#include <memory>
+
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
@@ -27,9 +29,11 @@ namespace data {
 
 namespace {
 using Dataset = DispatcherState::Dataset;
+using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
 using Job = DispatcherState::Job;
 using Task = DispatcherState::Task;
+using ::testing::IsEmpty;
 using ::testing::SizeIs;
 
 Status RegisterDatasetWithIdAndFingerprint(int64 id, uint64 fingerprint,
@@ -38,6 +42,13 @@ Status RegisterDatasetWithIdAndFingerprint(int64 id, uint64 fingerprint,
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(id);
   register_dataset->set_fingerprint(fingerprint);
+  TF_RETURN_IF_ERROR(state->Apply(update));
+  return Status::OK();
+}
+
+Status RegisterWorker(std::string worker_address, DispatcherState* state) {
+  Update update;
+  update.mutable_register_worker()->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(state->Apply(update));
   return Status::OK();
 }
@@ -98,12 +109,12 @@ TEST(DispatcherState, RegisterDataset) {
   {
     std::shared_ptr<const Dataset> dataset;
     TF_EXPECT_OK(state.DatasetFromFingerprint(fingerprint, &dataset));
-    EXPECT_EQ(id, dataset->dataset_id);
+    EXPECT_EQ(dataset->dataset_id, id);
   }
   {
     std::shared_ptr<const Dataset> dataset;
     TF_EXPECT_OK(state.DatasetFromId(id, &dataset));
-    EXPECT_EQ(fingerprint, dataset->fingerprint);
+    EXPECT_EQ(dataset->fingerprint, fingerprint);
   }
 }
 
@@ -126,8 +137,44 @@ TEST(DispatcherState, NextAvailableDatasetId) {
   int64 id = state.NextAvailableDatasetId();
   uint64 fingerprint = 20;
   TF_EXPECT_OK(RegisterDatasetWithIdAndFingerprint(id, fingerprint, &state));
-  EXPECT_NE(id, state.NextAvailableDatasetId());
+  EXPECT_NE(state.NextAvailableDatasetId(), id);
   EXPECT_EQ(state.NextAvailableDatasetId(), state.NextAvailableDatasetId());
+}
+
+TEST(DispatcherState, RegisterWorker) {
+  DispatcherState state;
+  std::string address = "test_worker_address";
+  TF_EXPECT_OK(RegisterWorker(address, &state));
+  std::shared_ptr<const Worker> worker;
+  TF_EXPECT_OK(state.WorkerFromAddress(address, &worker));
+  EXPECT_EQ(worker->address, address);
+}
+
+TEST(DispatcherState, ListWorkers) {
+  DispatcherState state;
+  std::string address_1 = "address_1";
+  std::string address_2 = "address_2";
+  {
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListWorkers();
+    EXPECT_THAT(workers, IsEmpty());
+  }
+  TF_EXPECT_OK(RegisterWorker(address_1, &state));
+  {
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListWorkers();
+    EXPECT_THAT(workers, SizeIs(1));
+  }
+  TF_EXPECT_OK(RegisterWorker(address_2, &state));
+  {
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListWorkers();
+    EXPECT_THAT(workers, SizeIs(2));
+  }
+}
+
+TEST(DispatcherState, MissingWorker) {
+  DispatcherState state;
+  std::shared_ptr<const Worker> worker;
+  Status s = state.WorkerFromAddress("test_worker_address", &worker);
+  EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 
 TEST(DispatcherState, UnknownUpdate) {
@@ -146,8 +193,11 @@ TEST(DispatcherState, AnonymousJob) {
   std::shared_ptr<const Job> job;
   TF_EXPECT_OK(state.JobFromId(job_id, &job));
   EXPECT_EQ(state.NextAvailableJobId(), job_id + 1);
-  EXPECT_EQ(dataset_id, job->dataset_id);
-  EXPECT_EQ(job_id, job->job_id);
+  EXPECT_EQ(job->dataset_id, dataset_id);
+  EXPECT_EQ(job->job_id, job_id);
+  std::vector<std::shared_ptr<const Task>> tasks;
+  TF_EXPECT_OK(state.TasksForJob(job_id, &tasks));
+  EXPECT_THAT(tasks, IsEmpty());
   EXPECT_FALSE(job->finished);
 }
 
@@ -161,8 +211,8 @@ TEST(DispatcherState, NamedJob) {
   std::shared_ptr<const Job> job;
   TF_EXPECT_OK(state.NamedJobByKey(named_job_key, &job));
   EXPECT_EQ(state.NextAvailableJobId(), job_id + 1);
-  EXPECT_EQ(dataset_id, job->dataset_id);
-  EXPECT_EQ(job_id, job->job_id);
+  EXPECT_EQ(job->dataset_id, dataset_id);
+  EXPECT_EQ(job->job_id, job_id);
   EXPECT_FALSE(job->finished);
 }
 
@@ -179,10 +229,10 @@ TEST(DispatcherState, CreateTask) {
   {
     std::shared_ptr<const Task> task;
     TF_EXPECT_OK(state.TaskFromId(task_id, &task));
-    EXPECT_EQ(task_id, task->task_id);
-    EXPECT_EQ(job_id, task->job_id);
-    EXPECT_EQ(dataset_id, task->dataset_id);
-    EXPECT_EQ(worker_address, task->worker_address);
+    EXPECT_EQ(task->task_id, task_id);
+    EXPECT_EQ(task->job_id, job_id);
+    EXPECT_EQ(task->dataset_id, dataset_id);
+    EXPECT_EQ(task->worker_address, worker_address);
   }
   {
     std::vector<std::shared_ptr<const Task>> tasks;
@@ -207,7 +257,7 @@ TEST(DispatcherState, CreateTasksForSameJob) {
   {
     std::vector<std::shared_ptr<const Task>> tasks;
     TF_EXPECT_OK(state.TasksForJob(job_id, &tasks));
-    EXPECT_EQ(2, tasks.size());
+    EXPECT_THAT(tasks, SizeIs(2));
   }
 }
 
@@ -229,12 +279,12 @@ TEST(DispatcherState, CreateTasksForDifferentJobs) {
   {
     std::vector<std::shared_ptr<const Task>> tasks;
     TF_EXPECT_OK(state.TasksForJob(job_id_1, &tasks));
-    EXPECT_EQ(1, tasks.size());
+    EXPECT_THAT(tasks, SizeIs(1));
   }
   {
     std::vector<std::shared_ptr<const Task>> tasks;
     TF_EXPECT_OK(state.TasksForJob(job_id_2, &tasks));
-    EXPECT_EQ(1, tasks.size());
+    EXPECT_THAT(tasks, SizeIs(1));
   }
 }
 

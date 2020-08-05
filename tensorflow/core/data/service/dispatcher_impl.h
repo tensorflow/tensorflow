@@ -71,21 +71,15 @@ class DataServiceDispatcherImpl {
                     GetWorkersResponse* response);
 
  private:
-  struct Worker {
-    Worker(int64 worker_id, const std::string& address)
-        : worker_id(worker_id), address(address) {}
-
-    const int64 worker_id;
-    const std::string address;
-    std::unique_ptr<WorkerService::Stub> stub;
-  };
-
   // Registers a dataset with the given fingerprint, storing the new dataset's
   // id in `*dataset-id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
                          int64* dataset_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Initializes a workers stub, if it hasn't been initialized already.
-  Status EnsureWorkerStubInitialized(Worker* worker);
+  // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
+  // stub and stores it in `worker_stubs_`.
+  Status GetOrCreateWorkerStub(const std::string& worker_address,
+                               WorkerService::Stub** out_stub)
+      LOCKS_EXCLUDED(mu_);
   // Creates a job and stores it in `*job`. This method updates the
   // dispatcher state with the new job, but does not assign tasks to workers.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
@@ -128,12 +122,11 @@ class DataServiceDispatcherImpl {
 
   mutex mu_;
 
-  int64 next_worker_id_ TF_GUARDED_BY(mu_) = 0;
   int64 next_task_id_ TF_GUARDED_BY(mu_) = 0;
 
-  // Registered workers, keyed by their addresses.
-  absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_
-      TF_GUARDED_BY(mu_);
+  // Cached worker stubs for communicating with workers.
+  absl::flat_hash_map<std::string, std::unique_ptr<WorkerService::Stub>>
+      worker_stubs_ TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
