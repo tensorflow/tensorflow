@@ -279,7 +279,7 @@ def get_upload_path():
   if FLAGS.upload and FLAGS.artifact:
     artifact_filename = os.path.basename(FLAGS.artifact.name)
     ts = datetime.datetime.now(
-        datetime.timezone.utc).isoformat(timespec="seconds")
+        datetime.timezone.utc).replace(microsecond=0).isoformat()
     # note: not os.path.join here, because gsutil is always linux-style
     # Using a timestamp prevents duplicate entries
     path = "{bucket}/{team}/{artifact_id}/{now}.{artifact_filename}".format(
