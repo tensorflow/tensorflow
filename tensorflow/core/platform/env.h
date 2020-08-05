@@ -334,7 +334,8 @@ class Env {
   // OK from the function.
   // Otherwise returns nullptr in "*handle" and an error status from the
   // function.
-  virtual Status LoadLibrary(const char* library_filename, void** handle) = 0;
+  virtual Status LoadDynamicLibrary(const char* library_filename,
+                                    void** handle) = 0;
 
   // \brief Get a pointer to a symbol from a dynamic library.
   //
@@ -411,8 +412,9 @@ class EnvWrapper : public Env {
   void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
     target_->SchedClosureAfter(micros, closure);
   }
-  Status LoadLibrary(const char* library_filename, void** handle) override {
-    return target_->LoadLibrary(library_filename, handle);
+  Status LoadDynamicLibrary(const char* library_filename,
+                            void** handle) override {
+    return target_->LoadDynamicLibrary(library_filename, handle);
   }
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                               void** symbol) override {
