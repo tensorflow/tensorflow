@@ -283,16 +283,6 @@ message HloScheduleProto {
   map<int64, InstructionSequence> sequences = 1;
 }
 
-enum Kind {
-  // Define a UNDEFINED_ALIAS equal to zero to get around the default-0 proto3
-  // behavior and missing has_*() APIs.
-  UNDEFINED_ALIAS = 0;
-  // The buffers may or may not alias at runtime.
-  MAY_ALIAS = 1;
-  // The buffers must alias at runtime.
-  MUST_ALIAS = 2;
-}
-
 message HloInputOutputAliasProto {
   // The following proto describes a pair of aliased an input
   // (described by parameter number and a ShapeIndex of the parameter)
@@ -314,8 +304,8 @@ message HloInputOutputAliasProto {
     int64 parameter_number = 2;
     // ShapeIndex of the parameter instruction.
     repeated int64 parameter_shape_index = 3;
-    // The kind of alias to be setup.
-    Kind kind = 4;
+    reserved 4;
+    reserved "kind";
   }
 
   repeated AliasEntryProto entries = 1;

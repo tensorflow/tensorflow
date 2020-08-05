@@ -480,12 +480,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
       ExecutionInput& input = arguments[alias->parameter_number];
       MaybeOwningDeviceMemory* maybe_owning_memory =
           input.MutableBuffer(alias->parameter_index);
-      if (alias->must_alias() && !maybe_owning_memory->HasOwnership()) {
-        return InvalidArgument(
-            "An input was configured to be must-alias at "
-            "compile time but not donated at runtime: %s",
-            alias->ToString());
-      }
       if (absl::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it
