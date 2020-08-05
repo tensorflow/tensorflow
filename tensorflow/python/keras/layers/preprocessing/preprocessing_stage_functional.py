@@ -43,6 +43,12 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
     trainable: Boolean, whether the model's variables should be trainable.
   """
 
+  def fit(self, *args, **kwargs):
+    raise ValueError('Preprocessing stage is not a complete model, and hence '
+                     'should not be `fit`. Instead, you may feed data to'
+                     '`adapt` the stage to set appropriate states of the '
+                     'layers in the stage.')
+
   def adapt(self, data, reset_state=True):
     """Adapt the state of the layers of the preprocessing stage to the data.
 
@@ -113,11 +119,14 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
 
 def _unzip_dataset(ds):
   """Unzip dataset into a list of single element datasets.
+
   Arguments:
     data: A Dataset object.
+
   Return:
     A list of Dataset object, each correspond to one of the
     `element_spec` of the input Dataset object.
+
   Example:
   >>> ds1 = tf.data.Dataset.from_tensor_slices([1, 2, 3])
   >>> ds2 = tf.data.Dataset.from_tensor_slices([4, 5, 6])
