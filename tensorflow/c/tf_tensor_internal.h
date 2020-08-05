@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/casts.h"
 
 // Internal structures used by the C API. These are likely to change and should
@@ -124,9 +123,5 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 }  // namespace tensorflow
-
-typedef struct TF_AllocatorAttributes { 
-  tensorflow::AllocatorAttributes alloc_attrs; 
-} TF_AllocatorAttributes; 
 
 #endif  // TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
