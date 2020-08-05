@@ -236,13 +236,8 @@ __global__ __launch_bounds__(1024) void BlockReduceKernel(
 }
 
 // maps a warp to each row
-<<<<<<< HEAD
 template <typename T, typename OUT_T, typename Op, int WARPSIZE>
-__global__ void RowReduceKernel(
-=======
-template <typename T, typename OUT_T, typename Op>
 __global__ __launch_bounds__(1024) void RowReduceKernel(
->>>>>>> google-upstream/master
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;
@@ -309,13 +304,8 @@ struct storage_type<std::complex<T2>> {
 
 // Works only if there are <= 16 columns
 // each warps sums over multiple rows at once
-<<<<<<< HEAD
 template <typename T, typename OUT_T, typename Op, int WARPSIZE>
-__global__ void ColumnReduceMax16ColumnsKernel(
-=======
-template <typename T, typename OUT_T, typename Op>
 __global__ __launch_bounds__(1024) void ColumnReduceMax16ColumnsKernel(
->>>>>>> google-upstream/master
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;
@@ -385,13 +375,8 @@ __global__ __launch_bounds__(1024) void ColumnReduceMax16ColumnsKernel(
 }
 
 // Maps each block to a column range TF_RED_WARPSIZE wide
-<<<<<<< HEAD
 template <typename T, typename OUT_T, typename Op, int WARPSIZE>
-__global__ void ColumnReduceKernel(
-=======
-template <typename T, typename OUT_T, typename Op>
 __global__ __launch_bounds__(1024) void ColumnReduceKernel(
->>>>>>> google-upstream/master
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;

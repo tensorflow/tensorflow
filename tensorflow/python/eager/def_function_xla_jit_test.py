@@ -74,17 +74,11 @@ class DefFunctionTest(xla_test.XLATestCase):
       func = def_function.function(fn, experimental_compile=False)
       xla_func = def_function.function(fn, experimental_compile=True)
 
-<<<<<<< HEAD
-    inputs = constant_op.constant([1, 2, 2, 3, 3])
-    self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
-    self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
-=======
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
       if not test.is_built_with_rocm():
         # XLA support is not yet enabled for TF ROCm
         self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
->>>>>>> google-upstream/master
 
   def testBasicInt32(self):
     with ops.device('device:{}:0'.format(self.device)):
@@ -93,14 +87,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn(x, a):
         return x + a
 
-<<<<<<< HEAD
-    inputs = constant_op.constant([1, 2, 2, 3, 3], dtype=dtypes.int32)
-    self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
-
-  def testDerivative(self):
-    def fn(x, a):
-      return 2 * x + a
-=======
       inputs = constant_op.constant([1, 2, 2, 3, 3], dtype=dtypes.int32)
       if not test.is_built_with_rocm():
         # XLA support is not yet enabled for TF ROCm
@@ -113,7 +99,6 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       def fn(x, a):
         return 2 * x + a
->>>>>>> google-upstream/master
 
       xla_func = def_function.function(fn, experimental_compile=True)
 
@@ -149,15 +134,10 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn2(x, a):
         return fn(x, a)
 
-<<<<<<< HEAD
-    inputs = constant_op.constant([1, 2, 2, 3, 3])
-    self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
-=======
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       if not test.is_built_with_rocm():
         # XLA support is not yet enabled for TF ROCm
         self.assertAllClose([2, 3, 3, 4, 4], fn2(inputs, 1))
->>>>>>> google-upstream/master
 
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
                                  ' wrong status type')
@@ -172,20 +152,12 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn2(x):
         return xla_func(x)
 
-<<<<<<< HEAD
-    func = def_function.function(fn2, experimental_compile=False)
-    inputs = constant_op.constant([1, 2, 2, 3, 3])
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                'not compilable'):
-        func(inputs)
-=======
       func = def_function.function(fn2, experimental_compile=False)
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       if not test.is_built_with_rocm():
         with self.assertRaisesRegex(errors.InvalidArgumentError,
                                     'not compilable'):
           func(inputs)
->>>>>>> google-upstream/master
 
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
                                  ' wrong status type')
@@ -223,15 +195,10 @@ class DefFunctionTest(xla_test.XLATestCase):
         self.assertAllClose(6.0, y)
         self.assertAllClose(3.0, dy)
 
-<<<<<<< HEAD
-    run_and_check(func)
-    run_and_check(xla_func)
-=======
       run_and_check(func)
       if not test.is_built_with_rocm():
         # XLA support is not yet enabled for TF ROCm
         run_and_check(xla_func)
->>>>>>> google-upstream/master
 
   @test_util.disable_mlir_bridge('TODO(b/162521846): MLIR bridge fails'
                                  ' msan, function library not found')
@@ -266,14 +233,10 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertAllClose([40.0, 28.0], g(2.0))
 
   def testMethodCompilation(self):
-<<<<<<< HEAD
-    class C(object):
-=======
     if test.is_built_with_rocm():
       return
 
     with ops.device('device:{}:0'.format(self.device)):
->>>>>>> google-upstream/master
 
       class C(object):
 
@@ -288,14 +251,10 @@ class DefFunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns '
                                  ' wrong status type')
   def testMethodCompilationUnsupportedFunc(self):
-<<<<<<< HEAD
-    class C(object):
-=======
     if test.is_built_with_rocm():
       return
 
     with ops.device('device:{}:0'.format(self.device)):
->>>>>>> google-upstream/master
 
       class C(object):
 
@@ -310,11 +269,6 @@ class DefFunctionTest(xla_test.XLATestCase):
         c.f1(inputs)
 
   def testMustBeConstantPropagation(self):
-<<<<<<< HEAD
-    @def_function.function(experimental_compile=True)
-    def f():
-      return constant_op.constant([0, 2, 1], dtype=dtypes.int32)
-=======
     if 'tpu' in self.device.lower():
       self.skipTest('b/162799319: Cannot resolve constant on TPU')
 
@@ -325,7 +279,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       @def_function.function(experimental_compile=True)
       def f():
         return constant_op.constant([0, 2, 1], dtype=dtypes.int32)
->>>>>>> google-upstream/master
 
       @def_function.function(experimental_compile=True)
       def g(a, b):

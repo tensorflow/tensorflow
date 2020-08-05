@@ -79,21 +79,6 @@ tf_py_test(
 )
 
 tf_py_test(
-<<<<<<< HEAD
-    name = "batch_gather_op_test",
-    srcs = ["batch_gather_op_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-=======
->>>>>>> google-upstream/master
     name = "batch_scatter_ops_test",
     srcs = ["batch_scatter_ops_test.py"],
     deps = [
