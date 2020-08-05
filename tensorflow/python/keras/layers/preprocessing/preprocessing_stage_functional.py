@@ -44,10 +44,10 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
   """
 
   def fit(self, *args, **kwargs):
-    raise ValueError('Preprocessing stage is not a complete model, and hence '
-                     'should not be `fit`. Instead, you may feed data to'
-                     '`adapt` the stage to set appropriate states of the '
-                     'layers in the stage.')
+    raise ValueError(
+        'Preprocessing stage is not a complete model, and hence should not be '
+        '`fit`. Instead, you may feed data to `adapt` the stage to set '
+        'appropriate states of the layers in the stage.')
 
   def adapt(self, data, reset_state=True):
     """Adapt the state of the layers of the preprocessing stage to the data.
