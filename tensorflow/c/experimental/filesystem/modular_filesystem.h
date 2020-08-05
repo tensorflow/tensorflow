@@ -59,6 +59,8 @@ class ModularFileSystem final : public FileSystem {
 
   ~ModularFileSystem() override { ops_->cleanup(filesystem_.get()); }
 
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status NewRandomAccessFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override;

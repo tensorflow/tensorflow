@@ -99,6 +99,8 @@ class MockFileSystem : public FileSystem {
   explicit MockFileSystem(const ExpectedCalls& calls, bool* flushed = nullptr)
       : calls_(calls), flushed_(flushed) {}
 
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status NewRandomAccessFile(
       const string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {

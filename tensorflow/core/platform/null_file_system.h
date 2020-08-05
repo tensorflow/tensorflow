@@ -36,6 +36,8 @@ class NullFileSystem : public FileSystem {
 
   ~NullFileSystem() override = default;
 
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status NewRandomAccessFile(
       const string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {

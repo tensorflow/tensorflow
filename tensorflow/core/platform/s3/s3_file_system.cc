@@ -811,9 +811,9 @@ Status S3FileSystem::CreateDir(const string& dirname, TransactionToken* token) {
   if (filename.back() != '/') {
     filename.push_back('/');
   }
-  if (!this->FileExists(filename,token).ok()) {
+  if (!this->FileExists(filename, token).ok()) {
     std::unique_ptr<WritableFile> file;
-    TF_RETURN_IF_ERROR(NewWritableFile(filename,token, &file));
+    TF_RETURN_IF_ERROR(NewWritableFile(filename, token, &file));
     TF_RETURN_IF_ERROR(file->Close());
   }
   return Status::OK();
@@ -850,7 +850,7 @@ Status S3FileSystem::DeleteDir(const string& dirname, TransactionToken* token) {
       if (filename.back() != '/') {
         filename.push_back('/');
       }
-      return DeleteFile(filename,token);
+      return DeleteFile(filename, token);
     }
   } else {
     TF_RETURN_IF_ERROR(CheckForbiddenError(listObjectsOutcome.GetError()));
@@ -911,8 +911,8 @@ Status S3FileSystem::CopyFile(const Aws::String& source_bucket,
   Aws::String source = Aws::String((source_bucket + "/" + source_key).c_str());
   Aws::String source_full_path = Aws::String("s3://") + source;
   uint64 file_length;
-  TF_RETURN_IF_ERROR(
-      this->GetFileSize(string(source_full_path.c_str()), nullptr, &file_length));
+  TF_RETURN_IF_ERROR(this->GetFileSize(string(source_full_path.c_str()),
+                                       nullptr, &file_length));
   int num_parts;
   if (file_length <=
       multi_part_chunk_size_[Aws::Transfer::TransferDirection::UPLOAD]) {

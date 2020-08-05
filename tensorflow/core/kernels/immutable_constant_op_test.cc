@@ -60,6 +60,10 @@ class TestReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 class TestFileSystem : public NullFileSystem {
  public:
   ~TestFileSystem() override = default;
+
+  // import non-transactional method from the base class
+  using NullFileSystem::NewReadOnlyMemoryRegionFromFile;
+
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {

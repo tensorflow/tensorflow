@@ -32,6 +32,8 @@ static const char* const kPrefix = "ipfs://solarsystem";
 // cannot have children further.
 class InterPlanetaryFileSystem : public NullFileSystem {
  public:
+ TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status FileExists(const string& fname, TransactionToken* token) override {
     string parsed_path;
     ParsePath(fname, &parsed_path);

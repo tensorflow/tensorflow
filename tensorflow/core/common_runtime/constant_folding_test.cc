@@ -19,9 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/ops/nn_ops.h"
-#include "tensorflow/core/common_runtime/constant_folding.h"
-
-#include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -686,6 +683,8 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   TestTFFileSystem()
       : ::tensorflow::NullFileSystem(),
         data_tensor_(test::AsTensor<double>({1., 2., 3., 4.}, {2, 2})) {}
+
+  using ::tensorflow::NullFileSystem::NewReadOnlyMemoryRegionFromFile;
 
   ::tensorflow::Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, ::tensorflow::TransactionToken* token,

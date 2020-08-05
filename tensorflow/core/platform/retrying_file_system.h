@@ -38,6 +38,8 @@ class RetryingFileSystem : public FileSystem {
       : base_file_system_(std::move(base_file_system)),
         retry_config_(retry_config) {}
 
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status NewRandomAccessFile(
       const string& filename, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override;
