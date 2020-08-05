@@ -2295,6 +2295,9 @@ bool IsCrossProgramPrefetchCandidate(
   return value.instruction()->parent() ==
              value.instruction()->GetModule()->entry_computation() &&
          value.instruction()->opcode() == HloOpcode::kParameter &&
+         (!value.shape().has_layout() ||
+          value.shape().layout().memory_space() !=
+              options.alternate_memory_space) &&
          value.index().size() == 1 && value.shape().IsArray() &&
          !value.uses().empty() &&
          options.size_fn(value) <= options.max_size_in_bytes &&
