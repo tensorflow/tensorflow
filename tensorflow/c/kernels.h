@@ -209,7 +209,6 @@ TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context,
     TF_DataType dtype, int64_t* dims, int num_dims, TF_AllocatorAttributes* 
     alloc_attrs, TF_Status* status);
 
-
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

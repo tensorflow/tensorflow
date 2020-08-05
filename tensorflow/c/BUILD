@@ -23,6 +23,7 @@ filegroup(
     srcs = [
         "c_api.h",
         "c_api_experimental.h",
+        "c_api_macros.h",
         "tensor_interface.h",
         "tf_attrtype.h",
         "tf_datatype.h",
@@ -61,6 +62,7 @@ filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
         "c_api_internal.h",
+        "c_api_macros.h",
         "conversion_macros.h",
         "python_api.h",
         "tensor_interface.h",
@@ -326,6 +328,7 @@ tf_cuda_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":c_api_macros",
         ":tensor_interface",
         ":tf_datatype",
         ":tf_status",
