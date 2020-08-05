@@ -2944,11 +2944,10 @@ cc_library(
     hdrs = ["tensor_map.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
-        "//tensorflow/core/framework:variant",
         "//tensorflow/core/lib/core:refcount",
     ],
 )
