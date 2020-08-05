@@ -113,6 +113,12 @@ static const char* const kMklOpPrefix = "_Mkl";
 // through template parameter.
 static const char* const kMklEagerOpPrefix = "_MklEager";
 
+// Prefix that we add to TF op name to construct MKL op that does not
+// depend on layout propagation. It will be used in both Eager and graph
+// modes unless there is a reason to have additional op name with
+// _MklEager prefix.
+static const char* const kMklNativeOpPrefix = "_MklNative";
+
 // Get the name of Mkl op from original TensorFlow op
 // We prefix 'Mkl' to the original op to get Mkl op.
 inline string GetMklOpName(const string& name) {
@@ -123,6 +129,12 @@ inline string GetMklOpName(const string& name) {
 // We prefix 'MklEager' to the original op to get Mkl Eager op.
 inline string GetMklEagerOpName(const string& name) {
   return string(kMklEagerOpPrefix) + name;
+}
+
+// Get the name of Mkl Native (does not depend on layout propagation) op
+// from original TensorFlow op.
+inline string GetMklNativeOpName(const string& name) {
+  return string(kMklNativeOpPrefix) + name;
 }
 
 #ifdef ENABLE_INTEL_MKL_BFLOAT16

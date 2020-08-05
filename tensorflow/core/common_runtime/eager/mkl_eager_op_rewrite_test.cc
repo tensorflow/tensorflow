@@ -76,7 +76,7 @@ TEST(EagerOpRewriteTest, Conv2D) {
   orig_op->MutableAttrs()->Set("T", DT_FLOAT);
   orig_op->MutableAttrs()->Set("padding", "VALID");
 
-  EagerOpRewriteTest::CheckRewrite(orig_op.get(), "_MklEagerConv2D");
+  EagerOpRewriteTest::CheckRewrite(orig_op.get(), "_MklNativeConv2D");
 }
 
 TEST(EagerOpRewriteTest, Conv2D_Explicit_Padding) {
@@ -99,7 +99,7 @@ TEST(EagerOpRewriteTest, Conv2DBackpropInput) {
   orig_op->MutableAttrs()->Set("padding", "VALID");
 
   EagerOpRewriteTest::CheckRewrite(orig_op.get(),
-                                   "_MklEagerConv2DBackpropInput");
+                                   "_MklNativeConv2DBackpropInput");
 }
 
 TEST(EagerOpRewriteTest, Conv2DBackpropFilter) {
@@ -111,7 +111,7 @@ TEST(EagerOpRewriteTest, Conv2DBackpropFilter) {
   orig_op->MutableAttrs()->Set("padding", "VALID");
 
   EagerOpRewriteTest::CheckRewrite(orig_op.get(),
-                                   "_MklEagerConv2DBackpropFilter");
+                                   "_MklNativeConv2DBackpropFilter");
 }
 
 TEST(EagerOpRewriteTest, BatchMatMul) {

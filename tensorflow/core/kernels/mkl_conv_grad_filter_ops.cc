@@ -792,7 +792,7 @@ class MklConvCustomBackpropFilterOp
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),           \
       MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, false>); \
   REGISTER_KERNEL_BUILDER(                                               \
-      Name("_MklEagerConv2DBackpropFilter")                              \
+      Name("_MklNativeConv2DBackpropFilter")                             \
           .Device(DEVICE_CPU)                                            \
           .TypeConstraint<T>("T")                                        \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
