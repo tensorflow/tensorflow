@@ -30,7 +30,7 @@ from tensorflow.python.keras.layers import merge
 
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.layers.preprocessing import normalization
-from tensorflow.python.keras.layers.preprocessing import preprocessing_stage_functional
+from tensorflow.python.keras.layers.preprocessing import preprocessing_stage
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -72,7 +72,7 @@ class PreprocessingStageTest(
     l1 = PL()
     z = l1(y)
 
-    stage = preprocessing_stage_functional.FunctionalPreprocessingStage(
+    stage = preprocessing_stage.FunctionalPreprocessingStage(
         x, z
     )
     stage.compile()
@@ -120,7 +120,7 @@ class PreprocessingStageTest(
     l2 = PLSplit()
     z, y = l2(y)
 
-    stage = preprocessing_stage_functional.FunctionalPreprocessingStage(
+    stage = preprocessing_stage.FunctionalPreprocessingStage(
         [x0, x1, x2], [y, z]
     )
     stage.compile()
@@ -158,7 +158,7 @@ class PreprocessingStageTest(
     with self.assertRaisesRegex(ValueError, 'requires a '):
       stage.adapt(None)
 
-  def test_adatp_preprocessing_stage_with_dict_input(self):
+  def test_adapt_preprocessing_stage_with_dict_input(self):
     x0 = Input(shape=(3,), name='x0')
     x1 = Input(shape=(3,), name='x1')
     x2 = Input(shape=(3,), name='x2')
@@ -172,7 +172,7 @@ class PreprocessingStageTest(
     l2 = PLSplit()
     z, y = l2(y)
 
-    stage = preprocessing_stage_functional.FunctionalPreprocessingStage(
+    stage = preprocessing_stage.FunctionalPreprocessingStage(
         {'x0': x0, 'x1': x1, 'x2': x2}, [y, z]
     )
     stage.compile()
@@ -249,7 +249,7 @@ class PreprocessingStageTest(
     l2 = PLSplit()
     z, y = l2(y)
 
-    stage = preprocessing_stage_functional.FunctionalPreprocessingStage(
+    stage = preprocessing_stage.FunctionalPreprocessingStage(
         [x0, [x1, x2]], [y, z]
     )
     stage.compile()
@@ -300,7 +300,7 @@ class PreprocessingStageTest(
     l1 = PLSplit()
     z, y = l1(y)
 
-    stage = preprocessing_stage_functional.FunctionalPreprocessingStage(
+    stage = preprocessing_stage.FunctionalPreprocessingStage(
         [x0, x1], [y, z]
     )
     stage.compile()
@@ -333,7 +333,7 @@ class PreprocessingStageTest(
     l0 = PLMergeNest()
     y = l0([x0, [x1, x2]])
 
-    stage = preprocessing_stage_functional.FunctionalPreprocessingStage(
+    stage = preprocessing_stage.FunctionalPreprocessingStage(
         [x0, x1, x2], y
     )
     stage.compile()
@@ -362,7 +362,7 @@ class PreprocessingStageTest(
     z = normalization.Normalization()(z)
     z = convolutional.Conv2D(4, 3)(z)
 
-    stage = preprocessing_stage_functional.FunctionalPreprocessingStage(
+    stage = preprocessing_stage.FunctionalPreprocessingStage(
         [x0, x1, x2], z
     )
 
