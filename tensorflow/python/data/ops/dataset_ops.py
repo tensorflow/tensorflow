@@ -813,12 +813,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       if not all(
           isinstance(_, type_spec.TypeSpec)
           for _ in nest.flatten(output_signature)):
-        raise TypeError("All the elements of `output_siganture` must be "
+        raise TypeError("All the elements of `output_signature` must be "
                         "`tf.TypeSpec` objects.")
     else:
-      if output_types is None and output_shapes is not None:
-        raise TypeError("`output_shapes` can not be used alone without "
-                        "`output_types`")
+      if output_types is None:
+        raise TypeError("Either `output_signature` or `output_types` must "
+                        "be specified")
 
     if output_signature is None:
       if output_shapes is None:
