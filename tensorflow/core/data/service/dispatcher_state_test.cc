@@ -79,7 +79,7 @@ Status CreateNamedJob(int64 job_id, int64 dataset_id, NamedJobKey named_job_key,
 }
 
 Status CreateTask(int64 task_id, int64 job_id, int64 dataset_id,
-                  StringPiece worker_address, DispatcherState* state) {
+                  const std::string& worker_address, DispatcherState* state) {
   Update update;
   CreateTaskUpdate* create_task = update.mutable_create_task();
   create_task->set_task_id(task_id);
