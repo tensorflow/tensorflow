@@ -524,6 +524,12 @@ class MultiProcessRunner(object):
         if all(p.exitcode is not None for p in self._processes.values()):
           return
 
+  def _reraise_if_subprocess_error(self, process_statuses):
+    for process_status in process_statuses.values():
+      assert isinstance(process_status, _ProcessStatusInfo)
+      if not process_status.is_successful:
+        six.reraise(*process_status.exc_info)
+
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
 
@@ -587,6 +593,7 @@ class MultiProcessRunner(object):
         self.terminate_all()
         self._watchdog_thread.join()
       process_statuses = self._get_process_statuses()
+      self._reraise_if_subprocess_error(process_statuses)
       raise SubprocessTimeoutError('one or more subprocesses timed out.',
                                    self._get_mpr_result(process_statuses))
 
@@ -594,10 +601,7 @@ class MultiProcessRunner(object):
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
 
     process_statuses = self._get_process_statuses()
-    for process_status in process_statuses.values():
-      assert isinstance(process_status, _ProcessStatusInfo)
-      if not process_status.is_successful:
-        six.reraise(*process_status.exc_info)
+    self._reraise_if_subprocess_error(process_statuses)
 
     # Checking all the processes that are expected to exit properly.
     for (task_type, task_id), p in self._processes.items():
