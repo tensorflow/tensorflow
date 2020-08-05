@@ -343,7 +343,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, activation_state->dims->data[1],
                     memory_size * num_filters);
 
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 5);
   TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteInt16);
   TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteInt16);
@@ -398,9 +398,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteEvalTensor* weights_time =
       tflite::micro::GetEvalInput(context, node, kWeightsTimeTensor);
   const TfLiteEvalTensor* bias =
-      (NumInputs(node) == 5)
-          ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
-          : nullptr;
+      tflite::micro::GetEvalInput(context, node, kBiasTensor);
   TfLiteEvalTensor* activation_state = tflite::micro::GetMutableEvalInput(
       context, node, kInputActivationStateTensor);
   TfLiteEvalTensor* output =

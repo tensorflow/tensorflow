@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -601,8 +602,9 @@ TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   data->invoke_count += 1;
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const uint8_t* input_data = GetTensorData<uint8_t>(input);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const uint8_t* input_data = tflite::micro::GetTensorData<uint8_t>(input);
   int size = NumElements(input->dims);
 
   uint8_t* sorting_buffer = reinterpret_cast<uint8_t*>(
@@ -620,10 +622,13 @@ TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
     }
   }
 
-  TfLiteTensor* median = GetOutput(context, node, kMedianTensor);
-  uint8_t* median_data = GetTensorData<uint8_t>(median);
-  TfLiteTensor* invoke_count = GetOutput(context, node, kInvokeCount);
-  int32_t* invoke_count_data = GetTensorData<int32_t>(invoke_count);
+  TfLiteEvalTensor* median =
+      tflite::micro::GetEvalOutput(context, node, kMedianTensor);
+  uint8_t* median_data = tflite::micro::GetTensorData<uint8_t>(median);
+  TfLiteEvalTensor* invoke_count =
+      tflite::micro::GetEvalOutput(context, node, kInvokeCount);
+  int32_t* invoke_count_data =
+      tflite::micro::GetTensorData<int32_t>(invoke_count);
 
   median_data[0] = sorting_buffer[size / 2];
   invoke_count_data[0] = data->invoke_count;
@@ -660,14 +665,13 @@ TfLiteStatus MockCustom::Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus MockCustom::Invoke(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = tflite::GetInput(context, node, 0);
-  const int32_t* input_data = input->data.i32;
-  const TfLiteTensor* weight = tflite::GetInput(context, node, 1);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  const int32_t* input_data = tflite::micro::GetTensorData<int32_t>(input);
+  const TfLiteEvalTensor* weight =
+      tflite::micro::GetEvalInput(context, node, 1);
   const uint8_t* weight_data = weight->data.uint8;
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  int32_t* output_data = output->data.i32;
-  output_data[0] =
-      0;  // Catch output tensor sharing memory with an input tensor
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
+  int32_t* output_data = tflite::micro::GetTensorData<int32_t>(output);
   output_data[0] = input_data[0] + weight_data[0];
   return kTfLiteOk;
 }
