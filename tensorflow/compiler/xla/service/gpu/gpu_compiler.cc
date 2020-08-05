@@ -29,8 +29,6 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
@@ -511,22 +509,15 @@ static Status CompileModuleToLlvmIrImpl(
   DumpHloModuleIfEnabled(*hlo_module, **buffer_assignment,
                          "after_optimizations");
 
-  mlir::registerAllDialects();
-  mlir::MLIRContext mlir_context;
-
   IrEmitterContext ir_emitter_context(
       hlo_module, buffer_assignment->get(), platform_name, gpu_device_info,
-      cuda_compute_capability, profile_index_map, &mlir_context,
-      llvm_module->get());
+      cuda_compute_capability, profile_index_map, llvm_module->get());
 
   HloComputation* entry_computation = hlo_module->entry_computation();
+  IrEmitterUnnested ir_emitter(hlo_module->config(), entry_computation,
+                               &ir_emitter_context);
 
-  TF_ASSIGN_OR_RETURN(
-      auto ir_emitter,
-      IrEmitterUnnested::Create(hlo_module->config(), entry_computation,
-                                &ir_emitter_context));
-
-  TF_RETURN_IF_ERROR(ir_emitter->EmitConstantGlobals());
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
   {
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
@@ -535,10 +526,9 @@ static Status CompileModuleToLlvmIrImpl(
     ThunkSequence thunk_sequence;
     absl::Span<HloInstruction* const> order = hlo_schedule->ThunkLaunchOrder();
     for (HloInstruction* instruction : order) {
-      TF_RETURN_IF_ERROR(instruction->Visit(ir_emitter.get()));
-      TF_RETURN_IF_ERROR(ir_emitter->Postprocess(instruction));
-      std::unique_ptr<ThunkSequence> thunks =
-          ir_emitter->ConsumeThunkSequence();
+      TF_RETURN_IF_ERROR(instruction->Visit(&ir_emitter));
+      TF_RETURN_IF_ERROR(ir_emitter.Postprocess(instruction));
+      std::unique_ptr<ThunkSequence> thunks = ir_emitter.ConsumeThunkSequence();
 
       // The invariants between each input HloInstruction* and output Thunk* are
       // not all explicitly checked, but at least we can document them here:
