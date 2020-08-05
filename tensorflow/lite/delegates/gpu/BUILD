@@ -1,3 +1,4 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
@@ -216,6 +217,16 @@ cc_library(
         ":api",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+# Currently the GPU delegate needs to be built on Android (due to EGL dependency),
+# or built with -DCL_DELEGATE_NO_GL (disabling OpenGL backend fallback), or both.
+selects.config_setting_group(
+    name = "supports_gpu_delegate",
+    match_any = [
+        "//tensorflow:android",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_delegate_no_gl",
     ],
 )
 
