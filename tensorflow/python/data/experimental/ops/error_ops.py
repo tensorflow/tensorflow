@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.compat import compat
 
 @tf_export("data.experimental.ignore_errors")
 def ignore_errors(log_warning=False):
@@ -61,9 +62,15 @@ class _IgnoreErrorsDataset(dataset_ops.UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, log_warning):
     """See `Dataset.ignore_errors()` for details."""
     self._input_dataset = input_dataset
-    variant_tensor = (
-        gen_experimental_dataset_ops.ignore_errors_dataset(
-            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-            log_warning=log_warning,
-            **self._flat_structure))
+    if compat.forward_compatible(2020, 8, 26) or log_warning:
+      variant_tensor = (
+          gen_experimental_dataset_ops.ignore_errors_dataset(
+              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+              log_warning=log_warning,
+              **self._flat_structure))
+    else:
+      variant_tensor = (
+          gen_experimental_dataset_ops.ignore_errors_dataset(
+              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+              **self._flat_structure))
     super(_IgnoreErrorsDataset, self).__init__(input_dataset, variant_tensor)
