@@ -479,6 +479,19 @@ class MultiProcessRunner(object):
       p = self._processes[(task_type, task_id)]
     return p.exitcode if p else None
 
+  def process_exists(self, task_type, task_id):
+    """Returns whether the subprocess still exists given the task type and id.
+
+    Args:
+      task_type: The task type.
+      task_id: The task id.
+
+    Returns:
+      Boolean; whether the subprocess still exists. If the subprocess has
+      exited, this returns False.
+    """
+    return self.get_process_exit_code(task_type, task_id) is None
+
   def _process_watchdog(self):
     """Simulates a cluster management system.
 
