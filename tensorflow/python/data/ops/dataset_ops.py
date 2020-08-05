@@ -877,9 +877,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         # elements remaining to be generated.
         values = next(generator_state.get_iterator(iterator_id.numpy()))
 
-        def serialize_structure(s):
-          return nest.map_structure(lambda ts: ts._serialize(), s)  # pylint: disable=protected-access
-
         try:
           values = structure.normalize_element(
             values, element_signature=output_signature)
@@ -889,18 +886,15 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
               TypeError(
                   "`generator` yielded an element that did not match the "
                   "expected structure. The expected structure was %s, but the "
-                  "yielded element was %s." %
-                  (serialize_structure(output_signature), values)),
+                  "yielded element was %s." % (output_signature, values)),
               sys.exc_info()[2])
 
         values_spec = structure.type_spec_from_value(values)
 
         if not structure.are_compatible(values_spec, output_signature):
           raise TypeError(
-              "`generator` yielded an element of TypeSpec%s where an element "
-              "of TypeSpec%s was expected." %
-              (serialize_structure(values_spec),
-               serialize_structure(output_signature)))
+              "`generator` yielded an element of %s where an element "
+              "of %s was expected." % (values_spec, output_signature))
 
         return structure.to_tensor_list(output_signature, values)
 
