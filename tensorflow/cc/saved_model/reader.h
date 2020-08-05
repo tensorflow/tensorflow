@@ -30,7 +30,7 @@ namespace tensorflow {
 // finds the MetaGraphDef that matches the given set of tags and writes it to
 // the `meta_graph_def` parameter. Returns a failure status when the SavedModel
 // file does not exist or no MetaGraphDef matches the tags.
-Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
+TF_EXPORT Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
                                       const std::unordered_set<string>& tags,
                                       MetaGraphDef* const meta_graph_def);
 

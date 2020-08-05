@@ -34,7 +34,7 @@ namespace tensorflow {
 
 /// Represents a version 2 SavedModel that is loaded from storage (but not yet
 /// loaded into an executable in-memory representation).
-class SavedModelV2Bundle {
+TF_EXPORT class SavedModelV2Bundle {
  public:
   using RestoreObjectsCallback =
       std::function<Status(int, const TrackableObjectGraph::TrackableObject&)>;

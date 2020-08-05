@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 
 /// Represents a SavedModel that is loaded from storage.
-class SavedModelBundleInterface {
+TF_EXPORT class SavedModelBundleInterface {
  public:
   virtual ~SavedModelBundleInterface();
 
@@ -46,7 +46,7 @@ class SavedModelBundleInterface {
 ///
 /// NOTE: Prefer to use SavedModelBundleLite in new code, as it consumes less
 /// RAM.
-struct SavedModelBundle : public SavedModelBundleInterface {
+TF_EXPORT struct SavedModelBundle : public SavedModelBundleInterface {
   /// A TensorFlow Session does not Close itself on destruction. To avoid
   /// resource leaks, we explicitly call Close on Sessions that we create.
   ~SavedModelBundle() override {
@@ -69,7 +69,7 @@ struct SavedModelBundle : public SavedModelBundleInterface {
 
 // A version of SavedModelBundle that avoids storing a potentially large
 // MetaGraphDef. Prefer to use SavedModelBundleLite in new code.
-class SavedModelBundleLite : public SavedModelBundleInterface {
+TF_EXPORT class SavedModelBundleLite : public SavedModelBundleInterface {
  public:
   SavedModelBundleLite() = default;
   SavedModelBundleLite& operator=(SavedModelBundleLite&& other) = default;
@@ -102,7 +102,7 @@ class SavedModelBundleLite : public SavedModelBundleInterface {
 /// *bundle with a session and the requested MetaGraphDef, if found.
 ///
 /// NOTE: Prefer the overload that takes a SavedModelBundleLite* in new code.
-Status LoadSavedModel(const SessionOptions& session_options,
+TF_EXPORT Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
                       SavedModelBundle* const bundle);
@@ -114,7 +114,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
 ///
 /// This overload creates a SavedModelBundleLite, which consumes less RAM than
 /// an equivalent SavedModelBundle.
-Status LoadSavedModel(const SessionOptions& session_options,
+TF_EXPORT Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
                       SavedModelBundleLite* const bundle);
@@ -124,7 +124,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
 /// the export directory definitely does not contain a SavedModel. If the method
 /// returns `true`, the export directory may contain a SavedModel but provides
 /// no guarantee that it can be loaded.
-bool MaybeSavedModelDirectory(const std::string& export_dir);
+TF_EXPORT bool MaybeSavedModelDirectory(const std::string& export_dir);
 
 }  // namespace tensorflow
 
