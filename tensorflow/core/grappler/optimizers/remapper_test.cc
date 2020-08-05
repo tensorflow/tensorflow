@@ -930,48 +930,45 @@ class FusedCmpAndCastTest : public GrapplerTest {
   template <DataType TYPE>
   void TestFusedCmpAndCast() {
     using ::tensorflow::ops::Placeholder;
-    for (bool is_training : {true, false}) {
-      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-      const int num_channels = 24;
-      TensorShape channel_shape({num_channels});
-      TensorShape empty_shape({0});
-      auto x = Placeholder(s.WithOpName("x"), TYPE,
-                           ops::Placeholder::Shape({2, 8, 8, num_channels}));
-      auto y = Placeholder(s.WithOpName("y"), TYPE,
-                           ops::Placeholder::Shape({2, 8, 8, num_channels}));
-      float epsilon = 0.1f;
-      auto comparator = ops::Equal(s.WithOpName("Equal"), x, y);
-      auto cast = ops::Cast(s.WithOpName("cast"), comparator.z, TYPE);
-      auto fetch = ops::Identity(s.WithOpName("fetch"), cast);
-      auto input1_t = GenerateRandomTensor<TYPE>({2, 8, 8, num_channels});
-      auto input2_t = GenerateRandomTensor<TYPE>({2, 8, 8, num_channels});
-      GrapplerItem item;
-      item.fetch = {"fetch"};
-      item.feed = {{"x", input1_t}, {"y", input2_t}};
-      TF_ASSERT_OK(s.ToGraphDef(&item.graph));
-      for (int i = 0; i < item.graph.node_size(); ++i) {
-        item.graph.mutable_node(i)->set_device("/device:CPU:0");
-      }
-      Remapper optimizer(RewriterConfig::AGGRESSIVE);
-      GraphDef output;
-      TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-      int found = 0;
-      for (const NodeDef& node : output.node()) {
-        if (node.name() == "cast") {
-          EXPECT_EQ(node.op(), "_EqualWithCast");
-          ASSERT_EQ(node.input_size(), 2);
-          EXPECT_EQ(node.input(0), "x");
-          EXPECT_EQ(node.input(1), "y");
-          found++;
-        }
-      }
-      EXPECT_EQ(found, 1);
-      auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
-      ASSERT_EQ(tensors_expected.size(), 1);
-      auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-      ASSERT_EQ(tensors.size(), 1);
-      test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    const int num_channels = 24;
+    TensorShape channel_shape({num_channels});
+    TensorShape empty_shape({0});
+    auto x = Placeholder(s.WithOpName("x"), TYPE,
+                         ops::Placeholder::Shape({2, 8, 8, num_channels}));
+    auto y = Placeholder(s.WithOpName("y"), TYPE,
+                         ops::Placeholder::Shape({2, 8, 8, num_channels}));
+    auto comparator = ops::Equal(s.WithOpName("Equal"), x, y);
+    auto cast = ops::Cast(s.WithOpName("cast"), comparator.z, TYPE);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), cast);
+    auto input1_t = GenerateRandomTensor<TYPE>({2, 8, 8, num_channels});
+    auto input2_t = GenerateRandomTensor<TYPE>({2, 8, 8, num_channels});
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"x", input1_t}, {"y", input2_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
     }
+    Remapper optimizer(RewriterConfig::AGGRESSIVE);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "cast") {
+        EXPECT_EQ(node.op(), "_EqualWithCast");
+        ASSERT_EQ(node.input_size(), 2);
+        EXPECT_EQ(node.input(0), "x");
+        EXPECT_EQ(node.input(1), "y");
+        found++;
+      }
+    }
+    EXPECT_EQ(found, 1);
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
   }
 };
 
