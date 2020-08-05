@@ -41,6 +41,7 @@ limitations under the License.
 #endif
 
 namespace tensorflow {
+std::once_flag omp_setting_flag;
 
 ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                    const string& name, Bytes memory_limit,
