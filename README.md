@@ -41,8 +41,7 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
 ### Contributors 
 
 ```
-
-yunho0130(맹윤호), harheem(김하림), prograsshopper(서미지), 0ys(공예슬), tina1296, greentea1031(이보성)
+yunho0130(맹윤호), harheem(김하림), prograsshopper(서미지), 0ys(공예슬), tina1296, yoonseok312(양윤석), greentea1031(이보성)
 
 ```
 
