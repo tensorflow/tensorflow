@@ -28,7 +28,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util import nest
 
 
-class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
+class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
                                    functional.Functional):
   """A functional preprocessing stage.
 
@@ -60,6 +60,8 @@ class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
         raise ValueError(
             '`adapt()` requires a batched Dataset, a list of EagerTensors '
             'or Numpy arrays as input, got {}'.format(type(data)))
+      ds_input = [dataset_ops.Dataset.from_tensor_slices(x).batch(1)
+                  for x in data]
 
     if isinstance(data, dataset_ops.Dataset):
       # Validate the datasets to try and ensure we haven't been passed one with
@@ -70,16 +72,14 @@ class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
             'elements. Please use dataset.take(...) to make the number '
             'of elements finite.')
       # Unzip dataset object to a list of single input dataset.
-      data = _unzip_dataset(data)
+      ds_input = _unzip_dataset(data)
 
-    # Dictionary mapping reference tensors to data
-    data_dict = {}
+    # Dictionary mapping reference tensors to datasets
+    ds_dict = {}
     tensor_usage_count = self._tensor_usage_count
-    for x, y in zip(self.inputs, data):
-      if isinstance(y, ops.EagerTensor):
-        y = self._conform_to_reference_input(y, ref_input=x)
+    for x, y in zip(self.inputs, ds_input):
       x_id = str(id(x))
-      data_dict[x_id] = [y] * tensor_usage_count[x_id]
+      ds_dict[x_id] = [y] * tensor_usage_count[x_id]
 
     nodes_by_depth = self._nodes_by_depth
     depth_keys = sorted(nodes_by_depth.keys(), reverse=True)
@@ -90,34 +90,28 @@ class PreprocessingStageFunctional(base_preprocessing_layer.PreprocessingLayer,
           continue
 
         # Node with input not computed yet
-        if any(t_id not in data_dict for t_id in node.flat_input_ids):
+        if any(t_id not in ds_dict for t_id in node.flat_input_ids):
           continue
 
-        args, kwargs = node.map_arguments(data_dict)
+        args, kwargs = node.map_arguments(ds_dict)
+        args = dataset_ops.Dataset.zip(nest.list_to_tuple(*args))
 
         if hasattr(node.layer, 'adapt'):
-          args_flatten = nest.flatten(args)
-          if all(isinstance(arg, dataset_ops.Dataset) for arg in args_flatten):
-            args = dataset_ops.Dataset.zip(tuple(args_flatten))
           node.layer.adapt(args, reset_state=reset_state)
 
-        if isinstance(args, dataset_ops.Dataset):
-          def map_fn(*x, node=node, args=args, kwargs=kwargs):
-            if len(args.element_spec) == 1:
-              return nest.flatten(node.layer(*x, **kwargs))
-            return nest.flatten(node.layer(x, **kwargs))
-          outputs = args.map(map_fn)
-          outputs = _unzip_dataset(outputs)
-        else:
-          outputs = node.layer(*args, **kwargs)
-          outputs = nest.flatten(outputs)
+        def map_fn(*x, node=node, args=args, kwargs=kwargs):
+          if not isinstance(args.element_spec, tuple):
+            return nest.flatten(node.layer(*x, **kwargs))
+          return nest.flatten(node.layer(x, **kwargs))
+        outputs = args.map(map_fn)
+        outputs = _unzip_dataset(outputs)
 
-        # Update tensor_dict.
+        # Update ds_dict.
         for x_id, y in zip(node.flat_output_ids, outputs):
-          data_dict[x_id] = [y] * tensor_usage_count[x_id]
+          ds_dict[x_id] = [y] * tensor_usage_count[x_id]
 
 
-def _unzip_dataset(data):
+def _unzip_dataset(ds):
   """Unzip dataset into a list of single element datasets.
   Arguments:
     data: A Dataset object.
@@ -125,17 +119,20 @@ def _unzip_dataset(data):
     A list of Dataset object, each correspond to one of the
     `element_spec` of the input Dataset object.
   Example:
-    >>> ds1 = tf.data.Dataset.from_tensor_slices([1,2,3])
-    >>> ds2 = tf.data.Dataset.from_tensor_slices([4,5,6])
-    >>> ds_zipped = tf.data.Dataset.zip((ds1, ds2))
-    >>> ds_unzipped = _unzip_dataset(ds_zipped)
+  >>> ds1 = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  >>> ds2 = tf.data.Dataset.from_tensor_slices([4, 5, 6])
+  >>> ds_zipped_tuple = tf.data.Dataset.zip((ds1, ds2))
+  >>> ds_unzipped_tuple = _unzip_dataset(ds_zipped_tuple)
+  >>> ds_zipped_dict = tf.data.Dataset.zip({'ds1': ds1, 'ds2': ds2})
+  >>> ds_unzipped_dict = _unzip_dataset(ds_zipped_dict)
 
-    Then each element of `ds_unzipped` is the same as `ds`.
+    Then the two elements of `ds_unzipped_tuple` and `ds_unzipped_dict` are
+    both the same as `ds1` and `ds2`.
   """
-  element_count = len(nest.flatten(data.element_spec))
-  data_unzipped = []
+  element_count = len(nest.flatten(ds.element_spec))
+  ds_unzipped = []
   for i in range(element_count):
     def map_fn(*x, j=i):
-      return x[j]
-    data_unzipped.append(data.map(map_fn))
-  return data
+      return nest.flatten(x)[j]
+    ds_unzipped.append(ds.map(map_fn))
+  return ds_unzipped
