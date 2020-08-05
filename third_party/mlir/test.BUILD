@@ -171,7 +171,6 @@ cc_library(
         "lib/Target/TestLLVMTypeTranslation.cpp",
     ],
     deps = [
-        ":TestLLVMIR",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMIRModuleTranslation",
@@ -227,19 +226,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorOps",
-    ],
-)
-
-cc_library(
-    name = "TestLLVMIR",
-    srcs = [
-        "lib/Dialect/LLVMIR/LLVMTypeTestDialect.cpp",
-    ],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
     ],
 )
 
