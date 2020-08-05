@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_unified_internal",
         "//tensorflow/c/eager:gradients",
         "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/core/lib/llvm_rtti",
     ],
 )
