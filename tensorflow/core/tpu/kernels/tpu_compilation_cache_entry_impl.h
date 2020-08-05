@@ -1,11 +1,8 @@
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,14 +11,11 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_IMPL_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_IMPL_H_
-
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-
 namespace tensorflow {
 namespace tpu {
-
 // Wrapper for a cache entry that holds a reference to the entry until the
 // wrapper is deleted. This wrapper is the concrete type of
 // CompilationCacheEntryRef returned by Lookup.
@@ -31,9 +25,7 @@ class CompilationCacheEntryRefImpl
  public:
   CompilationCacheEntryRefImpl(TpuCompilationCacheInterface* parent,
                                CompiledSubgraph* entry, int index);
-
   ~CompilationCacheEntryRefImpl() override;
-
   Status ToSubEntryRef(CompilationCacheFetchTarget fetch_target) override;
 
  protected:
@@ -44,7 +36,6 @@ class CompilationCacheEntryRefImpl
   // The index of the program in entry_ that is returned by the get method.
   int index_;
 };
-
 template <typename CacheEntryType>
 CompilationCacheEntryRefImpl<CacheEntryType>::CompilationCacheEntryRefImpl(
     TpuCompilationCacheInterface* parent, CompiledSubgraph* entry, int index)
@@ -60,7 +51,6 @@ CompilationCacheEntryRefImpl<CacheEntryType>::CompilationCacheEntryRefImpl(
     entry_->main_entry->Ref();
   }
 }
-
 template <typename CacheEntryType>
 CompilationCacheEntryRefImpl<CacheEntryType>::~CompilationCacheEntryRefImpl() {
   if (entry_ == nullptr) {
@@ -72,7 +62,6 @@ CompilationCacheEntryRefImpl<CacheEntryType>::~CompilationCacheEntryRefImpl() {
     parent_->DiscardEntryRefs({entry_->main_entry});
   }
 }
-
 template <typename CacheEntryType>
 Status CompilationCacheEntryRefImpl<CacheEntryType>::ToSubEntryRef(
     CompilationCacheFetchTarget fetch_target) {
@@ -90,7 +79,6 @@ Status CompilationCacheEntryRefImpl<CacheEntryType>::ToSubEntryRef(
     default:
       return xla::InvalidArgument("Invalid fetch target: %d", fetch_target);
   }
-
   if (target == nullptr) {
     // Cache entry does not have an unsharding subentry. Unref and replace
     // with nullptr.
@@ -101,8 +89,6 @@ Status CompilationCacheEntryRefImpl<CacheEntryType>::ToSubEntryRef(
   entry_ = target;
   return Status::OK();
 }
-
 }  // namespace tpu
 }  // namespace tensorflow
-
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_IMPL_H_

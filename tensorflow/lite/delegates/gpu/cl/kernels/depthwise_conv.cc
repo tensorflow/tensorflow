@@ -66,37 +66,99 @@ std::string GetSrcValue(int channel_multiplier, const std::string coords) {
 
   return c;
 }
+}  // namespace
 
-std::string GenerateDepthwiseConvolutionCode(
+DepthwiseConvolution::DepthwiseConvolution(
+    const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr, bool weights_are_buffer)
+    : GPUOperation(definition),
+      weights_are_buffer_(weights_are_buffer),
+      kernel_size_(attr.weights.shape.w, attr.weights.shape.h, 0, 0),
+      stride_(attr.strides.w, attr.strides.h, 0, 0),
+      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
+      dilation_(attr.dilations.w, attr.dilations.h, 0, 0),
+      channel_multiplier_(attr.weights.shape.o) {
+  work_group_size_ = int3(8, 8, 1);
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateDepthwiseConvolutionCode(
+      definition_, stride_correction, channel_multiplier_, weights_are_buffer_);
+}
+
+DepthwiseConvolution::DepthwiseConvolution(
+    const OperationDef& definition,
+    const DepthwiseConvolution3DAttributes& attr, bool weights_are_buffer)
+    : GPUOperation(definition),
+      weights_are_buffer_(weights_are_buffer),
+      kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
+                   attr.weights.shape.d, 0),
+      stride_(attr.strides.w, attr.strides.h, attr.strides.d, 0),
+      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
+               -attr.padding.prepended.d, 0),
+      dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d, 0),
+      channel_multiplier_(attr.weights.shape.o) {
+  work_group_size_ = int3(8, 8, 1);
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateDepthwiseConvolutionCode(
+      definition_, stride_correction, channel_multiplier_, weights_are_buffer_);
+}
+
+DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
+    : GPUOperation(std::move(operation)),
+      weights_are_buffer_(operation.weights_are_buffer_),
+      kernel_size_(operation.kernel_size_),
+      stride_(operation.stride_),
+      padding_(operation.padding_),
+      dilation_(operation.dilation_),
+      channel_multiplier_(operation.channel_multiplier_) {}
+
+DepthwiseConvolution& DepthwiseConvolution::operator=(
+    DepthwiseConvolution&& operation) {
+  if (this != &operation) {
+    std::swap(weights_are_buffer_, operation.weights_are_buffer_);
+    std::swap(kernel_size_, operation.kernel_size_);
+    std::swap(stride_, operation.stride_);
+    std::swap(padding_, operation.padding_);
+    std::swap(dilation_, operation.dilation_);
+    std::swap(channel_multiplier_, operation.channel_multiplier_);
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string DepthwiseConvolution::GenerateDepthwiseConvolutionCode(
     const OperationDef& op_def, bool stride_correction, int channel_multiplier,
-    bool weights_are_buffer, const CLDevice& device, Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
+    bool weights_are_buffer) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  AddSrcTensor("src_tensor", src_desc);
+
+  auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    dst_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  args->AddInt("kernel_size_x");
-  args->AddInt("stride_x");
-  args->AddInt("padding_x");
-  args->AddInt("dilation_x");
-  args->AddInt("kernel_size_y");
-  args->AddInt("stride_y");
-  args->AddInt("padding_y");
-  args->AddInt("dilation_y");
+  AddDstTensor("dst_tensor", dst_desc);
+
+  args_.AddInt("kernel_size_x");
+  args_.AddInt("stride_x");
+  args_.AddInt("padding_x");
+  args_.AddInt("dilation_x");
+  args_.AddInt("kernel_size_y");
+  args_.AddInt("stride_y");
+  args_.AddInt("padding_y");
+  args_.AddInt("dilation_y");
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-    args->AddInt("kernel_size_z");
-    args->AddInt("stride_z");
-    args->AddInt("padding_z");
-    args->AddInt("dilation_z");
+    args_.AddInt("kernel_size_z");
+    args_.AddInt("stride_z");
+    args_.AddInt("padding_z");
+    args_.AddInt("dilation_z");
   }
   if (!IsSpecializedCase(channel_multiplier)) {
-    args->AddInt("ch_multiplier");
+    args_.AddInt("ch_multiplier");
   }
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
@@ -215,80 +277,8 @@ std::string GenerateDepthwiseConvolutionCode(
 
   return c;
 }
-}  // namespace
-
-DepthwiseConvolution::DepthwiseConvolution(
-    const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr, bool weights_are_buffer)
-    : GPUOperation(definition),
-      weights_are_buffer_(weights_are_buffer),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h, 0, 0),
-      stride_(attr.strides.w, attr.strides.h, 0, 0),
-      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
-      dilation_(attr.dilations.w, attr.dilations.h, 0, 0),
-      channel_multiplier_(attr.weights.shape.o) {
-  work_group_size_ = int3(8, 8, 1);
-}
-
-DepthwiseConvolution::DepthwiseConvolution(
-    const OperationDef& definition,
-    const DepthwiseConvolution3DAttributes& attr, bool weights_are_buffer)
-    : GPUOperation(definition),
-      weights_are_buffer_(weights_are_buffer),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
-                   attr.weights.shape.d, 0),
-      stride_(attr.strides.w, attr.strides.h, attr.strides.d, 0),
-      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
-               -attr.padding.prepended.d, 0),
-      dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d, 0),
-      channel_multiplier_(attr.weights.shape.o) {
-  work_group_size_ = int3(8, 8, 1);
-}
-
-DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
-    : GPUOperation(std::move(operation)),
-      weights_are_buffer_(operation.weights_are_buffer_),
-      kernel_size_(operation.kernel_size_),
-      stride_(operation.stride_),
-      padding_(operation.padding_),
-      dilation_(operation.dilation_),
-      channel_multiplier_(operation.channel_multiplier_) {}
-
-DepthwiseConvolution& DepthwiseConvolution::operator=(
-    DepthwiseConvolution&& operation) {
-  if (this != &operation) {
-    std::swap(weights_are_buffer_, operation.weights_are_buffer_);
-    std::swap(kernel_size_, operation.kernel_size_);
-    std::swap(stride_, operation.stride_);
-    std::swap(padding_, operation.padding_);
-    std::swap(dilation_, operation.dilation_);
-    std::swap(channel_multiplier_, operation.channel_multiplier_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status DepthwiseConvolution::Compile(
-    const CreationContext& creation_context) {
-  const bool stride_correction =
-      definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code = GenerateDepthwiseConvolutionCode(
-      definition_, stride_correction, channel_multiplier_, weights_are_buffer_,
-      *creation_context.device, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
 
 absl::Status DepthwiseConvolution::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
   RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));

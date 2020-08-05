@@ -36,6 +36,10 @@ int32 TpuCoreLocationExternal::Id() const {
   return tpu::ExecutorApiFn()->TpuCoreLocation_IdFn(core_location_);
 }
 
+int32 TpuHostLocationExternal::Id() const {
+  return tpu::ExecutorApiFn()->TpuHostLocation_IdFn(host_location_);
+}
+
 int32 TpuTopologyExternal::LogicalDevicesPerHost(
     TpuCoreTypeEnum core_type) const {
   return tpu::ExecutorApiFn()->TpuTopology_LogicalDevicesPerHostFn(topology_,

@@ -42,67 +42,44 @@ def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
   }];
 }
 
-def AllocatorAttributes : StructAttr<"AllocatorAttributes",
-  TFFramework_Dialect, [
-    StructFieldAttr<"on_host", BoolAttr>,
-    StructFieldAttr<"nic_compatible", BoolAttr>,
-    StructFieldAttr<"gpu_compatible", BoolAttr>]> {
-  let description = "Equivalent to `tensorflow::AllocatorAttributes` in C++";
-}
-
-def AllocationAttributes : StructAttr<"AllocationAttributes",
-  TFFramework_Dialect, [
-    StructFieldAttr<"no_retry_on_failure",
-                    DefaultValuedAttr<BoolAttr, "false">>,
-    StructFieldAttr<"allocation_will_be_logged",
-                    DefaultValuedAttr<BoolAttr, "false">>]> {
-  let description = "Equivalent to `tensorflow::AllocationAttributes` in C++";
-}
-
-
 // Base class for TF Framework dialect ops.
 class TFFramework_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TFFramework_Dialect, mnemonic, traits> {
-  let verifier = "return Verify(*this);";
+  let verifier = "return Verify<$cppClass>(*this);";
 }
 
+//===----------------------------------------------------------------------===//
+// AllocRawOp
+//===----------------------------------------------------------------------===//
+def TFFramework_AllocRawOp : TFFramework_Op<"alloc_raw",
+    [MemoryEffects<[MemAlloc<DefaultResource>]>]> {
+  let summary = "allocation of tensors that uses TF Framework";
+  let description = [{
+    Allocation of tensors during kernel execution in the Compute method.
 
-// Base class for TF Framework alloc ops.
-class TFFramework_AllocLikeOp<string mnemonic,
-                  Resource resource,
-                  list<OpTrait> traits = []> :
-    TFFramework_Op<mnemonic,
-                !listconcat([MemoryEffects<[MemAlloc<resource>]>], traits)> {
+    This should be used to allocate any temporary or output memref.
+    Corresponds to `Allocator::AllocateRaw` in
+    tensorflow/core/framework/allocator.h.
+  }];
 
-  let arguments = (ins TFFramework_OpKernelContextType:$op_kernel_ctx,
-                   Variadic<Index>:$dyn_sizes,
-                   OptionalAttr<AllocatorAttributes>:$allocator_attrs,
-                   OptionalAttr<AllocationAttributes>:$allocation_attrs);
-  let results = (outs Res<AnyMemRef, "", [MemAlloc<resource>]>:$result);
+  let arguments = (ins TFFramework_OpKernelContextType:$ctx,
+                   Variadic<Index>:$dyn_sizes);
+  let results = (outs Res<AnyMemRef, "", [MemAlloc<DefaultResource>]>:$result);
 
   let builders = [
     OpBuilder<[{
       OpBuilder &builder, OperationState &result, MemRefType memref_type,
-      Value op_kernel_ctx,
-      AllocatorAttributes allocator_attrs = AllocatorAttributes(),
-      AllocationAttributes allocation_attrs = AllocationAttributes()
+      Value ctx
     }], [{
-      result.addOperands(op_kernel_ctx);
+      result.addOperands(ctx);
       result.types.push_back(memref_type);
-      if (allocator_attrs)
-        result.addAttribute("allocator_attrs", allocator_attrs);
-      if (allocation_attrs)
-        result.addAttribute("allocation_attrs", allocation_attrs);
     }]>,
 
     OpBuilder<[{
       OpBuilder &builder, OperationState &result, MemRefType memref_type,
-      Value op_kernel_ctx, ValueRange dyn_sizes,
-      AllocatorAttributes allocator_attrs = AllocatorAttributes(),
-      AllocationAttributes allocation_attrs = AllocationAttributes()
+      Value ctx, ValueRange dyn_sizes
     }], [{
-      build(builder, result, memref_type, op_kernel_ctx, allocator_attrs,
-            allocation_attrs);
+      build(builder, result, memref_type, ctx);
       result.addOperands(dyn_sizes);
     }]>];
 
@@ -110,42 +87,39 @@ class TFFramework_AllocLikeOp<string mnemonic,
     MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
   }];
   let assemblyFormat = [{
-    `(` $op_kernel_ctx (`,` $dyn_sizes^ )? `)` attr-dict `:` type($result)
+    `(` $ctx (`,` $dyn_sizes^ )? `)` attr-dict `:` type($result)
   }];
 }
 
 //===----------------------------------------------------------------------===//
-// AllocOutputOp
+// DeallocRawOp
 //===----------------------------------------------------------------------===//
-
-def TFFramework_AllocOutputOp
-    : TFFramework_AllocLikeOp<"alloc_output", DefaultResource> {
-  let summary = "allocation of tensorsmemory allocation operation";
+def TFFramework_DeallocRawOp : TFFramework_Op<"dealloc_raw",
+    [MemoryEffects<[MemFree]>]> {
+  let summary = "deallocation of tensors that uses TF Framework";
   let description = [{
-    Allocation of output tensors during kernel execution in the Compute method.
+    Deallocation of tensors during kernel execution in the Compute method.
 
-    This should be used to allocate any tensor that is going to be used as an
-    output from the kernel at the end of the current execution.
-
-    Defined in third_party/tensorflow/core/framework/op_kernel.cc.
+    This should be used to deallocate any temporary memref that was allocated
+    with `tf_framework.alloc_raw`.
+    Corresponds to `Allocator::DeallocateRaw` in
+    tensorflow/core/framework/allocator.h.
   }];
+
+  let arguments = (ins TFFramework_OpKernelContextType:$ctx,
+                   Arg<AnyMemRef, "", [MemFree]>:$memref);
+  let assemblyFormat = "`(` $ctx `,` $memref `)` attr-dict `:` type($memref)";
 }
 
 //===----------------------------------------------------------------------===//
-// AllocTempOp
+// NullContextOp
 //===----------------------------------------------------------------------===//
-
-def TFFramework_AllocTempOp
-    : TFFramework_AllocLikeOp<"alloc_temp", DefaultResource> {
-  let summary = "memory allocation operation";
-  let description = [{
-    Allocation of temp tensors during kernel execution in the Compute method.
-
-    This should be used to allocate any scratch storage that is needed while
-    the kernel is executing, and will not be retained.
-
-    Defined in third_party/tensorflow/core/framework/op_kernel.cc.
-  }];
+def TFFramework_NullContextOp : TFFramework_Op<"null_context",
+    [NoSideEffect]> {
+  let summary = "Creates a fake TF context that will be lowered to nullptr";
+  let description = [{Needed for testing}];
+  let results = (outs TFFramework_OpKernelContextType:$result);
+  let assemblyFormat = "`(` `)` attr-dict `:` type($result)";
 }
 
 #endif // TF_FRAMEWORK_OPS

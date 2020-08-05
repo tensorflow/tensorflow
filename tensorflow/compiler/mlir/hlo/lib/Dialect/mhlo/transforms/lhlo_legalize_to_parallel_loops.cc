@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -690,8 +689,8 @@ class SelectAndScatterOpConverter
   }
 };
 
-struct LhloLegalizeToParallelLoops
-    : public PassWrapper<LhloLegalizeToParallelLoops, FunctionPass> {
+struct LhloLegalizeToParallelLoopsPass
+    : public PassWrapper<LhloLegalizeToParallelLoopsPass, FunctionPass> {
   void runOnFunction() override {
     auto func = getFunction();
 
@@ -715,16 +714,11 @@ struct LhloLegalizeToParallelLoops
     }
   }
 };
-
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass() {
-  return absl::make_unique<LhloLegalizeToParallelLoops>();
+  return std::make_unique<LhloLegalizeToParallelLoopsPass>();
 }
-
-static PassRegistration<LhloLegalizeToParallelLoops> legalize_lhlo_pass(
-    "lhlo-legalize-to-parallel-loops",
-    "Legalize from LHLO dialect to parallel loops.");
 
 }  // namespace lmhlo
 }  // namespace mlir

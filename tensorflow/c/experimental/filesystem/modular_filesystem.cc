@@ -462,7 +462,7 @@ Status RegisterFilesystemPlugin(const std::string& dso_path) {
   // Step 1: Load plugin
   Env* env = Env::Default();
   void* dso_handle;
-  TF_RETURN_IF_ERROR(env->LoadLibrary(dso_path.c_str(), &dso_handle));
+  TF_RETURN_IF_ERROR(env->LoadDynamicLibrary(dso_path.c_str(), &dso_handle));
 
   // Step 2: Load symbol for `TF_InitPlugin`
   void* dso_symbol;

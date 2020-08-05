@@ -29,7 +29,6 @@ class StridedSlice : public GPUOperation {
   StridedSlice(const OperationDef& definition, const SliceAttributes& attr);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   StridedSlice(StridedSlice&& operation);
@@ -38,6 +37,8 @@ class StridedSlice : public GPUOperation {
   StridedSlice& operator=(const StridedSlice&) = delete;
 
  private:
+  std::string GetStridedSliceCode(const OperationDef& op_def, bool alignedx4);
+
   SliceAttributes attributes_;
 };
 

@@ -810,10 +810,9 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
+        "//tensorflow:android_x86": [],
+        "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
-        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
@@ -825,10 +824,9 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/platform:dynamic_annotations",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
+        "//tensorflow:android_x86": [],
+        "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
-        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
@@ -1041,9 +1039,6 @@ cc_library(
         ":immutable_constant_op",
         ":inplace_ops",
         ":listdiff_op",
-        ":matrix_band_part_op",
-        ":matrix_diag_op",
-        ":matrix_set_diag_op",
         ":mirror_pad_op",
         ":one_hot_op",
         ":pack_op",
@@ -1174,26 +1169,6 @@ tf_kernel_library(
     name = "listdiff_op",
     prefix = "listdiff_op",
     deps = ARRAY_DEPS,
-)
-
-tf_kernel_library(
-    name = "matrix_band_part_op",
-    prefix = "matrix_band_part_op",
-    deps = if_cuda([
-        ":cuda_solvers",
-    ]) + ARRAY_DEPS,
-)
-
-tf_kernel_library(
-    name = "matrix_diag_op",
-    prefix = "matrix_diag_op",
-    deps = ARRAY_DEPS,
-)
-
-tf_kernel_library(
-    name = "matrix_set_diag_op",
-    prefix = "matrix_set_diag_op",
-    deps = ARRAY_DEPS + [":matrix_diag_op"],
 )
 
 tf_kernel_library(
@@ -1407,7 +1382,7 @@ tf_kernel_library(
         "where_op_gpu_impl_8.cu.cc",
     ],
     deps = if_cuda_or_rocm([
-               ":cuda_solvers",
+               "//tensorflow/core/util:cuda_solvers",
            ]) + [":gpu_prim_hdrs"] +
            ARRAY_DEPS,
 )
@@ -2787,21 +2762,6 @@ tf_cuda_cc_tests(
     ],
 )
 
-tf_kernel_library(
-    name = "eye_functor",
-    hdrs = ["eye_functor.h"],
-    gpu_srcs = [
-        "eye_functor_gpu.cu.cc",
-        "eye_functor.h",
-    ],
-    visibility = [":friends"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 0,
-)
-
 cc_library(
     name = "fifo_queue",
     srcs = ["fifo_queue.cc"],
@@ -3217,8 +3177,8 @@ tf_cc_test(
     name = "eigen_mkldnn_contraction_kernel_test",
     size = "small",
     srcs = select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
+        "//tensorflow:android_x86": [],
+        "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
@@ -3561,6 +3521,7 @@ tf_cc_tests(
 )
 
 cc_library(
+<<<<<<< HEAD
     name = "linalg",
     deps = [
         ":banded_triangular_solve_op",
@@ -3844,6 +3805,8 @@ cc_library(
 )
 
 cc_library(
+=======
+>>>>>>> google-upstream/master
     name = "logging",
     deps = [
         ":logging_ops",
@@ -3860,6 +3823,8 @@ LOGGING_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    # TODO(b/162630222): remove this dependency.
+    "//tensorflow/c/kernels:summary_op",
 ]
 
 tf_kernel_library(
@@ -4217,7 +4182,7 @@ tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
     deps = MATH_DEPS + if_cuda_or_rocm([
-        ":cuda_solvers",
+        "//tensorflow/core/util:cuda_solvers",
     ]),
 )
 
@@ -4402,45 +4367,6 @@ tf_cuda_cc_test(
     deps = [
         ":batch_matmul_op",
         ":broadcast_to_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "banded_triangular_solve_op_test",
-    size = "small",
-    srcs = ["banded_triangular_solve_op_test.cc"],
-    deps = [
-        ":banded_triangular_solve_op",
-        ":matrix_set_diag_op",
-        ":matrix_triangular_solve_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "matrix_triangular_solve_op_test",
-    size = "small",
-    srcs = ["matrix_triangular_solve_op_test.cc"],
-    deps = [
-        ":broadcast_to_op",
-        ":matrix_triangular_solve_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -6693,10 +6619,7 @@ filegroup(
         "lookup_table_init_op.h",
         "lookup_table_op.h",
         "lookup_util.h",
-        "linalg_ops_common.h",
         "list_kernels.h",
-        "matrix_diag_op.h",
-        "matrix_set_diag_op.h",
         "maxpooling_op.h",
         "mfcc.h",
         "mfcc_dct.h",
@@ -6744,6 +6667,9 @@ filegroup(
         "xent_op.h",
     ] + [
         "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
+        "//tensorflow/core/kernels/linalg:linalg_ops_common.h",
+        "//tensorflow/core/kernels/linalg:matrix_diag_op.h",
+        "//tensorflow/core/kernels/linalg:matrix_set_diag_op.h",
     ],
 )
 
@@ -6845,16 +6771,6 @@ filegroup(
         "encode_wav_op.cc",
         "eigen_contraction_kernel.cc",
         "eigen_contraction_kernel.h",
-        "einsum_op_impl_half.cc",
-        "einsum_op_impl_bfloat16.cc",
-        "einsum_op_impl_int32.cc",
-        "einsum_op_impl_int64.cc",
-        "einsum_op_impl_float.cc",
-        "einsum_op_impl_double.cc",
-        "einsum_op_impl_complex64.cc",
-        "einsum_op_impl_complex128.cc",
-        "einsum_op_impl.h",
-        "einsum_op.h",
         "fake_quant_ops.cc",
         "fifo_queue.cc",
         "fifo_queue_op.cc",
@@ -6866,6 +6782,17 @@ filegroup(
         "population_count_op.h",
         "winograd_transform.h",
         ":android_extended_ops_headers",
+    ] + [
+        "//tensorflow/core/kernels/linalg:einsum_op_impl_half.cc",
+        "//tensorflow/core/kernels/linalg:einsum_op_impl_bfloat16.cc",
+        "//tensorflow/core/kernels/linalg:einsum_op_impl_int32.cc",
+        "//tensorflow/core/kernels/linalg:einsum_op_impl_int64.cc",
+        "//tensorflow/core/kernels/linalg:einsum_op_impl_float.cc",
+        "//tensorflow/core/kernels/linalg:einsum_op_impl_double.cc",
+        "//tensorflow/core/kernels/linalg:einsum_op_impl_complex64.cc",
+        "//tensorflow/core/kernels/linalg:einsum_op_impl_complex128.cc",
+        "//tensorflow/core/kernels/linalg:einsum_op_impl.h",
+        "//tensorflow/core/kernels/linalg:einsum_op.h",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",
@@ -6896,7 +6823,6 @@ filegroup(
         "in_topk_op.cc",
         "in_topk_op.h",
         "initializable_lookup_table.cc",
-        "linalg_ops_common.cc",
         "list_kernels.cc",
         "logging_ops.cc",
         "logging_ops.h",
@@ -6904,9 +6830,6 @@ filegroup(
         "lookup_table_op.cc",
         "lookup_util.cc",
         "lrn_op.cc",
-        "matrix_diag_op.cc",
-        "matrix_inverse_op.cc",
-        "matrix_set_diag_op.cc",
         "maxpooling_op.cc",
         "mfcc.cc",
         "mfcc_dct.cc",
@@ -7028,6 +6951,10 @@ filegroup(
         ":android_extended_ops_headers",
     ] + [
         "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
+        "//tensorflow/core/kernels/linalg:linalg_ops_common.cc",
+        "//tensorflow/core/kernels/linalg:matrix_diag_op.cc",
+        "//tensorflow/core/kernels/linalg:matrix_inverse_op.cc",
+        "//tensorflow/core/kernels/linalg:matrix_set_diag_op.cc",
     ],
 )
 
@@ -7081,6 +7008,7 @@ filegroup(
     srcs = [
         "//tensorflow/c/kernels:android_all_op_kernels",
         "//tensorflow/core/kernels/data:android_all_op_kernels",
+        "//tensorflow/core/kernels/linalg:android_all_op_kernels",
     ] + glob(
         [
             "*.cc",
@@ -8868,4 +8796,16 @@ tf_kernel_library(
         "//third_party/eigen3",
         "@sobol_data",
     ],
+)
+
+# ---- temporary forwarding declaration for libraries in linalg
+# TODO(b/160344057): Remove after updating dependencies.
+tf_kernel_library(
+    name = "matrix_inverse_op",
+    deps = ["//tensorflow/core/kernels/linalg:matrix_inverse_op"],
+)
+
+tf_kernel_library(
+    name = "einsum_op",
+    deps = ["//tensorflow/core/kernels/linalg:einsum_op"],
 )

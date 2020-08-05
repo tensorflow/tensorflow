@@ -1072,11 +1072,13 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   status->status = context->FindDeviceFromName(device_name, &device);
   tensorflow::CustomDevice* custom_device = nullptr;
   if (!status->status.ok()) {
-    status->status =
-        context->FindCustomDeviceFromName(device_name, &custom_device);
-    if (!status->status.ok()) {
+    if (!context->FindCustomDeviceFromName(device_name, &custom_device)) {
       deallocator(data, len, deallocator_arg);
+      status->status =
+          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
       return nullptr;
+    } else {
+      status->status = tensorflow::Status::OK();
     }
   }
   std::vector<tensorflow::int64> dimvec(num_dims);

@@ -69,17 +69,6 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
       result += "#define TO_ACCUM_FLT convert_float\n";
       break;
   }
-
-  result +=
-      "__constant sampler_t smp_edge = CLK_NORMALIZED_COORDS_FALSE | "
-      "CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;\n";
-  result +=
-      "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
-      "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
-  result +=
-      "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
-      "CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;\n";
-
   return result;
 }
 
@@ -98,6 +87,11 @@ std::string GetXStrideCorrected(const std::string& src_x,
 TextureAddressMode GetFastestZeroMode(const CLDevice& device) {
   return device.IsAdreno3xx() ? TextureAddressMode::DONT_CARE
                               : TextureAddressMode::ZERO;
+}
+
+TextureAddressMode GetFastestZeroMode(const DeviceInfo& device_info) {
+  return device_info.IsAdreno3xx() ? TextureAddressMode::DONT_CARE
+                                   : TextureAddressMode::ZERO;
 }
 
 float4 GetMaskForLastPlane(int channels) {

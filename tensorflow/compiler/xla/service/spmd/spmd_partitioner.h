@@ -330,6 +330,22 @@ struct DotGeneralDimsMapping {
   std::vector<DimsMapping> rhs_non_contracting_dims;
 };
 
+struct ConvolutionDimsMapping {
+  // The dimension numbers for the operands and output corresponding to a
+  // logical dimension (e.g., batch, parallel, non-parallel). If an
+  // operand or the output doesn't have the logical dimension, it is set to
+  // -1.
+  struct DimsMapping {
+    int64 lhs;
+    int64 rhs;
+    int64 output;
+    // input mapped to index in input_spatial_dimensions().
+    int64 spatial;
+  };
+  std::vector<DimsMapping> parallel_spatial_dims;
+  std::vector<DimsMapping> non_parallel_spatial_dims;
+};
+
 class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
  public:
   SpmdPartitioningVisitor(

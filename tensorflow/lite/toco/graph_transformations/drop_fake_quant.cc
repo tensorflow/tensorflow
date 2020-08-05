@@ -45,8 +45,7 @@ namespace toco {
   }
 
   // Drop min/max inputs
-  for (int i = 1, iter_limit = fakequant_op->inputs.size(); i < iter_limit;
-       i++) {
+  for (int i = 1, end = fakequant_op->inputs.size(); i < end; i++) {
     if (CountOpsWithInput(*model, fakequant_op->inputs[i]) == 1) {
       model->EraseArray(fakequant_op->inputs[i]);
     }

@@ -248,20 +248,35 @@ void MergeKernelReports(const KernelReportMap& reports, KernelReportMap* dst) {
   }
 }
 
-absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
-GroupKernelReportsByOpName(const KernelStatsDb& kernel_stats_db) {
-  absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
-      grouped_kernel_reports;
+KernelStatsByOpName GroupKernelReportsByOpName(
+    const KernelStatsDb& kernel_stats_db) {
+  KernelStatsByOpName op_level_kernel_stats;
   for (const KernelReport& kernel_report : kernel_stats_db.reports()) {
-    std::vector<const KernelReport*>& kernel_reports =
-        grouped_kernel_reports[kernel_report.op_name()];
-    kernel_reports.push_back(&kernel_report);
-    // Verifies operations with the same name have the same TensorCore
-    // eligibility.
-    DCHECK_EQ(kernel_reports.front()->is_op_tensor_core_eligible(),
-              kernel_reports.back()->is_op_tensor_core_eligible());
+    auto ret = op_level_kernel_stats.emplace(kernel_report.op_name(),
+                                             OpLevelKernelStats());
+    if (ret.second) {
+      // Inserted. Add a new op in <op_level_kernel_stats>.
+      OpLevelKernelStats& stats = ret.first->second;
+      stats.is_op_tensor_core_eligible =
+          kernel_report.is_op_tensor_core_eligible();
+      stats.total_duration_ns += kernel_report.total_duration_ns();
+      if (kernel_report.is_kernel_using_tensor_core()) {
+        stats.tensor_core_duration_ns += kernel_report.total_duration_ns();
+      }
+    } else {
+      // Not inserted. Aggregate kernel stats to op level.
+      OpLevelKernelStats& stats = ret.first->second;
+      // Verifies operations with the same name have the same TensorCore
+      // eligibility.
+      DCHECK_EQ(stats.is_op_tensor_core_eligible,
+                kernel_report.is_op_tensor_core_eligible());
+      stats.total_duration_ns += kernel_report.total_duration_ns();
+      if (kernel_report.is_kernel_using_tensor_core()) {
+        stats.tensor_core_duration_ns += kernel_report.total_duration_ns();
+      }
+    }
   }
-  return grouped_kernel_reports;
+  return op_level_kernel_stats;
 }
 
 }  // namespace profiler

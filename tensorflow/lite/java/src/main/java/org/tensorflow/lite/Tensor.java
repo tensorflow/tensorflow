@@ -323,6 +323,8 @@ public final class Tensor {
           return DataType.UINT8;
         } else if (long.class.equals(c)) {
           return DataType.INT64;
+        } else if (boolean.class.equals(c)) {
+          return DataType.BOOL;
         } else if (String.class.equals(c)) {
           return DataType.STRING;
         }
@@ -339,6 +341,8 @@ public final class Tensor {
           return DataType.UINT8;
         } else if (Long.class.equals(c) || o instanceof LongBuffer) {
           return DataType.INT64;
+        } else if (Boolean.class.equals(c)) {
+          return DataType.BOOL;
         } else if (String.class.equals(c)) {
           return DataType.STRING;
         }

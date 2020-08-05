@@ -273,6 +273,33 @@ class InteropTest(tf.test.TestCase):
     self.assertIsInstance(result, np.ndarray)
     self.assertAllClose(result, onp.square(values))
 
+  def testKerasInteropSequential(self):
+    class ProjectionLayer(tf.keras.layers.Layer):
+      """Linear projection layer using TF NumPy."""
+
+      def __init__(self, units):
+        super(ProjectionLayer, self).__init__()
+        self._units = units
+
+      def build(self, input_shape):
+        stddev = np.sqrt(self._units).astype(np.float32)
+        initial_value = np.random.randn(input_shape[1], self._units).astype(
+            np.float32) / stddev
+        # Note that TF NumPy can interoperate with tf.Variable.
+        self.w = tf.Variable(initial_value, trainable=True)
+
+      def call(self, inputs):
+        return np.matmul(inputs, self.w)
+
+    model = tf.keras.Sequential(
+        [tf.keras.layers.Dense(100), ProjectionLayer(2)])
+    output = model.call(np.random.randn(10, 100))
+
+    self.assertIsInstance(output, np.ndarray)
+
+    dense_layer = tf.keras.layers.Dense(100)
+    output = dense_layer(np.random.randn(10, 100))
+
   def testPForInterop(self):
     def outer_product(a):
       return np.tensordot(a, a, 0)
@@ -314,6 +341,26 @@ class InteropTest(tf.test.TestCase):
 
     self.assertIsInstance(batch_jacobian, np.ndarray)
     self.assertAllClose(batch_jacobian, answer)
+
+  def testForwardprop(self):
+    x = np.asarray([1., 2.])
+    xt = np.asarray([3., 4.])
+    with tf.autodiff.ForwardAccumulator(x, xt) as acc:
+      y = x * 2.
+    yt = acc.jvp(y)
+    self.assertIsInstance(yt, np.ndarray)
+    self.assertAllClose([6., 8.], yt)
+    z = np.asarray([1.])
+    self.assertIsNone(acc.jvp(z))
+
+  def testMapFn(self):
+    x = np.asarray([1., 2.])
+    mapped_x = tf.map_fn(lambda x: (x[0]+1, x[1]+1), (x, x))
+
+    self.assertIsInstance(mapped_x[0], np.ndarray)
+    self.assertIsInstance(mapped_x[1], np.ndarray)
+    self.assertAllClose(mapped_x[0], [2., 3.])
+    self.assertAllClose(mapped_x[1], [2., 3.])
 
 
 class FunctionTest(InteropTest):

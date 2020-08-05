@@ -29,37 +29,24 @@ from tensorflow.python.autograph.pyct.static_analysis import type_inference
 from tensorflow.python.platform import test
 
 
-class TestResolver(type_inference.Resolver):
+class BasicTestResolver(type_inference.Resolver):
   """A very basic resolver for testing."""
 
-  def res_name(self, ns, name):
-    return {type(ns[str(name)])}
+  def res_name(self, ns, types_ns, name):
+    return {type(ns[str(name)])}, ns[str(name)]
 
   def res_value(self, ns, value):
-    del ns
     return {type(value)}
 
-  def res_call(self, ns, name, target, args, keywords, starargs, kwargs):
-    name_str = str(name)
-    if name_str in ns:
-      return {ns[name_str].__annotations__['return']}
-    if target is None:
-      return {'unk_{}'.format(name_str)}
-    return {'{}_{}'.format(list(target)[0], name_str)}
-
-  def res_arg(self, ns, f_name, arg_name, type_anno):
-    if f_name == 'magic_no_types':
-      return None
-    if type_anno is not None:
-      return {{'int': int, 'float': float}[str(type_anno)]}
-    return {'{}_{}'.format(f_name, arg_name)}
+  def res_arg(self, ns, types_ns, f_name, name, type_anno):
+    return {str(type_anno)}
 
 
 class TestTranspiler(transpiler.GenericTranspiler):
 
-  def __init__(self):
+  def __init__(self, resolver_type):
     super().__init__()
-    self.resolver = TestResolver()
+    self.resolver = resolver_type()
 
   def get_transformed_name(self, _):
     return 'test_item'
@@ -87,16 +74,58 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     actual = {str(k): v for k, v in actual.items()}
     self.assertDictEqual(actual, expected)
 
+  def test_no_inference_on_unknown_operand_types(self):
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        return None
+
+    def test_fn(a, b):
+      return a < b, a - b
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    # With no information on operand types, the operators will infer nothing.
+    self.assertFalse(
+        anno.hasanno(fn_body[0].value.elts[0], anno.Static.TYPES))
+    self.assertFalse(
+        anno.hasanno(fn_body[0].value.elts[1], anno.Static.TYPES))
+
+  def test_resolver_output_checked(self):
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        return 1
+
+    def test_fn(a):
+      del a
+      pass
+
+    with self.assertRaisesRegex(ValueError, 'expected to return set'):
+      TestTranspiler(Resolver).transform(test_fn, None)
+
   def test_argument(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        if name == qual_names.QN('a'):
+          test_self.assertEqual(type_anno, qual_names.QN('int'))
+        return {str(name) + '_type'}
 
     def test_fn(a: int, b):
       return a, b
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].value.elts[0], int)
-    self.assertTypes(fn_body[0].value.elts[1], 'test_fn_b')
+    self.assertTypes(fn_body[0].value.elts[0], 'a_type')
+    self.assertTypes(fn_body[0].value.elts[1], 'b_type')
 
   def test_argument_of_local_function(self):
 
@@ -107,42 +136,238 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
       return foo(a)
 
-    tr = TestTranspiler()
+    tr = TestTranspiler(BasicTestResolver)
     node, _ = tr.transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].body[0].value, float)
-    self.assertClosureTypes(fn_body[0], {'a': {int}})
+    self.assertTypes(fn_body[0].body[0].value, 'float')
+    self.assertClosureTypes(fn_body[0], {'a': {'int'}})
 
-  def test_straightline_assignment(self):
+  def test_assign_straightline(self):
 
-    def test_fn(a: int, c):
+    def test_fn(a: int, c: float):
       b = a
       return a, b, c
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].targets[0], int)
-    self.assertTypes(fn_body[0].value, int)
-    self.assertTypes(fn_body[1].value.elts[0], int)
-    self.assertTypes(fn_body[1].value.elts[1], int)
-    self.assertTypes(fn_body[1].value.elts[2], 'test_fn_c')
+    self.assertTypes(fn_body[0].targets[0], 'int')
+    self.assertTypes(fn_body[0].value, 'int')
+    self.assertTypes(fn_body[1].value.elts[0], 'int')
+    self.assertTypes(fn_body[1].value.elts[1], 'int')
+    self.assertTypes(fn_body[1].value.elts[2], 'float')
 
-  def test_assignment_overwrite(self):
+  def test_expr(self):
+
+    self_test = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_value(self, ns, value):
+        self_test.assertEqual(value, tc.a)
+        return {str}
+
+      def res_name(self, ns, types_ns, name):
+        self_test.assertEqual(name, qual_names.QN('tc'))
+        return {TestClass}, tc
+
+      def res_call(self, ns, types_ns, node, args, keywords):
+        return {int}, None
+
+    class TestClass:
+
+      def a(self):
+        pass
+
+    tc = TestClass()
+
+    def test_fn():
+      tc.a()
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value, int)
+    self.assertTypes(fn_body[0].value.func, str)
+    self.assertEqual(
+        anno.getanno(fn_body[0].value.func, anno.Static.VALUE), tc.a)
+
+  def test_assign_overwriting(self):
 
     def test_fn(a: int, b: float):
       c = a
       c = b
       return c
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].targets[0], int)
+    self.assertTypes(fn_body[0].targets[0], 'int')
+    self.assertTypes(fn_body[0].value, 'int')
+    self.assertTypes(fn_body[1].targets[0], 'float')
+    self.assertTypes(fn_body[1].value, 'float')
+
+  def test_dynamic_attribute_of_static_value(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_value(self, ns, value):
+        test_self.assertEqual(value, tc.a)
+        return {int}
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('tc'))
+        return {TestClass}, tc
+
+    class TestClass:
+
+      def __init__(self):
+        self.a = 1
+
+    tc = TestClass()
+
+    def test_fn():
+      return tc.a
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value.value, TestClass)
     self.assertTypes(fn_body[0].value, int)
-    self.assertTypes(fn_body[1].targets[0], float)
-    self.assertTypes(fn_body[1].value, float)
+    self.assertIs(anno.getanno(fn_body[0].value.value, anno.Static.VALUE), tc)
+    self.assertEqual(anno.getanno(fn_body[0].value, anno.Static.VALUE), tc.a)
+
+  def test_static_attribute_of_typed_value(self):
+
+    test_self = self
+
+    class TestClass:
+
+      a = 1
+
+    tc = TestClass()
+
+    class Resolver(type_inference.Resolver):
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('tc'))
+        return {TestClass}, None
+
+      def res_value(self, ns, value):
+        test_self.assertIs(value, tc.a)
+        return {str}
+
+    def test_fn():
+      return tc.a
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value.value, TestClass)
+    self.assertTypes(fn_body[0].value, str)  # Resolver is SOT
+    self.assertFalse(anno.hasanno(fn_body[0].value.value, anno.Static.VALUE))
+    self.assertEqual(anno.getanno(fn_body[0].value, anno.Static.VALUE), 1)
+
+  def test_static_attribute_of_ambiguous_type(self):
+
+    test_self = self
+
+    class TestClass1:
+
+      a = 1
+
+    class TestClass2:
+
+      a = 2
+
+    tc = TestClass1()
+
+    class Resolver(type_inference.Resolver):
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('tc'))
+        return {TestClass1, TestClass2}, None
+
+      def res_value(self, ns, value):
+        test_self.assertIn(value, (1, 2))
+        return {str}
+
+    def test_fn():
+      return tc.a
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value.value, (TestClass1, TestClass2))
+    self.assertFalse(anno.hasanno(fn_body[0].value, anno.Static.TYPES))
+    self.assertFalse(anno.hasanno(fn_body[0].value.value, anno.Static.VALUE))
+    self.assertFalse(anno.hasanno(fn_body[0].value, anno.Static.VALUE))
+
+  def test_property_of_typed_value(self):
+
+    test_self = self
+
+    class TestClass:
+
+      @property
+      def a(self):
+        return 1
+
+    tc = TestClass()
+
+    class Resolver(type_inference.Resolver):
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('tc'))
+        return {TestClass}, None
+
+      def res_value(self, ns, value):
+        test_self.assertIs(value, TestClass.a)
+        test_self.assertNotEqual(value, 1)  # Can't evaluate property of class.
+        return {property}
+
+    def test_fn():
+      return tc.a
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value.value, TestClass)
+    self.assertTypes(fn_body[0].value, property)
+    self.assertFalse(anno.hasanno(fn_body[0].value.value, anno.Static.VALUE))
+    self.assertEqual(
+        anno.getanno(fn_body[0].value, anno.Static.VALUE), TestClass.a)
+
+  def test_dynamic_attribute_of_typed_value(self):
+
+    test_self = self
+
+    class TestClass:
+
+      def __init__(self):
+        self.a = 1
+
+    tc = TestClass()
+
+    class Resolver(type_inference.Resolver):
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('tc'))
+        return {TestClass}, None
+
+    def test_fn():
+      return tc.a
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].value.value, TestClass)
+    self.assertFalse(anno.hasanno(fn_body[0].value, anno.Static.TYPES))
+    self.assertFalse(anno.hasanno(fn_body[0].value.value, anno.Static.VALUE))
+    self.assertFalse(anno.hasanno(fn_body[0].value, anno.Static.VALUE))
 
   def test_external_value(self):
 
@@ -152,13 +377,26 @@ class TypeInferenceAnalyzerTest(test.TestCase):
       b = a
       return b
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
     fn_body = node.body
 
     self.assertTypes(fn_body[0].targets[0], str)
     self.assertTypes(fn_body[1].value, str)
 
   def test_external_function(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('g'))
+        return {str}, g
+
+      def res_call(self, ns, types_ns, node, args, keywords):
+        test_self.assertEqual(
+            anno.getanno(node.func, anno.Basic.QN), qual_names.QN('g'))
+        return {float}, None
 
     def g() -> float:
       return 1.0
@@ -167,11 +405,48 @@ class TypeInferenceAnalyzerTest(test.TestCase):
       a = g()
       return a
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
     fn_body = node.body
 
+    self.assertTypes(fn_body[0].value.func, str)
     self.assertTypes(fn_body[0].targets[0], float)
     self.assertTypes(fn_body[1].value, float)
+
+  def test_external_function_side_effects(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('g'))
+        return None, g
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        return {str(type_anno)}
+
+      def res_call(self, ns, types_ns, node, args, keywords):
+        return None, {qual_names.QN('x'): {str}}
+
+    def g():
+      # The resolver will pretend that this function has the following body:
+      #
+      #   nonlocal x
+      #   x = 'a'
+      pass
+
+    def test_fn(x: int):
+      y = x
+      g()
+      return x, y
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].targets[0], 'int')
+    self.assertTypes(fn_body[0].value, 'int')
+    self.assertTypes(fn_body[2].value.elts[0], str)
+    self.assertTypes(fn_body[2].value.elts[1], 'int')
 
   def test_local_function_closure(self):
 
@@ -182,27 +457,27 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
       foo()
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].body[0].value, int)
-    self.assertClosureTypes(fn_body[0], {'x': {int}})
+    self.assertTypes(fn_body[0].body[0].value, 'int')
+    self.assertClosureTypes(fn_body[0], {'x': {'int'}})
 
   def test_local_function_closure_ignored_for_bound_symbols(self):
 
-    def test_fn(x: int):  # pylint:disable=unused-argument
+    def test_fn(x: float):  # pylint:disable=unused-argument
 
       def foo():
         x = x + 1  # pylint:disable=used-before-assignment
 
       foo()
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
     fn_body = node.body
 
     self.assertFalse(
         anno.hasanno(fn_body[0].body[0].value.left, anno.Static.TYPES))
-    self.assertClosureTypes(fn_body[0], {'x': {int}})
+    self.assertClosureTypes(fn_body[0], {'x': {'float'}})
 
   def test_local_function_closure_uses_call_site_types(self):
 
@@ -214,7 +489,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
       x = 1.0
       foo()
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
     fn_body = node.body
 
     self.assertTypes(fn_body[0].body[0].value, float)
@@ -223,54 +498,78 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
   def test_subscript(self):
 
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        return {list}
+
+      def res_value(self, ns, value):
+        return {int}
+
+      def res_subscript(self, ns, types_ns, node, value, slice_):
+        test_self.assertSetEqual(value, {list})
+        test_self.assertSetEqual(slice_, {int})
+        return {str}
+
     def test_fn(a):
       return a[1]
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].value, 'test_fn_a___getitem__')
-    self.assertTypes(fn_body[0].value.value, 'test_fn_a')
+    self.assertTypes(fn_body[0].value, str)
+    self.assertTypes(fn_body[0].value.value, list)
     self.assertTypes(fn_body[0].value.slice.value, int)
 
   def test_compare(self):
 
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        return {int}
+
+      def res_compare(self, ns, types_ns, node, left, right):
+        test_self.assertSetEqual(left, {int})
+        test_self.assertListEqual(right, [{int}])
+        return {bool}
+
     def test_fn(a, b):
       return a < b
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].value, 'test_fn_a___lt__')
-    self.assertTypes(fn_body[0].value.left, 'test_fn_a')
-    self.assertTypes(fn_body[0].value.comparators[0], 'test_fn_b')
+    self.assertTypes(fn_body[0].value, bool)
+    self.assertTypes(fn_body[0].value.left, int)
+    self.assertTypes(fn_body[0].value.comparators[0], int)
 
   def test_binop(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        return {list}
+
+      def res_binop(self, ns, types_ns, node, left, right):
+        test_self.assertSetEqual(left, {list})
+        test_self.assertSetEqual(right, {list})
+        return {float}
 
     def test_fn(a, b):
       return a @ b
 
-    node, _ = TestTranspiler().transform(test_fn, None)
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].value, 'test_fn_a___matmul__')
-    self.assertTypes(fn_body[0].value.left, 'test_fn_a')
-    self.assertTypes(fn_body[0].value.right, 'test_fn_b')
-
-  def test_no_inference_on_unknown_operand_types(self):
-
-    # No information on types of a and b, see TestResolver.
-    def magic_no_types(a, b):
-      return a < b, a - b
-
-    node, _ = TestTranspiler().transform(magic_no_types, None)
-    fn_body = node.body
-
-    # With no information on operand types, the operators will assert nothing.
-    self.assertFalse(
-        anno.hasanno(fn_body[0].value.elts[0], anno.Static.TYPES))
-    self.assertFalse(
-        anno.hasanno(fn_body[0].value.elts[1], anno.Static.TYPES))
+    self.assertTypes(fn_body[0].value, float)
+    self.assertTypes(fn_body[0].value.left, list)
+    self.assertTypes(fn_body[0].value.right, list)
 
 
 if __name__ == '__main__':

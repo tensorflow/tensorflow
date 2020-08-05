@@ -88,11 +88,23 @@ TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
     const std::vector<std::string> options =
         SplitString(params.Get<std::string>("external_delegate_options"), ';');
     std::vector<std::string> keys, values;
+    // We reserve the memory here to avoid memory pointer change during
+    // insertion to vectors above.
+    keys.reserve(options.size());
+    values.reserve(options.size());
     for (const auto& option : options) {
       auto key_value = SplitString(option, ':');
       if (key_value.size() == 2) {
-        delegate_options.insert(&delegate_options, key_value[0].c_str(),
-                                key_value[1].c_str());
+        // The inserted (key,value) pair has to outlive the
+        // TfLiteExternalDelegateCreate call, therefore, we use two vectors
+        // 'keys' and 'values' to achieve this.
+        // Also, we will insert the memory pointer of key and value to
+        // delegate_options later, we have to ensure the pointer won't change by
+        // reserving the memory earlier.
+        keys.emplace_back(key_value[0]);
+        values.emplace_back(key_value[1]);
+        delegate_options.insert(&delegate_options, keys.back().c_str(),
+                                values.back().c_str());
       }
     }
 

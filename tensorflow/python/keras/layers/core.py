@@ -43,6 +43,7 @@ from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.ops import core as core_ops
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -213,9 +214,8 @@ class Dropout(Layer):
           seed=self.seed,
           rate=self.rate)
 
-    output = tf_utils.smart_cond(training,
-                                 dropped_inputs,
-                                 lambda: array_ops.identity(inputs))
+    output = control_flow_util.smart_cond(training, dropped_inputs,
+                                          lambda: array_ops.identity(inputs))
     return output
 
   def compute_output_shape(self, input_shape):

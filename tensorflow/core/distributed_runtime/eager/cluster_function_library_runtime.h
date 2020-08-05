@@ -64,11 +64,12 @@ class EagerClusterFunctionLibraryRuntime
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
-  // The component function inputs `args` can be RemoteTensorHandles, which will
-  // be lazily resolved remotely where the inputs are actually consumed.
+  // The component function inputs `args` and outputs `rets` may refer to remote
+  // tensors on a remote device, which will be lazily resolved remotely where
+  // the inputs/outputs are actually consumed.
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
+           gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,

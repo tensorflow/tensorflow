@@ -200,7 +200,7 @@ struct Or {
 // each block does a grid strided loop and reduces its values locally
 // the case of one block is used for low latency small reductions to scalars
 template <typename T, typename OUT_T, int num_threads, typename Op>
-__global__ void BlockReduceKernel(
+__global__ __launch_bounds__(1024) void BlockReduceKernel(
     T in, OUT_T out, int num_elems, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   const int bid = blockIdx.x;
@@ -236,8 +236,13 @@ __global__ void BlockReduceKernel(
 }
 
 // maps a warp to each row
+<<<<<<< HEAD
 template <typename T, typename OUT_T, typename Op, int WARPSIZE>
 __global__ void RowReduceKernel(
+=======
+template <typename T, typename OUT_T, typename Op>
+__global__ __launch_bounds__(1024) void RowReduceKernel(
+>>>>>>> google-upstream/master
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;
@@ -304,8 +309,13 @@ struct storage_type<std::complex<T2>> {
 
 // Works only if there are <= 16 columns
 // each warps sums over multiple rows at once
+<<<<<<< HEAD
 template <typename T, typename OUT_T, typename Op, int WARPSIZE>
 __global__ void ColumnReduceMax16ColumnsKernel(
+=======
+template <typename T, typename OUT_T, typename Op>
+__global__ __launch_bounds__(1024) void ColumnReduceMax16ColumnsKernel(
+>>>>>>> google-upstream/master
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;
@@ -375,8 +385,13 @@ __global__ void ColumnReduceMax16ColumnsKernel(
 }
 
 // Maps each block to a column range TF_RED_WARPSIZE wide
+<<<<<<< HEAD
 template <typename T, typename OUT_T, typename Op, int WARPSIZE>
 __global__ void ColumnReduceKernel(
+=======
+template <typename T, typename OUT_T, typename Op>
+__global__ __launch_bounds__(1024) void ColumnReduceKernel(
+>>>>>>> google-upstream/master
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;
@@ -442,7 +457,7 @@ __global__ void ColumnReduceKernel(
 // segments cannot cross warp boundaries (mainly used for reducing the segments
 // that come from the Max16Columns column reduction kernel)
 template <typename T, typename OUT_T, typename Op>
-__global__ void CleanupSegments(
+__global__ __launch_bounds__(1024) void CleanupSegments(
     T partial_sums, OUT_T out, int num_rows, int num_cols, int segment_size,
     Op op, typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;
@@ -466,8 +481,8 @@ __global__ void CleanupSegments(
 
 // assigns one thread to a column
 template <typename T, typename OUT_T, typename Op>
-__global__ void ColumnReduceSimpleKernel(T in, OUT_T out, int num_planes,
-                                         int num_rows, int num_cols, Op op) {
+__global__ __launch_bounds__(1024) void ColumnReduceSimpleKernel(
+    T in, OUT_T out, int num_planes, int num_rows, int num_cols, Op op) {
   typedef typename std::iterator_traits<T>::value_type value_type;
   const int gid = threadIdx.x + blockIdx.x * blockDim.x;
   const int elems_per_plane = num_rows * num_cols;
@@ -533,11 +548,9 @@ __device__ __inline__ T ComputeSum(IN_T in_, const int plane,
 }
 
 template <typename IN_T, typename Op>
-__global__ void ColumnReduceInToTempKernel(void* __restrict__ temp,
-                                           int temp_in_offset,
-                                           int temp_out_offset, IN_T in,
-                                           int num_planes, int num_rows,
-                                           int num_cols, Op op) {
+__global__ __launch_bounds__(1024) void ColumnReduceInToTempKernel(
+    void* __restrict__ temp, int temp_in_offset, int temp_out_offset, IN_T in,
+    int num_planes, int num_rows, int num_cols, Op op) {
   typedef typename std::iterator_traits<IN_T>::value_type value_type;
 
   value_type* t = (value_type*)temp;
@@ -564,10 +577,9 @@ __global__ void ColumnReduceInToTempKernel(void* __restrict__ temp,
 }
 
 template <typename T, typename OUT_T, typename Op>
-__global__ void ColumnReduceTempToOutKernel(void* __restrict__ temp,
-                                            int temp_in_offset, T in, OUT_T out,
-                                            int num_planes, int num_rows,
-                                            int num_cols, Op op) {
+__global__ __launch_bounds__(1024) void ColumnReduceTempToOutKernel(
+    void* __restrict__ temp, int temp_in_offset, T in, OUT_T out,
+    int num_planes, int num_rows, int num_cols, Op op) {
   typedef typename std::iterator_traits<T>::value_type value_type;
   value_type* t = (value_type*)temp;
   const int tid = threadIdx.x;

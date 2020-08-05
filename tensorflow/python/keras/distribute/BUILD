@@ -163,6 +163,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "nomsan",  # TODO(b/162894966)
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
@@ -176,11 +177,13 @@ cuda_py_test(
         "//tensorflow/python:training_lib",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:cross_device_utils",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:strategy_test_lib",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
@@ -469,7 +472,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # b/136660639
         "no_windows_gpu",
         "notpu",  # TODO(b/153672562)
         "notsan",

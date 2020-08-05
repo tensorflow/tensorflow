@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
@@ -32,6 +33,8 @@ struct OpData {
   // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
   int output_shift;
+
+  int32_t input_zero_point;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -76,6 +79,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   data->quantization_params.zero_point = output->params.zero_point;
   data->quantization_params.scale = static_cast<double>(output->params.scale);
+
+  data->input_zero_point = input->params.zero_point;
   return kTfLiteOk;
 }
 
@@ -83,22 +88,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   if (input->type == kTfLiteFloat32) {
     switch (output->type) {
       case kTfLiteInt8:
         reference_ops::AffineQuantize(
-            data->quantization_params, GetTensorShape(input),
-            GetTensorData<float>(input), GetTensorShape(output),
-            GetTensorData<int8_t>(output));
+            data->quantization_params, tflite::micro::GetTensorShape(input),
+            tflite::micro::GetTensorData<float>(input),
+            tflite::micro::GetTensorShape(output),
+            tflite::micro::GetTensorData<int8_t>(output));
         break;
       case kTfLiteUInt8:
         reference_ops::AffineQuantize(
-            data->quantization_params, GetTensorShape(input),
-            GetTensorData<float>(input), GetTensorShape(output),
-            GetTensorData<uint8_t>(output));
+            data->quantization_params, tflite::micro::GetTensorShape(input),
+            tflite::micro::GetTensorData<float>(input),
+            tflite::micro::GetTensorShape(output),
+            tflite::micro::GetTensorData<uint8_t>(output));
         break;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
@@ -110,10 +117,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     size_t size = ElementCount(*input->dims);
     switch (output->type) {
       case kTfLiteInt8:
-        reference_ops::Requantize(
-            GetTensorData<int16_t>(input), size, data->output_multiplier,
-            data->output_shift, input->params.zero_point,
-            output->params.zero_point, GetTensorData<int8_t>(output));
+        reference_ops::Requantize(tflite::micro::GetTensorData<int16_t>(input),
+                                  size, data->output_multiplier,
+                                  data->output_shift, data->input_zero_point,
+                                  data->quantization_params.zero_point,
+                                  tflite::micro::GetTensorData<int8_t>(output));
         break;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
@@ -127,10 +135,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     size_t size = ElementCount(*input->dims);
     switch (output->type) {
       case kTfLiteInt8:
-        reference_ops::Requantize(
-            GetTensorData<int8_t>(input), size, data->output_multiplier,
-            data->output_shift, input->params.zero_point,
-            output->params.zero_point, GetTensorData<int8_t>(output));
+        reference_ops::Requantize(tflite::micro::GetTensorData<int8_t>(input),
+                                  size, data->output_multiplier,
+                                  data->output_shift, data->input_zero_point,
+                                  data->quantization_params.zero_point,
+                                  tflite::micro::GetTensorData<int8_t>(output));
         break;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",

@@ -830,7 +830,7 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   input.set_op_device(local_device_);
   input.set_device(local_device_);
   std::vector<RemoteTensorHandle> inputs = {input};
-  std::vector<Tensor> outputs;
+  std::vector<FunctionRet> outputs;
   gtl::InlinedVector<TensorValue, 4> tensor_args = {TensorValue()};
   TestExecuteNodeArgs args(
       std::move(tensor_args),
@@ -845,6 +845,10 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
                    });
   done.WaitForNotification();
   TF_ASSERT_OK(status);
+  EXPECT_EQ(outputs.size(), 1);
+  EXPECT_EQ(outputs.at(0).index(), 1);
+  const TensorShape& shape = absl::get<TensorShape>(outputs.at(0));
+  EXPECT_EQ(shape, TensorShape({2, 2}));
   CheckOutputsAndClose(op_id);
 }
 

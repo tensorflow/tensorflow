@@ -234,8 +234,10 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
           sync_batchnorm=[True, False]) +
       combinations.combine(
           distribution=strategy_combinations.multiworker_strategies,
-          optimizer_fn=
-          optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+          optimizer_fn=[
+              optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+              optimizer_combinations.adagrad_optimizer_keras_v2_fn
+          ],
           mode=['eager'],
           iteration_type=['iterator', 'dataset'],
           inside_func=[False, True],

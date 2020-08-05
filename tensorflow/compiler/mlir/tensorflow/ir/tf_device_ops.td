@@ -354,7 +354,10 @@ This op is used for outlining a cluster.
   );
 
   let extraClassDeclaration = [{
-    StringRef getFunc() { return func(); }
+    // returns the function that this operation will launch.
+    FuncOp getFunc() {
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, func());
+    }
   }];
 }
 

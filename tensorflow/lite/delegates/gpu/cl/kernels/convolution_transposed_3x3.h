@@ -40,7 +40,6 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   absl::Status Tune(const TuningParameters& params) override {
     return absl::OkStatus();
   }
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -71,6 +70,11 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
+
+  std::string GenerateConvolutionTransposedCode(
+      const OperationDef& op_def,
+      ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
+      int2 padding, int3 work_group_launch_order);
 
   int2 padding_;
   int3 work_group_launch_order_;

@@ -206,6 +206,15 @@ XlaOp MlirHloBuilder::Iota(const Shape& shape, int64 iota_dimension) {
   });
 }
 
+StatusOr<XlaOp> MlirHloBuilder::BitcastConvertTypeInternal(const Shape& shape,
+                                                           XlaOp operand) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::mhlo::BitcastConvertOp>(loc_, ty,
+                                                          GetValue(operand));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::TransposeInternal(
     const Shape& shape, XlaOp operand, absl::Span<const int64> permutation) {
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
@@ -221,6 +230,31 @@ StatusOr<XlaOp> MlirHloBuilder::RevInternal(
                                          shape, builder_));
   auto op = builder_.create<mlir::mhlo::ReverseOp>(
       loc_, ty, GetValue(operand), GetI64ElementsAttr(dimensions, &builder_));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::SortInternal(const Shape& shape,
+                                             absl::Span<const XlaOp> operands,
+                                             const XlaComputation& comparator,
+                                             int64 dimension, bool is_stable) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::mhlo::SortOp>(
+      loc_, ty, GetValues(operands), builder_.getI64IntegerAttr(dimension),
+      builder_.getBoolAttr(is_stable));
+  TF_RETURN_IF_ERROR(ImportComputation(comparator.proto(), &op.comparator()));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
+                                              const XlaComputation& condition,
+                                              const XlaComputation& body,
+                                              XlaOp init) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::mhlo::WhileOp>(loc_, ty, GetValue(init));
+  TF_RETURN_IF_ERROR(ImportComputation(condition.proto(), &op.cond()));
+  TF_RETURN_IF_ERROR(ImportComputation(body.proto(), &op.body()));
   return MakeXlaOp(op);
 }
 

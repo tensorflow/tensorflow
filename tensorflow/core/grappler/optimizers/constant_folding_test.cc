@@ -4030,6 +4030,58 @@ TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
   }
 }
 
+TEST_F(ConstantFoldingTest, MaterializeConstantValuedNodeDisableCompression) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output x =
+      ops::Placeholder(scope.WithOpName("x"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape({1, 2, 3, 4})));
+  Output ones_like = ops::OnesLike(scope.WithOpName("ones_like"), x);
+  Output zeros_like = ops::ZerosLike(scope.WithOpName("zeros_like"), x);
+  Output fill = ops::Fill(scope.WithOpName("fill"), {4, 3, 2, 1}, 42);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"ones_like", "zeros_like", "fill"};
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 2, 3, 4}));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr, true);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.node_size(), 6);
+  for (const auto& node : output.node()) {
+    if (node.name() == "ones_like") {
+      EXPECT_EQ(node.op(), "OnesLike");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "x");
+    }
+    if (node.name() == "zeros_like") {
+      EXPECT_EQ(node.op(), "ZerosLike");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "x");
+    }
+    if (node.name() == "fill") {
+      EXPECT_EQ(node.op(), "Fill");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "Const/Const");
+      EXPECT_EQ(node.input(1), "Const_1/Const");
+    }
+  }
+  auto tensors = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+  ASSERT_EQ(item.fetch.size(), tensors.size());
+  ASSERT_EQ(tensors_expected.size(), tensors.size());
+  for (int i = 0; i < tensors.size(); i++) {
+    if (item.fetch[i] == "fill") {
+      test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
+    } else {
+      test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+    }
+  }
+}
+
 TEST_F(ConstantFoldingTest, MaterializeConstantValuedNodeHugeFill) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   Output value = ops::Const(scope.WithOpName("value"), 42, {});

@@ -38,16 +38,17 @@ cc_library(
         ":concrete_function_type",
         ":function_metadata",
         ":function_metadata_type",
-        ":tensorhandle_list",
-        ":tensorhandle_list_type",
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status_internal",
+        "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -164,38 +165,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "tensorhandle_list",
-    srcs = [
-        "tensorhandle_list.cc",
-    ],
-    hdrs = [
-        "//tensorflow/c/experimental/saved_model/public:tensorhandle_list.h",
-    ],
-    copts = tf_copts(),
-    visibility = [
-        "//tensorflow/c/experimental/saved_model/public:__pkg__",
-    ],
-    deps = [
-        ":tensorhandle_list_type",
-        "//tensorflow/c:c_api_macros",
-        "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:immediate_execution_tensor_handle",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal",
-    ],
-)
-
-cc_library(
-    name = "tensorhandle_list_type",
-    hdrs = [
-        "tensorhandle_list_type.h",
-    ],
-    deps = [
-        "//tensorflow/c:conversion_macros",
-        "//tensorflow/c/eager:immediate_execution_tensor_handle",
-    ],
-)
-
 tf_cc_test(
     name = "saved_model_api_test",
     size = "small",
@@ -213,7 +182,6 @@ tf_cc_test(
         "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/c/experimental/saved_model/public:concrete_function",
         "//tensorflow/c/experimental/saved_model/public:saved_model_api",
-        "//tensorflow/c/experimental/saved_model/public:tensorhandle_list",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

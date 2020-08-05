@@ -112,10 +112,15 @@ struct StepMarker {
 // StepDetails of the same step executed on different cores.
 class StepDetails {
  public:
+  StepDetails() : device_memory_transfers_(3) {}
+
   const std::vector<StepMarker>& Markers() const { return markers_; }
   const std::vector<EventTypeSpan>& Events() const { return events_; }
   const absl::flat_hash_map<uint32, AllReduceDbResult>& Collectives() const {
     return collectives_;
+  }
+  const std::vector<DeviceMemoryTransfer>& DeviceMemoryTransfers() const {
+    return device_memory_transfers_;
   }
   // Returns the step time.
   Timespan StepTime() const;
@@ -124,12 +129,20 @@ class StepDetails {
   absl::flat_hash_map<uint32, AllReduceDbResult>* MutableCollectives() {
     return &collectives_;
   }
+  std::vector<DeviceMemoryTransfer>* MutableDeviceMemoryTransfers() {
+    return &device_memory_transfers_;
+  }
   // Adds a step-marker to this step.
   void AddMarker(const StepMarker& m);
   // Adds an EventTypeSpan to this step.
   void AddEvent(const EventTypeSpan& e);
   // Adds a collective op to this step.
   void AddCollectiveOpEvent(uint64 core_id, const AllReduceInfo& e);
+  // Appends device memory transfer events to this step.
+  // Only event type of HOST_TO_DEVICE/DEVICE_TO_DEVICE/DEVICE_TO_HOST are
+  // allowed.
+  void AddDeviceMemoryTransferEvent(EventType event_type,
+                                    const Timespan& time_span, uint64 bytes);
   // Appends the step-markers from another step to this step.
   void AppendMarkers(const std::vector<StepMarker>& other_markers);
   // Appends the events from another step to this step.
@@ -137,6 +150,9 @@ class StepDetails {
   // Appends the collectives from another step to this step.
   void AppendCollectives(
       const absl::flat_hash_map<uint32, AllReduceDbResult>& collectives);
+  // Accumulates the device memory transfers from another step to this step.
+  void AggregateDeviceMemoryTransfers(
+      const std::vector<DeviceMemoryTransfer> device_memory_transfers);
   // Equality test.
   bool operator==(const StepDetails& other) const;
   // Inequality test.
@@ -155,6 +171,10 @@ class StepDetails {
   std::vector<EventTypeSpan> events_;
   // Collective operation related events such as all-reduce etc.
   absl::flat_hash_map<uint32, AllReduceDbResult> collectives_;
+  // Device memory transfers (including time and bytes involved).
+  // TODO(jiesun): Consider to use IntervalSet instead of just sum up the event
+  // durations.
+  std::vector<DeviceMemoryTransfer> device_memory_transfers_;
 };
 
 // Map from step_id to the events happened in that step.

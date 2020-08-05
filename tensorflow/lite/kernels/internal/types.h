@@ -984,9 +984,9 @@ struct PreluParams {
   int32_t alpha_offset;
   int32_t output_offset;
   int32_t output_multiplier_1;
-  int32_t output_shift_1;
+  int output_shift_1;
   int32_t output_multiplier_2;
-  int32_t output_shift_2;
+  int output_shift_2;
 };
 
 struct PoolParams {

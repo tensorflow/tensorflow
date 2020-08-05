@@ -610,7 +610,6 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           output_value  = [],
           output_grad   = [])
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
   def test_gradient(self,
                     shape,
                     rt_value,
