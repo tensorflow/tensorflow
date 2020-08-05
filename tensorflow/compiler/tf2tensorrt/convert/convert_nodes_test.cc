@@ -5192,6 +5192,148 @@ TEST_P(OpConverterTest3, ConvertGather) {
   }
 }
 
+template <typename OpType>
+NodeDef CreateReduceOp(DataType tf_type, bool keep_dims) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type);
+  auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
+  typename OpType::Attrs op_attrs;
+  op_attrs.keep_dims_ = keep_dims;
+  auto op = OpType(s.WithOpName("my_reduce"), input, axis, op_attrs);
+  return op.operation.node()->def();
+}
+
+// Applies reduction op on sub-sequences of input
+// output[i] = reduce(input[m * i : m * (i +1)])
+std::vector<float> CalcReduce(string op_name, std::vector<float> input, int m,
+                              float (*op)(float, float), float init) {
+  std::vector<float> output(input.size() / m);
+  for (int i = 0; i < output.size(); i++) {
+    auto begin = input.begin() + i * m;
+    auto end = input.begin() + (i + 1) * m;
+    output[i] = std::accumulate(begin, end, init, op);
+    if (op_name == "Mean") {
+      output[i] /= m;
+    }
+  }
+  return output;
+}
+TEST_P(OpConverterTest1, ConvertReduce) {
+  {
+    // Input is weights, should fail.
+    Reset();
+    const NodeDef node_def = CreateReduceOp<ops::Sum>(tf_type, false);
+    AddTestWeights<float>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input\" for Sum must be a tensor, at my_reduce");
+  }
+  {
+    // Axis is weights, should fail.
+    Reset();
+    const NodeDef node_def = CreateReduceOp<ops::Sum>(tf_type, false);
+    AddTestTensor("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
+    AddTestTensor("axis", {1}, DT_INT32, {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"axis\" for Sum must be a constant, at my_reduce");
+  }
+  using OpFunc = std::function<NodeDef(DataType, bool)>;
+  using ValFunc = float (*)(float, float);
+  struct ReduceTestDescriptor {
+    string name;
+    OpFunc get_node;
+    ValFunc val_func;
+    float init_val;
+  };
+  std::vector<ReduceTestDescriptor> op_test_info{
+      {"Sum", CreateReduceOp<ops::Sum>, [](float x, float y) { return x + y; },
+       0},
+      {"Prod", CreateReduceOp<ops::Prod>,
+       [](float x, float y) { return x * y; }, 1},
+      {"Mean", CreateReduceOp<ops::Mean>,
+       [](float x, float y) { return x + y; }, 0},
+      {"Min", CreateReduceOp<ops::Min>,
+       [](float x, float y) { return y < x ? y : x; }, 1000},
+      {"Max", CreateReduceOp<ops::Max>,
+       [](float x, float y) { return x < y ? y : x; }, -1000}};
+
+  std::vector<float> input_values{1, 2, 3, 4, 5, 6};
+  struct TestParams {
+    std::vector<int> input_dims;
+    std::vector<float> input_values;
+    // Helper array contains the same elements as input but permuted in a way
+    // that the reduction can be calculated over contiguous elements using
+    // CalcReduce
+    std::vector<float> helper_array;
+    std::vector<int> axis;
+    int stride;  // product of input_dims along axis
+    Status conversion_status;
+  };
+  std::vector<TestParams> params{
+      // Out of range tests
+      TestParams{{2, 3, 1}, input_values, input_values, {3}, 3},
+      TestParams{{2, 3, 1}, input_values, input_values, {-4}, 3},
+      // Ok tests
+      TestParams{{2, 3, 1}, input_values, {1, 4, 2, 5, 3, 6}, {0}, 2},
+      TestParams{{2, 3, 1}, input_values, input_values, {1}, 3},
+      TestParams{{2, 3, 1}, input_values, input_values, {2}, 1},
+      TestParams{{2, 3, 1}, input_values, input_values, {0, 1}, 6},
+      // Ok tests with negative axis values
+      TestParams{{2, 3, 1}, input_values, {1, 4, 2, 5, 3, 6}, {-3}, 2},
+      TestParams{{2, 3, 1}, input_values, input_values, {-2}, 3},
+      TestParams{{2, 3, 1}, input_values, input_values, {-1}, 1},
+      TestParams{{2, 3, 1}, input_values, input_values, {-3, 1}, 6},
+  };
+
+  for (bool keep_dims : {false, true}) {
+    for (auto& op : op_test_info) {
+      for (auto p : params) {
+        SCOPED_TRACE(StrCat(op.name, keep_dims ? "keep_dims" : ""));
+        Reset();
+        NodeDef node_def = op.get_node(tf_type, keep_dims);
+
+        AddTestTensor("input", p.input_dims, p.input_values);
+        AddTestWeights<int32>("axis", {static_cast<int>(p.axis.size())},
+                              p.axis);
+        std::vector<int> expected_output_dims(p.input_dims);
+
+        // Set expected output dim and conversion error messages
+        for (int ax : p.axis) {
+          int rank = p.input_dims.size();
+          if (ax >= rank || ax < -rank) {
+            p.conversion_status =
+                errors::InvalidArgument("Axis value of ", ax,
+                                        " is out of bounds, must be in "
+                                        "range [",
+                                        -rank, ", ", rank, "), at my_reduce");
+          } else {
+            int ax_positive = ax >= 0 ? ax : ax + rank;
+            // Zero marks elements that we will remove later.
+            expected_output_dims[ax_positive] = keep_dims ? 1 : 0;
+            if (trt_mode == TrtTestMode::kImplicitBatch &&
+                (ax == 0 || ax == -rank)) {
+              p.conversion_status = errors::Unimplemented(
+                  "TensorRT does not allow manipulation of the batch "
+                  "dimension, at my_reduce");
+            }
+          }
+        }
+        expected_output_dims.erase(std::remove(expected_output_dims.begin(),
+                                               expected_output_dims.end(), 0),
+                                   expected_output_dims.end());
+        VLOG(2) << "out dims " << expected_output_dims;
+        std::vector<float> expected_values = CalcReduce(
+            op.name, p.helper_array, p.stride, op.val_func, op.init_val);
+        TestOpConverter("my_reduce", node_def, expected_output_dims,
+                        p.conversion_status, Status::OK(),
+                        ArrayFloatNear(expected_values));
+      }
+    }
+  }
+}
+
 NodeDef CreateCastOp(DataType tf_type) {
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), DT_HALF);

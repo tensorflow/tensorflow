@@ -4484,7 +4484,7 @@ Status ConvertReduce(OpConverterParams* params) {
     int trt_axis;
     TF_RETURN_IF_ERROR(
         ConvertAxis(tf_axes_list[i], tensor->getDimensions().nbDims,
-                    node_def.name(), /*use_implicit_batch=*/true, &trt_axis));
+                    node_def.name(), params->use_implicit_batch, &trt_axis));
     axes |= (1 << trt_axis);
   }
 
