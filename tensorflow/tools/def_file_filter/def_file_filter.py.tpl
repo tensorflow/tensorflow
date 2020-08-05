@@ -39,6 +39,7 @@ import sys
 import tempfile
 
 # External tools we use that come with visual studio sdk
+TOOLSDIR = r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.26.28801\bin\Hostx64\x64"
 UNDNAME = "%{undname_bin_path}"
 DUMPBIN_CMD = "\"{}\" /SYMBOLS".format("%{dumpbin_bin_path}")
 
@@ -89,6 +90,7 @@ DATA_EXCLUDE_RE = re.compile(r"[)(]|"
                              r"RTTI|"
                              r"protobuf::internal::ExplicitlyConstructed")
 
+
 def get_args():
   """Parse command line.
 
@@ -106,6 +108,7 @@ def get_args():
   parser.add_argument("--target", help="name of the target")
   parser.add_argument("--symbols", help="file that lists symbols to be exported.")
   parser.add_argument("--lib_paths_file", help="file that lists cc_library targets for pybind")
+  parser.add_argument("--cxxapi", action="store_true", help="Filter symbols for the C++ API")
   args = parser.parse_args()
   return args
 
@@ -215,6 +218,52 @@ def get_pybind_export_symbols(symbols_file, lib_paths_file):
 
   return symbols_all
 
+
+def exported_symbols(decorated_candidates, undecorated_candidates):
+    taken = set()
+    for decorated, undecorated in zip(decorated_candidates, undecorated_candidates):
+        if decorated in taken:
+            continue
+        taken.add(decorated)
+
+        if not INCLUDEPRE_RE.search(undecorated):
+            if EXCLUDE_RE.search(undecorated):
+                continue
+            if not INCLUDE_RE.search(undecorated):
+                continue
+
+        if "deleting destructor" in undecorated:
+            # Some of the symbols convered by INCLUDEPRE_RE export deleting
+            # destructor symbols, which is a bad idea.
+            # So we filter out such symbols here.
+            continue
+
+        if DATA_EXCLUDE_RE.search(undecorated):
+            yield decorated
+        else:
+            yield decorated + " DATA"
+
+
+def exported_symbols_cxx(decorated_candidates, undecorated_candidates):
+    pre_include_symbols = re.compile(
+        r"^tensorflow::|"
+        r"^google::protobuf::"
+    )
+    post_exclude_symbols = re.compile(
+        r"::_|"                        # exclude anything with a leading underscore
+        r"^tensorflow::internal|"      # exclude tensorflow internals
+        r"<.+>",                       # exclude templates
+        re.IGNORECASE)
+    exports = set()
+    for decorated_symbol, undecorated_symbol in zip(decorated_candidates, undecorated_candidates):
+        if decorated_symbol in exports:
+            continue
+
+        exports.add(decorated_symbol)
+        if pre_include_symbols.search(undecorated_symbol) and not post_exclude_symbols.search(undecorated_symbol):
+            yield decorated_symbol
+
+
 def main():
   """main."""
   args = get_args()
@@ -241,7 +290,6 @@ def main():
   # Run the symbols through undname to get their undecorated name
   # so we can filter on something readable.
   with open(args.output, "w") as def_fp:
-    # track dupes
     taken = set()
 
     # Header for the def file.
@@ -252,37 +300,20 @@ def main():
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.
-    dupes = 0
-    proc = subprocess.Popen([UNDNAME, tmpfile.name], stdout=subprocess.PIPE)
-    for idx, line in enumerate(io.TextIOWrapper(proc.stdout, encoding="utf-8")):
-      decorated = candidates[idx]
-      if decorated in taken:
-        # Symbol is already in output, done.
-        dupes += 1
-        continue
+    und_command = [UNDNAME]
+    if args.cxxapi:
+        und_command.append("0x1000")  # just expand the name (eg scope::name)
+    und_command.append(tmpfile.name)
+    proc = subprocess.Popen(und_command, stdout=subprocess.PIPE)
+    acceptor = exported_symbols_cxx if args.cxxapi else exported_symbols
+    for symbol in acceptor(candidates, io.TextIOWrapper(proc.stdout, encoding="utf-8")):
+        taken.add(symbol)
+        def_fp.write("\t{}\n".format(symbol))
 
-      if not INCLUDEPRE_RE.search(line):
-        if EXCLUDE_RE.search(line):
-          continue
-        if not INCLUDE_RE.search(line):
-          continue
-
-      if "deleting destructor" in line:
-        # Some of the symbols convered by INCLUDEPRE_RE export deleting
-        # destructor symbols, which is a bad idea.
-        # So we filter out such symbols here.
-        continue
-
-      if DATA_EXCLUDE_RE.search(line):
-        def_fp.write("\t" + decorated + "\n")
-      else:
-        def_fp.write("\t" + decorated + " DATA\n")
-      taken.add(decorated)
-
-    for sym in symbols_pybind:
-      def_fp.write("\t{}\n".format(sym))
-      taken.add(sym)
-    def_fp.close()
+    for symbol in symbols_pybind:
+        if symbol not in taken:
+            taken.add(symbol)
+            def_fp.write("\t{}\n".format(symbol))
 
   exit_code = proc.wait()
   if exit_code != 0:
@@ -291,8 +322,7 @@ def main():
 
   os.unlink(tmpfile.name)
 
-  print("symbols={}, taken={}, dupes={}"
-        .format(len(candidates), len(taken), dupes))
+  print("symbols={}, taken={}".format(len(candidates), len(taken)))
   return 0
 
 

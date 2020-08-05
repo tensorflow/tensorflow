@@ -1848,6 +1848,18 @@ def tf_custom_op_library_additional_deps_impl():
         clean_dep("//tensorflow/core:reader_base"),
     ]
 
+# A list of targets to generate the def file for the C++ API dll
+def tf_cc_deps_impl():
+    return [
+        clean_dep("//tensorflow/c:c_api"),
+        clean_dep("//tensorflow/c/eager:c_api"),
+        clean_dep("//tensorflow/cc:cc_ops"),
+        clean_dep("//tensorflow/cc:client_session"),
+        clean_dep("//tensorflow/cc:scope"),
+        clean_dep("//tensorflow/cc/profiler"),
+        clean_dep("//tensorflow/core:tensorflow"),
+    ]
+
 # Traverse the dependency graph along the "deps" attribute of the
 # target and return a struct with one field called 'tf_collected_deps'.
 # tf_collected_deps will be the union of the deps of the current target
