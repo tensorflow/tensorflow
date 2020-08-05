@@ -2946,7 +2946,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/framework:variant",
         "//tensorflow/core/lib/core:refcount",
     ],
 )
