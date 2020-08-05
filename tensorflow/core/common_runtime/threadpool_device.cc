@@ -61,7 +61,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
     const int mkl_intra_op = port::NumSchedulableCPUs();
     const int ht = port::NumHyperthreadsPerCore();
     std::call_once(omp_setting_flag, omp_set_num_threads,
-		     (mkl_intra_op + ht - 1) / ht);
+                   (mkl_intra_op + ht - 1) / ht);
   }
 #endif  // _OPENMP
 #endif  // !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
