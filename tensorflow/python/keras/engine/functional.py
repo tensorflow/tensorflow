@@ -668,7 +668,7 @@ class Functional(training_lib.Model):
       if len(layer._inbound_nodes) > 1 or (
           layer._inbound_nodes and not layer._inbound_nodes[0].is_input):
         cls_name = self.__class__.__name__
-        logging.warning(cls_name + ' inputs must come from '
+        logging.warning(cls_name + ' model inputs must come from '
                         '`tf.keras.Input` (thus holding past layer metadata), '
                         'they cannot be the output of '
                         'a previous non-Input layer. '
@@ -697,7 +697,7 @@ class Functional(training_lib.Model):
     for x in self.outputs:
       if not hasattr(x, '_keras_history'):
         cls_name = self.__class__.__name__
-        raise ValueError('Output tensors to a ' + cls_name + ' must be '
+        raise ValueError('Output tensors of a ' + cls_name + ' model must be '
                          'the output of a TensorFlow `Layer` '
                          '(thus holding past layer metadata). Found: ' + str(x))
 
