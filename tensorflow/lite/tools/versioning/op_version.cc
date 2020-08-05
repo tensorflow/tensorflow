@@ -534,6 +534,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_CONCATENATION:
+    case BuiltinOperator_BATCH_MATMUL:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
     case BuiltinOperator_PAD:
@@ -576,7 +577,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_SELECT:
-    case BuiltinOperator_BATCH_MATMUL:
       if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
       }
