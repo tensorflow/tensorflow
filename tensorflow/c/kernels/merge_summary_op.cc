@@ -12,6 +12,7 @@ limitations under the License.
 
 #include <sstream>
 #include <unordered_set>
+#include <memory>
 
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -26,25 +27,18 @@ limitations under the License.
 
 namespace { 
 
-// Struct that stores the status and TF_Tensor inputs to the opkernel. 
-// Used to delete tensor and status in its destructor upon kernel return. 
-struct TensorWrapper { 
-  TF_Tensor* t; 
-  TensorWrapper() : t(nullptr) {}
-  ~TensorWrapper() { 
-    TF_DeleteTensor(t);
-  }
+// Operators used to create a std::unique_ptr for TF_Tensor and TF_Status 
+struct TFTensorDeleter { 
+  void operator() (TF_Tensor* tf_tensor) const { TF_DeleteTensor(tf_tensor); }
+}; 
+
+struct TFStatusDeleter { 
+  void operator() (TF_Status* tf_status) const { TF_DeleteStatus(tf_status); }
 };
 
-struct StatusWrapper { 
-  TF_Status* s; 
-  StatusWrapper() { 
-    s = TF_NewStatus(); 
-  }
-  ~StatusWrapper() { 
-    TF_DeleteStatus(s);
-  }
-};
+// Struct that wraps TF_Tensor and TF_Status to delete once out of scope 
+using Safe_TF_TensorPtr = std::unique_ptr<TF_Tensor, TFTensorDeleter>; 
+using Safe_TF_StatusPtr = std::unique_ptr<TF_Status, TFStatusDeleter>; 
 
 // dummy functions used for kernel registration 
 void* MergeSummaryOp_Create(TF_OpKernelConstruction* ctx) {}
@@ -56,24 +50,24 @@ void MergeSummaryOp_Delete(void* kernel) {
 void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   tensorflow::Summary s; 
   std::unordered_set<tensorflow::string> tags; 
-  StatusWrapper status_wrapper;
+  Safe_TF_StatusPtr status(TF_NewStatus());
   for (int input_num = 0; input_num < TF_NumInputs(ctx); ++input_num) { 
-    TensorWrapper input_wrapper; 
-    TF_GetInput(ctx, input_num, &input_wrapper.t, status_wrapper.s); 
-    if (TF_GetCode(status_wrapper.s) != TF_OK) {  
-      TF_OpKernelContext_Failure(ctx, status_wrapper.s); 
+    TF_Tensor* input; 
+    TF_GetInput(ctx, input_num, &input, status.get()); 
+    Safe_TF_TensorPtr safe_input_ptr(input);
+    if (TF_GetCode(status.get()) != TF_OK) {  
+      TF_OpKernelContext_Failure(ctx, status.get()); 
       return;
     }
-
     auto tags_array = static_cast<tensorflow::tstring*>(
-    		TF_TensorData(input_wrapper.t));
-    for (int i = 0; i < TF_TensorElementCount(input_wrapper.t); ++i) { 
+    		TF_TensorData(safe_input_ptr.get()));
+    for (int i = 0; i < TF_TensorElementCount(safe_input_ptr.get()); ++i) { 
       const tensorflow::tstring& s_in = tags_array[i]; 
       tensorflow::Summary summary_in; 
       if (!tensorflow::ParseProtoUnlimited(&summary_in, s_in)) { 
-        TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, 
+        TF_SetStatus(status.get(), TF_INVALID_ARGUMENT, 
             "Could not parse one of the summary inputs");
-        TF_OpKernelContext_Failure(ctx, status_wrapper.s);
+        TF_OpKernelContext_Failure(ctx, status.get());
         return; 
       }
       for (int v = 0; v < summary_in.value_size(); ++v) { 
@@ -83,25 +77,24 @@ void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
         if ((!tag.empty()) && !tags.insert(tag).second) { 
           std::ostringstream err;
           err << "Duplicate tag " << tag << " found in summary inputs ";
-          TF_SetStatus(status_wrapper.s, TF_INVALID_ARGUMENT, err.str().c_str());
-          TF_OpKernelContext_Failure(ctx, status_wrapper.s);
+          TF_SetStatus(status.get(), TF_INVALID_ARGUMENT, err.str().c_str());
+          TF_OpKernelContext_Failure(ctx, status.get());
           return; 
         }
         *s.add_value() = summary_in.value(v); 
       }
     }
   }
-  TensorWrapper summary_tensor_wrapper; 
-  summary_tensor_wrapper.t = TF_AllocateOutput(
+  Safe_TF_TensorPtr summary_tensor(TF_AllocateOutput(
       /*context=*/ctx, /*index=*/0, /*dtype=*/TF_ExpectedOutputDataType(
       ctx, 0), /*dims=*/nullptr, /*num_dims=*/0, 
-      /*len=*/sizeof(tensorflow::tstring), status_wrapper.s);
-  if (TF_GetCode(status_wrapper.s) != TF_OK){ 
-    TF_OpKernelContext_Failure(ctx, status_wrapper.s);
+      /*len=*/sizeof(tensorflow::tstring), status.get()));
+  if (TF_GetCode(status.get()) != TF_OK){ 
+    TF_OpKernelContext_Failure(ctx, status.get());
     return; 
   }
   tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
-      TF_TensorData(summary_tensor_wrapper.t)); 
+      TF_TensorData(summary_tensor.get())); 
   CHECK(SerializeToTString(s, output_tstring));
 }
 
