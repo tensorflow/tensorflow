@@ -241,7 +241,7 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
   node.mutable_attr()->insert({"dtype", attr_data_type});
 
   AttrValue attr_tensor;
-  Tensor tensor(DT_INT32, TensorShape({permutation.size()}));
+  Tensor tensor(DT_INT32, TensorShape({(long long)permutation.size()}));
   for (int i = 0, end = permutation.size(); i < end; i++) {
     tensor.flat<int>()(i) = permutation[i];
   }
