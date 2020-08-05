@@ -22,10 +22,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
 namespace tensorflow {
 
-class TpuTransferManager : public xla::TransferManager {
+class TpuTransferManager : public xla::TpuTransferManagerInterface {
  public:
   TpuTransferManager();
   ~TpuTransferManager() override;
@@ -59,6 +60,12 @@ class TpuTransferManager : public xla::TransferManager {
       const xla::Shape& literal_shape,
       xla::MutableBorrowingLiteral literal) override {
     LOG(FATAL) << "Not yet implemented";
+  }
+
+  Status TransferBuffersToInfeed(
+      se::StreamExecutor* executor,
+      const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) override {
+    LOG(FATAL) << "Not yet implemented.";
   }
 
   Status ResetDevices(
