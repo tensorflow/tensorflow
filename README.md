@@ -41,7 +41,7 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
 ### Contributors 
 
 ```
-yunho0130, tina1296, prograsshopper
+yunho0130, tina1296, prograsshopper(서미지)
 ```
 
 * TinyML: Tensorflow lite for microcontroller   컨트리뷰션은 아래의 `Github 가이드라인`을 따릅니다. 
