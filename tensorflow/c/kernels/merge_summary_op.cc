@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/default/logging.h"
 
+namespace { 
+
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
 // Used to delete tensor and status in its destructor upon kernel return. 
 struct TensorWrapper { 
@@ -34,27 +36,27 @@ struct TensorWrapper {
   }
 };
 
-struct Status_Wrapper { 
+struct StatusWrapper { 
   TF_Status* s; 
-  Status_Wrapper() { 
+  StatusWrapper() { 
     s = TF_NewStatus(); 
   }
-  ~Status_Wrapper() { 
+  ~StatusWrapper() { 
     TF_DeleteStatus(s);
   }
 };
 
 // dummy functions used for kernel registration 
-static void* MergeSummaryOp_Create(TF_OpKernelConstruction* ctx) {}
+void* MergeSummaryOp_Create(TF_OpKernelConstruction* ctx) {}
 
-static void MergeSummaryOp_Delete(void* kernel) {
+void MergeSummaryOp_Delete(void* kernel) {
   return;
 }
 
-static void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   tensorflow::Summary s; 
   std::unordered_set<tensorflow::string> tags; 
-  Status_Wrapper status_wrapper;
+  StatusWrapper status_wrapper;
   for (int input_num = 0; input_num < TF_NumInputs(ctx); ++input_num) { 
     TensorWrapper input_wrapper; 
     TF_GetInput(ctx, input_num, &input_wrapper.t, status_wrapper.s); 
@@ -90,9 +92,10 @@ static void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
     }
   }
   TensorWrapper summary_tensor_wrapper; 
-  summary_tensor_wrapper.t = TF_AllocateOutput(ctx, 0,
-      TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
-      sizeof(tensorflow::tstring), status_wrapper.s);
+  summary_tensor_wrapper.t = TF_AllocateOutput(
+      /*context=*/ctx, /*index=*/0, /*dtype=*/TF_ExpectedOutputDataType(
+      ctx, 0), /*dims=*/nullptr, /*num_dims=*/0, 
+      /*len=*/sizeof(tensorflow::tstring), status_wrapper.s);
   if (TF_GetCode(status_wrapper.s) != TF_OK){ 
     TF_OpKernelContext_Failure(ctx, status_wrapper.s);
     return; 
@@ -126,3 +129,4 @@ TF_ATTRIBUTE_UNUSED static bool  IsMergeSummaryOpKernelRegistered = []() {
   return true;                                                                
 }();   
 
+} // namespace 
