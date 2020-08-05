@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
 #include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility_recommender.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -74,13 +74,13 @@ class CompatibilityListHelper {
   }
 
   bool IsDelegateSupportedOnThisDevice() {
-    return compatibility_recommender_.Includes(android_info_, gpu_info_);
+    return compatibility_list_.Includes(android_info_, gpu_info_);
   }
 
  private:
   tflite::acceleration::AndroidInfo android_info_;
   tflite::gpu::GpuInfo gpu_info_;
-  tflite::acceleration::GPUCompatibilityRecommender compatibility_recommender_;
+  tflite::acceleration::GPUCompatibilityList compatibility_list_;
 };
 }  // namespace
 

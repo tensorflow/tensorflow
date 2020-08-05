@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
 
@@ -31,41 +32,54 @@ namespace acceleration {
 // Android version, OpenGL ES version, GPU chipset etc. The support is based on
 // measure stability, correctness and peformance. For more detail see README.md.
 //
-// Reads from the flatbuffer.
 // Example usage:
-//   tflite::acceleration::GPUCompatibilityList list;
+//   tflite::Interpreter* interpreter = ... ;
 //   tflite::acceleration::AndroidInfo android_info;
 //   tflite::gpu::GpuInfo gpu_info;
-//   ...
-//   if(list.Includes(android_info, gpu_info)){
-//    // SUPPORTED.
-//   } else{
-//    // UNSUPPORTED.
+//   EXPECT_OK(tflite::acceleration::RequestAndroidInfo(&android_info));
+//   EXPECT_OK(tflite::gpu::gl::EglEnvironment::NewEglEnvironment(&env));
+//   EXPECT_OK(tflite::gpu::gl::RequestGpuInfo(&tflite_gpu_info));
+//   tflite::acceleration::GPUCompatibilityList list;
+//   TfLiteDelegate* gpu_delegate = nullptr;
+//   TfLiteGpuDelegateOptions gpu_options;
+//   if (list.Includes(android_info, gpu_info)) {
+//     gpu_options = list.BestOptionsFor(android_info, gpu_info);
+//     gpu_delegate = TfLiteGpuDelegateCreate(&gpu_options);
+//     EXPECT_EQ(interpreter->ModifyGraphWithDelegate(gpu_delegate), TfLiteOk);
+//   } else {
+//     // Fallback path.
 //   }
 class GPUCompatibilityList {
  public:
   // Construct list from bundled data.
   GPUCompatibilityList();
-  // Constructs list from the given flatbuffer.
-  explicit GPUCompatibilityList(
-      const unsigned char* compatibility_list_flatbuffer);
   // Returns true if the provided device specs are supported by the database.
   bool Includes(const AndroidInfo& android_info,
                 const ::tflite::gpu::GpuInfo& gpu_info) const;
+
+  // Returns the best TfLiteGpuDelegateOptionsV2 for the provided device specs
+  // based on the database. The output can be modified as desired before passing
+  // to delegate creation.
+  TfLiteGpuDelegateOptionsV2 GetBestOptionsFor(
+      const AndroidInfo& android_info,
+      const ::tflite::gpu::GpuInfo& gpu_info) const;
+
   // Convert android_info and gpu_info into a set of variables used for querying
   // the list, and update variables from list data. See variables.h
   // and devicedb.h for more information.
   std::map<std::string, std::string> CalculateVariables(
       const AndroidInfo& android_info,
       const ::tflite::gpu::GpuInfo& gpu_info) const;
+
   GPUCompatibilityList(const GPUCompatibilityList&) = delete;
   GPUCompatibilityList& operator=(const GPUCompatibilityList&) = delete;
-  // Indicates if the database is loaded.
-  bool IsDatabaseLoaded() const;
 
  protected:
+  explicit GPUCompatibilityList(
+      const unsigned char* compatibility_list_flatbuffer);
   const DeviceDatabase* database_;
 };
+
 }  // namespace acceleration
 }  // namespace tflite
 
