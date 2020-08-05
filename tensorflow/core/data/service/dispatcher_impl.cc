@@ -71,23 +71,21 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const experimental::DispatcherConfig& config)
     : config_(config) {
-  if (!config_.work_dir().empty()) {
-    journal_writer_ = absl::make_unique<FileJournalWriter>(
-        Env::Default(), JournalDir(config_.work_dir()));
-  }
 }
 
 Status DataServiceDispatcherImpl::Start() {
+  mutex_lock l(mu_);
   if (!config_.fault_tolerant_mode()) {
     LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
                  "not be able to recover its state on restart.";
     return Status::OK();
   }
-  mutex_lock l(mu_);
   if (config_.work_dir().empty()) {
     return errors::InvalidArgument(
         "fault_tolerant_mode is True, but no work_dir is configured.");
   }
+  journal_writer_ = absl::make_unique<FileJournalWriter>(
+      Env::Default(), JournalDir(config_.work_dir()));
   Update update;
   bool end_of_journal = false;
   FileJournalReader reader(Env::Default(), JournalDir(config_.work_dir()));
