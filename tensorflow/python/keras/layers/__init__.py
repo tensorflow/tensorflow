@@ -170,6 +170,9 @@ from tensorflow.python.keras.layers.noise import AlphaDropout
 from tensorflow.python.keras.layers.noise import GaussianNoise
 from tensorflow.python.keras.layers.noise import GaussianDropout
 
+# NoisyNet layer
+from tensorflow.python.keras.layers.noise import NoisyDense
+
 # Normalization layers.
 from tensorflow.python.keras.layers.normalization import LayerNormalization
 from tensorflow.python.keras.layers.normalization_v2 import SyncBatchNormalization

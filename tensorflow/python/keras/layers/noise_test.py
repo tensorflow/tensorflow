@@ -25,6 +25,7 @@ from tensorflow.python.keras.backend import dtypes_module
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.framework import ops
 
 
 @keras_parameterized.run_all_keras_modes
@@ -45,6 +46,20 @@ class NoiseLayersTest(keras_parameterized.TestCase):
   def test_AlphaDropout(self):
     testing_utils.layer_test(
         keras.layers.AlphaDropout, kwargs={'rate': 0.2}, input_shape=(3, 2, 3))
+
+  def test_noisy_dense(self):
+    testing_utils.layer_test(
+        keras.layers.NoisyDense, kwargs={'units': 3, 'sigma0': 0.4, 'use_factorised': True}, input_shape=(3, 2))
+
+    testing_utils.layer_test(
+        keras.layers.NoisyDense, kwargs={'units': 3, 'sigma0': 0.4, 'use_factorised': False}, input_shape=(3, 4, 2))
+
+    testing_utils.layer_test(
+        keras.layers.NoisyDense, kwargs={'units': 3, 'sigma0': 0.4, 'use_factorised': True}, input_shape=(None, None, 2))
+
+    testing_utils.layer_test(
+        keras.layers.NoisyDense, kwargs={'units': 3, 'sigma0': 0.4, 'use_factorised': False}, input_shape=(3, 4, 5, 2))
+
 
   @staticmethod
   def _make_model(dtype, class_type):
@@ -87,6 +102,33 @@ class NoiseLayersTest(keras_parameterized.TestCase):
   def test_alpha_dropout_float64(self):
     self._train_model(dtypes_module.float64, 'alpha_noise')
 
+  def test_noisy_dense_dtype(self):
+    inputs = ops.convert_to_tensor_v2(
+        np.random.randint(low=0, high=7, size=(2, 2)))
+    layer = keras.layers.NoisyDense(5, sigma0=0.4, dtype='float32')
+    outputs = layer(inputs)    
+    layer.remove_noise()
+    self.assertEqual(outputs.dtype, 'float32')
+
+  def test_dense_regularization(self):
+    layer = keras.layers.NoisyDense(
+        3,
+        kernel_regularizer=keras.regularizers.l1(0.01),
+        bias_regularizer='l1',
+        activity_regularizer='l2',
+        kernel_sigma_regularizer='l1',
+        bias_sigma_regularizer='l2',
+        name='dense_reg')
+    layer(keras.backend.variable(np.ones((2, 4))))
+    self.assertEqual(5, len(layer.losses))
+
+  def test_noisy_dense_constraints(self):
+    k_constraint = keras.constraints.max_norm(0.01)
+    b_constraint = keras.constraints.max_norm(0.01)
+    layer = keras.layers.NoisyDense(3, sigma0=0.8, use_factorised=False, kernel_constraint=k_constraint, kernel_sigma_constraint=k_constraint, bias_constraint=b_constraint, bias_sigma_constraint=b_constraint)
+    layer(keras.backend.variable(np.ones((2, 4))))
+    self.assertEqual(layer.kernel.constraint, k_constraint)
+    self.assertEqual(layer.bias.constraint, b_constraint)
 
 if __name__ == '__main__':
   test.main()
