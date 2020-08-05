@@ -382,8 +382,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
     # Used in symbolic mode only, only in conjunction with graph-networks
-    self._inbound_nodes = []
-    self._outbound_nodes = []
+    self._inbound_nodes_value = []
+    self._outbound_nodes_value = []
 
     self._init_call_fn_args()
 
@@ -2267,6 +2267,24 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   ##############################################################################
   # Methods & attributes below are all private and only used by the framework. #
   ##############################################################################
+
+  @property
+  def _inbound_nodes(self):
+    return self._inbound_nodes_value
+
+  @_inbound_nodes.setter
+  @trackable.no_automatic_dependency_tracking
+  def _inbound_nodes(self, value):
+    self._inbound_nodes_value = value
+
+  @property
+  def _outbound_nodes(self):
+    return self._outbound_nodes_value
+
+  @_outbound_nodes.setter
+  @trackable.no_automatic_dependency_tracking
+  def _outbound_nodes(self, value):
+    self._outbound_nodes_value = value
 
   def _set_dtype_policy(self, dtype):
     """Sets self._dtype_policy."""
