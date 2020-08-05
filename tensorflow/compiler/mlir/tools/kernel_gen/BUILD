@@ -1,7 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
-licenses(["notice"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -72,5 +75,17 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptMain",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+exports_files(["tf_framework_c_interface.h"])
+
+cc_library(
+    name = "tf_framework_c_interface",
+    srcs = ["tf_framework_c_interface.cc"],
+    hdrs = ["tf_framework_c_interface.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@llvm-project//mlir:mlir_runner_utils",
     ],
 )

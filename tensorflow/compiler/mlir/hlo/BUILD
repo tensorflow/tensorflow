@@ -404,6 +404,7 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_llvm",
     srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_llvm.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
     deps = [
         ":lhlo",
         "@llvm-project//mlir:IR",
