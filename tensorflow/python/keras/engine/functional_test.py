@@ -998,8 +998,11 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
-  @combinations.generate(combinations.keras_mode_combinations())
-  def test_call_kwarg_derived_from_keras_layer(self):
+  @combinations.generate(
+      combinations.times(
+          combinations.keras_mode_combinations(),
+          combinations.combine(share_already_used_layer=[True, False])))
+  def test_call_kwarg_derived_from_keras_layer(self, share_already_used_layer):
 
     class MaybeAdd(layers.Layer):
 
@@ -1008,9 +1011,26 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
           return x1 + x2
         return x1
 
+    class IdentityLayer(layers.Layer):
+
+      def call(self, x):
+        return x
+
     input1 = input_layer_lib.Input(10)
     input2 = input_layer_lib.Input(10)
-    outputs = MaybeAdd()(input1, x2=input2)
+    identity_layer = IdentityLayer()
+
+    if share_already_used_layer:
+      # We have had model serialization/deserialization break in the past:
+      # when a layer was previously used to construct other functional models
+      # and had a non-empty list of inbound nodes before being used to define
+      # the model being serialized/deserialized.
+      # (The serialization/deserialization was not correctly adjusting
+      # the node_index serialization/deserialization).
+      # So, we explicitly test this case.
+      training_lib.Model([input1], identity_layer(input1))
+
+    outputs = MaybeAdd()(input1, x2=identity_layer(input2))
     model = training_lib.Model([input1, input2], outputs)
     model.compile(
         'sgd',
@@ -1024,7 +1044,11 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(history.history['loss'][0], 0.0)
 
     model = training_lib.Model.from_config(
-        model.get_config(), custom_objects={'MaybeAdd': MaybeAdd})
+        model.get_config(),
+        custom_objects={
+            'MaybeAdd': MaybeAdd,
+            'IdentityLayer': IdentityLayer
+        })
     model.compile(
         'sgd',
         'mse',
@@ -1107,10 +1131,18 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         TypeError, 'Layer double was passed non-JSON-serializable arguments.'):
       model.get_config()
 
-  @combinations.generate(combinations.times(
-      combinations.keras_mode_combinations(),
-      combinations.keras_tensor_combinations()))
-  def test_call_kwarg_derived_from_keras_layer_and_first_arg_is_constant(self):
+  @combinations.generate(
+      combinations.times(
+          combinations.keras_mode_combinations(),
+          combinations.keras_tensor_combinations(),
+          combinations.combine(share_already_used_layer=[True, False])))
+  def test_call_kwarg_derived_from_keras_layer_and_first_arg_is_constant(
+      self, share_already_used_layer):
+
+    class IdentityLayer(layers.Layer):
+
+      def call(self, x):
+        return x
 
     class MaybeAdd(layers.Layer):
 
@@ -1120,7 +1152,18 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         return x1
 
     input2 = input_layer_lib.Input(10)
-    outputs = MaybeAdd()(3., x2=input2)
+    identity_layer = IdentityLayer()
+    if share_already_used_layer:
+      # We have had model serialization/deserialization break in the past:
+      # when a layer was previously used to construct other functional models
+      # and had a non-empty list of inbound nodes before being used to define
+      # the model being serialized/deserialized.
+      # (The serialization/deserialization was not correctly adjusting
+      # the node_index serialization/deserialization).
+      # So, we explicitly test this case.
+      training_lib.Model([input2], identity_layer(input2))
+
+    outputs = MaybeAdd()(3., x2=identity_layer(input2))
     model = training_lib.Model([input2], outputs)
     model.compile(
         'sgd',
@@ -1134,7 +1177,11 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(history.history['loss'][0], 0.0)
 
     model = training_lib.Model.from_config(
-        model.get_config(), custom_objects={'MaybeAdd': MaybeAdd})
+        model.get_config(),
+        custom_objects={
+            'MaybeAdd': MaybeAdd,
+            'IdentityLayer': IdentityLayer
+        })
     model.compile(
         'sgd',
         'mse',
