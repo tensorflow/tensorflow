@@ -47,7 +47,7 @@ struct MapCoordinate<Device, Mode::FILL_REFLECT> {
     float in_coord = out_coord;
     // Reflect [abcd] to [dcba|abcd|dcba], periodically from [0, 2 * len)
     // over [abcddcba]
-    const DenseIndex boundary = 2 * len;
+    const DenseIndex boundary = 2 * (len - 1);
     // Shift coordinate to (-boundary, boundary)
     in_coord -= boundary * static_cast<DenseIndex>(in_coord / boundary);
     // Convert negative coordinates from [-boundary, 0) to [0, boundary)
@@ -55,9 +55,9 @@ struct MapCoordinate<Device, Mode::FILL_REFLECT> {
       in_coord += boundary;
     }
     // Coordinate in_coord between [len, boundary) should reverse reflect
-    // to coordinate to (bounary - 1 - in_coord) between [0, len)
+    // to coordinate to (bounary - in_coord) between [0, len)
     if (in_coord > len - 1) {
-      in_coord = boundary - 1 - in_coord;
+      in_coord = boundary - in_coord;
     }
     return in_coord;
   }
@@ -70,7 +70,7 @@ struct MapCoordinate<Device, Mode::FILL_WRAP> {
     float in_coord = out_coord;
     // Wrap [abcd] to [abcd|abcd|abcd], periodically from [0, len)
     // over [abcd]
-    const DenseIndex boundary = len;
+    const DenseIndex boundary = len - 1;
     // Shift coordinate to (-boundary, boundary)
     in_coord -= boundary * static_cast<DenseIndex>(in_coord / boundary);
     // Shift negative coordinate from [-boundary, 0) to [0, boundary)
@@ -95,7 +95,7 @@ struct MapCoordinate<Device, Mode::FILL_NEAREST> {
                                                          const DenseIndex len) {
     if (out_coord < 0)
       return 0;
-    else if (out_coord >= len)
+    else if (out_coord >= len - 1)
       return len - 1;
     return out_coord;
   }
