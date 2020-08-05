@@ -573,7 +573,9 @@ def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-b
       tf_bool_fn=math_ops.reduce_any)
 
 
-@np_utils.np_doc('prod')
+setattr(np_arrays.ndarray, 'sum', sum)
+
+
 def prod(a, axis=None, dtype=None, keepdims=None):
   return _reduce(
       math_ops.reduce_prod,
