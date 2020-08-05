@@ -191,7 +191,7 @@ class ProcessFunctionLibraryRuntime {
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::Handle handle,
-           const FunctionArgsInterface& args, std::vector<Tensor>* rets,
+           const FunctionArgsInterface& args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
 
   Status RunSync(const FunctionLibraryRuntime::Options& opts,
@@ -304,7 +304,7 @@ class ProcessFunctionLibraryRuntime {
 
   void RunMultiDevice(
       const FunctionLibraryRuntime::Options& opts,
-      FunctionLibraryRuntime::Handle handle, std::vector<Tensor>* rets,
+      FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
       std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
       FunctionLibraryRuntime::DoneCallback done,
       std::function<Status(const ComponentFunctionData& comp_data,
@@ -388,7 +388,8 @@ class ProcessFunctionLibraryRuntime {
 
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
-                   gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
+                   gtl::ArraySlice<FunctionArg> args,
+                   std::vector<FunctionRet>* rets,
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 
