@@ -89,7 +89,6 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
 
       return applyFullConversion(func, target, patterns);
     });
-    module.dump();
     if (result.wasInterrupted()) {
       signalPassFailure();
     }
