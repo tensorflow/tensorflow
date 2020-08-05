@@ -432,6 +432,15 @@ class Iterator(trackable.Trackable):
         name=name)
     return structure.from_tensor_list(self._element_spec, flat_ret)
 
+  def get_next_as_optional(self):
+    # pylint: disable=protected-access
+    return optional_ops._OptionalImpl(
+        gen_dataset_ops.iterator_get_next_as_optional(
+            self._iterator_resource,
+            output_types=structure.get_flat_tensor_types(self.element_spec),
+            output_shapes=structure.get_flat_tensor_shapes(
+                self.element_spec)), self.element_spec)
+
   def string_handle(self, name=None):
     """Returns a string-valued `tf.Tensor` that represents this iterator.
 
