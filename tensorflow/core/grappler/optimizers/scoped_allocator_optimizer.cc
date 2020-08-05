@@ -362,6 +362,20 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
  public:
   ~UnaryElementwiseRewriter() override {}
 
+  // Return non-OK if any input is an op that does not use the
+  // AllocatorAttributes set by executor to allocate its output.
+  Status CheckUsesAllocatorAttributes(const std::vector<InputDesc>& inputs) {
+    for (const InputDesc& nd : inputs) {
+      if (IsConstant(*nd.from_node_def)) {
+        return errors::Aborted(
+            "Abandoning ScopedAllocatorOptimizer because input ",
+            nd.from_node_def->name(),
+            " is a Const op which does not use AllocatorAttributes");
+      }
+    }
+    return Status::OK();
+  }
+
   // Return non-OK if any input is already committed to a ScopedAllocator.
   //
   // We insert an identity to ensure that inputs are not committed to different
@@ -441,6 +455,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     LOG_WARNING_AND_RETURN_IF_ERROR(
         GetInputs(sa_opti, invocation_count, graph, *graph_properties_,
                   sa_opti->node_map(), ops, *dtype, inputs));
+    LOG_WARNING_AND_RETURN_IF_ERROR(CheckUsesAllocatorAttributes(*inputs));
     LOG_WARNING_AND_RETURN_IF_ERROR(CheckExistingScopedAllocator(*inputs));
     LOG_WARNING_AND_RETURN_IF_ERROR(
         CheckInternalDataDependency(op_instance_names, *inputs));
