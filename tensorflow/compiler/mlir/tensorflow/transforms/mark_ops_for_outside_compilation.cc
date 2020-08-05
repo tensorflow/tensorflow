@@ -20,7 +20,9 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
@@ -63,22 +65,51 @@ bool IsSupportedOp(Operation& op) {
   return true;
 }
 
+bool HasCapturedStringOperand(TF::IfRegionOp* if_op) {
+  bool string_operand = false;
+  mlir::visitUsedValuesDefinedAbove(
+      if_op->then_branch(), if_op->then_branch(),
+      [&](mlir::OpOperand* operand) {
+        if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
+          string_operand = true;
+      });
+  if (string_operand) return string_operand;
+  mlir::visitUsedValuesDefinedAbove(
+      if_op->else_branch(), if_op->else_branch(),
+      [&](mlir::OpOperand* operand) {
+        if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
+          string_operand = true;
+      });
+  return string_operand;
+}
+
 LogicalResult MarkUncompilableOps(Block* block) {
-  for (Operation& op : *block) {
-    if (!IsSupportedOp(op)) {
-      op.setAttr(kXlaOutsideCompilationAttr,
-                 StringAttr::get("auto", op.getContext()));
+  block->walk([&](Operation* op) {
+    if (!IsSupportedOp(*op)) {
+      op->setAttr(kXlaOutsideCompilationAttr,
+                  StringAttr::get("auto", op->getContext()));
     }
-  }
+    if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
+      if (HasCapturedStringOperand(&if_op)) {
+        op->setAttr(kXlaOutsideCompilationAttr,
+                    StringAttr::get("auto", op->getContext()));
+      }
+    }
+  });
   return success();
 }
 
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
 
-  module.walk([&](tf_device::ClusterOp cluster) {
-    MarkUncompilableOps(&cluster.GetBody());
+  auto result = module.walk([&](tf_device::ClusterOp cluster) {
+    if (failed(MarkUncompilableOps(&cluster.GetBody())))
+      return WalkResult::interrupt();
+
+    return WalkResult::advance();
   });
+
+  if (result.wasInterrupted()) return signalPassFailure();
 }
 
 }  // namespace
