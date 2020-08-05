@@ -77,7 +77,8 @@ bool IsSupportedOp(Operation& op,
   // TODO(b/161726307): Check the allowed ops list in LegalizeTfWithTf2XlaPass
   // as well.
   return !HasStringOperand(op) && !HasStringResult(op) &&
-         MatchesPattern(op, supported_ops);
+         (MatchesPattern(op, supported_ops) ||
+          mhlo::IsOpAllowedTf2XlaFallback(&op));
 }
 
 bool HasCapturedStringOperand(TF::IfRegionOp* if_op) {

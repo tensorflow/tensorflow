@@ -14,6 +14,24 @@ func @unsupported_op() -> tensor<i32> {
   return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: func @tf2xla_fallback_op
+func @tf2xla_fallback_op() -> tensor<f32> {
+  %0 = "tf_device.cluster"() ( {
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    // CHECK: "tf.Sinh"
+    // CHECK-NOT: _xla_outside_compilation
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+    %3 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    %4 = "tf.Sinh"(%2) : (tensor<f32>) -> tensor<f32>
+    tf_device.return %4 : tensor<f32>
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
 // CHECK-LABEL: func @op_string_result
 func @op_string_result() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {
