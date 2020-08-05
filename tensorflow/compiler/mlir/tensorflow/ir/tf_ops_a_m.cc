@@ -682,8 +682,8 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
   // of `axis + 1` rank and axis dim has size `1`.
   auto is_all_tensors = [&](int operand_idx, int axis) -> bool {
     return llvm::all_of(op.values(), [&](Value arg) -> bool {
-      auto lhs = arg.getDefiningOp()->getOperand(operand_idx);
-      auto ranked = lhs.getType().dyn_cast<RankedTensorType>();
+      auto operand = arg.getDefiningOp()->getOperand(operand_idx);
+      auto ranked = operand.getType().dyn_cast<RankedTensorType>();
       return ranked && ranked.getRank() == (axis + 1) &&
              ranked.getShape()[axis] == 1;
     });
@@ -692,13 +692,14 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
   // Returns true if all binary ops operands at `operand_idx` index are scalars.
   auto is_all_scalars = [&](int operand_idx) -> bool {
     return llvm::all_of(op.values(), [&](Value arg) -> bool {
-      auto lhs = arg.getDefiningOp()->getOperand(operand_idx);
-      auto ranked = lhs.getType().dyn_cast<RankedTensorType>();
+      auto operand = arg.getDefiningOp()->getOperand(operand_idx);
+      auto ranked = operand.getType().dyn_cast<RankedTensorType>();
       return ranked && ranked.hasRank() && ranked.getRank() == 0;
     });
   };
 
-  auto ranked = op.getType().cast<RankedTensorType>();
+  // Concat result type must be a ranked tensor.
+  auto ranked = op.getType().dyn_cast<RankedTensorType>();
   if (!ranked) return None;
 
   // TODO(ezhulenev): Add support for more valid concat patterns.
