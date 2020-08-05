@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -43,6 +44,14 @@ struct MarkOpsForOutsideCompilation
   void runOnOperation() override;
 };
 
+// TODO(b/159128666): Check the control flow legalization passes instead once
+// added.
+void AddSupportedControlFlowOps(MLIRContext* context,
+                                llvm::DenseSet<OperationName>* supported_ops) {
+  supported_ops->insert(OperationName("tf.IfRegion", context));
+  supported_ops->insert(OperationName("tf.Yield", context));
+}
+
 bool HasStringOperand(Operation& op) {
   for (auto operand : op.getOperands()) {
     if (getElementTypeOrSelf(operand).isa<TF::StringType>()) return true;
@@ -57,12 +66,18 @@ bool HasStringResult(Operation& op) {
   return false;
 }
 
+bool MatchesPattern(Operation& op,
+                    const llvm::DenseSet<OperationName>& supported_ops) {
+  return (supported_ops.contains(op.getName()));
+}
+
 // Checks if the op is supported inside of a device cluster.
-bool IsSupportedOp(Operation& op) {
-  if (HasStringOperand(op) || HasStringResult(op)) {
-    return false;
-  }
-  return true;
+bool IsSupportedOp(Operation& op,
+                   const llvm::DenseSet<OperationName>& supported_ops) {
+  // TODO(b/161726307): Check the allowed ops list in LegalizeTfWithTf2XlaPass
+  // as well.
+  return !HasStringOperand(op) && !HasStringResult(op) &&
+         MatchesPattern(op, supported_ops);
 }
 
 bool HasCapturedStringOperand(TF::IfRegionOp* if_op) {
@@ -83,9 +98,10 @@ bool HasCapturedStringOperand(TF::IfRegionOp* if_op) {
   return string_operand;
 }
 
-LogicalResult MarkUncompilableOps(Block* block) {
+LogicalResult MarkUncompilableOps(
+    Block* block, llvm::DenseSet<OperationName>& supported_ops) {
   block->walk([&](Operation* op) {
-    if (!IsSupportedOp(*op)) {
+    if (!IsSupportedOp(*op, supported_ops)) {
       op->setAttr(kXlaOutsideCompilationAttr,
                   StringAttr::get("auto", op->getContext()));
     }
@@ -101,9 +117,21 @@ LogicalResult MarkUncompilableOps(Block* block) {
 
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
+  OwningRewritePatternList patterns;
+  mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
+
+  // `supported_ops` contains the name of all of the ops that can potentially be
+  // lowered into HLO on the device. This doesn't always mean that the op can
+  // be lowered in the future passes but if the op is not in this set, it can't
+  // be lowered in a subsequent pass.
+  llvm::DenseSet<OperationName> supported_ops;
+  for (auto& pattern : patterns) {
+    supported_ops.insert(*pattern->getRootKind());
+  }
+  AddSupportedControlFlowOps(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
-    if (failed(MarkUncompilableOps(&cluster.GetBody())))
+    if (failed(MarkUncompilableOps(&cluster.GetBody(), supported_ops)))
       return WalkResult::interrupt();
 
     return WalkResult::advance();
