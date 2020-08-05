@@ -2412,11 +2412,14 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
       EmitBufferPointer(out_values_slice, hlo->shape().tuple_shapes(0));
   llvm::Value* out_indices_ptr =
       EmitBufferPointer(out_indices_slice, hlo->shape().tuple_shapes(1));
-  EmitCallToFunc(runtime::kTopKF32SymbolName,
-                 {b_.getInt64(has_batch ? input->shape().dimensions(0) : 1),
-                  b_.getInt64(input->shape().dimensions().back()),
-                  b_.getInt64(k), values_ptr, out_values_ptr, out_indices_ptr},
-                 b_.getVoidTy());
+  EmitCallToFunc(
+      runtime::kTopKF32SymbolName,
+      {b_.getInt64(has_batch ? input->shape().dimensions(0) : 1),
+       b_.getInt64(input->shape().dimensions().back()), b_.getInt64(k),
+       BitCast(values_ptr, b_.getFloatTy()->getPointerTo()),
+       BitCast(out_values_ptr, b_.getFloatTy()->getPointerTo()),
+       BitCast(out_indices_ptr, b_.getInt32Ty()->getPointerTo())},
+      b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(hlo), {out_values_ptr, out_indices_ptr},
                      &b_);
