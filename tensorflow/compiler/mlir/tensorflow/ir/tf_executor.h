@@ -35,6 +35,7 @@ namespace tf_executor {
 
 class TensorFlowExecutorDialect : public Dialect {
  public:
+  static StringRef getDialectNamespace() { return "tf_executor"; }
   explicit TensorFlowExecutorDialect(MLIRContext *context);
 
   // Parses a type registered to this dialect.
