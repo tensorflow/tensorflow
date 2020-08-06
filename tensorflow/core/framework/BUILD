@@ -291,6 +291,7 @@ filegroup(
         "resource_handle.h",
         "tensor.cc",
         "tensor.h",
+        "tensor_key.h",
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
