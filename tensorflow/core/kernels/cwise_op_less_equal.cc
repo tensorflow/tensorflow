@@ -20,8 +20,6 @@ REGISTER5(BinaryOp, CPU, "LessEqual", functor::less_equal, float, Eigen::half,
           bfloat16, double, int32);
 REGISTER4(BinaryOp, CPU, "LessEqual", functor::less_equal, int64, uint8, int8,
           int16);
-REGISTER2(BinaryOp, CPU, "_LessEqualWithCast", functor::less_equal_with_cast,
-          float, bfloat16);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER7(BinaryOp, GPU, "LessEqual", functor::less_equal, float, Eigen::half,

@@ -18,8 +18,6 @@ limitations under the License.
 namespace tensorflow {
 REGISTER9(BinaryOp, CPU, "GreaterEqual", functor::greater_equal, float,
           Eigen::half, double, int32, int64, uint8, int8, int16, bfloat16);
-REGISTER2(BinaryOp, CPU, "_GreaterEqualWithCast",
-          functor::greater_equal_with_cast, float, bfloat16);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER7(BinaryOp, GPU, "GreaterEqual", functor::greater_equal, float,
           Eigen::half, double, int64, uint8, int8, int16);
