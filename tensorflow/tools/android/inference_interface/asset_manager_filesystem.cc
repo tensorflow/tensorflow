@@ -241,8 +241,7 @@ string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
   return string(piece);
 }
 
-bool AssetManagerFileSystem::DirectoryExists(const std::string& fname,
-                                             TransactionToken* token) {
+bool AssetManagerFileSystem::DirectoryExists(const std::string& fname) {
   std::string path = NormalizeDirectoryPath(fname);
   auto dir =
       ScopedAssetDir(AAssetManager_openDir(asset_manager_, path.c_str()));
