@@ -65,8 +65,6 @@ class ConvBuffer1x1 : public GPUOperation {
     // some cases we need separate weights for H dimension and convolution
     // kernel requires very small modifications to support it.
     bool different_weights_for_height = false;
-
-    int3 work_group_size = int3(2, 4, 1);
   };
 
  private:

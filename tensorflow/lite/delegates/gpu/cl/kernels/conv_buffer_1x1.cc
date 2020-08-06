@@ -153,7 +153,7 @@ ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
                              const ConvParams& conv_params)
     : GPUOperation(definition), conv_params_(conv_params) {
   code_ = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
-  work_group_size_ = conv_params_.work_group_size;
+  work_group_size_ = int3(2, 4, 1);
 }
 
 ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
@@ -317,9 +317,8 @@ int3 ConvBuffer1x1::GetGridSize() const {
 
 absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
-                                       &conv_params_.work_group_size));
-  work_group_size_ = conv_params_.work_group_size;
+  RETURN_IF_ERROR(
+      GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_));
   return absl::OkStatus();
 }
 

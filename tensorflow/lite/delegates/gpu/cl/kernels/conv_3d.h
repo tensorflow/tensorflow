@@ -59,7 +59,6 @@ class Conv3D : public GPUOperation {
 
   struct ConvParams {
     int4 block_size;  // WHDS
-    int3 work_group_size;
     int3 work_group_launch_order;
     int src_depth_loop_size;
     WeightsUploadType weights_upload_type;
@@ -98,12 +97,12 @@ class Conv3D : public GPUOperation {
 
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
-                             const Convolution3DAttributes& attr) const;
+                             const Convolution3DAttributes& attr);
 
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition, int src_slices,
                              int dst_slices, bool x_kernel_is_1,
-                             bool y_kernel_is_1, bool z_kernel_is_1) const;
+                             bool y_kernel_is_1, bool z_kernel_is_1);
 
   std::string GenerateConv3D(const OperationDef& op_def, bool stride_correction,
                              const Conv3D::ConvParams& conv_params);
