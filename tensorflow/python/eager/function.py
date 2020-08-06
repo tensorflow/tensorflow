@@ -2803,7 +2803,7 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         flat_sequence=flatten_inputs,
         expand_composites=True)
 
-  return inputs, flatten_inputs
+  return inputs, nest.flatten(inputs, expand_composites=True)
 
 
 class FunctionCache(object):
