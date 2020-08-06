@@ -3822,6 +3822,40 @@ ENTRY entry {
             op::Shape("f32[2,9,8]")));
 }
 
+TEST_F(SpmdPartitioningTest, IndexPassthroughScatter_Min) {
+  const char* const hlo_string = R"(
+HloModule module
+
+min (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT min = f32[] minimum(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[2,9,8] parameter(0), sharding={replicated}
+  %indices = s32[4,2,4] parameter(1), sharding={devices=[2,1,2]0,1,2,3}
+  %updates = f32[4,4,8] parameter(2), sharding={devices=[2,2,1]0,1,2,3}
+  ROOT %scatter = f32[2,9,8] scatter(%input, %indices, %updates),
+      to_apply=min,
+      update_window_dims={2},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1, sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::AllReduce(op::Scatter(
+                op::Select(op::Broadcast(op::Convert(op::PartitionId())),
+                           op::Broadcast(op::Constant()), op::Parameter(0)),
+                op::Parameter(1), op::Parameter(2))),
+            op::Shape("f32[2,9,8]")));
+}
+
 TEST_F(SpmdPartitioningTest, ScatterPartitionedOnTrivialSliceDims) {
   const char* const hlo_string = R"(
 HloModule module

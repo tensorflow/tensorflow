@@ -33,6 +33,10 @@ namespace spmd {
 // Returns true if the given sharding contains any replicated sharding.
 bool HasReplicatedSharding(const HloSharding& sharding);
 
+// Creates constant value instructions of the given shape. The literal must be a
+// scalar shape and is broadcast to the given shape.
+HloInstruction* CreateConstant(const Shape& shape, Literal value,
+                               SpmdBuilder* b);
 // Creates zero value instructions of the given shape.
 HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b);
 

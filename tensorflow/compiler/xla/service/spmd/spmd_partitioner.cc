@@ -1209,6 +1209,16 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
         case HloOpcode::kAnd:
           identity = CreateOne(operand.hlo()->shape(), &b_);
           break;
+        case HloOpcode::kMinimum:
+          identity = CreateConstant(
+              operand.hlo()->shape(),
+              LiteralUtil::MaxValue(hlo->shape().element_type()), &b_);
+          break;
+        case HloOpcode::kMaximum:
+          identity = CreateConstant(
+              operand.hlo()->shape(),
+              LiteralUtil::MinValue(hlo->shape().element_type()), &b_);
+          break;
         default:
           return DefaultAction(hlo);
       }
@@ -1226,7 +1236,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       CHECK(new_updates_sharding.has_value());
       updates = updates.Reshard(*new_updates_sharding);
       // To avoid accumulating the initial operand multiple times during
-      // all-reduce, we use zero operands for all non-zero partitions.
+      // all-reduce, we use identity operands for all non-zero partitions.
       auto not_partition_zero = b_.AddInstruction(HloInstruction::CreateConvert(
           ShapeUtil::MakeScalarShape(PRED), partition_id_));
       not_partition_zero = b_.AddInstruction(HloInstruction::CreateBroadcast(
