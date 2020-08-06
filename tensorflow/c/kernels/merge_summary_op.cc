@@ -41,11 +41,9 @@ using Safe_TF_TensorPtr = std::unique_ptr<TF_Tensor, TFTensorDeleter>;
 using Safe_TF_StatusPtr = std::unique_ptr<TF_Status, TFStatusDeleter>; 
 
 // dummy functions used for kernel registration 
-void* MergeSummaryOp_Create(TF_OpKernelConstruction* ctx) {}
+void* MergeSummaryOp_Create(TF_OpKernelConstruction* ctx) { return nullptr; }
 
-void MergeSummaryOp_Delete(void* kernel) {
-  return;
-}
+void MergeSummaryOp_Delete(void* kernel) { return; }
 
 void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   tensorflow::Summary s; 
