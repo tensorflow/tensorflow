@@ -407,6 +407,502 @@ func @callee2() attributes {sym_visibility = "private"} {
 
 // -----
 
+// Test cloned function rewrite also checks transitive function calls to
+// TF/XLA communication ops.
+
+// CHECK: func @callee3()
+func @callee3() {
+  // CHECK:      [[CALLEE3_INIT_TOKEN:%.*]] = "mhlo.create_token"
+
+  // CHECK:      call @callee4{{.+}}([[CALLEE3_INIT_TOKEN]])
+  call @callee4() : () -> ()
+  return
+}
+
+// CHECK: func @callee4()
+func @callee4() {
+  // CHECK:      [[CALLEE4_INIT_TOKEN:%.*]] = "mhlo.create_token"
+
+  // CHECK:      [[CALL_5:%.*]] = call @callee5([[CALLEE4_INIT_TOKEN]])
+  call @callee5() : () -> ()
+
+  // CHECK:      return
+  return
+}
+
+// CHECK: func @callee5([[CALLEE5_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
+func @callee5() attributes {sym_visibility = "private"} {
+  // CHECK-NOT:  "mhlo.create_token"
+
+  // CHECK:      [[RECV_TUPLE:%.*]] = "mhlo.recv"([[CALLEE5_ARG0]])
+  // CHECK:      [[RECV_VAL:%.*]] = "mhlo.get_tuple_element"([[RECV_TUPLE]])
+  // CHECK-SAME: index = 0
+  // CHECK:      [[RECV_TOKEN:%.*]] = "mhlo.get_tuple_element"([[RECV_TUPLE]])
+  // CHECK-SAME: index = 1
+  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf.shape<>} : () -> tensor<i32>
+
+  // CHECK:      return [[RECV_TOKEN]]
+  return
+}
+
+// CHECK: func @callee4{{.+}}([[CALLEE4_ARG0:%.*]]: !mhlo.token) -> !mhlo.token attributes {sym_visibility = "private"}
+// CHECK-NOT:  "mhlo.create_token"
+// CHECK:      [[CALL_5:%.*]] = call @callee5([[CALLEE4_ARG0]])
+// CHECK:      return [[CALL_5]]
+
+// -----
+
+// Tests `mhlo.if` with branches populated with TF/XLA communication ops.
+
+// CHECK-LABEL: func @if_both_branches
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
+func @if_both_branches(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  // CHECK: [[INIT_TOKEN:%.*]] = "mhlo.create_token"
+  // CHECK: [[TRUE_TUPLE:%.*]] = "mhlo.tuple"([[ARG1]], [[INIT_TOKEN]])
+  // CHECK: [[FALSE_TUPLE:%.*]] = "mhlo.tuple"([[ARG2]], [[INIT_TOKEN]])
+
+  // CHECK: [[IF_TUPLE:%.*]] = "mhlo.if"([[ARG0]], [[TRUE_TUPLE]], [[FALSE_TUPLE]])
+  %0 = "mhlo.if"(%arg0, %arg1, %arg2) ( {
+  // CHECK: ^bb0([[TRUE_REGION_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg3: tensor<f32>):
+    // CHECK-DAG:  [[TRUE_REGION_ARG_VALUE:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 0
+    // CHECK-DAG:  [[TRUE_REGION_ARG_TOKEN:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 1
+
+    // CHECK:      [[TRUE_SEND_TOKEN:%.*]] = "mhlo.send"([[TRUE_REGION_ARG_VALUE]], [[TRUE_REGION_ARG_TOKEN]])
+    // CHECK-SAME: channel_id = {handle = 1 : i64, type = 2 : i64}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_if_true_dtoh_0"}
+
+    // CHECK:      [[TRUE_RECV_TUPLE:%.*]] = "mhlo.recv"([[TRUE_SEND_TOKEN]])
+    // CHECK-SAME: channel_id = {handle = 2 : i64, type = 3 : i64}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_true_htod_0"}
+    %1 = "tf._XlaHostComputeMlir"(%arg3) {recv_key = "recv_if_true", send_key = "send_if_true", tpu_core = 0 : i64} : (tensor<f32>) -> tensor<f32>
+
+    // CHECK-DAG:  [[TRUE_GET_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[TRUE_RECV_TUPLE]]) {index = 0
+    // CHECK-DAG:  [[TRUE_GET_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[TRUE_RECV_TUPLE]]) {index = 1
+    // CHECK:      [[TRUE_RETURN_TUPLE:%.*]] = "mhlo.tuple"([[TRUE_GET_TUPLE_ELEMENT0]], [[TRUE_GET_TUPLE_ELEMENT1]])
+    // CHECK:      "mhlo.return"([[TRUE_RETURN_TUPLE]])
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  },  {
+  // CHECK: ^bb0([[FALSE_REGION_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg3: tensor<f32>):
+    // CHECK-DAG:  [[FALSE_REGION_ARG_VALUE:%.*]] = "mhlo.get_tuple_element"([[FALSE_REGION_ARG]]) {index = 0
+    // CHECK-DAG:  [[FALSE_REGION_ARG_TOKEN:%.*]] = "mhlo.get_tuple_element"([[FALSE_REGION_ARG]]) {index = 1
+
+    // CHECK:      [[FALSE_SEND_TOKEN:%.*]] = "mhlo.send"([[FALSE_REGION_ARG_VALUE]], [[FALSE_REGION_ARG_TOKEN]])
+    // CHECK-SAME: channel_id = {handle = 3 : i64, type = 2 : i64}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_if_false_dtoh_0"}
+
+    // CHECK:      [[FALSE_RECV_TUPLE:%.*]] = "mhlo.recv"([[FALSE_SEND_TOKEN]])
+    // CHECK-SAME: channel_id = {handle = 4 : i64, type = 3 : i64}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_false_htod_0"}
+    %1 = "tf._XlaHostComputeMlir"(%arg3) {recv_key = "recv_if_false", send_key = "send_if_false", tpu_core = 0 : i64} : (tensor<f32>) -> tensor<f32>
+
+    // CHECK-DAG:  [[FALSE_GET_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[FALSE_RECV_TUPLE]]) {index = 0
+    // CHECK-DAG:  [[FALSE_GET_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[FALSE_RECV_TUPLE]]) {index = 1
+    // CHECK:      [[FALSE_RETURN_TUPLE:%.*]] = "mhlo.tuple"([[FALSE_GET_TUPLE_ELEMENT0]], [[FALSE_GET_TUPLE_ELEMENT1]])
+    // CHECK:      "mhlo.return"([[FALSE_RETURN_TUPLE]])
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+
+  // CHECK: (tensor<i1>, tuple<tensor<f32>, !mhlo.token>, tuple<tensor<f32>, !mhlo.token>) -> tuple<tensor<f32>, !mhlo.token>
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK:      [[IF_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[IF_TUPLE]])
+  // CHECK-SAME: index = 0
+  // CHECK:      return [[IF_TUPLE_ELEMENT0]]
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// Tests `mhlo.if` with only the `true` branch populated with TF/XLA
+// communication ops.
+
+// CHECK-LABEL: func @if_true_branch
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
+func @if_true_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  // CHECK: [[INIT_TOKEN:%.*]] = "mhlo.create_token"
+  // CHECK: [[TRUE_TUPLE:%.*]] = "mhlo.tuple"([[ARG1]], [[INIT_TOKEN]])
+  // CHECK: [[FALSE_TUPLE:%.*]] = "mhlo.tuple"([[ARG2]], [[INIT_TOKEN]])
+
+  // CHECK: [[IF_TUPLE:%.*]] = "mhlo.if"([[ARG0]], [[TRUE_TUPLE]], [[FALSE_TUPLE]])
+  %0 = "mhlo.if"(%arg0, %arg1, %arg2) ( {
+  // CHECK: ^bb0([[TRUE_REGION_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg3: tensor<f32>):
+    // CHECK-DAG:  [[TRUE_REGION_ARG_VALUE:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 0
+    // CHECK-DAG:  [[TRUE_REGION_ARG_TOKEN:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 1
+
+    // CHECK:      [[TRUE_SEND_TOKEN:%.*]] = "mhlo.send"([[TRUE_REGION_ARG_VALUE]], [[TRUE_REGION_ARG_TOKEN]])
+    // CHECK-SAME: channel_id = {handle = 1 : i64, type = 2 : i64}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_if_true_dtoh_0"}
+
+    // CHECK:      [[TRUE_RECV_TUPLE:%.*]] = "mhlo.recv"([[TRUE_SEND_TOKEN]])
+    // CHECK-SAME: channel_id = {handle = 2 : i64, type = 3 : i64}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_true_htod_0"}
+    %1 = "tf._XlaHostComputeMlir"(%arg3) {recv_key = "recv_if_true", send_key = "send_if_true", tpu_core = 0 : i64} : (tensor<f32>) -> tensor<f32>
+
+    // CHECK-DAG:  [[TRUE_GET_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[TRUE_RECV_TUPLE]]) {index = 0
+    // CHECK-DAG:  [[TRUE_GET_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[TRUE_RECV_TUPLE]]) {index = 1
+    // CHECK:      [[TRUE_RETURN_TUPLE:%.*]] = "mhlo.tuple"([[TRUE_GET_TUPLE_ELEMENT0]], [[TRUE_GET_TUPLE_ELEMENT1]])
+    // CHECK:      "mhlo.return"([[TRUE_RETURN_TUPLE]])
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  },  {
+  // CHECK: ^bb0([[FALSE_REGION_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg3: tensor<f32>):
+    // CHECK-DAG:  [[FALSE_GET_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[FALSE_REGION_ARG]]) {index = 0
+    // CHECK-DAG:  [[FALSE_GET_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[FALSE_REGION_ARG]]) {index = 1
+    // CHECK:      [[FALSE_RETURN_TUPLE:%.*]] = "mhlo.tuple"([[FALSE_GET_TUPLE_ELEMENT0]], [[FALSE_GET_TUPLE_ELEMENT1]])
+    // CHECK:      "mhlo.return"([[FALSE_RETURN_TUPLE]])
+    "mhlo.return"(%arg3) : (tensor<f32>) -> ()
+
+  // CHECK: (tensor<i1>, tuple<tensor<f32>, !mhlo.token>, tuple<tensor<f32>, !mhlo.token>) -> tuple<tensor<f32>, !mhlo.token>
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK:      [[IF_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[IF_TUPLE]])
+  // CHECK-SAME: index = 0
+  // CHECK:      return [[IF_TUPLE_ELEMENT0]]
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// Tests `mhlo.if` with only the `false` branch populated with TF/XLA
+// communication ops.
+
+// CHECK-LABEL: func @if_false_branch
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
+func @if_false_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  // CHECK: [[INIT_TOKEN:%.*]] = "mhlo.create_token"
+  // CHECK: [[TRUE_TUPLE:%.*]] = "mhlo.tuple"([[ARG1]], [[INIT_TOKEN]])
+  // CHECK: [[FALSE_TUPLE:%.*]] = "mhlo.tuple"([[ARG2]], [[INIT_TOKEN]])
+
+  // CHECK: [[IF_TUPLE:%.*]] = "mhlo.if"([[ARG0]], [[TRUE_TUPLE]], [[FALSE_TUPLE]])
+  %0 = "mhlo.if"(%arg0, %arg1, %arg2) ( {
+  // CHECK: ^bb0([[TRUE_REGION_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg3: tensor<f32>):
+    // CHECK-DAG:  [[TRUE_GET_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 0
+    // CHECK-DAG:  [[TRUE_GET_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 1
+    // CHECK:      [[TRUE_RETURN_TUPLE:%.*]] = "mhlo.tuple"([[TRUE_GET_TUPLE_ELEMENT0]], [[TRUE_GET_TUPLE_ELEMENT1]])
+    // CHECK:      "mhlo.return"([[TRUE_RETURN_TUPLE]])
+    "mhlo.return"(%arg3) : (tensor<f32>) -> ()
+  },  {
+  // CHECK: ^bb0([[FALSE_REGION_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg3: tensor<f32>):
+    // CHECK-DAG:  [[FALSE_REGION_ARG_VALUE:%.*]] = "mhlo.get_tuple_element"([[FALSE_REGION_ARG]]) {index = 0
+    // CHECK-DAG:  [[FALSE_REGION_ARG_TOKEN:%.*]] = "mhlo.get_tuple_element"([[FALSE_REGION_ARG]]) {index = 1
+
+    // CHECK:      [[FALSE_SEND_TOKEN:%.*]] = "mhlo.send"([[FALSE_REGION_ARG_VALUE]], [[FALSE_REGION_ARG_TOKEN]])
+    // CHECK-SAME: channel_id = {handle = 1 : i64, type = 2 : i64}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "send_if_false_dtoh_0"}
+
+    // CHECK:      [[FALSE_RECV_TUPLE:%.*]] = "mhlo.recv"([[FALSE_SEND_TOKEN]])
+    // CHECK-SAME: channel_id = {handle = 2 : i64, type = 3 : i64}
+    // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "recv_if_false_htod_0"}
+    %1 = "tf._XlaHostComputeMlir"(%arg3) {recv_key = "recv_if_false", send_key = "send_if_false", tpu_core = 0 : i64} : (tensor<f32>) -> tensor<f32>
+
+    // CHECK-DAG:  [[FALSE_GET_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[FALSE_RECV_TUPLE]]) {index = 0
+    // CHECK-DAG:  [[FALSE_GET_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[FALSE_RECV_TUPLE]]) {index = 1
+    // CHECK:      [[FALSE_RETURN_TUPLE:%.*]] = "mhlo.tuple"([[FALSE_GET_TUPLE_ELEMENT0]], [[FALSE_GET_TUPLE_ELEMENT1]])
+    // CHECK:      "mhlo.return"([[FALSE_RETURN_TUPLE]])
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+
+  // CHECK: (tensor<i1>, tuple<tensor<f32>, !mhlo.token>, tuple<tensor<f32>, !mhlo.token>) -> tuple<tensor<f32>, !mhlo.token>
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK:      [[IF_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[IF_TUPLE]])
+  // CHECK-SAME: index = 0
+  // CHECK:      return [[IF_TUPLE_ELEMENT0]]
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// Tests `mhlo.if` with tuple arg from a `mhlo.tuple` only used by `mhlo.if` is
+// replaced.
+
+// CHECK-LABEL: func @if_replace_tuple_arg
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
+func @if_replace_tuple_arg(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  // CHECK-NOT:  "mhlo.tuple"([[ARG1]], [[ARG2]])
+  // CHECK:      [[INIT_TOKEN:%.*]] = "mhlo.create_token"
+  // CHECK:      [[IF_ARG_TUPLE:%.*]] = "mhlo.tuple"([[ARG1]], [[ARG2]], [[INIT_TOKEN]])
+  %0 = "mhlo.tuple"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
+
+  // CHECK: [[IF_TUPLE:%.*]] = "mhlo.if"([[ARG0]], [[IF_ARG_TUPLE]], [[IF_ARG_TUPLE]])
+  %1 = "mhlo.if"(%arg0, %0, %0) ( {
+  ^bb0(%arg3: tuple<tensor<f32>, tensor<f32>>):
+    %2 = "mhlo.get_tuple_element"(%arg3) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
+    "tf.XlaSendToHost"(%2) {key = "send_key"} : (tensor<f32>) -> ()
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  },  {
+  ^bb0(%arg3: tuple<tensor<f32>, tensor<f32>>):
+    %2 = "mhlo.get_tuple_element"(%arg3) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
+    "mhlo.return"(%2) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tuple<tensor<f32>, tensor<f32>>, tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
+  return %1 : tensor<f32>
+}
+
+// -----
+
+// Tests `mhlo.if` with tuple arg not from a `mhlo.tuple` is unpacked.
+
+// CHECK-LABEL: func @if_unpack_tuple_arg
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tuple<tensor<f32>, tensor<f32>>)
+func @if_unpack_tuple_arg(%arg0: tensor<i1>, %arg1: tuple<tensor<f32>, tensor<f32>>) -> tensor<f32> {
+  // CHECK:      [[INIT_TOKEN:%.*]] = "mhlo.create_token"
+  // CHECK-DAG:  [[IF_ARG_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[ARG1]]) {index = 0
+  // CHECK-DAG:  [[IF_ARG_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[ARG1]]) {index = 1
+  // CHECK:      [[IF_ARG_TUPLE:%.*]] = "mhlo.tuple"([[IF_ARG_ELEMENT0]], [[IF_ARG_ELEMENT1]], [[INIT_TOKEN]])
+
+  // CHECK:      [[IF_TUPLE:%.*]] = "mhlo.if"([[ARG0]], [[IF_ARG_TUPLE]], [[IF_ARG_TUPLE]])
+  %0 = "mhlo.if"(%arg0, %arg1, %arg1) ( {
+  ^bb0(%arg2: tuple<tensor<f32>, tensor<f32>>):
+    %1 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
+    "tf.XlaSendToHost"(%1) {key = "send_key"} : (tensor<f32>) -> ()
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  },  {
+  ^bb0(%arg2: tuple<tensor<f32>, tensor<f32>>):
+    %1 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tuple<tensor<f32>, tensor<f32>>, tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// Tests `mhlo.if` tuple result is extended with a `mhlo.token`.
+
+// CHECK-LABEL: func @if_extend_tuple_result
+func @if_extend_tuple_result(%arg0: tensor<i1>, %arg1: tuple<tensor<f32>, tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>> {
+  // CHECK:      [[IF_TUPLE:%.*]] = "mhlo.if"
+  %0 = "mhlo.if"(%arg0, %arg1, %arg1) ( {
+  ^bb0(%arg2: tuple<tensor<f32>, tensor<f32>>):
+    %1 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
+    "tf.XlaSendToHost"(%1) {key = "send_key"} : (tensor<f32>) -> ()
+    "mhlo.return"(%arg2) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+  },  {
+  ^bb0(%arg2: tuple<tensor<f32>, tensor<f32>>):
+    "mhlo.return"(%arg2) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+  // CHECK:      (tensor<i1>, tuple<tensor<f32>, tensor<f32>, !mhlo.token>, tuple<tensor<f32>, tensor<f32>, !mhlo.token>) -> tuple<tensor<f32>, tensor<f32>, !mhlo.token>
+  }) : (tensor<i1>, tuple<tensor<f32>, tensor<f32>>, tuple<tensor<f32>, tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>>
+
+  // CHECK-DAG:  [[IF_TUPLE_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[IF_TUPLE]]) {index = 0
+  // CHECK-DAG:  [[IF_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[IF_TUPLE]]) {index = 1
+  // CHECK:      [[IF_SUBTUPLE_RESULT:%.*]] = "mhlo.tuple"([[IF_TUPLE_ELEMENT0]], [[IF_TUPLE_ELEMENT1]])
+  // CHECK:      return [[IF_SUBTUPLE_RESULT]]
+  return %0 : tuple<tensor<f32>, tensor<f32>>
+}
+
+// -----
+
+// Tests nested `mhlo.if` containing TF/XLA communication ops.
+
+// CHECK-LABEL: func @if_nested
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>)
+func @if_nested(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
+  // CHECK:      [[INIT_TOKEN:%.*]] = "mhlo.create_token"
+  // CHECK:      [[OUTER_IF_ARG_TUPLE:%.*]] = "mhlo.tuple"([[ARG1]], [[INIT_TOKEN]])
+
+  // CHECK:      "mhlo.if"([[ARG0]], [[OUTER_IF_ARG_TUPLE]], [[OUTER_IF_ARG_TUPLE]])
+  %0 = "mhlo.if"(%arg0, %arg1, %arg1) ( {
+  // CHECK-NEXT: ^bb0([[OUTER_IF_TRUE_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg2: tensor<f32>):
+    // CHECK-DAG:  [[OUTER_IF_TRUE_ARG_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[OUTER_IF_TRUE_ARG]]) {index = 0
+    // CHECK-DAG:  [[OUTER_IF_TRUE_ARG_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[OUTER_IF_TRUE_ARG]]) {index = 1
+    // CHECK:      [[INNER_IF_ARG_TUPLE:%.*]] = "mhlo.tuple"([[OUTER_IF_TRUE_ARG_ELEMENT0]], [[OUTER_IF_TRUE_ARG_ELEMENT1]])
+
+    %1 = mhlo.constant dense<false> : tensor<i1>
+
+    // CHECK:      [[INNER_IF_TUPLE:%.*]] = "mhlo.if"({{%.*}}, [[INNER_IF_ARG_TUPLE]], [[INNER_IF_ARG_TUPLE]])
+    %2 = "mhlo.if"(%1, %arg2, %arg2) ( {
+    // CHECK-NEXT: ^bb0([[INNER_IF_TRUE_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+    ^bb0(%arg3: tensor<f32>):
+      // CHECK-DAG:  [[INNER_IF_TRUE_ARG_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[INNER_IF_TRUE_ARG]]) {index = 0
+      // CHECK-DAG:  [[INNER_IF_TRUE_ARG_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[INNER_IF_TRUE_ARG]]) {index = 1
+
+      // CHECK:      [[SEND_TOKEN:%.*]] = "mhlo.send"([[INNER_IF_TRUE_ARG_ELEMENT0]], [[INNER_IF_TRUE_ARG_ELEMENT1]])
+      "tf.XlaSendToHost"(%arg3) {key = "send_key"} : (tensor<f32>) -> ()
+
+      // CHECK:      [[INNER_IF_TRUE_RESULT:%.*]] = "mhlo.tuple"([[INNER_IF_TRUE_ARG_ELEMENT0]], [[SEND_TOKEN]])
+      // CHECK:      "mhlo.return"([[INNER_IF_TRUE_RESULT]])
+      "mhlo.return"(%arg3) : (tensor<f32>) -> ()
+
+    // CHECK-NEXT: },  {
+    },  {
+
+    // CHECK-NEXT: ^bb0([[INNER_IF_FALSE_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+    ^bb0(%arg3: tensor<f32>):
+      // CHECK-DAG:  [[INNER_IF_FALSE_ARG_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[INNER_IF_FALSE_ARG]]) {index = 0
+      // CHECK-DAG:  [[INNER_IF_FALSE_ARG_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[INNER_IF_FALSE_ARG]]) {index = 1
+      // CHECK:      [[INNER_IF_FALSE_RESULT:%.*]] = "mhlo.tuple"([[INNER_IF_FALSE_ARG_ELEMENT0]], [[INNER_IF_FALSE_ARG_ELEMENT1]])
+      // CHECK:      "mhlo.return"([[INNER_IF_FALSE_RESULT]])
+      "mhlo.return"(%arg3) : (tensor<f32>) -> ()
+    // CHECK-NEXT: (tensor<i1>, tuple<tensor<f32>, !mhlo.token>, tuple<tensor<f32>, !mhlo.token>) -> tuple<tensor<f32>, !mhlo.token>
+    }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+    // CHECK-DAG:  [[INNER_IF_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[INNER_IF_TUPLE]]) {index = 1
+    // CHECK:      [[OUTER_IF_TRUE_RESULT:%.*]] = "mhlo.tuple"([[OUTER_IF_TRUE_ARG_ELEMENT0]], [[INNER_IF_TUPLE_ELEMENT1]])
+    // CHECK:      "mhlo.return"([[OUTER_IF_TRUE_RESULT]])
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+
+  // CHECK-NEXT: },  {
+  },  {
+
+  // CHECK-NEXT: ^bb0([[OUTER_IF_FALSE_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg2: tensor<f32>):
+    // CHECK-DAG:  [[OUTER_IF_FALSE_ARG_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[OUTER_IF_FALSE_ARG]]) {index = 0
+    // CHECK-DAG:  [[OUTER_IF_FALSE_ARG_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[OUTER_IF_FALSE_ARG]]) {index = 1
+    // CHECK:      [[OUTER_IF_FALSE_RESULT:%.*]] = "mhlo.tuple"([[OUTER_IF_FALSE_ARG_ELEMENT0]], [[OUTER_IF_FALSE_ARG_ELEMENT1]])
+    // CHECK:      "mhlo.return"([[OUTER_IF_FALSE_RESULT]])
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  // CHECK-NEXT: (tensor<i1>, tuple<tensor<f32>, !mhlo.token>, tuple<tensor<f32>, !mhlo.token>) -> tuple<tensor<f32>, !mhlo.token>
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// Tests `mhlo.if` containing a function call to TF/XLA communication ops.
+
+// CHECK-LABEL: func @if_function_call
+func @if_function_call(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.if"
+  %0 = "mhlo.if"(%arg0, %arg1, %arg1) ( {
+  // CHECK: ^bb0([[TRUE_REGION_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg2: tensor<f32>):
+    // CHECK-DAG:  [[TRUE_REGION_ARG_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 0
+    // CHECK-DAG:  [[TRUE_REGION_ARG_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 1
+    // CHECK:      [[CALL_TOKEN:%.*]] = call @callee([[TRUE_REGION_ARG_ELEMENT0]], [[TRUE_REGION_ARG_ELEMENT1]])
+    call @callee(%arg2) : (tensor<f32>) -> ()
+
+    // CHECK:      [[TRUE_RETURN_TUPLE:%.*]] = "mhlo.tuple"([[TRUE_REGION_ARG_ELEMENT0]], [[CALL_TOKEN]])
+    // CHECK:      "mhlo.return"([[TRUE_RETURN_TUPLE]])
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<f32>):
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: func @callee
+// CHECK-SAME:  ([[CALLEE_ARG0:%.*]]: tensor<f32>, [[CALLEE_ARG1:%.*]]: !mhlo.token) -> !mhlo.token
+func @callee(%arg0: tensor<f32>) attributes {sym_visibility = "private"} {
+  // CHECK: [[SEND_TOKEN:%.*]] = "mhlo.send"
+  "tf.XlaSendToHost"(%arg0) {key = "send_key"} : (tensor<f32>) -> ()
+
+  // CHECK: return [[SEND_TOKEN]]
+  return
+}
+
+// -----
+
+// Tests `mhlo.if` containing multiple TF/XLA communication ops.
+
+// CHECK-LABEL: func @if_region_multiple_ops
+func @if_region_multiple_ops(%arg0: tensor<i1>, %arg1: tensor<f32>) {
+  // CHECK: "mhlo.if"
+  %0 = "mhlo.if"(%arg0, %arg1, %arg1) ( {
+  // CHECK: ^bb0([[TRUE_REGION_ARG:%.*]]: tuple<tensor<f32>, !mhlo.token>):
+  ^bb0(%arg2: tensor<f32>):
+    // CHECK: [[TRUE_REGION_ARG_ELEMENT0:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 0
+    // CHECK: [[TRUE_REGION_ARG_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[TRUE_REGION_ARG]]) {index = 1
+
+    // CHECK: [[SEND0_TOKEN:%.*]] = "mhlo.send"([[TRUE_REGION_ARG_ELEMENT0]], [[TRUE_REGION_ARG_ELEMENT1]])
+    "tf.XlaSendToHost"(%arg2) {key = "send_key0"} : (tensor<f32>) -> ()
+
+    // CHECK: [[SEND1_TOKEN:%.*]] = "mhlo.send"([[TRUE_REGION_ARG_ELEMENT0]], [[SEND0_TOKEN]])
+    "tf.XlaSendToHost"(%arg2) {key = "send_key1"} : (tensor<f32>) -> ()
+
+    // CHECK: [[TRUE_RETURN_TUPLE:%.*]] = "mhlo.tuple"([[TRUE_REGION_ARG_ELEMENT0]], [[SEND1_TOKEN]])
+    // CHECK: "mhlo.return"([[TRUE_RETURN_TUPLE]])
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<f32>):
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+// Tests `mhlo.if` containing TF/XLA communication ops followed by other TF/XLA
+// communication ops.
+
+func @if_followed_by_communication_op(%arg0: tensor<i1>, %arg1: tensor<f32>) {
+  // CHECK: [[IF_TUPLE:%.*]] = "mhlo.if"
+  %0 = "mhlo.if"(%arg0, %arg1, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>):
+    "tf.XlaSendToHost"(%arg2) {key = "send_key0"} : (tensor<f32>) -> ()
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<f32>):
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK: [[IF_TUPLE_ELEMENT1:%.*]] = "mhlo.get_tuple_element"([[IF_TUPLE]]) {index = 1
+
+  // CHECK: "mhlo.send"({{.*}}, [[IF_TUPLE_ELEMENT1]])
+  "tf.XlaSendToHost"(%arg1) {key = "send_key1"} : (tensor<f32>) -> ()
+  return
+}
+
+// -----
+
+// Tests unsupported parent of TF/XLA communication op.
+
+func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'func']}}
+    "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64} : () -> ()
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
+  return
+}
+
+// -----
+
+// Tests transitive unsupported parent of TF/XLA communication op.
+
+func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'func']}}
+    call @callee() : () -> ()
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
+  return
+}
+
+func @callee() attributes {sym_visibility = "private"} {
+  "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64} : () -> ()
+  return
+}
+
+// -----
+
+// Tests unsupported `mhlo.if` with region of more than one block and contains a
+// TF/XLA communication op.
+
+func @if_multiple_blocks(%arg0: tensor<i1>, %arg1: tensor<f32>) {
+  %0 = "mhlo.if"(%arg0, %arg1, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>):
+    br ^bb1(%arg2 : tensor<f32>)
+  ^bb1(%arg3: tensor<f32>):
+    // expected-error@+1 {{expects single block region ancestor(s)}}
+    "tf.XlaSendToHost"(%arg3) {key = "send_key0"} : (tensor<f32>) -> ()
+    "mhlo.return"(%arg3) : (tensor<f32>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<f32>):
+    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
 // Tests function with more than one block that is to be rewritten emits an
 // error instead.
 
