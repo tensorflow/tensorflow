@@ -882,7 +882,7 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
-# The interface library (tensorflow_framework.dll.if.lib) for linking tensorflow DLL 
+# The interface library (tensorflow_framework.dll.if.lib) for linking tensorflow DLL
 # library (tensorflow_framework.dll) on Windows.
 # To learn more about import library (called interface library in Bazel):
 #     https://docs.microsoft.com/en-us/cpp/build/linking-an-executable-to-a-dll?view=vs-2017#linking-implicitly
@@ -893,7 +893,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Rename the import library for tensorflow_framework.dll from 
+# Rename the import library for tensorflow_framework.dll from
 # tensorflow_framework.dll.if.lib to tensorflow_framework.lib
 genrule(
     name = "tensorflow_framework_dll_import_lib",
