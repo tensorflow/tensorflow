@@ -79,7 +79,7 @@ tf_gen_op_libs(
         "//tensorflow/c:ops",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:lib",
-    ]
+    ],
 )
 
 tf_cc_test(
