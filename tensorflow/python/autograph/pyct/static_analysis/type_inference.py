@@ -236,14 +236,16 @@ class StmtInferrer(gast.NodeVisitor):
 
     if isinstance(node.ctx, gast.Load):
       types = self.types_in.types.get(name, None)
-      if (types is None) and (name not in self.scope.bound):
-        if name in self.closure_types:
-          types = self.closure_types[name]
-        else:
-          types, value = self.resolver.res_name(
-              self.namespace, self.types_in.types, name)
-          if value is not None:
-            anno.setanno(node, anno.Static.VALUE, value)
+      if types is None:
+        if (name not in self.scope.bound) or (name in self.scope.nonlocals):
+          # TODO(mdan): Test with global variables.
+          if name in self.closure_types:
+            types = self.closure_types[name]
+          else:
+            types, value = self.resolver.res_name(
+                self.namespace, self.types_in.types, name)
+            if value is not None:
+              anno.setanno(node, anno.Static.VALUE, value)
 
     elif isinstance(node.ctx, gast.Param):
       type_name = anno.getanno(node.annotation, anno.Basic.QN, None)
