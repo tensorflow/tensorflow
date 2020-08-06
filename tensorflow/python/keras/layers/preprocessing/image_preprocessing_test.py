@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as tf_test_util
@@ -698,11 +699,13 @@ class RandomTransformTest(keras_parameterized.TestCase):
                                       transform_matrix,
                                       expected_output,
                                       mode,
+                                      fill_value=0.0,
                                       interpolation='bilinear'):
     inp = np.arange(15).reshape((1, 5, 3, 1)).astype(np.float32)
     with self.cached_session(use_gpu=True):
       output = image_preprocessing.transform(
-          inp, transform_matrix, fill_mode=mode, interpolation=interpolation)
+          inp, transform_matrix, fill_mode=mode,
+          fill_value=fill_value, interpolation=interpolation)
     self.assertAllClose(expected_output, output)
 
   def test_random_translation_reflect(self):
@@ -871,7 +874,7 @@ class RandomTransformTest(keras_parameterized.TestCase):
     self._run_random_transform_with_mock(transform_matrix, expected_output,
                                          'nearest')
 
-  def test_random_translation_constant(self):
+  def test_random_translation_constant_0(self):
     # constant output is (0000|abcd|0000)
 
     # Test down shift by 1.
@@ -925,6 +928,62 @@ class RandomTransformTest(keras_parameterized.TestCase):
     transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
     self._run_random_transform_with_mock(transform_matrix, expected_output,
                                          'constant')
+
+  def test_random_translation_constant_1(self):
+    with compat.forward_compatibility_horizon(2020, 8, 6):
+      # constant output is (1111|abcd|1111)
+
+      # Test down shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[1., 1., 1.],
+           [0., 1., 2.],
+           [3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'constant', fill_value=1.0)
+
+      # Test up shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11.],
+           [12., 13., 14.],
+           [1., 1., 1.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'constant', fill_value=1.0)
+
+      # Test left shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[1., 2., 1.],
+           [4., 5., 1.],
+           [7., 8., 1.],
+           [10., 11., 1.],
+           [13., 14., 1.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'constant', fill_value=1.0)
+
+      # Test right shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[1., 0., 1.],
+           [1., 3., 4],
+           [1., 6., 7.],
+           [1., 9., 10.],
+           [1., 12., 13.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'constant', fill_value=1.0)
 
   def test_random_translation_nearest_interpolation(self):
     # nearest output is (aaaa|abcd|dddd)
