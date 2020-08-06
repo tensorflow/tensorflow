@@ -176,7 +176,6 @@ class PreprocessingStageTest(
 
     l2 = PLSplit()
     z, y = l2(y)
-
     stage = preprocessing_stage.FunctionalPreprocessingStage(
         {'x2': x2, 'x0': x0, 'x1': x1}, [y, z]
     )
@@ -240,6 +239,36 @@ class PreprocessingStageTest(
     # Test error with bad data
     with self.assertRaisesRegex(ValueError, 'requires a '):
       stage.adapt(None)
+
+  def test_adapt_preprocessing_stage_with_dict_output(self):
+    x = Input(shape=(3,), name='x')
+
+    l0 = PLSplit()
+    y0, y1 = l0(x)
+
+    l1 = PLSplit()
+    z0, z1 = l1(y0)
+    stage = preprocessing_stage.FunctionalPreprocessingStage(
+        {'x': x}, {'y1': y1, 'z1': z1, 'y0': y0, 'z0': z0}
+    )
+    stage.compile()
+
+    # Test with NumPy array
+    one_array = np.ones((4, 3), dtype='float32')
+    adapt_data = {'x': one_array}
+    stage.adapt(adapt_data)
+    self.assertEqual(l0.adapt_count, 1)
+    self.assertEqual(l1.adapt_count, 1)
+    self.assertLessEqual(l0.adapt_time, l1.adapt_time)
+
+    # Check call
+    outputs = stage({'x': array_ops.constant(one_array)})
+    self.assertEqual(set(outputs.keys()), {'y0', 'y1', 'z0', 'z1'})
+    self.assertAllClose(outputs['y0'], np.ones((4, 3), dtype='float32') + 1.)
+    self.assertAllClose(outputs['y1'], np.ones((4, 3), dtype='float32') - 1.)
+    self.assertAllClose(outputs['z0'], np.ones((4, 3), dtype='float32') + 2.)
+    self.assertAllClose(outputs['z1'], np.ones((4, 3), dtype='float32'))
+
 
   def test_preprocessing_stage_with_nested_input(self):
     # Test with NumPy array
