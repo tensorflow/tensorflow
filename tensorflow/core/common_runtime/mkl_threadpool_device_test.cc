@@ -37,15 +37,6 @@ TEST(MKLThreadPoolDeviceTest, TestOmpDefaults) {
   EXPECT_EQ(omp_get_max_threads(), (port::NumSchedulableCPUs() + ht - 1) / ht);
 }
 
-TEST(MKLThreadPoolDeviceTest, TestOmpPreSets) {
-  SessionOptions options;
-  setenv("OMP_NUM_THREADS", "314", 1);
-
-  ThreadPoolDevice* tp = new ThreadPoolDevice(
-      options, "/device:CPU:0", Bytes(256), DeviceLocality(), cpu_allocator());
-
-  EXPECT_EQ(omp_get_max_threads(), 314);
-}
 #endif  // defined(_OPENMP) && !defined(ENABLE_MKLDNN_THREADPOOL)
 
 }  // namespace tensorflow
