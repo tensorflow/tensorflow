@@ -299,6 +299,9 @@ class TensorShape : public TensorShapeBase<TensorShape> {
  public:
   using TensorShapeBase<TensorShape>::TensorShapeBase;
 
+  TF_EXPORT TensorShape(): TensorShapeBase<TensorShape>() {};
+  TF_EXPORT TensorShape(const TensorShapeProto& proto): TensorShapeBase<TensorShape>(proto) {};
+
   /// Allow a TensorShape to be used as a PartialTensorShape without copying
   operator const PartialTensorShape&() const;  // NOLINT(runtime/explicit)
 
