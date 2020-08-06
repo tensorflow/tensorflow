@@ -1,7 +1,7 @@
-# Benchmarks for keras model exmaples
+# Benchmarks for keras model examples
 
-- [Benchmarks for keras model exmaples](#benchmarks-for-keras-model-exmaples)
-  - [Keras Benchmarks](#keras-benchmarks)
+- [Benchmarks for keras model examples](#benchmarks-for-keras-model-examples)
+  - [Keras benchmarks](#keras-benchmarks)
     - [Available models](#available-models)
       - [Computer Vision examples](#computer-vision-examples)
       - [Text & Sequence examples](#text--sequence-examples)
@@ -15,18 +15,18 @@
       - [MLP benchmark](#mlp-benchmark)
       - [Antirectifier benchmark](#antirectifier-benchmark)
       - [IRNN benchmark](#irnn-benchmark)
-  - [Installing Bazel](#installing-bazel)
-  - [How to run benchmarks](#how-to-run-benchmarks)
-  - [How to add new benchmark tests that use `fit`](#how-to-add-new-benchmark-tests-that-use-fit)
+  - [Install Bazel](#install-bazel)
+  - [Run benchmarks](#run-benchmarks)
+  - [Add new benchmarks](#add-new-benchmarks)
   - [Troubleshooting](#troubleshooting)
   
-## Keras Benchmarks
+## Keras benchmarks
 
-These are benchmark tests running on keras models: models from [keras/examples](https://github.com/keras-team/keras/tree/master/examples). Benchmarks in the current folder (`tensorflow/python/keras/benchmarks/keras_examples_benchmarks`) use Keras [built-in dataset](https://keras.io/api/datasets/) or synthetic data. In addition, these benchmarks support different distribution strategies and measure the performance with distributed training.
+These are benchmark tests running on keras models: models from [keras/examples](https://github.com/keras-team/keras/tree/master/examples). Benchmarks in the current folder (`tensorflow/python/keras/benchmarks/keras_examples_benchmarks`) use Keras [built-in dataset](https://keras.io/api/datasets/) or synthetic data. In addition, these benchmarks support different [distribution strategies](https://www.tensorflow.org/guide/distributed_training) on multiple GPUs.
 
 ### Available models
 
-These examples are implemented by functional API and Sequential API.
+These examples are implemented by Functional API and Sequential API.
 
 #### Computer Vision examples
 
@@ -36,25 +36,34 @@ These examples are implemented by functional API and Sequential API.
 
 #### Text & Sequence examples
 
-[Bidirectional_lstm_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py): 2-layer bidirectional LSTM on IMDB movie review dataset.
-[text_classification_transformer_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/text_classification_transformer_benchmark_test.py): Text classification with custom transformer block.
-[reuters_mlp_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/reuters_mlp_benchmark_test.py): Simple MLP on Reuters newswire topic classification dataset.
+- [Bidirectional_lstm_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py): 2-layer bidirectional LSTM on IMDB movie review dataset.
+- [text_classification_transformer_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/text_classification_transformer_benchmark_test.py): Text classification with custom transformer block.
+- [reuters_mlp_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/reuters_mlp_benchmark_test.py): Simple MLP on Reuters newswire topic classification dataset.
 
 #### Other examples
 
-[antirectifier_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/antirectifier_benchmark_test.py): Simple custom layer example.
-[mnist_irnn_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/mnist_irnn_benchmark_test.py): Reproduction of the IRNN experiment with pixel-by-pixel sequential MNIST in ["A Simple Way to Initialize Recurrent Networks of Rectified Linear Units"](https://arxiv.org/abs/1504.00941) by Le et al.
+- [antirectifier_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/antirectifier_benchmark_test.py): Simple custom layer example.
+- [mnist_irnn_benchmark_test.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/mnist_irnn_benchmark_test.py):Reproduction of the IRNN experiment with pixel-by-pixel sequential MNIST in ["A Simple Way to Initialize Recurrent Networks of Rectified Linear Units"](https://arxiv.org/abs/1504.00941) by Le et al.
 
 ### Available benchmark results
 
-We run benchmarks on Google Cloud Platform (GCP) and here is current environment for running benchmarks tests: </br>
-GPU: 2 x Tesla V100 (only for GPU test) </br>
-OS: Ubuntu 18.04 </br>
-CPU: 8 x vCPUs, 30 GB memory </br>
-CUDA: 10.1 </br>
-Bazel: 3.1.0 </br>
+The listed benchmark results are obtained by running on Google Cloud Platform (GCP) with the following setup: </br>
 
-If you want to run benchmark tests on GPU, please make sure you already installed CUDA and other dependencies and you can follow the instructions from the [official tutorial](https://www.tensorflow.org/install/gpu) for GPU support.
+- GPU: 2 x Tesla V100 (only for GPU test) </br>
+- OS: Ubuntu 18.04 </br>
+- CPU: 8 x vCPUs, 30 GB memory </br>
+- CUDA: 10.1 </br>
+- Bazel: 3.1.0 </br>
+
+If you want to run benchmark tests on GPU, please make sure you already installed CUDA and other dependencies by following the instructions from the [official tutorial](https://www.tensorflow.org/install/gpu) for GPU support.</br>
+
+Metrics for following benchmarks:</br>
+
+- Batch_size: Number of samples per batch of computation.</br>
+- Wall_time: Total time to run benchmark test in seconds.</br>
+- Avg_epoch_time: Average time for each epoch.</br>
+- Exp_per_sec: The number of examples that model processed for each second. </br>
+- Distribution_Strategy: [Distribution strategies](https://www.tensorflow.org/guide/distributed_training). </br>
 
 #### Cifar10 CNN benchmark
 
@@ -112,13 +121,13 @@ If you want to run benchmark tests on GPU, please make sure you already installe
 |  CPU  |    1024    |  213.00   |     69.01      |   868.08    |         `off`         |
 | GPU:2 |    1024    |   92.71   |     29.12      |   2042.94   |      `mirrored`       |
 
-**Note**: For the smaller models, running models with GPU may be slower than running models with CPU as training small models is not computation dominant and there might be some overhead on model replication and data sharding with distributed training on GPUs.
+**Note**: For the small models, running on GPU might be even slower than CPU. The potential reason is, training small models is not computation dominant, and there might be some overhead on model replication and data sharding with distributed training on GPUs.
 
-## Installing Bazel
+## Install Bazel
 
 This step can be skipped if Bazel is already installed. </br>
 
-We need to use [Bazel](https://bazel.build/) to build targets based on BUILD files. It will take a while for the first time because it will compile all dependencies from your BUILD file. For the next time, Bazel will use the cache and it’ll be much faster. Since we use Ubuntu OS, we can install bazel by using apt repository.
+[Bazel](https://bazel.build/) is used to build targets based on BUILD files. It will take a while for the first time because it will compile all dependencies from your BUILD file. For the next time, Bazel will use the cache and it’ll be much faster. For Ubuntu OS, please use the following steps for Bazel installation. For other platforms, you may follow the corresponding guide for the installation.
 
 1. Add bazel as package source
 
@@ -142,12 +151,12 @@ We need to use [Bazel](https://bazel.build/) to build targets based on BUILD fil
    sudo apt update && sudo apt install bazel-`version`
    ```
 
-## How to run benchmarks
+## Run benchmarks
 
 To run benchmarks in [keras/benchmarks](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/keras/benchmarks), please take the following steps:
 
 1. Pull the latest tensorflow repo from github.
-2. Install the Bazel tool which works with tensorflow, please take a look for the Tool installation section.
+2. Install the Bazel tool which works with tensorflow, please take a look for the [Install bazel](#install-bazel) section.
 3. To run benchmarks with Bazel, use the `--benchmarks=.` flags to specify the benchmarks to run.
     - To run all benchmarks on CPU
 
@@ -158,26 +167,26 @@ To run benchmarks in [keras/benchmarks](https://github.com/tensorflow/tensorflow
     - To run all benchmarks on GPU
 
      ```shell
-     bazel run run --config=cuda -c opt --copt="-mavx" benchmarks_test -- \ --benchmarks=.
+     bazel run run --config=cuda -c opt --copt="-mavx" benchmarks_test -- --benchmarks=.
      ```
 
     - To run a subset of benchmarks using `--benchmarks` flag, `--benchmarks`: the list of benchmarks to run. The specified value is interpreted as a regular expression and any benchmarks whose name contains a partial match to the regular expression is executed. e.g. `--benchmarks=".*lstm*."`, will run all lstm layer related benchmarks.
 
-## How to add new benchmark tests that use `fit`
+## Add new benchmarks
 
-To add a new benchmark, please follow the steps:
+To add a new benchmark, please take the following steps:
 
 1. Create your own benchmark test file, `xxxx_benchmark_test.py`.
-2. Import `benchmark_util` to measure and track performance.
+2. Import `benchmark_util` to measure and track performance if needed.
 3. Create class which inherits from `tf.test.Benchmark`
 4. Define and load dataset in `__init__` method.
 5. Design and create a model in `_build_model` method.
-6. Define the `benchmark_xxx` method and it will pass essential parameters, which includes `batch_size`, `run_iters`, `train_data` and etc. You can check examples from [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks).
-7. In addition, you need to add a benchmark target in the [BUILD](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/BUILD) file and write the target name and dependencies. You can take current BUILD as a reference.
+6. Define the `benchmark_xxx` method and it will pass benchmark related hyper parameters, which includes `batch_size`, `run_iters`, `train_data` and etc. You can check examples from [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks).
+7. Add the benchmark target to the [BUILD](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/BUILD) file.
 
 ## Troubleshooting
 
 1. tensorflow.python.framework.errors_impl.InternalError: CUDA runtime implicit initialization on GPU:0 failed. Status: device kernel image is invalid
   
-   - Make sure CUDA was installed on your machine.
-   - Pull the latest tensorflow repo and run the `./configure` in the root folder of tensorflow, it will help you to create the configuration file which shows your local environment. Please check [this post](https://www.tensorflow.org/install/source#configure_the_build) to know the details.
+   - Make sure CUDA is installed on your machine.
+   - Pull the latest tensorflow repo and run the `./configure` in the root folder of tensorflow. It will help you to create the configuration file which shows your local environment. Please check [this post](https://www.tensorflow.org/install/source#configure_the_build) for more details.
