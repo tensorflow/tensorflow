@@ -51,6 +51,7 @@ bool IsBroadcastTo(const NodeDef& node);
 bool IsCast(const NodeDef& node);
 bool IsCheckNumerics(const NodeDef& node);
 bool IsCollective(const NodeDef& node);
+bool IsComparison(const NodeDef& node);
 bool IsComplex(const NodeDef& node);
 bool IsComplexAbs(const NodeDef& node);
 bool IsConcat(const NodeDef& node);

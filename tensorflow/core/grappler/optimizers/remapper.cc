@@ -92,6 +92,15 @@ struct FusedBatchNorm {
   int fused_batch_norm = kMissingIndex;
 };
 
+// Comparison op followed by a cast, e.g., GreaterEqual + Cast.
+struct ComparisonWithCast {
+  ComparisonWithCast() = default;
+
+  int comparison = kMissingIndex;
+  int cast = kMissingIndex;
+  string fused_op = "_";
+};
+
 // FusedBatchNorm[$is_training] with fused side input and/or activation.
 struct FusedBatchNormEx {
   FusedBatchNormEx() = default;
@@ -919,6 +928,43 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
   return false;
 }
 
+bool FindComparisonWithCast(const RemapperContext& ctx, int node_index,
+                            ComparisonWithCast* matched) {
+  const auto* node_view = ctx.graph_view.GetNode(node_index);
+  const auto* node_def = node_view->node();
+
+  if (!IsCast(*node_def) || HasControlFaninOrFanout(*node_view)) return false;
+  if (!NodeIsOnCpu(node_def)) return false;
+
+  if (node_view->NumRegularFanins() != 1) return false;
+  const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
+  const auto* comparison = regular_fanin_0.node_view();
+  const auto* comparison_node_def = comparison->node();
+  if (!IsComparison(*comparison_node_def) ||
+      HasControlFaninOrFanout(*comparison))
+    return false;
+  if (!NodeIsOnCpu(comparison_node_def)) return false;
+
+  DataType comparator_dtype = GetDataTypeFromAttr(*comparison_node_def, "T");
+  DataType src_dtype = GetDataTypeFromAttr(*node_def, "SrcT");
+  DataType dst_dtype = GetDataTypeFromAttr(*node_def, "DstT");
+
+  if ((comparator_dtype != DT_FLOAT) && (comparator_dtype != DT_BFLOAT16))
+    return false;
+  if ((comparator_dtype != dst_dtype) || (src_dtype != DT_BOOL)) return false;
+
+  // Check that only one node consumes the 0-th output of a comparison.
+  if (!HasAtMostOneDataFanoutAtPort0(*comparison) ||
+      IsInPreserveSet(ctx, comparison_node_def))
+    return false;
+
+  matched->cast = node_index;
+  matched->comparison = regular_fanin_0.node_index();
+  matched->fused_op =
+      matched->fused_op + comparison_node_def->op() + "WithCast";
+  return true;
+}
+
 void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d) {
   DCHECK(IsConv2D(conv2d)) << "Input node must be a Conv2D";
 
@@ -1366,6 +1412,40 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
   if (matched.side_input != kMissingIndex) {
     (*nodes_to_delete)[matched.invalidated] = true;
   }
+
+  return Status::OK();
+}
+
+Status AddComparisonWithCastNode(RemapperContext* ctx,
+                                 const ComparisonWithCast& matched,
+                                 std::vector<bool>* invalidated_nodes,
+                                 std::vector<bool>* nodes_to_delete) {
+  const GraphDef* graph = ctx->graph_view.graph();
+  const NodeDef& comparison = graph->node(matched.comparison);
+  const NodeDef& cast = graph->node(matched.cast);
+
+  VLOG(2) << "Fuse " << cast.op() << " with comparison:"
+          << " cast=" << cast.name() << " invalidated="
+          << " comparison=" << comparison.name();
+
+  // Replace Comparison and Cast with ComparisonWithCast.
+  NodeDef fused_op;
+  fused_op.set_op(matched.fused_op);
+  fused_op.set_name(cast.name());
+  fused_op.set_device(comparison.device());
+
+  fused_op.add_input(comparison.input(0));
+  fused_op.add_input(comparison.input(1));
+  (*fused_op.mutable_attr())["T"] = comparison.attr().at("T");
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*nodes_to_delete)[matched.comparison] = true;
+  (*invalidated_nodes)[matched.cast] = true;
 
   return Status::OK();
 }
@@ -1832,6 +1912,15 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     FusedBatchNorm fused_batch_norm;
     if (FindFusedBatchNorm(ctx, i, &fused_batch_norm)) {
       TF_RETURN_IF_ERROR(AddBatchNormNodes(&ctx, fused_batch_norm));
+      continue;
+    }
+
+    // Remap Comparison+Cast into the ComparisonWithCast.
+    ComparisonWithCast comparison_with_cast;
+    if (allow_non_differentiable_rewrites &&
+        FindComparisonWithCast(ctx, i, &comparison_with_cast)) {
+      TF_RETURN_IF_ERROR(AddComparisonWithCastNode(
+          &ctx, comparison_with_cast, &invalidated_nodes, &nodes_to_delete));
       continue;
     }
   }

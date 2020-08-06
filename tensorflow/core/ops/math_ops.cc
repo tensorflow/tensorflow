@@ -701,6 +701,23 @@ REGISTER_OP("GreaterEqual").COMPARISON();
 
 #undef COMPARISON
 
+#define COMPARISON_WITH_CAST()      \
+  Input("x: T")                     \
+      .Input("y: T")                \
+      .Output("z: T")               \
+      .Attr("T: {float, bfloat16}") \
+      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+
+REGISTER_OP("_LessWithCast").COMPARISON_WITH_CAST();
+
+REGISTER_OP("_LessEqualWithCast").COMPARISON_WITH_CAST();
+
+REGISTER_OP("_GreaterWithCast").COMPARISON_WITH_CAST();
+
+REGISTER_OP("_GreaterEqualWithCast").COMPARISON_WITH_CAST();
+
+#undef COMPARISON_WITH_CAST
+
 // --------------------------------------------------------------------------
 
 #define EQUALITY_COMPARISON()                                              \
@@ -731,6 +748,32 @@ REGISTER_OP("Equal").EQUALITY_COMPARISON();
 REGISTER_OP("NotEqual").EQUALITY_COMPARISON();
 
 #undef EQUALITY_COMPARISON
+
+#define EQUALITY_COMPARISON_WITH_CAST()                            \
+  Input("x: T")                                                    \
+      .Input("y: T")                                               \
+      .Output("z: T")                                              \
+      .SetIsCommutative()                                          \
+      .Attr("T: {bfloat16, float}")                                \
+      .Attr("incompatible_shape_error: bool = true")               \
+      .SetShapeFn([](InferenceContext* c) {                        \
+        ShapeHandle x = c->input(0);                               \
+        ShapeHandle y = c->input(1);                               \
+        ShapeHandle output;                                        \
+        bool incompatible_shape_error;                             \
+        TF_RETURN_IF_ERROR(c->GetAttr("incompatible_shape_error",  \
+                                      &incompatible_shape_error)); \
+        TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(   \
+            c, x, y, incompatible_shape_error, &output));          \
+        c->set_output(0, output);                                  \
+        return Status::OK();                                       \
+      })
+
+REGISTER_OP("_EqualWithCast").EQUALITY_COMPARISON_WITH_CAST();
+
+REGISTER_OP("_NotEqualWithCast").EQUALITY_COMPARISON_WITH_CAST();
+
+#undef EQUALITY_COMPARISON_WITH_CAST
 
 REGISTER_OP("ApproximateEqual")
     .Input("x: T")

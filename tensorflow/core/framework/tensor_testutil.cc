@@ -216,6 +216,8 @@ void ExpectClose(const Tensor& x, const Tensor& y, double atol, double rtol) {
   switch (x.dtype()) {
     case DT_HALF:
       return ExpectClose<Eigen::half>(x, y, atol, rtol);
+    case DT_BFLOAT16:
+      return ExpectClose<Eigen::bfloat16>(x, y, atol, rtol);
     case DT_FLOAT:
       return ExpectClose<float>(x, y, atol, rtol);
     case DT_DOUBLE:
