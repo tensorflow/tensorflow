@@ -388,6 +388,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
         "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -454,6 +456,7 @@ cc_library(
         ":compiled_program_cache_cc_fbs",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",

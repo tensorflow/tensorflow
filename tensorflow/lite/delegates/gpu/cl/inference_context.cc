@@ -21,9 +21,10 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
@@ -49,7 +50,7 @@ namespace gpu {
 namespace cl {
 
 namespace {
-bool IsReady(const std::unordered_set<ValueId>& ready_tensors,
+bool IsReady(const absl::flat_hash_set<ValueId>& ready_tensors,
              const CLNode& node) {
   for (const ValueId in_id : node.inputs) {
     if (ready_tensors.find(in_id) == ready_tensors.end()) {
@@ -325,7 +326,7 @@ absl::Status InferenceContext::ConvertOperations(
                                            inputs, outputs, node,
                                            &gpu_subgraph));
     }
-    std::unordered_map<int, ValueId> mapping_to_global_ids;
+    absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
       auto global_id = tensor_reserver_.Add({t.first, t.second});
@@ -364,7 +365,7 @@ absl::Status InferenceContext::ConvertOperations(
 }
 
 void InferenceContext::Merge() {
-  std::unordered_set<ValueId> ready_tensors;
+  absl::flat_hash_set<ValueId> ready_tensors;
   for (const auto& input_id : input_ids_) {
     ready_tensors.insert(input_id);
   }
