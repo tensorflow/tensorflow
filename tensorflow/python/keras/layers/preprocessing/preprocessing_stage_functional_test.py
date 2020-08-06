@@ -166,7 +166,7 @@ class PreprocessingStageTest(
     x2 = Input(shape=(3,), name='x2')
 
     # dimension will mismatch if x1 incorrectly placed.
-    x1_sum = core.Lambda(lambda x: math_ops.reduce_sum(x))(x1)
+    x1_sum = core.Lambda(math_ops.reduce_sum)(x1)
 
     l0 = PLMerge()
     y = l0([x0, x1_sum])
