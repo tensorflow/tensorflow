@@ -3783,6 +3783,7 @@ Status ConvertActivation(OpConverterParams* params) {
       params->converter->network()->addActivation(*inputs.at(0).tensor(),
                                                   op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   // Set parameters.
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   if (node_def.op() == "Elu") {
@@ -3883,9 +3884,10 @@ Status ConvertRelu6(OpConverterParams* params) {
   nvinfer1::IActivationLayer* layer =
       params->converter->network()->addActivation(
           *inputs.at(0).tensor(), nvinfer1::ActivationType::kCLIP);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   layer->setAlpha(0.0f);
   layer->setBeta(6.0f);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -4441,6 +4443,7 @@ Status ConvertUnary(OpConverterParams* params) {
   nvinfer1::IUnaryLayer* layer =
       params->converter->network()->addUnary(*tensor, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   // Set quantization ranges.
@@ -5089,6 +5092,7 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
       combined_scale_weights.GetTrtWeights(),
       dummy_power_weights.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
