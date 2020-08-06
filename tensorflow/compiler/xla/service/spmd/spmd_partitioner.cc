@@ -296,6 +296,22 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
     return PartitionedHlo(copy, base_shape_, state_);
   }
 
+  // 'Replicated' to partial replicated.
+  if (target.ReplicateOnLastTileDim()) {
+    std::vector<int64> group_dims(target.tile_assignment().num_dimensions() -
+                                  1);
+    std::iota(group_dims.begin(), group_dims.end(), 0);
+    auto target_grouped = GroupShardingOnDims(target, group_dims);
+    auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+        state_, target_grouped.device_groups, state_.b);
+    auto partially_sharded = PerGroupSliceFromReplicated(
+        hlo_, state_.partition_id, target_grouped.device_groups, group_dims,
+        target_grouped.group_dim_sizes, state_.b);
+    partially_sharded->set_sharding(target);
+    return PartitionedHlo(partially_sharded, base_shape(),
+                          per_group_partitioner_state);
+  }
+
   // 'Replicated' to 'Tiled'.
   auto padded_hlo =
       PadBaseShapeBeforeUnevenTiledSharding(hlo_, target, state_.b);
