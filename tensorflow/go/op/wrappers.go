@@ -3660,6 +3660,43 @@ func TensorForestTreeIsInitializedOp(scope *Scope, tree_handle tf.Output) (is_in
 	return op.Output(0)
 }
 
+// TensorForestTreeResourceHandleOpAttr is an optional argument to TensorForestTreeResourceHandleOp.
+type TensorForestTreeResourceHandleOpAttr func(optionalAttr)
+
+// TensorForestTreeResourceHandleOpContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func TensorForestTreeResourceHandleOpContainer(value string) TensorForestTreeResourceHandleOpAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// TensorForestTreeResourceHandleOpSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func TensorForestTreeResourceHandleOpSharedName(value string) TensorForestTreeResourceHandleOpAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Creates a handle to a TensorForestTreeResource
+func TensorForestTreeResourceHandleOp(scope *Scope, optional ...TensorForestTreeResourceHandleOpAttr) (resource tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorForestTreeResourceHandleOp",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // AllCandidateSamplerAttr is an optional argument to AllCandidateSampler.
 type AllCandidateSamplerAttr func(optionalAttr)
 
@@ -13327,24 +13364,6 @@ func ResizeArea(scope *Scope, images tf.Output, size tf.Output, optional ...Resi
 			images, size,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the number of work units this Reader has finished processing.
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units_completed tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderNumWorkUnitsCompletedV2",
-		Input: []tf.Input{
-			reader_handle,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -39066,6 +39085,24 @@ func ResourceApplyAddSign(scope *Scope, var_ tf.Output, m tf.Output, lr tf.Outpu
 	return scope.AddOperation(opspec)
 }
 
+// Returns the number of work units this Reader has finished processing.
+//
+// Arguments:
+//	reader_handle: Handle to a Reader.
+func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units_completed tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReaderNumWorkUnitsCompletedV2",
+		Input: []tf.Input{
+			reader_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // FractionalMaxPoolAttr is an optional argument to FractionalMaxPool.
 type FractionalMaxPoolAttr func(optionalAttr)
 
@@ -49696,43 +49733,6 @@ func LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug(scope *Scope, param
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// TensorForestTreeResourceHandleOpAttr is an optional argument to TensorForestTreeResourceHandleOp.
-type TensorForestTreeResourceHandleOpAttr func(optionalAttr)
-
-// TensorForestTreeResourceHandleOpContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func TensorForestTreeResourceHandleOpContainer(value string) TensorForestTreeResourceHandleOpAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// TensorForestTreeResourceHandleOpSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func TensorForestTreeResourceHandleOpSharedName(value string) TensorForestTreeResourceHandleOpAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Creates a handle to a TensorForestTreeResource
-func TensorForestTreeResourceHandleOp(scope *Scope, optional ...TensorForestTreeResourceHandleOpAttr) (resource tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeResourceHandleOp",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // FusedResizeAndPadConv2DAttr is an optional argument to FusedResizeAndPadConv2D.
