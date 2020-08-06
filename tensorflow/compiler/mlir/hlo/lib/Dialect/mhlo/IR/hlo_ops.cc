@@ -506,6 +506,46 @@ static LogicalResult Verify(TupleOp op) {
   return success();
 }
 
+namespace {
+
+// Pattern for unpacking and repacking the same tuple.
+struct UnpackRepackSameTuple : public OpRewritePattern<TupleOp> {
+  using OpRewritePattern<TupleOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TupleOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.val().empty()) return failure();
+
+    Value first_element = op.val().front();
+    auto first_element_op =
+        dyn_cast_or_null<GetTupleElementOp>(first_element.getDefiningOp());
+    if (!first_element_op || first_element_op.indexAttr().getInt() != 0)
+      return failure();
+
+    Value tuple_predecessor = first_element_op.getOperand();
+    if (tuple_predecessor.getType() != op.getType()) return failure();
+
+    for (auto element_and_idx : llvm::enumerate(op.val().drop_front(1))) {
+      auto element_op = dyn_cast_or_null<GetTupleElementOp>(
+          element_and_idx.value().getDefiningOp());
+      if (!element_op ||
+          element_op.indexAttr().getInt() != element_and_idx.index() + 1 ||
+          element_op.getOperand() != tuple_predecessor)
+        return failure();
+    }
+
+    rewriter.replaceOp(op, tuple_predecessor);
+    return success();
+  }
+};
+
+}  // namespace
+
+void TupleOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                          MLIRContext* context) {
+  results.insert<UnpackRepackSameTuple>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // AllToAllOp
 //===----------------------------------------------------------------------===//
