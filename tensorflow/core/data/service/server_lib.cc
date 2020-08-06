@@ -29,7 +29,7 @@ constexpr char kPortPlaceholder[] = "%port%";
 }
 
 GrpcDataServerBase::GrpcDataServerBase(int port, const std::string& protocol)
-    : requested_port_(port), protocol_(protocol) {}
+    : requested_port_(port), protocol_(protocol), bound_port_(port) {}
 
 Status GrpcDataServerBase::Start() {
   if (stopped_) {

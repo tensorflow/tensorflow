@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
 import time
 
 from absl.testing import parameterized
@@ -225,6 +226,40 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = _make_distributed_dataset(ds, service)
     results = [elem.numpy() for elem in ds]
     self.assertCountEqual(num_workers * list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStartServersLate(self):
+    # Test that the data service client performs retries instead of failing when
+    # the dataset is created before the master and worker are started.
+    try:
+      import portpicker  # pylint: disable=g-import-not-at-top
+      dispatcher_port = portpicker.pick_unused_port()
+    except:
+      raise self.skipTest("Flakes in portpicker library do not represent "
+                          "TensorFlow errors.")
+    dispatcher = server_lib.DispatchServer(
+        port=dispatcher_port, protocol=PROTOCOL, start=False)
+    worker = server_lib.WorkerServer(
+        port=0,
+        dispatcher_address=dispatcher._address,
+        protocol=PROTOCOL,
+        start=False)
+
+    def start_servers():
+      time.sleep(1)
+      dispatcher.start()
+      worker.start()
+
+    start_servers_thread = threading.Thread(target=start_servers, daemon=True)
+    start_servers_thread.start()
+
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = _make_distributed_dataset(
+        ds, "{}://{}".format(PROTOCOL, dispatcher._address))
+    results = [elem.numpy() for elem in ds]
+    self.assertEqual(list(range(num_elements)), results)
+    start_servers_thread.join()
 
   @combinations.generate(test_base.eager_only_combinations())
   def testAddWorkerMidJob(self):
