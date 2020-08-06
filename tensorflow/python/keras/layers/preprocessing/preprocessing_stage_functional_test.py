@@ -163,16 +163,19 @@ class PreprocessingStageTest(
   def test_adapt_preprocessing_stage_with_dict_input(self):
     x0 = Input(shape=(3,), name='x0')
     x1 = Input(shape=(4,), name='x1')
-    x2 = Input(shape=(3,), name='x2')
+    x2 = Input(shape=(3, 5), name='x2')
 
     # dimension will mismatch if x1 incorrectly placed.
-    x1_sum = core.Lambda(math_ops.reduce_sum)(x1)
+    x1_sum = core.Lambda(lambda x: math_ops.reduce_sum(x,
+                                                       axis=-1,
+                                                       keepdims=True))(x1)
+    x2_sum = core.Lambda(lambda x: math_ops.reduce_sum(x, axis=-1))(x2)
 
     l0 = PLMerge()
     y = l0([x0, x1_sum])
 
     l1 = PLMerge()
-    y = l1([y, x2])
+    y = l1([y, x2_sum])
 
     l2 = PLSplit()
     z, y = l2(y)
@@ -184,7 +187,7 @@ class PreprocessingStageTest(
     # Test with dict of NumPy array
     one_array0 = np.ones((4, 3), dtype='float32')
     one_array1 = np.ones((4, 4), dtype='float32')
-    one_array2 = np.ones((4, 3), dtype='float32')
+    one_array2 = np.ones((4, 3, 5), dtype='float32')
     adapt_data = {'x1': one_array1,
                   'x0': one_array0,
                   'x2': one_array2}
@@ -199,8 +202,8 @@ class PreprocessingStageTest(
     y, z = stage({'x1': array_ops.constant(one_array1),
                   'x2': array_ops.constant(one_array2),
                   'x0': array_ops.constant(one_array0)})
-    self.assertAllClose(y, np.ones((4, 3), dtype='float32') + 16.)
-    self.assertAllClose(z, np.ones((4, 3), dtype='float32') + 18.)
+    self.assertAllClose(y, np.zeros((4, 3), dtype='float32') + 9.)
+    self.assertAllClose(z, np.zeros((4, 3), dtype='float32') + 11.)
 
     # Test with list of NumPy array
     adapt_data = [one_array0, one_array1, one_array2]
