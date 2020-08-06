@@ -2837,7 +2837,6 @@ cc_library(
         ":Support",
         ":Translation",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir/test:TestLLVMTypeTranslation",
     ],
 )
 

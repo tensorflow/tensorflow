@@ -166,19 +166,6 @@ cc_library(
 )
 
 cc_library(
-    name = "TestLLVMTypeTranslation",
-    srcs = [
-        "lib/Target/TestLLVMTypeTranslation.cpp",
-    ],
-    deps = [
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMIRModuleTranslation",
-        "@llvm-project//mlir:Translation",
-    ],
-)
-
-cc_library(
     name = "TestTransforms",
     srcs = glob(["lib/Transforms/*.cpp"]),
     defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
