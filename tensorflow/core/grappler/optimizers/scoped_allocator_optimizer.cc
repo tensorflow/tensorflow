@@ -104,20 +104,20 @@ Status CheckTypesAndGetShapes(const GraphProperties& graph_properties,
             << shapes->size();
     if (!graph_properties.HasOutputProperties(n->name())) {
       LOG(ERROR) << "Node " << n->DebugString() << " lacks output shape.";
-      return errors::Internal("Node ", n->name(), " lacks output shape.");
+      return errors::Aborted("Node ", n->name(), " lacks output shape.");
     }
     const std::vector<OpInfo::TensorProperties>& prop_list =
         graph_properties.GetOutputProperties(n->name());
     if (prop_list.size() != 1) {
-      return errors::Internal("Node ", n->name(),
-                              " does not have exactly one output as expected "
-                              "by ScopedAllocatorOptimizer");
+      return errors::Aborted("Node ", n->name(),
+                             " does not have exactly one output as expected "
+                             "by ScopedAllocatorOptimizer");
     }
     const OpInfo::TensorProperties& props = prop_list[0];
     if (shapes->empty()) {
       *type = props.dtype();
     } else if (*type != props.dtype()) {
-      return errors::Internal("Group ops don't all have same type");
+      return errors::Aborted("Group ops don't all have same type");
     }
     if (*type != dtype) {
       return errors::Internal(
@@ -128,7 +128,7 @@ Status CheckTypesAndGetShapes(const GraphProperties& graph_properties,
       // TensorShape::IsValid may return true if unknown_rank is True, i.e.
       // number of dimensions is unknown.  But for ScopedAllocatorOptimizer we
       // need to know the shape fully.
-      return errors::Internal("Complete shape not known for ", n->name());
+      return errors::Aborted("Complete shape not known for ", n->name());
     }
     VLOG(2) << "Adding shape " << props.shape().DebugString();
     shapes->push_back(TensorShape(props.shape()));
@@ -301,8 +301,8 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
           GetOutputDataType(inode_output_props, output_index, &inode_dtype));
     }
     if (inode_dtype != dtype) {
-      return errors::Internal("ScopedAllocatorOptimizer expected input type ",
-                              dtype, " but found ", inode_dtype);
+      return errors::Aborted("ScopedAllocatorOptimizer expected input type ",
+                             dtype, " but found ", inode_dtype);
     }
     inputs->emplace_back(inode, output_index, n);
   }
@@ -393,7 +393,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
         LOG(INFO) << "Abandoning ScopedAllocatorOptimizer because input "
                   << nd.from_node_def->name() << " output " << scope_ids[0]
                   << " is already assigned to scope_id " << scope_ids[1];
-        return errors::Internal(
+        return errors::Aborted(
             "Abandoning ScopedAllocatorOptimizer because input ",
             nd.from_node_def->name(), " output ", scope_ids[0], " is already ",
             "assigned to scope_id ", scope_ids[1]);
@@ -408,10 +408,10 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     for (const InputDesc& nd : inputs) {
       if (op_set.find(nd.from_node_def->name()) != op_set.end()) {
         if (nd.output_slot != tensorflow::Graph::kControlSlot) {
-          return errors::Internal("Data edge exists between ",
-                                  nd.from_node_def->name(),
-                                  " and another "
-                                  "node in the set");
+          return errors::Aborted("Data edge exists between ",
+                                 nd.from_node_def->name(),
+                                 " and another "
+                                 "node in the set");
         }
       }
     }
@@ -539,7 +539,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     for (int i = 0, end = inputs.size(); i < end; ++i) {
       auto& nd = inputs[i];
       if (IsArg(*nd.from_node_def)) {
-        return errors::Internal(
+        return errors::Aborted(
             "ScopedAllocatorOptimizer does not work well when the op inputs "
             "are _Arg ops; skipping this optimizer for this function");
       }
@@ -619,9 +619,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
           if (op_instance_names.find(old_op_input) != op_instance_names.end()) {
             LOG(ERROR) << "Data edge between " << old_op_input << " and "
                        << old_op->name() << " cannot build ScopedAllocator.";
-            return errors::Internal("Data edge between ", old_op_input, " and ",
-                                    old_op->name(),
-                                    " cannot build ScopedAllocator.");
+            return errors::Aborted("Data edge between ", old_op_input, " and ",
+                                   old_op->name(),
+                                   " cannot build ScopedAllocator.");
           }
           sac_inputs->push_back(
               NodeDefBuilder::NodeOut(old_op_input, 0, dtype));
@@ -952,7 +952,7 @@ int ScopedAllocatorOptimizer::NewScopedAllocatorId(int num_fields) {
 Status ScopedAllocatorOptimizer::NewIdentityId(int* id) {
   *id = next_identity_id_++;
   if (next_identity_id_ < 0) {
-    return errors::Internal("NewIdentityId overflow");
+    return errors::Aborted("NewIdentityId overflow");
   }
   return Status::OK();
 }
