@@ -78,7 +78,7 @@ parser.add_argument(
 parser.add_argument(
     "--bucket",
     type=str,
-    default="gs://tensorflow-testing-bucket",
+    default="gs://tf-sizetracker-artifacts",
     help="GCS bucket for artifacts.")
 parser.add_argument(
     "--team",
