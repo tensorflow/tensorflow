@@ -72,6 +72,11 @@
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
       to register a dataset with the tf.data service, and another process to
       consume data from the dataset.
+    * Added support for tf.data service dispatcher fault tolerance. To enable
+      fault tolerance, configure a `work_dir` when running your dispatcher
+      server and set `dispatcher_fault_tolerance=True`. The dispatcher will
+      store its state to `work_dir`, so that on restart it can continue from its
+      previous state after restart.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
       the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding

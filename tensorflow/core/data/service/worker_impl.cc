@@ -224,15 +224,18 @@ Status DataServiceWorkerImpl::SendTaskUpdate() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
 
 void DataServiceWorkerImpl::HeartbeatThread() {
   while (true) {
-    mutex_lock l(mu_);
-    while (!cancelled_ && pending_completed_tasks_.empty()) {
-      heartbeat_cv_.wait(l);
+    Status s;
+    {
+      mutex_lock l(mu_);
+      while (!cancelled_ && pending_completed_tasks_.empty()) {
+        heartbeat_cv_.wait(l);
+      }
+      if (cancelled_) {
+        VLOG(3) << "Heartbeat thread shutting down";
+        return;
+      }
+      s = SendTaskUpdate();
     }
-    if (cancelled_) {
-      VLOG(3) << "Heartbeat thread shutting down";
-      return;
-    }
-    Status s = SendTaskUpdate();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
       Env::Default()->SleepForMicroseconds(kHeartbeatIntervalMicros);
