@@ -406,16 +406,20 @@ class MultiProcessRunnerTest(test.TestCase):
   def test_auto_restart_and_timeout(self):
 
     def proc_func():
+      logging.info('Running')
       time.sleep(1)
       raise ValueError
 
     mpr = multi_process_runner.MultiProcessRunner(
         proc_func,
         multi_worker_test_base.create_cluster_spec(num_workers=1),
-        auto_restart=True)
+        auto_restart=True,
+        list_stdout=True)
     mpr.start()
-    with self.assertRaises(ValueError):
+    with self.assertRaises(ValueError) as cm:
       mpr.join(timeout=10)
+    self.assertGreater(
+        sum(['Running' in msg for msg in cm.exception.mpr_result.stdout]), 1)
 
   def test_auto_restart_and_chief(self):
     # If the chief has exited with zero exit code, auto restart should stop
