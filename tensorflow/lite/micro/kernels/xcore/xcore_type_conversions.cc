@@ -1,10 +1,13 @@
-#include <iostream>
-
-#include "operators/type_conversions.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_planning.h"
+
+extern "C" {
+#include "lib_nn/api/nn_operator.h"
+}
 
 namespace tflite {
 namespace ops {
@@ -12,20 +15,43 @@ namespace micro {
 namespace xcore {
 namespace type_conversions {
 
+struct RequantizeOpData {
+  ExecutionPlan execution_plan;
+  nn_requantize_16_to_8_job_t* jobs;
+  int stack_scratch_index;
+  size_t stack_size;
+};
+
+struct RequantizeThreadData {
+  int8_t* Y;
+  const int16_t* X;
+  nn_requantize_16_to_8_job_t* job;
+};
+
+extern "C" {
+ATTRIBUTE_THREAD_FUNCTION void requantize_16_to_8_thread_worker(void* context) {
+  RequantizeThreadData* td = (RequantizeThreadData*)context;
+  requantize_16_to_8(td->Y, td->X, td->job);
+}
+}
+
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  // construct operator wrapper
-  void* data = nullptr;
-  context->AllocatePersistentBuffer(
-      context, sizeof(::xcore::type_conversions::Requantize_16_to_8), &data);
-  ::xcore::type_conversions::Requantize_16_to_8* op =
-      new (data)::xcore::type_conversions::Requantize_16_to_8();
+  RequantizeOpData* op = nullptr;
+  context->AllocatePersistentBuffer(context, sizeof(RequantizeOpData),
+                                    reinterpret_cast<void**>(&op));
+  op->jobs = nullptr;
+  op->stack_scratch_index = -1;
+  op->stack_size = 0;
 
   // parse custom options
-  if (buffer)
-    parse_custom_options(context, buffer, length, &op->execution_plan);
+  TFLITE_DCHECK(buffer != nullptr);
+  parse_custom_options(context, buffer, length, &op->execution_plan);
 
-  // initialize operator wrapper
-  op->Init(context);
+  // allocate the jobs
+  context->AllocatePersistentBuffer(
+      context,
+      sizeof(nn_requantize_16_to_8_job_t) * op->execution_plan.GetNumThreads(),
+      reinterpret_cast<void**>(&op->jobs));
 
   return op;
 }
@@ -36,10 +62,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   int32_t length = input->bytes / sizeof(int16_t);
 
-  auto* op = reinterpret_cast<::xcore::type_conversions::Requantize_16_to_8*>(
-      node->user_data);
+  RequantizeOpData* op = reinterpret_cast<RequantizeOpData*>(node->user_data);
 
-  op->Prepare(context, length);
+  // allocate the stack for thread workers
+  GET_STACKSIZE(op->stack_size, requantize_16_to_8_thread_worker);
+  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+      context, op->stack_size * op->execution_plan.GetNumThreads(),
+      &op->stack_scratch_index));
+
+  // initialize the kernel
+  requantize_16_to_8_init(op->jobs, length, op->execution_plan.GetNumThreads());
 
   return kTfLiteOk;
 }
@@ -49,10 +81,27 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   int32_t length = input->bytes / sizeof(int16_t);
 
-  auto* op = reinterpret_cast<::xcore::type_conversions::Requantize_16_to_8*>(
-      node->user_data);
+  RequantizeOpData* op = reinterpret_cast<RequantizeOpData*>(node->user_data);
+  Dispatcher* dispatcher = GetDispatcher();
 
-  op->Eval(context, output->data.int8, input->data.i16);
+  // initialize the dispatcher
+  char* stack = static_cast<char*>(
+      context->GetScratchBuffer(context, op->stack_scratch_index));
+  TFLITE_DCHECK(stack != nullptr);
+  dispatcher->InitializeTasks(requantize_16_to_8_thread_worker, stack,
+                              op->stack_size);
+
+  // create thread data and tasks
+  RequantizeThreadData thread_data[op->execution_plan.GetNumThreads()];
+
+  for (int i_job = 0; i_job < op->execution_plan.GetNumThreads(); i_job++) {
+    thread_data[i_job].Y = output->data.int8;
+    thread_data[i_job].X = input->data.i16;
+    thread_data[i_job].job = &op->jobs[i_job];
+    dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[i_job]));
+  }
+  // start and wait for tasks to complete
+  dispatcher->JoinTasks();
 
   return kTfLiteOk;
 }

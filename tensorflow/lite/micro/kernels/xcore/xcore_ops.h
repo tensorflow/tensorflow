@@ -8,6 +8,28 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
+struct PoolingParams {
+  int32_t pool_h;
+  int32_t pool_w;
+  int32_t stride_h;
+  int32_t stride_w;
+};
+
+struct Conv2DPadding {
+  int8_t top;
+  int8_t left;
+  int8_t zero_point;
+  int8_t unused;
+};
+
+struct Conv2DParams {
+  int32_t K_h;
+  int32_t K_w;
+  int32_t stride_h;
+  int32_t stride_w;
+  Conv2DPadding pad;
+};
+
 TfLiteRegistration* Register_Conv2D_Shallow();
 TfLiteRegistration* Register_Conv2D_Deep();
 TfLiteRegistration* Register_Conv2D_1x1();
