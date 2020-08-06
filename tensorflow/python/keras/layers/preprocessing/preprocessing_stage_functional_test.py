@@ -27,12 +27,14 @@ from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.layers import convolutional
 from tensorflow.python.keras.layers import merge
+from tensorflow.python.keras.layers import core
 
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.layers.preprocessing import normalization
 from tensorflow.python.keras.layers.preprocessing import preprocessing_stage
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 class PL(base_preprocessing_layer.PreprocessingLayer):
@@ -160,11 +162,14 @@ class PreprocessingStageTest(
 
   def test_adapt_preprocessing_stage_with_dict_input(self):
     x0 = Input(shape=(3,), name='x0')
-    x1 = Input(shape=(3,), name='x1')
+    x1 = Input(shape=(4,), name='x1')
     x2 = Input(shape=(3,), name='x2')
 
+    # dimension will mismatch if x1 incorrectly placed.
+    x1_sum = core.Lambda(lambda x: math_ops.reduce_sum(x))(x1)
+
     l0 = PLMerge()
-    y = l0([x0, x1])
+    y = l0([x0, x1_sum])
 
     l1 = PLMerge()
     y = l1([y, x2])
@@ -173,15 +178,17 @@ class PreprocessingStageTest(
     z, y = l2(y)
 
     stage = preprocessing_stage.FunctionalPreprocessingStage(
-        {'x0': x0, 'x1': x1, 'x2': x2}, [y, z]
+        {'x2': x2, 'x0': x0, 'x1': x1}, [y, z]
     )
     stage.compile()
 
     # Test with dict of NumPy array
-    one_array = np.ones((4, 3), dtype='float32')
-    adapt_data = {'x0': one_array,
-                  'x1': one_array,
-                  'x2': one_array}
+    one_array0 = np.ones((4, 3), dtype='float32')
+    one_array1 = np.ones((4, 4), dtype='float32')
+    one_array2 = np.ones((4, 3), dtype='float32')
+    adapt_data = {'x1': one_array1,
+                  'x0': one_array0,
+                  'x2': one_array2}
     stage.adapt(adapt_data)
     self.assertEqual(l0.adapt_count, 1)
     self.assertEqual(l1.adapt_count, 1)
@@ -190,14 +197,14 @@ class PreprocessingStageTest(
     self.assertLessEqual(l1.adapt_time, l2.adapt_time)
 
     # Check call
-    y, z = stage([array_ops.ones((4, 3), dtype='float32'),
-                  array_ops.ones((4, 3), dtype='float32'),
-                  array_ops.ones((4, 3), dtype='float32')])
-    self.assertAllClose(y, np.ones((4, 3), dtype='float32') + 1.)
-    self.assertAllClose(z, np.ones((4, 3), dtype='float32') + 3.)
+    y, z = stage({'x1': array_ops.constant(one_array1),
+                  'x2': array_ops.constant(one_array2),
+                  'x0': array_ops.constant(one_array0)})
+    self.assertAllClose(y, np.ones((4, 3), dtype='float32') + 16.)
+    self.assertAllClose(z, np.ones((4, 3), dtype='float32') + 18.)
 
     # Test with list of NumPy array
-    adapt_data = [one_array, one_array, one_array]
+    adapt_data = [one_array0, one_array1, one_array2]
     stage.adapt(adapt_data)
     self.assertEqual(l0.adapt_count, 2)
     self.assertEqual(l1.adapt_count, 2)
@@ -206,9 +213,9 @@ class PreprocessingStageTest(
     self.assertLessEqual(l1.adapt_time, l2.adapt_time)
 
     # Test with flattened dataset
-    adapt_data = dataset_ops.Dataset.from_tensor_slices((one_array,
-                                                         one_array,
-                                                         one_array))
+    adapt_data = dataset_ops.Dataset.from_tensor_slices((one_array0,
+                                                         one_array1,
+                                                         one_array2))
     adapt_data = adapt_data.batch(2)  # 5 batches of 2 samples
 
     stage.adapt(adapt_data)
@@ -219,9 +226,9 @@ class PreprocessingStageTest(
     self.assertLessEqual(l1.adapt_time, l2.adapt_time)
 
     # Test with dataset in dict shape
-    adapt_data = dataset_ops.Dataset.from_tensor_slices({'x0': one_array,
-                                                         'x2': one_array,
-                                                         'x1': one_array})
+    adapt_data = dataset_ops.Dataset.from_tensor_slices({'x0': one_array0,
+                                                         'x2': one_array2,
+                                                         'x1': one_array1})
     adapt_data = adapt_data.batch(2)  # 5 batches of 2 samples
     stage.adapt(adapt_data)
     self.assertEqual(l0.adapt_count, 4)
