@@ -1066,3 +1066,22 @@ func @DontConvertSqueezeToReshape(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:  return %[[RESULT]]
 }
 
+func @ConvertPow1ToIdentity(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.000000e+00> : tensor<f32>
+  %0 = "tfl.pow"(%arg0, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL: ConvertPow1ToIdentity
+// CHECK: return %arg0
+}
+
+func @ConvertPow2ToSquare(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<2.000000e+00> : tensor<f32>
+  %0 = "tfl.pow"(%arg0, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL: ConvertPow2ToSquare
+// CHECK: %[[RESULT:.*]] = tfl.mul %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<2x2xf32>
+// CHECK: return %[[RESULT]]
+}
+
