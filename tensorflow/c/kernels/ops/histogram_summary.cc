@@ -32,7 +32,7 @@ void Register_HistogramSummaryOp() {
   TF_OpDefinitionBuilderAddInput(op_builder, "tag: string");
   TF_OpDefinitionBuilderAddInput(op_builder, "values: T");
   TF_OpDefinitionBuilderAddOutput(op_builder, "summary: string");
-  TF_OpDefinitionBuilderAddAttr(op_builder, "T: realnumbertype");
+  TF_OpDefinitionBuilderAddAttr(op_builder, "T: realnumbertype = DT_FLOAT");
   TF_OpDefinitionBuilderSetShapeInferenceFunction(op_builder,
       &histogram_summary_shape_inference_fn);
 

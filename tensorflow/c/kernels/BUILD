@@ -76,8 +76,8 @@ tf_gen_op_libs(
 tf_gen_op_libs(
     op_lib_names = ["histogram_summary"],
     deps = [
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:ops",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:lib",
     ]
 )
