@@ -30,6 +30,12 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
 
 
+# Utility function that indicates if you are in an UpdateContext when running
+# in a replica fn.
+def in_replica_update_context():
+  return distribute_lib.get_update_replica_id() is not None
+
+
 def on_write_assign(var, value, use_locking=False, name=None, read_value=True):
   assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
   return var._update(  # pylint: disable=protected-access
