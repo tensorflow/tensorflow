@@ -297,13 +297,7 @@ std::ostream& operator<<(std::ostream& os, const TensorShapeBase<Shape>& tsb) {
 /// zero dimensions and one element, and call AddDim() to add dimensions later.
 class TensorShape : public TensorShapeBase<TensorShape> {
  public:
-  TF_EXPORT TensorShape(gtl::ArraySlice<int64> dim_sizes)
-      : TensorShapeBase<TensorShape>(dim_sizes) {};
-  TF_EXPORT TensorShape(std::initializer_list<int64> dim_sizes)
-      : TensorShapeBase<TensorShape>(dim_sizes) {};
-
-  TF_EXPORT TensorShape(): TensorShapeBase<TensorShape>() {};
-  TF_EXPORT TensorShape(const TensorShapeProto& proto): TensorShapeBase<TensorShape>(proto) {};
+  using TensorShapeBase<TensorShape>::TensorShapeBase;
 
   /// Allow a TensorShape to be used as a PartialTensorShape without copying
   operator const PartialTensorShape&() const;  // NOLINT(runtime/explicit)
@@ -326,9 +320,6 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   /// significantly improve performance on GPU.
   template <int NDIMS, typename IndexType = Eigen::DenseIndex>
   Eigen::DSizes<IndexType, NDIMS> AsEigenDSizesWithPadding() const;
-
- protected:
-  explicit TensorShape(DataType dt): TensorShapeBase<TensorShape>(dt) {};
 
  private:
   // These CHECK fail to ease debugging.
