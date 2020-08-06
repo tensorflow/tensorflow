@@ -576,10 +576,27 @@ bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
   return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
 }
 
+// Allow the sentencepiece ops if they are registered in the global op registry.
+bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
+  static const std::set<std::string>* sentencepiece_flex_ops =
+      new std::set<std::string>({
+          "SentencepieceGetPieceSize",
+          "SentencepiecePieceToId",
+          "SentencepieceIdToPiece",
+          "SentencepieceEncodeDense",
+          "SentencepieceEncodeSparse",
+          "SentencepieceDecode",
+      });
+  if (sentencepiece_flex_ops->count(op_name) == 0) return false;
+  return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
+}
+
 bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
   if (GetFlexAllowlist().count(tensorflow_op_name) != 0) return true;
-  // Check if the op is an allowlisted tf.text op.
-  return IsAllowedTFTextOpForFlex(tensorflow_op_name);
+
+  // Check if the op is an allowlisted tf.text or sentencepiece op.
+  return IsAllowedTFTextOpForFlex(tensorflow_op_name) ||
+         IsAllowedSentencePieceOpForFlex(tensorflow_op_name);
 }
 
 }  // namespace flex
