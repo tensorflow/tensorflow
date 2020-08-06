@@ -20,12 +20,18 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-TpuChipCoordinatesExternal TpuCoreLocationExternal::chip_coordinates() const {
-  return {
-      tpu::ExecutorApiFn()->TpuCoreLocation_ChipCoordinates_XFn(core_location_),
-      tpu::ExecutorApiFn()->TpuCoreLocation_ChipCoordinates_YFn(core_location_),
-      tpu::ExecutorApiFn()->TpuCoreLocation_ChipCoordinates_ZFn(
-          core_location_)};
+TpuDimensionsExternal TpuCoreLocationExternal::chip_coordinates() const {
+  int x, y, z;
+  tpu::ExecutorApiFn()->TpuCoreLocation_ChipCoordinatesFn(core_location_, &x,
+                                                          &y, &z);
+  return {x, y, z};
+}
+
+TpuDimensionsExternal TpuCoreLocationExternal::host_coordinates() const {
+  int x, y, z;
+  tpu::ExecutorApiFn()->TpuCoreLocation_HostCoordinatesFn(core_location_, &x,
+                                                          &y, &z);
+  return {x, y, z};
 }
 
 int32 TpuCoreLocationExternal::index() const {
@@ -67,6 +73,11 @@ TpuCoreLocationExternal TpuTopologyExternal::Core(int x, int y, int z,
                                                   int index) const {
   return TpuCoreLocationExternal(tpu::ExecutorApiFn()->TpuTopology_CoreFn(
       topology_, x, y, z, core_type, index));
+}
+
+int TpuTopologyExternal::IdForHost(TpuDimensionsExternal host) const {
+  return tpu::ExecutorApiFn()->TpuTopology_IdForHostFn(topology_, host.x,
+                                                       host.y, host.z);
 }
 
 }  // namespace tpu
