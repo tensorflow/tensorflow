@@ -77,6 +77,8 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
+from tensorflow.python.eager import _concrete_function
+
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
 # TODO(b/133251390): Use a regular import.
@@ -1507,6 +1509,9 @@ class ConcreteFunction(object):
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
 
+    # Instance of C++ class for migration
+    self._cpp_concrete_function = _concrete_function.ConcreteFunction()
+
     if attrs and IMPLEMENTS_ATTRIBUTE_NAME in attrs:
       # The alternative is to silently drop "implements" tag
       # but it seems likely it would lead to hard to catch bugs.
@@ -2166,12 +2171,7 @@ class ConcreteFunction(object):
     Returns:
       The actual call output.
     """
-    # TODO(jlchu): Look into lazy loading of np_arrays in _concrete_function
-    # so that the following import and class initializations can be moved to
-    # global locations.
-    from tensorflow.python.eager import _concrete_function
-    self._cpp_class = _concrete_function.ConcreteFunction()
-    return self._cpp_class._build_call_outputs(
+    return self._cpp_concrete_function._build_call_outputs(
         result, self._func_graph.structured_outputs,
         self._ndarrays_list, self._ndarray_singleton)
 

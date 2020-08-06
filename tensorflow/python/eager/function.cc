@@ -26,11 +26,6 @@ namespace tensorflow {
 
 namespace py = pybind11;
 
-py::module* np_arrays = new py::module(
-    py::module::import("tensorflow.python.ops.numpy_ops.np_arrays"));
-py::module* nest = new py::module(
-    py::module::import("tensorflow.python.util.nest"));
-
 struct ConcreteFunction {
   ConcreteFunction() {};
   py::object _build_call_outputs(py::object result,
@@ -43,6 +38,12 @@ py::object ConcreteFunction::_build_call_outputs(py::object result,
                                                  py::object structured_outputs,
                                                  bool _ndarrays_list,
                                                  bool _ndarray_singleton) {
+  static const py::module* nest = new py::module(
+      py::module::import("tensorflow.python.util.nest"));
+  // TODO(jlchu): Look into lazy loading of np_arrays module
+  static const py::module* np_arrays = new py::module(
+      py::module::import("tensorflow.python.ops.numpy_ops.np_arrays"));
+
   if (structured_outputs.is_none()) {
     return result;
   }
