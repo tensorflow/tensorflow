@@ -22,7 +22,7 @@
   
 ## Keras benchmarks
 
-These are benchmark tests running on keras models: models from [keras/examples](https://github.com/keras-team/keras/tree/master/examples). Benchmarks in the current folder (`tensorflow/python/keras/benchmarks/keras_examples_benchmarks`) use Keras [built-in dataset](https://keras.io/api/datasets/) or synthetic data. In addition, these benchmarks support different [distribution strategies](https://www.tensorflow.org/guide/distributed_training) on multiple GPUs.
+These are benchmark tests running on keras models: models from [keras/examples](https://github.com/keras-team/keras/tree/master/examples). Benchmarks in the current folder (`tensorflow/python/keras/benchmarks/keras_examples_benchmarks`) use Keras [built-in dataset](https://keras.io/api/datasets/). In addition, these benchmarks support different [distribution strategies](https://www.tensorflow.org/guide/distributed_training) on multiple GPUs.
 
 ### Available models
 
@@ -62,8 +62,8 @@ Metrics for following benchmarks:</br>
 - Batch_size: Number of samples per batch of computation.</br>
 - Wall_time: Total time to run benchmark test in seconds.</br>
 - Avg_epoch_time: Average time for each epoch.</br>
-- Exp_per_sec: The number of examples that model processed for each second. </br>
-- Distribution_Strategy: [Distribution strategies](https://www.tensorflow.org/guide/distributed_training). </br>
+- Exp_per_sec: Examples per second. The number of examples processed in one second.</br>
+- Distribution_Strategy: The [distribution strategies](https://www.tensorflow.org/guide/distributed_training) used in the benchmark. </br>
 
 #### Cifar10 CNN benchmark
 
@@ -181,7 +181,7 @@ To add a new benchmark, please take the following steps:
 3. Create class which inherits from `tf.test.Benchmark`
 4. Define and load dataset in `__init__` method.
 5. Design and create a model in `_build_model` method.
-6. Define the `benchmark_xxx` method and it will pass benchmark related hyper parameters, which includes `batch_size`, `run_iters`, `train_data` and etc. You can check examples from [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks).
+6. Define the benchmark_xxx method to measure the performance of benchmarks with different hyper parameters, such as `batch_size`, `run_iters`, `distribution_strategy` and etc. You can check examples from [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py#L60).
 7. Add the benchmark target to the [BUILD](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/benchmarks/BUILD) file.
 
 ## Troubleshooting
