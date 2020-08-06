@@ -2410,6 +2410,40 @@ Status ConvertTranspose(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertShape(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"input", TrtInputArg::kBoth}}));
+  if (params->use_implicit_batch) {
+    return errors::Unimplemented(
+        "Shape is only supported for explicit batch mode.");
+  }
+  if (HasStaticShape(inputs.at(0).GetTrtDims())) {
+    if (params->validation_only) return Status::OK();
+    nvinfer1::Dims input_dims = inputs.at(0).GetTrtDims();
+    nvinfer1::Dims output_dims{1, {input_dims.nbDims}};
+    // Create a const node with the values of output_dims
+    TRT_ShapedWeights weight = params->weight_store->GetTempWeights(
+        nvinfer1::DataType::kINT32, output_dims);
+    int32* values_ptr = static_cast<int32*>(weight.GetValues());
+    std::copy(input_dims.d, input_dims.d + input_dims.nbDims, values_ptr);
+    auto output = params->converter->CreateConstantLayer(weight, output_dims);
+    params->outputs->push_back(TRT_TensorOrWeights(output));
+    return Status::OK();
+  }
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  if (params->validation_only) return Status::OK();
+  nvinfer1::IShapeLayer* shape_layer =
+      params->converter->network()->addShape(*inputs.at(0).tensor());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(shape_layer, params->node_def.name());
+  params->outputs->push_back(TRT_TensorOrWeights(shape_layer->getOutput(0)));
+  return Status::OK();
+#else
+  return errors::Unavailable(
+      "Shape op conversion requires TensorRT 6 or above");
+#endif
+}
+
 Status ConvertReshape(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   TF_RETURN_IF_ERROR(
@@ -5974,6 +6008,7 @@ static void RegisterValidatableOpConverters(
     (*registration)[pool_op_type] = ConvertPool3D;
   }
 #endif
+  (*registration)["Shape"] = ConvertShape;
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Softmax"] = ConvertSoftmax;
