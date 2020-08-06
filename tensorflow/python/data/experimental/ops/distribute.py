@@ -412,6 +412,13 @@ def batch_sizes_for_worker(global_batch_size, num_workers,
   # Constraint (A)
   num_subbatches = num_workers * num_replicas_per_worker
 
+  offset = worker_index * num_replicas_per_worker
+
+  const_value = tensor_util.constant_value(global_batch_size)
+  if const_value is not None:
+    # Use the constant global batch size for further calculations
+    global_batch_size = const_value
+
   # Let N = W * R. Constraint (B) and (D) jointly mean that the iterations
   # should have batch size either floor(B/N) or ceil(B/N). Namely, of the N
   # subbatches a batch is split into, B - N * floor(B/N) of them will have size
@@ -422,6 +429,16 @@ def batch_sizes_for_worker(global_batch_size, num_workers,
   # For worker 0, we assign the first num_ceil subbatches to have size
   # ceil(B/N), and the remainder to have size floor(B/N). The other workers will
   # each be offset by R * worker_index in order to meet constraint (C).
+  if const_value is not None:
+    # If the global batch size is a known constant value, we return a constant
+    # tensor directly instead of manipulating it with TF ops. This allows for
+    # better downstream shape inference.
+    worker_0 = [floor + 1] * num_ceil + [floor] * (num_subbatches - num_ceil)
+    return ops.convert_to_tensor(
+        worker_0[offset:] + worker_0[:offset],
+        dtype=dtypes.int64,
+        name="batch_sizes")
+
   worker_0 = array_ops.ones(num_subbatches, dtype=dtypes.int64)
   worker_0 = floor * worker_0 + array_ops.concat([
       array_ops.ones(num_ceil, dtype=dtypes.int64),
@@ -429,7 +446,6 @@ def batch_sizes_for_worker(global_batch_size, num_workers,
   ],
                                                  axis=0)
 
-  offset = worker_index * num_replicas_per_worker
   return array_ops.concat([worker_0[offset:], worker_0[:offset]], axis=0)
 
 
