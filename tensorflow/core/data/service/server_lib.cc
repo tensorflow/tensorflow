@@ -116,7 +116,7 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   std::string resolved_address = str_util::StringReplace(
       worker_address, kPortPlaceholder, absl::StrCat(bound_port()),
       /*replace_all=*/false);
-  service_->Start(resolved_address);
+  TF_RETURN_IF_ERROR(service_->Start(resolved_address));
   return Status::OK();
 }
 
