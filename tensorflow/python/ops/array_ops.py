@@ -5316,12 +5316,12 @@ def quantize_and_dequantize(
     A `Tensor`. Each element is the result of quantizing and dequantizing the
     corresponding element of `input`.
   """
+  with ops.name_scope(name, "quantize_and_dequantize", [input]) as name:
+    if not tensor_util.is_tensor(input):
+      input = ops.convert_to_tensor(input)
   if axis is None:
     axis = -1
-  elif axis < 0:
-    if input.shape.ndims is None:
-      raise ValueError("input should have known rank to use negative axis.")
-    axis %= input.shape.ndims
+  axis = get_positive_axis(axis, input.shape.ndims)
 
   return gen_array_ops.quantize_and_dequantize_v2(
       input,
