@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -39,8 +37,6 @@ class TestLhloToLLVMPass
     LLVMTypeConverter converter(&getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
     PopulateLhloToLLVMConversionPatterns(&converter, &patterns);
-    populateLoopToStdConversionPatterns(patterns, &getContext());
-    populateAffineToStdConversionPatterns(patterns, &getContext());
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();

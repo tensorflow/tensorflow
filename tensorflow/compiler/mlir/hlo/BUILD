@@ -760,8 +760,6 @@ cc_library(
         ":lhlo_legalize_to_llvm",  # build-cleaner: keep
         ":materialize_broadcasts",  # build-cleaner: keep
         ":unfuse_batch_norm",  # build-cleaner: keep
-        "@llvm-project//mlir:AffineToStandardTransforms",
-        "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LLVMDialect",
