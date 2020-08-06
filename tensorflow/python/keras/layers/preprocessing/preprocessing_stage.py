@@ -116,7 +116,6 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
   nested structure of tensors.
 
   Example:
-
   ```
   from tensorflow.keras.layers.experimental import preprocessing
   inputs = {'x2': tf.keras.Input(shape=(5,)),
@@ -133,8 +132,6 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
     outputs: An output tensor, or a list, a dict or a nested structure of
       output tensors.
     name: String, optional. Name of the preprocessing stage.
-    trainable: Boolean, whether the variables of non-preprocessing layers
-      in the stage should be trainable.
   """
 
   def fit(self, *args, **kwargs):
