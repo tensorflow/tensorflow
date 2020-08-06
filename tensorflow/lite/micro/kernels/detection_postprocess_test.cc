@@ -126,7 +126,7 @@ void TestDetectionPostprocess(const int* input_dims_data1, const float* input_da
     tensors[0] = CreateQuantizedTensor(input_data1, input_data_quantized1,input_dims1,
                                        input_scale1, input_zero_point1);
     tensors[1] = CreateQuantizedTensor(input_data2, input_data_quantized2, input_dims2,
-                                       input_scale1, input_zero_point2);
+                                       input_scale2, input_zero_point2);
     tensors[2] = CreateQuantizedTensor(input_data3, input_data_quantized3, input_dims3,
                                        input_scale3, input_zero_point3);
   }
@@ -254,8 +254,8 @@ TF_LITE_MICRO_TEST(DetectionPostprocessQuantizedFastNMS) {
   const int kInputElements3 = tflite::testing::kInputShape3[1] * tflite::testing::kInputShape3[2];
 
   uint8_t input_data_quantized1[kInputElements1+10];
-  uint8_t input_data_quantized2[kInputElements1+10];
-  uint8_t input_data_quantized3[kInputElements1+10];
+  uint8_t input_data_quantized2[kInputElements2+10];
+  uint8_t input_data_quantized3[kInputElements3+10];
 
   tflite::testing::TestDetectionPostprocess(tflite::testing::kInputShape1, tflite::testing::kInputData1,
                                             tflite::testing::kInputShape2, tflite::testing::kInputData2,
@@ -304,8 +304,8 @@ TF_LITE_MICRO_TEST(DetectionPostprocessQuantizedRegularNMS) {
   const int kInputElements3 = tflite::testing::kInputShape3[1] * tflite::testing::kInputShape3[2];
 
   uint8_t input_data_quantized1[kInputElements1+10];
-  uint8_t input_data_quantized2[kInputElements1+10];
-  uint8_t input_data_quantized3[kInputElements1+10];
+  uint8_t input_data_quantized2[kInputElements2+10];
+  uint8_t input_data_quantized3[kInputElements3+10];
 
   const float kGolden1[] = {0.0, 10.0, 1.0, 11.0, 0.0, 10.0, 1.0, 11.0, 0.0, 0.0, 0.0, 0.0};
   const float kGolden3[] = {0.95, 0.9, 0.0};
@@ -439,8 +439,8 @@ TF_LITE_MICRO_TEST(DetectionPostprocessQuantizedFastNMSwithNoBackgroundClassAndK
   const int kInputElements3 = tflite::testing::kInputShape3[1] * tflite::testing::kInputShape3[2];
 
   uint8_t input_data_quantized1[kInputElements1+10];
-  uint8_t input_data_quantized2[kInputElements1+10];
-  uint8_t input_data_quantized3[kInputElements1+10];
+  uint8_t input_data_quantized2[kInputElements2+10];
+  uint8_t input_data_quantized3[kInputElements3+10];
 
   float output_data1[12];
   float output_data2[3];
