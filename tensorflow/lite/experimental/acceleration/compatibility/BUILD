@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
     default_visibility = [
@@ -94,16 +94,22 @@ genrule(
     tools = [":convert_binary_to_cc_source"],
 )
 
+cc_library(
+    name = "devicedb_sample",
+    srcs = ["devicedb-sample.cc"],
+    hdrs = ["devicedb-sample.h"],
+    deps = [":database_fbs"],
+)
+
 cc_test(
     name = "devicedb_test",
     srcs = [
-        "devicedb-sample.cc",
-        "devicedb-sample.h",
         "devicedb_test.cc",
     ],
     deps = [
         ":database_fbs",
         ":devicedb",
+        ":devicedb_sample",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -152,11 +158,21 @@ cc_library(
         ":android_info",
         ":database_fbs",
         ":devicedb",
-        "//tensorflow/lite/delegates/gpu:delegate",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+    ] + tflite_extra_gles_deps(),
+)
+
+cc_test(
+    name = "gpu_compatibility_test",
+    srcs = ["gpu_compatibility_test.cc"],
+    deps = [
+        ":devicedb_sample",
+        ":gpu_compatibility",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
