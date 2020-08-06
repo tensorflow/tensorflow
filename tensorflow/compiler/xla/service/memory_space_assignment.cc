@@ -971,6 +971,16 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     }
   }
 
+  for (const auto& interval : sorted_buffer_intervals) {
+    auto colocated_intervals = GetSortedColocatedIntervals(interval);
+    if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
+      // Increment the reserved part of alternate memory so that it is not
+      // available for other buffers.
+      reserved_in_bytes_ += options_.size_fn(*interval.buffer);
+    }
+  }
+  VLOG(2) << "Total reserved bytes = " << reserved_in_bytes_;
+
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
       continue;
@@ -998,8 +1008,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 
     if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
       VLOG(3) << "Interval " << interval.buffer->ToShortString()
-              << " is reserved in the alternate memory. Total reserved bytes = "
-              << reserved_in_bytes_;
+              << " is reserved in the alternate memory.";
       for (const BufferInterval* colocated_interval : colocated_intervals) {
         const HloValue* value = colocated_interval->buffer;
         // Color all of the aliased reserved buffers here because reserved
@@ -1015,10 +1024,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
               options_.alternate_memory_space);
         }
       }
-      // Increment the reserved part of alternate memory so that it is not
-      // available for other buffers. Since all colocated intervals should have
-      // the same size, just use the first one.
-      reserved_in_bytes_ += options_.size_fn(*colocated_intervals[0]->buffer);
       continue;
     }
 
