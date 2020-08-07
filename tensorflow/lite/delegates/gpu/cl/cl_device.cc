@@ -248,24 +248,24 @@ DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
 }
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
-    : id_(id), platform_id_(platform_id), info_(DeviceInfoFromDeviceID(id)) {}
+    : info_(DeviceInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {}
 
 CLDevice::CLDevice(const CLDevice& device)
-    : id_(device.id_), platform_id_(device.platform_id_), info_(device.info_) {}
+    : info_(device.info_), id_(device.id_), platform_id_(device.platform_id_) {}
 
 CLDevice& CLDevice::operator=(const CLDevice& device) {
   if (this != &device) {
+    info_ = device.info_;
     id_ = device.id_;
     platform_id_ = device.platform_id_;
-    info_ = device.info_;
   }
   return *this;
 }
 
 CLDevice::CLDevice(CLDevice&& device)
-    : id_(device.id_),
-      platform_id_(device.platform_id_),
-      info_(std::move(device.info_)) {
+    : info_(std::move(device.info_)),
+      id_(device.id_),
+      platform_id_(device.platform_id_) {
   device.id_ = nullptr;
   device.platform_id_ = nullptr;
 }
@@ -274,9 +274,9 @@ CLDevice& CLDevice::operator=(CLDevice&& device) {
   if (this != &device) {
     id_ = nullptr;
     platform_id_ = nullptr;
+    info_ = std::move(device.info_);
     std::swap(id_, device.id_);
     std::swap(platform_id_, device.platform_id_);
-    info_ = std::move(device.info_);
   }
   return *this;
 }
@@ -368,7 +368,7 @@ bool CLDevice::IsAMD() const { return info_.IsAMD(); }
 bool CLDevice::IsIntel() const { return info_.IsIntel(); }
 
 bool CLDevice::SupportsOneLayerTextureArray() const {
-  return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;
+  return info_.SupportsOneLayerTextureArray();
 }
 
 void CLDevice::DisableOneLayerTextureArray() {

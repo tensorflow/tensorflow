@@ -330,7 +330,7 @@ absl::Status CreateDepthwiseConv3x3(
   bool local_mem_uploads =
       weights_are_buffer && creation_context.device->IsPowerVR();
   *result = DepthwiseConv3x3(definition, weights_are_buffer, local_mem_uploads,
-                             creation_context.device->GetInfo());
+                             creation_context.device->info_);
   return result->UploadWeightsAndBiases(attr.weights, attr.bias,
                                         creation_context.context);
 }

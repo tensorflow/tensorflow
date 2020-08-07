@@ -303,7 +303,7 @@ absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
                                    const Padding2D& padding,
                                    Winograd4x4To36* result) {
   *result =
-      Winograd4x4To36(definition, padding, creation_context.device->GetInfo());
+      Winograd4x4To36(definition, padding, creation_context.device->info_);
   return result->UploadBt(creation_context.context);
 }
 
@@ -502,7 +502,7 @@ absl::Status CreateWinograd36To4x4(
     const CreationContext& creation_context, const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     Winograd36To4x4* result) {
-  *result = Winograd36To4x4(definition, creation_context.device->GetInfo());
+  *result = Winograd36To4x4(definition, creation_context.device->info_);
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();

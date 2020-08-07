@@ -203,7 +203,7 @@ absl::Status InferenceContext::InitFromGraph(
 
   TuningParameters tuning_parameters;
   tuning_parameters.queue = env->profiling_queue();
-  tuning_parameters.info = env->device().GetInfoPtr();
+  tuning_parameters.info = &env->device().info_;
   if (create_info.hints.Check(ModelHints::kFastTuning)) {
     tuning_parameters.tuning_type = TuningType::FAST;
   }
@@ -244,14 +244,13 @@ void InferenceContext::ReserveGraphTensors(
     if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
       if (shape.c < 4 &&
           CanCreateTensorWithShape(
-              *creation_context.context, *creation_context.device, shape,
+              creation_context.device->info_, shape,
               TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
                                layout})) {
         storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
     }
-    storage_type = SelectBestStorageType(*creation_context.context,
-                                         *creation_context.device, shape,
+    storage_type = SelectBestStorageType(creation_context.device->info_, shape,
                                          storage_type, data_type, layout);
     tensor_reserver_.Add(
         t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});

@@ -271,7 +271,7 @@ bool IsConvConstantsSupported(const CLDevice& device,
                              ? sizeof(float)
                              : sizeof(half);
   const int filters_buffer_size = filters_count * float_size;
-  const int kConstantMaxSize = GetOptimalMaxConstantSize(device.GetInfo());
+  const int kConstantMaxSize = GetOptimalMaxConstantSize(device.info_);
   const int flt4_registers = DivideRoundUp(w_shape.o, 4);
   return filters_buffer_size <= kConstantMaxSize && flt4_registers <= 8;
 }
@@ -283,7 +283,7 @@ absl::Status CreateConvConstants(const CreationContext& creation_context,
   if (!IsConvConstantsSupported(*creation_context.device, definition, attr)) {
     return absl::InvalidArgumentError("ConvConstants doesn't supported");
   }
-  *result = ConvConstants(definition, attr, creation_context.device->GetInfo());
+  *result = ConvConstants(definition, attr, creation_context.device->info_);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 

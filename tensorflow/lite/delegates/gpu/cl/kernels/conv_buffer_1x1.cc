@@ -93,7 +93,7 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
   }
   bool can_use_flt8 = (shape.w * shape.b) % 2 == 0 &&
                       definition.precision != CalculationsPrecision::F32;
-  bool is_midgard = device.IsMali() && device.GetInfo().mali_info.IsMidgard();
+  bool is_midgard = device.IsMali() && device.info_.mali_info.IsMidgard();
   if (is_midgard) {
     if (can_use_flt8) {
       conv_params.element_size = 8;
@@ -141,7 +141,7 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
   conv_params.element_size = 4;
   conv_params.block_size = int3(1, 1, 1);
   if (device.IsMali() && definition.precision == CalculationsPrecision::F16 &&
-      device.GetInfo().compute_units_count <= 4) {
+      device.info_.compute_units_count <= 4) {
     conv_params.block_size.x *= 2;
   }
   return conv_params;

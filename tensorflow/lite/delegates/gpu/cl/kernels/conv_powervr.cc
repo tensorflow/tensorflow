@@ -718,7 +718,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (dst_shape) {
       int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
       float task_size_per_cu =
-          static_cast<float>(task_size) / device.GetInfo().compute_units_count;
+          static_cast<float>(task_size) / device.info_.compute_units_count;
       int block_size = conv_params.block_size.x * conv_params.block_size.y *
                        conv_params.block_size.z;
       float threads_per_cu = task_size_per_cu / block_size;
@@ -844,7 +844,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.block_size = int3(1, 1, 1);
     }
     conv_params.src_depth_loop_size = 1;
-    MaliInfo mali_info = device.GetInfo().mali_info;
+    MaliInfo mali_info = device.info_.mali_info;
     if (src_depth % 2 == 0 && block_size <= 2 && !mali_info.IsMidgard()) {
       conv_params.src_depth_loop_size = 2;
     }
@@ -987,7 +987,7 @@ absl::Status CreateConvPowerVR(const CreationContext& creation_context,
                                const Convolution2DAttributes& attr,
                                ConvPowerVR* result, const BHWC* dst_shape) {
   *result = ConvPowerVR(definition, attr, *creation_context.device, dst_shape);
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
@@ -996,7 +996,7 @@ absl::Status CreateConvPowerVR(const CreationContext& creation_context,
                                const FullyConnectedAttributes& attr,
                                ConvPowerVR* result, const BHWC* dst_shape) {
   *result = ConvPowerVR(definition, attr, *creation_context.device, dst_shape);
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
@@ -1006,7 +1006,7 @@ absl::Status CreateConvPowerVRDynamicWeights(
     ConvPowerVR* result, const BHWC* dst_shape) {
   *result = ConvPowerVR(definition, attr, weights_shape,
                         *creation_context.device, dst_shape);
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadBias(attr.bias, creation_context.context);
 }
 
@@ -1017,7 +1017,7 @@ absl::Status CreateConvPowerVRWino4x4To6x6(
   *result = ConvPowerVR(definition);
   result->conv_params_ = result->GuessBestParamsWinograd(
       *creation_context.device, definition, attr, dst_shape);
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadDataForWinograd4x4To6x6(
       attr.weights, *creation_context.device, creation_context.context);
 }

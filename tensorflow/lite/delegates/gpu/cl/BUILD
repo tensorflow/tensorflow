@@ -257,6 +257,7 @@ cc_library(
     srcs = ["device_info.cc"],
     hdrs = ["device_info.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -468,11 +469,11 @@ cc_library(
     srcs = ["storage_type_util.cc"],
     hdrs = ["storage_type_util.h"],
     deps = [
-        ":cl_context",
-        ":cl_device",
+        ":device_info",
         ":tensor_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:util",
     ],
 )
 

@@ -360,8 +360,8 @@ absl::Status CreateConvolutionTransposed(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed* result) {
-  *result = ConvolutionTransposed(definition, attr,
-                                  creation_context.device->GetInfo());
+  *result =
+      ConvolutionTransposed(definition, attr, creation_context.device->info_);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 
