@@ -77,7 +77,7 @@ class DrawBoundingBoxesOp : public OpKernel {
     const int64 height = images.dim_size(1);
     const int64 width = images.dim_size(2);
     std::vector<std::vector<float>> color_table;
-    if (context->num_inputs() == 3) {
+    if (context->num_inputs() > 2) {
       const Tensor& colors_tensor = context->input(2);
       OP_REQUIRES(context, colors_tensor.shape().dims() == 2,
                   errors::InvalidArgument("colors must be a 2-D matrix",
@@ -98,9 +98,14 @@ class DrawBoundingBoxesOp : public OpKernel {
           color_table.emplace_back(color_value);
         }
       }
+
+      const int64 thickness = context->input(3);
+      OP_REQUIRES(context, thickness > 0,
+                  errors::InvalidArgument("Thickness should be greater than 1"));
     }
     if (color_table.empty()) {
       color_table = DefaultColorTable(depth);
+      const int64 thickness = int64{1};
     }
     Tensor* output;
     OP_REQUIRES_OK(
@@ -129,6 +134,11 @@ class DrawBoundingBoxesOp : public OpKernel {
         const int64 max_box_col =
             static_cast<float>(tboxes(b, bb, 3)) * (width - 1);
         const int64 max_box_col_clamp = std::min<int64>(max_box_col, width - 1);
+
+        const std::pair<int64, int64> row_thickness_clamp = std::minmax<int64>(
+            min_box_row_clamp + thickness, max_box_row_clamp - thickness);
+        const std::pair<int64, int64> col_thickness_clamp = std::minmax<int64>(
+            min_box_col_clamp + thickness, max_box_col_clamp - thickness);
 
         if (min_box_row > max_box_row || min_box_col > max_box_col) {
           LOG(WARNING) << "Bounding box (" << min_box_row << "," << min_box_col
@@ -165,37 +175,36 @@ class DrawBoundingBoxesOp : public OpKernel {
         CHECK_GE(max_box_col, 0);
 
         // Draw top line.
-        if (min_box_row >= 0) {
-          for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-            for (int64 c = 0; c < depth; c++) {
-              canvas(b, min_box_row, j, c) =
-                  static_cast<T>(color_table[color_index][c]);
-            }
-        }
+        if (min_box_row >= 0)
+          for (int64 curr_row = min_box_row; curr_row < row_thickness_clamp.first; curr_row++ )
+            for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
+              for (int64 c = 0; c < depth; c++)
+                canvas(b, curr_row, j, c) =
+                    static_cast<T>(color_table[color_index][c]);
+
         // Draw bottom line.
-        if (max_box_row < height) {
-          for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-            for (int64 c = 0; c < depth; c++) {
-              canvas(b, max_box_row, j, c) =
-                  static_cast<T>(color_table[color_index][c]);
-            }
-        }
+        if (max_box_row < height)
+          for (int64 curr_row = max_box_row; curr_row > row_thickness_clamp.second; curr_row-- )
+            for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
+              for (int64 c = 0; c < depth; c++)
+                canvas(b, curr_row, j, c) =
+                    static_cast<T>(color_table[color_index][c]);
+
         // Draw left line.
-        if (min_box_col >= 0) {
-          for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-            for (int64 c = 0; c < depth; c++) {
-              canvas(b, i, min_box_col, c) =
-                  static_cast<T>(color_table[color_index][c]);
-            }
-        }
+        if (min_box_col >= 0)
+          for (int64 curr_col= min_box_col; curr_col < col_thickness_clamp.first; curr_col++ )
+            for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
+              for (int64 c = 0; c < depth; c++)
+                canvas(b, i, curr_col, c) =
+                    static_cast<T>(color_table[color_index][c]);
+
         // Draw right line.
-        if (max_box_col < width) {
-          for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-            for (int64 c = 0; c < depth; c++) {
-              canvas(b, i, max_box_col, c) =
-                  static_cast<T>(color_table[color_index][c]);
-            }
-        }
+        if (max_box_col < width)
+          for (int64 curr_col = max_box_col; curr_col > col_thickness_clamp.second; curr_col-- )
+            for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
+              for (int64 c = 0; c < depth; c++)
+                canvas(b, i, curr_col, c) =
+                    static_cast<T>(color_table[color_index][c]);
       }
     }
   }

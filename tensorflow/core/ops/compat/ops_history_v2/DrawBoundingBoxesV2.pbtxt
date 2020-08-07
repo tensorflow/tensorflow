@@ -12,6 +12,10 @@ op {
     name: "colors"
     type: DT_FLOAT
   }
+  input_arg {
+    name: "thickness"
+    type: DT_INT
+  }
   output_arg {
     name: "output"
     type_attr: "T"
