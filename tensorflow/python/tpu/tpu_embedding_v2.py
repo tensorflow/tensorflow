@@ -1501,7 +1501,7 @@ def make_sharded_variable_creator(hosts):
     if isinstance(initial_value, base.CheckpointInitialValue) and num_hosts > 1:
       raise RuntimeError("Delayed restoration of variables not available when "
                          "there are multiple TPU hosts, please ensure that the "
-                         "api object is build before you restore.")
+                         "api object has been built before you restore.")
 
     for i, p in enumerate(partitions):
       with ops.device(hosts[i]):
