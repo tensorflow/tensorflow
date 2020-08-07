@@ -4422,6 +4422,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        ":cast_op",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]),
