@@ -84,8 +84,8 @@ absl::Status GetBestWorkGroupAlignedToGrid(const TuningParameters& params,
   max_wg_size.x = params.info->max_work_group_size_x;
   max_wg_size.y = params.info->max_work_group_size_y;
   max_wg_size.z = params.info->max_work_group_size_z;
-  RETURN_IF_ERROR(GenerateWorkGroupSizesAlignedToGrid(
-      grid, max_wg_size, kernel.GetMaxWorkGroupSize(), &work_groups));
+  GenerateWorkGroupSizesAlignedToGrid(
+      grid, max_wg_size, kernel.GetMaxWorkGroupSize(), &work_groups);
   int best_work_group_index;
   RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(
       kernel, *params.info, grid, work_groups, &best_work_group_index));

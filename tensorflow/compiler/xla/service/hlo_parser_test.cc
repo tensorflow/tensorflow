@@ -2626,6 +2626,21 @@ TEST_F(HloParserTest, ParseSharding) {
   EXPECT_EQ(sharding.ToString(), original);
 }
 
+TEST_F(HloParserTest, ParseShardingPartialReplication) {
+  const string original = "{devices=[2,2]0,1,2,3 last_tile_dim_replicate}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  Array<int64> group_tiling({2});
+  group_tiling(0) = 0;
+  group_tiling(1) = 1;
+  std::vector<int64> group0_members({0, 1});
+  std::vector<int64> group1_members({2, 3});
+  EXPECT_EQ(
+      HloSharding::PartialTile(group_tiling, {group0_members, group1_members})
+          .ToString(),
+      original);
+}
+
 TEST_F(HloParserTest, ParseFrontendAttributes) {
   const string original =
       R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";

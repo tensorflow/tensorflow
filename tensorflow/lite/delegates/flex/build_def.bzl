@@ -136,6 +136,7 @@ def tflite_flex_cc_library(
                 "@com_google_absl//absl/types:optional",
                 "@gemmlowp",
                 "//tensorflow/core:protos_all_cc",
+                "@icu//:common",
                 "//tensorflow/core:portable_tensorflow_lib_lite",
                 "//tensorflow/core/platform:strong_hash",
             ],

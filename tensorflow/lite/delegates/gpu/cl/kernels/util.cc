@@ -117,7 +117,7 @@ int GetRecommendedBlockSizeForConv(const CLDevice& device,
                                    CalculationsPrecision precision,
                                    int task_size) {
   const float task_size_per_cu =
-      task_size / static_cast<float>(device.GetInfo().compute_units_count);
+      task_size / static_cast<float>(device.info_.compute_units_count);
   int block_size = 1;
   float threshold_1 = FLT_MAX;
   float threshold_2 = FLT_MAX;
@@ -125,7 +125,7 @@ int GetRecommendedBlockSizeForConv(const CLDevice& device,
   if (!device.IsMali()) {
     return 1;
   }
-  MaliInfo mali_info = device.GetInfo().mali_info;
+  MaliInfo mali_info = device.info_.mali_info;
   switch (precision) {
     case CalculationsPrecision::F16:
       if (mali_info.IsBifrostGen1()) {

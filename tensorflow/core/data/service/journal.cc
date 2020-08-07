@@ -48,7 +48,7 @@ Status FileJournalWriter::EnsureInitialized() {
   return Status::OK();
 }
 
-Status FileJournalWriter::Write(Update update) {
+Status FileJournalWriter::Write(const Update& update) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   std::string s = update.SerializeAsString();
   if (s.empty()) {

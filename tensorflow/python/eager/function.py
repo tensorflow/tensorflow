@@ -2763,9 +2763,6 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
             ",\n    ".join(str(i) for i in input_signature) + ")")
 
   try:
-    # TODO(b/124370185): Use all elements as inputs to throw an error if there
-    # are ignored arguments. Calling with arguments that are not part of the
-    # signature should throw an error.
     flatten_inputs = nest.flatten_up_to(
         input_signature,
         inputs[:len(input_signature)],

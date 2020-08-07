@@ -78,7 +78,7 @@ parser.add_argument(
 parser.add_argument(
     "--bucket",
     type=str,
-    default="gs://tensorflow-testing-bucket",
+    default="gs://tf-sizetracker-artifacts",
     help="GCS bucket for artifacts.")
 parser.add_argument(
     "--team",
@@ -247,8 +247,8 @@ def get_all_tested_commits():
   # COMMIT_HASH
   earliest_commit = gcloud(
       "bq", [
-          "--project_id", FLAGS.project, "query", "--format", "csv",
-          "--nouse_legacy_sql"
+          "--project_id", FLAGS.project, "--headless", "-q", "query",
+          "--format", "csv", "--nouse_legacy_sql"
       ],
       stdin=query_earliest_included_commit)
 
@@ -279,7 +279,7 @@ def get_upload_path():
   if FLAGS.upload and FLAGS.artifact:
     artifact_filename = os.path.basename(FLAGS.artifact.name)
     ts = datetime.datetime.now(
-        datetime.timezone.utc).isoformat(timespec="seconds")
+        datetime.timezone.utc).replace(microsecond=0).isoformat()
     # note: not os.path.join here, because gsutil is always linux-style
     # Using a timestamp prevents duplicate entries
     path = "{bucket}/{team}/{artifact_id}/{now}.{artifact_filename}".format(
@@ -360,8 +360,9 @@ def main():
       writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
       writer.writerow(next_tsv_row)
     gcloud("bq", [
-        "--project_id", FLAGS.project, "load", "--source_format", "CSV",
-        "--field_delimiter", "tab", PROJECT_LEVEL_TABLE_NAME, "data.tsv", SCHEMA
+        "--project_id", FLAGS.project, "--headless", "-q", "load",
+        "--source_format", "CSV", "--field_delimiter", "tab",
+        PROJECT_LEVEL_TABLE_NAME, "data.tsv", SCHEMA
     ])
 
 

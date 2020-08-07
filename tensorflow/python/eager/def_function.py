@@ -27,7 +27,6 @@ import six
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
@@ -655,14 +654,6 @@ class Function(object):
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
         attributes.update(_noinline=True)
-        # TODO(b/149755889): Until XLA is always linked, we have to do a runtime
-        # check.
-        if not pywrap_tfe.TF_IsXlaEnabled():
-          raise ValueError(
-              "Attempting to use experimental_compile, "
-              "but XLA support is not linked in. "
-              "Is the dependency to tensorflow/compiler/jit:xla_gpu_jit "
-              "(or xla_cpu_jit) present?")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(

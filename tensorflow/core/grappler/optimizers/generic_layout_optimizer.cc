@@ -38,7 +38,7 @@ namespace {
 constexpr char kNHWC[] = "NHWC";
 constexpr char kNCHW[] = "NCHW";
 constexpr float kVoltaGPURatioThreshold = 0.5;
-constexpr float kConv2DGPUFP16Threshold = 0.5;
+constexpr float kConvGPUFP16Threshold = 0.5;
 
 struct MutableNodeViewFormatter {
   void operator()(std::string* out, utils::MutableNodeView* node_view) const {
@@ -69,15 +69,15 @@ inline std::pair<int, int> GetNumGPUs(const Cluster& cluster) {
   return {num_gpus, num_volta};
 }
 
-inline bool NumConv2DOnDeviceWithDataTypeOverThreshold(
+inline bool NumConvOnDeviceWithDataTypeOverThreshold(
     const TransposeContext& context, absl::string_view device,
     const DataType& data_type) {
-  int num_conv2d_gpu = 0;
-  int num_conv2d_gpu_fp16 = 0;
+  int num_conv_gpu = 0;
+  int num_conv_gpu_fp16 = 0;
 
   for (const auto& node : context.graph_view->GetNodes()) {
     const auto* node_def = node.node();
-    if (!IsConv2D(*node_def)) {
+    if (!IsConv2D(*node_def) or !IsConv3D(*node_def)) {
       continue;
     }
     const string& device_name =
@@ -89,20 +89,20 @@ inline bool NumConv2DOnDeviceWithDataTypeOverThreshold(
                            absl::AsciiStrToLower(device))) {
       continue;
     }
-    num_conv2d_gpu++;
+    num_conv_gpu++;
     const auto* t_attr = node.GetAttr("T");
     if (t_attr == nullptr) {
       continue;
     }
     if (t_attr->type() == data_type) {
-      num_conv2d_gpu_fp16++;
+      num_conv_gpu_fp16++;
     }
   }
 
-  if (num_conv2d_gpu == 0) return false;
+  if (num_conv_gpu == 0) return false;
 
-  return (static_cast<float>(num_conv2d_gpu_fp16) /
-          static_cast<float>(num_conv2d_gpu)) >= kConv2DGPUFP16Threshold;
+  return (static_cast<float>(num_conv_gpu_fp16) /
+          static_cast<float>(num_conv_gpu)) >= kConvGPUFP16Threshold;
 }
 
 inline std::pair<string, string> GetSrcAndDstDataFormats(
@@ -111,7 +111,7 @@ inline std::pair<string, string> GetSrcAndDstDataFormats(
   string dst_format = kNCHW;
   if (((static_cast<float>(num_voltas) / static_cast<float>(num_gpus)) >=
        kVoltaGPURatioThreshold) &&
-      NumConv2DOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF)) {
+      NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF)) {
     std::swap(src_format, dst_format);
   }
   return {src_format, dst_format};

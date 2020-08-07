@@ -5007,7 +5007,12 @@ class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
     SmallVector<Type, 4> unpacked_indices_type(
         indices_type.getDimSize(0),
         RankedTensorType::get({}, indices_type.getElementType()));
-    auto zero_attr = IntegerAttr::get(rewriter.getIntegerType(64), 0);
+    // Note on zero_attr integer type: DynamicUpdateSlice op start_indices are
+    // required to have matching types. This rewrite rule creates
+    // DynamicUpdateSlice ops where the first "start index" is always i32 and
+    // subsequent ones are constructed based on zero_attr. Thus the type
+    // for zero_attr needs to be i32 as well.
+    auto zero_attr = IntegerAttr::get(rewriter.getIntegerType(32), 0);
     auto unpacked_indices = rewriter.create<TF::UnpackOp>(
         op.getLoc(), unpacked_indices_type, indices, zero_attr);
 
@@ -5086,11 +5091,8 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
       return failure();
     }
 
-    // TODO(jennik): Add support for the optional 'exclusive' and 'reverse'
-    // arguments.
-    if (op.exclusive() || op.reverse()) {
-      return failure();
-    }
+    ArrayRef<int64_t> input_shape = input_type.getShape();
+    int64_t rank = input_shape.size();
 
     // We can only match when the axis is a constant scalar.
     DenseIntElementsAttr axis_attr;
@@ -5098,21 +5100,27 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
       return failure();
     }
 
-    // Convert if we need to enlarge the element type's bitwidth to avoid
-    // precision loss.
-    Type input_element_type = input_type.getElementType();
-    Type sum_element_type = GetSumAccumulationType(input_element_type);
-    input = rewriter.create<ConvertOp>(op.getLoc(), input, sum_element_type);
-
-    ArrayRef<int64_t> input_shape = input_type.getShape();
-    int64_t rank = input_shape.size();
-
     // Get the dimension to apply the reduction on, and offset properly if it is
     // negative.
     int64_t axis = (*axis_attr.begin()).getSExtValue();
     if (axis < 0) {
       axis += rank;
     }
+
+    // If we're supposed to sum things up in the reverse direction, we reverse
+    // the input and then later reverse the output.
+    if (op.reverse()) {
+      llvm::SmallVector<int64_t, 4> dims_to_reverse({axis});
+      input = rewriter.create<ReverseOp>(
+          op.getLoc(), op.getType(), input,
+          GetI64ElementsAttr(dims_to_reverse, &rewriter));
+    }
+
+    // Convert if we need to enlarge the element type's bitwidth to avoid
+    // precision loss.
+    Type input_element_type = input_type.getElementType();
+    Type sum_element_type = GetSumAccumulationType(input_element_type);
+    input = rewriter.create<ConvertOp>(op.getLoc(), input, sum_element_type);
 
     SmallVector<int64_t, 4> window_dims(rank, 1);
     SmallVector<int64_t, 4> window_strides(rank, 1);
@@ -5136,9 +5144,33 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
     BuildReduceBody<AddOp>(sum_element_type, &reduce.body(), &rewriter);
     Value result = reduce.getResult();
 
+    if (op.exclusive()) {
+      // In "exclusive" operation, the output will start with the "init" (0)
+      // values. There is no way to express that as a ReduceWindowOp, so run the
+      // normal operation, and then use a PadOp to add the 0 "column" on the
+      // left and cut away the last column on the right.
+      llvm::SmallVector<int64_t, 4> low_padding(rank, 0);
+      llvm::SmallVector<int64_t, 4> high_padding(rank, 0);
+      llvm::SmallVector<int64_t, 4> interior_padding(rank, 0);
+      low_padding[axis] = 1;
+      high_padding[axis] = -1;
+      result = rewriter.create<PadOp>(
+          op.getLoc(), op.getType(), result, init,
+          GetI64ElementsAttr(low_padding, &rewriter),
+          GetI64ElementsAttr(high_padding, &rewriter),
+          GetI64ElementsAttr(interior_padding, &rewriter));
+    }
+
     // Convert back if we enlarged the element type's bitwidth.
     result =
         rewriter.create<ConvertOp>(op.getLoc(), result, input_element_type);
+
+    if (op.reverse()) {
+      llvm::SmallVector<int64_t, 4> dims_to_reverse({axis});
+      result = rewriter.create<ReverseOp>(
+          op.getLoc(), op.getType(), result,
+          GetI64ElementsAttr(dims_to_reverse, &rewriter));
+    }
 
     rewriter.replaceOp(op, result);
     return success();

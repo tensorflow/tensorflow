@@ -463,6 +463,22 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     self.assertTypes(fn_body[0].body[0].value, 'int')
     self.assertClosureTypes(fn_body[0], {'x': {'int'}})
 
+  def test_local_function_closure_mutable_var(self):
+
+    def test_fn(x: int):
+
+      def foo():
+        nonlocal x
+        return x
+
+      foo()
+
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].body[1].value, 'int')
+    self.assertClosureTypes(fn_body[0], {'x': {'int'}})
+
   def test_local_function_closure_ignored_for_bound_symbols(self):
 
     def test_fn(x: float):  # pylint:disable=unused-argument
@@ -495,6 +511,49 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     self.assertTypes(fn_body[0].body[0].value, float)
     self.assertTypes(fn_body[1].targets[0], float)
     self.assertClosureTypes(fn_body[0], {'x': {float}})
+
+  def test_side_effects_on_arg_function_closure(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('g'))
+        return None, g
+
+      def res_value(self, ns, value):
+        test_self.assertEqual(value, 1.0)
+        return {float}
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        return {str(type_anno)}
+
+      def res_call(self, ns, types_ns, node, args, keywords):
+        test_self.assertEqual(node.func.id, 'g')
+        return None, {qual_names.QN('x'): {str}}
+
+    def g(foo):
+      # The resolver will convey that this function has the following body:
+      #
+      #   nonlocal x
+      #   x = 'a'
+      #   foo()
+      del foo
+      pass
+
+    def test_fn(x: int):  # pylint:disable=unused-argument
+
+      def foo():
+        return x
+
+      x = 1.0
+      g(foo)
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].body[0].value, str)
 
   def test_subscript(self):
 

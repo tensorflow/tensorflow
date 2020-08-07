@@ -394,20 +394,23 @@ cc_library(
     alwayslink = 1,
 )
 
-# Linked by tensorflow core, without registration of jit compilation passes
-# which is not necessary to create and run a XlaLocalLaunchBase kernel.
-# Linking jit compilation passes could cause programs stuck right now (b/140069592).
 cc_library(
-    name = "xla_kernel_creator_util",
+    name = "xla_kernel_creator",
     srcs = [
-        "xla_kernel_creator_util.cc",
+        "xla_kernel_creator.cc",
+        "xla_kernel_creator.h",
     ],
-    hdrs = ["xla_kernel_creator_util.h"],
-    visibility = ["//tensorflow/core/common_runtime/eager:__pkg__"],
+    visibility = [
+        ":internal",
+        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
+        "//tensorflow/core/common_runtime/eager:__pkg__",
+    ],
     deps = [
         ":common",
         ":compilability_check_util",
         ":compilation_passes",
+        ":flags",
+        ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops_no_jit_rewrite_registration",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
@@ -418,25 +421,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xla_kernel_creator",
-    srcs = [
-        "xla_kernel_creator.cc",
-        "xla_kernel_creator.h",
-    ],
-    deps = [
-        ":compilability_check_util",
-        ":flags",
-        ":jit_compilation_passes",
-        ":xla_kernel_creator_util",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )

@@ -172,6 +172,7 @@ py_library(
         ":list_ops",
         ":manip_ops",
         ":map_fn",
+        ":map_ops",
         ":math_ops",
         ":metrics",
         ":nccl_ops",
@@ -1616,11 +1617,60 @@ py_library(
     ],
 )
 
+cc_library(
+    name = "op_def_util_cc",
+    srcs = ["framework/op_def_util.cc"],
+    hdrs = ["framework/op_def_util.h"],
+    deps = [
+        ":cpp_python_util",
+        ":safe_ptr",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Note: this target is only used for op_def_util_test.  It includes op_def_util.cc
+# directly in its srcs (rather than depending on the `op_def_util_cc` target) because
+# depending on that target adds dependencies that register objects; and since the
+# extension is built as a shared object in some kokoro tests, this causes those objects
+# to get registered multiple times (which fails).
+tf_python_pybind_extension(
+    name = "_op_def_util",
+    srcs = [
+        "framework/op_def_util.cc",
+        "framework/op_def_util_pybind.cc",
+    ],
+    hdrs = [
+        "framework/op_def_util.h",
+        "lib/core/safe_ptr.h",
+        "util/util.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+    ],
+    module_name = "_op_def_util",
+    deps = [
+        ":pybind11_status",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "op_def_util_test",
+    srcs = ["framework/op_def_util_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+)
+
 py_library(
     name = "framework_ops",  # "ops" is already the name of a deprecated target
     srcs = ["framework/ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":_op_def_util",
         ":c_api_util",
         ":control_flow_util",
         ":device",
@@ -3030,6 +3080,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "map_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "script_ops_gen",
 )
 
@@ -3546,6 +3600,7 @@ py_library(
         ":functional_ops_gen",
         ":gradients_util",
         ":list_ops",
+        ":map_ops",
         ":pywrap_tf_session",
         ":tensor_array_ops",
         ":tensor_shape",
@@ -4202,6 +4257,16 @@ py_library(
     deps = [
         ":array_ops",
         ":list_ops_gen",
+    ],
+)
+
+py_library(
+    name = "map_ops",
+    srcs = ["ops/map_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":map_ops_gen",
     ],
 )
 
@@ -5001,6 +5066,7 @@ cuda_py_test(
         ":gradients",
         ":init_ops",
         ":list_ops",
+        ":map_ops",
         ":math_grad",
         ":math_ops",
         ":nn_grad",

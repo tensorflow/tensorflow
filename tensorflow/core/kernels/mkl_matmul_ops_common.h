@@ -35,7 +35,12 @@ using mkldnn::stream;
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
+#ifdef INTEL_MKL_DNN_ONLY
+// Temporarily copying some definitions from mkl_cblas.h so the same code can
+// be used when calling oneDNN or CBLAS batchmatmul in mkl_batch_matmul_op.cc.
+typedef enum { CblasRowMajor, CblasColumnMajor } CBLAS_LAYOUT;
+#define MKL_INT int
+#endif
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
 struct MklDnnMatMulFwdParams {
   memory::dims src_dims;

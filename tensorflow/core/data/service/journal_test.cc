@@ -46,10 +46,10 @@ Update MakeCreateJobUpdate() {
   return update;
 }
 
-Update MakeFinishJobUpdate() {
+Update MakeFinishTaskUpdate() {
   Update update;
-  FinishJobUpdate* finish_job = update.mutable_finish_job();
-  finish_job->set_job_id(8);
+  FinishTaskUpdate* finish_task = update.mutable_finish_task();
+  finish_task->set_task_id(8);
   return update;
 }
 
@@ -86,7 +86,7 @@ TEST(Journal, RoundTripMultiple) {
   EXPECT_TRUE(NewJournalDir(&journal_dir));
   std::vector<Update> updates = {MakeCreateJobUpdate(),
                                  MakeRegisterDatasetUpdate(),
-                                 MakeFinishJobUpdate()};
+                                 MakeFinishTaskUpdate()};
   FileJournalWriter writer(Env::Default(), journal_dir);
   for (const auto& update : updates) {
     TF_EXPECT_OK(writer.Write(update));
@@ -100,7 +100,7 @@ TEST(Journal, AppendExistingFile) {
   EXPECT_TRUE(NewJournalDir(&journal_dir));
   std::vector<Update> updates = {MakeCreateJobUpdate(),
                                  MakeRegisterDatasetUpdate(),
-                                 MakeFinishJobUpdate()};
+                                 MakeFinishTaskUpdate()};
   for (const auto& update : updates) {
     FileJournalWriter writer(Env::Default(), journal_dir);
     TF_EXPECT_OK(writer.Write(update));

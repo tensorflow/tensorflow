@@ -649,8 +649,9 @@ void EventForest::ProcessModelIds() {
 
 void EventForest::ProcessTfDataEvents() {
   absl::flat_hash_map<std::pair<int64 /*iterator_id*/, int64 /*element_id*/>,
-                      EventNode*>
-      produce_iterators;
+                      std::vector<EventNode*>>
+      produce_iterator_map;
+  uint64 num_producers = 0;
   for (HostEventType event_type :
        {HostEventType::kPrefetchProduce,
         HostEventType::kParallelInterleaveProduce,
@@ -670,14 +671,16 @@ void EventForest::ProcessTfDataEvents() {
           absl::optional<XStatVisitor> iterator_id =
               produce_iterator->GetEventVisitor().GetStat(StatType::kParentId);
           if (!iterator_id.has_value()) break;
-          produce_iterators[{iterator_id->IntValue(), element_id->IntValue()}] =
-              produce_iterator;
+          produce_iterator_map[{iterator_id->IntValue(),
+                                element_id->IntValue()}]
+              .push_back(produce_iterator);
+          ++num_producers;
           break;
         }
       }
     }
   }
-  VLOG(1) << produce_iterators.size() << " producer iterators found.";
+  VLOG(1) << num_producers << " producer iterators found.";
   uint64 num_matched = 0;
   for (HostEventType event_type :
        {HostEventType::kPrefetchConsume,
@@ -701,11 +704,13 @@ void EventForest::ProcessTfDataEvents() {
       absl::optional<XStatVisitor> iterator_id =
           consume_iterator->GetEventVisitor().GetStat(StatType::kStepId);
       if (!iterator_id.has_value()) continue;
-      if (auto produce_iterator = gtl::FindOrNull(
-              produce_iterators, std::make_pair(iterator_id->IntValue(),
-                                                element_id->IntValue()))) {
-        consume_iterator->AddChild(*produce_iterator);
-        ++num_matched;
+      if (auto produce_iterators = gtl::FindOrNull(
+              produce_iterator_map, std::make_pair(iterator_id->IntValue(),
+                                                   element_id->IntValue()))) {
+        for (EventNode* produce_iterator : *produce_iterators) {
+          consume_iterator->AddChild(produce_iterator);
+          ++num_matched;
+        }
       }
     }
   }

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/variant.h"
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
@@ -661,6 +662,120 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
   } else if (read == 0) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
   }
+}
+
+static void StatForObject(GCSFile* gcs_file, const std::string& path,
+                          const std::string& bucket, const std::string& object,
+                          GcsFileStat* stat, TF_Status* status) {
+  if (object.empty())
+    return TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        ("'object' must be a non-empty string. (File: " + path + ")").c_str());
+  TF_SetStatus(status, TF_OK, "");
+  gcs_file->stat_cache->LookupOrCompute(
+      path, stat,
+      [gcs_file, bucket, object](const std::string& path, GcsFileStat* stat,
+                                 TF_Status* status) {
+        UncachedStatForObject(bucket, object, stat, &gcs_file->gcs_client,
+                              status);
+      },
+      status);
+}
+
+static bool ObjectExists(GCSFile* gcs_file, const std::string& path,
+                         const std::string& bucket, const std::string& object,
+                         TF_Status* status) {
+  GcsFileStat stat;
+  StatForObject(gcs_file, path, bucket, object, &stat, status);
+  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_NOT_FOUND)
+    return false;
+  if (TF_GetCode(status) == TF_NOT_FOUND) {
+    TF_SetStatus(status, TF_OK, "");
+    return false;
+  }
+  return !stat.base.is_directory;
+}
+
+static bool BucketExists(GCSFile* gcs_file, const std::string& bucket,
+                         TF_Status* status) {
+  auto metadata = gcs_file->gcs_client.GetBucketMetadata(bucket);
+  TF_SetStatusFromGCSStatus(metadata.status(), status);
+  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_NOT_FOUND)
+    return false;
+  if (TF_GetCode(status) == TF_NOT_FOUND) {
+    TF_SetStatus(status, TF_OK, "");
+    return false;
+  }
+  return true;
+}
+
+static std::vector<std::string> GetChildrenBounded(
+    GCSFile* gcs_file, std::string dir, uint64_t max_results, bool recursive,
+    bool include_self_directory_marker, TF_Status* status) {
+  std::string bucket, prefix;
+  MaybeAppendSlash(&dir);
+  ParseGCSPath(dir, true, &bucket, &prefix, status);
+
+  std::vector<std::string> result;
+  uint64_t count = 0;
+  std::string delimiter = recursive ? "" : "/";
+
+  for (auto&& item : gcs_file->gcs_client.ListObjectsAndPrefixes(
+           bucket, gcs::Prefix(prefix), gcs::Delimiter(delimiter))) {
+    if (count == max_results) {
+      TF_SetStatus(status, TF_OK, "");
+      return result;
+    }
+    if (!item) {
+      TF_SetStatusFromGCSStatus(item.status(), status);
+      return result;
+    }
+    auto value = *std::move(item);
+    std::string children = absl::holds_alternative<std::string>(value)
+                               ? absl::get<std::string>(value)
+                               : absl::get<gcs::ObjectMetadata>(value).name();
+    auto pos = children.find(prefix);
+    if (pos != 0) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   ("Unexpected response: the returned file name " + children +
+                    " doesn't match the prefix " + prefix)
+                       .c_str());
+      return result;
+    }
+    children.erase(0, prefix.length());
+    if (!children.empty() || include_self_directory_marker) {
+      result.emplace_back(children);
+    }
+    ++count;
+  }
+
+  return result;
+}
+
+static bool FolderExists(GCSFile* gcs_file, std::string dir,
+                         TF_Status* status) {
+  ExpiringLRUCache<GcsFileStat>::ComputeFunc compute_func =
+      [gcs_file](const std::string& dir, GcsFileStat* stat, TF_Status* status) {
+        auto children =
+            GetChildrenBounded(gcs_file, dir, 1, true, true, status);
+        if (TF_GetCode(status) != TF_OK) return;
+        if (!children.empty()) {
+          stat->base = {0, 0, true};
+          return TF_SetStatus(status, TF_OK, "");
+        } else {
+          return TF_SetStatus(status, TF_INVALID_ARGUMENT, "Not a directory!");
+        }
+      };
+  GcsFileStat stat;
+  MaybeAppendSlash(&dir);
+  gcs_file->stat_cache->LookupOrCompute(dir, &stat, compute_func, status);
+  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_INVALID_ARGUMENT)
+    return false;
+  if (TF_GetCode(status) == TF_INVALID_ARGUMENT) {
+    TF_SetStatus(status, TF_OK, "");
+    return false;
+  }
+  return true;
 }
 
 void CreateDir(const TF_Filesystem* filesystem, const char* path,

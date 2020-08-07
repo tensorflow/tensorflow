@@ -1149,21 +1149,21 @@ ENTRY entry {
                           ShardingPropagation().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "tp"),
-              op::Sharding("{{devices=[1,2]0,1}}"));
+              op::Sharding("{{devices=[3,1]0,1,2}}"));
   EXPECT_THAT(FindInstruction(module.get(), "tgte"),
-              op::Sharding("{devices=[1,2]0,1}"));
+              op::Sharding("{devices=[3,1]0,1,2}"));
   EXPECT_THAT(FindInstruction(module.get(), "ttr"),
-              op::Sharding("{devices=[2,1]0,1}"));
+              op::Sharding("{devices=[1,3]0,1,2}"));
   EXPECT_THAT(FindInstruction(module.get(), "tr"),
-              op::Sharding("{{devices=[2,1]0,1}}"));
+              op::Sharding("{{devices=[1,3]0,1,2}}"));
   EXPECT_THAT(FindInstruction(module.get(), "fp"),
               op::Sharding("{{devices=[1,3]0,1,2}}"));
   EXPECT_THAT(FindInstruction(module.get(), "fgte"),
               op::Sharding("{devices=[1,3]0,1,2}"));
   EXPECT_THAT(FindInstruction(module.get(), "fr"),
-              op::Sharding("{{devices=[2,1]0,1}}"));
+              op::Sharding("{{devices=[1,3]0,1,2}}"));
   EXPECT_THAT(FindInstruction(module.get(), "conditional"),
-              op::Sharding("{{devices=[2,1]0,1}}"));
+              op::Sharding("{{devices=[1,3]0,1,2}}"));
 }
 
 TEST_F(ShardingPropagationTest, TupleFromUser) {
@@ -1762,6 +1762,59 @@ ENTRY entry {
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "updates"),
               op::Sharding("{devices=[2,1]0,1}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialShardingOnElementwise) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[2,9] parameter(0), sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %p1 = f32[2,9] parameter(1), sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  %lhs = f32[2,9] copy(%p0)
+  %rhs = f32[2,9] copy(%p1)
+  %add = f32[2,9] add(%lhs, %rhs)
+  ROOT %copy = f32[2,9] copy(%add)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "lhs"),
+              op::Sharding("{devices=[2,2]0,2,1,3}"));
+  EXPECT_THAT(FindInstruction(module.get(), "rhs"),
+              op::Sharding("{devices=[2,2]0,2,1,3}"));
+  EXPECT_THAT(FindInstruction(module.get(), "add"),
+              op::Sharding("{devices=[2,2]0,2,1,3}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialShardingOnElementwise2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[2,9] parameter(0), sharding={devices=[1,2,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %p1 = f32[2,9] parameter(1), sharding={devices=[2,1,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  %lhs = f32[2,9] copy(%p0)
+  %rhs = f32[2,9] copy(%p1)
+  %add = f32[2,9] add(%lhs, %rhs)
+  ROOT %copy = f32[2,9] copy(%add)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "lhs"),
+      op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      FindInstruction(module.get(), "rhs"),
+      op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      FindInstruction(module.get(), "add"),
+      op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
 }
 
 }  // namespace

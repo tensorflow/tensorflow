@@ -68,17 +68,6 @@ class Tensor : public GPUObject {
   int Slices() const { return DivideRoundUp(shape_.c, 4); }
   int Batch() const { return shape_.b; }
 
-  // returns int4(width * batch, height, slices, batch)
-  int4 GetWBatchedHSB() const {
-    return int4(shape_.w * shape_.b, shape_.h, Slices(), shape_.b);
-  }
-  int4 GetWBatchedHDS() const {
-    return int4(shape_.w * shape_.b, shape_.h, shape_.d, Slices());
-  }
-
-  int4 GetWHSB() const { return int4(shape_.w, shape_.h, Slices(), shape_.b); }
-  int4 GetWHDS() const { return int4(shape_.w, shape_.h, shape_.d, Slices()); }
-
   TensorDescriptor GetDescriptor() const { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }

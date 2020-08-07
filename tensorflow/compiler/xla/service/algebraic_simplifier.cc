@@ -665,7 +665,7 @@ Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
     HloInstruction* inst;
     HloInstruction* user;
     int64 index;
-    std::tie (inst, user, index) = operands.back();
+    std::tie(inst, user, index) = operands.back();
     operands.pop_back();
 
     // Skip the op types that are not commutative with multiply.
@@ -1236,6 +1236,10 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
     return Status::OK();
   }
 
+  if (options_.is_layout_sensitive()) {
+    return Status::OK();
+  }
+
   // Check if we can merge "adjacent" slice operands which take slices from the
   // same other op. For simplicity we only merge unstrided slices.
   int64 concatenate_dimension = concatenate->concatenate_dimension();
@@ -1334,6 +1338,23 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
             concatenate->shape(), operands[operand_to_pad],
             operands[pad_value_operand]->mutable_operand(0), padding_config));
     return ReplaceInstruction(concatenate, pad);
+  }
+
+  if (absl::c_count(operands, operands[0]) == operands.size() &&
+      operands[0]->shape().dimensions(concatenate_dimension) == 1) {
+    Shape new_shape = operands[0]->shape();
+    absl::InlinedVector<int64, 8> broadcast_dims;
+    for (int64 i = 0; i < new_shape.rank(); ++i) {
+      if (i == concatenate_dimension) {
+        continue;
+      }
+      broadcast_dims.push_back(i);
+    }
+    new_shape.DeleteDimension(concatenate_dimension);
+    return ReplaceInstruction(
+        concatenate,
+        MakeBroadcastHlo(MakeReshapeHlo(new_shape, operands[0]).ValueOrDie(),
+                         broadcast_dims, concatenate->shape()));
   }
   return Status::OK();
 }

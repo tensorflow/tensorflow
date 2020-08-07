@@ -94,13 +94,36 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       // This is currently empty; we have no live experiments yet.
       absl::flat_hash_map<string, uint64> live_experiments;
 
-      const string opt_ins_raw = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
-      const string opt_outs_raw = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+      const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
+      const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+      string opt_ins_raw;
+      if (opt_ins_raw_cs != nullptr) {
+        opt_ins_raw = string(opt_ins_raw_cs);
+      }
+      string opt_outs_raw;
+      if (opt_outs_raw_cs != nullptr) {
+        opt_outs_raw = string(opt_outs_raw_cs);
+      }
       auto hash_func = [](const string& str) { return Hash64(str); };
       optimizations = SelectOptimizations(
           job_name, opt_ins_raw, opt_outs_raw, live_experiments,
           optimizations_enabled, optimizations_disabled, optimizations_default,
           hash_func);
+
+      // Log the experiments that will be applied.
+      if (!live_experiments.empty() && VLOG_IS_ON(1)) {
+        VLOG(1) << "The input pipeline is subject to tf.data experiment. "
+                   "Please see `go/tf-data-experiments` for more details.";
+
+        for (auto& pair : live_experiments) {
+          string experiment = pair.first;
+          if (std::find(optimizations.begin(), optimizations.end(),
+                        experiment) != optimizations.end()) {
+            VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
+            metrics::RecordTFDataExperiment(experiment);
+          }
+        }
+      }
     }
   }
 

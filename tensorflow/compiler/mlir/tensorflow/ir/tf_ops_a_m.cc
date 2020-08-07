@@ -339,15 +339,19 @@ void BatchToSpaceOp::getCanonicalizationPatterns(
 //   are not unknown.
 //
 static LogicalResult Verify(BiasAddOp op) {
-  StringRef format = op.data_format();
-  if (format == "NHWC") {
+  absl::string_view data_format(op.data_format().data(),
+                                op.data_format().size());
+  tensorflow::TensorFormat format;
+  bool is_valid = FormatFromString(data_format, &format);
+  DCHECK(is_valid) << data_format;
+  if (format == tensorflow::TensorFormat::FORMAT_NHWC) {
     if (!HasRankAtLeast(op.value(), 2))
       return op.emitOpError(
           "requires value operand to have rank at least two with `NHWC` data "
           "format");
   } else {
     // Op definition requires data_format to be either NHWC or NCHW.
-    DCHECK_EQ(format.str(), "NCHW");
+    DCHECK_EQ(format, tensorflow::TensorFormat::FORMAT_NCHW);
     if (!HasRankAtLeast(op.value(), 3))
       return op.emitOpError(
           "requires value operand to have rank at least three with `NCHW` data "
@@ -361,9 +365,8 @@ static LogicalResult Verify(BiasAddOp op) {
   RankedTensorType bias_ty = op.bias().getType().dyn_cast<RankedTensorType>();
   if (!bias_ty || !value_ty) return success();
 
-  // TODO(hinsu): Leverage tensor_format.h utility in TensorFlow to compute
-  // dimension indices based on format.
-  int64_t feature_dim_idx = format == "NHWC" ? value_ty.getRank() - 1 : 1;
+  int64_t feature_dim_idx =
+      tensorflow::GetTensorFeatureDimIndex(value_ty.getRank(), format);
   int64_t feature_dim = value_ty.getDimSize(feature_dim_idx);
   int64_t bias_len = bias_ty.getDimSize(0);
   if (feature_dim != -1 && bias_len != -1 && feature_dim != bias_len) {
@@ -383,15 +386,19 @@ static LogicalResult Verify(BiasAddOp op) {
 // * the out_backprop operands have valid ranks or are unranked.
 //
 static LogicalResult Verify(BiasAddGradOp op) {
-  StringRef format = op.data_format();
-  if (format == "NHWC") {
+  absl::string_view data_format(op.data_format().data(),
+                                op.data_format().size());
+  tensorflow::TensorFormat format;
+  bool is_valid = FormatFromString(data_format, &format);
+  DCHECK(is_valid) << data_format;
+  if (format == tensorflow::TensorFormat::FORMAT_NHWC) {
     if (!HasRankAtLeast(op.out_backprop(), 2))
       return op.emitOpError(
           "requires out_backprop operand to have rank at least two with `NHWC` "
           "data format");
   } else {
     // Op definition requires data_format to be either NHWC or NCHW.
-    DCHECK_EQ(format.str(), "NCHW");
+    DCHECK_EQ(format, tensorflow::TensorFormat::FORMAT_NCHW);
     if (!HasRankAtLeast(op.out_backprop(), 3))
       return op.emitOpError(
           "requires out_backprop operand to have rank at least three with "
@@ -510,6 +517,221 @@ static LogicalResult Verify(OpT op) {
 void ConcatOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
   results.insert<ConvertToConcatV2>(context);
+}
+
+namespace {
+
+// Hoist coefficient-wise unary operation out of the Concat op:
+//
+//   %0 = "tf.Log1p"(%arg_0)
+//   %1 = "tf.Log1p"(%arg_1)
+//   ...
+//   %n = "tf.Log1p"(%arg_n)
+//   %m = "tf.ConcatV2"(%0, %1, ..., %n, %axis)
+//
+// Rewrite it to:
+//
+//   %0 = "tf.ConcatV2"(%arg_0, %arg_1, ..., %arg_n, %axis)
+//   %1 = "tf.Log1p"(%0)
+class HoistCwiseUnaryOutOfConcat : public OpRewritePattern<TF::ConcatV2Op> {
+ public:
+  explicit HoistCwiseUnaryOutOfConcat(MLIRContext *context)
+      : OpRewritePattern<TF::ConcatV2Op>(context) {}
+  LogicalResult matchAndRewrite(TF::ConcatV2Op op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
+    TF::ConcatV2Op op, PatternRewriter &rewriter) const {
+  auto loc = op.getLoc();
+
+  // All concat operands must be defined by ops.
+  Operation *first_arg_op = op.values().front().getDefiningOp();
+  if (first_arg_op == nullptr) return failure();
+
+  // All concat operands must be produced by the coeff-wise unary operation.
+  if (!first_arg_op->hasTrait<OpTrait::TF::CwiseUnary>()) return failure();
+
+  // All concat operands must be defined by the op of same kind.
+  bool args_same_op = llvm::all_of(op.values(), [&](Value arg) -> bool {
+    Operation *arg_op = arg.getDefiningOp();
+    return arg_op && arg_op->getName() == first_arg_op->getName();
+  });
+  if (!args_same_op) return failure();
+
+  // Collect unary operations operands.
+  auto unary_operands = llvm::map_range(op.values(), [](Value arg) -> Value {
+    return arg.getDefiningOp()->getOperand(0);
+  });
+  SmallVector<Value, 8> unary_ops_args(unary_operands);
+
+  // Concatenate unary ops operands.
+  auto concat_unary_operands =
+      rewriter.create<ConcatV2Op>(loc, op.getType(), unary_ops_args, op.axis());
+
+  // Replace original concat with an unary op.
+  OperationState new_unary_op_state(loc, first_arg_op->getName().getStringRef(),
+                                    concat_unary_operands.getResult(),
+                                    op.getResult().getType(),
+                                    ArrayRef<NamedAttribute>());
+  Operation *new_unary_op = rewriter.createOperation(new_unary_op_state);
+
+  rewriter.replaceOp(op, new_unary_op->getResults());
+
+  return success();
+}
+
+// Hoist coefficient-wise binary operation out of the Concat op:
+//
+//   %0 = tf.Mul(%lhs_0, %rhs_0)
+//   %1 = tf.Mul(%lhs_1, %rhs_1)
+//   ...
+//   %n = tf.Mul(%lhs_n, %rhs_n)
+//   %m = tf.ConcatV2(%0, %1, ..., %n, %axis)
+//
+// Rewrite it to:
+//
+//   %0 = tf.ConcatV2(%lhs0, %lhs1, ..., %lhs_n, %lhs_concat_axis)
+//   %1 = tf.ConcatV2(%rhs0, %rhs1, ..., %rhs_n, %rhs_concat_axis)
+//   %2 = tf.Mul(%0, %1)
+//
+// Because coefficient-wise binary operations support implicit broadcasting, we
+// should be very careful with this optimization, and do not accidentally
+// produce incorrect concat operations.
+class HoistCwiseBinaryOutOfConcat : public OpRewritePattern<TF::ConcatV2Op> {
+ public:
+  explicit HoistCwiseBinaryOutOfConcat(MLIRContext *context)
+      : OpRewritePattern<TF::ConcatV2Op>(context) {}
+  LogicalResult matchAndRewrite(TF::ConcatV2Op op,
+                                PatternRewriter &rewriter) const override;
+
+ private:
+  struct HoistParams {
+    SmallVector<Value, 8> lhs_args;
+    SmallVector<Value, 8> rhs_args;
+    int64_t lhs_axis;
+    int64_t rhs_axis;
+    Type lhs_concat_type;
+    Type rhs_concat_type;
+  };
+
+  // Returns parameters of a binary op hoisting out of concatenation if all of
+  // the operands are in one of the compatible configurations.
+  Optional<HoistParams> GetHoistParams(TF::ConcatV2Op op, int64_t axis) const;
+};
+
+LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
+    TF::ConcatV2Op op, PatternRewriter &rewriter) const {
+  auto loc = op.getLoc();
+
+  // Axis must be a constant scalar value.
+  DenseIntElementsAttr axis_attr;
+  if (!matchPattern(op.axis(), m_Constant(&axis_attr))) return failure();
+  if (axis_attr.getNumElements() != 1) return failure();
+  int64_t axis =
+      axis_attr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
+
+  // All concat operands must be defined by ops.
+  Operation *first_arg_op = op.values().front().getDefiningOp();
+  if (first_arg_op == nullptr) return failure();
+
+  // All concat operands must be produced by the coeff-wise binary operation.
+  if (!first_arg_op->hasTrait<OpTrait::TF::CwiseBinary>()) return failure();
+
+  // All concat operands must be defined by the op of same kind.
+  bool args_same_op = llvm::all_of(op.values(), [&](Value arg) -> bool {
+    Operation *arg_op = arg.getDefiningOp();
+    return arg_op && arg_op->getName() == first_arg_op->getName();
+  });
+  if (!args_same_op) return failure();
+
+  // Compute binary operands hoist parameters.
+  auto hoist_params = GetHoistParams(op, axis);
+  if (!hoist_params.hasValue()) return failure();
+
+  // New lhs and rhs concatenation axis.
+  auto axis_type = mlir::RankedTensorType::get({}, rewriter.getIntegerType(64));
+  auto lhs_axis = rewriter.create<TF::ConstOp>(
+      loc, DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis));
+  auto rhs_axis = rewriter.create<TF::ConstOp>(
+      loc, DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis));
+
+  // Concatenate binary ops operands on the new axis.
+  auto lhs_concat = rewriter.create<ConcatV2Op>(
+      loc, hoist_params->lhs_concat_type, hoist_params->lhs_args, lhs_axis);
+  auto rhs_concat = rewriter.create<ConcatV2Op>(
+      loc, hoist_params->rhs_concat_type, hoist_params->rhs_args, rhs_axis);
+
+  // Replace original concat with a binary op.
+  OperationState new_binary_op_state(
+      loc, first_arg_op->getName().getStringRef(),
+      {lhs_concat.getResult(), rhs_concat.getResult()},
+      op.getResult().getType(), ArrayRef<NamedAttribute>());
+  Operation *new_binary_op = rewriter.createOperation(new_binary_op_state);
+
+  rewriter.replaceOp(op, new_binary_op->getResults());
+
+  return success();
+}
+
+Optional<HoistCwiseBinaryOutOfConcat::HoistParams>
+HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
+                                            int64_t axis) const {
+  // Collects lhs or rhs arguments of concat op operands.
+  auto args = [&](int operand_idx) -> SmallVector<Value, 8> {
+    auto range = llvm::map_range(op.values(), [&](Value arg) {
+      return arg.getDefiningOp()->getOperand(operand_idx);
+    });
+    return {range.begin(), range.end()};
+  };
+
+  // Returns true if all binary ops operands at `operand_idx` index are tensors
+  // of `axis + 1` rank and axis dim has size `1`.
+  auto is_all_tensors = [&](int operand_idx, int axis) -> bool {
+    return llvm::all_of(op.values(), [&](Value arg) -> bool {
+      auto operand = arg.getDefiningOp()->getOperand(operand_idx);
+      auto ranked = operand.getType().dyn_cast<RankedTensorType>();
+      return ranked && ranked.getRank() == (axis + 1) &&
+             ranked.getShape()[axis] == 1;
+    });
+  };
+
+  // Returns true if all binary ops operands at `operand_idx` index are scalars.
+  auto is_all_scalars = [&](int operand_idx) -> bool {
+    return llvm::all_of(op.values(), [&](Value arg) -> bool {
+      auto operand = arg.getDefiningOp()->getOperand(operand_idx);
+      auto ranked = operand.getType().dyn_cast<RankedTensorType>();
+      return ranked && ranked.hasRank() && ranked.getRank() == 0;
+    });
+  };
+
+  // Concat result type must be a ranked tensor.
+  auto ranked = op.getType().dyn_cast<RankedTensorType>();
+  if (!ranked) return None;
+
+  // TODO(ezhulenev): Add support for more valid concat patterns.
+
+  // Tensor + Scalar: [..., 1] + []  <- scalar
+  //                        ^
+  //                        \- axis is the innermost dimension.
+  //
+  // Concatenate tensor arguments on the same axis as the original operation,
+  // and concatenate scalars into the vector.
+  if (is_all_tensors(0, axis) && is_all_scalars(1)) {
+    std::array<int64_t, 1> rhs_dims{static_cast<int64_t>(op.values().size())};
+    auto rhs_type = RankedTensorType::get(rhs_dims, ranked.getElementType());
+    return HoistParams{args(0), args(1), axis, 0, op.getType(), rhs_type};
+  }
+
+  return None;
+}
+
+}  // namespace
+
+void ConcatV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<HoistCwiseBinaryOutOfConcat, HoistCwiseUnaryOutOfConcat>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -775,7 +997,8 @@ static LogicalResult Verify(OpT op) {
 
   int64_t input_channels = -1;
   if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
-    std::string data_format = op.data_format().str();
+    absl::string_view data_format(op.data_format().data(),
+                                  op.data_format().size());
     tensorflow::TensorFormat format;
     auto is_valid = FormatFromString(data_format, &format);
     DCHECK(is_valid) << data_format;

@@ -237,15 +237,12 @@ int3 Conv3D::GetGridSize() const {
       DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w) *
       DivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
   int3 wg;
-  wg.x = DivideRoundUp(grid_x, conv_params_.work_group_size.x);
-  wg.y = DivideRoundUp(grid_y, conv_params_.work_group_size.y);
-  wg.z = DivideRoundUp(grid_z, conv_params_.work_group_size.z);
-  return int3(wg[conv_params_.work_group_launch_order[0]] *
-                  conv_params_.work_group_size.x,
-              wg[conv_params_.work_group_launch_order[1]] *
-                  conv_params_.work_group_size.y,
-              wg[conv_params_.work_group_launch_order[2]] *
-                  conv_params_.work_group_size.z);
+  wg.x = DivideRoundUp(grid_x, work_group_size_.x);
+  wg.y = DivideRoundUp(grid_y, work_group_size_.y);
+  wg.z = DivideRoundUp(grid_z, work_group_size_.z);
+  return int3(wg[conv_params_.work_group_launch_order[0]] * work_group_size_.x,
+              wg[conv_params_.work_group_launch_order[1]] * work_group_size_.y,
+              wg[conv_params_.work_group_launch_order[2]] * work_group_size_.z);
 }
 
 absl::Status Conv3D::Tune(const TuningParameters& params) {
@@ -259,9 +256,8 @@ absl::Status Conv3D::Tune(const TuningParameters& params) {
       conv_params_.work_group_launch_order[1] == 1 &&
       conv_params_.work_group_launch_order[2] == 2) {
     RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
-                                         &conv_params_.work_group_size));
-    work_group_size_ = conv_params_.work_group_size;
+    RETURN_IF_ERROR(
+        GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_));
   }
   return absl::OkStatus();
 }
@@ -328,14 +324,13 @@ std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
       conv_params.weights_upload_type ==
           Conv3D::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
 
-  const int3 work_group_size = conv_params.work_group_size;
   const int4 block_size = conv_params.block_size;
   std::string c = GetCommonDefines(op_def.precision);
   if (need_local_mem) {  // we use fixed workgroup size when use local mem
     c += "__attribute__((reqd_work_group_size(" +
-         std::to_string(work_group_size.x) + ", " +
-         std::to_string(work_group_size.y) + ", " +
-         std::to_string(work_group_size.z) + ")))\n";
+         std::to_string(work_group_size_.x) + ", " +
+         std::to_string(work_group_size_.y) + ", " +
+         std::to_string(work_group_size_.z) + ")))\n";
   }
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
@@ -348,7 +343,7 @@ std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
   }
   if (conv_params.weights_upload_type ==
       Conv3D::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    c += "  int lid = get_local_id(1) * " + std::to_string(work_group_size.x) +
+    c += "  int lid = get_local_id(1) * " + std::to_string(work_group_size_.x) +
          " + get_local_id(0);\n";
   }
   for (int s = 0; s < block_size.w; ++s) {
@@ -608,7 +603,7 @@ std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
   declare_src();
   c += "  do {\n";
   const int total_work_items =
-      work_group_size.x * work_group_size.y * work_group_size.z;
+      work_group_size_.x * work_group_size_.y * work_group_size_.z;
   if (conv_params.weights_upload_type ==
       Conv3D::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP) {
     c +=
@@ -731,14 +726,14 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
                                            int src_slices, int dst_slices,
                                            bool x_kernel_is_1,
                                            bool y_kernel_is_1,
-                                           bool z_kernel_is_1) const {
+                                           bool z_kernel_is_1) {
   ConvParams conv_params;
   conv_params.x_kernel_is_1 = x_kernel_is_1;
   conv_params.y_kernel_is_1 = y_kernel_is_1;
   conv_params.z_kernel_is_1 = z_kernel_is_1;
   if (device.IsNvidia()) {
     conv_params.block_size = int4(1, 1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(2, 0, 1);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
@@ -757,7 +752,7 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
     }
   } else if (device.IsPowerVR()) {
     conv_params.block_size = int4(1, 1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(2, 0, 1);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type =
@@ -791,17 +786,17 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
         }
       }
       conv_params.block_size.x = 2;
-      conv_params.work_group_size = int3(4, 8, 1);
+      work_group_size_ = int3(4, 8, 1);
     }
   } else if (device.IsAdreno()) {
     conv_params.block_size = int4(2, 2, 1, 2);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM;
   } else if (device.IsMali()) {
     conv_params.block_size = int4(1, 1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
@@ -820,7 +815,7 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
     }
   } else {
     conv_params.block_size = int4(2, 2, 1, 2);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM;
@@ -831,7 +826,7 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
 
 Conv3D::ConvParams Conv3D::GuessBestParams(
     const CLDevice& device, const OperationDef& definition,
-    const Convolution3DAttributes& attr) const {
+    const Convolution3DAttributes& attr) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
   const bool x_kernel_is_1 = attr.weights.shape.w == 1 && attr.strides.w == 1 &&
