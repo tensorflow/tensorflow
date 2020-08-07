@@ -724,7 +724,7 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
 #ifdef PLATFORM_GOOGLE
-    return tensorflow::wrap(new tfrt::ContextInterface(opts->async));
+    return tensorflow::wrap(new tfrt::tf::ContextInterface(opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
