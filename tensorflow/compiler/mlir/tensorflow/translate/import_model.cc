@@ -2873,7 +2873,7 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
     mlir::OpBuilder builder(func.getBody());
     llvm::SmallVector<mlir::Type, 4> new_input_types;
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
-      auto arg = func.front().getArgument(i);
+      auto arg = func.getArgument(i);
       auto global_tensor = mlir::tf_saved_model::LookupBoundInputOfType<
           mlir::tf_saved_model::GlobalTensorOp>(func, i, symbol_table);
       if (global_tensor) {
