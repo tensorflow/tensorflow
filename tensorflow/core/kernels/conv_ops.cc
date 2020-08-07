@@ -69,8 +69,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
-
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -695,17 +693,14 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    {
-      profiler::ScopedAnnotation label("ThenBlasGemm");
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
+                           a_ptr, k, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
     }
     return;
   } else if (patch_rows == in_rows && patch_cols == in_cols &&
@@ -726,17 +721,14 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    {
-      profiler::ScopedAnnotation label("ThenBlasGemm");
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
+                           a_ptr, k, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
     }
     return;
   }
@@ -927,13 +919,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
     TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
                                           &transformed_filter));
-    {
-      profiler::ScopedAnnotation label("Convert_HWIO_to_OIHW");
-      functor::TransformFilter<GPUDevice, T, int, 4>()(
-          ctx->eigen_device<GPUDevice>(), dst_format,
-          To32Bit(filter.tensor<T, 4>()),
-          To32Bit(transformed_filter.tensor<T, 4>()));
-    }
+    functor::TransformFilter<GPUDevice, T, int, 4>()(
+        ctx->eigen_device<GPUDevice>(), dst_format,
+        To32Bit(filter.tensor<T, 4>()),
+        To32Bit(transformed_filter.tensor<T, 4>()));
+
     return Status::OK();
   };
 
@@ -978,13 +968,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     VLOG(3) << "Allocate temporary memory for bfloat16 input";
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DT_BFLOAT16, input_shape, &bfloat16_input));
-    {
-      profiler::ScopedAnnotation label("Convert_FP32_to_BFP16");
-      functor::ConvertToBFloat16<GPUDevice, T, 4>()(
-          ctx->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(input).tensor<T, 4>(),
-          bfloat16_input.tensor<bfloat16, 4>());
-    }
+    functor::ConvertToBFloat16<GPUDevice, T, 4>()(
+        ctx->eigen_device<GPUDevice>(),
+        const_cast<const Tensor&>(input).tensor<T, 4>(),
+        bfloat16_input.tensor<bfloat16, 4>());
 
     TensorShape filter_shape =
         TensorShape({filter.dim_size(3), filter.dim_size(2), filter.dim_size(0),
@@ -992,13 +979,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     VLOG(3) << "Allocate temporary memory for bfloat16 filter";
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DT_BFLOAT16, filter_shape, &bfloat16_filter));
-    {
-      profiler::ScopedAnnotation label("Convert_FP32_to_BFP16");
-      functor::ConvertToBFloat16<GPUDevice, T, 4>()(
-          ctx->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(transformed_filter).tensor<T, 4>(),
-          bfloat16_filter.tensor<bfloat16, 4>());
-    }
+    functor::ConvertToBFloat16<GPUDevice, T, 4>()(
+        ctx->eigen_device<GPUDevice>(),
+        const_cast<const Tensor&>(transformed_filter).tensor<T, 4>(),
+        bfloat16_filter.tensor<bfloat16, 4>());
 
     TensorShape output_shape =
         ShapeFromFormat(FORMAT_NCHW, out_batch, out_rows, out_cols, out_depths);
@@ -1120,7 +1104,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
     std::vector<ProfileResult> algorithms;
     if (TestMIOpenBFloat16Support<T>()) {
-      profiler::ScopedAnnotation label("AutoTuner");
       OP_REQUIRES(
           ctx,
           stream->parent()->GetMIOpenConvolveAlgorithms(
@@ -1133,7 +1116,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
               "because MIOpen failed to initialize, so try looking to "
               "see if a warning log message was printed above."));
     } else {
-      profiler::ScopedAnnotation label("AutoTuner");
       OP_REQUIRES(ctx,
                   stream->parent()->GetMIOpenConvolveAlgorithms(
                       se::dnn::ConvolutionKind::FORWARD,
@@ -1161,7 +1143,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       *result.mutable_run_time() = proto_utils::ToDurationProto(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     } else {
-      profiler::ScopedAnnotation label("AutoTuner");
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
@@ -1217,26 +1198,24 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   bool cudnn_launch_status = false;
-  {
-    profiler::ScopedAnnotation label("ThenConvolveWithAlgorithm");
-    if (TestMIOpenBFloat16Support<T>()) {
-      cudnn_launch_status = stream
-                                ->ThenConvolveWithAlgorithm(
-                                    input_desc, bfloat16_input_ptr, filter_desc,
-                                    bfloat16_filter_ptr, conv_desc, output_desc,
-                                    &bfloat16_output_ptr, &scratch_allocator,
-                                    algorithm_config, nullptr)
-                                .ok();
-    } else {
-      cudnn_launch_status =
-          stream
-              ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                          filter_ptr, conv_desc, output_desc,
-                                          &output_ptr, &scratch_allocator,
-                                          algorithm_config, nullptr)
-              .ok();
-    }
+  if (TestMIOpenBFloat16Support<T>()) {
+    cudnn_launch_status = stream
+                              ->ThenConvolveWithAlgorithm(
+                                  input_desc, bfloat16_input_ptr, filter_desc,
+                                  bfloat16_filter_ptr, conv_desc, output_desc,
+                                  &bfloat16_output_ptr, &scratch_allocator,
+                                  algorithm_config, nullptr)
+                              .ok();
+  } else {
+    cudnn_launch_status =
+        stream
+            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                        filter_ptr, conv_desc, output_desc,
+                                        &output_ptr, &scratch_allocator,
+                                        algorithm_config, nullptr)
+            .ok();
   }
+
   if (!cudnn_launch_status) {
     ctx->SetStatus(errors::Internal(
         "cuDNN launch failure : input shape(", input.shape().DebugString(),
@@ -1244,7 +1223,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   }
 
   if (TestMIOpenBFloat16Support<T>()) {
-    profiler::ScopedAnnotation label("Convert_BFP16_to_FP32");
     VLOG(3) << "Convert the output tensor back from bfloat16 to float.";
     functor::ConvertFromBFloat16<GPUDevice, T, 4>()(
         ctx->eigen_device<GPUDevice>(),
@@ -1253,7 +1231,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   }
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
-    profiler::ScopedAnnotation label("Convert_NCHW_to_NHWC");
     VLOG(4) << "Convert the output tensor back from NCHW to NHWC.";
     functor::NCHWToNHWC<GPUDevice, T, 4>()(
         ctx->eigen_device<GPUDevice>(),
