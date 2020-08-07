@@ -109,6 +109,7 @@ cc_library(
         ":data_type",
         ":model",
         ":model_builder_helper",
+        ":model_transformer",
         ":object_reader",
         ":operations",
         ":shape",
@@ -125,7 +126,6 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/schema:schema_fbs",
     ] + tf_platform_alias("custom_parsers", "//tensorflow/lite/delegates/gpu/common/"),
 )
 
@@ -148,6 +148,7 @@ cc_library(
     deps = [
         ":data_type",
         ":model",
+        ":operations",
         ":shape",
         ":status",
         ":tensor",
