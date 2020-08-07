@@ -2898,6 +2898,52 @@ tf_kernel_library(
     ],
 )
 
+cc_library(
+    name = "tensor_map",
+    srcs = ["tensor_map.cc"],
+    hdrs = ["tensor_map.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/lib/core:refcount",
+    ],
+)
+
+tf_kernel_library(
+    name = "map_kernels",
+    srcs = ["map_kernels.cc"],
+    hdrs = ["map_kernels.h"],
+    deps = [
+        ":concat_lib",
+        ":fill_functor",
+        ":tensor_map",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_tests(
+    name = "tensor_map_test",
+    size = "small",
+    srcs = [
+        "tensor_map_test.cc",
+    ],
+    deps = [
+        ":tensor_map",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_kernel_library(
     name = "fact_op",
     prefix = "fact_op",

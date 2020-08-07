@@ -172,6 +172,7 @@ py_library(
         ":list_ops",
         ":manip_ops",
         ":map_fn",
+        ":map_ops",
         ":math_ops",
         ":metrics",
         ":nccl_ops",
@@ -3030,6 +3031,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "map_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "script_ops_gen",
 )
 
@@ -3546,6 +3551,7 @@ py_library(
         ":functional_ops_gen",
         ":gradients_util",
         ":list_ops",
+        ":map_ops",
         ":pywrap_tf_session",
         ":tensor_array_ops",
         ":tensor_shape",
@@ -4202,6 +4208,16 @@ py_library(
     deps = [
         ":array_ops",
         ":list_ops_gen",
+    ],
+)
+
+py_library(
+    name = "map_ops",
+    srcs = ["ops/map_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":map_ops_gen",
     ],
 )
 
@@ -5001,6 +5017,7 @@ cuda_py_test(
         ":gradients",
         ":init_ops",
         ":list_ops",
+        ":map_ops",
         ":math_grad",
         ":math_ops",
         ":nn_grad",
