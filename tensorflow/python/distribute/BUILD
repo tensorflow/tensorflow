@@ -146,6 +146,7 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":sharded_variable",
+        "//tensorflow/python/distribute/client:parameter_server_client",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -1775,7 +1776,7 @@ distribute_py_test(
 py_library(
     name = "parameter_server_strategy_v2",
     srcs = ["parameter_server_strategy_v2.py"],
-    srcs_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         ":parameter_server_strategy",
         "//tensorflow/python:constant_op",
