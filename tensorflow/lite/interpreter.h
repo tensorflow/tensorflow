@@ -365,6 +365,8 @@ class Interpreter {
   TfLiteStatus Invoke();
 
   /// Enable or disable the NN API (true to enable)
+  /// NOTE: This API is deprecated, prefer using the NNAPI delegate directly.
+  /// This method will be removed in a future release.
   void UseNNAPI(bool enable);
 
   /// Set the number of threads available to the interpreter.

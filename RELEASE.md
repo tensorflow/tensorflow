@@ -111,6 +111,8 @@
       string to be joined is empty.
     * `TFLiteConverter`:
       * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
+    * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
+      * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>

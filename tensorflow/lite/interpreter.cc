@@ -300,7 +300,12 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
   return primary_subgraph().SetExecutionPlan(new_plan);
 }
 
-void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
+void Interpreter::UseNNAPI(bool enable) {
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
+                       "Interpreter::UseNNAPI() is deprecated. Use "
+                       "tflite::NnApiDelegate() directly instead.");
+  primary_subgraph().UseNNAPI(enable);
+}
 
 TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
   if (num_threads < -1) {
