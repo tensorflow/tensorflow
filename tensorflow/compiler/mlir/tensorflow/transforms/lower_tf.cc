@@ -113,12 +113,27 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
 
 // Lowers AddN op to a sequence of AddV2 ops to accumulate operands.
 //
+// Note that to improve the parallelism, the operands are split
+// into two halves, and are accumulated first.
+//
+// Example:
+//
 //   %result = "tf.AddN"(%0, %1, %2)
 //
 // is lowered to:
 //
-//   %sum_0 = "tf.AddV2"(%0, %1)
-//   %result = "tf.AddV2"(%sum_0, %2)
+//   %sum_right = "tf.AddV2"(%1, %2)
+//   %result = "tf.AddV2"(%0, %sum_right)
+//
+// Or
+//
+//   %result = "tf.AddN"(%0, %1, %2, %3)
+//
+// is lowered to:
+//
+//   %sum_left = "tf.AddV2"(%0, %1)
+//   %sum_right = "tf.AddV2"(%2, %2)
+//   %result = "tf.AddV2"(%sum_left, %sum_right)
 //
 class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
  public:
@@ -131,13 +146,29 @@ class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
     // support variant type so variant types require special handling.
     if (getElementTypeOrSelf(op.getType()).isa<VariantType>()) return failure();
 
-    // TODO(hinsu): Improve parallelism by splitting operands in two halves and
-    // accumulating them first.
-    Value result = *op.inputs().begin();
-    for (Value operand : llvm::drop_begin(op.inputs(), 1)) {
-      result = rewriter.create<TF::AddV2Op>(op.getLoc(), result, operand);
+    auto begin = op.inputs().begin();
+    // Return the only operand directly.
+    if (op.N() == 1) {
+      rewriter.replaceOp(op, *begin);
+      return success();
     }
 
+    // Helper functor to accumulate from `begin` to `end` (exclusive).
+    auto accumulate_add = [&rewriter, &op] (auto begin, auto end) -> Value {
+      Value result = *begin;
+      ++begin;
+      for (auto operand = begin; operand != end; ++operand) {
+        result = rewriter.create<TF::AddV2Op>(op.getLoc(), result, *operand);
+      }
+      return result;
+    };
+
+    // Accumulate range `[begin, half)` and `[half, end)`,
+    // and add the results of two halves.
+    auto half = begin + op.N() / 2;
+    Value left = accumulate_add(begin, half);
+    Value right = accumulate_add(half, op.inputs().end());
+    Value result = rewriter.create<TF::AddV2Op>(op.getLoc(), left, right);
     rewriter.replaceOp(op, result);
     return success();
   }
