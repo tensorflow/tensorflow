@@ -49,6 +49,7 @@ struct MarkOpsForOutsideCompilation
 void AddSupportedControlFlowOps(MLIRContext* context,
                                 llvm::DenseSet<OperationName>* supported_ops) {
   supported_ops->insert(OperationName("tf.IfRegion", context));
+  supported_ops->insert(OperationName("tf.WhileRegion", context));
   supported_ops->insert(OperationName("tf.Yield", context));
 }
 
@@ -81,21 +82,17 @@ bool IsSupportedOp(Operation& op,
           mhlo::IsOpAllowedTf2XlaFallback(&op));
 }
 
-bool HasCapturedStringOperand(TF::IfRegionOp* if_op) {
+// Checks all regions of `op` for captured string operands.
+bool HasCapturedStringOperand(Operation* op) {
   bool string_operand = false;
-  mlir::visitUsedValuesDefinedAbove(
-      if_op->then_branch(), if_op->then_branch(),
-      [&](mlir::OpOperand* operand) {
-        if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
-          string_operand = true;
-      });
-  if (string_operand) return string_operand;
-  mlir::visitUsedValuesDefinedAbove(
-      if_op->else_branch(), if_op->else_branch(),
-      [&](mlir::OpOperand* operand) {
-        if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
-          string_operand = true;
-      });
+  for (auto& region : op->getRegions()) {
+    mlir::visitUsedValuesDefinedAbove(
+        region, region, [&](mlir::OpOperand* operand) {
+          if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
+            string_operand = true;
+        });
+    if (string_operand) return string_operand;
+  }
   return string_operand;
 }
 
@@ -106,8 +103,8 @@ LogicalResult MarkUncompilableOps(
       op->setAttr(kXlaOutsideCompilationAttr,
                   StringAttr::get("auto", op->getContext()));
     }
-    if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
-      if (HasCapturedStringOperand(&if_op)) {
+    if (llvm::isa<TF::IfRegionOp, TF::WhileRegionOp>(op)) {
+      if (HasCapturedStringOperand(op)) {
         op->setAttr(kXlaOutsideCompilationAttr,
                     StringAttr::get("auto", op->getContext()));
       }
