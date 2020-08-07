@@ -84,6 +84,8 @@ class DataServiceWorkerImpl {
   // Completed tasks which haven't yet been communicated to the dispatcher.
   absl::flat_hash_set<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
+  // Whether the worker has registered with the dispatcher yet.
+  bool registered_ TF_GUARDED_BY(mu_) = false;
   // Condition variable for notifying the background thread.
   condition_variable background_cv_ TF_GUARDED_BY(mu_);
   std::unique_ptr<Thread> background_thread_;

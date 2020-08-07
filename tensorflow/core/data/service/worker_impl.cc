@@ -76,7 +76,11 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address) {
                                   [this, dispatcher = dispatcher.release()]() {
                                     BackgroundThread(dispatcher);
                                   });
+  LOG(INFO) << "Worker registered with dispatcher running at "
+            << config_.dispatcher_address();
   background_thread_.reset(thread);
+  mutex_lock l(mu_);
+  registered_ = true;
   return Status::OK();
 }
 
@@ -118,6 +122,13 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   std::vector<tensorflow::Tensor> outputs;
   {
     mutex_lock l(mu_);
+    if (!registered_) {
+      // We need to reject requests until the worker has registered with the
+      // dispatcher, so that we don't return NOT_FOUND for tasks that the worker
+      // had before preemption.
+      return errors::Unavailable(
+          "Worker has not yet registered with dispatcher.");
+    }
     auto it = tasks_.find(request->task_id());
     if (it == tasks_.end()) {
       return errors::NotFound("DataServiceWorkerImpl::GetElement failed. ",
