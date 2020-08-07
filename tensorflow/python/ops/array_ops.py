@@ -5321,7 +5321,8 @@ def quantize_and_dequantize(
       input = ops.convert_to_tensor(input)
   if axis is None:
     axis = -1
-  axis = get_positive_axis(axis, input.shape.ndims)
+  else:
+    axis = get_positive_axis(axis, input.shape.ndims)
 
   return gen_array_ops.quantize_and_dequantize_v2(
       input,
