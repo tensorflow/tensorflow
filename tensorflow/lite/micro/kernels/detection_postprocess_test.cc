@@ -16,7 +16,8 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -95,17 +96,16 @@ void TestDetectionPostprocess(const int* input_dims_data1, const float* input_da
   TfLiteIntArray* output_dims3 = nullptr;
   TfLiteIntArray* output_dims4 = nullptr;
 
-  // Instance of a zero-length int to pass as tensor dims for a flatbuffer
-  // Tensor with no shape.
-  const TfLiteIntArray kZeroLengthIntArray = {0};
+  const int zero_length_int_array_data[] = {0};
+  TfLiteIntArray *zero_length_int_array = IntArrayFromInts(zero_length_int_array_data);
 
-  output_dims1 = output_dims_data1 == nullptr ? const_cast<TfLiteIntArray*>(&kZeroLengthIntArray) :
+  output_dims1 = output_dims_data1 == nullptr ? const_cast<TfLiteIntArray*>(zero_length_int_array) :
                  IntArrayFromInts(output_dims_data1);
-  output_dims2 = output_dims_data2 == nullptr ? const_cast<TfLiteIntArray*>(&kZeroLengthIntArray) :
+  output_dims2 = output_dims_data2 == nullptr ? const_cast<TfLiteIntArray*>(zero_length_int_array) :
                  IntArrayFromInts(output_dims_data2);
-  output_dims3 = output_dims_data3 == nullptr ? const_cast<TfLiteIntArray*>(&kZeroLengthIntArray) :
+  output_dims3 = output_dims_data3 == nullptr ? const_cast<TfLiteIntArray*>(zero_length_int_array) :
                  IntArrayFromInts(output_dims_data3);
-  output_dims4 = output_dims_data4 == nullptr ? const_cast<TfLiteIntArray*>(&kZeroLengthIntArray) :
+  output_dims4 = output_dims_data4 == nullptr ? const_cast<TfLiteIntArray*>(zero_length_int_array) :
                  IntArrayFromInts(output_dims_data4);
 
   constexpr int inputs_size = 3;
@@ -162,33 +162,19 @@ void TestDetectionPostprocess(const int* input_dims_data1, const float* input_da
   ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp("TFLite_Detection_PostProcess");
-
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, (const char*)fbb.GetBuffer().data(), fbb.GetBuffer().size());
-  }
 
   int inputs_array_data[] = {3, 0, 1, 2};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {4, 3, 4, 5, 6};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = nullptr;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  micro::KernelRunner runner(
+      *registration, tensors, tensors_size, inputs_array, outputs_array,
+      nullptr, micro_test::reporter);
+
+  const char* init_data = reinterpret_cast<const char*>(fbb.GetBuffer().data());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare(init_data, fbb.GetBuffer().size()));
 
   // Output dimensions should not be undefined after Prepare
   TF_LITE_MICRO_EXPECT_NE(nullptr, tensors[3].dims);
@@ -196,14 +182,12 @@ void TestDetectionPostprocess(const int* input_dims_data1, const float* input_da
   TF_LITE_MICRO_EXPECT_NE(nullptr, tensors[5].dims);
   TF_LITE_MICRO_EXPECT_NE(nullptr, tensors[6].dims);
 
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
   const int output_elements_count1 = tensors[3].dims->size;
   const int output_elements_count2 = tensors[4].dims->size;
   const int output_elements_count3 = tensors[5].dims->size;
   const int output_elements_count4 = tensors[6].dims->size;
-
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
 
   for (int i = 0; i < output_elements_count1; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(golden1[i], output_data1[i], tolerance);
