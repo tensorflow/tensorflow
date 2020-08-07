@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 
-#include <iostream>
-
 namespace tensorflow {
 
 
@@ -213,6 +211,7 @@ Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) 
   }
   return Status::OK();
 }
+
 
 }  // namespace tensorflow
 
