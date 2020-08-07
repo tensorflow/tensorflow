@@ -244,7 +244,7 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
         code_, "main_function", compiler_options_, *creation_context.context,
         *creation_context.device, &kernel_));
   }
-  return PostCompileCheck(creation_context.device->info_);
+  return PostCompileCheck(creation_context.device->info_, kernel_.info_);
 }
 
 int3 GPUOperation::GetGridSize() const {
