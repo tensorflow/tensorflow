@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 
@@ -70,6 +72,52 @@ void SetProtoIdAndName(T* entry, const string& base_name, char separator,
                        int64 id) {
   entry->set_id(id);
   entry->set_name(GetFullName(base_name, separator, id));
+}
+
+ShapeProto ConvertShapeProtoToPred(const ShapeProto& shape_proto) {
+  return ShapeUtil::ChangeElementType(Shape(shape_proto), PRED).ToProto();
+}
+
+HloInstructionProto CreateConstantInstruction(int64 id, const Shape& shape,
+                                              bool pred) {
+  HloInstructionProto const_instr;
+  Literal literal = LiteralUtil::CreateR0(pred);
+  Literal literal_broadcast = literal.Broadcast(shape, {}).ValueOrDie();
+  *const_instr.mutable_shape() = shape.ToProto();
+  *const_instr.mutable_literal() = literal_broadcast.ToProto();
+  *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
+  const_instr.set_id(id);
+  return const_instr;
+}
+
+// Converts a HloComputation into ReducerOr with predicate types.
+HloComputationProto CreateReduceOr(int64 reducer_id,
+                                   HloComputationProto* original_reducer) {
+  HloComputationProto reducer;
+  SetProtoIdAndName(&reducer, StrCat("reduce_or"), kNameSeparator, reducer_id);
+  std::vector<int64> operands_id;
+  for (auto& inst : original_reducer->instructions()) {
+    // Copy params.
+    if (StringToHloOpcode(inst.opcode()).ValueOrDie() ==
+        HloOpcode::kParameter) {
+      HloInstructionProto* new_param = reducer.add_instructions();
+      *new_param = inst;
+      *new_param->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
+      operands_id.push_back(inst.id());
+    }
+    if (inst.id() == original_reducer->root_id()) {
+      HloInstructionProto* new_root = reducer.add_instructions();
+      *new_root = inst;
+      *new_root->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
+      *new_root->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
+      new_root->clear_operand_ids();
+      for (int64 operand_id : operands_id) {
+        new_root->add_operand_ids(operand_id);
+      }
+      reducer.set_root_id(inst.id());
+    }
+  }
+  return reducer;
 }
 }  // namespace
 
@@ -2840,6 +2888,196 @@ StatusOr<bool> XlaBuilder::IsConstant(XlaOp operand) const {
   absl::flat_hash_set<int64> visited;
   IsConstantVisitor(operand.handle(), &visited, &is_constant);
   return is_constant;
+}
+
+StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
+                      LookUpInstruction(root_op));
+
+  HloComputationProto entry;
+  SetProtoIdAndName(&entry, StrCat(name_, "_dynamic_inference"), kNameSeparator,
+                    GetNextId());
+  ProgramShapeProto* program_shape = entry.mutable_program_shape();
+  *program_shape->mutable_result() =
+      ShapeUtil::ChangeElementType(Shape(root->shape()), PRED).ToProto();
+
+  std::set<int64> seen;
+  struct WorkItem {
+    explicit WorkItem(int64 handle, bool need_rewrite)
+        : handle(handle), need_rewrite(need_rewrite) {}
+    int64 handle;
+    // If need_rewrite is true, the instruction will be copied and rewrite into
+    // a pred instruction indicating if each value is dynamic. If need_rewrite
+    // is false, simply copy the instruction to the output graph.
+    // E.g.,
+    // For select(P, A, B), we need to rewrite A and B into predicates, but
+    // don't need to rewrite P.
+    bool need_rewrite;
+  };
+  std::queue<WorkItem> worklist;
+  worklist.push(WorkItem(root->id(), true));
+  entry.set_root_id(root->id());
+  std::vector<HloComputationProto> called_computatons;
+  // Rewritre instruction with id "from" into the new graph.
+  // Returns more work items that need to finish.
+  auto rewrite_instruction =
+      [&](int64 from, bool need_rewrite) -> StatusOr<std::vector<WorkItem>> {
+    // Rewrite the instruction with following rules:
+    // - Unary ops: Convert into bitcast (identity) with type Pred.
+    // - Binary ops: Convert into binary or.
+    // - Select: Convert into binary or with its two data operands.
+    // - Concat / Tuple/ GTE / Bitcast: Copy.
+    // - Param: Convert to constant True.
+    // - GetDimensionSize: Convert to constant True if dimension is dynamic,
+    // contant False if dimension is static.
+    // - Reduce: Convert to reduce or.
+    // - Constant: Convert to constant False.
+    // - Other ops: Not supported.
+    // Create the instruction for the new handle.
+    TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
+                        LookUpInstructionByHandle(from));
+
+    TF_ASSIGN_OR_RETURN(HloOpcode opcode,
+                        StringToHloOpcode(instr_proto->opcode()));
+    std::vector<WorkItem> operands_todo;
+    auto* new_instr = entry.add_instructions();
+    *new_instr = *instr_proto;
+    for (auto operand_id : new_instr->operand_ids()) {
+      operands_todo.emplace_back(operand_id, need_rewrite);
+    }
+
+    if (!need_rewrite) {
+      *new_instr->mutable_name() =
+          GetFullName(instr_proto->opcode(), kNameSeparator, instr_proto->id());
+      return operands_todo;
+    }
+    *new_instr->mutable_shape() = ConvertShapeProtoToPred(instr_proto->shape());
+    Shape new_shape(new_instr->shape());
+    switch (opcode) {
+      case HloOpcode::kAbs:
+      case HloOpcode::kRoundNearestAfz:
+      case HloOpcode::kBitcast:
+      case HloOpcode::kCeil:
+      case HloOpcode::kCollectivePermuteDone:
+      case HloOpcode::kCos:
+      case HloOpcode::kClz:
+      case HloOpcode::kExp:
+      case HloOpcode::kExpm1:
+      case HloOpcode::kFloor:
+      case HloOpcode::kImag:
+      case HloOpcode::kIsFinite:
+      case HloOpcode::kLog:
+      case HloOpcode::kLog1p:
+      case HloOpcode::kNot:
+      case HloOpcode::kNegate:
+      case HloOpcode::kPopulationCount:
+      case HloOpcode::kReal:
+      case HloOpcode::kRsqrt:
+      case HloOpcode::kLogistic:
+      case HloOpcode::kSign:
+      case HloOpcode::kSin:
+      case HloOpcode::kConvert:
+      case HloOpcode::kSqrt:
+      case HloOpcode::kCbrt:
+      case HloOpcode::kTanh:
+        CHECK_EQ(instr_proto->operand_ids_size(), 1);
+        *new_instr->mutable_opcode() = HloOpcodeString(HloOpcode::kBitcast);
+        break;
+      case HloOpcode::kAdd:
+      case HloOpcode::kAtan2:
+      case HloOpcode::kDivide:
+      case HloOpcode::kComplex:
+      case HloOpcode::kMaximum:
+      case HloOpcode::kMinimum:
+      case HloOpcode::kMultiply:
+      case HloOpcode::kPower:
+      case HloOpcode::kRemainder:
+      case HloOpcode::kSubtract:
+      case HloOpcode::kCompare:
+      case HloOpcode::kAnd:
+      case HloOpcode::kOr:
+      case HloOpcode::kXor:
+      case HloOpcode::kShiftLeft:
+      case HloOpcode::kShiftRightArithmetic:
+      case HloOpcode::kShiftRightLogical:
+        CHECK_EQ(instr_proto->operand_ids_size(), 2);
+        *new_instr->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
+        break;
+      case HloOpcode::kSelect:
+        operands_todo[0].need_rewrite = false;
+        break;
+      case HloOpcode::kGather:
+        operands_todo[1].need_rewrite = false;
+        break;
+      case HloOpcode::kReduce: {
+        int64 reducer_id = new_instr->called_computation_ids(0);
+        called_computatons.push_back(
+            CreateReduceOr(reducer_id, &embedded_[reducer_id]));
+        break;
+      }
+      case HloOpcode::kTuple:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kGetTupleElement:
+      case HloOpcode::kSlice:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kReshape:
+        break;
+      case HloOpcode::kGetDimensionSize: {
+        int64 dimension = instr_proto->dimensions(0);
+        int64 operand_handle = instr_proto->operand_ids(0);
+        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                            LookUpInstructionByHandle(operand_handle));
+
+        *new_instr = CreateConstantInstruction(
+            from, new_shape,
+            operand_proto->shape().is_dynamic_dimension(dimension));
+        operands_todo.clear();
+        break;
+      }
+      case HloOpcode::kConstant:
+        *new_instr = CreateConstantInstruction(from, new_shape, false);
+        break;
+      case HloOpcode::kParameter:
+        *new_instr = CreateConstantInstruction(from, new_shape, true);
+        break;
+      default:
+        return InvalidArgument("Dynamic inferencing %s is not supported",
+                               instr_proto->DebugString());
+    }
+    *new_instr->mutable_name() =
+        GetFullName(instr_proto->opcode(), kNameSeparator, instr_proto->id());
+    return operands_todo;
+  };
+
+  while (!worklist.empty()) {
+    WorkItem item = worklist.front();
+    worklist.pop();
+    if (!seen.insert(item.handle).second) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(auto todos,
+                        rewrite_instruction(item.handle, item.need_rewrite));
+    for (WorkItem& todo : todos) {
+      worklist.push(todo);
+    }
+  }
+  absl::c_sort(*entry.mutable_instructions(),
+               [](const HloInstructionProto& p1,
+                  const HloInstructionProto& p2) { return p1.id() < p2.id(); });
+  XlaComputation computation(entry.id());
+  HloModuleProto* module = computation.mutable_proto();
+  module->set_name(entry.name());
+  module->set_id(entry.id());
+  module->set_entry_computation_name(entry.name());
+  module->set_entry_computation_id(entry.id());
+  *module->mutable_host_program_shape() = *program_shape;
+  for (auto& called_comp : called_computatons) {
+    *module->add_computations() = called_comp;
+  }
+  *module->add_computations() = std::move(entry);
+  XLA_VLOG_LINES(3, module->DebugString());
+  return std::move(computation);
 }
 
 StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
