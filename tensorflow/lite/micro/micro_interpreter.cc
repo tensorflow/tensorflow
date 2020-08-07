@@ -166,7 +166,9 @@ void MicroInterpreter::Init(tflite::Profiler* profiler) {
 
   context_.impl_ = static_cast<void*>(&context_helper_);
   context_.ReportError = context_helper_.ReportOpError;
+  context_.GetTensor = context_helper_.GetTensor;
   context_.GetEvalTensor = context_helper_.GetEvalTensor;
+  context_.recommended_num_threads = 1;
   context_.profiler = profiler;
 
   initialization_status_ = kTfLiteOk;
@@ -275,12 +277,10 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   }
   context_helper_.SetNodeIndex(-1);
 
-  // RequestScratchBufferInArena and GetTensor (with associated TempAllocation)
-  // are also available in Prepare stage.
-  context_.GetTensor = context_helper_.GetTensor;
+  // Both AllocatePersistentBuffer and RequestScratchBufferInArena is
+  // available in Prepare stage.
   context_.RequestScratchBufferInArena =
       context_helper_.RequestScratchBufferInArena;
-
   for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
     // Set node idx to annotate the lifetime for scratch buffers.
     context_helper_.SetNodeIndex(i);
@@ -300,13 +300,11 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   }
   context_helper_.SetNodeIndex(-1);
 
-  // Prepare is done, we're ready for Invoke. Memory allocation and full
-  // TfLiteTensors (via GetTensor) are no longer allowed. Kernels can only fetch
-  // scratch buffers via GetScratchBuffer.
+  // Prepare is done, we're ready for Invoke. Memory allocation is no longer
+  // allowed. Kernels can only fetch scratch buffers via GetScratchBuffer.
   context_.AllocatePersistentBuffer = nullptr;
   context_.RequestScratchBufferInArena = nullptr;
   context_.GetScratchBuffer = context_helper_.GetScratchBuffer;
-  context_.GetTensor = nullptr;
 
   TF_LITE_ENSURE_OK(&context_,
                     allocator_.FinishModelAllocation(model_, eval_tensors_));
@@ -344,6 +342,12 @@ TfLiteStatus MicroInterpreter::Invoke() {
           profiler, OpNameFromRegistration(registration), i);
 #endif
       invoke_status = registration->invoke(&context_, node);
+
+      // All TfLiteTensor structs used in the kernel are allocated from temp
+      // memory in the allocator. This creates a chain of allocations in the
+      // temp section. The call below resets the chain of allocations to
+      // prepare for the next call.
+      allocator_.ResetTempAllocations();
 
       if (invoke_status == kTfLiteError) {
         TF_LITE_REPORT_ERROR(
