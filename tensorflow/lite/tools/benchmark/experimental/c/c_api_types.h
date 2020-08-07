@@ -358,6 +358,8 @@ typedef union TfLitePtrUnion {
 //  * kTfLitePersistentRo: Allocated and populated during prepare. This is
 //        useful for tensors that can be computed during prepare and treated
 //        as constant inputs for downstream ops (also in prepare).
+//  * kTfLiteCustom: Custom memory allocation provided by the user. See
+//        TfLiteCustomAllocation below.
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
@@ -365,6 +367,7 @@ typedef enum TfLiteAllocationType {
   kTfLiteArenaRwPersistent,
   kTfLiteDynamic,
   kTfLitePersistentRo,
+  kTfLiteCustom,
 } TfLiteAllocationType;
 
 // The delegates should use zero or positive integers to represent handles.
@@ -396,6 +399,15 @@ typedef struct TfLiteSparsity {
   TfLiteDimensionMetadata* dim_metadata;
   int dim_metadata_size;
 } TfLiteSparsity;
+
+// Defines a custom memory allocation not owned by the runtime.
+// `data` should be aligned to kDefaultTensorAlignment defined in
+// lite/util.h. (Currently 64 bytes)
+// NOTE: See Interpreter.SetCustomAllocationForTensor for details on usage.
+typedef struct TfLiteCustomAllocation {
+  void* data;
+  size_t bytes;
+} TfLiteCustomAllocation;
 
 // An tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
