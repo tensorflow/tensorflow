@@ -74,11 +74,7 @@ class FileSystem {
 
   virtual tensorflow::Status NewRandomAccessFile(
       const std::string& fname, TransactionToken* token,
-      std::unique_ptr<RandomAccessFile>* result) {
-    // We duplicate these methods due to Google internal coding style prevents
-    // virtual functions with default arguments. See PR #41615.
-    return Status::OK();
-  }
+      std::unique_ptr<RandomAccessFile>* result) = 0;
 
   /// \brief Creates an object that writes to a new file with the specified
   /// name.
@@ -99,9 +95,7 @@ class FileSystem {
 
   virtual tensorflow::Status NewWritableFile(
       const std::string& fname, TransactionToken* token,
-      std::unique_ptr<WritableFile>* result) {
-    return Status::OK();
-  }
+      std::unique_ptr<WritableFile>* result) = 0;
 
   /// \brief Creates an object that either appends to an existing file, or
   /// writes to a new file (if the file does not exist to begin with).
@@ -121,10 +115,7 @@ class FileSystem {
 
   virtual tensorflow::Status NewAppendableFile(
       const std::string& fname, TransactionToken* token,
-      std::unique_ptr<WritableFile>* result) {
-    return Status::OK();
-  }
-
+      std::unique_ptr<WritableFile>* result) = 0;
   /// \brief Creates a readonly region of memory with the file context.
   ///
   /// On success, it returns a pointer to read-only memory region
@@ -142,9 +133,7 @@ class FileSystem {
 
   virtual tensorflow::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) {
-    return Status::OK();
-  }
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   virtual tensorflow::Status FileExists(const string& fname) {
@@ -152,9 +141,7 @@ class FileSystem {
   };
 
   virtual tensorflow::Status FileExists(const std::string& fname,
-                                        TransactionToken* token) {
-    return Status::OK();
-  }
+                                        TransactionToken* token) = 0;
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
@@ -177,9 +164,7 @@ class FileSystem {
 
   virtual tensorflow::Status GetChildren(const std::string& dir,
                                          TransactionToken* token,
-                                         std::vector<string>* result) {
-    return Status::OK();
-  }
+                                         std::vector<string>* result) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
@@ -210,10 +195,7 @@ class FileSystem {
 
   virtual tensorflow::Status GetMatchingPaths(const std::string& pattern,
                                               TransactionToken* token,
-                                              std::vector<string>* results) {
-    return Status::OK();
-  }
-
+                                              std::vector<string>* results) = 0;
   /// \brief Checks if the given filename matches the pattern.
   ///
   /// This function provides the equivalent of posix fnmatch, however it is
@@ -228,9 +210,7 @@ class FileSystem {
 
   virtual tensorflow::Status Stat(const std::string& fname,
                                   TransactionToken* token,
-                                  FileStatistics* stat) {
-    return Status::OK();
-  }
+                                  FileStatistics* stat) = 0;
 
   /// \brief Deletes the named file.
   virtual tensorflow::Status DeleteFile(const string& fname) {
@@ -238,9 +218,7 @@ class FileSystem {
   }
 
   virtual tensorflow::Status DeleteFile(const std::string& fname,
-                                        TransactionToken* token) {
-    return Status::OK();
-  }
+                                        TransactionToken* token) = 0;
 
   /// \brief Creates the specified directory.
   /// Typical return codes:
@@ -252,9 +230,7 @@ class FileSystem {
   }
 
   virtual tensorflow::Status CreateDir(const std::string& dirname,
-                                       TransactionToken* token) {
-    return Status::OK();
-  }
+                                       TransactionToken* token) = 0;
 
   /// \brief Creates the specified directory and all the necessary
   /// subdirectories.
@@ -275,9 +251,7 @@ class FileSystem {
   };
 
   virtual tensorflow::Status DeleteDir(const std::string& dirname,
-                                       TransactionToken* token) {
-    return Status::OK();
-  }
+                                       TransactionToken* token) = 0;
 
   /// \brief Deletes the specified directory and all subdirectories and files
   /// underneath it. This is accomplished by traversing the directory tree
@@ -322,9 +296,7 @@ class FileSystem {
 
   virtual tensorflow::Status GetFileSize(const std::string& fname,
                                          TransactionToken* token,
-                                         uint64* file_size) {
-    return Status::OK();
-  }
+                                         uint64* file_size) = 0;
 
   /// \brief Overwrites the target if it exists.
   virtual tensorflow::Status RenameFile(const string& src,
@@ -334,9 +306,7 @@ class FileSystem {
 
   virtual tensorflow::Status RenameFile(const std::string& src,
                                         const std::string& target,
-                                        TransactionToken* token) {
-    return Status::OK();
-  }
+                                        TransactionToken* token) = 0;
 
   /// \brief Copy the src to target.
   virtual tensorflow::Status CopyFile(const string& src, const string& target) {
