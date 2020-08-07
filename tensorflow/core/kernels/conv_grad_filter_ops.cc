@@ -60,8 +60,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
-
 namespace {
 
 // Returns in 'col_data', image patches in storage order (height, width, depth)
@@ -742,18 +740,15 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    {
-      profiler::ScopedAnnotation label("ThenBlasGemm");
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                             se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                             a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                           se::blas::Transpose::kTranspose, n, m, k, 1.0f,
+                           a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
     }
     return;
   } else if (dims.spatial_dims[0].filter_size ==
@@ -776,18 +771,15 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    {
-      profiler::ScopedAnnotation label("ThenBlasGemm");
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                             se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                             b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                           se::blas::Transpose::kTranspose, n, m, k, 1.0f,
+                           b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
     }
     return;
   }
@@ -914,13 +906,9 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_temp(DataTypeToEnum<T>::value, compute_shape,
                                         &transformed_out_backprop));
-      {
-        profiler::ScopedAnnotation label("Convert_NHWC_to_NCHW");
-
-        functor::NHWCToNCHW<GPUDevice, T, 4>()(
-            ctx->eigen_device<GPUDevice>(), out_backprop.tensor<T, 4>(),
-            transformed_out_backprop.tensor<T, 4>());
-      }
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(), out_backprop.tensor<T, 4>(),
+          transformed_out_backprop.tensor<T, 4>());
     } else {
       // If depth <= 1, just reshape.
       CHECK(transformed_out_backprop.CopyFrom(out_backprop, compute_shape));
@@ -941,13 +929,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_temp(DataTypeToEnum<T>::value, compute_shape,
                                         &transformed_input));
-      {
-        profiler::ScopedAnnotation label("Convert_NHWC_to_NCHW");
-        functor::NHWCToNCHW<GPUDevice, T, 4>()(
-            ctx->eigen_device<GPUDevice>(),
-            const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
-            transformed_input.tensor<T, 4>());
-      }
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(),
+          const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
+          transformed_input.tensor<T, 4>());
     } else {
       // If depth <= 1, just reshape.
       CHECK(transformed_input.CopyFrom(compatible_input, compute_shape));
@@ -976,13 +961,11 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     VLOG(3) << "Allocate temporary memory for bfloat16 out_backprop";
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_BFLOAT16, out_backprop_shape,
                                            &bfloat16_out_backprop));
-    {
-      profiler::ScopedAnnotation label("Convert_FP32_to_BFP16");
-      functor::ConvertToBFloat16<GPUDevice, T, 4>()(
-          ctx->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(transformed_out_backprop).tensor<T, 4>(),
-          bfloat16_out_backprop.tensor<bfloat16, 4>());
-    }
+    functor::ConvertToBFloat16<GPUDevice, T, 4>()(
+        ctx->eigen_device<GPUDevice>(),
+        const_cast<const Tensor&>(transformed_out_backprop).tensor<T, 4>(),
+        bfloat16_out_backprop.tensor<bfloat16, 4>());
+
     TensorShape input_shape = ShapeFromFormat(
         compute_data_format, GetTensorDim(compatible_input, data_format, 'N'),
         GetTensorDim(compatible_input, data_format, 'H'),
@@ -991,13 +974,11 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     VLOG(3) << "Allocate temporary memory for bfloat16 input";
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DT_BFLOAT16, input_shape, &bfloat16_input));
-    {
-      profiler::ScopedAnnotation label("Convert_FP32_to_BFP16");
-      functor::ConvertToBFloat16<GPUDevice, T, 4>()(
-          ctx->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(transformed_input).tensor<T, 4>(),
-          bfloat16_input.tensor<bfloat16, 4>());
-    }
+    functor::ConvertToBFloat16<GPUDevice, T, 4>()(
+        ctx->eigen_device<GPUDevice>(),
+        const_cast<const Tensor&>(transformed_input).tensor<T, 4>(),
+        bfloat16_input.tensor<bfloat16, 4>());
+
     TensorShape filter_backprop_shape =
         TensorShape({filter_shape.dim_size(3), filter_shape.dim_size(2),
                      filter_shape.dim_size(0), filter_shape.dim_size(1)});
@@ -1116,7 +1097,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
     std::vector<ProfileResult> algorithms;
     if (TestMIOpenBFloat16Support<T>()) {
-      profiler::ScopedAnnotation label("AutoTuner");
       OP_REQUIRES(
           ctx,
           stream->parent()->GetMIOpenConvolveAlgorithms(
@@ -1130,7 +1110,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
               "because MIOpen failed to initialize, so try looking to "
               "see if a warning log message was printed above."));
     } else {
-      profiler::ScopedAnnotation label("AutoTuner");
       OP_REQUIRES(
           ctx,
           stream->parent()->GetMIOpenConvolveAlgorithms(
@@ -1157,7 +1136,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       *result.mutable_run_time() = proto_utils::ToDurationProto(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     } else {
-      profiler::ScopedAnnotation label("AutoTuner");
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
@@ -1210,7 +1188,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
   bool cudnn_launch_status = true;
   if (TestMIOpenBFloat16Support<T>()) {
-    profiler::ScopedAnnotation label("ThenConvolveWithAlgorithm");
     cudnn_launch_status = stream
                               ->ThenConvolveBackwardFilterWithAlgorithm(
                                   input_desc, bfloat16_input_ptr, output_desc,
@@ -1219,7 +1196,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                                   &scratch_allocator, algorithm_config, nullptr)
                               .ok();
   } else {
-    profiler::ScopedAnnotation label("ThenConvolveWithAlgorithm");
     cudnn_launch_status =
         stream
             ->ThenConvolveBackwardFilterWithAlgorithm(
@@ -1239,7 +1215,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   if (TestMIOpenBFloat16Support<T>()) {
     VLOG(3)
         << "Convert the filter_backprop tensor back from bfloat16 to float.";
-    profiler::ScopedAnnotation label("Convert_BFP16_to_FP32");
     functor::ConvertFromBFloat16<GPUDevice, T, 4>()(
         ctx->eigen_device<GPUDevice>(),
         const_cast<const Tensor&>(bfloat16_filter_backprop)
@@ -1251,14 +1226,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       compute_data_format == FORMAT_NCHW ? FORMAT_OIHW : FORMAT_OHWI;
 
   auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-  {
-    profiler::ScopedAnnotation label("Convert_OIHW_to_HWIO");
-
-    functor::ReverseTransformFilter<GPUDevice, T, 4>()(
-        ctx->eigen_device<GPUDevice>(), src_filter_format,
-        toConstTensor(pre_transformed_filter_backprop).template tensor<T, 4>(),
-        filter_backprop->tensor<T, 4>());
-  }
+  functor::ReverseTransformFilter<GPUDevice, T, 4>()(
+      ctx->eigen_device<GPUDevice>(), src_filter_format,
+      toConstTensor(pre_transformed_filter_backprop).template tensor<T, 4>(),
+      filter_backprop->tensor<T, 4>());
 }
 
 // Forward declarations of the functor specializations for GPU.

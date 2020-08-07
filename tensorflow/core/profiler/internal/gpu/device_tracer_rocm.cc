@@ -370,21 +370,12 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         ns->set_op_end_rel_micros(elapsed_ns / 1000);
         ns->set_all_end_rel_micros(elapsed_ns / 1000);
 
-        auto name_from_stack =
-            [](const std::vector<Annotation>& stack) -> std::string {
-          std::string name = std::string(stack[0].name);
-          for (int i = 1; i < stack.size(); i++) {
-            name.append(" - ");
-            name.append(std::string(stack[i].name));
-          }
-          return name;
-        };
-
         auto annotation_stack = ParseAnnotationStack(event.annotation);
         std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
-        std::string activity_name = !annotation_stack.empty()
-                                        ? name_from_stack(annotation_stack)
-                                        : kernel_name;
+        std::string activity_name =
+            !annotation_stack.empty()
+                ? std::string(annotation_stack.back().name)
+                : kernel_name;
         ns->set_node_name(activity_name);
 
         ns->set_thread_id(event.thread_id);
