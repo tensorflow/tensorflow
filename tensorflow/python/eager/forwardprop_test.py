@@ -1041,6 +1041,19 @@ class BatchTests(test.TestCase, parameterized.TestCase):
       z = x * y
     self.assertAllClose(acc.jvp(z), constant_op.constant([5.0, 2.0, 7.0]))
 
+  def testBatchNestedForward(self):
+    primal = constant_op.constant(1.1)
+    tangents = random_ops.random_normal(shape=[10], seed=1)
+    with forwardprop.ForwardAccumulator._batch_accumulator(primal, tangents) as outer_acc:
+      with forwardprop.ForwardAccumulator._batch_accumulator(primal, tangents) as acc:
+        primal_out = primal ** 3.5
+    inner_jvp = acc.jvp(primal_out)
+    outer_jvp = outer_acc.jvp(inner_jvp)
+    self.assertAllClose(1.1 ** 3.5, primal_out)
+    self.assertAllClose([dy * 3.5 * 1.1 ** 2.5 for dy in tangents.numpy()], inner_jvp)
+    self.assertAllClose([dy * 3.5 * 2.5 * 1.1 ** 1.5 for dy in tangents.numpy()], outer_jvp)
+    self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
+
   @parameterized.named_parameters(
     [("ForwardPropFirst", True),
      ("TapeFirst", False)])
