@@ -47,6 +47,23 @@ bool HasReplicatedSharding(const HloSharding& sharding) {
   return sharding.IsReplicated();
 }
 
+HloInstruction* CreateConstant(const Shape& shape, Literal value,
+                               SpmdBuilder* b) {
+  if (shape.IsTuple()) {
+    std::vector<HloInstruction*> elements;
+    for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      elements.push_back(CreateConstant(
+          ShapeUtil::GetTupleElementShape(shape, i), value.Clone(), b));
+    }
+    return b->AddInstruction(HloInstruction::CreateTuple(elements));
+  }
+
+  CHECK(
+      ShapeUtil::IsScalarWithElementType(value.shape(), shape.element_type()));
+  auto c = b->AddInstruction(HloInstruction::CreateConstant(std::move(value)));
+  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, c, {}));
+}
+
 HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
   if (shape.IsTuple()) {
     std::vector<HloInstruction*> elements;

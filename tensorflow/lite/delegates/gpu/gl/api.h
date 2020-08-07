@@ -67,7 +67,7 @@ class CompiledModel {
 // Turns the given model into "compiled" form that is suitable for inference.
 absl::Status Compile(const CompilationOptions& options,
                      const GraphFloat32& model,
-                     const std::unordered_set<int>& tflite_graph_io,
+                     const std::unordered_set<int>& tflite_graph_io,  // NOLINT
                      const NodeShader& node_shader,
                      const WorkgroupsCalculator& workgroup_calculator,
                      std::unique_ptr<CompiledModel>* compiled_model);

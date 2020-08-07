@@ -72,6 +72,11 @@
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
       to register a dataset with the tf.data service, and another process to
       consume data from the dataset.
+    * Added support for tf.data service dispatcher fault tolerance. To enable
+      fault tolerance, configure a `work_dir` when running your dispatcher
+      server and set `dispatcher_fault_tolerance=True`. The dispatcher will
+      store its state to `work_dir`, so that on restart it can continue from its
+      previous state after restart.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
       the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding
@@ -95,6 +100,7 @@
       * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
     * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
       as an alternative to accepting a `callable` loss.
+    * Added `beta` parameter to FTRL optimizer to match paper.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
@@ -116,6 +122,8 @@
       behavior by adjusting the `l2` parameter.
     * <ADD RELEASE NOTES HERE>
 *   XLA Support:
+    * xla.experimental.compile is deprecated, use
+      `tf.function(experimental_compile=True)` instead
     * <ADD RELEASE NOTES HERE>
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>

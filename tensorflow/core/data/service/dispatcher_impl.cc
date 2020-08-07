@@ -22,6 +22,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
@@ -109,14 +110,22 @@ Status DataServiceDispatcherImpl::RegisterWorker(
   VLOG(3) << "Received register worker request";
   mutex_lock l(mu_);
   std::string worker_address = request->worker_address();
-  std::shared_ptr<const Worker> worker;
-  Status s = state_.WorkerFromAddress(worker_address, &worker);
+  std::vector<std::shared_ptr<const Task>> tasks;
+  Status s = state_.TasksForWorker(worker_address, tasks);
   if (errors::IsNotFound(s)) {
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
     TF_RETURN_IF_ERROR(Apply(update));
   } else if (!s.ok()) {
     return s;
+  }
+
+  absl::flat_hash_map<int64, std::shared_ptr<const Task>> tasks_by_job;
+  for (const auto& task : tasks) {
+    // Should never have multiple tasks on the same worker for the same job.
+    auto& task_for_job = tasks_by_job[task->job_id];
+    DCHECK(task_for_job == nullptr);
+    task_for_job = task;
   }
 
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
@@ -126,7 +135,12 @@ Status DataServiceDispatcherImpl::RegisterWorker(
       continue;
     }
     std::shared_ptr<const Task> task;
-    TF_RETURN_IF_ERROR(CreateTask(job, worker_address, &task));
+    auto it = tasks_by_job.find(job->job_id);
+    if (it != tasks_by_job.end()) {
+      task = it->second;
+    } else {
+      TF_RETURN_IF_ERROR(CreateTask(job, worker_address, &task));
+    }
     TaskDef* task_def = response->add_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));

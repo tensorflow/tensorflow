@@ -124,6 +124,38 @@ cc_library(
 )
 
 cc_library(
+    name = "CAPIIR",
+    srcs = [
+        "lib/CAPI/IR/IR.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/IR.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "CAPIRegistration",
+    srcs = [
+        "lib/CAPI/Registration/Registration.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Registration.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":AllPassesAndDialectsNoRegistration",
+        ":CAPIIR",
+    ],
+)
+
+cc_library(
     name = "EDSCInterface",
     srcs = [
         "lib/EDSC/CoreAPIs.cpp",
@@ -1459,6 +1491,7 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":Pass",
+        ":StandardToLLVM",
         ":Support",
         ":TargetNVVMIR",
         "@llvm-project//llvm:Core",
@@ -2775,7 +2808,6 @@ cc_library(
         "@llvm-project//mlir/test:TestAffine",
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
-        "@llvm-project//mlir/test:TestLLVMIR",
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
@@ -2806,7 +2838,6 @@ cc_library(
         ":Support",
         ":Translation",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir/test:TestLLVMTypeTranslation",
     ],
 )
 
@@ -2928,7 +2959,6 @@ cc_binary(
         "@llvm-project//mlir/test:TestAffine",
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
-        "@llvm-project//mlir/test:TestLLVMIR",
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",

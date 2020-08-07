@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
@@ -210,13 +211,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       DataServiceDispatcherClient dispatcher(dataset()->address_,
                                              dataset()->protocol_);
+      int64 deadline_micros = ctx->env()->NowMicros() + kRetryTimeoutMicros;
       if (dataset()->job_name_.empty()) {
-        TF_RETURN_IF_ERROR(dispatcher.CreateJob(
-            dataset()->dataset_id_, dataset()->processing_mode_, &job_id_));
+        TF_RETURN_IF_ERROR(grpc_util::Retry(
+            [&]() {
+              return dispatcher.CreateJob(dataset()->dataset_id_,
+                                          dataset()->processing_mode_,
+                                          &job_id_);
+            },
+            "create job", deadline_micros));
       } else {
-        TF_RETURN_IF_ERROR(dispatcher.GetOrCreateJob(
-            dataset()->dataset_id_, dataset()->processing_mode_,
-            dataset()->job_name_, iterator_index_, &job_id_));
+        TF_RETURN_IF_ERROR(grpc_util::Retry(
+            [&]() {
+              return dispatcher.GetOrCreateJob(
+                  dataset()->dataset_id_, dataset()->processing_mode_,
+                  dataset()->job_name_, iterator_index_, &job_id_);
+            },
+            "get or create job", deadline_micros));
       }
       VLOG(1) << "Created data service job with id " << job_id_;
       return Status::OK();

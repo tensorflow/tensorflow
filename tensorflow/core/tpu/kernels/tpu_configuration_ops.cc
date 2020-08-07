@@ -255,13 +255,9 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
                                      mesh_state_interface));
   }
 
-#if defined(LIBTFTPU)
   VLOG(1) << "Removing existing proto compilation cache lookup if it exists";
-  OP_REQUIRES_OK(
-      ctx, DeleteIfExists<tpu::TpuCompilationCacheLookup<
-               tpu::CompilationCacheEntryRef<tpu::TpuCompilationCacheEntry>>>(
-               rmgr, tpu::kCompiledProtoCacheResourceName));
-#endif
+  OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuCompilationCacheLookup>(
+                          rmgr, tpu::kCompiledProtoCacheResourceName));
 
   if (enable_whole_mesh_compilations_) {
     // If this is a whole mesh compilation mode, create the compilation cache,
@@ -287,16 +283,12 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   if (local_compilation_cache != nullptr) {
     local_compilation_cache->Unref();
 
-#if defined(LIBTFTPU)
-    tpu::TpuCompilationCacheLookup<
-        tpu::CompilationCacheEntryRef<tpu::TpuCompilationCacheEntry>>*
-        proto_lookup;
+    tpu::TpuCompilationCacheLookup* proto_lookup;
     proto_lookup =
         new tpu::TpuCompilationCacheLocalLookup(local_compilation_cache);
     OP_REQUIRES_OK(
         ctx, rmgr->Create(rmgr->default_container(),
                           tpu::kCompiledProtoCacheResourceName, proto_lookup));
-#endif
   }
 
   Tensor* ctx_output;

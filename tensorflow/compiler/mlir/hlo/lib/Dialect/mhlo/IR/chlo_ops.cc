@@ -151,7 +151,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
   }
 
   Value computed_shape = hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
-      loc, lhs, rhs, builder);
+      loc, lhs, rhs, builder, /*unsafe_as_extent_tensor=*/false);
   if (!computed_shape) return failure();
   reifiedReturnShapes.push_back(computed_shape);
   return success();

@@ -114,6 +114,7 @@ cc_library(
         ":shape",
         ":status",
         ":tensor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:context",
@@ -169,6 +170,7 @@ cc_library(
     hdrs = ["model_transformer.h"],
     deps = [
         ":model",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -186,6 +188,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -198,6 +201,7 @@ cc_library(
         ":model",
         ":shape",
         ":status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -212,6 +216,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

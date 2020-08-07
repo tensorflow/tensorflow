@@ -1785,7 +1785,8 @@ class ParameterizedOpConverterTestBase
   void BuildAndRun(const string& name,
                    const std::vector<std::vector<int>>& expected_output_dims,
                    const Status& expected_runtime_status,
-                   const std::vector<Matcher<std::vector<float>>>& matcher) {
+                   const std::vector<Matcher<std::vector<float>>>& matcher,
+                   const std::vector<DataType>& out_tf_types = {}) {
     TensorShape shape;
     const int n_output = expected_output_dims.size();
     ASSERT_EQ(n_output, matcher.size());
@@ -1794,12 +1795,14 @@ class ParameterizedOpConverterTestBase
       TF_EXPECT_OK(
           TensorShapeUtils::MakeShape(expected_output_dims[i], &shape));
       string out_name = (n_output == 1) ? name : StrCat(name, ":", i);
-      InputOutputData data{out_name,
-                           ConstructTensor(shape.num_elements(), 0, tf_type)};
+      DataType out_tf_type =
+          out_tf_types.size() > i ? out_tf_types[i] : tf_type;
+      InputOutputData data{
+          out_name, ConstructTensor(shape.num_elements(), 0, out_tf_type)};
       output_data.push_back(data);
     }
-    ASSERT_FALSE(input_data_.empty());
-    const int batch_size = input_data_[0].tensor.shape().dim_size(0);
+    const int batch_size =
+        input_data_.empty() ? 1 : input_data_[0].tensor.shape().dim_size(0);
     Status stat =
         OpConverterTest::BuildAndRun(input_data_, &output_data, batch_size);
     ASSERT_EQ(expected_runtime_status.ok(), stat.ok())
@@ -1824,13 +1827,15 @@ class ParameterizedOpConverterTestBase
                        const std::vector<int>& expected_output_dims,
                        const Status& expected_conversion_status,
                        const Status& expected_runtime_status,
-                       const Matcher<std::vector<float>>& matcher) {
+                       const Matcher<std::vector<float>>& matcher,
+                       const std::vector<DataType>& out_tf_types = {}) {
     RunValidationAndConversion(node_def, expected_conversion_status,
                                name.c_str(), expected_output_dims);
     if (expected_conversion_status.ok()) {
       BuildAndRun(name, std::vector<std::vector<int>>({expected_output_dims}),
                   expected_runtime_status,
-                  std::vector<Matcher<std::vector<float>>>({matcher}));
+                  std::vector<Matcher<std::vector<float>>>({matcher}),
+                  out_tf_types);
     }
   }
 
@@ -2306,6 +2311,52 @@ TEST_F(OpConverterTest, ConvertReshape) {
     TF_EXPECT_OK(BuildAndRun(input_data, &output_data, batch_size));
     EXPECT_THAT(GetSpanForData<float>(output_data[0]),
                 ElementsAreArray(input_vec));
+  }
+}
+
+TEST_P(OpConverterTest1, ConvertShape) {
+  // Get the NodeDef for Shape op.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type);
+  auto shape = ops::Shape(s.WithOpName("my_shape"), input);
+  const NodeDef& node_def = shape.operation.node()->def();
+
+  Status conversion_status =
+      (trt_mode == TrtTestMode::kImplicitBatch)
+          ? errors::Unimplemented(
+                "Shape is only supported for explicit batch mode.")
+          : Status::OK();
+  std::vector<TestParamBase> test_params = {
+      TestParamBase{{1, 2, 3}, {}, {3}, {}, conversion_status},
+      // Add input as weight (we use non empty param ({1}) to trigger this).
+      TestParamBase{{1, 2, 3}, {}, {3}, {1}, conversion_status},
+  };
+
+  auto input_is_weight = [](const TestParamBase p) { return !p.param.empty(); };
+  for (auto p : test_params) {
+    SCOPED_TRACE(p);
+    Reset();
+    // The number of elements of the input tensor. We leave it 0 in case we do
+    // not need to add an input tensor. This happens in explicit batch mode: the
+    // shape is known at conversion time and therefore the shape is added to the
+    // network as a constant layer. In this case the single node network that
+    // we use for the unit test have no actual input tensor when it is converted
+    // to a TensorRT network.
+    int n_elements = 0;
+    if (input_is_weight(p) || trt_mode != TrtTestMode::kExplicitBatch) {
+      // Calculate the number of elements for adding input data.
+      n_elements = std::accumulate(p.input_dims.begin(), p.input_dims.end(), 1,
+                                   std::multiplies<int>());
+    }
+    std::vector<float> input_val(n_elements, 1);
+    if (!input_is_weight(p)) {
+      AddTestTensor("input", p.input_dims, input_val);
+    } else {
+      AddTestWeights("input", p.input_dims, input_val, tf_type);
+    }
+    TestOpConverter("my_shape", node_def, p.expected_output_dims, p.status,
+                    p.runtime_status, ElementsAreArray(p.input_dims),
+                    {DT_INT32});
   }
 }
 

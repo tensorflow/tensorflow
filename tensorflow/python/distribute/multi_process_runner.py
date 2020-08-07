@@ -541,6 +541,8 @@ class MultiProcessRunner(object):
     for process_status in process_statuses.values():
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
+        process_status.exc_info[1].mpr_result = self._get_mpr_result(
+            process_statuses)
         six.reraise(*process_status.exc_info)
 
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
@@ -583,7 +585,10 @@ class MultiProcessRunner(object):
         is not `None`, it is expected that some subprocesses may be
         force-killed when `max_run_time` is up, and this is raised in those
         cases.
-      Exception: if there is an Exception propagated from any subprocess.
+      Exception: if there is an Exception propagated from any subprocess. When
+        this is raised, a `MultiProcessRunnerResult` object can be retrieved by
+        `UnexpectedSubprocessExitError`'s mpr_result attribute, which has the
+        same structure as above 'Returns' section describes.
     """
     with self._process_lock:
       if self._joined:

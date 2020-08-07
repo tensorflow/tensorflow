@@ -296,6 +296,22 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
     return PartitionedHlo(copy, base_shape_, state_);
   }
 
+  // 'Replicated' to partial replicated.
+  if (target.ReplicateOnLastTileDim()) {
+    std::vector<int64> group_dims(target.tile_assignment().num_dimensions() -
+                                  1);
+    std::iota(group_dims.begin(), group_dims.end(), 0);
+    auto target_grouped = GroupShardingOnDims(target, group_dims);
+    auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+        state_, target_grouped.device_groups, state_.b);
+    auto partially_sharded = PerGroupSliceFromReplicated(
+        hlo_, state_.partition_id, target_grouped.device_groups, group_dims,
+        target_grouped.group_dim_sizes, state_.b);
+    partially_sharded->set_sharding(target);
+    return PartitionedHlo(partially_sharded, base_shape(),
+                          per_group_partitioner_state);
+  }
+
   // 'Replicated' to 'Tiled'.
   auto padded_hlo =
       PadBaseShapeBeforeUnevenTiledSharding(hlo_, target, state_.b);
@@ -1209,6 +1225,16 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
         case HloOpcode::kAnd:
           identity = CreateOne(operand.hlo()->shape(), &b_);
           break;
+        case HloOpcode::kMinimum:
+          identity = CreateConstant(
+              operand.hlo()->shape(),
+              LiteralUtil::MaxValue(hlo->shape().element_type()), &b_);
+          break;
+        case HloOpcode::kMaximum:
+          identity = CreateConstant(
+              operand.hlo()->shape(),
+              LiteralUtil::MinValue(hlo->shape().element_type()), &b_);
+          break;
         default:
           return DefaultAction(hlo);
       }
@@ -1226,7 +1252,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       CHECK(new_updates_sharding.has_value());
       updates = updates.Reshard(*new_updates_sharding);
       // To avoid accumulating the initial operand multiple times during
-      // all-reduce, we use zero operands for all non-zero partitions.
+      // all-reduce, we use identity operands for all non-zero partitions.
       auto not_partition_zero = b_.AddInstruction(HloInstruction::CreateConvert(
           ShapeUtil::MakeScalarShape(PRED), partition_id_));
       not_partition_zero = b_.AddInstruction(HloInstruction::CreateBroadcast(

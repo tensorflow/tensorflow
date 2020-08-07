@@ -22,15 +22,20 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -49,45 +54,100 @@ const char kXlaHostTransferOriginalTypeAttr[] =
     "_xla_host_transfer_original_type";
 
 // A pass that legalizes TF/XLA communication ops, propagate their respective
-// tokens (for ordering), and rewrite their respective functions when necessary.
+// tokens (for ordering), and rewrite their respective functions and control
+// flow ops when necessary.
 // Note, this currently does not handle nested modules/functions or region based
-// ops (e.g. control flow).
+// ops other than certain control flow ops (`mhlo.if`).
 class LegalizeTFCommunication
     : public PassWrapper<LegalizeTFCommunication, OperationPass<ModuleOp>> {
  public:
   void runOnOperation() override;
 };
 
-// Checks if a function has any communication ops.
-bool HasCommunicationOps(FuncOp func) {
-  auto result = func.walk([](Operation* op) {
-    if (isa<TF::_XlaHostComputeMlirOp, TF::XlaSendToHostOp,
-            TF::XlaRecvFromHostOp>(op))
+// Checks if an op is a TF/XLA communication op.
+bool IsCommunicationOp(Operation* op) {
+  return isa<TF::_XlaHostComputeMlirOp, TF::XlaSendToHostOp,
+             TF::XlaRecvFromHostOp>(op);
+}
+
+// Checks if an op is a supported HLO control flow op.
+bool IsControlFlowOp(Operation* op) { return isa<IfOp>(op); }
+
+// Collects control flow op ancestors of a given op, up until FuncOp. If any
+// ancestor is not a control flow op or a FuncOp, or of a single block region,
+// an error will be returned.
+LogicalResult GetControlFlowAncestors(
+    Operation* op, llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
+    llvm::SmallPtrSetImpl<Block*>& control_flow_blocks) {
+  Block* block = op->getBlock();
+  Operation* parent = block->getParentOp();
+  while (block && parent && !isa<FuncOp>(parent)) {
+    if (!IsControlFlowOp(parent))
+      return op->emitOpError()
+             << "expects ancestor(s) to be of ['" << IfOp::getOperationName()
+             << "', '" << FuncOp::getOperationName() << "']";
+
+    if (!llvm::hasSingleElement(block->getParent()->getBlocks()))
+      return op->emitOpError() << "expects single block region ancestor(s)";
+
+    control_flow_ops.insert(parent);
+    control_flow_blocks.insert(block);
+
+    parent = block->getParentOp();
+    block = parent->getBlock();
+  }
+  return success();
+}
+
+// Finds communication ops in a function. `control_flow_ops` and
+// `control_flow_blocks` will be populated with control flow op ancestors for
+// every communication op.
+LogicalResult FindCommunicationOps(
+    FuncOp func, llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
+    llvm::SmallPtrSetImpl<Block*>& control_flow_blocks,
+    bool& has_communication_ops) {
+  auto result = func.walk([&](Operation* op) {
+    if (!IsCommunicationOp(op)) return WalkResult::advance();
+    has_communication_ops = true;
+    if (failed(
+            GetControlFlowAncestors(op, control_flow_ops, control_flow_blocks)))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });
-  return result.wasInterrupted();
+  return failure(result.wasInterrupted());
 }
 
-// Helper struct holding a function and optional cloned version. If `clone` is
-// set, function calls to `original` will be replaced with `clone`.
-struct FuncAndClone {
+// Helper struct holding a function to be rewritten, it's control flow ops that
+// lead to a communication op or function call with a communication op
+// (transitively), and an optional clone of itself. If `clone` is set, function
+// calls to `original` will be replaced with `clone`.
+struct FuncToRewrite {
   FuncOp original;
+  llvm::SmallPtrSet<Operation*, 4> control_flow_ops;
+  llvm::SmallPtrSet<Block*, 4> control_flow_blocks;
   FuncOp clone;
 };
 
 // Finds all functions that need to be rewritten with communication ops and
 // and associated tokens.
-llvm::SmallDenseMap<StringRef, FuncAndClone> GetFunctionsToRewrite(
-    ModuleOp module) {
+LogicalResult GetFunctionsToRewrite(
+    ModuleOp module,
+    llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
   // Find functions containing communication ops.
-  llvm::SmallDenseMap<StringRef, FuncAndClone> funcs;
   SmallVector<FuncOp, 4> funcs_to_visit;
   for (FuncOp func : module.getOps<FuncOp>()) {
-    if (HasCommunicationOps(func)) {
-      funcs.insert({func.getName(), {func, /*clone=*/nullptr}});
-      funcs_to_visit.push_back(func);
-    }
+    FuncToRewrite func_to_rewrite{/*original=*/func, /*control_flow_ops=*/{},
+                                  /*control_flow_blocks=*/{},
+                                  /*clone=*/nullptr};
+    bool has_communication_ops = false;
+    if (failed(FindCommunicationOps(func, func_to_rewrite.control_flow_ops,
+                                    func_to_rewrite.control_flow_blocks,
+                                    has_communication_ops)))
+      return failure();
+
+    if (!has_communication_ops) continue;
+    funcs_to_rewrite.insert({func.getName(), func_to_rewrite});
+    funcs_to_visit.push_back(func);
   }
 
   // Find functions that call functions with communication ops, transitively.
@@ -100,13 +160,30 @@ llvm::SmallDenseMap<StringRef, FuncAndClone> GetFunctionsToRewrite(
         // Only `mlir::CallOp` is supported as this requires knowing how to
         // rewrite arguments and results to a function.
         if (!isa<mlir::CallOp>(use.getUser())) continue;
-        auto caller_func = use.getUser()->getParentOfType<FuncOp>();
-        if (!caller_func) continue;
-        if (funcs
-                .insert(
-                    {caller_func.getName(), {caller_func, /*clone=*/nullptr}})
-                .second)
-          new_funcs_to_visit.push_back(caller_func);
+        auto caller_parent_func = use.getUser()->getParentOfType<FuncOp>();
+        if (!caller_parent_func) continue;
+
+        FuncToRewrite func_to_rewrite{/*original=*/caller_parent_func,
+                                      /*control_flow_ops=*/{},
+                                      /*control_flow_blocks=*/{},
+                                      /*clone=*/nullptr};
+        if (failed(GetControlFlowAncestors(
+                use.getUser(), func_to_rewrite.control_flow_ops,
+                func_to_rewrite.control_flow_blocks)))
+          return failure();
+
+        auto it = funcs_to_rewrite.insert(
+            {caller_parent_func.getName(), func_to_rewrite});
+        if (it.second) {
+          new_funcs_to_visit.push_back(caller_parent_func);
+        } else {
+          it.first->getSecond().control_flow_ops.insert(
+              func_to_rewrite.control_flow_ops.begin(),
+              func_to_rewrite.control_flow_ops.end());
+          it.first->getSecond().control_flow_blocks.insert(
+              func_to_rewrite.control_flow_blocks.begin(),
+              func_to_rewrite.control_flow_blocks.end());
+        }
       }
     }
 
@@ -116,8 +193,9 @@ llvm::SmallDenseMap<StringRef, FuncAndClone> GetFunctionsToRewrite(
   // Clone public functions that need to be rewritten. Function calls to this
   // function will be replaced with the cloned function.
   SymbolTable symbol_table(module);
-  for (auto& func : funcs) {
-    if (func.getSecond().original.isPublic()) {
+  for (auto& func : funcs_to_rewrite) {
+    if (func.getSecond().original.isPublic() &&
+        !func.getSecond().original.symbolKnownUseEmpty(module)) {
       auto clone = func.getSecond().original.clone();
       clone.setVisibility(SymbolTable::Visibility::Private);
       symbol_table.insert(clone);
@@ -125,7 +203,7 @@ llvm::SmallDenseMap<StringRef, FuncAndClone> GetFunctionsToRewrite(
     }
   }
 
-  return funcs;
+  return success();
 }
 
 // Assigns op sharding to an op for a given device core.
@@ -329,94 +407,412 @@ Value RewriteCallOp(OpBuilder& builder, CallOp call,
   return new_call.getResults().back();
 }
 
-// Updates function terminator and type if a token is to be emitted by the
-// function.
-void RewriteFunctionTerminatorAndUpdateType(OpBuilder& builder, FuncOp func,
-                                            Block& func_body, Value token) {
-  // If the function signature is changed, update to emit a token and update
-  // the function type.
-  Operation* terminator = func_body.getTerminator();
-  auto new_results = llvm::to_vector<4>(terminator->getOperands());
-  new_results.push_back(token);
-  builder.setInsertionPoint(terminator);
-  auto new_return =
-      builder.create<mlir::ReturnOp>(terminator->getLoc(), new_results);
-  terminator->erase();
+// Helper struct holding state of which op to visit to next. If `op` is in a
+// control flow op region, `region_idx` will be set with the respective region
+// index. `token` will be current token from the last communication op/control
+// flow op transitive communication ops.
+struct OpVisitorState {
+  Optional<unsigned> region_idx;
+  Value token;
+  Operation* op;
+};
 
+// Creates a tuple from a sequence of values.
+Value CreateTuple(OpBuilder& builder, Location loc, ArrayRef<Value> operands) {
+  return builder.create<TupleOp>(loc, operands).getResult();
+}
+
+// Replaces a value `value` with a new value but the token attached. If `value`
+// is not a tuple, a new tuple is formed with `token`. If `value` is a tuple,
+// `value` is extended instead. New tuple values created are cached.
+Value GetValueWithToken(OpBuilder& builder, Value value, Value token,
+                        llvm::SmallDenseMap<Value, Value>& rewritten_values) {
+  // If value with token already exists, reuse it.
+  auto it = rewritten_values.find(value);
+  if (it != rewritten_values.end()) return it->getSecond();
+
+  auto create_tuple = [&](ArrayRef<Value> operands) {
+    auto new_result = CreateTuple(builder, value.getLoc(), operands);
+    rewritten_values.insert({value, new_result});
+    return new_result;
+  };
+
+  auto tuple_type = value.getType().dyn_cast<TupleType>();
+  // `value` is not a tuple, create a new tuple.
+  if (!tuple_type) return create_tuple({value, token});
+
+  // Extend tuple if `value` is a tuple.
+  // If `value` is an op result and the owner is a `mhlo.tuple`, simply unpack
+  // the tuple.
+  if (auto tuple_op = value.getDefiningOp<TupleOp>()) {
+    auto tuple_operands = llvm::to_vector<4>(tuple_op.getOperands());
+    tuple_operands.push_back(token);
+    return create_tuple(tuple_operands);
+  }
+
+  // `value` is not created via a `mhlo.tuple` directly, unpack individual
+  // elements directly with `mhlo.get_tuple_element`.
+  SmallVector<Value, 4> tuple_operands;
+  for (auto idx : llvm::seq<int32_t>(0, tuple_type.getTypes().size()))
+    tuple_operands.push_back(
+        builder.create<GetTupleElementOp>(value.getLoc(), value, idx)
+            .getResult());
+
+  tuple_operands.push_back(token);
+  return create_tuple(tuple_operands);
+}
+
+// Extends a type to include a `mhlo.token` type. If `type` is not a tuple type,
+// a new tuple type with `type` and `mhlo.token` type is created instead.
+TupleType GetTypeWithToken(OpBuilder& builder, Type type) {
+  auto token_type = TokenType::get(builder.getContext());
+  if (auto tuple_type = type.dyn_cast<TupleType>()) {
+    auto result_types = llvm::to_vector<4>(tuple_type.getTypes());
+    result_types.push_back(token_type);
+    return builder.getTupleType(result_types);
+  }
+
+  return builder.getTupleType({type, token_type});
+}
+
+// Creates a slice of a tuple `value` with `mhlo.get_tuple_element` from index 0
+// to `end`, exclusive.
+Value CreateSubTuple(OpBuilder& builder, Value value, size_t end) {
+  SmallVector<Value, 4> tuple_operands;
+  for (auto idx : llvm::seq<int32_t>(0, end))
+    tuple_operands.push_back(
+        builder.create<GetTupleElementOp>(value.getLoc(), value, idx)
+            .getResult());
+
+  return CreateTuple(builder, value.getLoc(), tuple_operands);
+}
+
+// Replaces uses of `value` with `replacement`. If `value` is not a tuple type,
+// an explicit `mhlo.get_tuple_element` is created to unpack the tuple and
+// return the first element. Otherwise, `mhlo.get_tuple_element` users are
+// simply updated with `replacement`, and all other users are updated with a
+// slice of `replacement`.
+void ReplaceWithTupleResult(OpBuilder& builder, Value value,
+                            Value replacement) {
+  auto tuple_type = value.getType().dyn_cast<TupleType>();
+  if (!tuple_type) {
+    if (!value.use_empty()) {
+      auto new_element = builder.create<GetTupleElementOp>(replacement.getLoc(),
+                                                           replacement, 0);
+      value.replaceAllUsesWith(new_element.getResult());
+    }
+    return;
+  }
+
+  Value sub_tuple;
+  for (auto& use : llvm::make_early_inc_range(value.getUses())) {
+    if (isa<GetTupleElementOp>(use.getOwner())) {
+      use.set(replacement);
+      continue;
+    }
+
+    if (!sub_tuple)
+      sub_tuple = CreateSubTuple(builder, replacement, tuple_type.size());
+
+    use.set(sub_tuple);
+  }
+}
+
+// Replaces control flow op block single block argument with new block argument
+// of type `new_type` (tuple type). The last element of the new block argument
+// (token) is returned.
+Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
+                                         Type token_type) {
+  assert(block.getNumArguments() == 1);
+  builder.setInsertionPointToStart(&block);
+  auto new_arg = block.addArgument(token_type);
+  ReplaceWithTupleResult(builder, block.getArgument(0), new_arg);
+  block.eraseArgument(0);
+  return builder
+      .create<GetTupleElementOp>(new_arg.getLoc(), new_arg,
+                                 token_type.cast<TupleType>().size() - 1)
+      .getResult();
+}
+
+// Updates control flow op terminator with an extra element `token`. If the
+// original return value is not a tuple, a new tuple is formed. Otherwise the
+// tuple is extended.
+void RewriteControlFlowTerminator(OpBuilder& builder, Operation* terminator,
+                                  Value token) {
+  assert(terminator->getNumOperands() == 1);
+  assert(terminator->getBlock()->getNumArguments() == 1);
+
+  builder.setInsertionPoint(terminator);
+  llvm::SmallDenseMap<Value, Value> rewritten_operands;
+  Value new_result = GetValueWithToken(builder, terminator->getOperand(0),
+                                       token, rewritten_operands);
+  terminator->setOperand(0, new_result);
+}
+
+// Rewrites a `mhlo.if` op to receive and forward a `mhlo.token`. Operands to
+// the op for all of its regions are extended to have an extra operand `token`.
+void RewriteRegionIfOp(OpBuilder& builder, IfOp region_if,
+                       SmallVectorImpl<OpVisitorState>& ops_to_visit,
+                       Value token) {
+  SmallVector<Value, 2> new_branch_operands;
+  llvm::SmallDenseMap<Value, Value> rewritten_operands;
+  auto old_branch_operands = llvm::drop_begin(region_if.getOperands(), 1);
+
+  // Rewrite all region operands to have an extra operand `token`.
+  for (Value operand : old_branch_operands)
+    new_branch_operands.push_back(
+        GetValueWithToken(builder, operand, token, rewritten_operands));
+
+  auto new_result_type = GetTypeWithToken(builder, region_if.getType());
+
+  // Create new `mhlo.if` op with extra token operands and result.
+  auto new_if = builder.create<IfOp>(region_if.getLoc(), new_result_type,
+                                     region_if.pred(), new_branch_operands[0],
+                                     new_branch_operands[1]);
+
+  // Move all regions from the old `mhlo.if` op to its replacement.
+  for (auto& region_and_idx : llvm::enumerate(region_if.getRegions()))
+    new_if.getRegion(region_and_idx.index()).takeBody(*region_and_idx.value());
+
+  // Forward result from old `mhlo.if` with replacement, and unpack result when
+  // necessary.
+  ReplaceWithTupleResult(builder, region_if.getResult(), new_if.getResult());
+
+  auto new_token = builder.create<GetTupleElementOp>(
+      new_if.getLoc(), new_if.getResult(),
+      new_if.getResult().getType().cast<TupleType>().size() - 1);
+
+  region_if.erase();
+
+  // Remove leftover operands to old `mhlo.if` if they have no uses.
+  for (auto& rewritten_operand : rewritten_operands)
+    if (auto tuple_op = rewritten_operand.getFirst().getDefiningOp<TupleOp>())
+      if (tuple_op.use_empty()) tuple_op.erase();
+
+  // Next op to visit. The replacement is visited but at its first region. The
+  // token result of the new region if is propagated.
+  ops_to_visit.push_back({/*region_idx=*/0, new_token, new_if});
+}
+
+// Rewrites a `mhlo.if` region to receive and forward a `mhlo.token`. The block
+// argument is updated to have an extra `mhlo.token` element. If the region
+// block is to be rewritten, the next op to visit is set to the first op in the
+// block. Otherwise the terminator is updated to forward `token`.
+void RewriteRegionIfRegion(
+    OpBuilder& builder, IfOp region_if, unsigned region_idx,
+    SmallVectorImpl<OpVisitorState>& ops_to_visit,
+    const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, Value token) {
+  ops_to_visit.push_back({region_idx + 1, token, region_if});
+
+  Region& region = region_if.getRegion(region_idx);
+  assert(llvm::hasSingleElement(region));
+
+  auto block_token = UpdateControlFlowBlockArgWithToken(
+      builder, region.front(), region_if.getOperand(region_idx + 1).getType());
+
+  if (control_flow_blocks.contains(&region.front())) {
+    ops_to_visit.push_back({/*region_idx=*/llvm::None, block_token,
+                            block_token.getDefiningOp()->getNextNode()});
+    return;
+  }
+
+  RewriteControlFlowTerminator(builder, region.front().getTerminator(),
+                               block_token);
+}
+
+// Rewrites an `mhlo.if` op or its region. If `region_idx` is not set, the op
+// operands and results rewritten. If `region_idx` is set, region `region_idx`
+// is rewritten to take in and return an additional token. Returns true if op
+// is still being rewritten.
+bool ProcessRegionIfOp(OpBuilder& builder, IfOp region_if,
+                       Optional<unsigned> region_idx,
+                       SmallVectorImpl<OpVisitorState>& ops_to_visit,
+                       const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks,
+                       Value token) {
+  builder.setInsertionPoint(region_if);
+
+  if (!region_idx) {
+    RewriteRegionIfOp(builder, region_if, ops_to_visit, token);
+    return true;
+  }
+
+  if (*region_idx < region_if.getNumRegions()) {
+    RewriteRegionIfRegion(builder, region_if, *region_idx, ops_to_visit,
+                          control_flow_blocks, token);
+    return true;
+  }
+
+  return false;
+}
+
+// Updates function type based on current function body block arguments and
+// terminator operand types.
+void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
   auto new_argument_types = llvm::to_vector<4>(func_body.getArgumentTypes());
-  auto new_result_types = llvm::to_vector<4>(new_return.getOperandTypes());
+  auto new_result_types =
+      llvm::to_vector<4>(func_body.getTerminator()->getOperandTypes());
   func.setType(FunctionType::get(new_argument_types, new_result_types,
                                  builder.getContext()));
 }
 
-// Rewrites a function body and communication ops inside. The function may
-// either be rewritten to create a token or take in and return a token,
-// depending on its visibility and if there are any callers.
+// Replaces a function terminator `return` with another `return` that has an
+// extra `mhlo.token` operand.
+void RewriteFunctionTerminator(OpBuilder& builder, mlir::ReturnOp terminator,
+                               Value token) {
+  auto new_results = llvm::to_vector<4>(terminator.getOperands());
+  new_results.push_back(token);
+  builder.setInsertionPoint(terminator);
+  builder.create<mlir::ReturnOp>(terminator.getLoc(), new_results);
+  terminator.erase();
+}
+
+// Rewrites a function body and communication ops inside. Region control flow
+// are updated when necessary, to propagate tokens. The function may either be
+// rewritten to create a token or take in and return a token, depending on its
+// visibility and if there are any callers.
 LogicalResult RewriteFunction(
     OpBuilder& builder, int64_t& channel_id, ModuleOp module, FuncOp func,
-    const llvm::SmallDenseMap<StringRef, FuncAndClone>& funcs) {
+    const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs,
+    const llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
+    const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, bool is_clone) {
   MLIRContext* context = module.getContext();
   if (!llvm::hasSingleElement(func.getBody()))
     return func.emitError()
            << "'" << FuncOp::getOperationName()
            << "' ops with more than one block are not supported";
 
-  bool rewrite_block = !func.isPublic() && !func.symbolKnownUseEmpty(module);
+  bool rewrite_block =
+      is_clone || (!func.isPublic() && !func.symbolKnownUseEmpty(module));
   Block& func_body = func.front();
 
   builder.setInsertionPointToStart(&func_body);
-  auto token_type = mlir::mhlo::TokenType::get(context);
+  auto token_type = TokenType::get(context);
   // If a function is public, it's signature should not be modified, and instead
   // a token will be created. Otherwise a token block argument is inserted.
-  Value token = rewrite_block
-                    ? func_body.addArgument(token_type)
+  Value init_token =
+      rewrite_block ? func_body.addArgument(token_type)
                     : builder.create<CreateTokenOp>(func.getLoc(), token_type)
                           .getResult();
 
-  for (Operation& op : llvm::make_early_inc_range(func_body)) {
-    if (auto host_compute = dyn_cast<TF::_XlaHostComputeMlirOp>(op)) {
+  // Stack to keep track of region based control flow op nesting and current
+  // op to visit.
+  SmallVector<OpVisitorState, 4> ops_to_visit{
+      {/*region_idx=*/llvm::None, init_token, &func_body.front()}};
+
+  while (!ops_to_visit.empty()) {
+    OpVisitorState op_to_visit = ops_to_visit.pop_back_val();
+    Operation* curr_op = op_to_visit.op;
+
+    Value token = op_to_visit.token;
+    // Ops may be removed, so the next op is kept track of beforehand.
+    Operation* next_op = curr_op->getNextNode();
+
+    if (auto host_compute = dyn_cast<TF::_XlaHostComputeMlirOp>(curr_op)) {
       token = RewriteHostComputeOp(builder, channel_id, host_compute, token);
-    } else if (auto send_to_host = dyn_cast<TF::XlaSendToHostOp>(op)) {
+    } else if (auto send_to_host = dyn_cast<TF::XlaSendToHostOp>(curr_op)) {
       token = RewriteSendToHostOp(builder, channel_id, send_to_host, token);
-    } else if (auto recv_from_host = dyn_cast<TF::XlaRecvFromHostOp>(op)) {
+    } else if (auto recv_from_host = dyn_cast<TF::XlaRecvFromHostOp>(curr_op)) {
       token = RewriteRecvFromHostOp(builder, channel_id, recv_from_host, token);
-    } else if (auto call = dyn_cast<mlir::CallOp>(op)) {
+    } else if (auto call = dyn_cast<mlir::CallOp>(curr_op)) {
       // Only `mlir::CallOp` is supported as this requires knowing how to
       // rewrite arguments and results to a function.
       auto it = funcs.find(call.getCallee());
-      if (it == funcs.end()) continue;
-      FuncOp clone = it->getSecond().clone;
-      Optional<StringRef> symbol_name =
-          clone ? Optional<StringRef>(clone.getName()) : llvm::None;
-      // If the function being called is to be cloned, update the call to also
-      // point to the cloned function.
-      token = RewriteCallOp(builder, call, symbol_name, token);
+      if (it != funcs.end()) {
+        FuncOp clone = it->getSecond().clone;
+        Optional<StringRef> symbol_name =
+            clone ? Optional<StringRef>(clone.getName()) : llvm::None;
+        // If the function being called is to be cloned, update the call to also
+        // point to the cloned function.
+        token = RewriteCallOp(builder, call, symbol_name, token);
+      }
+    } else if (auto region_if = dyn_cast<IfOp>(curr_op)) {
+      if (op_to_visit.region_idx || control_flow_ops.contains(region_if))
+        if (ProcessRegionIfOp(builder, region_if, op_to_visit.region_idx,
+                              ops_to_visit, control_flow_blocks, token))
+          continue;
+    } else if (auto region_terminator = dyn_cast<mhlo::ReturnOp>(curr_op)) {
+      RewriteControlFlowTerminator(builder, region_terminator, token);
+      // There is no next op afer the control flow op terminator, simply let
+      // stack have one less element.
+      continue;
+    } else if (auto func_terminator = dyn_cast<mlir::ReturnOp>(curr_op)) {
+      if (rewrite_block)
+        RewriteFunctionTerminator(builder, func_terminator, token);
+
+      // There is no next op afer the function terminator, simply let stack have
+      // one less element/be empty.
+      continue;
     }
+
+    // Visit next op.
+    ops_to_visit.push_back({/*region_idx=*/llvm::None, token, next_op});
   }
 
-  if (rewrite_block)
-    RewriteFunctionTerminatorAndUpdateType(builder, func, func_body, token);
+  if (rewrite_block) UpdateFunctionType(builder, func, func_body);
 
   return success();
 }
 
+// Checks if a function call is pointing to a function with communication ops.
+bool IsFunctionCallWithCommunication(
+    Operation* op,
+    const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
+  if (auto call = dyn_cast<mlir::CallOp>(op))
+    return funcs_to_rewrite.count(call.callee());
+
+  return false;
+}
+
+// Collects all control flow op ancestors of communication ops or function calls
+// with communication ops (transitively).
+void GetCommunicationControlFlowOps(
+    FuncOp func,
+    const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite,
+    llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
+    llvm::SmallPtrSetImpl<Block*>& control_flow_blocks) {
+  func.walk([&](Operation* op) {
+    if (IsCommunicationOp(op) ||
+        IsFunctionCallWithCommunication(op, funcs_to_rewrite))
+      if (failed(GetControlFlowAncestors(op, control_flow_ops,
+                                         control_flow_blocks)))
+        llvm_unreachable(
+            "checking original function for control flow ancestors should have "
+            "errored first");
+  });
+}
+
 void LegalizeTFCommunication::runOnOperation() {
   auto module = getOperation();
-  llvm::SmallDenseMap<StringRef, FuncAndClone> funcs =
-      GetFunctionsToRewrite(module);
+  llvm::SmallDenseMap<StringRef, FuncToRewrite> funcs_to_rewrite;
+  if (failed(GetFunctionsToRewrite(module, funcs_to_rewrite)))
+    return signalPassFailure();
 
   // Module level counter to make sure Channel Id's are unique.
   int64_t channel_id = 1;
   OpBuilder builder(&getContext());
-  for (const auto& func_and_name : funcs) {
-    FuncOp func = func_and_name.getSecond().original;
-    if (failed(RewriteFunction(builder, channel_id, module, func, funcs)))
+  for (const auto& func_and_name : funcs_to_rewrite) {
+    const auto& func_to_rewrite = func_and_name.getSecond();
+    FuncOp func = func_to_rewrite.original;
+    if (failed(RewriteFunction(builder, channel_id, module, func,
+                               funcs_to_rewrite,
+                               func_to_rewrite.control_flow_ops,
+                               func_to_rewrite.control_flow_blocks,
+                               /*is_clone=*/false)))
       return signalPassFailure();
 
     FuncOp clone = func_and_name.getSecond().clone;
     if (!clone) continue;
-    if (failed(RewriteFunction(builder, channel_id, module, clone, funcs)))
-      return signalPassFailure();
+    llvm::SmallPtrSet<Operation*, 4> clone_control_flow_ops;
+    llvm::SmallPtrSet<Block*, 4> clone_control_flow_blocks;
+    GetCommunicationControlFlowOps(clone, funcs_to_rewrite,
+                                   clone_control_flow_ops,
+                                   clone_control_flow_blocks);
+    if (failed(RewriteFunction(builder, channel_id, module, clone,
+                               funcs_to_rewrite, clone_control_flow_ops,
+                               clone_control_flow_blocks,
+                               /*is_clone=*/true)))
+      llvm_unreachable(
+          "rewriting of original function should have errored first");
   }
 }
 

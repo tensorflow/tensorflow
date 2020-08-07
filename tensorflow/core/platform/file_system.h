@@ -481,7 +481,7 @@ class FileSystem {
 
   /// \brief Starts a new transaction
   virtual tensorflow::Status StartTransaction(TransactionToken** token) {
-    token = nullptr;
+    *token = nullptr;
     return Status::OK();
   }
 
@@ -499,15 +499,15 @@ class FileSystem {
   /// \brief Get token for `path` or start a new transaction and add `path` to
   /// it.
   virtual tensorflow::Status GetTokenOrStartTransaction(
-      const std::string& path, TransactionToken** token) {
-    token = nullptr;
+      const string& path, TransactionToken** token) {
+    *token = nullptr;
     return Status::OK();
   }
 
   /// \brief Return transaction for `path` or nullptr in `token`
   virtual tensorflow::Status GetTransactionForPath(const std::string& path,
                                                    TransactionToken** token) {
-    token = nullptr;
+    *token = nullptr;
     return Status::OK();
   }
 
@@ -518,6 +518,30 @@ class FileSystem {
 
   virtual ~FileSystem() = default;
 };
+/// This macro adds forwarding methods from FileSystem class to
+/// used class since name hiding will prevent these to be accessed from
+/// derived classes and would require all use locations to migrate to
+/// Transactional API. This is an interim solution until ModularFileSystem class
+/// becomes a singleton.
+// TODO(sami): Remove this macro when filesystem plugins migration is complete.
+#define TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT \
+  using FileSystem::NewRandomAccessFile;                      \
+  using FileSystem::NewWritableFile;                          \
+  using FileSystem::NewAppendableFile;                        \
+  using FileSystem::NewReadOnlyMemoryRegionFromFile;          \
+  using FileSystem::FileExists;                               \
+  using FileSystem::GetChildren;                              \
+  using FileSystem::GetMatchingPaths;                         \
+  using FileSystem::Stat;                                     \
+  using FileSystem::DeleteFile;                               \
+  using FileSystem::RecursivelyCreateDir;                     \
+  using FileSystem::DeleteDir;                                \
+  using FileSystem::DeleteRecursively;                        \
+  using FileSystem::GetFileSize;                              \
+  using FileSystem::RenameFile;                               \
+  using FileSystem::CopyFile;                                 \
+  using FileSystem::IsDirectory;                              \
+  using FileSystem::FlushCaches
 
 /// A Wrapper class for Transactional FileSystem support.
 /// This provides means to make use of the transactions with minimal code change
@@ -529,6 +553,8 @@ class FileSystem {
 /// transactional filesystem access with minimal code change.
 class WrappedFileSystem : public FileSystem {
  public:
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   tensorflow::Status NewRandomAccessFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
@@ -690,31 +716,6 @@ class WrappedFileSystem : public FileSystem {
   FileSystem* fs_;
   TransactionToken* token_;
 };
-
-/// This macro adds forwarding methods from FileSystem class to
-/// used class since name hiding will prevent these to be accessed from
-/// derived classes and would require all use locations to migrate to
-/// Transactional API. This is an interim solution until ModularFileSystem class
-/// becomes a singleton.
-// TODO(sami): Remove this macro when filesystem plugins migration is complete.
-#define TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT \
-  using FileSystem::NewRandomAccessFile;                      \
-  using FileSystem::NewWritableFile;                          \
-  using FileSystem::NewAppendableFile;                        \
-  using FileSystem::NewReadOnlyMemoryRegionFromFile;          \
-  using FileSystem::FileExists;                               \
-  using FileSystem::GetChildren;                              \
-  using FileSystem::GetMatchingPaths;                         \
-  using FileSystem::Stat;                                     \
-  using FileSystem::DeleteFile;                               \
-  using FileSystem::RecursivelyCreateDir;                     \
-  using FileSystem::DeleteDir;                                \
-  using FileSystem::DeleteRecursively;                        \
-  using FileSystem::GetFileSize;                              \
-  using FileSystem::RenameFile;                               \
-  using FileSystem::CopyFile;                                 \
-  using FileSystem::IsDirectory;                              \
-  using FileSystem::FlushCaches
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {

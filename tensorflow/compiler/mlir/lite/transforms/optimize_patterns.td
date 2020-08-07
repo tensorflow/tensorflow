@@ -508,3 +508,15 @@ foreach ActFun = [TFL_AF_Relu, TFL_AF_Relu6, TFL_AF_Relu1, TFL_AF_None] in {
 def OptimizeReluSquaredDifference : Pat<
   (TFL_ReluOp (TFL_SquaredDifferenceOp $l, $r)),
   (TFL_SquaredDifferenceOp $l, $r)>;
+
+// Optimize X^1 o X
+def OptimizePow1ToIdentity : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">)),
+  (replaceWithValue $input)>;
+
+// Optimize X^2 to X*X
+def OptimizePow2ToSquare : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
+  (TFL_MulOp $input, $input, TFL_AF_None)>;

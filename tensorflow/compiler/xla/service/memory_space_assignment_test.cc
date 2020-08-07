@@ -4354,6 +4354,47 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kBatch = 8;
+  constexpr int kFeature = 8;
+  constexpr int kOutput = 2;
+
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShapeWithLayout(
+      F32, {kFeature, kOutput},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kAlternateMemorySpace);
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(lhs_shape, param, 0));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(rhs_shape, param, 1));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      result_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param, lhs, rhs, dot});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+}
+
 using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;
 
 TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {

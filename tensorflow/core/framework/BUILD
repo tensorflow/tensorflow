@@ -31,7 +31,7 @@ package(
 )
 
 # Export all header files for which we do not yet provide a dedicated build
-# rule. This avoids breading all the rules in tensorflow/core/BUILD.
+# rule. This avoids breaking all the rules in tensorflow/core/BUILD.
 exports_files(
     srcs = [
         "allocator_registry.h",

@@ -3402,6 +3402,7 @@ mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 cosine_similarity = cosine_proximity
+log_cosh = logcosh
 
 
 def clone_metric(metric):

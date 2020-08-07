@@ -671,6 +671,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
                   "OpBuilder &builder, OperationState &results, "
                   "ValueRange values">];
 
+  let hasCanonicalizer = 1;
 }
 
 def HLO_CompareOp: HLO_Op<"compare",

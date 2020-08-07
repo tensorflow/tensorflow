@@ -155,7 +155,10 @@ cc_library(
     name = "custom_registry",
     srcs = ["custom_registry.cc"],
     hdrs = ["custom_registry.h"],
-    deps = ["//tensorflow/lite/delegates/gpu/gl:node_shader"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(
@@ -774,6 +777,7 @@ cc_library(
                "//conditions:default": NON_TFLITE_GPU_BINARY_RELEASE_OPERATORS,
            }) + [
         ":custom_registry",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",

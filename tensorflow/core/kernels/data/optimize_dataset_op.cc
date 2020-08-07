@@ -101,6 +101,21 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
           job_name, opt_ins_raw, opt_outs_raw, live_experiments,
           optimizations_enabled, optimizations_disabled, optimizations_default,
           hash_func);
+
+      // Log the experiments that will be applied.
+      if (!live_experiments.empty() && VLOG_IS_ON(1)) {
+        VLOG(1) << "The input pipeline is subject to tf.data experiment. "
+                   "Please see `go/tf-data-experiments` for more details.";
+
+        for (auto& pair : live_experiments) {
+          string experiment = pair.first;
+          if (std::find(optimizations.begin(), optimizations.end(),
+                        experiment) != optimizations.end()) {
+            VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
+            metrics::RecordTFDataExperiment(experiment);
+          }
+        }
+      }
     }
   }
 

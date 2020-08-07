@@ -196,9 +196,11 @@ int TpuTopology_ChipBounds_Z(void* tpu_topology);
 bool TpuTopology_HasChip(void* tpu_topology, int x, int y, int z);
 void* TpuTopology_Core(void* tpu_topology, int x, int y, int z,
                        TpuCoreTypeEnum tpu_core_type, int index);
-int TpuCoreLocation_ChipCoordinates_X(void* tpu_core_location);
-int TpuCoreLocation_ChipCoordinates_Y(void* tpu_core_location);
-int TpuCoreLocation_ChipCoordinates_Z(void* tpu_core_location);
+int TpuTopology_IdForHost(void* tpu_topology, int x, int y, int z);
+void TpuCoreLocation_ChipCoordinates(void* tpu_core_location, int* x, int* y,
+                                     int* z);
+void TpuCoreLocation_HostCoordinates(void* tpu_core_location, int* x, int* y,
+                                     int* z);
 int TpuCoreLocation_Index(void* tpu_core_location);
 int TpuCoreLocation_Id(void* tpu_core_location);
 
@@ -345,9 +347,10 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HasChip);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Core);
-  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_X);
-  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_Y);
-  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_Z);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_IdForHost);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_HostCoordinates);
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Index);
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
 

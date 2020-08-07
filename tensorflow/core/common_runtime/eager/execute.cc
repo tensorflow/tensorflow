@@ -94,12 +94,7 @@ bool KernelCacheEnabled(const OpDef& op_def) {
     return false;
   }
   // TODO(b/162540360): Revisit a way to mark kernels as uncachable once we have
-  // 5+ such kernels to exclude.
-  //
-  // RuntimeFallback requires that this kernel should not be cached.
-  if (op_def.name() == "_BatchFunctionFallback") {
-    return false;
-  }
+  // 5+ kernels to exclude.
   return true;
 }
 

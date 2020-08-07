@@ -1018,17 +1018,6 @@ std::vector<tstring> SelectOptimizations(
     }
   }
 
-  // Log the experiments that will be applied.
-  if (VLOG_IS_ON(1)) {
-    for (auto& pair : live_experiments) {
-      string experiment = pair.first;
-      if (std::find(optimizations_set.begin(), optimizations_set.end(),
-                    experiment) != optimizations_set.end()) {
-        VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
-      }
-    }
-  }
-
   std::vector<tstring> optimizations;
   optimizations.insert(optimizations.end(), optimizations_set.begin(),
                        optimizations_set.end());

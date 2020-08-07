@@ -45,7 +45,9 @@ class CppGradients
 };
 
 Status RegisterGradients(GradientRegistry* registry) {
-  return registry->Register("Add", AddRegisterer);
+  TF_RETURN_IF_ERROR(registry->Register("Add", AddRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
+  return Status::OK();
 }
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
@@ -66,6 +68,26 @@ Status Add(AbstractContext* ctx, Tape* tape,
   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[1], &forward_op));
   int num_retvals = 1;
   return Execute(add_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
+
+// Computes `exp(inputs[0])` and records it on the tape.
+Status Exp(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs,
+           const GradientRegistry& registry) {
+  AbstractOperationPtr exp_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(exp_op.get(), "Exp", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<tracing::TracingOperation>(exp_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(exp_op.get())->SetOpName("my_exp"));
+  }
+  TF_RETURN_IF_ERROR(AddInput(exp_op.get(), inputs[0], &forward_op));
+  int num_retvals = 1;
+  return Execute(exp_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
                  registry);
 }
 
@@ -97,6 +119,35 @@ Status AddGradModel(AbstractContext* ctx,
   }
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
+  delete tape;
+  return Status::OK();
+}
+
+// Computes
+// y = exp(inputs[0])
+// return grad(y, {inputs[0]})
+Status ExpGradModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch x.
+  std::vector<AbstractTensorHandle*> exp_outputs(1);
+  TF_RETURN_IF_ERROR(Exp(ctx, tape, inputs, absl::MakeSpan(exp_outputs),
+                         registry));  // Compute x+y.
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(exp_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0])}, source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads));
+  for (auto exp_output : exp_outputs) {
+    exp_output->Unref();
+  }
+  outputs[0] = out_grads[0];
   delete tape;
   return Status::OK();
 }
@@ -150,8 +201,9 @@ Status RunModel(Model model, AbstractContext* ctx,
       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
                              ->Finalize(&output_list, &func));
       scoped_func.reset(func);
-      output_list.outputs[0]->Unref();
-      output_list.outputs[1]->Unref();
+      for (auto output : output_list.outputs) {
+        output->Unref();
+      }
       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
     }
 
@@ -262,6 +314,50 @@ TEST_P(CppGradients, TestAddGrad) {
   EXPECT_EQ(*result_value, 1.0);
   outputs[1]->Unref();
   TF_DeleteTensor(result_tensor);
+}
+
+TEST_P(CppGradients, TestExpGrad) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    x.reset(x_raw);
+  }
+
+  GradientRegistry registry;
+  Status s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  // Pseudo-code:
+  //
+  // tape.watch(x)
+  // y = exp(x)
+  // outputs = tape.gradient(y, x)
+  std::vector<AbstractTensorHandle*> outputs(1);
+  s = RunModel(ExpGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  TF_Tensor* result_tensor;
+  s = getValue(outputs[0], &result_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
+  EXPECT_NEAR(*result_value, 2.718, 0.001);
+  outputs[0]->Unref();
+  TF_DeleteTensor(result_tensor);
+  result_tensor = nullptr;
 }
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is

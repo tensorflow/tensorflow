@@ -104,7 +104,6 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
     return InvalidArgument("from_python argument must be an array.");
   }
 
-  TF_ASSIGN_OR_RETURN(PythonBufferTree tree, GetPythonBufferTree(argument));
   std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
       GlobalPyRefManager()->ManageReference(std::move(c->array));
 

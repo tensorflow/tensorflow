@@ -81,7 +81,6 @@ class ConvPowerVR : public GPUOperation {
     // F32_F16 precision mode
     DataType weights_data_type;  // used for weights and biases
     int3 block_size;
-    int3 work_group_size;
     int3 work_group_launch_order;
     bool fixed_work_group_size;
     bool linear_hw;
@@ -180,26 +179,26 @@ class ConvPowerVR : public GPUOperation {
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
-                             const BHWC* dst_shape = nullptr) const;
+                             const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
                              const BHWC& weights_shape,
-                             const BHWC* dst_shape = nullptr) const;
+                             const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const FullyConnectedAttributes& attr,
-                             const BHWC* dst_shape = nullptr) const;
+                             const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParamsWinograd(const CLDevice& device,
                                      const OperationDef& definition,
                                      const Convolution2DAttributes& attr,
-                                     const BHWC* dst_shape = nullptr) const;
+                                     const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition, int src_depth,
                              int dst_depth, bool x_kernel_is_1,
                              bool y_kernel_is_1,
                              bool different_weights_for_height,
-                             const BHWC* dst_shape = nullptr) const;
+                             const BHWC* dst_shape = nullptr);
 
   std::string GenerateConv(const DeviceInfo& device_info,
                            const OperationDef& op_def, bool stride_correction,

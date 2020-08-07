@@ -292,10 +292,10 @@ Status InsertBufferLoadPreduleIntoKernel(
     BufferAssignment* assignment,
     const std::vector<const BufferAllocation*>& buffers) {
   mlir::OpBuilder builder(kernel.getBody());
-  auto llvm_dialect = kernel.getContext()->getRegisteredDialect<LLVMDialect>();
-  auto offset_type = LLVMType::getInt64Ty(llvm_dialect);
-  auto ptr_type = LLVMType::getInt8PtrTy(llvm_dialect);
-  auto void_type = LLVMType::getVoidTy(llvm_dialect);
+  auto* context = kernel.getContext();
+  auto offset_type = LLVMType::getInt64Ty(context);
+  auto ptr_type = LLVMType::getInt8PtrTy(context);
+  auto void_type = LLVMType::getVoidTy(context);
   auto loc = kernel.getLoc();
 
   auto num_original_args = kernel.getNumArguments();

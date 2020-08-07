@@ -166,10 +166,9 @@ absl::Status CreateElementwiseTwoInput(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs, GPUOperation* result) {
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
-  TensorStorageType storage_type =
-      SelectBestStorageType(*creation_context.context, *creation_context.device,
-                            shape, definition.GetPrimaryStorageType(),
-                            definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type = SelectBestStorageType(
+      creation_context.device->info_, shape, definition.GetPrimaryStorageType(),
+      definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   Tensor gpu_tensor;
   RETURN_IF_ERROR(CreateTensor(*creation_context.context,
@@ -205,10 +204,9 @@ absl::Status CreateElementwiseTwoInput(
     bool swap_inputs, GPUOperation* result) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
-  TensorStorageType storage_type =
-      SelectBestStorageType(*creation_context.context, *creation_context.device,
-                            shape, definition.GetPrimaryStorageType(),
-                            definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type = SelectBestStorageType(
+      creation_context.device->info_, shape, definition.GetPrimaryStorageType(),
+      definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   Tensor gpu_tensor;
   RETURN_IF_ERROR(CreateTensor(*creation_context.context,

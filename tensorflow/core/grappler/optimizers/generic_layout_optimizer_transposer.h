@@ -239,6 +239,30 @@ class Conv2DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class Conv3DTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class Conv3DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DBackpropFilterTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class Conv3DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DBackpropInputTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class FusedBatchNormExTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit FusedBatchNormExTransposer() : LayoutSensitiveOpTransposer() {}

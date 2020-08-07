@@ -146,6 +146,7 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":sharded_variable",
+        "//tensorflow/python/distribute/client:parameter_server_client",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -1496,6 +1497,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "nomsan",  # b/154224457: Re-enable when fixed.
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
@@ -1775,7 +1777,7 @@ distribute_py_test(
 py_library(
     name = "parameter_server_strategy_v2",
     srcs = ["parameter_server_strategy_v2.py"],
-    srcs_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         ":parameter_server_strategy",
         "//tensorflow/python:constant_op",
