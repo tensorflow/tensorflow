@@ -61,6 +61,12 @@ class HloSharding {
       const Array<int64>& group_tile_assignment,
       absl::Span<const absl::Span<const int64>> replication_groups);
 
+  // Creates a partially replicated tiled sharding with device-level tile
+  // assignment, where the last dimension is the additional replication
+  // dimension.
+  static HloSharding PartialTile(
+      const Array<int64>& tile_assignment_last_dim_replicate);
+
   // Creates a new sharding which splits a one-dimensional input shape into
   // `num_tiles` tiles.
   static HloSharding Tile1D(const Shape& input_shape, int64 num_tiles);
@@ -236,6 +242,10 @@ class HloSharding {
   // Gets the tile shape on the device.
   // REQUIRES: !IsTuple()
   Shape TileShape(const Shape& shape, int64 device) const;
+
+  // Gets the number of tiles. If it has partial replication, this will not
+  // equal the device count.
+  int64 NumTiles() const;
 
  private:
   HloSharding()

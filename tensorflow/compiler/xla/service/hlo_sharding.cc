@@ -51,7 +51,12 @@ HloSharding HloSharding::PartialTile(
     int64 group = group_tile_assignment(group_index);
     *device = replication_groups[group][indices.back()];
   });
-  return HloSharding(new_tile_assignment,
+  return PartialTile(new_tile_assignment);
+}
+
+HloSharding HloSharding::PartialTile(
+    const Array<int64>& tile_assignment_last_dim_replicate) {
+  return HloSharding(tile_assignment_last_dim_replicate,
                      /*replicate_on_last_tile_dim=*/true);
 }
 
@@ -492,6 +497,17 @@ Shape HloSharding::TileShape(const Shape& shape, int64 device) const {
     result_shape.set_dimensions(i, limit - offset);
   }
   return result_shape;
+}
+
+int64 HloSharding::NumTiles() const {
+  if (IsTileMaximal()) {
+    return 1;
+  }
+  if (ReplicateOnLastTileDim()) {
+    return tile_assignment().num_elements() /
+           tile_assignment().dimensions().back();
+  }
+  return tile_assignment().num_elements();
 }
 
 HloSharding HloSharding::GetSubSharding(const Shape& shape,
