@@ -373,7 +373,7 @@ TEST_P(CppGradients, TestAddGrad) {
   }
 
   GradientRegistry registry;
-  Status s = RegisterGradientAdd(&registry);
+  Status s = RegisterGradients(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Pseudo-code:

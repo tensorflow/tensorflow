@@ -203,6 +203,7 @@ using tensorflow::ops::Mul;
 using tensorflow::ops::MatMul;
 using tensorflow::ops::ReluGrad;
 using tensorflow::ops::SparseSoftmaxCrossEntropyLoss;
+using tensorflow::ops::ZerosLike;
 
 namespace tensorflow {
 namespace gradients {
@@ -281,7 +282,7 @@ class MatMulGradientFunction : public GradientFunction {
     std::vector<AbstractTensorHandle*> matmul_outputs(1);
 
     // Gradient for A
-    std::string name = "matm_A_" + std::to_string(counter);
+    std::string name = "mm_A_" + std::to_string(counter);
     TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, forward_inputs[1]},
                               absl::MakeSpan(matmul_outputs), name.c_str(),
                               /*transpose_a = */ false,
@@ -340,6 +341,8 @@ class ReluGradientFunction : public GradientFunction {
   std::vector<AbstractTensorHandle*> forward_outputs;
 };
 
+
+// FIX ZEROSLIKE
 class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
  public:
   explicit SparseSoftmaxCrossEntropyLossGradientFunction(
@@ -350,27 +353,21 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
   Status Compute(Context* ctx,
                  absl::Span<AbstractTensorHandle* const> grad_inputs,
                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
-    // Forward Inputs : [scores, labels]
-
+  
     grad_outputs->resize(2);
-    // std::vector<AbstractTensorHandle*> sm_outputs(2);
+    std::string name = "Identity_Softmax_Grad_A_" + std::to_string(counter);
+    std::vector<AbstractTensorHandle*> id_outputs(1);
+    TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {forward_outputs[1]},
+                                     absl::MakeSpan(id_outputs),
+                                     name.c_str()));
+    (*grad_outputs)[0] = id_outputs[0];
 
-    // // Calculate Grad
-    // std::string name = "sm_loss" + std::to_string(counter);
-
-    // TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
-    //     ctx->ctx, {forward_inputs[0], forward_inputs[1]},
-    //     absl::MakeSpan(sm_outputs), name.c_str()));
-
-    // TODO(amturati): fix error where we have to return the softmax loss as the
-    // 2nd grad for the labels to avoid mangled stack trace. Also avoid running
-    // forward operation again, check to see if forward_outputs are being
-    // passed.
-
-    // SparseSoftmaxCrossEntropyLoss returns [loss_vals, grads], so return 2nd
-    // output.
-    (*grad_outputs)[0] = forward_outputs[1]; // sm_outputs[1];  // return backprop for scores
-    (*grad_outputs)[1] = forward_outputs[0];  // nullptr causes Mangled Stack Trace
+    // TODO(amturati): check to see if ZerosLike is ok instead of nullptr
+    name = "Zeros_Softmax_Grad_" + std::to_string(counter);
+    TF_RETURN_IF_ERROR(ops::ZerosLike(ctx->ctx, {forward_inputs[1]},
+                                     absl::MakeSpan(id_outputs),
+                                     name.c_str()));
+    (*grad_outputs)[1] = id_outputs[0];  // nullptr causes Mangled Stack Trace
 
     counter += 1;
     return Status::OK();

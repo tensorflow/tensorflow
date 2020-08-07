@@ -413,7 +413,7 @@ Status MNISTGradModel(AbstractContext* ctx,
                             /*output_gradients=*/{}, &out_grads));
 
   // Only release 2nd temp output as first holds loss values.
-  // temp_outputs[1]->Unref();
+  temp_outputs[1]->Unref();
 
   outputs[0] = out_grads[0];  // dW1
   outputs[1] = out_grads[1];  // dW2
