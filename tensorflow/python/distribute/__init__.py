@@ -25,7 +25,6 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
-from tensorflow.python.distribute.client import parameter_server_client
 from tensorflow.python.distribute.experimental import collective_all_reduce_strategy
 from tensorflow.python.distribute.experimental import parameter_server_strategy
 # pylint: enable=unused-import
