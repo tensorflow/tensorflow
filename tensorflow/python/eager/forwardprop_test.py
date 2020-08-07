@@ -1045,23 +1045,23 @@ class BatchTests(test.TestCase, parameterized.TestCase):
     [("ForwardPropFirst", True),
      ("TapeFirst", False)])
   def testBatchBackwardOverForward(self, forward_prop_first):
-    primals = constant_op.constant(1.)
+    x = constant_op.constant(1.)
     tangents = constant_op.constant([.1, .2])
-    expected = constant_op.constant([-.1 * math_ops.cos(1.).numpy(), -.2 * math_ops.cos(1.).numpy()])
-    print(expected)
+    expected = [-.1 * math_ops.cos(1.), -.2 * math_ops.cos(1.)]
     if forward_prop_first:
-      forward_accumulator = forwardprop.ForwardAccumulator._batch_accumulator(primals, tangents)
-      gradient_tape = backprop.GradientTape()
+      forward_accumulator = forwardprop.ForwardAccumulator._batch_accumulator(x, tangents)
+      gradient_tape = backprop.GradientTape(persistent=True)
     else:
-      gradient_tape = backprop.GradientTape()
-      forward_accumulator = forwardprop.ForwardAccumulator._batch_accumulator(primals, tangents)
+      gradient_tape = backprop.GradientTape(persistent=True)
+      forward_accumulator = forwardprop.ForwardAccumulator._batch_accumulator(x, tangents)
     with gradient_tape as tape:
       with forward_accumulator as acc:
-        tape.watch(primals)
-        d = math_ops.cos(primals)
-        self.assertTrue(tape_lib.should_record_backprop((acc.jvp(d),)))
-      self.assertAllClose(expected,
-                          tape.gradient(acc.jvp(d), primals))
+        tape.watch(x)
+        y = math_ops.cos(x)
+        self.assertTrue(tape_lib.should_record_backprop((acc.jvp(y),)))
+        dy_dx = acc.jvp(y)
+      d2y_dx2 = [tape.gradient(dy_dx[0], x), tape.gradient(dy_dx[1], x)] 
+    self.assertAllClose(expected, d2y_dx2)
 
 
 if __name__ == "__main__":
