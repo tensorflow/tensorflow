@@ -1085,3 +1085,33 @@ func @ConvertPow2ToSquare(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK: return %[[RESULT]]
 }
 
+func @ConvertIdentityGatherNdOp(%arg0: tensor<4x3xf32>) -> tensor<4x3xf32> {
+  %cst = constant dense<[[0], [1], [2], [3]]> : tensor<4x1xi32>
+  %0 = "tfl.gather_nd"(%arg0, %cst) : (tensor<4x3xf32>, tensor<4x1xi32>) -> tensor<4x3xf32>
+  return %0 : tensor<4x3xf32>
+
+// CHECK-LABEL: ConvertIdentityGatherNdOp
+// CHECK-SAME: (%[[ARG:.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
+// CHECK-NEXT: return %[[ARG]] : tensor<4x3xf32>
+}
+
+func @ConvertIdentityGatherNdOp3D(%arg0: tensor<4x3x4xf32>) -> tensor<4x3x4xf32> {
+  %cst = constant dense<[[0], [1], [2], [3]]> : tensor<4x1xi32>
+  %0 = "tfl.gather_nd"(%arg0, %cst) : (tensor<4x3x4xf32>, tensor<4x1xi32>) -> tensor<4x3x4xf32>
+  return %0 : tensor<4x3x4xf32>
+
+// CHECK-LABEL: ConvertIdentityGatherNdOp3D
+// CHECK-SAME: (%[[ARG:.*]]: tensor<4x3x4xf32>) -> tensor<4x3x4xf32>
+// CHECK-NEXT: return %[[ARG]] : tensor<4x3x4xf32>
+}
+
+func @ConvertIdentityScatterNd(%arg0: tensor<4x3xf32>) -> tensor<4x3xf32> {
+  %cst = constant dense<[[0], [1], [2], [3]]> : tensor<4x1xi32>
+  %shape = constant dense<[4, 3]> : tensor<2xi32>
+  %0 = "tfl.scatter_nd"(%cst, %arg0, %shape) : (tensor<4x1xi32>, tensor<4x3xf32>, tensor<2xi32>) -> tensor<4x3xf32>
+  return %0 : tensor<4x3xf32>
+
+// CHECK-LABEL: ConvertIdentityScatterNd
+// CHECK-SAME: (%[[ARG:.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
+// CHECK-NEXT: return %[[ARG]] : tensor<4x3xf32>
+}

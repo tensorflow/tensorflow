@@ -520,3 +520,19 @@ def OptimizePow2ToSquare : Pat<
   (TFL_PowOp $input,
     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
   (TFL_MulOp $input, $input, TFL_AF_None)>;
+
+def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
+  "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("
+  "$0, $1.cast<DenseIntElementsAttr>())">>;
+
+def OptimizeIdentityGatherNdOp : Pat<
+  (TFL_GatherNdOp $params, (ConstantOp I32ElementsAttr: $indices)),
+  (replaceWithValue $params),
+  [(CanOptimizeIdentityGatherNdOrScatterNdOp $params, $indices)]>;
+
+def OptimizeIdentityScatterNdOp : Pat<
+  (TFL_ScatterNdOp (ConstantOp I32ElementsAttr: $indices), $params, $ignored),
+  (replaceWithValue $params),
+  [(CanOptimizeIdentityGatherNdOrScatterNdOp $params, $indices)]>;
+
+
