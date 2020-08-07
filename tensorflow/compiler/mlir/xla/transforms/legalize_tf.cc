@@ -5007,7 +5007,12 @@ class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
     SmallVector<Type, 4> unpacked_indices_type(
         indices_type.getDimSize(0),
         RankedTensorType::get({}, indices_type.getElementType()));
-    auto zero_attr = IntegerAttr::get(rewriter.getIntegerType(64), 0);
+    // Note on zero_attr integer type: DynamicUpdateSlice op start_indices are
+    // required to have matching types. This rewrite rule creates
+    // DynamicUpdateSlice ops where the first "start index" is always i32 and
+    // subsequent ones are constructed based on zero_attr. Thus the type
+    // for zero_attr needs to be i32 as well.
+    auto zero_attr = IntegerAttr::get(rewriter.getIntegerType(32), 0);
     auto unpacked_indices = rewriter.create<TF::UnpackOp>(
         op.getLoc(), unpacked_indices_type, indices, zero_attr);
 
