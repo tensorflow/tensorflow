@@ -73,6 +73,9 @@ class RandomOpsTest(xla_test.XLATestCase):
       self._testRngIsNotConstant(rng, dtype)
 
   def testRandomNormalMean(self):
+    if xla_test.test.is_built_with_rocm():
+      self.skipTest("TODO ROCm")
+
     for dtype in self._random_types() & self.float_types:
       with self.session():
         with self.test_scope():
@@ -85,6 +88,9 @@ class RandomOpsTest(xla_test.XLATestCase):
           self.assertAllClose(x, 1.4, rtol=1e-1, atol=1e-1)
 
   def testRandomNormalVariance(self):
+    if xla_test.test.is_built_with_rocm():
+      self.skipTest("TODO ROCm")
+
     for dtype in self._random_types() & self.float_types:
       with self.session():
         with self.test_scope():

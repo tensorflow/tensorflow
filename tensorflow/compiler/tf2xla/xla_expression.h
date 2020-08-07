@@ -104,6 +104,13 @@ class XlaExpression {
   // not the shape of the resource's value.
   xla::StatusOr<TensorShape> GetShape() const;
 
+  // Retrieves an XlaExpression that was allocated by a previous Op.
+  static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
+
+  // Assigns an XlaExpression to a tensor on an XLA compilation device.
+  static void AssignExpressionToTensor(const XlaExpression& value,
+                                       Tensor* tensor);
+
  private:
   Kind kind_ = Kind::kInvalid;
 

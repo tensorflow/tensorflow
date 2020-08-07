@@ -70,7 +70,7 @@ class LibHDFS {
  private:
   void LoadAndBind() {
     auto TryLoadAndBind = [this](const char* name, void** handle) -> Status {
-      TF_RETURN_IF_ERROR(Env::Default()->LoadLibrary(name, handle));
+      TF_RETURN_IF_ERROR(Env::Default()->LoadDynamicLibrary(name, handle));
 #define BIND_HDFS_FUNC(function) \
   TF_RETURN_IF_ERROR(BindFunc(*handle, #function, &function));
 

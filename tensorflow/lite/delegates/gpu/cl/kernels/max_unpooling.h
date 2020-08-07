@@ -34,7 +34,6 @@ class MaxUnpooling : public GPUOperation {
 
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   MaxUnpooling(MaxUnpooling&& kernel);
@@ -43,6 +42,8 @@ class MaxUnpooling : public GPUOperation {
   MaxUnpooling& operator=(const MaxUnpooling&) = delete;
 
  private:
+  std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def);
+
   int4 stride_;
   int4 padding_;
   int4 kernel_size_;

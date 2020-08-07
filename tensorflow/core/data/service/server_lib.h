@@ -81,7 +81,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
 
  protected:
   void AddServiceToBuilder(grpc::ServerBuilder* builder) override;
-  Status StartServiceInternal() override { return Status::OK(); }
+  Status StartServiceInternal() override;
 
  private:
   const experimental::DispatcherConfig config_;
@@ -91,9 +91,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
 
 class WorkerGrpcDataServer : public GrpcDataServerBase {
  public:
-  WorkerGrpcDataServer(int requested_port, const std::string& protocol,
-                       const std::string& dispatcher_address,
-                       const std::string& worker_address);
+  explicit WorkerGrpcDataServer(const experimental::WorkerConfig& config);
   ~WorkerGrpcDataServer() override;
 
  protected:
@@ -101,8 +99,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   Status StartServiceInternal() override;
 
  private:
-  const std::string dispatcher_address_;
-  const std::string worker_address_;
+  const experimental::WorkerConfig config_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
   GrpcWorkerImpl* service_;
 };
@@ -112,23 +109,7 @@ Status NewDispatchServer(const experimental::DispatcherConfig& config,
                          std::unique_ptr<DispatchGrpcDataServer>* out_server);
 
 // Creates a worker tf.data server and stores it in `*out_server`.
-//
-// The port can be a specific port or 0. If the port is 0, an available port
-// will be chosen in Start(). This value can be queried with BoundPort().
-//
-// The worker_address argument is optional. If left empty, it will default to
-// "localhost:%port%". When the worker registers with the dispatcher, the worker
-// will report the worker address, so that the dispatcher can tell clients where
-// to read from. The address may contain the placeholder "%port%", which will be
-// replaced with the value of BoundPort().
-Status NewWorkerServer(int port, const std::string& protocol,
-                       const std::string& dispatcher_address,
-                       const std::string& worker_address,
-                       std::unique_ptr<WorkerGrpcDataServer>* out_server);
-
-// Creates a worker using the default worker_address.
-Status NewWorkerServer(int port, const std::string& protocol,
-                       const std::string& dispatcher_address,
+Status NewWorkerServer(const experimental::WorkerConfig& config,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server);
 
 }  // namespace data

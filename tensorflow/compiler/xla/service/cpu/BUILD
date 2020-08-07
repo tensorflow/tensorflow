@@ -49,6 +49,7 @@ filegroup(
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
+        "runtime_topk.cc",
     ],
     visibility = [":friends"],
 )
@@ -64,6 +65,7 @@ filegroup(
         "runtime_single_threaded_conv2d.h",
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
+        "runtime_topk.h",
     ],
     visibility = [":friends"],
 )
@@ -134,6 +136,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:topk_rewriter",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:tree_reduction_rewriter",
@@ -230,6 +233,7 @@ cc_library(
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_key_value_sort",
+        ":runtime_topk",
         ":runtime_matmul",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_conv2d",
@@ -756,6 +760,19 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "runtime_topk",
+    srcs = ["runtime_topk.cc"],
+    hdrs = ["runtime_topk.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
     ],
 )
 

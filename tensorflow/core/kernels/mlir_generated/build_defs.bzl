@@ -11,8 +11,8 @@ load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
 
 def if_mlir_generated_gpu_kernels_enabled(if_true, if_false = []):
     return select({
-        "//tensorflow/core/kernels/mlir_generated:mlir_generated_gpu_kernels_enabled": if_true,
-        "//conditions:default": if_false,
+        "//tensorflow/core/kernels/mlir_generated:mlir_generated_gpu_kernels_disabled": if_false,
+        "//conditions:default": if_true,
     })
 
 def _lookup_file(filegroup, path):
@@ -213,7 +213,7 @@ def _gen_mlir_op_impl(ctx):
     ctx.actions.run_shell(
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
-        command = "cat %s | sed s/f99/%s/g > %s" % (
+        command = "cat %s | sed s/elem_type/%s/g > %s" % (
             ctx.file.template.path,
             ctx.attr.type,
             ctx.outputs.out.path,

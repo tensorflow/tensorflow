@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/util/env_var.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
@@ -41,31 +40,20 @@ limitations under the License.
 #endif
 
 namespace tensorflow {
-
 namespace {
+
 ProfileOptions GetOptions(const ProfileOptions& opts) {
   if (opts.version()) return opts;
   ProfileOptions options = ProfilerSession::DefaultOptions();
   options.set_include_dataset_ops(opts.include_dataset_ops());
   return options;
 }
+
 };  // namespace
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
     const ProfileOptions& options) {
-  return absl::WrapUnique(new ProfilerSession(options));
-}
-
-/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {
-  int64 host_tracer_level = 2;
-  tensorflow::Status s = ReadInt64FromEnvVar("TF_PROFILER_HOST_TRACER_LEVEL", 2,
-                                             &host_tracer_level);
-  if (!s.ok()) {
-    LOG(WARNING) << "ProfilerSession: " << s.error_message();
-  }
-  ProfileOptions options = DefaultOptions();
-  options.set_host_tracer_level(host_tracer_level);
-  return Create(options);
+  return absl::WrapUnique(new ProfilerSession(GetOptions(options)));
 }
 
 tensorflow::Status ProfilerSession::Status() {
@@ -141,14 +129,14 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession(const ProfileOptions& options)
+ProfilerSession::ProfilerSession(ProfileOptions options)
 #if !defined(IS_MOBILE_PLATFORM)
     : active_(profiler::AcquireProfilerLock()),
 #else
     : active_(false),
 #endif
       start_time_ns_(EnvTime::NowNanos()),
-      options_(GetOptions(options)) {
+      options_(std::move(options)) {
   if (!active_) {
 #if !defined(IS_MOBILE_PLATFORM)
     status_ = tensorflow::Status(error::UNAVAILABLE,

@@ -87,6 +87,7 @@ enum HostEventType {
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
   kIterator,
+  kDeviceInputPipelineSecondIterator,
   kPrefetchProduce,
   kPrefetchConsume,
   kParallelInterleaveProduce,
@@ -96,6 +97,8 @@ enum HostEventType {
   kParallelMapConsume,
   kMapAndBatchProduce,
   kMapAndBatchConsume,
+  kParseExampleProduce,
+  kParseExampleConsume,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.

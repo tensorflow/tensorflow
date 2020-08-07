@@ -257,7 +257,7 @@ class RecursiveCompilabilityChecker {
       UncompilableNodesMap* uncompilable_nodes_map);
 
   // Make sure we don't recurse infinitely on recursive functions.
-  const int kMaxRecursionDepth = 10;
+  const size_t kMaxRecursionDepth = 10;
 
   const OperationFilter& op_filter_;
   const DeviceType& jit_device_type_;

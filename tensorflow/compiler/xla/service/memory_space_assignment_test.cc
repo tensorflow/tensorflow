@@ -4516,5 +4516,75 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
   EXPECT_TRUE(interval_picker.Done());
 }
 
+TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
+  // This test is to check against a bug where we didn't assign
+  // while_nest_level_ for while instructions, and defaulting to 0. This could
+  // cause the prefetch interval logic to think a nested while instruction is
+  // the same level as the outermost computation.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  while_condition.2 {
+    param1 = (f32[2,4]) parameter(0)    // 11
+    ROOT cond = pred[] constant(true)   // 12
+  }
+
+  while_body.2 {
+    param2 = (f32[2,4]) parameter(0)    // 13
+    gte2 = f32[2,4] get-tuple-element(param2), index=0  // 14
+    add = f32[2,4] add(gte2, gte2)      // 15
+    ROOT tuple2 = (f32[2,4]) tuple(add) // 16
+  }
+
+  while_condition.1 {
+    param3 = (f32[2,4]) parameter(0)    // 5
+    ROOT cond = pred[] constant(true)   // 6
+  }
+
+  while_body.1 {
+    param4 = (f32[2,4]) parameter(0)    // 7
+    gte1 = f32[2,4] get-tuple-element(param4), index=0  // 8
+    add1 = f32[2,4] add(gte1, gte1)     // 9
+    tuple1 = (f32[2,4]) tuple(add1)     // 10
+    while = (f32[2,4]) while(tuple1), condition=while_condition.2, body=while_body.2  // 17
+    gte2 = f32[2,4] get-tuple-element(while), index=0  // 18
+    add2 = f32[2,4] add(gte2, gte2)     // 19
+    ROOT tuple2 = (f32[2,4]) tuple(add2)  // 20
+  }
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)  // 0
+    a = f32[2,4] negate(param0)     // 1
+    b = f32[2,4] negate(a)          // 2
+    c = f32[2,4] negate(b)          // 3
+    tuple = (f32[2,4]) tuple(c)     // 4
+    while = (f32[2,4]) while(tuple), condition=while_condition.1, body=while_body.1  // 21
+    gte1 = f32[2,4] get-tuple-element(while), index=0  // 22
+    ROOT root = f32[2,4] add(gte1, param0)  // 23
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeMemorySpaceAssignmentCostAnalysis::Create(
+                              hlo_cost_analysis, *module));
+  CostAnalysisPrefetchIntervalPicker interval_picker(
+      *cost_analysis,
+      /*min_async_copy_to_overlap_ratio=*/1.0,
+      /*max_async_copy_to_overlap_ratio=*/12.0,
+      /*preferred_async_copy_to_overlap_ratio=*/2.0);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
+
+  // We expect the root's latest prefetch start time to be before the while loop
+  // (logical time 4).
+  EXPECT_EQ(interval_picker.LatestPrefetchStartTime(use, /*start_time=*/0,
+                                                    /*end_time=*/23),
+            4);
+}
+
 }  // namespace
 }  // namespace xla

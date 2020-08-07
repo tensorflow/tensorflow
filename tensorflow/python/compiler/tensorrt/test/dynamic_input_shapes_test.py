@@ -98,6 +98,9 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
     return ["TRTEngineOp_0"]
 
   def ShouldRunTest(self, run_params):
+    # TODO(b/162448349): Enable the test for TRT 7.1.3.
+    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
+      return (False, "Skip test due to b/162448349")
     return (run_params.dynamic_engine and not trt_test.IsQuantizationMode(
         run_params.precision_mode)), "test dynamic engine and non-INT8"
 

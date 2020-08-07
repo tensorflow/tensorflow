@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "Python.h"
+#include "absl/strings/str_format.h"
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
@@ -350,6 +351,83 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return tensorflow::PyoOrThrow(
         TFE_Py_RegisterFallbackExceptionClass(e.ptr()));
   });
+
+  m.def(
+      "TFE_GetTotalMemoryUsage", [](py::handle& ctx, const char* device_name) {
+        tensorflow::EagerContext* context = tensorflow::ContextFromInterface(
+            reinterpret_cast<tensorflow::ImmediateExecutionContext*>(
+                tensorflow::InputTFE_Context(ctx)));
+
+        tensorflow::DeviceNameUtils::ParsedName input_device_name;
+        if (!tensorflow::DeviceNameUtils::ParseFullName(device_name,
+                                                        &input_device_name) &&
+            !tensorflow::DeviceNameUtils::ParseLocalName(device_name,
+                                                         &input_device_name)) {
+          tensorflow::ThrowValueError(
+              absl::StrFormat("Failed parsing device name: '%s'", device_name)
+                  .c_str());
+        }
+
+        std::vector<tensorflow::Device*> devices =
+            context->local_device_mgr()->ListDevices();
+
+        tensorflow::Device* matched_device = nullptr;
+        for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
+          tensorflow::Device* device = devices[device_idx];
+
+          if (absl::StrContains(device->name(), "XLA") &&
+              !absl::StrContains(device_name, "XLA")) {
+            continue;
+          }
+
+          if (tensorflow::DeviceNameUtils::AreCompatibleDevNames(
+                  input_device_name, device->parsed_name())) {
+            if (device->device_type() == tensorflow::DEVICE_CPU) {
+              tensorflow::ThrowValueError(
+                  "CPU does not support getting allocator information");
+            }
+
+            if (absl::StrContains(device->device_type(), "XLA") &&
+                !absl::StrContains(device_name, "XLA")) {
+              // TODO(b/140134773): Remove this workaround.
+              // Do not accidentally match XLA devices.
+              continue;
+            }
+
+            if (matched_device != nullptr) {
+              tensorflow::ThrowValueError(
+                  absl::StrFormat(
+                      "Multiple devices matching the provided string "
+                      "'%s': '%s' and "
+                      "'%s' ",
+                      device_name, matched_device->name(), device->name())
+                      .c_str());
+            }
+            matched_device = device;
+          }
+        }
+
+        if (matched_device == nullptr) {
+          tensorflow::ThrowValueError(
+              absl::StrFormat("No matching devices found for '%s'", device_name)
+                  .c_str());
+        }
+        CHECK(matched_device);
+
+        tensorflow::AllocatorAttributes attrs;
+        tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
+
+        if (absl::optional<tensorflow::AllocatorStats> stats =
+                allocator->GetStats()) {
+          return stats->bytes_in_use;
+        }
+
+        tensorflow::ThrowTypeError(
+            absl::StrFormat("Allocator stats not available for device '%s'",
+                            matched_device->name())
+                .c_str());
+        LOG(FATAL) << "Unreachable";
+      });
 
   // XLA Eager Logic
   m.def("TF_SetXlaEnableLazyCompilation", &TF_SetXlaEnableLazyCompilation);
@@ -730,8 +808,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         });
 
   // TFE_Py_ForwardAccumulator logic.
-  m.def("TFE_Py_ForwardAccumulatorNew", []() {
-    return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew());
+  m.def("TFE_Py_ForwardAccumulatorNew", [](bool use_batch) {
+    return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew(use_batch));
   });
 
   m.def("TFE_Py_ForwardAccumulatorSetAdd", [](const py::handle& accumulator) {

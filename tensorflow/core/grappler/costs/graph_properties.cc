@@ -785,8 +785,8 @@ class SymbolicShapeRefiner {
     MutableGraphView gv(&grappler_function_item.graph);
 
     // Forward shapes from function input nodes to argument nodes.
-    for (int i = 0, iter_limit = grappler_function_item.inputs().size();
-         i < iter_limit; ++i) {
+    for (int i = 0, end = grappler_function_item.inputs().size(); i < end;
+         ++i) {
       auto& fun_input = grappler_function_item.input(i);
       NodeDef* fun_node = gv.GetNode(fun_input.node_name);
       const TensorId input_tensor = ParseTensorName(function_node->input(i));
@@ -1284,8 +1284,8 @@ class SymbolicShapeRefiner {
     }
 
     for (int i = grappler_function_item.inputs().size(),
-             iter_limit = function_node->input_size();
-         i < iter_limit; ++i) {
+             end = function_node->input_size();
+         i < end; ++i) {
       const string& input = function_node->input(i);
       if (!IsControlInput(input)) {
         return errors::FailedPrecondition(
@@ -2310,7 +2310,7 @@ Status GraphProperties::UpdateEnqueue(
 
   // TODO(bsteiner): handle EnqueueMany as well.
   std::vector<ShapeAndType> shapes_and_types;
-  for (int i = 1, iter_limit = ctx->input_types.size(); i < iter_limit; ++i) {
+  for (int i = 1, end = ctx->input_types.size(); i < end; ++i) {
     GraphView::InputPort inp(enqueue_node, i);
     GraphView::OutputPort fanin = shape_refiner->graph().GetRegularFanin(inp);
     InferenceContext* in = shape_refiner->GetContext(fanin.node);

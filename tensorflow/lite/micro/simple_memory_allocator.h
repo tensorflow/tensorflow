@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/micro/compatibility.h"
 
@@ -42,12 +43,13 @@ class SimpleMemoryAllocator {
                                        uint8_t* buffer_head,
                                        size_t buffer_size);
 
-  // Allocates memory starting at the head of the arena (lowest address and
-  // moving upwards). Calls to this method will also invalidate all temporary
-  // allocation values. This call will fail if a chain allocation calls through
-  // AllocateTemp() have not been cleaned up with a call to
-  // ResetTempAllocations().
-  virtual uint8_t* AllocateFromHead(size_t size, size_t alignment);
+  // Ensure that the head (lowest address and moving upwards) memory allocation
+  // is at least a given size. This function will only increase the head size if
+  // the passed in value is larger than the current head size. Calls to this
+  // method will also invalidate all temporary allocation values. This call will
+  // fail if a chain of allocations through AllocateTemp() have not been cleaned
+  // up with a call to ResetTempAllocations().
+  virtual TfLiteStatus EnsureHeadSize(size_t size, size_t alignment);
 
   // Allocates memory starting at the tail of the arena (highest address and
   // moving downwards).
@@ -68,12 +70,15 @@ class SimpleMemoryAllocator {
   virtual void ResetTempAllocations();
 
   uint8_t* GetHead() const;
+  uint8_t* GetBufferHead() const;
   uint8_t* GetTail() const;
 
   size_t GetHeadUsedBytes() const;
   size_t GetTailUsedBytes() const;
 
-  size_t GetAvailableMemory() const;
+  // Returns the number of bytes available with a given alignment.
+  size_t GetAvailableMemory(size_t alignment) const;
+
   size_t GetUsedBytes() const;
 
  private:

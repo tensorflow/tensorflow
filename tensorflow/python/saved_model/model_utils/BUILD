@@ -103,6 +103,7 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",

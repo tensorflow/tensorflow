@@ -40,7 +40,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
+      --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-multi_gpu,-v1only \
       --test_lang_filters=cc \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_TEST_JOBS} \
@@ -68,5 +68,6 @@ bazel test \
       --build_tests_only \
       --test_output=errors \
       --test_sharding_strategy=disabled \
+      --test_size_filters=small,medium,large \
       -- \
       //tensorflow/core/nccl:nccl_manager_test

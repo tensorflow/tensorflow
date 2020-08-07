@@ -140,6 +140,29 @@ TEST_F(AlgebraicSimplifierTest, MultiplyChain) {
           m::MultiplyAnyOrder(m::ConstantScalar(2), m::ConstantScalar(4)))));
 }
 
+// MUL(MUL(X, BROADCAST(constant)), BROADCAST(Y)) ==>
+// MUL(X, BROADCAST(MUL(Y, BROADCAST(constant))))
+TEST_F(AlgebraicSimplifierTest, MultiplyBroadcastReassoc) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[2,2] parameter(0)
+      p1 = f32[] parameter(1)
+      b = f32[] constant(2)
+      c = f32[2, 2] broadcast(b), dimensions={}
+      x = f32[2,2] multiply(p0, c)
+      y = f32[2,2] broadcast(p1), dimensions={}
+      ROOT z = f32[2,2] multiply(y, x)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::Parameter(0), m::Broadcast(m::MultiplyAnyOrder(
+                                       m::Parameter(1), m::Constant())))));
+}
+
 // A*C + B*C => (A+B)*C if C is a broadcast of a floating-point power of 2.
 TEST_F(AlgebraicSimplifierTest, FactorFpAdditionWithBroadcast) {
   const char* kModuleStr = R"(
@@ -5318,6 +5341,59 @@ ENTRY AddBroadcastZeroWithDynamicSlice {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root->opcode(), HloOpcode::kAdd);
   EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
+}
+
+TEST_F(AlgebraicSimplifierTest, ScalarMultiplyReduction) {
+  const char* hlo_string = R"(
+HloModule ConstScalarMultiply
+ENTRY ConstScalarMultiply {
+  param0 = f32[16,512,4096]{2,1,0} parameter(0)
+  constant.0 = f32[] constant(0.5)
+  broadcast.0 = f32[16,512,4096] broadcast(constant.0), dimensions={}
+  multiply.0 = f32[16,512,4096]{2,1,0} multiply(param0, broadcast.0)
+  param1 = f32[16,512,4096]{2,1,0} parameter(1)
+  multiply.1 = f32[16,512,4096]{2,1,0} multiply(multiply.0, param1)
+  param2 = f32[16,512,1024]{2,1,0} parameter(2)
+  constant.1 = f32[] constant(1.109)
+  broadcast.1 = f32[16,512,1024] broadcast(constant.1), dimensions={}
+  multiply.2 = f32[16,512,1024]{2,1,0} multiply(param2, broadcast.1)
+  ROOT convolution = f32[4096,1024,1]{1,0,2} convolution(multiply.1, multiply.2), window={size=16}, dim_labels=0fb_0io->bf0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_enable_scalar_multiply_reduction(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
+  EXPECT_THAT(root,
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::Op(), m::Broadcast(m::ConstantScalar(0.5f * 1.109f)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ScalarMultiplyReductionMultiUser) {
+  const char* hlo_string = R"(
+HloModule ConstScalarMultiply
+ENTRY ConstScalarMultiply {
+  param0 = f32[16,512,1024] parameter(0)
+  param1 = f32[4096,1024,1] parameter(1)
+  convolution = f32[16,512,4096] convolution(param0, param1), window={size=1}, dim_labels=0bf_oi0->0bf
+  constant.1 = f32[] constant(0.5)
+  broadcast.1 = f32[16,512,4096] broadcast(constant.1), dimensions={}
+  multiply.1 = f32[16,512,4096] multiply(convolution, broadcast.1)
+  param2 = f32[16,512,4096] parameter(2)
+  multiply.2 = f32[16,512,4096] multiply(convolution, param2)
+  ROOT add.1 = f32[16,512,4096] add(multiply.1, multiply.2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_enable_scalar_multiply_reduction(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
 INSTANTIATE_TEST_SUITE_P(DotOfConcatSimplificationTestInstantiation,

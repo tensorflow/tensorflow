@@ -1834,18 +1834,16 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     self.train_dir = os.path.join(self.logdir, 'train')
     self.validation_dir = os.path.join(self.logdir, 'validation')
 
-  def _get_model(self):
+  def _get_model(self, compile_model=True):
     layers = [
         keras.layers.Conv2D(8, (3, 3)),
         keras.layers.Flatten(),
         keras.layers.Dense(1)
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
-    opt = gradient_descent.SGD(learning_rate=0.001)
-    model.compile(
-        opt,
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+    if compile_model:
+      opt = gradient_descent.SGD(learning_rate=0.001)
+      model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1956,6 +1954,29 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+
+  def test_TensorBoard_learning_rate_schedules(self):
+    model = self._get_model(compile_model=False)
+    opt = gradient_descent.SGD(learning_rate_schedule.CosineDecay(0.01, 1))
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[keras.callbacks.TensorBoard(self.logdir)])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_learning_rate'),
         },
     )
 

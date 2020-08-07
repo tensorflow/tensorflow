@@ -53,12 +53,12 @@ Status CheckValidPadding(Padding padding_type,
 
 // Return the string containing the list of valid padding types, that can be
 // used as an Attr() in REGISTER_OP.
-string GetPaddingAttrString();
+std::string GetPaddingAttrString();
 
 // Like GetPaddingAttrString(), but also includes EXPLICIT.
-string GetPaddingAttrStringWithExplicit();
+std::string GetPaddingAttrStringWithExplicit();
 
-string GetExplicitPaddingsAttrString();
+std::string GetExplicitPaddingsAttrString();
 
 // Sets padding value based on the given string padding value.
 Status GetPaddingFromString(StringPiece str_value, Padding* value);

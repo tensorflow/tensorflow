@@ -26,7 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
 
@@ -118,17 +118,17 @@ class ReshapeTest(test.TestCase):
   # TODO(vrv): Add tests for failure conditions once python test_util
   # reports errors.
 
-  @test_util.run_deprecated_v1
   def testFloatReshapeGradThreeDimensions(self):
     x = np.arange(1., 25.).reshape([2, 3, 4]).astype(np.float32)
-    s = list(np.shape(x))
+    input_tensor = constant_op.constant(x)
+
+    def reshape(x):
+      return array_ops.reshape(x, [1, 8, 3])
+
     with self.cached_session():
-      input_tensor = constant_op.constant(x)
-      reshape_out = array_ops.reshape(input_tensor, [1, 8, 3])
-      err = gradient_checker.compute_gradient_error(
-          input_tensor, s, reshape_out, s, x_init_value=x)
-    print("Reshape gradient error = " % err)
-    self.assertLess(err, 1e-3)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(reshape, [input_tensor]))
+      self.assertLess(err, 1e-3)
 
   def testFloatEmpty(self):
     x = np.empty((0, 0, 0, 0), dtype=np.float32)
@@ -157,41 +157,43 @@ class ReshapeTest(test.TestCase):
                                 "Cannot reshape a tensor with 4096 elements"):
       array_ops.reshape(z, [4095])
 
-  @test_util.run_deprecated_v1
   def testPartialShapes(self):
-    x = array_ops.placeholder(dtypes.float32)
 
-    # Unknown input shape, partial new shape.
-    y = array_ops.reshape(x, [1, 1, -1, 1])
-    self.assertEqual([1, 1, None, 1], y.get_shape().as_list())
+    # Testing unknown shapes in graph building.
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.float32)
 
-    # Unknown input shape, unknown new shape.
-    y = array_ops.reshape(x, array_ops.placeholder(dtypes.int32))
-    self.assertEqual(None, y.get_shape().ndims)
+      # Unknown input shape, partial new shape.
+      y = array_ops.reshape(x, [1, 1, -1, 1])
+      self.assertEqual([1, 1, None, 1], y.get_shape().as_list())
 
-    # Unknown input shape, known rank for new shape.
-    y = array_ops.reshape(x, array_ops.placeholder(dtypes.int32, shape=(3,)))
-    self.assertEqual([None, None, None], y.get_shape().as_list())
+      # Unknown input shape, unknown new shape.
+      y = array_ops.reshape(x, array_ops.placeholder(dtypes.int32))
+      self.assertEqual(None, y.get_shape().ndims)
 
-    # Unknown input shape, partial new shape using `tf.stack()`.
-    y = array_ops.reshape(x, [array_ops.placeholder(dtypes.int32), 37])
-    self.assertEqual([None, 37], y.get_shape().as_list())
+      # Unknown input shape, known rank for new shape.
+      y = array_ops.reshape(x, array_ops.placeholder(dtypes.int32, shape=(3,)))
+      self.assertEqual([None, None, None], y.get_shape().as_list())
 
-    # Unknown input shape, partial new shape using `tf.concat()`.
-    y = array_ops.reshape(
-        x,
-        array_ops.concat(
-            [array_ops.placeholder(
-                dtypes.int32, shape=(2,)), [37, 42]], 0))
-    self.assertEqual([None, None, 37, 42], y.get_shape().as_list())
+      # Unknown input shape, partial new shape using `tf.stack()`.
+      y = array_ops.reshape(x, [array_ops.placeholder(dtypes.int32), 37])
+      self.assertEqual([None, 37], y.get_shape().as_list())
 
-    # Unknown input shape, partial new shape using `tf.shape()`.
-    y = array_ops.reshape(
-        x,
-        array_ops.shape(
-            array_ops.placeholder(
-                dtypes.float32, shape=[None, 37, None])))
-    self.assertEqual([None, 37, None], y.get_shape().as_list())
+      # Unknown input shape, partial new shape using `tf.concat()`.
+      y = array_ops.reshape(
+          x,
+          array_ops.concat(
+              [array_ops.placeholder(
+                  dtypes.int32, shape=(2,)), [37, 42]], 0))
+      self.assertEqual([None, None, 37, 42], y.get_shape().as_list())
+
+      # Unknown input shape, partial new shape using `tf.shape()`.
+      y = array_ops.reshape(
+          x,
+          array_ops.shape(
+              array_ops.placeholder(
+                  dtypes.float32, shape=[None, 37, None])))
+      self.assertEqual([None, 37, None], y.get_shape().as_list())
 
   def testTensorShape(self):
     x = array_ops.zeros([1, 100])

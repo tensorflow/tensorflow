@@ -376,7 +376,7 @@ class AddOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::ADD);
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    AddAttributes attr;
+    ElementwiseAttributes attr;
     RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
     node->operation.attributes = std::move(attr);
     const TfLiteAddParams* tf_options;
@@ -847,6 +847,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                                                         /*outputs=*/1));
       ElementwiseAttributes attr;
       RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
+      attr.runtime_tensor_is_second =
+          IsConstantTensor(reader->GetInputTensor(0));
       node->operation.attributes = std::move(attr);
     } else {
       return absl::InvalidArgumentError("Incorrect operation type passed");
@@ -1255,7 +1257,7 @@ class MulOperationParser : public TFLiteOperationParser {
                                    const TfLiteIntArray* constant_dims,
                                    GraphFloat32* graph, ObjectReader* reader) {
     RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
-    MultiplyAttributes attr;
+    ElementwiseAttributes attr;
     if (constant_dims->size <= 0 || NumElements(constant_dims) == 1) {
       Tensor<Scalar, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
@@ -1638,7 +1640,9 @@ class Resize2DOperationParser : public TFLiteOperationParser {
       }
       *half_pixel_centers = tf_options->half_pixel_centers;
     } else {
-      *half_pixel_centers = false;
+      const TfLiteResizeNearestNeighborParams* tf_options;
+      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+      *half_pixel_centers = tf_options->half_pixel_centers;
     }
     return absl::OkStatus();
   }
@@ -2562,8 +2566,23 @@ class MeanOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
-                              /*outputs=*/1);
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1,
+                                       /*outputs=*/1));
+
+    // Simple mechanism to check if MEAN is to be performed only on HW plane.
+    auto* axes = &context->tensors[tflite_node->inputs->data[1]];
+    if (axes->allocation_type != kTfLiteMmapRo || axes->type != kTfLiteInt32) {
+      return absl::UnimplementedError("Mean has unsupported tensor for axes");
+    }
+    auto* axes_data = axes->data.i32;
+    const bool is_hw_mean = tflite::NumElements(axes) == 2 &&
+                            ((axes_data[0] == 1 && axes_data[1] == 2) ||
+                             (axes_data[0] == 2 && axes_data[1] == 1));
+    if (!is_hw_mean) {
+      return absl::UnimplementedError("Mean operation supports only HW plane");
+    }
+    return absl::OkStatus();
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,

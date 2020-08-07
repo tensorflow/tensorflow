@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -45,6 +46,8 @@ class TpuPlatformInterface : public stream_executor::Platform {
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
 
   virtual const TpuTopologyPtr GetTopologyPtr() = 0;
+
+  virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
 };
 
 }  // namespace tpu

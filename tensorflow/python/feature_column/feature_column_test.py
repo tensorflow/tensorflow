@@ -171,7 +171,6 @@ class LazyColumnTest(test.TestCase):
         TypeError, '"key" must be either a "str" or "_FeatureColumn".'):
       builder.get(NotAFeatureColumn())
 
-  @test_util.run_deprecated_v1
   def test_expand_dim_rank_1_sparse_tensor_empty_batch(self):
     # empty 1-D sparse tensor:
     builder = _LazyBuilder(features={'a': sparse_tensor.SparseTensor(
@@ -179,7 +178,7 @@ class LazyColumnTest(test.TestCase):
         dense_shape=[0],
         values=np.array([]))})
     with self.cached_session():
-      spv = builder.get('a').eval()
+      spv = builder.get('a')
       self.assertAllEqual(np.array([0, 1], dtype=np.int64), spv.dense_shape)
       self.assertAllEqual(
           np.reshape(np.array([], dtype=np.int64), (0, 2)), spv.indices)
@@ -187,7 +186,6 @@ class LazyColumnTest(test.TestCase):
 
 class NumericColumnTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_defaults(self):
     a = fc._numeric_column('aaa')
     self.assertEqual('aaa', a.key)
@@ -266,7 +264,6 @@ class NumericColumnTest(test.TestCase):
         'aaa': parsing_ops.FixedLenFeature((2, 3), dtype=dtypes.int32)
     }, a._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_parse_example_no_default_value(self):
     price = fc._numeric_column('price', shape=[2])
     data = example_pb2.Example(features=feature_pb2.Features(
@@ -309,7 +306,6 @@ class NumericColumnTest(test.TestCase):
     with self.assertRaisesRegex(TypeError, 'must be a callable'):
       fc._numeric_column('price', normalizer_fn='NotACallable')
 
-  @test_util.run_deprecated_v1
   def test_normalizer_fn_transform_feature(self):
 
     def _increment_two(input_tensor):
@@ -328,7 +324,7 @@ class NumericColumnTest(test.TestCase):
 
     price = fc._numeric_column('price', shape=[2], normalizer_fn=_increment_two)
     builder = _LazyBuilder({'price': [[1., 2.], [5., 6.]]})
-    self.assertEqual(builder.get(price), price._get_dense_tensor(builder))
+    self.assertAllClose(builder.get(price), price._get_dense_tensor(builder))
 
   def test_sparse_tensor_not_supported(self):
     price = fc._numeric_column('price')
@@ -340,7 +336,6 @@ class NumericColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'must be a Tensor'):
       price._transform_feature(builder)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     a = fc._numeric_column('aaa', shape=[1, 2], default_value=[[3., 2.]])
     a_copy = copy.deepcopy(a)
@@ -353,7 +348,6 @@ class NumericColumnTest(test.TestCase):
         'aaa', shape=[1, 2], default_value=np.array([[3., 2.]]))
     self.assertEqual(a.default_value, ((3., 2.),))
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     price = fc._numeric_column('price')
     with ops.Graph().as_default():
@@ -368,7 +362,6 @@ class NumericColumnTest(test.TestCase):
         sess.run(price_var.assign([[10.]]))
         self.assertAllClose([[10.], [50.]], self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     price = fc._numeric_column('price')
     with ops.Graph().as_default():
@@ -465,8 +458,8 @@ class BucketizedColumnTest(test.TestCase):
           'price': [[-1., 1.], [5., 6.]]
       }, [bucketized_price])
       with _initialized_session():
-        self.assertAllEqual([[0, 1], [3, 4]],
-                            transformed_tensor[bucketized_price].eval())
+        self.assertAllClose([[0, 1], [3, 4]],
+                            transformed_tensor[bucketized_price])
 
   def test_get_dense_tensor_one_input_value(self):
     """Tests _get_dense_tensor() for input with shape=[1]."""
@@ -539,7 +532,6 @@ class BucketizedColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'must be a Tensor'):
       bucketized_price._transform_feature(builder)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     a = fc._numeric_column('aaa', shape=[2])
     a_bucketized = fc._bucketized_column(a, boundaries=[0, 1])
@@ -667,7 +659,6 @@ class BucketizedColumnTest(test.TestCase):
 
 class HashedCategoricalColumnTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_defaults(self):
     a = fc._categorical_column_with_hash_bucket('aaa', 10)
     self.assertEqual('aaa', a.name)
@@ -695,7 +686,6 @@ class HashedCategoricalColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       fc._categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.float32)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     original = fc._categorical_column_with_hash_bucket('aaa', 10)
     for column in (original, copy.deepcopy(original)):
@@ -735,10 +725,8 @@ class HashedCategoricalColumnTest(test.TestCase):
           sparse_tensor.SparseTensorValue(
               indices=[[0, 0], [0, 1]],
               values=np.array([b'omar', b'stringer'], dtype=np.object_),
-              dense_shape=[1, 2]),
-          features['aaa'].eval())
+              dense_shape=[1, 2]), features['aaa'].eval())
 
-  @test_util.run_deprecated_v1
   def test_strings_should_be_hashed(self):
     hashed_sparse = fc._categorical_column_with_hash_bucket('wire', 10)
     wire_tensor = sparse_tensor.SparseTensor(
@@ -753,7 +741,7 @@ class HashedCategoricalColumnTest(test.TestCase):
       self.assertEqual(dtypes.int64, output.values.dtype)
       self.assertAllEqual(expected_values, output.values)
       self.assertAllEqual(wire_tensor.indices, output.indices)
-      self.assertAllEqual(wire_tensor.dense_shape, output.dense_shape.eval())
+      self.assertAllEqual(wire_tensor.dense_shape, output.dense_shape)
 
   def test_tensor_dtype_should_be_string_or_integer(self):
     string_fc = fc._categorical_column_with_hash_bucket(
@@ -793,7 +781,6 @@ class HashedCategoricalColumnTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       builder.get(hashed_sparse)
 
-  @test_util.run_deprecated_v1
   def test_ints_should_be_hashed(self):
     hashed_sparse = fc._categorical_column_with_hash_bucket(
         'wire', 10, dtype=dtypes.int64)
@@ -852,7 +839,6 @@ class HashedCategoricalColumnTest(test.TestCase):
                           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
     self.assertCountEqual([], ops.get_collection('my_weights'))
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors_dense_input(self):
     hashed_sparse = fc._categorical_column_with_hash_bucket('wire', 10)
     builder = _LazyBuilder({'wire': (('omar', ''), ('stringer', 'marlo'))})
@@ -860,7 +846,6 @@ class HashedCategoricalColumnTest(test.TestCase):
     self.assertIsNone(id_weight_pair.weight_tensor)
     self.assertEqual(builder.get(hashed_sparse), id_weight_pair.id_tensor)
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     wire_column = fc._categorical_column_with_hash_bucket('wire', 4)
     self.assertEqual(4, wire_column._num_buckets)
@@ -878,12 +863,11 @@ class HashedCategoricalColumnTest(test.TestCase):
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
                             self.evaluate(wire_var))
         self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
-        wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
+        self.evaluate(wire_var.assign(((1.,), (2.,), (3.,), (4.,))))
         # 'marlo' -> 3: wire_var[3] = 4
         # 'skywalker' -> 2, 'omar' -> 2: wire_var[2] + wire_var[2] = 3+3 = 6
         self.assertAllClose(((4.,), (6.,)), self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     wire_column = fc._categorical_column_with_hash_bucket('wire', 4)
     self.assertEqual(4, wire_column._num_buckets)
@@ -902,7 +886,7 @@ class HashedCategoricalColumnTest(test.TestCase):
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
                             self.evaluate(wire_var))
         self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
-        wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
+        self.evaluate(wire_var.assign(((1.,), (2.,), (3.,), (4.,))))
         # 'marlo' -> 3: wire_var[3] = 4
         # 'skywalker' -> 2, 'omar' -> 2: wire_var[2] + wire_var[2] = 3+3 = 6
         self.assertAllClose(((4.,), (6.,)), self.evaluate(predictions))
@@ -990,7 +974,6 @@ class CrossedColumnTest(test.TestCase):
     crossed = fc._crossed_column([b, 'c'], 15)
     self.assertEqual(15, crossed._num_buckets)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     a = fc._numeric_column('a', dtype=dtypes.int32)
     b = fc._bucketized_column(a, boundaries=[0, 1])
@@ -1001,7 +984,6 @@ class CrossedColumnTest(test.TestCase):
     self.assertEqual(15, crossed2_copy.hash_bucket_size)
     self.assertEqual(5, crossed2_copy.hash_key)
 
-  @test_util.run_deprecated_v1
   def test_parse_example(self):
     price = fc._numeric_column('price', shape=[2])
     bucketized_price = fc._bucketized_column(price, boundaries=[0, 50])
@@ -1044,7 +1026,7 @@ class CrossedColumnTest(test.TestCase):
     }
     outputs = _transform_features(features, [price_cross_wire])
     output = outputs[price_cross_wire]
-    with self.cached_session() as sess:
+    with self.cached_session():
       output_val = self.evaluate(output)
       self.assertAllEqual(
           [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [1, 3]], output_val.indices)
@@ -1052,7 +1034,6 @@ class CrossedColumnTest(test.TestCase):
         self.assertIn(val, list(range(hash_bucket_size)))
       self.assertAllEqual([2, 4], output_val.dense_shape)
 
-  @test_util.run_deprecated_v1
   def test_get_sparse_tensors(self):
     a = fc._numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc._bucketized_column(a, boundaries=(0, 1))
@@ -1120,7 +1101,6 @@ class CrossedColumnTest(test.TestCase):
         self.assertAllEqual(expected_values, id_tensor_eval.values)
         self.assertAllEqual((2, 4), id_tensor_eval.dense_shape)
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     """Tests linear_model.
 
@@ -1139,15 +1119,15 @@ class CrossedColumnTest(test.TestCase):
       }, (crossed,))
       bias = get_linear_model_bias()
       crossed_var = get_linear_model_column_var(crossed)
-      with _initialized_session() as sess:
+      with _initialized_session():
         self.assertAllClose((0.,), self.evaluate(bias))
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,), (0.,)),
                             self.evaluate(crossed_var))
         self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
-        sess.run(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
+        self.evaluate(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
         # Expected ids after cross = (1, 0, 1, 3, 4, 2)
         self.assertAllClose(((3.,), (14.,)), self.evaluate(predictions))
-        sess.run(bias.assign((.1,)))
+        self.evaluate(bias.assign((.1,)))
         self.assertAllClose(((3.1,), (14.1,)), self.evaluate(predictions))
 
   def test_linear_model_with_weights(self):
@@ -1202,7 +1182,6 @@ class CrossedColumnTest(test.TestCase):
                 dense_shape=(2, 2)),
         }, (crossed,))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     """Tests _LinearModel.
 
@@ -1223,15 +1202,15 @@ class CrossedColumnTest(test.TestCase):
       }, (crossed,))
       bias = get_linear_model_bias()
       crossed_var = get_linear_model_column_var(crossed)
-      with _initialized_session() as sess:
+      with _initialized_session():
         self.assertAllClose((0.,), self.evaluate(bias))
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,), (0.,)),
                             self.evaluate(crossed_var))
         self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
-        sess.run(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
+        self.evaluate(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
         # Expected ids after cross = (1, 0, 1, 3, 4, 2)
         self.assertAllClose(((3.,), (14.,)), self.evaluate(predictions))
-        sess.run(bias.assign((.1,)))
+        self.evaluate(bias.assign((.1,)))
         self.assertAllClose(((3.1,), (14.1,)), self.evaluate(predictions))
 
   def test_keras_linear_model_with_weights(self):
@@ -4815,7 +4794,6 @@ class IndicatorColumnTest(test.TestCase):
 
 class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_defaults(self):
     categorical_column = fc._categorical_column_with_identity(
         key='aaa', num_buckets=3)
@@ -4837,7 +4815,6 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, embedding_column._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_all_constructor_args(self):
     categorical_column = fc._categorical_column_with_identity(
         key='aaa', num_buckets=3)
@@ -4866,7 +4843,6 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, embedding_column._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_deep_copy(self):
     categorical_column = fc._categorical_column_with_identity(
         key='aaa', num_buckets=3)
@@ -4900,7 +4876,6 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
           'aaa': parsing_ops.VarLenFeature(dtypes.int64)
       }, embedding_column._parse_example_spec)
 
-  @test_util.run_deprecated_v1
   def test_invalid_initializer(self):
     categorical_column = fc._categorical_column_with_identity(
         key='aaa', num_buckets=3)
@@ -4929,25 +4904,24 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
           sparse_tensor.SparseTensorValue(
               indices=[[0, 0], [0, 1]],
               values=np.array([b'omar', b'stringer'], dtype=np.object_),
-              dense_shape=[1, 2]),
-          features['aaa'].eval())
+              dense_shape=[1, 2]), features['aaa'].eval())
 
-  @test_util.run_deprecated_v1
   def test_transform_feature(self):
-    a = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
-    a_embedded = fc._embedding_column(a, dimension=2)
-    features = {
-        'aaa': sparse_tensor.SparseTensor(
-            indices=((0, 0), (1, 0), (1, 1)),
-            values=(0, 1, 0),
-            dense_shape=(2, 2))
-    }
-    outputs = _transform_features(features, [a, a_embedded])
-    output_a = outputs[a]
-    output_embedded = outputs[a_embedded]
-    with _initialized_session():
-      _assert_sparse_tensor_value(self, self.evaluate(output_a),
-                                  self.evaluate(output_embedded))
+    with ops.Graph().as_default():
+      a = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
+      a_embedded = fc._embedding_column(a, dimension=2)
+      features = {
+          'aaa': sparse_tensor.SparseTensor(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=(0, 1, 0),
+              dense_shape=(2, 2))
+      }
+      outputs = _transform_features(features, [a, a_embedded])
+      output_a = outputs[a]
+      output_embedded = outputs[a_embedded]
+      with _initialized_session():
+        _assert_sparse_tensor_value(self, self.evaluate(output_a),
+                                    self.evaluate(output_embedded))
 
   @parameterized.named_parameters(
       {
@@ -4967,184 +4941,183 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
           'use_safe_embedding_lookup': False,
           'partition_variables': True,
       })
-  @test_util.run_deprecated_v1
+
   def test_get_dense_tensor(self, use_safe_embedding_lookup,
                             partition_variables):
-    # Inputs.
-    vocabulary_size = 4
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0), (1, 0), (1, 4), (3, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(4, 5))
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 4
+      sparse_input = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          # example 2, ids []
+          # example 3, ids [1]
+          indices=((0, 0), (1, 0), (1, 4), (3, 0)),
+          values=(2, 0, 1, 1),
+          dense_shape=(4, 5))
 
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-        (7., 11.),  # id 2
-        (9., 13.)  # id 3
-    )
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+          (7., 11.),  # id 2
+          (9., 13.)  # id 3
+      )
 
-    def _initializer(shape, dtype, partition_info=None):
+      def _initializer(shape, dtype, partition_info=None):
+        if partition_variables:
+          self.assertEqual([vocabulary_size, embedding_dimension],
+                           partition_info.full_shape)
+          self.assertAllEqual((2, embedding_dimension), shape)
+        else:
+          self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+          self.assertIsNone(partition_info)
+
+        self.assertEqual(dtypes.float32, dtype)
+        return embedding_values
+
+      # Expected lookup result, using combiner='mean'.
+      expected_lookups = (
+          # example 0, ids [2], embedding = [7, 11]
+          (7., 11.),
+          # example 1, ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
+          (2., 3.5),
+          # example 2, ids [], embedding = [0, 0]
+          (0., 0.),
+          # example 3, ids [1], embedding = [3, 5]
+          (3., 5.),
+      )
+
+      # Build columns.
+      categorical_column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      partitioner = None
       if partition_variables:
-        self.assertEqual([vocabulary_size, embedding_dimension],
-                         partition_info.full_shape)
-        self.assertAllEqual((2, embedding_dimension), shape)
+        partitioner = partitioned_variables.fixed_size_partitioner(2, axis=0)
+      with variable_scope.variable_scope('vars', partitioner=partitioner):
+        embedding_column = fc._embedding_column(
+            categorical_column,
+            dimension=embedding_dimension,
+            initializer=_initializer,
+            use_safe_embedding_lookup=use_safe_embedding_lookup)
+
+        # Provide sparse input and get dense result.
+        embedding_lookup = embedding_column._get_dense_tensor(
+            _LazyBuilder({'aaa': sparse_input}))
+
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      if partition_variables:
+        self.assertCountEqual(('vars/embedding_weights/part_0:0',
+                               'vars/embedding_weights/part_1:0'),
+                              tuple([v.name for v in global_vars]))
       else:
+        self.assertCountEqual(('vars/embedding_weights:0',),
+                              tuple([v.name for v in global_vars]))
+      for v in global_vars:
+        self.assertIsInstance(v, variables_lib.Variable)
+      with _initialized_session():
+        self.assertAllEqual(embedding_values, global_vars[0])
+        self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
+
+      if use_safe_embedding_lookup:
+        self.assertIn(
+            'SparseFillEmptyRows',
+            [x.type for x in ops.get_default_graph().get_operations()])
+      else:
+        self.assertNotIn(
+            'SparseFillEmptyRows',
+            [x.type for x in ops.get_default_graph().get_operations()])
+
+  def test_get_dense_tensor_3d(self):
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 4
+      sparse_input = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          # example 2, ids []
+          # example 3, ids [1]
+          indices=((0, 0, 0), (1, 1, 0), (1, 1, 4), (3, 0, 0), (3, 1, 2)),
+          values=(2, 0, 1, 1, 2),
+          dense_shape=(4, 2, 5))
+
+      # Embedding variable.
+      embedding_dimension = 3
+      embedding_values = (
+          (1., 2., 4.),  # id 0
+          (3., 5., 1.),  # id 1
+          (7., 11., 2.),  # id 2
+          (2., 7., 12.)  # id 3
+      )
+
+      def _initializer(shape, dtype, partition_info):
         self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+        self.assertEqual(dtypes.float32, dtype)
         self.assertIsNone(partition_info)
+        return embedding_values
 
-      self.assertEqual(dtypes.float32, dtype)
-      return embedding_values
+      # Expected lookup result, using combiner='mean'.
+      expected_lookups = (
+          # example 0, ids [[2], []], embedding = [[7, 11, 2], [0, 0, 0]]
+          ((7., 11., 2.), (0., 0., 0.)),
+          # example 1, ids [[], [0, 1]], embedding
+          # = mean([[], [1, 2, 4] + [3, 5, 1]]) = [[0, 0, 0], [2, 3.5, 2.5]]
+          ((0., 0., 0.), (2., 3.5, 2.5)),
+          # example 2, ids [[], []], embedding = [[0, 0, 0], [0, 0, 0]]
+          ((0., 0., 0.), (0., 0., 0.)),
+          # example 3, ids [[1], [2]], embedding = [[3, 5, 1], [7, 11, 2]]
+          ((3., 5., 1.), (7., 11., 2.)),
+      )
 
-    # Expected lookup result, using combiner='mean'.
-    expected_lookups = (
-        # example 0, ids [2], embedding = [7, 11]
-        (7., 11.),
-        # example 1, ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
-        (2., 3.5),
-        # example 2, ids [], embedding = [0, 0]
-        (0., 0.),
-        # example 3, ids [1], embedding = [3, 5]
-        (3., 5.),
-    )
-
-    # Build columns.
-    categorical_column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    partitioner = None
-    if partition_variables:
-      partitioner = partitioned_variables.fixed_size_partitioner(2, axis=0)
-    with variable_scope.variable_scope('vars', partitioner=partitioner):
+      # Build columns.
+      categorical_column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
       embedding_column = fc._embedding_column(
           categorical_column,
           dimension=embedding_dimension,
-          initializer=_initializer,
-          use_safe_embedding_lookup=use_safe_embedding_lookup)
+          initializer=_initializer)
 
       # Provide sparse input and get dense result.
       embedding_lookup = embedding_column._get_dense_tensor(
           _LazyBuilder({'aaa': sparse_input}))
 
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    if partition_variables:
-      self.assertCountEqual(('vars/embedding_weights/part_0:0',
-                             'vars/embedding_weights/part_1:0'),
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      self.assertCountEqual(('embedding_weights:0',),
                             tuple([v.name for v in global_vars]))
-    else:
-      self.assertCountEqual(('vars/embedding_weights:0',),
-                            tuple([v.name for v in global_vars]))
-    for v in global_vars:
-      self.assertIsInstance(v, variables_lib.Variable)
-    with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0])
-      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
+      with _initialized_session():
+        self.assertAllEqual(embedding_values, global_vars[0])
+        self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
-    if use_safe_embedding_lookup:
-      self.assertIn('SparseFillEmptyRows',
-                    [x.type for x in ops.get_default_graph().get_operations()])
-    else:
-      self.assertNotIn(
-          'SparseFillEmptyRows',
-          [x.type for x in ops.get_default_graph().get_operations()])
-
-  @test_util.run_deprecated_v1
-  def test_get_dense_tensor_3d(self):
-    # Inputs.
-    vocabulary_size = 4
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0, 0), (1, 1, 0), (1, 1, 4), (3, 0, 0), (3, 1, 2)),
-        values=(2, 0, 1, 1, 2),
-        dense_shape=(4, 2, 5))
-
-    # Embedding variable.
-    embedding_dimension = 3
-    embedding_values = (
-        (1., 2., 4.),   # id 0
-        (3., 5., 1.),   # id 1
-        (7., 11., 2.),  # id 2
-        (2., 7., 12.)   # id 3
-    )
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
-      self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
-      return embedding_values
-
-    # Expected lookup result, using combiner='mean'.
-    expected_lookups = (
-        # example 0, ids [[2], []], embedding = [[7, 11, 2], [0, 0, 0]]
-        ((7., 11., 2.), (0., 0., 0.)),
-        # example 1, ids [[], [0, 1]], embedding
-        # = mean([[], [1, 2, 4] + [3, 5, 1]]) = [[0, 0, 0], [2, 3.5, 2.5]]
-        ((0., 0., 0.), (2., 3.5, 2.5)),
-        # example 2, ids [[], []], embedding = [[0, 0, 0], [0, 0, 0]]
-        ((0., 0., 0.), (0., 0., 0.)),
-        # example 3, ids [[1], [2]], embedding = [[3, 5, 1], [7, 11, 2]]
-        ((3., 5., 1.), (7., 11., 2.)),
-    )
-
-    # Build columns.
-    categorical_column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc._embedding_column(
-        categorical_column,
-        dimension=embedding_dimension,
-        initializer=_initializer)
-
-    # Provide sparse input and get dense result.
-    embedding_lookup = embedding_column._get_dense_tensor(
-        _LazyBuilder({
-            'aaa': sparse_input
-        }))
-
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertCountEqual(('embedding_weights:0',),
-                          tuple([v.name for v in global_vars]))
-    with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0])
-      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
-
-  @test_util.run_deprecated_v1
   def test_get_dense_tensor_weight_collections(self):
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0), (1, 0), (1, 4), (3, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(4, 5))
+    with ops.Graph().as_default():
+      sparse_input = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          # example 2, ids []
+          # example 3, ids [1]
+          indices=((0, 0), (1, 0), (1, 4), (3, 0)),
+          values=(2, 0, 1, 1),
+          dense_shape=(4, 5))
 
-    # Build columns.
-    categorical_column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    embedding_column = fc._embedding_column(categorical_column, dimension=2)
+      # Build columns.
+      categorical_column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      embedding_column = fc._embedding_column(categorical_column, dimension=2)
 
-    # Provide sparse input and get dense result.
-    embedding_column._get_dense_tensor(
-        _LazyBuilder({
-            'aaa': sparse_input
-        }), weight_collections=('my_vars',))
+      # Provide sparse input and get dense result.
+      embedding_column._get_dense_tensor(
+          _LazyBuilder({'aaa': sparse_input}), weight_collections=('my_vars',))
 
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertCountEqual(('embedding_weights:0',),
-                          tuple([v.name for v in global_vars]))
-    my_vars = ops.get_collection('my_vars')
-    self.assertCountEqual(('embedding_weights:0',),
-                          tuple([v.name for v in my_vars]))
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      self.assertCountEqual(('embedding_weights:0',),
+                            tuple([v.name for v in global_vars]))
+      my_vars = ops.get_collection('my_vars')
+      self.assertCountEqual(('embedding_weights:0',),
+                            tuple([v.name for v in my_vars]))
 
   @test_util.run_deprecated_v1
   def test_get_dense_tensor_placeholder_inputs(self):
@@ -5218,66 +5191,63 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
               input_shape: sparse_input.dense_shape,
           }))
 
-  @test_util.run_deprecated_v1
   def test_get_dense_tensor_restore_from_ckpt(self):
-    # Inputs.
-    vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0), (1, 0), (1, 4), (3, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(4, 5))
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 3
+      sparse_input = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          # example 2, ids []
+          # example 3, ids [1]
+          indices=((0, 0), (1, 0), (1, 4), (3, 0)),
+          values=(2, 0, 1, 1),
+          dense_shape=(4, 5))
 
-    # Embedding variable. The checkpoint file contains _embedding_values.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-        (7., 11.)  # id 2
-    )
-    ckpt_path = test.test_src_dir_path(
-        'python/feature_column/testdata/embedding.ckpt')
-    ckpt_tensor = 'my_embedding'
+      # Embedding variable. The checkpoint file contains _embedding_values.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+          (7., 11.)  # id 2
+      )
+      ckpt_path = test.test_src_dir_path(
+          'python/feature_column/testdata/embedding.ckpt')
+      ckpt_tensor = 'my_embedding'
 
-    # Expected lookup result, using combiner='mean'.
-    expected_lookups = (
-        # example 0, ids [2], embedding = [7, 11]
-        (7., 11.),
-        # example 1, ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
-        (2., 3.5),
-        # example 2, ids [], embedding = [0, 0]
-        (0., 0.),
-        # example 3, ids [1], embedding = [3, 5]
-        (3., 5.),
-    )
+      # Expected lookup result, using combiner='mean'.
+      expected_lookups = (
+          # example 0, ids [2], embedding = [7, 11]
+          (7., 11.),
+          # example 1, ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
+          (2., 3.5),
+          # example 2, ids [], embedding = [0, 0]
+          (0., 0.),
+          # example 3, ids [1], embedding = [3, 5]
+          (3., 5.),
+      )
 
-    # Build columns.
-    categorical_column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc._embedding_column(
-        categorical_column,
-        dimension=embedding_dimension,
-        ckpt_to_load_from=ckpt_path,
-        tensor_name_in_ckpt=ckpt_tensor)
+      # Build columns.
+      categorical_column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      embedding_column = fc._embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          ckpt_to_load_from=ckpt_path,
+          tensor_name_in_ckpt=ckpt_tensor)
 
-    # Provide sparse input and get dense result.
-    embedding_lookup = embedding_column._get_dense_tensor(
-        _LazyBuilder({
-            'aaa': sparse_input
-        }))
+      # Provide sparse input and get dense result.
+      embedding_lookup = embedding_column._get_dense_tensor(
+          _LazyBuilder({'aaa': sparse_input}))
 
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertCountEqual(('embedding_weights:0',),
-                          tuple([v.name for v in global_vars]))
-    with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0])
-      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      self.assertCountEqual(('embedding_weights:0',),
+                            tuple([v.name for v in global_vars]))
+      with _initialized_session():
+        self.assertAllEqual(embedding_values, global_vars[0])
+        self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
     # Inputs.
     batch_size = 4
@@ -5357,7 +5327,6 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(((94.,), (29.,), (0.,), (42.,)),
                             self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
     # Inputs.
     batch_size = 4
@@ -5437,374 +5406,377 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(((94.,), (29.,), (0.,), (42.,)),
                             self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_input_layer(self):
-    # Inputs.
-    vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0), (1, 0), (1, 4), (3, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(4, 5))
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 3
+      sparse_input = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          # example 2, ids []
+          # example 3, ids [1]
+          indices=((0, 0), (1, 0), (1, 4), (3, 0)),
+          values=(2, 0, 1, 1),
+          dense_shape=(4, 5))
 
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-        (7., 11.)  # id 2
-    )
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
-      self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
-      return embedding_values
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+          (7., 11.)  # id 2
+      )
 
-    # Expected lookup result, using combiner='mean'.
-    expected_lookups = (
-        # example 0, ids [2], embedding = [7, 11]
-        (7., 11.),
-        # example 1, ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
-        (2., 3.5),
-        # example 2, ids [], embedding = [0, 0]
-        (0., 0.),
-        # example 3, ids [1], embedding = [3, 5]
-        (3., 5.),
-    )
+      def _initializer(shape, dtype, partition_info):
+        self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+        self.assertEqual(dtypes.float32, dtype)
+        self.assertIsNone(partition_info)
+        return embedding_values
 
-    # Build columns.
-    categorical_column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc._embedding_column(
-        categorical_column,
-        dimension=embedding_dimension,
-        initializer=_initializer)
+      # Expected lookup result, using combiner='mean'.
+      expected_lookups = (
+          # example 0, ids [2], embedding = [7, 11]
+          (7., 11.),
+          # example 1, ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
+          (2., 3.5),
+          # example 2, ids [], embedding = [0, 0]
+          (0., 0.),
+          # example 3, ids [1], embedding = [3, 5]
+          (3., 5.),
+      )
 
-    # Provide sparse input and get dense result.
-    input_layer = fc.input_layer({'aaa': sparse_input}, (embedding_column,))
+      # Build columns.
+      categorical_column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      embedding_column = fc._embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          initializer=_initializer)
 
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
-                          tuple([v.name for v in global_vars]))
-    trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
-    self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
-                          tuple([v.name for v in trainable_vars]))
-    with _initialized_session():
-      self.assertAllEqual(embedding_values, trainable_vars[0])
-      self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
+      # Provide sparse input and get dense result.
+      input_layer = fc.input_layer({'aaa': sparse_input}, (embedding_column,))
 
-  @test_util.run_deprecated_v1
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
+                            tuple([v.name for v in global_vars]))
+      trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+      self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
+                            tuple([v.name for v in trainable_vars]))
+      with _initialized_session():
+        self.assertAllEqual(embedding_values, trainable_vars[0])
+        self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
+
   def test_input_layer_not_trainable(self):
-    # Inputs.
-    vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0), (1, 0), (1, 4), (3, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(4, 5))
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 3
+      sparse_input = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          # example 2, ids []
+          # example 3, ids [1]
+          indices=((0, 0), (1, 0), (1, 4), (3, 0)),
+          values=(2, 0, 1, 1),
+          dense_shape=(4, 5))
 
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-        (7., 11.)  # id 2
-    )
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
-      self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
-      return embedding_values
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+          (7., 11.)  # id 2
+      )
 
-    # Expected lookup result, using combiner='mean'.
-    expected_lookups = (
-        # example 0, ids [2], embedding = [7, 11]
-        (7., 11.),
-        # example 1, ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
-        (2., 3.5),
-        # example 2, ids [], embedding = [0, 0]
-        (0., 0.),
-        # example 3, ids [1], embedding = [3, 5]
-        (3., 5.),
-    )
+      def _initializer(shape, dtype, partition_info):
+        self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+        self.assertEqual(dtypes.float32, dtype)
+        self.assertIsNone(partition_info)
+        return embedding_values
 
-    # Build columns.
-    categorical_column = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc._embedding_column(
-        categorical_column,
-        dimension=embedding_dimension,
-        initializer=_initializer,
-        trainable=False)
+      # Expected lookup result, using combiner='mean'.
+      expected_lookups = (
+          # example 0, ids [2], embedding = [7, 11]
+          (7., 11.),
+          # example 1, ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
+          (2., 3.5),
+          # example 2, ids [], embedding = [0, 0]
+          (0., 0.),
+          # example 3, ids [1], embedding = [3, 5]
+          (3., 5.),
+      )
 
-    # Provide sparse input and get dense result.
-    input_layer = fc.input_layer({'aaa': sparse_input}, (embedding_column,))
+      # Build columns.
+      categorical_column = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      embedding_column = fc._embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          initializer=_initializer,
+          trainable=False)
 
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
-                          tuple([v.name for v in global_vars]))
-    self.assertCountEqual([],
-                          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
-    with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0])
-      self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
+      # Provide sparse input and get dense result.
+      input_layer = fc.input_layer({'aaa': sparse_input}, (embedding_column,))
+
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      self.assertCountEqual(('input_layer/aaa_embedding/embedding_weights:0',),
+                            tuple([v.name for v in global_vars]))
+      self.assertCountEqual([],
+                            ops.get_collection(
+                                ops.GraphKeys.TRAINABLE_VARIABLES))
+      with _initialized_session():
+        self.assertAllEqual(embedding_values, global_vars[0])
+        self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
 
 
 class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_defaults(self):
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    embedding_dimension = 2
-    embedding_column_b, embedding_column_a = fc_new.shared_embedding_columns(
-        [categorical_column_b, categorical_column_a],
-        dimension=embedding_dimension)
-    self.assertIs(categorical_column_a, embedding_column_a.categorical_column)
-    self.assertIs(categorical_column_b, embedding_column_b.categorical_column)
-    self.assertEqual(embedding_dimension, embedding_column_a.dimension)
-    self.assertEqual(embedding_dimension, embedding_column_b.dimension)
-    self.assertEqual('mean', embedding_column_a.combiner)
-    self.assertEqual('mean', embedding_column_b.combiner)
-    self.assertIsNone(embedding_column_a.ckpt_to_load_from)
-    self.assertIsNone(embedding_column_b.ckpt_to_load_from)
-    self.assertEqual('aaa_bbb_shared_embedding',
-                     embedding_column_a.shared_embedding_collection_name)
-    self.assertEqual('aaa_bbb_shared_embedding',
-                     embedding_column_b.shared_embedding_collection_name)
-    self.assertIsNone(embedding_column_a.tensor_name_in_ckpt)
-    self.assertIsNone(embedding_column_b.tensor_name_in_ckpt)
-    self.assertIsNone(embedding_column_a.max_norm)
-    self.assertIsNone(embedding_column_b.max_norm)
-    self.assertTrue(embedding_column_a.trainable)
-    self.assertTrue(embedding_column_b.trainable)
-    self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
-    self.assertEqual('bbb_shared_embedding', embedding_column_b.name)
-    self.assertEqual(
-        'aaa_bbb_shared_embedding', embedding_column_a._var_scope_name)
-    self.assertEqual(
-        'aaa_bbb_shared_embedding', embedding_column_b._var_scope_name)
-    self.assertEqual(
-        (embedding_dimension,), embedding_column_a._variable_shape)
-    self.assertEqual(
-        (embedding_dimension,), embedding_column_b._variable_shape)
-    self.assertEqual({
-        'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-    }, embedding_column_a._parse_example_spec)
-    self.assertEqual({
-        'bbb': parsing_ops.VarLenFeature(dtypes.int64)
-    }, embedding_column_b._parse_example_spec)
-
-  @test_util.run_deprecated_v1
-  def test_all_constructor_args(self):
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    embedding_dimension = 2
-    embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
-        [categorical_column_a, categorical_column_b],
-        dimension=embedding_dimension,
-        combiner='my_combiner',
-        initializer=lambda: 'my_initializer',
-        shared_embedding_collection_name='shared_embedding_collection_name',
-        ckpt_to_load_from='my_ckpt',
-        tensor_name_in_ckpt='my_ckpt_tensor',
-        max_norm=42.,
-        trainable=False)
-    self.assertIs(categorical_column_a, embedding_column_a.categorical_column)
-    self.assertIs(categorical_column_b, embedding_column_b.categorical_column)
-    self.assertEqual(embedding_dimension, embedding_column_a.dimension)
-    self.assertEqual(embedding_dimension, embedding_column_b.dimension)
-    self.assertEqual('my_combiner', embedding_column_a.combiner)
-    self.assertEqual('my_combiner', embedding_column_b.combiner)
-    self.assertEqual('shared_embedding_collection_name',
-                     embedding_column_a.shared_embedding_collection_name)
-    self.assertEqual('shared_embedding_collection_name',
-                     embedding_column_b.shared_embedding_collection_name)
-    self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
-    self.assertEqual('my_ckpt', embedding_column_b.ckpt_to_load_from)
-    self.assertEqual('my_ckpt_tensor', embedding_column_a.tensor_name_in_ckpt)
-    self.assertEqual('my_ckpt_tensor', embedding_column_b.tensor_name_in_ckpt)
-    self.assertEqual(42., embedding_column_a.max_norm)
-    self.assertEqual(42., embedding_column_b.max_norm)
-    self.assertFalse(embedding_column_a.trainable)
-    self.assertFalse(embedding_column_b.trainable)
-    self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
-    self.assertEqual('bbb_shared_embedding', embedding_column_b.name)
-    self.assertEqual(
-        'shared_embedding_collection_name', embedding_column_a._var_scope_name)
-    self.assertEqual(
-        'shared_embedding_collection_name', embedding_column_b._var_scope_name)
-    self.assertEqual(
-        (embedding_dimension,), embedding_column_a._variable_shape)
-    self.assertEqual(
-        (embedding_dimension,), embedding_column_b._variable_shape)
-    self.assertEqual({
-        'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-    }, embedding_column_a._parse_example_spec)
-    self.assertEqual({
-        'bbb': parsing_ops.VarLenFeature(dtypes.int64)
-    }, embedding_column_b._parse_example_spec)
-
-  @test_util.run_deprecated_v1
-  def test_deep_copy(self):
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    embedding_dimension = 2
-    original_a, _ = fc_new.shared_embedding_columns(
-        [categorical_column_a, categorical_column_b],
-        dimension=embedding_dimension,
-        combiner='my_combiner',
-        initializer=lambda: 'my_initializer',
-        shared_embedding_collection_name='shared_embedding_collection_name',
-        ckpt_to_load_from='my_ckpt',
-        tensor_name_in_ckpt='my_ckpt_tensor',
-        max_norm=42.,
-        trainable=False)
-    for embedding_column_a in (original_a, copy.deepcopy(original_a)):
-      self.assertEqual('aaa', embedding_column_a.categorical_column.name)
-      self.assertEqual(3, embedding_column_a.categorical_column._num_buckets)
-      self.assertEqual({
-          'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-      }, embedding_column_a.categorical_column._parse_example_spec)
-
+    with ops.Graph().as_default():
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      embedding_dimension = 2
+      embedding_column_b, embedding_column_a = fc_new.shared_embedding_columns(
+          [categorical_column_b, categorical_column_a],
+          dimension=embedding_dimension)
+      self.assertIs(categorical_column_a, embedding_column_a.categorical_column)
+      self.assertIs(categorical_column_b, embedding_column_b.categorical_column)
       self.assertEqual(embedding_dimension, embedding_column_a.dimension)
+      self.assertEqual(embedding_dimension, embedding_column_b.dimension)
+      self.assertEqual('mean', embedding_column_a.combiner)
+      self.assertEqual('mean', embedding_column_b.combiner)
+      self.assertIsNone(embedding_column_a.ckpt_to_load_from)
+      self.assertIsNone(embedding_column_b.ckpt_to_load_from)
+      self.assertEqual('aaa_bbb_shared_embedding',
+                       embedding_column_a.shared_embedding_collection_name)
+      self.assertEqual('aaa_bbb_shared_embedding',
+                       embedding_column_b.shared_embedding_collection_name)
+      self.assertIsNone(embedding_column_a.tensor_name_in_ckpt)
+      self.assertIsNone(embedding_column_b.tensor_name_in_ckpt)
+      self.assertIsNone(embedding_column_a.max_norm)
+      self.assertIsNone(embedding_column_b.max_norm)
+      self.assertTrue(embedding_column_a.trainable)
+      self.assertTrue(embedding_column_b.trainable)
+      self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
+      self.assertEqual('bbb_shared_embedding', embedding_column_b.name)
+      self.assertEqual('aaa_bbb_shared_embedding',
+                       embedding_column_a._var_scope_name)
+      self.assertEqual('aaa_bbb_shared_embedding',
+                       embedding_column_b._var_scope_name)
+      self.assertEqual((embedding_dimension,),
+                       embedding_column_a._variable_shape)
+      self.assertEqual((embedding_dimension,),
+                       embedding_column_b._variable_shape)
+      self.assertEqual({'aaa': parsing_ops.VarLenFeature(dtypes.int64)},
+                       embedding_column_a._parse_example_spec)
+      self.assertEqual({'bbb': parsing_ops.VarLenFeature(dtypes.int64)},
+                       embedding_column_b._parse_example_spec)
+
+  def test_all_constructor_args(self):
+    with ops.Graph().as_default():
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      embedding_dimension = 2
+      embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
+          [categorical_column_a, categorical_column_b],
+          dimension=embedding_dimension,
+          combiner='my_combiner',
+          initializer=lambda: 'my_initializer',
+          shared_embedding_collection_name='shared_embedding_collection_name',
+          ckpt_to_load_from='my_ckpt',
+          tensor_name_in_ckpt='my_ckpt_tensor',
+          max_norm=42.,
+          trainable=False)
+      self.assertIs(categorical_column_a, embedding_column_a.categorical_column)
+      self.assertIs(categorical_column_b, embedding_column_b.categorical_column)
+      self.assertEqual(embedding_dimension, embedding_column_a.dimension)
+      self.assertEqual(embedding_dimension, embedding_column_b.dimension)
       self.assertEqual('my_combiner', embedding_column_a.combiner)
+      self.assertEqual('my_combiner', embedding_column_b.combiner)
       self.assertEqual('shared_embedding_collection_name',
                        embedding_column_a.shared_embedding_collection_name)
+      self.assertEqual('shared_embedding_collection_name',
+                       embedding_column_b.shared_embedding_collection_name)
       self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
+      self.assertEqual('my_ckpt', embedding_column_b.ckpt_to_load_from)
       self.assertEqual('my_ckpt_tensor', embedding_column_a.tensor_name_in_ckpt)
+      self.assertEqual('my_ckpt_tensor', embedding_column_b.tensor_name_in_ckpt)
       self.assertEqual(42., embedding_column_a.max_norm)
+      self.assertEqual(42., embedding_column_b.max_norm)
       self.assertFalse(embedding_column_a.trainable)
+      self.assertFalse(embedding_column_b.trainable)
       self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
+      self.assertEqual('bbb_shared_embedding', embedding_column_b.name)
+      self.assertEqual('shared_embedding_collection_name',
+                       embedding_column_a._var_scope_name)
+      self.assertEqual('shared_embedding_collection_name',
+                       embedding_column_b._var_scope_name)
       self.assertEqual(
           (embedding_dimension,), embedding_column_a._variable_shape)
+      self.assertEqual((embedding_dimension,),
+                       embedding_column_b._variable_shape)
       self.assertEqual({
           'aaa': parsing_ops.VarLenFeature(dtypes.int64)
       }, embedding_column_a._parse_example_spec)
+      self.assertEqual({'bbb': parsing_ops.VarLenFeature(dtypes.int64)},
+                       embedding_column_b._parse_example_spec)
 
-  @test_util.run_deprecated_v1
-  def test_invalid_initializer(self):
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    with self.assertRaisesRegex(ValueError, 'initializer must be callable'):
-      fc_new.shared_embedding_columns(
+  def test_deep_copy(self):
+    with ops.Graph().as_default():
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      embedding_dimension = 2
+      original_a, _ = fc_new.shared_embedding_columns(
           [categorical_column_a, categorical_column_b],
-          dimension=2,
-          initializer='not_fn')
+          dimension=embedding_dimension,
+          combiner='my_combiner',
+          initializer=lambda: 'my_initializer',
+          shared_embedding_collection_name='shared_embedding_collection_name',
+          ckpt_to_load_from='my_ckpt',
+          tensor_name_in_ckpt='my_ckpt_tensor',
+          max_norm=42.,
+          trainable=False)
+      for embedding_column_a in (original_a, copy.deepcopy(original_a)):
+        self.assertEqual('aaa', embedding_column_a.categorical_column.name)
+        self.assertEqual(3, embedding_column_a.categorical_column._num_buckets)
+        self.assertEqual(
+            {'aaa': parsing_ops.VarLenFeature(dtypes.int64)},
+            embedding_column_a.categorical_column._parse_example_spec)
 
-  @test_util.run_deprecated_v1
+        self.assertEqual(embedding_dimension, embedding_column_a.dimension)
+        self.assertEqual('my_combiner', embedding_column_a.combiner)
+        self.assertEqual('shared_embedding_collection_name',
+                         embedding_column_a.shared_embedding_collection_name)
+        self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
+        self.assertEqual('my_ckpt_tensor',
+                         embedding_column_a.tensor_name_in_ckpt)
+        self.assertEqual(42., embedding_column_a.max_norm)
+        self.assertFalse(embedding_column_a.trainable)
+        self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
+        self.assertEqual((embedding_dimension,),
+                         embedding_column_a._variable_shape)
+        self.assertEqual({'aaa': parsing_ops.VarLenFeature(dtypes.int64)},
+                         embedding_column_a._parse_example_spec)
+
+  def test_invalid_initializer(self):
+    with ops.Graph().as_default():
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      with self.assertRaisesRegex(ValueError, 'initializer must be callable'):
+        fc_new.shared_embedding_columns(
+            [categorical_column_a, categorical_column_b],
+            dimension=2,
+            initializer='not_fn')
+
   def test_incompatible_column_type(self):
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    categorical_column_c = fc._categorical_column_with_hash_bucket(
-        key='ccc', hash_bucket_size=3)
-    with self.assertRaisesRegex(
-        ValueError, 'all categorical_columns must have the same type.*'
-        '_IdentityCategoricalColumn.*_HashedCategoricalColumn'):
+    with ops.Graph().as_default():
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      categorical_column_c = fc._categorical_column_with_hash_bucket(
+          key='ccc', hash_bucket_size=3)
+      with self.assertRaisesRegex(
+          ValueError, 'all categorical_columns must have the same type.*'
+          '_IdentityCategoricalColumn.*_HashedCategoricalColumn'):
+        fc_new.shared_embedding_columns(
+            [categorical_column_a, categorical_column_b, categorical_column_c],
+            dimension=2)
+
+  def test_weighted_categorical_column_ok(self):
+    with ops.Graph().as_default():
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=3)
+      weighted_categorical_column_a = fc._weighted_categorical_column(
+          categorical_column_a, weight_feature_key='aaa_weights')
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=3)
+      weighted_categorical_column_b = fc._weighted_categorical_column(
+          categorical_column_b, weight_feature_key='bbb_weights')
       fc_new.shared_embedding_columns(
-          [categorical_column_a, categorical_column_b, categorical_column_c],
+          [weighted_categorical_column_a, categorical_column_b], dimension=2)
+      fc_new.shared_embedding_columns(
+          [categorical_column_a, weighted_categorical_column_b], dimension=2)
+      fc_new.shared_embedding_columns(
+          [weighted_categorical_column_a, weighted_categorical_column_b],
           dimension=2)
 
-  @test_util.run_deprecated_v1
-  def test_weighted_categorical_column_ok(self):
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    weighted_categorical_column_a = fc._weighted_categorical_column(
-        categorical_column_a, weight_feature_key='aaa_weights')
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    weighted_categorical_column_b = fc._weighted_categorical_column(
-        categorical_column_b, weight_feature_key='bbb_weights')
-    fc_new.shared_embedding_columns(
-        [weighted_categorical_column_a, categorical_column_b], dimension=2)
-    fc_new.shared_embedding_columns(
-        [categorical_column_a, weighted_categorical_column_b], dimension=2)
-    fc_new.shared_embedding_columns(
-        [weighted_categorical_column_a, weighted_categorical_column_b],
-        dimension=2)
-
-  @test_util.run_deprecated_v1
   def test_parse_example(self):
-    a = fc._categorical_column_with_vocabulary_list(
-        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
-    b = fc._categorical_column_with_vocabulary_list(
-        key='bbb', vocabulary_list=('omar', 'stringer', 'marlo'))
-    a_embedded, b_embedded = fc_new.shared_embedding_columns([a, b],
-                                                             dimension=2)
-    data = example_pb2.Example(features=feature_pb2.Features(
-        feature={
-            'aaa':
-                feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
-                    value=[b'omar', b'stringer'])),
-            'bbb':
-                feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
-                    value=[b'stringer', b'marlo'])),
-        }))
-    features = parsing_ops.parse_example(
-        serialized=[data.SerializeToString()],
-        features=fc.make_parse_example_spec([a_embedded, b_embedded]))
-    self.assertIn('aaa', features)
-    self.assertIn('bbb', features)
-    with self.cached_session():
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=[[0, 0], [0, 1]],
-              values=np.array([b'omar', b'stringer'], dtype=np.object_),
-              dense_shape=[1, 2]),
-          features['aaa'].eval())
-      _assert_sparse_tensor_value(
-          self,
-          sparse_tensor.SparseTensorValue(
-              indices=[[0, 0], [0, 1]],
-              values=np.array([b'stringer', b'marlo'], dtype=np.object_),
-              dense_shape=[1, 2]),
-          features['bbb'].eval())
+    with ops.Graph().as_default():
+      a = fc._categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+      b = fc._categorical_column_with_vocabulary_list(
+          key='bbb', vocabulary_list=('omar', 'stringer', 'marlo'))
+      a_embedded, b_embedded = fc_new.shared_embedding_columns([a, b],
+                                                               dimension=2)
+      data = example_pb2.Example(
+          features=feature_pb2.Features(
+              feature={
+                  'aaa':
+                      feature_pb2.Feature(
+                          bytes_list=feature_pb2.BytesList(
+                              value=[b'omar', b'stringer'])),
+                  'bbb':
+                      feature_pb2.Feature(
+                          bytes_list=feature_pb2.BytesList(
+                              value=[b'stringer', b'marlo'])),
+              }))
+      features = parsing_ops.parse_example(
+          serialized=[data.SerializeToString()],
+          features=fc.make_parse_example_spec([a_embedded, b_embedded]))
+      self.assertIn('aaa', features)
+      self.assertIn('bbb', features)
+      with self.cached_session():
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=[[0, 0], [0, 1]],
+                values=np.array([b'omar', b'stringer'], dtype=np.object_),
+                dense_shape=[1, 2]), features['aaa'].eval())
+        _assert_sparse_tensor_value(
+            self,
+            sparse_tensor.SparseTensorValue(
+                indices=[[0, 0], [0, 1]],
+                values=np.array([b'stringer', b'marlo'], dtype=np.object_),
+                dense_shape=[1, 2]), features['bbb'].eval())
 
-  @test_util.run_deprecated_v1
   def test_transform_feature(self):
-    a = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
-    b = fc._categorical_column_with_identity(key='bbb', num_buckets=3)
-    a_embedded, b_embedded = fc_new.shared_embedding_columns([a, b],
-                                                             dimension=2)
-    features = {
-        'aaa': sparse_tensor.SparseTensor(
-            indices=((0, 0), (1, 0), (1, 1)),
-            values=(0, 1, 0),
-            dense_shape=(2, 2)),
-        'bbb': sparse_tensor.SparseTensor(
-            indices=((0, 0), (1, 0), (1, 1)),
-            values=(1, 2, 1),
-            dense_shape=(2, 2)),
-    }
-    outputs = _transform_features(features, [a, a_embedded, b, b_embedded])
-    output_a = outputs[a]
-    output_a_embedded = outputs[a_embedded]
-    output_b = outputs[b]
-    output_b_embedded = outputs[b_embedded]
-    with _initialized_session():
-      _assert_sparse_tensor_value(self, self.evaluate(output_a),
-                                  self.evaluate(output_a_embedded))
-      _assert_sparse_tensor_value(self, self.evaluate(output_b),
-                                  self.evaluate(output_b_embedded))
+    with ops.Graph().as_default():
+      a = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
+      b = fc._categorical_column_with_identity(key='bbb', num_buckets=3)
+      a_embedded, b_embedded = fc_new.shared_embedding_columns([a, b],
+                                                               dimension=2)
+      features = {
+          'aaa':
+              sparse_tensor.SparseTensor(
+                  indices=((0, 0), (1, 0), (1, 1)),
+                  values=(0, 1, 0),
+                  dense_shape=(2, 2)),
+          'bbb':
+              sparse_tensor.SparseTensor(
+                  indices=((0, 0), (1, 0), (1, 1)),
+                  values=(1, 2, 1),
+                  dense_shape=(2, 2)),
+      }
+      outputs = _transform_features(features, [a, a_embedded, b, b_embedded])
+      output_a = outputs[a]
+      output_a_embedded = outputs[a_embedded]
+      output_b = outputs[b]
+      output_b_embedded = outputs[b_embedded]
+      with _initialized_session():
+        _assert_sparse_tensor_value(self, self.evaluate(output_a),
+                                    self.evaluate(output_a_embedded))
+        _assert_sparse_tensor_value(self, self.evaluate(output_b),
+                                    self.evaluate(output_b_embedded))
 
   @parameterized.named_parameters(
       {
@@ -5824,162 +5796,165 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
           'use_safe_embedding_lookup': False,
           'partition_variables': True,
       })
-  @test_util.run_deprecated_v1
+
   def test_get_dense_tensor(self, use_safe_embedding_lookup,
                             partition_variables):
-    # Inputs.
-    vocabulary_size = 4
-    # -1 values are ignored.
-    input_a = np.array([
-        [2, -1, -1],  # example 0, ids [2]
-        [0, 1, -1]
-    ])  # example 1, ids [0, 1]
-    input_b = np.array([
-        [0, -1, -1],  # example 0, ids [0]
-        [-1, -1, -1]
-    ])  # example 1, ids []
-    input_features = {'aaa': input_a, 'bbb': input_b}
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 4
+      # -1 values are ignored.
+      input_a = np.array([
+          [2, -1, -1],  # example 0, ids [2]
+          [0, 1, -1]
+      ])  # example 1, ids [0, 1]
+      input_b = np.array([
+          [0, -1, -1],  # example 0, ids [0]
+          [-1, -1, -1]
+      ])  # example 1, ids []
+      input_features = {'aaa': input_a, 'bbb': input_b}
 
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-        (7., 11.),  # id 2
-        (9., 13.)  # id 3
-    )
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+          (7., 11.),  # id 2
+          (9., 13.)  # id 3
+      )
 
-    def _initializer(shape, dtype, partition_info=None):
-      if partition_variables:
-        self.assertEqual([vocabulary_size, embedding_dimension],
-                         partition_info.full_shape)
-        self.assertAllEqual((2, embedding_dimension), shape)
-      else:
-        self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
-        self.assertIsNone(partition_info)
+      def _initializer(shape, dtype, partition_info=None):
+        if partition_variables:
+          self.assertEqual([vocabulary_size, embedding_dimension],
+                           partition_info.full_shape)
+          self.assertAllEqual((2, embedding_dimension), shape)
+        else:
+          self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+          self.assertIsNone(partition_info)
 
-      self.assertEqual(dtypes.float32, dtype)
-      return embedding_values
+        self.assertEqual(dtypes.float32, dtype)
+        return embedding_values
 
-    # Expected lookup result, using combiner='mean'.
-    expected_lookups_a = (
-        # example 0:
-        (7., 11.),  # ids [2], embedding = [7, 11]
-        # example 1:
-        (2., 3.5),  # ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
-    )
-    if use_safe_embedding_lookup:
-      expected_lookups_b = (
+      # Expected lookup result, using combiner='mean'.
+      expected_lookups_a = (
           # example 0:
-          (1., 2.),  # ids [0], embedding = [1, 2]
+          (7., 11.),  # ids [2], embedding = [7, 11]
           # example 1:
-          (0., 0.),  # ids [], embedding = [0, 0]
+          (2., 3.5),  # ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
       )
-    else:
-      expected_lookups_b = (
-          # example 0:
-          (1., 2.),  # ids [0], embedding = [1, 2]
+      if use_safe_embedding_lookup:
+        expected_lookups_b = (
+            # example 0:
+            (1., 2.),  # ids [0], embedding = [1, 2]
+            # example 1:
+            (0., 0.),  # ids [], embedding = [0, 0]
+        )
+      else:
+        expected_lookups_b = (
+            # example 0:
+            (1., 2.),  # ids [0], embedding = [1, 2]
+        )
+
+      # Build columns.
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+
+      partitioner = None
+      if partition_variables:
+        partitioner = partitioned_variables.fixed_size_partitioner(2, axis=0)
+
+      with variable_scope.variable_scope('vars', partitioner=partitioner):
+        embedding_column_a, embedding_column_b = (
+            fc_new.shared_embedding_columns(
+                [categorical_column_a, categorical_column_b],
+                dimension=embedding_dimension,
+                initializer=_initializer,
+                use_safe_embedding_lookup=use_safe_embedding_lookup))
+        # Provide sparse input and get dense result.
+        embedding_lookup_a = embedding_column_a._get_dense_tensor(
+            _LazyBuilder(input_features))
+        embedding_lookup_b = embedding_column_b._get_dense_tensor(
+            _LazyBuilder(input_features))
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      if partition_variables:
+        self.assertCountEqual(('vars/embedding_weights/part_0:0',
+                               'vars/embedding_weights/part_1:0'),
+                              tuple([v.name for v in global_vars]))
+      else:
+        self.assertCountEqual(('vars/embedding_weights:0',),
+                              tuple([v.name for v in global_vars]))
+      embedding_var = global_vars[0]
+
+      self.evaluate(variables_lib.global_variables_initializer())
+      self.evaluate(lookup_ops.tables_initializer())
+
+      self.assertAllEqual(embedding_values, self.evaluate(embedding_var))
+      self.assertAllEqual(expected_lookups_a, self.evaluate(embedding_lookup_a))
+      self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
+
+      if use_safe_embedding_lookup:
+        self.assertIn(
+            'SparseFillEmptyRows',
+            [x.type for x in ops.get_default_graph().get_operations()])
+      else:
+        self.assertNotIn(
+            'SparseFillEmptyRows',
+            [x.type for x in ops.get_default_graph().get_operations()])
+
+  def test_get_dense_tensor_weight_collections(self):
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 3
+      # -1 values are ignored.
+      input_a = np.array([
+          [2, -1, -1],  # example 0, ids [2]
+          [0, 1, -1]
+      ])  # example 1, ids [0, 1]
+      input_b = np.array([
+          [0, -1, -1],  # example 0, ids [0]
+          [-1, -1, -1]
+      ])  # example 1, ids []
+      input_features = {'aaa': input_a, 'bbb': input_b}
+
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+          (7., 11.)  # id 2
       )
 
-    # Build columns.
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
+      def _initializer(shape, dtype, partition_info):
+        self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+        self.assertEqual(dtypes.float32, dtype)
+        self.assertIsNone(partition_info)
+        return embedding_values
 
-    partitioner = None
-    if partition_variables:
-      partitioner = partitioned_variables.fixed_size_partitioner(2, axis=0)
-
-    with variable_scope.variable_scope('vars', partitioner=partitioner):
+      # Build columns.
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
       embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
           [categorical_column_a, categorical_column_b],
           dimension=embedding_dimension,
-          initializer=_initializer,
-          use_safe_embedding_lookup=use_safe_embedding_lookup)
-      # Provide sparse input and get dense result.
-      embedding_lookup_a = embedding_column_a._get_dense_tensor(
-          _LazyBuilder(input_features))
-      embedding_lookup_b = embedding_column_b._get_dense_tensor(
-          _LazyBuilder(input_features))
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    if partition_variables:
-      self.assertCountEqual(('vars/embedding_weights/part_0:0',
-                             'vars/embedding_weights/part_1:0'),
-                            tuple([v.name for v in global_vars]))
-    else:
-      self.assertCountEqual(('vars/embedding_weights:0',),
-                            tuple([v.name for v in global_vars]))
-    embedding_var = global_vars[0]
+          initializer=_initializer)
 
-    self.evaluate(variables_lib.global_variables_initializer())
-    self.evaluate(lookup_ops.tables_initializer())
+      fc.input_layer(
+          input_features, [embedding_column_a, embedding_column_b],
+          weight_collections=('my_vars',))
 
-    self.assertAllEqual(embedding_values, self.evaluate(embedding_var))
-    self.assertAllEqual(expected_lookups_a, self.evaluate(embedding_lookup_a))
-    self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
-
-    if use_safe_embedding_lookup:
-      self.assertIn('SparseFillEmptyRows',
-                    [x.type for x in ops.get_default_graph().get_operations()])
-    else:
-      self.assertNotIn(
-          'SparseFillEmptyRows',
-          [x.type for x in ops.get_default_graph().get_operations()])
-
-  @test_util.run_deprecated_v1
-  def test_get_dense_tensor_weight_collections(self):
-    # Inputs.
-    vocabulary_size = 3
-    # -1 values are ignored.
-    input_a = np.array([
-        [2, -1, -1],  # example 0, ids [2]
-        [0, 1, -1]
-    ])  # example 1, ids [0, 1]
-    input_b = np.array([
-        [0, -1, -1],  # example 0, ids [0]
-        [-1, -1, -1]
-    ])  # example 1, ids []
-    input_features = {'aaa': input_a, 'bbb': input_b}
-
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-        (7., 11.)  # id 2
-    )
-
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
-      self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
-      return embedding_values
-
-    # Build columns.
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
-        [categorical_column_a, categorical_column_b],
-        dimension=embedding_dimension,
-        initializer=_initializer)
-
-    fc.input_layer(
-        input_features, [embedding_column_a, embedding_column_b],
-        weight_collections=('my_vars',))
-
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertCountEqual(
-        ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
-        tuple(v.name for v in global_vars))
-    my_vars = ops.get_collection('my_vars')
-    self.assertCountEqual(
-        ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
-        tuple(v.name for v in my_vars))
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      self.assertCountEqual(
+          ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
+          tuple(v.name for v in global_vars))
+      my_vars = ops.get_collection('my_vars')
+      self.assertCountEqual(
+          ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
+          tuple(v.name for v in my_vars))
 
   @test_util.run_deprecated_v1
   def test_get_dense_tensor_placeholder_inputs(self):
@@ -6038,40 +6013,42 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     with _initialized_session() as sess:
       sess.run([embedding_lookup_a, embedding_lookup_b], feed_dict=feed_dict)
 
-  @test_util.run_deprecated_v1
   def test_linear_model(self):
-    # Inputs.
-    batch_size = 2
-    vocabulary_size = 3
-    # -1 values are ignored.
-    input_a = np.array(
-        [[2, -1, -1],  # example 0, ids [2]
-         [0, 1, -1]])  # example 1, ids [0, 1]
-    input_b = np.array(
-        [[0, -1, -1],  # example 0, ids [0]
-         [-1, -1, -1]])  # example 1, ids []
-
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_shape = (vocabulary_size, embedding_dimension)
-    zeros_embedding_values = np.zeros(embedding_shape)
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual(embedding_shape, shape)
-      self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
-      return zeros_embedding_values
-
-    # Build columns.
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
-        [categorical_column_a, categorical_column_b],
-        dimension=embedding_dimension,
-        initializer=_initializer)
-
     with ops.Graph().as_default():
+      # Inputs.
+      batch_size = 2
+      vocabulary_size = 3
+      # -1 values are ignored.
+      input_a = np.array([
+          [2, -1, -1],  # example 0, ids [2]
+          [0, 1, -1]
+      ])  # example 1, ids [0, 1]
+      input_b = np.array([
+          [0, -1, -1],  # example 0, ids [0]
+          [-1, -1, -1]
+      ])  # example 1, ids []
+
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_shape = (vocabulary_size, embedding_dimension)
+      zeros_embedding_values = np.zeros(embedding_shape)
+
+      def _initializer(shape, dtype, partition_info):
+        self.assertAllEqual(embedding_shape, shape)
+        self.assertEqual(dtypes.float32, dtype)
+        self.assertIsNone(partition_info)
+        return zeros_embedding_values
+
+      # Build columns.
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+      embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
+          [categorical_column_a, categorical_column_b],
+          dimension=embedding_dimension,
+          initializer=_initializer)
+
       predictions = fc.linear_model({
           categorical_column_a.name: input_a,
           categorical_column_b.name: input_b,
@@ -6129,43 +6106,42 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         # = [3*1 + 5*2, 3*0 +5*0] = [13, 0]
         self.assertAllClose([[94. + 13.], [29.]], self.evaluate(predictions))
 
-  @test_util.run_deprecated_v1
   def test_keras_linear_model(self):
-    # Inputs.
-    batch_size = 2
-    vocabulary_size = 3
-    # -1 values are ignored.
-    input_a = np.array([
-        [2, -1, -1],  # example 0, ids [2]
-        [0, 1, -1]
-    ])  # example 1, ids [0, 1]
-    input_b = np.array([
-        [0, -1, -1],  # example 0, ids [0]
-        [-1, -1, -1]
-    ])  # example 1, ids []
-
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_shape = (vocabulary_size, embedding_dimension)
-    zeros_embedding_values = np.zeros(embedding_shape)
-
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual(embedding_shape, shape)
-      self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
-      return zeros_embedding_values
-
-    # Build columns.
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
-        [categorical_column_a, categorical_column_b],
-        dimension=embedding_dimension,
-        initializer=_initializer)
-
     with ops.Graph().as_default():
+      # Inputs.
+      batch_size = 2
+      vocabulary_size = 3
+      # -1 values are ignored.
+      input_a = np.array([
+          [2, -1, -1],  # example 0, ids [2]
+          [0, 1, -1]
+      ])  # example 1, ids [0, 1]
+      input_b = np.array([
+          [0, -1, -1],  # example 0, ids [0]
+          [-1, -1, -1]
+      ])  # example 1, ids []
+
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_shape = (vocabulary_size, embedding_dimension)
+      zeros_embedding_values = np.zeros(embedding_shape)
+
+      def _initializer(shape, dtype, partition_info):
+        self.assertAllEqual(embedding_shape, shape)
+        self.assertEqual(dtypes.float32, dtype)
+        self.assertIsNone(partition_info)
+        return zeros_embedding_values
+
+      # Build columns.
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+      embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
+          [categorical_column_a, categorical_column_b],
+          dimension=embedding_dimension,
+          initializer=_initializer)
+
       predictions = get_keras_linear_model_predictions({
           categorical_column_a.name: input_a,
           categorical_column_b.name: input_b,
@@ -6224,84 +6200,87 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose([[94. + 13.], [29.]], self.evaluate(predictions))
 
   def _test_input_layer(self, trainable=True):
-    # Inputs.
-    vocabulary_size = 3
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 4)),
-        values=(2, 0, 1),
-        dense_shape=(2, 5))
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [0]
-        # example 1, ids []
-        indices=((0, 0),),
-        values=(0,),
-        dense_shape=(2, 5))
+    with ops.Graph().as_default():
+      # Inputs.
+      vocabulary_size = 3
+      sparse_input_a = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          indices=((0, 0), (1, 0), (1, 4)),
+          values=(2, 0, 1),
+          dense_shape=(2, 5))
+      sparse_input_b = sparse_tensor.SparseTensorValue(
+          # example 0, ids [0]
+          # example 1, ids []
+          indices=((0, 0),),
+          values=(0,),
+          dense_shape=(2, 5))
 
-    # Embedding variable.
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-        (7., 11.)  # id 2
-    )
-    def _initializer(shape, dtype, partition_info):
-      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
-      self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
-      return embedding_values
+      # Embedding variable.
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 5.),  # id 1
+          (7., 11.)  # id 2
+      )
 
-    # Expected lookup result, using combiner='mean'.
-    expected_lookups = (
-        # example 0:
-        # A ids [2], embedding = [7, 11]
-        # B ids [0], embedding = [1, 2]
-        (7., 11., 1., 2.),
-        # example 1:
-        # A ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
-        # B ids [], embedding = [0, 0]
-        (2., 3.5, 0., 0.),
-    )
+      def _initializer(shape, dtype, partition_info):
+        self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+        self.assertEqual(dtypes.float32, dtype)
+        self.assertIsNone(partition_info)
+        return embedding_values
 
-    # Build columns.
-    categorical_column_a = fc._categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc._categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
-        [categorical_column_a, categorical_column_b],
-        dimension=embedding_dimension,
-        initializer=_initializer,
-        trainable=trainable)
+      # Expected lookup result, using combiner='mean'.
+      expected_lookups = (
+          # example 0:
+          # A ids [2], embedding = [7, 11]
+          # B ids [0], embedding = [1, 2]
+          (7., 11., 1., 2.),
+          # example 1:
+          # A ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
+          # B ids [], embedding = [0, 0]
+          (2., 3.5, 0., 0.),
+      )
 
-    # Provide sparse input and get dense result.
-    input_layer = fc.input_layer(
-        features={'aaa': sparse_input_a, 'bbb': sparse_input_b},
-        feature_columns=(embedding_column_b, embedding_column_a))
+      # Build columns.
+      categorical_column_a = fc._categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = fc._categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+      embedding_column_a, embedding_column_b = fc_new.shared_embedding_columns(
+          [categorical_column_a, categorical_column_b],
+          dimension=embedding_dimension,
+          initializer=_initializer,
+          trainable=trainable)
 
-    # Assert expected embedding variable and lookups.
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertCountEqual(
-        ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
-        tuple([v.name for v in global_vars]))
-    trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
-    if trainable:
+      # Provide sparse input and get dense result.
+      input_layer = fc.input_layer(
+          features={
+              'aaa': sparse_input_a,
+              'bbb': sparse_input_b
+          },
+          feature_columns=(embedding_column_b, embedding_column_a))
+
+      # Assert expected embedding variable and lookups.
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
       self.assertCountEqual(
           ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
-          tuple([v.name for v in trainable_vars]))
-    else:
-      self.assertCountEqual([], tuple([v.name for v in trainable_vars]))
-    shared_embedding_vars = global_vars
-    with _initialized_session():
-      self.assertAllEqual(embedding_values, shared_embedding_vars[0])
-      self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
+          tuple([v.name for v in global_vars]))
+      trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+      if trainable:
+        self.assertCountEqual(
+            ['input_layer/aaa_bbb_shared_embedding/embedding_weights:0'],
+            tuple([v.name for v in trainable_vars]))
+      else:
+        self.assertCountEqual([], tuple([v.name for v in trainable_vars]))
+      shared_embedding_vars = global_vars
+      with _initialized_session():
+        self.assertAllEqual(embedding_values, shared_embedding_vars[0])
+        self.assertAllEqual(expected_lookups, self.evaluate(input_layer))
 
-  @test_util.run_deprecated_v1
   def test_input_layer(self):
     self._test_input_layer()
 
-  @test_util.run_deprecated_v1
   def test_input_layer_no_trainable(self):
     self._test_input_layer(trainable=False)
 

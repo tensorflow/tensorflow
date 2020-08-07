@@ -145,6 +145,11 @@ typedef struct SE_ExecutableRunOptions {
   SE_DeviceMemoryAllocator allocator;
   int device_ordinal;
   SE_Stream* stream;
+  SE_Stream* host_to_device_stream;
+  TpuSerializedProto device_assignment;
+  int rng_seed;
+  int64_t run_id;
+  int launch_id;
 } SE_ExecutableRunOptions;
 
 typedef struct SE_MaybeOwningDeviceMemory {

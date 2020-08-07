@@ -190,6 +190,9 @@ upper_tabs:
         path: /lite/models/smart_reply/overview
       - title: "Text classification"
         path: /lite/models/text_classification/overview
+      - heading: "Others"
+      - title: "Recommendation"
+        path: /lite/models/recommendation/overview
 
     - name: "API"
       skip_translation: true

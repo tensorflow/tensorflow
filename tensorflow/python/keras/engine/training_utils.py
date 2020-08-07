@@ -1000,8 +1000,7 @@ def standardize_weights(y,
       y_classes = smart_cond.smart_cond(
           len(y.shape.as_list()) == 2 and K.shape(y)[1] > 1,
           lambda: K.argmax(y, axis=1),
-          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64)
-      )
+          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64))
       class_sample_weight = array_ops.gather(weight_vector, y_classes)
       gen_array_ops.check_numerics(
           class_sample_weight,

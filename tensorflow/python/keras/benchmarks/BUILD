@@ -83,9 +83,8 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "bidirectional_lstm_benchmark_test",
-    size = "medium",
     srcs = ["keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
@@ -95,7 +94,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "text_classification_transformer_benchmark_test",
     srcs = ["keras_examples_benchmarks/text_classification_transformer_benchmark_test.py"],
     python_version = "PY3",
@@ -106,7 +105,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "antirectifier_benchmark_test",
     srcs = ["keras_examples_benchmarks/antirectifier_benchmark_test.py"],
     python_version = "PY3",
@@ -117,7 +116,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "mnist_conv_benchmark_test",
     srcs = ["keras_examples_benchmarks/mnist_conv_benchmark_test.py"],
     python_version = "PY3",
@@ -129,7 +128,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "mnist_hierarchical_rnn_benchmark_test",
     srcs = ["keras_examples_benchmarks/mnist_hierarchical_rnn_benchmark_test.py"],
     python_version = "PY3",
@@ -140,7 +139,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "mnist_irnn_benchmark_test",
     srcs = ["keras_examples_benchmarks/mnist_irnn_benchmark_test.py"],
     python_version = "PY3",
@@ -151,7 +150,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "reuters_mlp_benchmark_test",
     srcs = ["keras_examples_benchmarks/reuters_mlp_benchmark_test.py"],
     python_version = "PY3",
@@ -163,7 +162,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "cifar10_cnn_benchmark_test",
     srcs = ["keras_examples_benchmarks/cifar10_cnn_benchmark_test.py"],
     python_version = "PY3",

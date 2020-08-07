@@ -862,6 +862,7 @@ class Conv1DTranspose(Conv1D):
       the dilation rate to use for dilated convolution.
       Currently, specifying a `dilation_rate` value != 1 is
       incompatible with specifying a stride value != 1.
+      Also dilation rate larger than 1 is not currently supported.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).

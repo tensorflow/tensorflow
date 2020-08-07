@@ -136,8 +136,6 @@ class FromTensorConverter : public OpenClConverterImpl {
         R"(
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 
-const sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
-
 __kernel void from_tensor()" +
         params_kernel.first + R"(, $0) {
   int linear_id = get_global_id(0);

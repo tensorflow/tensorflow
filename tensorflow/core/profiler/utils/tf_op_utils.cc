@@ -32,7 +32,6 @@ namespace {
 
 const absl::string_view kIterator = "Iterator";
 const absl::string_view kSeparator = "::";
-const absl::string_view kIteratorPrefix = "Iterator::";
 
 }  // namespace
 
@@ -54,10 +53,6 @@ bool IsTfOpType(absl::string_view op_type) {
 bool IsJaxOpType(absl::string_view op_type) {
   static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_]*"};
   return RE2::FullMatch(op_type, *kJaxOpTypeRegEx);
-}
-
-bool IsIteratorEventName(absl::string_view event_name) {
-  return absl::StartsWith(event_name, kIteratorPrefix);
 }
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
@@ -102,9 +97,7 @@ std::string TfOpEventName(const TfOp& tf_op) {
     // Some TraceMe names contain trailing whitespace, remove it.
     event_name = std::string(absl::StripTrailingAsciiWhitespace(tf_op.name));
   } else if (tf_op.category == Category::kTfData) {
-    std::vector<absl::string_view> op_parts =
-        absl::StrSplit(tf_op.name, kSeparator);
-    event_name = absl::StrCat(kIterator, kSeparator, op_parts.back());
+    event_name = DatasetOpEventName(tf_op.name);
   } else {
     event_name = std::string(tf_op.type);
   }
@@ -113,6 +106,18 @@ std::string TfOpEventName(const TfOp& tf_op) {
 
 std::string TfOpEventName(absl::string_view tf_op_fullname) {
   return TfOpEventName(ParseTfOpFullname(tf_op_fullname));
+}
+
+std::string DatasetOpEventName(absl::string_view full_name) {
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(full_name, kSeparator);
+  return absl::StrCat(kIterator, kSeparator, split_result.back());
+}
+
+std::string IteratorName(absl::string_view full_name) {
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(full_name, kSeparator);
+  return std::string(split_result.back());
 }
 
 std::vector<absl::string_view> ParseTensorShapes(

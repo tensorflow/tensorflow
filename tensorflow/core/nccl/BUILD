@@ -45,21 +45,20 @@ cc_library(
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
     ]),
     alwayslink = 1,
 )
 
 tf_cuda_cc_test(
     name = "nccl_manager_test",
-    size = "medium",
+    size = "large",
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "guitar",
         "manual",
         "multi_gpu",
         "no_oss",
-        # TODO(b/147451637): Replace 'no_rocm' with 'rocm_multi_gpu'.
-        "no_rocm",
         "notap",
     ],
     deps = [

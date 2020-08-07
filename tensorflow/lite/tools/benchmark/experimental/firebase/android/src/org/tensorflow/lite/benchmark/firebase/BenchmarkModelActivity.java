@@ -59,7 +59,7 @@ public class BenchmarkModelActivity extends Activity {
     }
 
     int reportFd = parcelFileDescriptor != null ? parcelFileDescriptor.getFd() : -1;
-    BenchmarkModel.run(scenario, reportFd);
+    BenchmarkModel.run(this, scenario, reportFd);
 
     if (parcelFileDescriptor != null) {
       try {

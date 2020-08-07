@@ -88,7 +88,8 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer" || name == "auto_mixed_precision";
+         name == "loop_optimizer" || name == "auto_mixed_precision" ||
+         name == "auto_mixed_precision_mkl";
 }
 
 bool IsTFDataFunction(const FunctionDef& func) {
@@ -183,7 +184,10 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("function", new FunctionOptimizer(
                          cfg_.function_optimization(),
                          /*lower_control_flow=*/!IsSingleThreadedExecutor()));
-  MK_OPT("constfold", new ConstantFolding(cpu_device_));
+  MK_OPT("constfold",
+         new ConstantFolding(
+             cpu_device_,
+             cfg_.experimental_disable_compressed_tensor_optimization()));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
   MK_OPT("layout", new GenericLayoutOptimizer());
@@ -243,8 +247,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<DebugStripper>());
   }
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<ConstantFolding>(cfg_.constant_folding(), cpu_device_));
+    optimizers->push_back(MakeUnique<ConstantFolding>(
+        cfg_.constant_folding(), cpu_device_,
+        cfg_.experimental_disable_compressed_tensor_optimization()));
   }
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
@@ -401,6 +406,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     return Status::OK();
   }
 
+  const uint64 start_us = Env::Default()->NowMicros();
+
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   if (cfg_.optimizers().empty()) {
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
@@ -530,6 +537,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
+  const uint64 end_us = Env::Default()->NowMicros();
+  metrics::UpdateGrapplerPassTime("OptimizeMainGraph", end_us - start_us);
+
   return Status::OK();
 }
 
@@ -602,6 +612,8 @@ Status MetaOptimizer::RunOptimizer(
 
 Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                           GraphDef* optimized_graph) {
+  const uint64 start_us = Env::Default()->NowMicros();
+
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
@@ -808,6 +820,10 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                         reinterpret_cast<uintptr_t>(optimized_graph)),
         *optimized_graph);
   }
+
+  const uint64 end_us = Env::Default()->NowMicros();
+  metrics::UpdateGrapplerPassTime("*", end_us - start_us);
+
   return Status::OK();
 }
 

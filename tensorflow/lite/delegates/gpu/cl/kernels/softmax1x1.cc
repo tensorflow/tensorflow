@@ -23,20 +23,30 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetSoftmaxKernelCode(const OperationDef& op_def, Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-  args->AddFloat("mask_x");
-  args->AddFloat("mask_y");
-  args->AddFloat("mask_z");
-  args->AddFloat("mask_w");
-  args->AddInt("slices_x32");
+Softmax1x1::Softmax1x1(const OperationDef& definition)
+    : GPUOperation(definition) {
+  work_group_size_ = int3(32, 1, 1);
+  code_ = GetSoftmaxKernelCode(definition_);
+}
+
+Softmax1x1::Softmax1x1(Softmax1x1&& kernel) : GPUOperation(std::move(kernel)) {}
+
+Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
+  if (this != &kernel) {
+    GPUOperation::operator=(std::move(kernel));
+  }
+  return *this;
+}
+
+std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  args_.AddFloat("mask_x");
+  args_.AddFloat("mask_y");
+  args_.AddFloat("mask_z");
+  args_.AddFloat("mask_w");
+  args_.AddInt("slices_x32");
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -98,34 +108,8 @@ std::string GetSoftmaxKernelCode(const OperationDef& op_def, Arguments* args) {
   c += "}\n";
   return c;
 }
-}  // namespace
-
-Softmax1x1::Softmax1x1(Softmax1x1&& kernel) : GPUOperation(std::move(kernel)) {}
-
-Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-absl::Status Softmax1x1::Compile(const CreationContext& creation_context) {
-  std::string code = GetSoftmaxKernelCode(definition_, &args_);
-  std::string element_wise_code;
-  work_group_size_ = int3(32, 1, 1);
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
 
 absl::Status Softmax1x1::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   float4 mask = GetMaskForLastPlane(src_[0]->Channels());
   RETURN_IF_ERROR(args_.SetFloat("mask_x", mask.x));
   RETURN_IF_ERROR(args_.SetFloat("mask_y", mask.y));

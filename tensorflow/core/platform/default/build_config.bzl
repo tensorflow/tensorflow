@@ -597,6 +597,16 @@ def tf_protos_profiler_impl():
         clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
     ]
 
+def tf_protos_profiler_service():
+    return [
+        clean_dep("//tensorflow/core/profiler:profiler_analysis_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_service_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_service_monitor_result_proto_cc_impl"),
+    ]
+
+def tf_profiler_client_deps():
+    return [clean_dep("//tensorflow/core/profiler/rpc/client:profiler_client_headers")]
+
 def tf_protos_grappler_impl():
     return [clean_dep("//tensorflow/core/grappler/costs:op_performance_data_cc_impl")]
 

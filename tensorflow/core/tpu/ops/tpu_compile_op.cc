@@ -43,22 +43,23 @@ REGISTER_OP("_TPUCompileMlir")
         c->set_output(i + 1, c->Vector(2));
       }
       return Status::OK();
+    });
+
+REGISTER_OP("_TPUCompileMlirPlaceholderProgramKey")
+    .SetIsStateful()
+    .Output("program: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Vector(2));
+      return Status::OK();
     })
+    .SetIsStateful()
     .Doc(
         R"(
-Compiles a computations for execution on one or more TPU devices.
-For the internal use of the distributed TPU compiler. Note that currently only
-single TPU device is supported.
+Placeholder program key (compilation cache key) of a _TPUCompileMlir `program`.
 
-'mlir_module' is a serialized MLIR module with a `main` function that contains
-target computation.
-'dynamic_shapes' contains dynamic shapes of arguments whose shapes were not
-known statically at TPUReplication rewrite time.
-'metadata' is a serialized TPUCompileMetadataProto describing
-the shapes and types of the inputs to the computation, as well as a mapping onto
-the TPU pod topology.
-'program' output is a string key that is passed to the _TPUExecute op and
-used to look up the program in the compilation cache.
+This op can be used when certain rewrite passes materialize ops that require a
+program key but the _TPUCompileMlir op has not been added yet. Subsequent
+rewrite passes must replace this op with a _TPUCompileMlir op `program` output.
 )");
 
 REGISTER_OP("TPUCompile")
@@ -91,39 +92,13 @@ REGISTER_OP("TPUCompile")
         c->set_output(num_computations + i + 1, c->Scalar());
       }
       return Status::OK();
-    })
-    .Doc(
-        R"(
-Compiles a computations for execution on one or more TPU devices.
-For the internal use of the distributed TPU compiler.
-
-'num_computations' is the number of computations to be compiled.
-'function' is a function containing the computation to compile.
-'dynamic_shapes' contains dynamic shapes of arguments whose shapes were not
-known statically at TPUReplication rewrite time.
-'guaranteed_constants' is a list of tensors which have been guaranteed to not
-change their values during the session lifetime. These contain tensors marked as
-constant using the GuaranteeConstOp.
-'metadata' is a serialized TPUCompileMetadataProto describing
-the shapes and types of the inputs to the computation, as well as a mapping onto
-the TPU pod topology.
-Each 'program' output is a string key that is passed to the _TPUExecute op and
-used to look up the program in the compilation cache.
-'may_modify_variables' indicates whether variables may be modified.
-)");
+    });
 
 REGISTER_OP("TPUCompileSucceededAssert")
     .Input("compilation_status: string")
     // Do not optimize me away. Read the comment on TPUCompileOp for more
     // details.
     .SetIsStateful()
-    .SetShapeFn(shape_inference::NoOutputs)
-    .Doc(
-        R"(
-Asserts that compilation succeeded. This op produces no output and closes the
-device during failure to ensure all pending device interactions fail.
-
-'compilation_status' is a serialized CompilationResultProto.
-        )");
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow
