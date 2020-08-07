@@ -190,11 +190,11 @@ Status GpuCompiler::OptimizeHloModule(
           /*layout_sensitive=*/false,
           /*allow_mixed_precision=*/false);
 
-      pipeline.AddPass<HloGetDimensionSizeRewriter>();
+      pass.AddPass<HloGetDimensionSizeRewriter>();
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
-      pipeline.AddPass<ZeroSizedHloElimination>();
+      pass.AddPass<ZeroSizedHloElimination>();
 
       AlgebraicSimplifierOptions options;
       // When transposes appear in a fusion node, we can easily adjust the
