@@ -37,6 +37,7 @@ cc_library(
         "//tensorflow/c/eager:gradients",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/core/lib/llvm_rtti",
     ],
 )

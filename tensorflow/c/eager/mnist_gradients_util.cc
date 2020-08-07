@@ -36,96 +36,119 @@ Status Add(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle*> outputs,
            const GradientRegistry& registry) {
   
-//   AbstractOperationPtr add_op(ctx->CreateOperation());
-//   ForwardOperation forward_op;
-//   forward_op.ctx = ctx;
-//   TF_RETURN_IF_ERROR(
-//       Reset(add_op.get(), "Add", /*raw_device_name=*/nullptr, &forward_op));
-//   if (isa<tracing::TracingOperation>(add_op.get())) {
-//     TF_RETURN_IF_ERROR(
-//         dyn_cast<tracing::TracingOperation>(add_op.get())->SetOpName("my_add"));
-//   }
-//   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[0], &forward_op));
-//   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[1], &forward_op));
-//   int num_retvals = 1;
-//   return Execute(add_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
-//                  registry);
-// }
+  AbstractOperationPtr add_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(add_op.get(), "Add", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<tracing::TracingOperation>(add_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(add_op.get())->SetOpName("my_add"));
+  }
+  TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[0], &forward_op));
+  TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[1], &forward_op));
+  int num_retvals = 1;
+  return Execute(add_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
 
-// // Computes `inputs[0] * inputs[1]` for matrices and records it on the tape.
-// Status MatMul(AbstractContext* ctx, Tape* tape,
-//            absl::Span<AbstractTensorHandle* const> inputs,
-//            absl::Span<AbstractTensorHandle*> outputs, const char* name,
-//            bool transpose_a, bool transpose_b,
-//            const GradientRegistry& registry) {
+// Computes `inputs[0] * inputs[1]` for matrices and records it on the tape.
+Status MatMul(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           bool transpose_a, bool transpose_b,
+           const GradientRegistry& registry) {
   
-//   AbstractOperationPtr matmul_op(ctx->CreateOperation());
-//   ForwardOperation forward_op;
-//   forward_op.ctx = ctx;
-//   TF_RETURN_IF_ERROR(
-//       Reset(matmul_op.get(), "MatMul", /*raw_device_name=*/nullptr, &forward_op));
-//   if (isa<tracing::TracingOperation>(matmul_op.get())) {
-//     TF_RETURN_IF_ERROR(
-//         dyn_cast<tracing::TracingOperation>(matmul_op.get())->SetOpName(name));
-//   }
+  AbstractOperationPtr matmul_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(matmul_op.get(), "MatMul", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<tracing::TracingOperation>(matmul_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(matmul_op.get())->SetOpName(name));
+  }
 
-//   TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[0], &forward_op));
-//   TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[1], &forward_op));
-//   matmul_op->SetAttrBool("transpose_a",transpose_a);
-//   matmul_op->SetAttrBool("transpose_b",transpose_b);
+  TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[0], &forward_op));
+  TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[1], &forward_op));
+  matmul_op->SetAttrBool("transpose_a",transpose_a);
+  matmul_op->SetAttrBool("transpose_b",transpose_b);
 
-//   int num_retvals = 1;
-//   return Execute(matmul_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
-//                  registry);
-// }
+  int num_retvals = 1;
+  return Execute(matmul_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
 
-// // Computes `Relu(inputs[0])` and records it on the tape.
-// Status Relu(AbstractContext* ctx, Tape* tape,
-//            absl::Span<AbstractTensorHandle* const> inputs,
-//            absl::Span<AbstractTensorHandle*> outputs, const char* name,
-//            const GradientRegistry& registry) {
+Status Mul(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
+  AbstractOperationPtr mul_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(mul_op.get(), "Mul", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<tracing::TracingOperation>(mul_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(mul_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(AddInput(mul_op.get(), inputs[0], &forward_op));
+  TF_RETURN_IF_ERROR(AddInput(mul_op.get(), inputs[1], &forward_op));
+
+  int num_retvals = 1;
+  return Execute(mul_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
+
+
+// Computes `Relu(inputs[0])` and records it on the tape.
+Status Relu(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
   
-//   AbstractOperationPtr relu_op(ctx->CreateOperation());
-//   ForwardOperation forward_op;
-//   forward_op.ctx = ctx;
-//   TF_RETURN_IF_ERROR(
-//       Reset(relu_op.get(), "Relu", /*raw_device_name=*/nullptr, &forward_op));
-//   if (isa<tracing::TracingOperation>(relu_op.get())) {
-//     TF_RETURN_IF_ERROR(
-//         dyn_cast<tracing::TracingOperation>(relu_op.get())->SetOpName(name));
-//   }
-//   TF_RETURN_IF_ERROR(AddInput(relu_op.get(), inputs[0], &forward_op));
-//   int num_retvals = 1;
-//   return Execute(relu_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
-//                  registry);
-// }
+  AbstractOperationPtr relu_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(relu_op.get(), "Relu", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<tracing::TracingOperation>(relu_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(relu_op.get())->SetOpName(name));
+  }
+  TF_RETURN_IF_ERROR(AddInput(relu_op.get(), inputs[0], &forward_op));
+  int num_retvals = 1;
+  return Execute(relu_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
 
-// // Computes `SoftmaxLoss(scores, labels)` for matrices and records it on the tape.
-// Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx, Tape* tape,
-//            absl::Span<AbstractTensorHandle* const> inputs,
-//            absl::Span<AbstractTensorHandle*> outputs, const char* name,
-//            const GradientRegistry& registry) {
+// Computes `SoftmaxLoss(scores, labels)` for matrices and records it on the tape.
+Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
   
-//   AbstractTensorHandle* scores = inputs[0];
-//   AbstractTensorHandle* labels = inputs[1];
+  AbstractTensorHandle* scores = inputs[0];
+  AbstractTensorHandle* labels = inputs[1];
 
-//   AbstractOperationPtr sm_op(ctx->CreateOperation());
-//   ForwardOperation forward_op;
-//   forward_op.ctx = ctx;
-//   TF_RETURN_IF_ERROR(
-//       Reset(sm_op.get(), "SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr, &forward_op));
-//   if (isa<tracing::TracingOperation>(sm_op.get())) {
-//     TF_RETURN_IF_ERROR(
-//         dyn_cast<tracing::TracingOperation>(sm_op.get())->SetOpName(name));
-//   }
+  AbstractOperationPtr sm_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(sm_op.get(), "SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<tracing::TracingOperation>(sm_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(sm_op.get())->SetOpName(name));
+  }
 
-//   TF_RETURN_IF_ERROR(AddInput(sm_op.get(), scores, &forward_op));
-//   TF_RETURN_IF_ERROR(AddInput(sm_op.get(), labels, &forward_op));
+  TF_RETURN_IF_ERROR(AddInput(sm_op.get(), scores, &forward_op));
+  TF_RETURN_IF_ERROR(AddInput(sm_op.get(), labels, &forward_op));
 
-//   int num_retvals = 2; // returns loss values and backprop
-//   return Execute(sm_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
-//                  registry);
-// }
+  int num_retvals = 2; // returns loss values and backprop
+  return Execute(sm_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
 
 //===================== Test Models to run =========================
 
@@ -153,7 +176,7 @@ Status AddGradModel(AbstractContext* ctx,
       source_tensors_that_are_targets,
       /*output_gradients=*/{}, &out_grads));
   for (auto add_output : add_outputs) {
-    add_output->Release();
+    add_output->Unref();
   }
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
@@ -187,7 +210,7 @@ Status MatMulGradModel(AbstractContext* ctx,
       source_tensors_that_are_targets,
       /*output_gradients=*/{}, &out_grads));
   for (auto mm_output : mm_outputs) {
-    mm_output->Release();
+    mm_output->Unref();
   }
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
@@ -297,7 +320,7 @@ Status ReluGradModel(AbstractContext* ctx,
       /*output_gradients=*/{}, &out_grads));
 
   for (auto relu_output : relu_outputs) {
-    relu_output->Release();
+    relu_output->Unref();
   }
 
   outputs[0] = out_grads[0];
@@ -328,9 +351,9 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
       source_tensors_that_are_targets,
       /*output_gradients=*/{}, &out_grads));
 
-  for (auto sm_output : sm_outputs) {
-    sm_output->Release();
-  }
+  // for (auto sm_output : sm_outputs) {
+  //   sm_output->Unref();
+  // }
 
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
@@ -373,7 +396,6 @@ Status MNISTGradModel(AbstractContext* ctx,
   AbstractTensorHandle* scores = temp_outputs[0];
 
   temp_outputs.resize(2);
-  // std::vector<AbstractTensorHandle*> loss_outputs(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
       ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs),
       "softmaxloss", registry));  // W2*Relu(X*W1)
@@ -391,7 +413,7 @@ Status MNISTGradModel(AbstractContext* ctx,
                             /*output_gradients=*/{}, &out_grads));
 
   // Only release 2nd temp output as first holds loss values.
-  temp_outputs[1]->Release();
+  // temp_outputs[1]->Unref();
 
   outputs[0] = out_grads[0];  // dW1
   outputs[1] = out_grads[1];  // dW2
@@ -499,7 +521,7 @@ Status RunModel(Model model, AbstractContext* ctx,
                                absl::MakeSpan(output_list.outputs), registry));
 
       for (auto func_input : func_inputs) {
-        func_input->Release();
+        func_input->Unref();
       }
       AbstractFunction* func = nullptr;
       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
@@ -507,7 +529,7 @@ Status RunModel(Model model, AbstractContext* ctx,
       scoped_func.reset(func);
 
       for (auto output : output_list.outputs) {
-        output->Release();
+        output->Unref();
       }
 
       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));

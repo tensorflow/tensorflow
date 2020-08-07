@@ -1,21 +1,14 @@
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/c/eager/gradients.h"
-#include "tensorflow/c/eager/mnist_gradients_util.h"
-
-
 #include <memory>
 
 #include "absl/types/span.h"
@@ -47,6 +40,15 @@ class CppGradients
     TF_SetTracingImplementation(std::get<0>(GetParam()));
   }
 };
+
+Status RegisterGradients(GradientRegistry* registry) {
+  TF_RETURN_IF_ERROR(registry->Register("Add", AddRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("MatMul", MatMulRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Relu", ReluRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("SparseSoftmaxCrossEntropyWithLogits", SparseSoftmaxCrossEntropyLossRegisterer));
+  return Status::OK();
+}
 
 // ========================= Test Util Functions ==============================
 void printArr(float data[], int n) {
@@ -185,7 +187,7 @@ TEST_P(CppGradients, TestAddGrad) {
   }
 
   GradientRegistry registry;
-  Status s = RegisterGradientAdd(&registry);
+  Status s = RegisterGradients(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   /* Pseudo-code:
@@ -207,7 +209,7 @@ TEST_P(CppGradients, TestAddGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);
-  outputs[0]->Release();
+  outputs[0]->Unref();
   TF_DeleteTensor(result_tensor);
   result_tensor = nullptr;
 
@@ -215,7 +217,7 @@ TEST_P(CppGradients, TestAddGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);
-  outputs[1]->Release();
+  outputs[1]->Unref();
   TF_DeleteTensor(result_tensor);
 }
 
@@ -243,7 +245,7 @@ TEST_P(CppGradients, TestMatMulGrad) {
       getMatrixTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
 
   GradientRegistry registry;
-  Status s = RegisterGradientMatMul(&registry);
+  Status s = RegisterGradients(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   /* Pseudo-code:
@@ -286,199 +288,10 @@ TEST_P(CppGradients, TestMatMulGrad) {
     ASSERT_NEAR(result_data[j], expected_dB[j], tolerance);
   }
 
-  outputs[0]->Release();
-  outputs[1]->Release();
+  outputs[0]->Unref();
+  outputs[1]->Unref();
   TF_DeleteTensor(dA_tensor);
   TF_DeleteTensor(dB_tensor);
-}
-
-// Computes
-// y = inputs[0] * inputs[1]
-// return grad(y, {inputs[0], inputs[1]})
-Status MatMulGradModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch x.
-  tape->Watch(ToId(inputs[1]));  // Watch y.
-  std::vector<AbstractTensorHandle*> mm_outputs(1);
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, inputs, absl::MakeSpan(mm_outputs), 
-      "matmul0", /*transpose_a=*/false, /*transpose_b=*/false, registry));  // Compute x*y.
-  
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(mm_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
-  for (auto mm_output : mm_outputs) {
-    mm_output->Release();
-  }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
-  delete tape;
-  return Status::OK();
-}
-
-
-// TODO: fix graph mode test by using RunModel to verify
-TEST_P(CppGradients, TestMatMulGrad) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  AbstractContextPtr ctx;
-  {
-    AbstractContext* ctx_raw = nullptr;
-    Status s = BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    ctx.reset(ctx_raw);
-  }
-
-  float A_vals [] = {1.0f, 2.0f, 3.0f, 4.0f};
-  int64_t A_dims [] = {2, 2};
-  float B_vals [] = {.5f, -1.0f, 1.0f, 1.0f}; 
-  int64_t B_dims [] = {2, 2};
-  int num_dims = 2;
-  
-  AbstractTensorHandlePtr A = getMatrixTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
-  AbstractTensorHandlePtr B = getMatrixTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
-  
-  GradientRegistry registry;
-  Status s = RegisterGradientMatMul(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  /* Pseudo-code:
-   *
-   * tape.watch(A)
-   * tape.watch(B)
-   * Y = AB
-   * outputs = tape.gradient(Y, [A, B])
-   */
-
-  std::vector<AbstractTensorHandle*> outputs(2);
-  s = RunModel(MatMulGradModel, ctx.get(), {A.get(), B.get()},
-               absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  TF_Tensor* dA_tensor;
-  s = getValue(outputs[0], &dA_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-  
-  float result_data[4] = {0};
-  memcpy(&result_data[0], TF_TensorData(dA_tensor), TF_TensorByteSize(dA_tensor));
-  
-  float expected_dA [4] =  {-.5f, 2.0f, -.5f, 2.0f}; 
-  float tolerance = 1e-3;
-  for(int j = 0; j < 4; j++){
-    ASSERT_NEAR(result_data[j], expected_dA[j], tolerance);
-  }  
-
-  outputs[0]->Release();
-  outputs[1]->Release();
-  TF_DeleteTensor(dA_tensor);
-}
-
-// Computes
-// y = inputs[0] * inputs[1]
-// return grad(y, {inputs[0], inputs[1]})
-Status MatMulGradModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch x.
-  tape->Watch(ToId(inputs[1]));  // Watch y.
-  std::vector<AbstractTensorHandle*> mm_outputs(1);
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, inputs, absl::MakeSpan(mm_outputs), 
-      "matmul0", /*transpose_a=*/false, /*transpose_b=*/false, registry));  // Compute x*y.
-  
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(mm_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
-  for (auto mm_output : mm_outputs) {
-    mm_output->Release();
-  }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
-  delete tape;
-  return Status::OK();
-}
-
-
-// TODO: fix graph mode test by using RunModel to verify
-TEST_P(CppGradients, TestMatMulGrad) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  AbstractContextPtr ctx;
-  {
-    AbstractContext* ctx_raw = nullptr;
-    Status s =
-        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    ctx.reset(ctx_raw);
-  }
-
-  float A_vals [] = {1.0f, 2.0f, 3.0f, 4.0f};
-  int64_t A_dims [] = {2, 2};
-  float B_vals [] = {.5f, -1.0f, 1.0f, 1.0f}; 
-  int64_t B_dims [] = {2, 2};
-  int num_dims = 2;
-  
-  AbstractTensorHandlePtr A = getMatrixTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
-  AbstractTensorHandlePtr B = getMatrixTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
-  
-  GradientRegistry registry;
-  Status s = RegisterGradientMatMul(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  // Pseudo-code:
-  //
-  // tape.watch(A)
-  // tape.watch(B)
-  // Y = AB
-  // outputs = tape.gradient(Y, [A, B])
-  std::vector<AbstractTensorHandle*> outputs(2);
-  // s = RunModel(MatMulGradModel, ctx.get(), {A.get(), B.get()},
-  //              absl::MakeSpan(outputs),
-  //              /*use_function=*/!std::get<2>(GetParam()), registry);
-  // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  s = MatMulGradModel(ctx.get(), {A.get(), B.get()}, absl::MakeSpan(outputs), registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  // s = MatMulGradModel(ctx.get(), {A.get(), B.get()}, absl::MakeSpan(outputs), registry);
-  // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  TF_Tensor* dA_tensor;
-  s = getValue(outputs[0], &dA_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-  
-  float result_data[4] = {0};
-  memcpy(&result_data[0], TF_TensorData(dA_tensor), TF_TensorByteSize(dA_tensor));
-  
-  float expected_dA [4] =  {-.5f, 2.0f, -.5f, 2.0f}; 
-  float tolerance = 1e-3;
-  for(int j = 0; j < 4; j++){
-    ASSERT_NEAR(result_data[j], expected_dA[j], tolerance);
-  }  
-
-  outputs[0]->Release();
-  outputs[1]->Release();
-  TF_DeleteTensor(dA_tensor);
 }
 
 TEST_P(CppGradients, TestMNISTForward) {
@@ -551,8 +364,8 @@ TEST_P(CppGradients, TestMNISTForward) {
     ASSERT_NEAR(result_data[j], expected_losses[j], tolerance);
   }
 
-  outputs[0]->Release();
-  outputs[1]->Release();
+  outputs[0]->Unref();
+  outputs[1]->Unref();
   TF_DeleteTensor(scores_tensor);
   TF_DeleteTensor(loss_vals_tensor);
 }
@@ -628,37 +441,12 @@ TEST_P(CppGradients, TestMNISTForward2) {
     ASSERT_NEAR(result_data[j], expected_losses[j], tolerance);
   }
 
-  outputs[0]->Release();
-  outputs[1]->Release();
+  outputs[0]->Unref();
+  outputs[1]->Unref();
   TF_DeleteTensor(scores_tensor);
   TF_DeleteTensor(loss_vals_tensor);
 }
 
-// Test Model to see if transpose attributes are working
-Status MatMulTransposeModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  
-  AbstractTensorHandle* X = inputs[0];
-  AbstractTensorHandle* W1 = inputs[1];
- 
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(X));
-  tape->Watch(ToId(W1));  // Watch W1.
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
-
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {X, W1}, absl::MakeSpan(temp_outputs),
-                     "matmul0",/*transpose_a=*/true,/*transpose_b=*/false, registry));  // Compute X*W1
-
-  outputs[0] =  temp_outputs[0];
-
-  delete tape;
-  return Status::OK();
-}
-
-// TODO: fix graph mode test by using RunModel to verify
 TEST_P(CppGradients, TestMatMulTranspose) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -707,8 +495,7 @@ TEST_P(CppGradients, TestMatMulTranspose) {
 
   float expected_scores[6] = {13.0f, 18.0f, 17.0f, 24.0f, 21.0f, 30.0f};
   float tolerance = 1e-3;
-
-  for(int j = 0; j < 6; j++){
+  for (int j = 0; j < 6; j++) {
     ASSERT_NEAR(result_data[j], expected_scores[j], tolerance);
   }
 }
@@ -734,7 +521,7 @@ TEST_P(CppGradients, TestReluGrad) {
       getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
   GradientRegistry registry;
-  Status s = RegisterGradientRelu(&registry);
+  Status s = RegisterGradients(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   /* Pseudo-code:
@@ -762,7 +549,7 @@ TEST_P(CppGradients, TestReluGrad) {
     ASSERT_NEAR(result_data[j], expected_dX[j], tolerance);
   }
 
-  outputs[0]->Release();
+  outputs[0]->Unref();
   TF_DeleteTensor(dX_tensor);
 }
 
@@ -794,7 +581,7 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
       getMatrixTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
 
   GradientRegistry registry;
-  Status s = RegisterGradientSparseSoftmaxCrossEntropyLoss(&registry);
+  Status s = RegisterGradients(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   /* Pseudo-code:
@@ -829,8 +616,8 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
     ASSERT_NEAR(result_data[j], expected_dX[j], tolerance);
   }
 
-  outputs[0]->Release();
-  outputs[1]->Release();
+  outputs[0]->Unref();
+  outputs[1]->Unref();
   TF_DeleteTensor(dX_tensor);
 }
 
@@ -873,9 +660,7 @@ TEST_P(CppGradients, TestMNISTGrad) {
 
   // Register Grads
   GradientRegistry registry;
-  Status s = RegisterGradientMatMul(&registry);
-  s = RegisterGradientRelu(&registry);
-  s = RegisterGradientSparseSoftmaxCrossEntropyLoss(&registry);
+  Status s = RegisterGradients(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   /* Pseudo-code:
@@ -924,9 +709,9 @@ TEST_P(CppGradients, TestMNISTGrad) {
     ASSERT_NEAR(result_data[j], expected_dW2[j], tolerance);
   }
 
-  outputs[0]->Release();
-  outputs[1]->Release();
-  outputs[2]->Release();
+  outputs[0]->Unref();
+  outputs[1]->Unref();
+  outputs[2]->Unref();
   TF_DeleteTensor(dW1_tensor);
   TF_DeleteTensor(dW2_tensor);
 }
@@ -980,7 +765,7 @@ TEST_P(CppGradients, TestScalarMul) {
     ASSERT_NEAR(result_data[j], eta_val * A_vals[j], tolerance);
   }
 
-  outputs[0]->Release();
+  outputs[0]->Unref();
   TF_DeleteTensor(dA_tensor);
 }
 
@@ -1024,9 +809,7 @@ TEST_P(CppGradients, TestMNIST_Training) {
 
   // Register Grads
   GradientRegistry registry;
-  Status s = RegisterGradientMatMul(&registry);
-  s = RegisterGradientRelu(&registry);
-  s = RegisterGradientSparseSoftmaxCrossEntropyLoss(&registry);
+  Status s = RegisterGradients(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Prepare for training
@@ -1040,7 +823,7 @@ TEST_P(CppGradients, TestMNIST_Training) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Train
-  int num_iters = 100;
+  int num_iters = 10;
   std::vector<AbstractTensorHandle*> mnist_outputs(3);
   std::vector<AbstractTensorHandle*> grads(2);
   for (int i = 0; i < num_iters; i++) {
@@ -1075,9 +858,9 @@ TEST_P(CppGradients, TestMNIST_Training) {
     TF_DeleteTensor(loss_tensor);
   }
 
-  grads[0]->Release();
-  grads[1]->Release();
-  mnist_outputs[2]->Release();
+  grads[0]->Unref();
+  grads[1]->Unref();
+  mnist_outputs[2]->Unref();
 }
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
