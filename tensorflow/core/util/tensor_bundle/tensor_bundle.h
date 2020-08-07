@@ -182,28 +182,28 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
 // All threads accessing the same BundleReader must synchronize.
 class BundleReader {
  public:
-  BundleReader(Env* const env, StringPiece prefix);
-  ~BundleReader();
+  TF_EXPORT BundleReader(Env* const env, StringPiece prefix);
+  TF_EXPORT ~BundleReader();
 
   // Is ok() iff the reader construction is successful (completed the read of
   // the metadata).
-  Status status() const { return status_; }
+  TF_EXPORT Status status() const { return status_; }
 
   // Queries whether the bundle contains an entry keyed by "key".  Calls Seek()
   // internally, so this call invalidates the reader's current position.
   // REQUIRES: status().ok()
-  bool Contains(StringPiece key);
+  TF_EXPORT bool Contains(StringPiece key);
 
   // Looks up the dtype and the shape of the tensor keyed by "key".
   // REQUIRES: status().ok()
-  Status LookupDtypeAndShape(StringPiece key, DataType* dtype,
-                             TensorShape* shape) TF_MUST_USE_RESULT;
+  TF_EXPORT Status LookupDtypeAndShape(StringPiece key, DataType* dtype,
+                                       TensorShape* shape) TF_MUST_USE_RESULT;
 
   // Looks up the shape of the tensor keyed by "key".
   // Clears "shape" if not found.
   // REQUIRES: status().ok()
-  Status LookupTensorShape(StringPiece key,
-                           TensorShape* shape) TF_MUST_USE_RESULT;
+  TF_EXPORT Status LookupTensorShape(StringPiece key,
+                                     TensorShape* shape) TF_MUST_USE_RESULT;
 
   // Looks up the tensor keyed by "key".  If "key" refers to a partitioned
   // tensor, attempts to look up the full contents using all stored slices.
@@ -217,7 +217,7 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok()
-  Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
+  TF_EXPORT Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
 
   // Looks up the tensor pointed to by the internal iterator.
   //
@@ -225,7 +225,7 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok() && Valid()
-  Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
+  TF_EXPORT Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
 
   // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
   // is non-empty if and only if the tensor is a partitioned tensor.
@@ -234,34 +234,35 @@ class BundleReader {
   // a slice with a larger start index in some dimension could come before
   // another slice with a smaller start index in the same dimension.
   // REQUIRES: status().ok()
-  Status LookupTensorSlices(StringPiece key, std::vector<TensorSlice>* slices)
-      TF_MUST_USE_RESULT;
+  TF_EXPORT Status LookupTensorSlices(
+      StringPiece key, std::vector<TensorSlice>* slices) TF_MUST_USE_RESULT;
 
   // Looks up a specific slice of a partitioned tensor.
   // It is only required that the stored slices cover the requested slice,
   // namely "slice_spec" is a subset of the union of the stored slices.
   // REQUIRES: status().ok()
-  Status LookupSlice(StringPiece full_tensor_key, const TensorSlice& slice_spec,
-                     Tensor* val) TF_MUST_USE_RESULT;
+  TF_EXPORT Status LookupSlice(StringPiece full_tensor_key,
+                               const TensorSlice& slice_spec,
+                               Tensor* val) TF_MUST_USE_RESULT;
 
   // Seeks to the first position in the bundle whose key is no less than "key".
   // REQUIRES: status().ok()
-  void Seek(StringPiece key) { return iter_->Seek(key); }
+  TF_EXPORT void Seek(StringPiece key) { return iter_->Seek(key); }
   // Moves to the next position in the bundle.
   // REQUIRES: status().ok()
-  void Next() const { iter_->Next(); }
+  TF_EXPORT void Next() const { iter_->Next(); }
   // Returns true iff the reader is positioned to a key/val pair.
   // REQUIRES: status().ok()
-  bool Valid() const { return iter_->Valid(); }
+  TF_EXPORT bool Valid() const { return iter_->Valid(); }
 
   // Returns the key at the current position.
   // REQUIRES: status().ok() && Valid()
-  StringPiece key() const { return iter_->key(); }
+  TF_EXPORT StringPiece key() const { return iter_->key(); }
   // Returns the raw value at the current position.
   // REQUIRES: status().ok() && Valid()
-  StringPiece value() const { return iter_->value(); }
+  TF_EXPORT StringPiece value() const { return iter_->value(); }
 
-  string DebugString();
+  TF_EXPORT string DebugString();
 
  private:
   // Seeks for "key" and reads the metadata proto.
