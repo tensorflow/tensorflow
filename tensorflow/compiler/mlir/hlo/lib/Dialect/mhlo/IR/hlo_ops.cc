@@ -748,10 +748,12 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
 
     auto dimSize = operandType.getDimSize(i);
     auto resultDimSize = resultType.getDimSize(dimIndex);
-    if (dimSize != 1 && dimSize != resultDimSize) {
+    // Note: verifyCompatibleShapes doesn't consider size-1 broadcasting, so we
+    // add a manual check for this.
+    if (dimSize != 1 && failed(verifyCompatibleShape(dimSize, resultDimSize))) {
       return op.emitOpError(
-          llvm::formatv("size of operand dimension {0} ({1}) is not equal to "
-                        "1 or size of result dimension {2} ({3})",
+          llvm::formatv("size of operand dimension {0} ({1}) is not compatible "
+                        "with size of result dimension {2} ({3})",
                         i, dimSize, dimIndex, resultDimSize));
     }
   }
