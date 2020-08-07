@@ -69,6 +69,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
       raise ValueError('variable must be a floating point variable but has '
                        'type: %s' % variable.dtype.name)
     self._variable = variable
+    self._op = None
 
   def _should_cast(self):
     """Returns True if this variable should be casted when accessed."""
@@ -196,7 +197,10 @@ class AutoCastVariable(variables.Variable, core.Tensor):
                            read_value=True):
     if ops.executing_eagerly_outside_functions():
       assign_op = update_fn(value, use_locking, name, False)
-      return self if read_value else assign_op
+      if read_value:
+        self._op = assign_op
+        return self
+      return assign_op
 
     # Fallback to wrapping the returned variable in graph mode if possible
     assign_var = update_fn(value, use_locking, name, read_value)
@@ -291,7 +295,15 @@ class AutoCastVariable(variables.Variable, core.Tensor):
 
   @property
   def op(self):
+    if self._op is not None:
+      return self._op
     return self._variable.op
+
+  def _as_graph_element(self):
+    graph_element = self._variable._as_graph_element()  # pylint:disable=protected-access
+    if graph_element is None:
+      return self._op
+    return graph_element
 
   @property
   def graph(self):
