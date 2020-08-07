@@ -199,13 +199,14 @@ class MirroredStrategy(distribute_lib.Strategy):
   will use the available CPUs. Note that TensorFlow treats all CPUs on a
   machine as a single device, and uses threads internally for parallelism.
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> with strategy.scope():
   ...   x = tf.Variable(1.)
   >>> x
   MirroredVariable:{
-      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
-    }
+    0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
+    1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
+  }
 
   While using distribution strategies, all the variable creation should be done
   within the strategy's scope. This will replicate the variables across all the
@@ -219,13 +220,15 @@ class MirroredStrategy(distribute_lib.Strategy):
   ... def create_variable():
   ...   if not x:
   ...     x.append(tf.Variable(1.))
-  >>> strategy = tf.distribute.MirroredStrategy()
+  ...   return x[0]
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> with strategy.scope():
-  ...   create_variable()
-  ...   print (x[0])
+  ...   _ = create_variable()
+  ...   print(x[0])
   MirroredVariable:{
-      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
-    }
+    0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
+    1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
+  }
 
   `experimental_distribute_dataset` can be used to distribute the dataset across
   the replicas when writing your own training loop. If you are using `.fit` and
@@ -315,6 +318,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # TODO(b/128995245): Enable last partial batch support in graph mode.
     if ops.executing_eagerly_outside_functions():
       self.experimental_enable_get_next_as_optional = True
+
+    # Flag to turn on VariablePolicy.
+    self._use_var_policy = False
 
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
@@ -459,7 +465,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     return distribute_utils.create_mirrored_variable(
         self._container_strategy(), _real_mirrored_creator,
-        values.MirroredVariable, values.SyncOnReadVariable, **kwargs)
+        distribute_utils.VARIABLE_CLASS_MAPPING,
+        distribute_utils.VARIABLE_POLICY_MAPPING, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils.validate_colocate_distributed_variable(
@@ -625,10 +632,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return self._cross_device_ops or self._inferred_cross_device_ops
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    if (isinstance(value, values.Mirrored) and
+    if (distribute_utils.is_mirrored(value) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
-    assert not isinstance(value, values.Mirrored)
+    assert not distribute_utils.is_mirrored(value)
     if not isinstance(value, values.DistributedValues):
       # This function handles reducing values that are not PerReplica or
       # Mirrored values. For example, the same value could be present on all
@@ -683,10 +690,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
-    if isinstance(replica_local_var, values.SyncOnReadVariable):
-      return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
-    assert isinstance(replica_local_var, values.Mirrored)
-    return array_ops.identity(replica_local_var._get())  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if distribute_utils.is_sync_on_read(replica_local_var):
+      return replica_local_var._get_cross_replica()
+    assert distribute_utils.is_mirrored(replica_local_var)
+    return array_ops.identity(replica_local_var._get())
+    # pylint: enable=protected-access
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):

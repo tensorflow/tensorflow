@@ -118,6 +118,33 @@ bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
 }
 
+const tensorflow::tpu::TpuTopologyPtr TpuPlatform::GetTopologyPtr() {
+  return tpu::ExecutorApiFn()->TpuPlatform_GetTopologyPtrFn(platform_);
+}
+
+const tensorflow::tpu::TpuHostLocationExternal TpuPlatform::GetTpuHostLocation()
+    const {
+  return tpu::TpuHostLocationExternal(
+      tpu::ExecutorApiFn()->TpuPlatform_GetHostLocationFn(platform_));
+}
+
+void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
+                              SE_Event* val) {
+  tensorflow::mutex_lock lock(event_map_mu_);
+  event_map_[key] = val;
+}
+
+SE_Event* TpuPlatform::LookupEvent(
+    stream_executor::internal::EventInterface* key) {
+  tensorflow::tf_shared_lock lock(event_map_mu_);
+  return event_map_.at(key);
+}
+
+void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
+  tensorflow::mutex_lock lock(event_map_mu_);
+  event_map_.erase(key);
+}
+
 Status TpuPlatform::TpusPerHost(int* tpus) {
   TF_Status* status = TF_NewStatus();
   tpu::ConfigApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
@@ -129,7 +156,7 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
 Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
   TF_Status* status = TF_NewStatus();
   tpu::ConfigApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
-      reinterpret_cast<int64_t*>(&memory_limit), status);
+      reinterpret_cast<int64_t*>(memory_limit), status);
   auto ret_status = StatusFromTF_Status(status);
   TF_DeleteStatus(status);
   return ret_status;

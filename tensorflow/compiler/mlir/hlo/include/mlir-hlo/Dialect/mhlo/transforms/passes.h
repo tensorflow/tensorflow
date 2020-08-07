@@ -23,13 +23,14 @@ limitations under the License.
 namespace mlir {
 
 class FuncOp;
+class FunctionPass;
 class ModuleOp;
 class Operation;
 template <typename T>
 class OperationPass;
 class Pass;
 
-namespace xla_hlo {
+namespace mhlo {
 
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
@@ -55,21 +56,29 @@ std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 
-// fuse xla_hlo ops to kLoop/kInput fusion patterns
-std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusionPass();
+// fuse mhlo ops to kLoop/kInput fusion patterns
+std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 
-}  // namespace xla_hlo
+/// Lowers the standard TanhOp to an approximation that does not use intrinsics.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTanhToApproximationPass();
 
-namespace xla_lhlo {
+std::unique_ptr<FunctionPass> createOptimizeMhloPass();
+std::unique_ptr<FunctionPass> createLowerComplexPass();
+std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
+std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass();
+
+}  // namespace mhlo
+
+namespace lmhlo {
 
 // Lowers from LHLO dialect to Affine dialect.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToAffinePass();
+std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass();
 
 // Lowers from LHLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass();
 
 // Lowers from LHLO dialect to GPU dialect.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass();
+std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
 
 // Fuses linalg ops obtained after LHLO lowering. To enable fusion,
 // operations are first tiled.
@@ -80,7 +89,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass();
 // 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
 // operation has more dimensions than tile sizes provided, 1 is used as
 // default.
-std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalg(
+std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
     bool use_parallel_loops = false, llvm::ArrayRef<unsigned> tile_sizes = {});
 
 // Removes unnecessary LHLO copies which copy from the allocated buffers to the
@@ -92,14 +101,8 @@ std::unique_ptr<Pass> createLhloCopyRemovalPass();
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 
-namespace xla {
-
-/// Lowers the standard TanhOp to an approximation that does not use intrinsics.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTanhToApproximationPass();
-
-}  // namespace xla
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_

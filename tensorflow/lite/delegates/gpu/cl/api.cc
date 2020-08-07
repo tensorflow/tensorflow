@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 
-#include <EGL/eglext.h>
+#ifndef CL_DELEGATE_NO_GL
+#define CL_DELEGATE_ALLOW_GL
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -25,9 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
-#include "tensorflow/lite/delegates/gpu/cl/egl_sync.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
-#include "tensorflow/lite/delegates/gpu/cl/gl_interop.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
@@ -38,6 +38,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+
+#ifdef CL_DELEGATE_ALLOW_GL
+#include <EGL/eglext.h>
+
+#include "tensorflow/lite/delegates/gpu/cl/egl_sync.h"
+#include "tensorflow/lite/delegates/gpu/cl/gl_interop.h"
+#endif
 
 namespace tflite {
 namespace gpu {
@@ -87,11 +94,13 @@ class DefaultTensorTie : public TensorTie {
       const TensorTieDef& def,
       const TensorObjectConverterBuilder& converter_builder) {
     auto object_type = def.external_def.object_def.object_type;
+#ifdef CL_DELEGATE_ALLOW_GL
     if (def.external_def.object_def.user_provided &&
         GlClBufferCopier::IsSupported(def.external_def.object_def,
                                       def.internal_def.object_def)) {
       return true;
     }
+#endif
     return (object_type == ObjectType::OPENCL_BUFFER ||
             object_type == ObjectType::OPENCL_TEXTURE ||
             object_type == ObjectType::CPU_MEMORY) &&
@@ -138,6 +147,7 @@ class DefaultTensorTie : public TensorTie {
  private:
   absl::Status Init(TensorObjectConverterBuilder* converter_builder,
                     Environment* env) {
+#ifdef CL_DELEGATE_ALLOW_GL
     if (def().external_def.object_def.user_provided &&
         GlClBufferCopier::IsSupported(def().external_def.object_def,
                                       def().internal_def.object_def)) {
@@ -156,6 +166,12 @@ class DefaultTensorTie : public TensorTie {
       RETURN_IF_ERROR(converter_builder->MakeConverter(
           def().internal_def, def().external_def, &converter_to_));
     }
+#else
+    RETURN_IF_ERROR(converter_builder->MakeConverter(
+        def().external_def, def().internal_def, &converter_from_));
+    RETURN_IF_ERROR(converter_builder->MakeConverter(
+        def().internal_def, def().external_def, &converter_to_));
+#endif
     return MaybeAllocateExternalObject(env);
   }
 
@@ -275,6 +291,7 @@ class TwoStepTensorTie : public TensorTie {
   std::unique_ptr<TensorTie> outer_tie_;
 };
 
+#ifdef CL_DELEGATE_ALLOW_GL
 // Captures GL object into CL context before performing a conversion.
 class GlBufferHolder : public TensorTie {
  public:
@@ -351,6 +368,7 @@ class GlBufferHolder : public TensorTie {
   std::unique_ptr<TensorTie> tie_;
   TensorObject external_obj_;
 };
+#endif
 
 TensorObject TensorToObj(const Tensor& tensor) {
   if (tensor.GetStorageType() == TensorStorageType::BUFFER) {
@@ -365,19 +383,28 @@ TensorObject TensorToObj(const Tensor& tensor) {
 // Responsible for creating new tensor objects.
 class TensorTieFactory {
  public:
-  TensorTieFactory(Environment* env, InferenceContext* context,
-                   GlInteropFabric* gl_interop_fabric)
+  TensorTieFactory(Environment* env, InferenceContext* context
+#ifdef CL_DELEGATE_ALLOW_GL
+                   ,
+                   GlInteropFabric* gl_interop_fabric
+#endif
+                   )
       : env_(*env),
         context_(*context),
+#ifdef CL_DELEGATE_ALLOW_GL
         gl_interop_fabric_(gl_interop_fabric),
-        converter_builder_(NewConverterBuilder(env)) {}
+#endif
+        converter_builder_(NewConverterBuilder(env)) {
+  }
 
   bool IsSupported(const TensorTieDef& def) const {
     return IsValid(def.external_def.object_def) &&
            (NoopTensorTie::IsSupported(def) ||
             DefaultTensorTie::IsSupported(def, *converter_builder_) ||
+#ifdef CL_DELEGATE_ALLOW_GL
             (gl_interop_fabric_ &&
              GlBufferHolder::IsSupported(def, *converter_builder_)) ||
+#endif
             TwoStepTensorTie::IsSupported(def, *converter_builder_));
   }
 
@@ -392,10 +419,12 @@ class TensorTieFactory {
     if (DefaultTensorTie::IsSupported(def, *converter)) {
       return DefaultTensorTie::New(def, internal_object, converter, &env_, tie);
     }
+#ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_ && GlBufferHolder::IsSupported(def, *converter)) {
       return GlBufferHolder::New(def, internal_object, converter,
                                  gl_interop_fabric_, &env_, tie);
     }
+#endif
     if (TwoStepTensorTie::IsSupported(def, *converter)) {
       return TwoStepTensorTie::New(def, internal_object, converter, &env_, tie);
     }
@@ -405,18 +434,29 @@ class TensorTieFactory {
  private:
   Environment& env_;
   InferenceContext& context_;
+#ifdef CL_DELEGATE_ALLOW_GL
   GlInteropFabric* gl_interop_fabric_;
+#endif
   std::unique_ptr<TensorObjectConverterBuilder> converter_builder_;
 };
 
 class InferenceRunnerImpl : public InferenceRunner {
  public:
   InferenceRunnerImpl(Environment* environment,
-                      std::unique_ptr<InferenceContext> context,
-                      std::unique_ptr<GlInteropFabric> gl_interop_fabric)
+                      std::unique_ptr<InferenceContext> context
+#ifdef CL_DELEGATE_ALLOW_GL
+                      ,
+                      std::unique_ptr<GlInteropFabric> gl_interop_fabric
+#endif
+                      )
       : queue_(environment->queue()),
-        context_(std::move(context)),
-        gl_interop_fabric_(std::move(gl_interop_fabric)) {}
+        context_(std::move(context))
+#ifdef CL_DELEGATE_ALLOW_GL
+        ,
+        gl_interop_fabric_(std::move(gl_interop_fabric))
+#endif
+  {
+  }
 
   absl::Status Initialize(const std::vector<TensorTieDef>& inputs,
                           const std::vector<TensorTieDef>& outputs,
@@ -451,22 +491,24 @@ class InferenceRunnerImpl : public InferenceRunner {
 
   absl::Status SetInputObject(int index, TensorObject object) override {
     if (index < 0 || index >= inputs_.size()) {
-      return absl::OutOfRangeError("Index is out of range");
+      return absl::OutOfRangeError("Input index is out of range");
     }
     return inputs_[index]->SetExternalObject(object);
   }
 
   absl::Status SetOutputObject(int index, TensorObject object) override {
     if (index < 0 || index >= outputs_.size()) {
-      return absl::OutOfRangeError("Index is out of range");
+      return absl::OutOfRangeError("Output index is out of range");
     }
     return outputs_[index]->SetExternalObject(object);
   }
 
   absl::Status Run() override {
+#ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Start());
     }
+#endif
     for (auto& obj : inputs_) {
       RETURN_IF_ERROR(obj->CopyFromExternalObject());
     }
@@ -475,9 +517,11 @@ class InferenceRunnerImpl : public InferenceRunner {
     for (auto& obj : outputs_) {
       RETURN_IF_ERROR(obj->CopyToExternalObject());
     }
+#ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Finish());
     }
+#endif
     return absl::OkStatus();
   }
 
@@ -506,7 +550,9 @@ class InferenceRunnerImpl : public InferenceRunner {
 
   CLCommandQueue* queue_;
   std::unique_ptr<InferenceContext> context_;
+#ifdef CL_DELEGATE_ALLOW_GL
   std::unique_ptr<GlInteropFabric> gl_interop_fabric_;
+#endif
   std::vector<std::unique_ptr<TensorTie>> inputs_;
   std::vector<std::unique_ptr<TensorTie>> outputs_;
 };
@@ -542,6 +588,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
+#ifdef CL_DELEGATE_ALLOW_GL
     if (env_options.IsGlAware() &&
         IsGlSharingSupported(environment_->device())) {
       gl_interop_fabric_ = absl::make_unique<GlInteropFabric>(
@@ -549,6 +596,10 @@ class InferenceBuilderImpl : public InferenceBuilder {
     }
     tie_factory_ = absl::make_unique<TensorTieFactory>(
         environment_, context_.get(), gl_interop_fabric_.get());
+#else
+    tie_factory_ =
+        absl::make_unique<TensorTieFactory>(environment_, context_.get());
+#endif
 
     inputs_ = LinkTensors(graph, graph.inputs());
     outputs_ = LinkTensors(graph, graph.outputs());
@@ -572,13 +623,13 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
   absl::Status SetInputObjectDef(int index, ObjectDef new_def) override {
     if (index < 0 || index >= inputs_.size()) {
-      return absl::OutOfRangeError("Index is out of range");
+      return absl::OutOfRangeError("Input index is out of range");
     }
     auto def = inputs_[index];
     def.external_def.object_def = new_def;
     if (!tie_factory_->IsSupported(def)) {
       return absl::InvalidArgumentError(
-          "New object definition is not supported.");
+          "New input object definition is not supported.");
     }
     inputs_[index] = def;
     return absl::OkStatus();
@@ -586,19 +637,20 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
   absl::Status SetOutputObjectDef(int index, ObjectDef new_def) override {
     if (index < 0 || index >= outputs_.size()) {
-      return absl::OutOfRangeError("Index is out of range");
+      return absl::OutOfRangeError("Output index is out of range");
     }
     auto def = outputs_[index];
     def.external_def.object_def = new_def;
     if (!tie_factory_->IsSupported(def)) {
       return absl::InvalidArgumentError(
-          "New object definition is not supported.");
+          "New output object definition is not supported.");
     }
     outputs_[index] = def;
     return absl::OkStatus();
   }
 
   absl::Status Build(std::unique_ptr<InferenceRunner>* runner) override {
+#ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_ && !HasGlObjects()) {
       // destroy interop layer when there are no GL objects to avoid
       // extra synchronization cost.
@@ -606,6 +658,10 @@ class InferenceBuilderImpl : public InferenceBuilder {
     }
     auto runner_impl = absl::make_unique<InferenceRunnerImpl>(
         environment_, std::move(context_), std::move(gl_interop_fabric_));
+#else
+    auto runner_impl = absl::make_unique<InferenceRunnerImpl>(
+        environment_, std::move(context_));
+#endif
     RETURN_IF_ERROR(
         runner_impl->Initialize(inputs_, outputs_, tie_factory_.get()));
     *runner = std::move(runner_impl);
@@ -676,6 +732,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   bool HasGlObjects() const {
+#ifdef CL_DELEGATE_ALLOW_GL
     auto is_gl = [](ObjectType t) {
       return t == ObjectType::OPENGL_SSBO || t == ObjectType::OPENGL_TEXTURE;
     };
@@ -689,6 +746,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
         return true;
       }
     }
+#endif
     return false;
   }
 
@@ -703,7 +761,9 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   std::unique_ptr<InferenceContext> context_;
+#ifdef CL_DELEGATE_ALLOW_GL
   std::unique_ptr<GlInteropFabric> gl_interop_fabric_;
+#endif
   Environment* environment_;
 
   std::vector<TensorTieDef> inputs_;
@@ -730,20 +790,25 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
       RETURN_IF_ERROR(CreateDefaultGPUDevice(&device));
     }
 
+#ifdef CL_DELEGATE_ALLOW_GL
     properties_.is_gl_sharing_supported = IsGlSharingSupported(device);
     properties_.is_gl_to_cl_fast_sync_supported =
         IsClEventFromEglSyncSupported(device);
     properties_.is_cl_to_gl_fast_sync_supported =
         IsEglSyncFromClEventSupported();
+#endif
 
     CLContext context;
     if (options_.context) {
+#ifdef CL_DELEGATE_ALLOW_GL
       if (options_.IsGlAware()) {
         return absl::InvalidArgumentError(
             "OpenCL context and EGL parameters are set in the same time.");
       }
+#endif
       context = CLContext(options_.context, /* has_ownership = */ false);
     } else {
+#ifdef CL_DELEGATE_ALLOW_GL
       if (options_.IsGlAware() && properties_.is_gl_sharing_supported) {
         RETURN_IF_ERROR(CreateCLGLContext(
             device,
@@ -753,6 +818,9 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
       } else {
         RETURN_IF_ERROR(CreateCLContext(device, &context));
       }
+#else
+      RETURN_IF_ERROR(CreateCLContext(device, &context));
+#endif
     }
 
     CLCommandQueue queue;

@@ -41,10 +41,13 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/abstract_stack_trace.h"
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/util/stack_trace.h"
 #include "tensorflow/python/util/util.h"
 
 using tensorflow::string;
@@ -854,9 +857,13 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TF_Status* out_status) {
   tensorflow::profiler::TraceMe activity(
       "TFE_Py_ExecuteCancelable", tensorflow::profiler::TraceMeLevel::kInfo);
+
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
+
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
+
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace());
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -868,17 +875,22 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
     SetOpAttrs(ctx, op, attrs, 0, out_status);
   }
   Py_BEGIN_ALLOW_THREADS;
+
+  int num_outputs = outputs->size();
+
   if (out_status->status.ok()) {
-    int num_outputs = outputs->size();
     TFE_Execute(op, outputs->data(), &num_outputs, out_status);
-    outputs->resize(num_outputs);
   }
-  if (!out_status->status.ok()) {
+
+  if (out_status->status.ok()) {
+    outputs->resize(num_outputs);
+  } else {
     TF_SetStatus(out_status, TF_GetCode(out_status),
                  tensorflow::strings::StrCat(TF_Message(out_status),
                                              " [Op:", op_name, "]")
                      .c_str());
   }
+
   Py_END_ALLOW_THREADS;
 }
 
@@ -965,14 +977,54 @@ void RaiseFallbackException(const char* message) {
           .data());
 }
 
+// Format and return `status`' error message with the attached stack trace if
+// available. `status` must have an error.
+std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
+  tensorflow::DCheckPyGilState();
+  DCHECK(!status.ok());
+
+  if (status.stack_trace().empty()) return status.error_message();
+
+  const std::vector<tensorflow::StackFrame>& stack_trace = status.stack_trace();
+
+  PyObject* linecache = PyImport_ImportModule("linecache");
+  PyObject* getline =
+      PyObject_GetAttr(linecache, PyUnicode_FromString("getline"));
+  DCHECK(getline);
+
+  std::ostringstream result;
+  result << "Exception originated from\n\n";
+
+  for (const tensorflow::StackFrame& stack_frame : stack_trace) {
+    PyObject* line_str_obj = PyObject_CallFunction(
+        getline, const_cast<char*>("si"), stack_frame.file_name.c_str(),
+        stack_frame.line_number);
+    tensorflow::StringPiece line_str = TFE_GetPythonString(line_str_obj);
+    tensorflow::str_util::RemoveWhitespaceContext(&line_str);
+    result << "  File \"" << stack_frame.file_name << "\", line "
+           << stack_frame.line_number << ", in " << stack_frame.function_name
+           << '\n';
+
+    if (!line_str.empty()) result << "    " << line_str << '\n';
+    Py_XDECREF(line_str_obj);
+  }
+
+  Py_DecRef(getline);
+  Py_DecRef(linecache);
+
+  result << '\n' << status.error_message();
+  return result.str();
+}
+
 int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   if (status->status.ok()) return 0;
   const char* msg = TF_Message(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
-      tensorflow::Safe_PyObjectPtr val(
-          Py_BuildValue("si", msg, TF_GetCode(status)));
+      tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
+          "si", FormatErrorStatusStackTrace(status->status).c_str(),
+          TF_GetCode(status)));
       if (PyErr_Occurred()) {
         // NOTE: This hides the actual error (i.e. the reason `status` was not
         // TF_OK), but there is nothing we can do at this point since we can't
@@ -998,7 +1050,8 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
-      tensorflow::Safe_PyObjectPtr val(Py_BuildValue("si", msg, status.code()));
+      tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
+          "si", FormatErrorStatusStackTrace(status).c_str(), status.code()));
       PyErr_SetObject(exception_class, val.get());
       return -1;
     } else {
@@ -1065,7 +1118,7 @@ static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
   }
   PyObject* enum_field = PyObject_GetAttrString(dtype_field, "_type_enum");
   Py_DECREF(dtype_field);
-  if (dtype_field == nullptr) {
+  if (enum_field == nullptr) {
     return tensorflow::DT_INVALID;
   }
   tensorflow::int64 id = MakeInt(enum_field);
@@ -2366,7 +2419,8 @@ tensorflow::Status ParseTangentOutputs(
 tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
                                    PyObject* inputs, PyObject* results,
                                    const std::vector<PyObject*>& input_tangents,
-                                   std::vector<PyObject*>* output_tangents) {
+                                   std::vector<PyObject*>* output_tangents,
+                                   bool use_batch) {
   if (forward_gradient_function == nullptr) {
     return tensorflow::errors::Internal(
         "No forward gradient function registered.");
@@ -2377,9 +2431,10 @@ tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
   // Normalize the input sequence to a tuple so it works with function
   // caching; otherwise it may be an opaque _InputList object.
   tensorflow::Safe_PyObjectPtr input_tuple(PySequence_Tuple(inputs));
+  PyObject* to_batch = (use_batch) ? Py_True : Py_False;
   tensorflow::Safe_PyObjectPtr callback_args(
-      Py_BuildValue("OOOOO", op_name, attrs, input_tuple.get(), results,
-                    py_input_tangents.get()));
+      Py_BuildValue("OOOOOO", op_name, attrs, input_tuple.get(), results,
+                    py_input_tangents.get(), to_batch));
   tensorflow::Safe_PyObjectPtr py_result(
       PyObject_CallObject(forward_gradient_function, callback_args.get()));
   if (py_result == nullptr || PyErr_Occurred()) {
@@ -2502,7 +2557,8 @@ PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
   } else {
     tensorflow::eager::ForwardFunction<PyObject> wrapped_forward_function(
         [forward_function](const std::vector<PyObject*>& input_tangents,
-                           std::vector<PyObject*>* output_tangents) {
+                           std::vector<PyObject*>* output_tangents,
+                           bool use_batch = false) {
           return CallOpSpecificJVPFunction(forward_function, input_tangents,
                                            output_tangents);
         });
@@ -2744,7 +2800,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   return PyList_New(0);
 }
 
-PyObject* TFE_Py_ForwardAccumulatorNew() {
+PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
   TFE_Py_ForwardAccumulator_Type.tp_new = PyType_GenericNew;
   if (PyType_Ready(&TFE_Py_ForwardAccumulator_Type) < 0) return nullptr;
   TFE_Py_ForwardAccumulator* accumulator =
@@ -2755,7 +2811,7 @@ PyObject* TFE_Py_ForwardAccumulatorNew() {
             "ForwardAccumulator requires a PyVSpace to be registered."),
         nullptr);
   }
-  accumulator->accumulator = new ForwardAccumulator(*py_vspace);
+  accumulator->accumulator = new ForwardAccumulator(*py_vspace, use_batch);
   return reinterpret_cast<PyObject*>(accumulator);
 }
 
@@ -3113,9 +3169,9 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   tensorflow::eager::ForwardFunction<PyObject> py_forward_function(
       [op_name, attrs, inputs, results](
           const std::vector<PyObject*>& input_tangents,
-          std::vector<PyObject*>* output_tangents) {
+          std::vector<PyObject*>* output_tangents, bool use_batch) {
         return CallJVPFunction(op_name, attrs, inputs, results, input_tangents,
-                               output_tangents);
+                               output_tangents, use_batch);
       });
   tensorflow::eager::ForwardFunction<PyObject>* forward_function;
   if (c_op_name == "While" || c_op_name == "StatelessWhile" ||
@@ -3522,6 +3578,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   }
 
   TFE_Op* op = GetOp(ctx, op_name, op_exec_info.device_name, status);
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace());
+
   auto cleaner = tensorflow::gtl::MakeCleanup([status, ctx, op] {
     ReturnStatus(status);
     ReturnOp(ctx, op);
@@ -3741,11 +3799,14 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (!status->status.ok()) {
     // Augment the status with the op_name for easier debugging similar to
     // TFE_Py_Execute.
-    TF_SetStatus(status, TF_GetCode(status),
-                 tensorflow::strings::StrCat(
-                     TF_Message(status),
-                     " [Op:", TFE_GetPythonString(op_exec_info.op_name), "]")
-                     .c_str());
+    std::vector<tensorflow::StackFrame> stack_trace =
+        status->status.stack_trace();
+    status->status = tensorflow::Status(
+        status->status.code(),
+        tensorflow::strings::StrCat(
+            TF_Message(status),
+            " [Op:", TFE_GetPythonString(op_exec_info.op_name), "]"),
+        std::move(stack_trace));
 
     MaybeRaiseExceptionFromTFStatus(status, nullptr);
     return nullptr;

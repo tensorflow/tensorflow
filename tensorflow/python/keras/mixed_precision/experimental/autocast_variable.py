@@ -62,7 +62,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
     Raises:
       ValueError: If `variable` is not a floating-point resource variable
     """
-    if not resource_variable_ops.is_resource_variable(variable):
+    if not isinstance(variable, variables.Variable):
       raise ValueError('variable must be of type tf.ResourceVariable, but got: '
                        '%s' % variable)
     if not variable.dtype.is_floating:
@@ -285,10 +285,10 @@ class AutoCastVariable(variables.Variable, core.Tensor):
     # models with normal variables, and vice versa.
     return self._variable._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
 
-  def _map_resources(self):
+  def _map_resources(self, save_options):
     # By delegating this method to the wrapped variable, SavedModel with
     # AutoCastVariables are identical to SavedModel with normal variables.
-    obj_map, resource_map = self._variable._map_resources()  # pylint:disable=protected-access
+    obj_map, resource_map = self._variable._map_resources(save_options)  # pylint:disable=protected-access
     obj_map[self] = obj_map[self._variable]
     return obj_map, resource_map
 

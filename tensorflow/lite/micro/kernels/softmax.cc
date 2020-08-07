@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -42,7 +43,8 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
       if (output->type == kTfLiteInt16) {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
-        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // NOTE: Current int16_t softmax output does not require symmetric
+        // scaling
         // - so no need to verify scale here.
       } else {
         TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
@@ -72,60 +74,75 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
 
 }  // namespace
 
+// Takes a tensor and performs softmax along the last dimension.
+void SoftmaxFloat(const TfLiteEvalTensor* input, TfLiteEvalTensor* output,
+                  const SoftmaxParams& op_data) {
+  tflite::reference_ops::Softmax(op_data, tflite::micro::GetTensorShape(input),
+                                 tflite::micro::GetTensorData<float>(input),
+                                 tflite::micro::GetTensorShape(output),
+                                 tflite::micro::GetTensorData<float>(output));
+}
+
+void SoftmaxQuantized(const TfLiteEvalTensor* input, TfLiteEvalTensor* output,
+                      const SoftmaxParams& op_data) {
+  if (input->type == kTfLiteUInt8) {
+    tflite::reference_ops::Softmax(
+        op_data, tflite::micro::GetTensorShape(input),
+        tflite::micro::GetTensorData<uint8_t>(input),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<uint8_t>(output));
+  } else {
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_ops::Softmax(
+          op_data, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int16_t>(output));
+    } else {
+      tflite::reference_ops::Softmax(
+          op_data, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int8_t>(output));
+    }
+  }
+}
+
+void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(SoftmaxParams));
+}
+
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
+  auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
+
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
-  return kTfLiteOk;
-}
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
-// Takes a tensor and performs softmax along the last dimension.
-void SoftmaxFloat(const TfLiteTensor* input, TfLiteTensor* output,
-                  const SoftmaxParams& op_data) {
-  tflite::reference_ops::Softmax(
-      op_data, GetTensorShape(input), GetTensorData<float>(input),
-      GetTensorShape(output), GetTensorData<float>(output));
-}
-
-void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                      const SoftmaxParams& op_data) {
-  if (input->type == kTfLiteUInt8) {
-    tflite::reference_ops::Softmax(
-        op_data, GetTensorShape(input), GetTensorData<uint8_t>(input),
-        GetTensorShape(output), GetTensorData<uint8_t>(output));
-  } else {
-    if (output->type == kTfLiteInt16) {
-      tflite::reference_ops::Softmax(
-          op_data, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int16_t>(output));
-    } else {
-      tflite::reference_ops::Softmax(
-          op_data, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
-    }
-  }
+  TFLITE_DCHECK(node->user_data != nullptr);
+  SoftmaxParams* data = static_cast<SoftmaxParams*>(node->user_data);
+  return CalculateSoftmaxParams(context, input, output, params, data);
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
-
-  SoftmaxParams op_data;
-  TF_LITE_ENSURE_STATUS(
-      CalculateSoftmaxParams(context, input, output, params, &op_data));
+  TFLITE_DCHECK(node->user_data != nullptr);
+  SoftmaxParams* data = static_cast<SoftmaxParams*>(node->user_data);
 
   switch (input->type) {
     case kTfLiteFloat32: {
-      SoftmaxFloat(input, output, op_data);
+      SoftmaxFloat(input, output, *data);
       return kTfLiteOk;
     }
     case kTfLiteInt8:
     case kTfLiteUInt8: {
-      SoftmaxQuantized(input, output, op_data);
+      SoftmaxQuantized(input, output, *data);
       return kTfLiteOk;
     }
     default:
@@ -137,10 +154,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration Register_SOFTMAX() {
-  // TODO(b/149408647): Once we remove AddBuiltin from MicroOpResolver and
-  // completely switch to the templated AddBuiltin from MicroMutableOpResolver,
-  // this struct no longer needs to be static and can be returned by value.
-  return {/*init=*/nullptr,
+  return {/*init=*/activations::SoftmaxInit,
           /*free=*/nullptr,
           /*prepare=*/activations::SoftmaxPrepare,
           /*invoke=*/activations::SoftmaxEval,

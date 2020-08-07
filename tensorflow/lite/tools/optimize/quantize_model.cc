@@ -931,6 +931,10 @@ TfLiteStatus QuantizeWeightsInputOutput(
     const std::unordered_set<string>& operator_names,
     const std::unordered_set<string>& real_value_op_set,
     const TensorType& activations_type, ErrorReporter* error_reporter) {
+  // Flag to track unsupported ops.
+  bool quantization_not_supported = false;
+
+  // Loop over the graph and quantize ops.
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -950,14 +954,14 @@ TfLiteStatus QuantizeWeightsInputOutput(
           !allow_float) {
         TF_LITE_REPORT_ERROR(
             error_reporter,
-            "Quantization to 16x8-bit not yet supported for op: %",
+            "Quantization to 16x8-bit not yet supported for op: '%s'.\n",
             EnumNameBuiltinOperator(op_code));
-        return kTfLiteError;
+        quantization_not_supported = true;
       } else if (!property.quantizable && !allow_float) {
         TF_LITE_REPORT_ERROR(error_reporter,
-                             "Quantization not yet supported for op: %",
+                             "Quantization not yet supported for op: '%s'.\n",
                              EnumNameBuiltinOperator(op_code));
-        return kTfLiteError;
+        quantization_not_supported = true;
       }
 
       // Quantize operator inputs/weights.
@@ -976,6 +980,11 @@ TfLiteStatus QuantizeWeightsInputOutput(
                              activations_type, error_reporter));
       }
     }
+  }
+
+  // Return; emit errors if there are any.
+  if (quantization_not_supported) {
+    return kTfLiteError;
   }
   return kTfLiteOk;
 }

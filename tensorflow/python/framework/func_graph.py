@@ -49,7 +49,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 
-WHITELIST_COLLECTIONS = [
+ALLOWLIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,
     ops.GraphKeys.LOCAL_VARIABLES,
     ops.GraphKeys.TRAINABLE_VARIABLES,
@@ -172,9 +172,9 @@ class FuncGraph(ops.Graph):
       name: the name of the function.
       collections: a dictionary of collections this FuncGraph should start
         with. If not specified (None), the FuncGraph will read (but not write
-        to) the outer graph's collections that are not whitelisted, and both
-        read and write to the outer graph's collections that are whitelisted.
-        The current whitelisted collections are the global variables, the
+        to) the outer graph's collections that are not allowlisted, and both
+        read and write to the outer graph's collections that are allowlisted.
+        The current allowlisted collections are the global variables, the
         local variables, and the trainable variables.
         Defaults to None.
       capture_by_value: An optional boolean. If True, the func graph will
@@ -192,6 +192,7 @@ class FuncGraph(ops.Graph):
     self.structured_outputs = None
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
+    self.is_control_flow_graph = False
 
     outer_graph = ops.get_default_graph()
     self._weak_outer_graph = weakref.ref(outer_graph)
@@ -241,10 +242,10 @@ class FuncGraph(ops.Graph):
 
     if collections is None:
       for collection_name in graph.get_all_collection_keys():
-        if collection_name not in WHITELIST_COLLECTIONS:
+        if collection_name not in ALLOWLIST_COLLECTIONS:
           self._collections[collection_name] = graph.get_collection(
               collection_name)
-      for collection_name in WHITELIST_COLLECTIONS:
+      for collection_name in ALLOWLIST_COLLECTIONS:
         self._collections[collection_name] = graph.get_collection_ref(
             collection_name)
     else:
@@ -842,9 +843,9 @@ def func_graph_from_py_func(name,
       set, returning an Operation triggers an error.
     collections: a dictionary of collections this FuncGraph should start
       with. If not specified (None), the FuncGraph will read (but not write to)
-      the outer graph's collections that are not whitelisted, and both
-      read and write to the outer graph's collections that are whitelisted.
-      The current whitelisted collections are the global variables, the
+      the outer graph's collections that are not allowlisted, and both
+      read and write to the outer graph's collections that are allowlisted.
+      The current allowlisted collections are the global variables, the
       local variables, and the trainable variables.
       Defaults to None.
     capture_by_value: An optional boolean. If True, the func graph will capture

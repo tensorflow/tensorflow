@@ -22,17 +22,24 @@ class ResizeOpModel : public SingleOpModelWithHexagon {
  public:
   explicit ResizeOpModel(BuiltinOperator op_type, const TensorData& input,
                          std::initializer_list<int> size_data,
-                         const TensorData& output) {
+                         const TensorData& output, bool align_corners = false,
+                         bool half_pixel_centers = false) {
     input_ = AddInput(input);
     size_ = AddConstInput(TensorType_INT32, size_data, {2});
     output_ = AddOutput(output);
     if (op_type == BuiltinOperator_RESIZE_NEAREST_NEIGHBOR) {
       SetBuiltinOp(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
                    BuiltinOptions_ResizeNearestNeighborOptions,
-                   CreateResizeNearestNeighborOptions(builder_).Union());
+                   CreateResizeNearestNeighborOptions(
+                       builder_, /*align_corners*/ align_corners,
+                       /*half_pixel_centers*/ half_pixel_centers)
+                       .Union());
     } else {
       SetBuiltinOp(op_type, BuiltinOptions_ResizeBilinearOptions,
-                   CreateResizeBilinearOptions(builder_).Union());
+                   CreateResizeBilinearOptions(
+                       builder_, /**align_corners**/ align_corners,
+                       /**half_pixel_centers**/ half_pixel_centers)
+                       .Union());
     }
     BuildInterpreter({GetShape(input_)});
   }
@@ -66,9 +73,6 @@ class ResizeOpModel : public SingleOpModelWithHexagon {
   int output_;
 };
 
-// TODO(b/154007913): Investigate why NearestNeighbor does not provide the same
-// output always, requiring high allowed error.
-
 TEST(ResizeOpModel, HorizontalResizeBiliear_UInt8) {
   ResizeOpModel m(BuiltinOperator_RESIZE_BILINEAR,
                   {TensorType_UINT8, {1, 1, 2, 1}, -2.0, 10}, {1, 3},
@@ -87,7 +91,7 @@ TEST(ResizeOpModel, HorizontalResizeNearestNeighbor_Int8) {
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({3.01176, 3.01176, 6.02353},
-                                              /*max_abs_error=*/4)));
+                                              /*max_abs_error=*/1)));
 }
 
 TEST(ResizeOpModel, VerticalResizeBiliear_Int8) {
@@ -108,7 +112,7 @@ TEST(ResizeOpModel, VerticalResizeNearestNeighbor_UInt8) {
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({3.01961, 3.01961, 8.97255},
-                                              /*max_abs_error=*/6)));
+                                              /*max_abs_error=*/1)));
 }
 
 TEST(ResizeOpModel, ThreeDimensionalResizeBiliear_UInt8) {
@@ -146,7 +150,7 @@ TEST(ResizeOpModel, ThreeDimensionalResizeNearestNeighbor_Int8) {
                       3.01177, 4.01569, 3.01177, 4.01569, 6.02353, 10.0392,  //
                       10.0392, 12.0471, 10.0392, 12.0471, 14.0549, 16.0627,  //
                   },
-                  /*max_abs_error=*/13)));
+                  /*max_abs_error=*/1)));
 }
 
 TEST(ResizeOpModel, TwoDimensionalResizeBilinearWithTwoBatches_Int8) {
@@ -193,7 +197,84 @@ TEST(ResizeOpModel, TwoDimensionalResizeNNWithTwoBatches_UInt8) {
                       4.01569, 4.01569, 10.0392,  //
                       12.0471, 12.0471, 16.0627,  //
                   },
-                  /*max_abs_error=*/13)));
+                  /*max_abs_error=*/1)));
+}
+
+TEST(ResizeOpModel, TwoDimResizeBilinearWithTwoBatches_HalfPixelCenters_UInt8) {
+  ResizeOpModel m(BuiltinOperator_RESIZE_BILINEAR,
+                  {TensorType_UINT8, {2, 2, 2, 1}, -2.0, 20}, {3, 3},
+                  {TensorType_UINT8, {}, -2.0, 20}, /**align_corners**/ false,
+                  /**half_pixel_centers**/ true);
+  m.SetQuantizedInput<uint8_t>({
+      3, 6,   //
+      9, 12,  //
+      4, 10,  //
+      12, 16  //
+  });
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({2, 4, 6,    //
+                                               6, 7, 9,    //
+                                               9, 10, 12,  //
+                                               4, 7, 10,   //
+                                               8, 10, 13,  //
+                                               12, 14, 16},
+                                              /*max_abs_error=*/2)));
+}
+
+TEST(ResizeOpModel, TwoDimResizeBilinearWithTwoBatches_AlignCorners_UInt8) {
+  ResizeOpModel m(BuiltinOperator_RESIZE_BILINEAR,
+                  {TensorType_UINT8, {2, 2, 2, 1}, -2.0, 20}, {3, 3},
+                  {TensorType_UINT8, {}, -2.0, 20}, /**align_corners**/ true,
+                  /**half_pixel_centers**/ false);
+  m.SetQuantizedInput<uint8_t>({
+      3, 6,   //
+      9, 12,  //
+      4, 10,  //
+      12, 16  //
+  });
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({3, 5, 6,    //
+                                               7, 9, 10,   //
+                                               9, 11, 12,  //
+                                               4, 8, 10,   //
+                                               9, 12, 13,  //
+                                               12, 15, 16},
+                                              /*max_abs_error=*/2)));
+}
+
+TEST(ResizeOpModel, ThreeDimensionalResizeNN_AlignCorners_UInt8) {
+  ResizeOpModel m(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+                  {TensorType_UINT8, {1, 2, 2, 2}, -2.0, 20}, {3, 3},
+                  {TensorType_UINT8, {}, -2.0, 20}, /**align_corners**/ true);
+  m.SetQuantizedInput<uint8_t>({
+      3, 4, 6, 10,     //
+      10, 12, 14, 16,  //
+  });
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({3, 4, 6, 10, 6, 10,      //
+                                               10, 12, 14, 16, 14, 16,  //
+                                               10, 12, 14, 16, 14, 16},
+                                              /*max_abs_error=*/1)));
+}
+
+TEST(ResizeOpModel, ThreeDimensionalResizeNN_HalfPixelCenters_UInt8) {
+  ResizeOpModel m(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+                  {TensorType_UINT8, {1, 2, 2, 2}, -2.0, 20}, {3, 3},
+                  {TensorType_UINT8, {}, -2.0, 20}, /**align_corners**/ false,
+                  /**half_pixel_centers**/ true);
+  m.SetQuantizedInput<uint8_t>({
+      3, 4, 6, 10,     //
+      10, 12, 14, 16,  //
+  });
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({3, 4, 6, 10, 6, 10,      //
+                                               10, 12, 14, 16, 14, 16,  //
+                                               10, 12, 14, 16, 14, 16},
+                                              /*max_abs_error=*/1)));
 }
 
 }  // namespace tflite

@@ -66,22 +66,48 @@ else:
   pass
 ```
 
-Similarly, variables may not be defined inside a TensorFlow loop, unless they
-are local to the loop. A variable is local to the loop if (1) it's not used
-after the loop and (2) the value from a previour iteration is not used in the
-next iteration:
+Similarly, variables must usually be defined before a TensorFlow loop.
+
+The most common example that is not allowed is a loop which initializes some
+accumulator variable in the first iteration:
 
 ```
 del x
-while tf.random.uniform(()) > 0.5:  # Error -- x must be defined before the loop
+for i in tf.range(100):  # Error -- x must be defined before the loop
+  if i == 0:
+    x = tf.constant(1)
+  else:
+    x = x + 1
+tf.print(x)
+```
+
+When the variable is only used inside the loop and does not depend on previous
+iterations, then it's ok to only be initialized inside the loop.
+
+```
+del x
+while tf.random.uniform(()) > 0.5:  # Okay -- x is not used after the loop
+  x = tf.constant(1)
+```
+
+* New in TF 2.4 *
+
+As long as it doesn't depend on previous iterations, the variable may also be
+used after the loop, however in that case the loop must execute at least one
+iteration, and will raise a runtime error otherwise.
+
+```
+del x
+for i in tf.range(10):  # Okay -- x does not depend on previous iterations
   x = tf.constant(1)
 tf.print(x)
 ```
 
 ```
 del x
-while tf.random.uniform(()) > 0.5:  # Okay -- x is local to the loop
+while tf.constant(False):  # Error -- loop must initialize x!
   x = tf.constant(1)
+tf.print(x)
 ```
 
 Avoid these limitations by defining a default value before the control flow
@@ -97,6 +123,34 @@ tf.print(x)  # Okay -- x is either 0 or 1
 Note: `None` values and undefined symbols are allowed in Eager control flow,
 because Eager execution uses Python control flow, rather than TensorFlow
 control flow ops.
+
+#### Special case: creating Tensors in a loop
+
+* New in TF 2.4 *
+
+A very common use-case is to run a training loop that creates some outputs:
+
+```
+for i in tf.range(num_steps):
+  outputs = train(next(data_iterator))
+```
+
+Often times these outputs can be nested structures of Tensors, which makes them
+impractical to initialize ahead of the loop.
+
+To help with this use-case, AutoGraph lets you run such loops, under certain
+conditions:
+
+ * outputs must be a Tensor, Python numeric, or a structure of these
+ * outputs must not depend on the value from a previous iteration; in other
+   words, the outputs may only appear to the left of an assignment operation
+ * the loop must run at least one iteration
+
+If the type of outputs is not recognized, then the usual
+"outputs must be defined before the loop" is raised at graph construction.
+
+AutoGraph also inserts a `tf.Assert` statement that raises a runtime error
+if the loop did not execute at least one iteration.
 
 ### Indirect modifications and hidden side effects in TensorFlow control flow
 
@@ -644,6 +698,39 @@ Use
 to quickly diagnose whether the source code is available for a function.
 
 #### Source code of lambda functions
+
+##### Changes in TF 2.4
+
+Key Point: When nesting lambda functions, use distinguishing argument names
+to avoid parse errors.
+
+The Python runtime exposes the source code of lambda functions, however it
+may omit parts of the actual body, or include surrounding code. This may make it
+impossible to parse the exact source code of the lambda function (see
+https://github.com/tensorflow/tensorflow/issues/39832).
+
+AutoGraph uses alternate methods to parse the source code more robustly, but
+in rare cases it may be unable to distinguish between nested lambda functions
+of identical signatures.
+
+Example:
+
+```
+l = lambda x: lambda x: x + 1
+```
+
+AutoGraph raises an error for the code above because the parser cannot
+distinguish between the two function signatures. To work around this limitation,
+use distinct argument names:
+
+```
+l = lambda outer_x: lambda inner_x: inner_x + 1
+```
+
+##### TF 2.3 and older
+
+In older versions of TensorFlow, the loading code for lambda functions is not
+robust. Follow the guidance below to avoid errors.
 
 Important: Declare lambda functions on single lines to make sure their source
 code loads correctly.

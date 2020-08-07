@@ -50,6 +50,7 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.client import session
 from tensorflow.python.compat.compat import forward_compatibility_horizon
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
@@ -68,6 +69,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
@@ -773,34 +775,34 @@ def assert_no_new_tensors(f):
 
 def _find_reference_cycle(objects, idx):
 
-  def get_ignore_reason(obj, blacklist):
+  def get_ignore_reason(obj, denylist):
     """Tests whether an object should be omitted from the dependency graph."""
-    if len(blacklist) > 100:
+    if len(denylist) > 100:
       return "<depth limit>"
     if tf_inspect.isframe(obj):
       if "test_util.py" in tf_inspect.getframeinfo(obj)[0]:
         return "<test code>"
-    for b in blacklist:
+    for b in denylist:
       if b is obj:
         return "<test code>"
-    if obj is blacklist:
+    if obj is denylist:
       return "<test code>"
     return None
 
   # Note: this function is meant to help with diagnostics. Its output is purely
   # a human-readable representation, so you may freely modify it to suit your
   # needs.
-  def describe(obj, blacklist, leaves_only=False):
+  def describe(obj, denylist, leaves_only=False):
     """Returns a custom human-readable summary of obj.
 
     Args:
       obj: the value to describe.
-      blacklist: same as blacklist in get_ignore_reason.
+      denylist: same as denylist in get_ignore_reason.
       leaves_only: boolean flag used when calling describe recursively. Useful
         for summarizing collections.
     """
-    if get_ignore_reason(obj, blacklist):
-      return "{}{}".format(get_ignore_reason(obj, blacklist), type(obj))
+    if get_ignore_reason(obj, denylist):
+      return "{}{}".format(get_ignore_reason(obj, denylist), type(obj))
     if tf_inspect.isframe(obj):
       return "frame: {}".format(tf_inspect.getframeinfo(obj))
     elif tf_inspect.ismodule(obj):
@@ -810,10 +812,10 @@ def _find_reference_cycle(objects, idx):
         return "{}, {}".format(type(obj), id(obj))
       elif isinstance(obj, list):
         return "list({}): {}".format(
-            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+            id(obj), [describe(e, denylist, leaves_only=True) for e in obj])
       elif isinstance(obj, tuple):
         return "tuple({}): {}".format(
-            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+            id(obj), [describe(e, denylist, leaves_only=True) for e in obj])
       elif isinstance(obj, dict):
         return "dict({}): {} keys".format(id(obj), len(obj.keys()))
       elif tf_inspect.isfunction(obj):
@@ -822,7 +824,7 @@ def _find_reference_cycle(objects, idx):
       else:
         return "{}, {}".format(type(obj), id(obj))
 
-  def build_ref_graph(obj, graph, reprs, blacklist):
+  def build_ref_graph(obj, graph, reprs, denylist):
     """Builds a reference graph as <referrer> -> <list of referents>.
 
     Args:
@@ -832,21 +834,21 @@ def _find_reference_cycle(objects, idx):
         references, the graph holds object IDs rather than actual objects.
       reprs: Auxiliary structure that maps object IDs to their human-readable
         description.
-      blacklist: List of objects to ignore.
+      denylist: List of objects to ignore.
     """
     referrers = gc.get_referrers(obj)
-    blacklist = blacklist + (referrers,)
+    denylist = denylist + (referrers,)
 
     obj_id = id(obj)
     for r in referrers:
-      if get_ignore_reason(r, blacklist) is None:
+      if get_ignore_reason(r, denylist) is None:
         r_id = id(r)
         if r_id not in graph:
           graph[r_id] = []
         if obj_id not in graph[r_id]:
           graph[r_id].append(obj_id)
-          build_ref_graph(r, graph, reprs, blacklist)
-          reprs[r_id] = describe(r, blacklist)
+          build_ref_graph(r, graph, reprs, denylist)
+          reprs[r_id] = describe(r, denylist)
 
   def find_cycle(el, graph, reprs, path):
     """Finds and prints a single cycle in the dependency graph."""
@@ -3276,3 +3278,56 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
+
+
+@contextlib.contextmanager
+def _fake_gradient_tape_context_manager():
+  """tf.gradients(...) implemented as tf.GradientTape context manager interface.
+
+  This is useful to test tf.gradients() in tests that uses tf.GradientTape().
+
+  Yields:
+    gradient tape instance that's implemented by tf.gradients() underneath.
+  """
+  try:
+    class FakeGradientTape:
+
+      def watch(self, x):
+        pass
+
+      def gradient(self, y, x):
+        result = gradients_impl.gradients(y, x)
+
+        # Unlike `tape.gradient()`, `tf.gradients()` returns a list for a single
+        # element. So unpack if needed to match `tape.gradient()` behavior.
+        if not isinstance(x, (list, tuple)):
+          assert len(result) == 1
+          return result[0]
+
+        return result
+
+    yield FakeGradientTape()
+  finally:
+    pass
+
+
+class AbstractGradientTape:
+  """Abstract GradientTape context manager that has multiple implementations.
+
+  This is useful to test both tf.GradientTape() and tf.gradients() without
+  duplicating tests.
+  """
+
+  def __init__(self, use_tape, persistent=False):
+    self._use_tape = use_tape
+    self._persistent = persistent
+
+  def __enter__(self):
+    if self._use_tape:
+      self._tape_impl = backprop.GradientTape(persistent=self._persistent)
+    else:
+      self._tape_impl = _fake_gradient_tape_context_manager()
+    return self._tape_impl.__enter__()
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    self._tape_impl.__exit__(exc_type, exc_val, exc_tb)

@@ -97,9 +97,7 @@ std::string TfOpEventName(const TfOp& tf_op) {
     // Some TraceMe names contain trailing whitespace, remove it.
     event_name = std::string(absl::StripTrailingAsciiWhitespace(tf_op.name));
   } else if (tf_op.category == Category::kTfData) {
-    std::vector<absl::string_view> op_parts =
-        absl::StrSplit(tf_op.name, kSeparator);
-    event_name = absl::StrCat(kIterator, kSeparator, op_parts.back());
+    event_name = DatasetOpEventName(tf_op.name);
   } else {
     event_name = std::string(tf_op.type);
   }
@@ -108,6 +106,18 @@ std::string TfOpEventName(const TfOp& tf_op) {
 
 std::string TfOpEventName(absl::string_view tf_op_fullname) {
   return TfOpEventName(ParseTfOpFullname(tf_op_fullname));
+}
+
+std::string DatasetOpEventName(absl::string_view full_name) {
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(full_name, kSeparator);
+  return absl::StrCat(kIterator, kSeparator, split_result.back());
+}
+
+std::string IteratorName(absl::string_view full_name) {
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(full_name, kSeparator);
+  return std::string(split_result.back());
 }
 
 std::vector<absl::string_view> ParseTensorShapes(

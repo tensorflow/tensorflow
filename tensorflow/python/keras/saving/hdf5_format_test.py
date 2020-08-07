@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+import uuid
 
 from absl.testing import parameterized
 import numpy as np
@@ -31,7 +32,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import optimizers
@@ -40,6 +40,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -450,7 +451,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       eval_out2 = loaded_model.evaluate(x, y)
       self.assertArrayNear(eval_out, eval_out2, 0.001)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_sequential_model_saving_without_input_shape(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -485,7 +486,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_sequential_model_saving_without_compile(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -831,6 +832,34 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
         loaded = keras.models.load_model(saved_model_dir)
         self.assertIsInstance(loaded.optimizer,
                               keras.optimizer_v2.optimizer_v2.OptimizerV2)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_functional_model_with_getitem_op_layer(self):
+    inp = keras.Input(shape=(8))
+
+    out = inp[:]
+    model = keras.Model(
+        inputs=[inp],
+        outputs=out)
+    batch_size = 7
+    x = array_ops.stack([
+        math_ops.range(8) for _ in range(batch_size)])
+    args = [x]
+    expected = x[:]
+
+    self.assertAllEqual(model(args), expected)
+    self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
+
+    # Make sure it can be successfully saved and loaded
+    save_format = testing_utils.get_save_format()
+    saved_model_dir = self._save_model_dir()
+    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+
+    loaded_model = keras.models.load_model(saved_model_dir)
+
+    self.assertAllEqual(loaded_model(args), expected)
+    self.assertAllEqual(loaded_model.predict(args, batch_size=batch_size),
+                        expected)
 
 
 # Factory functions to create models that will be serialized inside a Network.
@@ -1192,8 +1221,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
-      prefix = os.path.join(self.get_temp_dir(),
-                            '{}'.format(ops.uid()), 'ckpt/')
+      prefix = os.path.join(self.get_temp_dir(), str(uuid.uuid4()), 'ckpt/')
       m.save_weights(prefix)
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)
@@ -1236,8 +1264,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
-      prefix = os.path.join(self.get_temp_dir(),
-                            '{}'.format(ops.uid()), 'bckpt')
+      prefix = os.path.join(self.get_temp_dir(), str(uuid.uuid4()), 'bckpt')
       m.save_weights(prefix)
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)

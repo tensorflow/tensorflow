@@ -275,6 +275,7 @@ cuda_py_test(
     srcs = ["op_callbacks_test.py"],
     python_version = "PY3",
     tags = ["no_cuda11"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
@@ -283,6 +284,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -355,6 +357,7 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
     ],
@@ -390,6 +393,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
         "//tensorflow/python/keras/layers:normalization",
@@ -427,6 +431,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
         "//tensorflow/python/keras/optimizer_v2",
@@ -460,6 +465,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
         "//tensorflow/python/training/tracking",

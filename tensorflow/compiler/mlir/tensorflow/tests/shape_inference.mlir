@@ -100,10 +100,11 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     return %1 : tensor<?x?x?x?xf32>
   }
 
-  // CHECK-LABEL: func @shape_from_if_to_branch_functions
-  func @shape_from_if_to_branch_functions(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
-    %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @if_else_branch, is_stateless = true, name = "if", then_branch = @if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
-    return %0 : tensor<1x2x3xf32>
+  // CHECK-LABEL: func @shape_from_if_to_branch_functions_to_results
+  // CHECK-SAME: (%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func @shape_from_if_to_branch_functions_to_results(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
+    %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], else_branch = @if_else_branch, is_stateless = true, name = "if", then_branch = @if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
   }
 
   // CHECK-LABEL: func @if_then_branch
@@ -121,6 +122,27 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
     // CHECK: return
     // CHECK-SAME: tensor<1x2x3xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // Verify shape propagation from function arg -> if region body -> if region output -> function return type
+  // CHECK-LABEL: shape_from_if_to_region_bodies_to_output
+  // CHECK-SAME: -> tensor<1x2x3xf32>
+  func @shape_from_if_to_region_bodies_to_output(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
+    %unshaped = "tf.Cast"(%arg1) : (tensor<1x2x3xf32>) -> tensor<*xf32>
+    %0 = "tf.IfRegion"(%arg0) ({
+      // CHECK: "tf.Add"{{.+}}(tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+      // CHECK: "tf.Yield"{{.+}}(tensor<1x2x3xf32>) -> ()
+      %1 = "tf.Add"(%unshaped, %unshaped) : (tensor<*xf32>,  tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+     }, {
+      // CHECK: "tf.Sub"{{.+}}(tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+      // CHECK: "tf.Yield"{{.+}}(tensor<1x2x3xf32>) -> ()
+      %2 = "tf.Sub"(%unshaped, %unshaped) : (tensor<*xf32>,  tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+      // CHECK: {is_stateless = true} : (tensor<i1>) -> tensor<1x2x3xf32>
+     }) {is_stateless = true} : (tensor<i1>) -> tensor<*xf32>
+    // CHECK: return {{.*}} :  tensor<1x2x3xf32>
     return %0 : tensor<*xf32>
   }
 
@@ -167,6 +189,33 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     // CHECK-SAME: tensor<4xf32>
     // CHECK-SAME: tensor<!tf.resource<tensor<4xf32>>>
     return %1, %arg1, %arg2 : tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource<tensor<*xf32>>>
+  }
+
+  // Verify shape propagation from function arg -> while region cond/body -> while region output -> function return type
+  // CHECK-LABEL: func @shape_from_while_operands_to_cond_body_to_while_results
+  // CHECK-SAME: -> tensor<1x2x3xf32>
+  func @shape_from_while_operands_to_cond_body_to_while_results(%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) ->  tensor<*xf32> {
+    %unshaped = "tf.Cast"(%arg1) : (tensor<1x2x3xf32>) -> tensor<*xf32>
+    // CHECK: "tf.WhileRegion"
+    %0:2 = "tf.WhileRegion"(%arg0, %unshaped) ({
+       // CHECK: {{.*}}({{.+}}: tensor<i32>, {{.+}}: tensor<1x2x3xf32>):
+       ^bb0(%carg0: tensor<i32>, %carg1: tensor<*xf32>):
+         %limit = constant dense<5> : tensor<i32>
+         %cond = "tf.NotEqual"(%carg0, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+         "tf.Yield"(%cond) : (tensor<i1>) -> ()
+      }, {
+       // CHECK: {{.*}}({{.+}}: tensor<i32>, {{.+}}: tensor<1x2x3xf32>):
+       ^bb0(%barg0: tensor<i32>, %barg1: tensor<*xf32>):
+        %one = constant dense<1> : tensor<i32>
+        %sub = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+        // CHECK: "tf.Neg"({{.+}}) : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+        %neg = "tf.Neg"(%barg1) : (tensor<*xf32>) -> tensor<*xf32>
+        // CHECK: "tf.Yield"{{.+}}, {{.+}}) : (tensor<i32>, tensor<1x2x3xf32>) -> ()
+        "tf.Yield"(%sub, %neg) : (tensor<i32>, tensor<*xf32>) -> ()
+    // CHECK: {is_stateless = true} : (tensor<i32>, tensor<1x2x3xf32>) -> (tensor<i32>, tensor<1x2x3xf32>)
+    }) {is_stateless = true} : (tensor<i32>, tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)
+    // CHECK: return {{.+}}#1 : tensor<1x2x3xf32>
+    return %0#1 : tensor<*xf32>
   }
 
   // CHECK-LABEL: func @shape_from_case_to_branch_functions(
@@ -219,7 +268,7 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @reused_if_then_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
-  // expected-warning @+1 {{expected control flow function reused_if_then_branch to have exactly 1 use}}
+  // expected-warning @+1 {{expected control flow function @reused_if_then_branch to have exactly 1 use}}
   func @reused_if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: return
     // CHECK-SAME: tensor<*xf32>
@@ -228,7 +277,7 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @reused_if_else_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
-  // expected-warning @+1 {{expected control flow function reused_if_else_branch to have exactly 1 use}}
+  // expected-warning @+1 {{expected control flow function @reused_if_else_branch to have exactly 1 use}}
   func @reused_if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
     %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
@@ -354,19 +403,25 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
   // Test propagation from called functions to the call site.
   // CHECK-LABEL: func @stateful_partitioned_call(
   // CHECK-SAME: -> tensor<20xi32>
-  func @stateful_partitioned_call(%arg0: tensor<20xi32>) -> tensor<*xi32> {
+  func @stateful_partitioned_call(%arg0: tensor<20xi32>, %arg1: tensor<?xi32>) -> tensor<*xi32> {
     // CHECK: tf.PartitionedCall
     // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
-    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @a_called_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @partitioned_called_func} : (tensor<20xi32>) -> tensor<*xi32>
     // CHECK: tf.StatefulPartitionedCall
     // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
-    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_partitioned_call_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_partitioned_call_func} : (tensor<20xi32>) -> tensor<*xi32>
+    // CHECK: tf.TPUPartitionedCall
+    // CHECK-SAME: (tensor<20xi32>, tensor<?xi32>) -> tensor<20xi32>
+    %2 = "tf.TPUPartitionedCall"(%arg0, %arg1) {autotuner_thresh = 0 : i64, f = @tpu_partitioned_call_func} : (tensor<20xi32>, tensor<?xi32>) -> tensor<*xi32>
     return %0 : tensor<*xi32>
   }
-  func @a_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+  func @partitioned_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     return %arg0 : tensor<?xi32>
   }
   func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+    return %arg0 : tensor<?xi32>
+  }
+  func @tpu_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     return %arg0 : tensor<?xi32>
   }
 
@@ -492,5 +547,17 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
    %outputs_0 = "tf.Pack"(%arg0) {axis = 0 : i64, device = ""} : (tensor<*xf32>) -> tensor<*xf32>
    %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf.shape<>]} : (tensor<*xf32>) -> tensor<!tf.variant>
    return
+  }
+
+  // Test resource result subtypes are propagated to call op results.
+  // CHECK-LABEL: func @pcall_resource_result
+  func @pcall_resource_result(%arg0: tensor<*x!tf.resource<tensor<f32>>>) {
+    // CHECK: "tf.StatefulPartitionedCall"
+    // CHECK-SAME: (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>>
+    %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_resource_result_func} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource>
+    return
+  }
+  func @pcall_resource_result_func(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>> {
+    return %arg0 : tensor<*x!tf.resource<tensor<f32>>>
   }
 }

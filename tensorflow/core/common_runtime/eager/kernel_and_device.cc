@@ -46,9 +46,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#if !defined(PLATFORM_WINDOWS)
-#include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
-#endif  // !PLATFORM_WINDOWS
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -169,6 +166,10 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
   const auto& it = ndef.attr().find("executor_type");
   if (it != ndef.attr().end()) {
     options.executor_type = it->second.s();
+  }
+  const auto& is_component_fn_it = ndef.attr().find("is_component_function");
+  if (is_component_fn_it != ndef.attr().end()) {
+    options.is_component_function = is_component_fn_it->second.b();
   }
 #if !defined(IS_MOBILE_PLATFORM)
   // Android tf library does not include grappler.
@@ -292,7 +293,7 @@ Status KernelAndDeviceOp::Run(
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
-        [&] { return kernel_->TraceString(&context, /*verbose=*/false); },
+        [&] { return kernel_->TraceString(context, /*verbose=*/false); },
         profiler::TraceMeLevel::kInfo);
     device_->Compute(kernel_.get(), &context);
   }
@@ -391,13 +392,25 @@ void KernelAndDeviceFunc::RunAsync(
       },
       profiler::ContextType::kTfExecutor, opts->step_id,
       profiler::TraceMeLevel::kInfo);
-  pflr_->Run(*opts, handle_, inputs, outputs,
-             [opts, rendezvous, local_cm, step_container, this,
-              done = std::move(done)](const Status& s) {
+  std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
+  pflr_->Run(*opts, handle_, inputs, function_rets,
+             [opts, outputs, function_rets, rendezvous, local_cm,
+              step_container, this, done = std::move(done)](const Status& s) {
                rendezvous->Unref();
                if (step_container == nullptr) {
                  this->step_container_.CleanUp();
                }
+               if (s.ok()) {
+                 // TODO(b/162618595): Change the type of `outputs` to
+                 // support TensorShapes for remote outputs and remove the
+                 // FunctionRet to Tensor conversion here.
+                 for (const auto& ret : *function_rets) {
+                   if (ret.index() == 0) {
+                     outputs->push_back(absl::get<Tensor>(ret));
+                   }
+                 }
+               }
+               delete function_rets;
                done(s);
              });
 }

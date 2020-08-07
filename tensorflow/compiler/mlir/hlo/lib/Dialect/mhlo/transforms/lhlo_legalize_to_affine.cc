@@ -15,20 +15,19 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
-#include "absl/memory/memory.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_xla_to_scalar_op.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 // Builds an affine loop nest iterating from zeros to "upper_bounds" with unit
@@ -69,7 +68,7 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
       auto r = builder.create<AffineLoadOp>(loc, rhs, rhs_indices);
       auto result =
           rewriter.create<AffineLoadOp>(loc, op.output(), result_indices);
-      Value op_result = xla_lhlo::XlaOpToStdScalarOp::map<DotOp>(
+      Value op_result = lmhlo::HloOpToStdScalarOp::map<DotOp>(
           op, element_type, {l, r, result}, &builder);
       map_status = success(op_result != nullptr);
       if (failed(map_status)) return;
@@ -108,7 +107,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
                             ValueRange induction_vars) {
       auto l = builder.create<AffineLoadOp>(loc, lhs, induction_vars);
       auto r = builder.create<AffineLoadOp>(loc, rhs, induction_vars);
-      Value op_result = xla_lhlo::XlaOpToStdScalarOp::map<LhloOpTy>(
+      Value op_result = lmhlo::HloOpToStdScalarOp::map<LhloOpTy>(
           op, element_type, {l, r}, &builder);
       map_status = success(op_result != nullptr);
       if (failed(map_status)) return;
@@ -127,19 +126,19 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
-      BinaryOpConverter<xla_lhlo::AddOp>,
-      BinaryOpConverter<xla_lhlo::AndOp>,
-      BinaryOpConverter<xla_lhlo::DivOp>,
-      BinaryOpConverter<xla_lhlo::MaxOp>,
-      BinaryOpConverter<xla_lhlo::MinOp>,
-      BinaryOpConverter<xla_lhlo::MulOp>,
-      BinaryOpConverter<xla_lhlo::SubOp>,
+      BinaryOpConverter<lmhlo::AddOp>,
+      BinaryOpConverter<lmhlo::AndOp>,
+      BinaryOpConverter<lmhlo::DivOp>,
+      BinaryOpConverter<lmhlo::MaxOp>,
+      BinaryOpConverter<lmhlo::MinOp>,
+      BinaryOpConverter<lmhlo::MulOp>,
+      BinaryOpConverter<lmhlo::SubOp>,
       DotOpConverter>(context);
   // clang-format on
 }
 
-struct LhloLegalizeToAffine
-    : public PassWrapper<LhloLegalizeToAffine, FunctionPass> {
+struct LhloLegalizeToAffinePass
+    : public PassWrapper<LhloLegalizeToAffinePass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();
@@ -150,12 +149,9 @@ struct LhloLegalizeToAffine
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToAffinePass() {
-  return absl::make_unique<LhloLegalizeToAffine>();
+std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass() {
+  return std::make_unique<LhloLegalizeToAffinePass>();
 }
 
-static PassRegistration<LhloLegalizeToAffine> legalize_pass(
-    "lhlo-legalize-to-affine", "Legalize from LHLO dialect to affine dialect");
-
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

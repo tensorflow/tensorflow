@@ -152,6 +152,14 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
 
+  // Rejects if quantized tensors have zero scales.
+  for (float scale : quant_params.scale) {
+    if (scale == 0) {
+      return errors::InvalidArgument(
+          "Quantized tensors must have non-zero scales");
+    }
+  }
+
   // Scale size can't be zero as it is checked before.
   if (quant_params.scale.size() != 1) {
     llvm::SmallVector<double, 4> scales(quant_params.scale.begin(),
@@ -221,7 +229,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
 
   llvm::SmallVector<llvm::APFloat, 4> min_maxs;
   min_maxs.reserve(mins.size() * 2);
-  for (int i = 0; i < mins.size(); ++i) {
+  for (int i = 0, end = mins.size(); i < end; ++i) {
     llvm::APFloat min(mins[i]);
     llvm::APFloat max(maxs[i]);
     min_maxs.push_back(min);
@@ -273,7 +281,7 @@ std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
   int bytes_len = bytes.size();
   assert(bytes_len % read_size == 0);
 
-  size_t elem_count = bytes_len / read_size;
+  int elem_count = bytes_len / read_size;
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
@@ -310,7 +318,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
   switch (elem_type.getWidth()) {
     case 16: {
       assert(bytes_len % 2 == 0);
-      size_t elem_count = bytes_len / 2;
+      int elem_count = bytes_len / 2;
       std::vector<llvm::APFloat> values;
       values.reserve(elem_count);
 
@@ -329,7 +337,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 32: {
       assert(bytes_len % 4 == 0);
-      size_t elem_count = bytes_len / 4;
+      int elem_count = bytes_len / 4;
       std::vector<float> values;
       values.reserve(elem_count);
 
@@ -345,7 +353,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 64: {
       assert(bytes_len % 8 == 0);
-      size_t elem_count = bytes_len / 8;
+      int elem_count = bytes_len / 8;
       std::vector<double> values;
       values.reserve(elem_count);
 
@@ -443,8 +451,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertFloatBuffer(shaped_type, float_type, buffer));
-  } else if (elem_type.isa<mlir::IntegerType>() ||
-             elem_type.isa<QuantizedType>()) {
+  } else if (elem_type.isa<mlir::IntegerType, QuantizedType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertIntBuffer(shaped_type, elem_type, buffer));
   } else if (elem_type.isa<mlir::TF::StringType>()) {
@@ -456,8 +463,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
       refs.push_back({ref.data(), ref.size()});
 
     value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
-  } else if (elem_type.isa<mlir::ComplexType>() ||
-             elem_type.isa<mlir::TF::TensorFlowType>()) {
+  } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
     auto dialect = elem_type.getContext()->getRegisteredDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
@@ -823,7 +829,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Add state variables to inputs.
   absl::flat_hash_set<int32_t> input_index_set(func_inputs.begin(),
                                                func_inputs.end());
-  for (int i = 0; i < subgraph.tensors.size(); i++) {
+  for (int i = 0, end = subgraph.tensors.size(); i < end; i++) {
     auto& tensor = *subgraph.tensors.at(i);
     if (tensor.is_variable && !input_index_set.contains(i)) {
       func_inputs.emplace_back(i);

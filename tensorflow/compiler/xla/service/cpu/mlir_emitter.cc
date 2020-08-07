@@ -33,11 +33,19 @@ namespace {
 
 // Lower an MLIR module to an LLVM module.
 std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module) {
+  // When set, the LLVM backend will be allowed to reassociate floating-point
+  // reductions, which enables much more efficient "horizontal" SIMD
+  // implementations.
+  // TODO(kramerb): link this to the right option, command line flag, etc.
+  constexpr bool kReassociateFPReductions = true;
+
   mlir::PassManager manager(module->getContext());
   manager.addPass(mlir::createConvertLinalgToLoopsPass());
   manager.addPass(mlir::createLowerAffinePass());
   manager.addPass(mlir::createLowerToCFGPass());
-  manager.addPass(mlir::createConvertVectorToLLVMPass());
+  manager.addPass(mlir::createConvertVectorToLLVMPass(
+      mlir::LowerVectorToLLVMOptions().setReassociateFPReductions(
+          kReassociateFPReductions)));
   CHECK(succeeded(manager.run(*module)));
   return mlir::translateModuleToLLVMIR(*module);
 }

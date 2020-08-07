@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 class TestLhloToLLVMPass
@@ -34,15 +34,14 @@ class TestLhloToLLVMPass
     ModuleOp m = getOperation();
 
     OwningRewritePatternList patterns;
-    LLVMTypeConverter converter(m.getContext());
+    LLVMTypeConverter converter(&getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
-    PopulateLhloToLLVMConversionPatterns(
-        LowerToLLVMOptions::getDefaultOptions(), &converter, &patterns);
+    PopulateLhloToLLVMConversionPatterns(&converter, &patterns);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
-    target.addIllegalDialect<XlaLhloDialect>();
+    target.addIllegalDialect<LmhloDialect>();
 
     if (failed(applyFullConversion(m, target, patterns))) {
       signalPassFailure();
@@ -52,8 +51,9 @@ class TestLhloToLLVMPass
 
 }  // namespace
 
-static PassRegistration<TestLhloToLLVMPass> legalize_lhlo_pass(
-    "test-lhlo-legalize-to-llvm", "Legalize from LHLO dialect to LLVM.");
+std::unique_ptr<Pass> createTestLhloToLLVMPass() {
+  return std::make_unique<TestLhloToLLVMPass>();
+}
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

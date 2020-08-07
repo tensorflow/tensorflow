@@ -144,6 +144,10 @@ int main(int argc, char **argv) {
 
   StatusOr<mlir::OwningModuleRef> module;
 
+  tensorflow::GraphImportConfig specs;
+  specs.upgrade_legacy = upgrade_legacy;
+  specs.prune_unused_nodes = true;
+
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
@@ -168,12 +172,10 @@ int main(int argc, char **argv) {
       return kTrFailure;
     }
 
-    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, exported_names, &context);
+    module =
+        tensorflow::ImportSavedModel(input_file_name, saved_model_version, tags,
+                                     exported_names, specs, &context);
   } else {
-    tensorflow::GraphImportConfig specs;
-    specs.upgrade_legacy = upgrade_legacy;
-    specs.prune_unused_nodes = true;
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         specs, debug_info_file, input_arrays, input_dtypes, input_shapes,

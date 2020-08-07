@@ -1745,8 +1745,8 @@ class Minimal2DRNNCell(keras.layers.Layer):
   def __init__(self, unit_a, unit_b, **kwargs):
     self.unit_a = unit_a
     self.unit_b = unit_b
-    self.state_size = tensor_shape.as_shape([unit_a, unit_b])
-    self.output_size = tensor_shape.as_shape([unit_a, unit_b])
+    self.state_size = tensor_shape.TensorShape([unit_a, unit_b])
+    self.output_size = tensor_shape.TensorShape([unit_a, unit_b])
     super(Minimal2DRNNCell, self).__init__(**kwargs)
 
   def build(self, input_shape):

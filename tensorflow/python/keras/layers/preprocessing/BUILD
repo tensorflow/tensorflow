@@ -326,6 +326,7 @@ tf_py_test(
 distribute_py_test(
     name = "category_encoding_distribution_test",
     srcs = ["category_encoding_distribution_test.py"],
+    disable_mlir_bridge = False,
     main = "category_encoding_distribution_test.py",
     python_version = "PY3",
     tags = [
@@ -423,6 +424,7 @@ cuda_py_test(
 tpu_py_test(
     name = "hashing_distribution_test",
     srcs = ["hashing_distribution_test.py"],
+    disable_mlir_bridge = False,
     main = "hashing_distribution_test.py",
     python_version = "PY3",
     tags = ["multi_and_single_gpu"],
@@ -453,6 +455,7 @@ tf_py_test(
 tpu_py_test(
     name = "index_lookup_distribution_test",
     srcs = ["index_lookup_distribution_test.py"],
+    disable_mlir_bridge = False,
     main = "index_lookup_distribution_test.py",
     python_version = "PY3",
     tags = ["no_oss"],
@@ -473,6 +476,7 @@ cuda_py_test(
     deps = [
         ":image_preprocessing",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras:testing_utils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -541,6 +545,9 @@ tf_py_test(
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "noasan",  #TODO(b/161376526): Enable when bug fix lands.
+    ],
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",

@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
+#include "mlir-hlo/utils/broadcast_utils.h"
 
 #include <algorithm>
 
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/StandardTypes.h"
 
 namespace mlir {
-namespace xla {
+namespace hlo {
 
 bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
                                  DenseIntElementsAttr broadcast_dims) {
@@ -46,9 +47,9 @@ bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
                     broadcast_dims.getIntValues().begin());
 }
 
-Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
-                                                        Value rhs,
-                                                        OpBuilder& builder) {
+Value ComputeBinaryElementwiseBroadcastingResultExtents(
+    Location loc, Value lhs, Value rhs, OpBuilder& builder,
+    bool unsafe_as_extent_tensor) {
   auto lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
   auto rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
   if (!lhs_type || !rhs_type) {
@@ -57,18 +58,23 @@ Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
     return nullptr;
   }
 
-  int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
-  auto shape_type = shape::ShapeType::get(builder.getContext());
-  Value lhs_shape_v =
-      builder.createOrFold<shape::ShapeOfOp>(loc, shape_type, lhs);
-  Value rhs_shape_v =
-      builder.createOrFold<shape::ShapeOfOp>(loc, shape_type, rhs);
-  Value result_shape_v = builder.createOrFold<shape::BroadcastOp>(
-      loc, shape_type, lhs_shape_v, rhs_shape_v, nullptr /* error */);
-  return builder.createOrFold<shape::ToExtentTensorOp>(
-      loc, RankedTensorType::get({result_rank}, builder.getIndexType()),
-      result_shape_v);
+  Value lhs_shape_v = builder.createOrFold<shape::ShapeOfOp>(loc, lhs);
+  Value rhs_shape_v = builder.createOrFold<shape::ShapeOfOp>(loc, rhs);
+
+  if (unsafe_as_extent_tensor) {
+    int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
+    Value result_shape_v = builder.createOrFold<shape::BroadcastOp>(
+        loc, shape::getExtentTensorType(builder.getContext()), lhs_shape_v,
+        rhs_shape_v, nullptr /* error */);
+    return builder.createOrFold<TensorCastOp>(
+        loc, RankedTensorType::get({result_rank}, builder.getIndexType()),
+        result_shape_v);
+  }
+
+  return builder.createOrFold<shape::BroadcastOp>(
+      loc, builder.getType<shape::ShapeType>(), lhs_shape_v, rhs_shape_v,
+      nullptr /* error */);
 }
 
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir

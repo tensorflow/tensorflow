@@ -50,6 +50,8 @@ class MetaOptimizer : public GraphOptimizer {
   Status OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                              GraphDef* optimized_graph);
 
+  string GetResultString() const;
+
   void PrintResult();
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,

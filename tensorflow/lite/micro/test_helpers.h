@@ -164,7 +164,7 @@ TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
                                        float weights_scale,
                                        bool is_variable = false);
 
-// Quantizes int32 bias tensor with per-channel weights determined by input
+// Quantizes int32_t bias tensor with per-channel weights determined by input
 // scale multiplied by weight scale for each channel.
 TfLiteTensor CreatePerChannelQuantizedBiasTensor(
     const float* input, int32_t* quantized, TfLiteIntArray* dims,
@@ -176,6 +176,9 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
     const float* input, int8_t* quantized, TfLiteIntArray* dims, float* scales,
     int* zero_points, TfLiteAffineQuantization* affine_quant,
     int quantized_dimension, bool is_variable = false);
+
+// Returns the number of tensors in the default subgraph for a tflite::Model.
+size_t GetModelTensorCount(const Model* model);
 
 }  // namespace testing
 }  // namespace tflite

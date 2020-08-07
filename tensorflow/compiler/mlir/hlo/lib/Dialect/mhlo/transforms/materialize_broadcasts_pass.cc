@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 
 namespace {
 
@@ -33,8 +33,8 @@ struct TestMaterializeBroadcastsPass
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns;
 
-    // Consider the xla_hlo dialect legal for tests.
-    conversionTarget.addLegalDialect<XlaHloDialect>();
+    // Consider the mhlo dialect legal for tests.
+    conversionTarget.addLegalDialect<MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
 
@@ -50,9 +50,9 @@ struct TestMaterializeBroadcastsPass
 
 }  // namespace
 
-}  // namespace xla_hlo
-}  // namespace mlir
+std::unique_ptr<::mlir::Pass> createTestMaterializeBroadcastsPass() {
+  return std::make_unique<TestMaterializeBroadcastsPass>();
+}
 
-static mlir::PassRegistration<mlir::xla_hlo::TestMaterializeBroadcastsPass>
-    pass("test-xla-materialize-broadcasts",
-         "Test pass for materializing 'broadcast_dimensions' attributes");
+}  // namespace mhlo
+}  // namespace mlir

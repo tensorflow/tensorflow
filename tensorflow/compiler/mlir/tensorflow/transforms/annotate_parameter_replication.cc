@@ -33,7 +33,7 @@ namespace TFDevice {
 
 namespace {
 
-constexpr char kReplicationAttr[] = "xla_hlo.is_same_data_across_replicas";
+constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
 // Analyzes the inputs to ClusterFuncOps in the module, and annotates their

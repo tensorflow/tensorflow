@@ -358,7 +358,6 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -786,6 +785,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 12,
     tags = ["no_cuda11"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -801,6 +801,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 12,
     tags = ["no_cuda11"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

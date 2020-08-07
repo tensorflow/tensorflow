@@ -511,7 +511,7 @@ XlaOp Lgamma(XlaOp input) {
     XlaOp z = Select(need_to_reflect, -input, input - one);
 
     XlaOp x = base_lanczos_coeff;
-    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
       XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
       XlaOp index = ScalarLike(input, i);
       x = x + lanczos_coefficient / (z + index + one);
@@ -647,7 +647,7 @@ XlaOp Digamma(XlaOp input) {
 
     XlaOp num = zero;
     XlaOp denom = base_lanczos_coeff;
-    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
       XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
       XlaOp index = ScalarLike(input, i);
       num = num - lanczos_coefficient / ((z + index + one) * (z + index + one));

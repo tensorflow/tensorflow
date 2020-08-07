@@ -21,9 +21,11 @@ import abc
 import collections
 
 import numpy as np
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -37,13 +39,17 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
+_kpl_gauge = monitoring.StringGauge(
+    '/tensorflow/api/keras/layers/preprocessing',
+    'keras preprocessing layers usage', 'TFVersion')
+
+
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
+@six.add_metaclass(abc.ABCMeta)
 class PreprocessingLayer(Layer):
   """Base class for PreprocessingLayers."""
-  __metaclass__ = abc.ABCMeta
   _must_restore_from_config = True
 
-  @abc.abstractmethod
   def adapt(self, data, reset_state=True):
     # TODO(momernick): Add examples.
     """Fits the state of the preprocessing layer to the data being passed.
@@ -239,7 +245,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
 
 def convert_to_list(values, sparse_default_value=None):
   """Convert a TensorLike, CompositeTensor, or ndarray into a Python list."""
-  if ragged_tensor.is_ragged(values):
+  if tf_utils.is_ragged(values):
     # There is a corner case when dealing with ragged tensors: if you get an
     # actual RaggedTensor (not a RaggedTensorValue) passed in non-eager mode,
     # you can't call to_list() on it without evaluating it first. However,

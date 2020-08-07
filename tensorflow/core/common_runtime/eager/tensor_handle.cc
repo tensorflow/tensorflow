@@ -316,8 +316,7 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
   std::vector<string> devices;
   for (auto* handle : handles) {
     if (VariantDeviceIsCustom(handle->device())) {
-      return errors::InvalidArgument(
-          "CustomDevice is not supported for packing.");
+      devices.push_back(absl::get<CustomDevice*>(handle->device())->name());
     } else {
       devices.push_back(handle->op_device() ? handle->op_device()->name()
                                             : ctx->HostCPU()->name());

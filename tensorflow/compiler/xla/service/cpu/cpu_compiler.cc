@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
+#include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
@@ -103,6 +104,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/topk_rewriter.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
@@ -284,6 +286,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       /*rewrite_grad_op=*/true);
   pipeline.AddPass<LogisticExpander>(
       /*expansion_type=*/LogisticExpansionType::kExp);
+  pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicPadder>();
   pipeline.AddPass<ScatterExpander>();
   pipeline.AddPass<HloGetDimensionSizeRewriter>();
@@ -318,6 +321,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<HloConstantFolding>();
     pass.AddPass<ConditionalSimplifier>();
   }
+  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64) {
+    return sort->operand(0)->shape().element_type() == F32;
+  });
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,

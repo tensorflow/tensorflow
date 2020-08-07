@@ -82,7 +82,7 @@ Status ConvertLocation(mlir::Location inst_loc,
     if (locations.size() <= 1)
       return errors::InvalidArgument("expected experimental debuf info.");
     // skip the first one, which is the name of the node_def.
-    for (int i = 0; i < locations.size() - 1; ++i) {
+    for (int i = 0, end = locations.size() - 1; i < end; ++i) {
       TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
     }
   }
@@ -118,6 +118,20 @@ Status ConvertAttribute(const mlir::TF::ShapeAttr& attr, AttrValue* value) {
   } else {
     shape->set_unknown_rank(true);
   }
+  return Status::OK();
+}
+
+Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
+  value->mutable_func()->set_name(attr.getValue().str());
+  return Status::OK();
+}
+
+Status ConvertAttribute(const mlir::TF::FuncAttr& attr, AttrValue* value) {
+  TF_RETURN_IF_ERROR(
+      ConvertAttribute(attr.GetName().cast<mlir::FlatSymbolRefAttr>(), value));
+  TF_RETURN_IF_ERROR(ConvertAttributes(attr.GetAttrs().getValue(),
+                                       /*attrs_to_ignore=*/{},
+                                       value->mutable_func()->mutable_attr()));
   return Status::OK();
 }
 
@@ -157,11 +171,6 @@ Status ConvertAttribute(const mlir::TypeAttr& type, AttrValue* value) {
 
 Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
   value->clear_value();
-  return Status::OK();
-}
-
-Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
-  value->mutable_func()->set_name(std::string(attr.getValue()));
   return Status::OK();
 }
 
@@ -372,8 +381,8 @@ Status ConvertAttributes(
     AttrValue value;
     switch (attr.getKind()) {
       case mlir::StandardAttributes::SymbolRef: {
-        auto func_attr = attr.cast<mlir::FlatSymbolRefAttr>();
-        value.mutable_func()->set_name(std::string(func_attr.getValue()));
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::FlatSymbolRefAttr>(), &value));
         func_call_attrs[string(name)] = value;
         continue;
       }
@@ -415,6 +424,12 @@ Status ConvertAttributes(
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::TF::ShapeAttr>(), &value));
         break;
+      case static_cast<unsigned>(mlir::TF::AttrKind::FUNC): {
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::TF::FuncAttr>(), &value));
+        func_call_attrs[string(name)] = value;
+        continue;
+      }
       // AffineMap kind is not implemented.
       case mlir::StandardAttributes::AffineMap:
         return errors::Unimplemented("AffineMap attribute (needed for '",
@@ -503,7 +518,7 @@ Status SetSizeAttribute(absl::string_view name, size_t size,
     // This should be extremely rare as it means we are adding the same
     // attribute multiple times/have some redundancy in representing this
     // attribute.
-    int64 actual_size = result.first->second.i();
+    size_t actual_size = result.first->second.i();
     // Just check via string output as we shouldn't get here and if we do they
     // should be trivially the same, else fail.
     if (actual_size != size)

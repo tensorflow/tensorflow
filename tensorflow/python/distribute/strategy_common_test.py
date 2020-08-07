@@ -19,9 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
+import numpy as np
 
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
@@ -32,31 +35,29 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class StrategyReduceTest(test.TestCase, parameterized.TestCase):
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ] + strategy_combinations.all_strategies,
+        mode=['eager']))
+class StrategyTest(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(
-      combinations.combine(
-          strategy=[
-              strategy_combinations.multi_worker_mirrored_2x1_cpu,
-              strategy_combinations.multi_worker_mirrored_2x1_gpu,
-          ] + strategy_combinations.strategies_minus_tpu,
-          mode=['eager']))
   def testSimpleReduce(self, strategy):
+    per_replica_value = strategy.experimental_distribute_values_from_function(
+        lambda _: array_ops.ones((), dtypes.float32))
 
     def fn_eager():
 
-      def replica_fn():
-        return array_ops.ones((), dtypes.float32)
-
-      per_replica_value = strategy.run(replica_fn)
       return strategy.reduce(
           reduce_util.ReduceOp.SUM, value=per_replica_value, axis=None)
 
     fn_graph = def_function.function(fn_eager)
-
     # Run reduce under the strategy scope to explicitly enter
     # strategy default_device scope.
     with strategy.scope():
@@ -67,6 +68,22 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
     # strategy default_device scope.
     self.assertEqual(fn_eager().numpy(), 1.0 * strategy.num_replicas_in_sync)
     self.assertEqual(fn_graph().numpy(), 1.0 * strategy.num_replicas_in_sync)
+
+  def testCaptureReplicaId(self, strategy):
+    m = {}
+
+    @def_function.function
+    def f():
+      return ds_context.get_replica_context().replica_id_in_sync_group
+
+    @def_function.function
+    def g():
+      # Make g() a stateful function so it's traced twice.
+      if m.get('v', None) is None:
+        m['v'] = variables.Variable(0.)
+      return strategy.run(f)
+
+    g()
 
 
 @combinations.generate(
@@ -101,6 +118,55 @@ class DistributedCollectiveAllReduceStrategyTest(
     self.assertEqual(
         sum_value.numpy(),
         expected_sum_on_workers[multi_worker_test_base.get_task_type()])
+
+  def testSimpleInputFromDatasetLastPartialBatch(self, strategy):
+    global_batch_size = 8
+    dataset = dataset_ops.DatasetV2.range(14).batch(
+        global_batch_size, drop_remainder=False)
+    input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(input_iterator):
+      return strategy.run(lambda x: x, args=(next(input_iterator),))
+
+    # Let the complete batch go.
+    run(input_iterator)
+
+    # `result` is an incomplete batch
+    result = run(input_iterator)
+    expected_data_on_workers = {'chief': [8, 9, 10], 'worker': [11, 12, 13]}
+    self.assertTrue(
+        np.array_equal(
+            result.numpy(),
+            expected_data_on_workers[multi_worker_test_base.get_task_type()]))
+
+  def testSimpleInputFromFnLastPartialBatch(self, strategy):
+
+    def dataset_fn(input_context):
+      global_batch_size = 8
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      dataset = dataset_ops.DatasetV2.range(14).batch(
+          batch_size, drop_remainder=False)
+      return dataset.shard(input_context.num_input_pipelines,
+                           input_context.input_pipeline_id)
+
+    input_iterator = iter(
+        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+
+    @def_function.function
+    def run(input_iterator):
+      return strategy.run(lambda x: x, args=(next(input_iterator),))
+
+    # Let the complete batch go.
+    run(input_iterator)
+    # `result` is an incomplete batch
+    result = run(input_iterator)
+
+    expected_data_on_worker = {'chief': [8, 9, 10, 11], 'worker': [12, 13]}
+    self.assertTrue(
+        np.array_equal(
+            result.numpy(), expected_data_on_worker[
+                multi_worker_test_base.get_task_type()]))
 
   def testReduceHostTensor(self, strategy):
     reduced = strategy.reduce(
@@ -172,4 +238,5 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
+  v2_compat.enable_v2_behavior()
   combinations.main()

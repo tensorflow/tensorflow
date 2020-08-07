@@ -37,7 +37,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
-from tensorflow.python.ops.losses import util as tf_losses_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -247,7 +246,7 @@ class LossFunctionWrapper(Loss):
       Loss values per sample.
     """
     if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
-      y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
+      y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
           y_pred, y_true)
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)
@@ -1314,8 +1313,8 @@ def _maybe_convert_labels(y_true):
     # Convert the binary labels to -1 or 1.
     return 2. * y_true - 1.
 
-  updated_y_true = smart_cond.smart_cond(is_binary,
-                                         _convert_binary_labels, lambda: y_true)
+  updated_y_true = smart_cond.smart_cond(is_binary, _convert_binary_labels,
+                                         lambda: y_true)
   return updated_y_true
 
 
@@ -1445,14 +1444,11 @@ def huber(y_true, y_pred, delta=1.0):
   delta = math_ops.cast(delta, dtype=K.floatx())
   error = math_ops.subtract(y_pred, y_true)
   abs_error = math_ops.abs(error)
-  quadratic = math_ops.minimum(abs_error, delta)
-  linear = math_ops.subtract(abs_error, quadratic)
+  half = ops.convert_to_tensor_v2(0.5, dtype=abs_error.dtype)
   return K.mean(
-      math_ops.add(
-          math_ops.multiply(
-              ops.convert_to_tensor_v2(0.5, dtype=quadratic.dtype),
-              math_ops.multiply(quadratic, quadratic)),
-          math_ops.multiply(delta, linear)),
+      array_ops.where_v2(
+          abs_error <= delta, half * math_ops.pow(error, 2),
+          half * math_ops.pow(delta, 2) + delta * (abs_error - delta)),
       axis=-1)
 
 
@@ -1530,8 +1526,8 @@ def categorical_crossentropy(y_true,
     num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
     return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
 
-  y_true = smart_cond.smart_cond(label_smoothing,
-                                 _smooth_labels, lambda: y_true)
+  y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
+                                 lambda: y_true)
   return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
 
@@ -1599,8 +1595,8 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   def _smooth_labels():
     return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
 
-  y_true = smart_cond.smart_cond(label_smoothing,
-                                 _smooth_labels, lambda: y_true)
+  y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
+                                 lambda: y_true)
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
 

@@ -419,6 +419,7 @@ class Subgraph {
   // 'last_node_prepared' with the id of the op containing dynamic tensors, or
   // the last in the graph.
   TfLiteStatus PrepareOpsStartingAt(int first_execution_plan_index,
+                                    const std::vector<int>& execution_plan,
                                     int* last_execution_plan_index_prepared);
 
   // Tensors needed by the interpreter. Use `AddTensors` to add more blank
@@ -634,6 +635,11 @@ class Subgraph {
   // to allocate successors. This process repeats until all nodes are executed.
   // NOTE: this relies on the order of nodes that is in topological order.
   int next_execution_plan_index_to_prepare_;
+
+  // Only used in cases where a delegate supporting dynamic tensors is applied.
+  // This helps prepare the original execution before the post-delegation one,
+  // so that tensor shapes propagate.
+  int next_original_execution_plan_index_to_prepare_;
 
   // This is similar to `next_execution_plan_index_to_prepare_`, but it tracks
   // which nodes' allocation is planned with the arena planner.

@@ -1238,18 +1238,6 @@ class DataHandler(object):
     if adapter_steps is not None:
       return adapter_steps
 
-    if (ds_context.get_strategy().extended._in_multi_worker_mode() and  # pylint: disable=protected-access
-        (dataset.options().experimental_distribute.auto_shard_policy !=
-         distribute_options.AutoShardPolicy.OFF)):
-      # If the dataset would be auto-sharded, we should not infer a local
-      # steps_per_epoch due to the possible inbalanced sharding between workers.
-      raise ValueError("When dataset is sharded across workers, please "
-                       "specify a reasonable `steps_per_epoch` such that all "
-                       "workers will train the same number of steps and each "
-                       "step can get data from dataset without EOF. This is "
-                       "required for allreduce to succeed. We will handle the "
-                       "last partial batch in the future.")
-
     size = cardinality.cardinality(dataset)
     if size == cardinality.INFINITE and steps is None:
       raise ValueError("When passing an infinitely repeating dataset, you "
@@ -1300,7 +1288,7 @@ def _make_class_weight_map_fn(class_weight):
     """Convert `class_weight` to `sample_weight`."""
     x, y, sw = unpack_x_y_sample_weight(data)
 
-    if nest.is_sequence(y):
+    if nest.is_nested(y):
       raise ValueError(
           "`class_weight` is only supported for Models with a single output.")
 
@@ -1496,7 +1484,7 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
     # there is no ambiguity. This also makes NumPy and Dataset
     # consistent in that the user does not have to wrap their Dataset
     # data in an unecessary tuple
-    if not nest.is_sequence(x):
+    if not nest.is_nested(x):
       return x
     else:
       return (x,)

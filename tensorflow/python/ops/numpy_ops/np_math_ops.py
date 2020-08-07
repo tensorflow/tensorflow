@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
 import sys
 
 import numpy as np
@@ -32,18 +33,21 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
 
 
-pi = np.pi
-e = np.e
-inf = np.inf
+pi = np_export.np_export_constant(__name__, 'pi', np.pi)
+e = np_export.np_export_constant(__name__, 'e', np.e)
+inf = np_export.np_export_constant(__name__, 'inf', np.inf)
 
 
 @np_utils.np_doc_only('dot')
@@ -66,7 +70,7 @@ def dot(a, b):  # pylint: disable=missing-docstring
 # TODO(wangpeng): Make element-wise ops `ufunc`s
 def _bin_op(tf_fun, a, b, promote=True):
   if promote:
-    a, b = np_array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
+    a, b = np_array_ops._promote_dtype_binary(a, b)  # pylint: disable=protected-access
   else:
     a = np_array_ops.array(a)
     b = np_array_ops.array(b)
@@ -126,7 +130,9 @@ def true_divide(x1, x2):  # pylint: disable=missing-function-docstring
   return _bin_op(f, x1, x2)
 
 
-divide = true_divide
+@np_utils.np_doc('divide')
+def divide(x1, x2):  # pylint: disable=missing-function-docstring
+  return true_divide(x1, x2)
 
 
 @np_utils.np_doc('floor_divide')
@@ -155,7 +161,9 @@ def mod(x1, x2):  # pylint: disable=missing-function-docstring
   return _bin_op(f, x1, x2)
 
 
-remainder = mod
+@np_utils.np_doc('remainder')
+def remainder(x1, x2):  # pylint: disable=missing-function-docstring
+  return mod(x1, x2)
 
 
 @np_utils.np_doc('divmod')
@@ -164,7 +172,14 @@ def divmod(x1, x2):  # pylint: disable=redefined-builtin
 
 
 @np_utils.np_doc('maximum')
-def maximum(x1, x2):
+def maximum(x1, x2):  # pylint: disable=missing-function-docstring
+
+  # Fast path for when maximum is used as relu.
+  if isinstance(
+      x2, numbers.Real) and not isinstance(x2, bool) and x2 == 0 and isinstance(
+          x1, np_arrays.ndarray) and not x1._is_boolean():  # pylint: disable=protected-access
+    return np_utils.tensor_to_ndarray(
+        nn_ops.relu(np_array_ops.asarray(x1).data))
 
   def max_or_or(x1, x2):
     if x1.dtype == dtypes.bool:
@@ -206,9 +221,9 @@ def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
 def matmul(x1, x2):  # pylint: disable=missing-docstring
   def f(x1, x2):
     try:
-      if x1.shape.rank == 2 and x2.shape.rank == 2:
+      if x1._rank() == 2 and x2._rank() == 2:  # pylint: disable=protected-access
         # Fast path for known ranks.
-        return math_ops.matmul(x1, x2)
+        return gen_math_ops.mat_mul(x1, x2)
       return np_utils.cond(
           math_ops.equal(np_utils.tf_rank(x2), 1),
           lambda: math_ops.tensordot(x1, x2, axes=1),
@@ -550,7 +565,7 @@ def bitwise_xor(x1, x2):
   return _bitwise_binary_op(bitwise_ops.bitwise_xor, x1, x2)
 
 
-@np_utils.np_doc('bitwise_not')
+@np_utils.np_doc('bitwise_not', link=np_utils.AliasOf('invert'))
 def bitwise_not(x):
 
   def f(x):
@@ -597,7 +612,7 @@ def sqrt(x):
   return _scalar(math_ops.sqrt, x, True)
 
 
-@np_utils.np_doc('abs')
+@np_utils.np_doc('abs', link=np_utils.AliasOf('absolute'))
 def abs(x):  # pylint: disable=redefined-builtin
   return _scalar(math_ops.abs, x)
 
@@ -754,7 +769,7 @@ def cbrt(x):
   return _scalar(f, x, True)
 
 
-@np_utils.np_doc('conjugate')
+@np_utils.np_doc('conjugate', link=np_utils.AliasOf('conj'))
 def conjugate(x):
   return _scalar(math_ops.conj, x)
 
@@ -1343,7 +1358,9 @@ def meshgrid(*xi, **kwargs):
   return outputs
 
 
-@np_utils.np_doc('einsum')
+# Uses np_doc_only here because np.einsum (in 1.16) doesn't have argument
+# `subscripts`, even though the doc says it has.
+@np_utils.np_doc_only('einsum')
 def einsum(subscripts, *operands, **kwargs):  # pylint: disable=missing-docstring
   casting = kwargs.get('casting', 'safe')
   optimize = kwargs.get('optimize', False)

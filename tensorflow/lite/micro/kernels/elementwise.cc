@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -52,13 +54,13 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
 template <typename T>
 inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
                              T func(T), TfLiteType expected_type) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, expected_type);
-  const int64_t num_elements = NumElements(input);
-  const T* in_data = GetTensorData<T>(input);
-  T* out_data = GetTensorData<T>(output);
-  for (int64_t i = 0; i < num_elements; ++i) {
+  const size_t num_elements = ElementCount(*input->dims);
+  const T* in_data = tflite::micro::GetTensorData<T>(input);
+  T* out_data = tflite::micro::GetTensorData<T>(output);
+  for (size_t i = 0; i < num_elements; ++i) {
     out_data[i] = func(in_data[i]);
   }
   return kTfLiteOk;
@@ -105,7 +107,6 @@ TfLiteStatus SquareEval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalLogical(context, node, [](bool v) { return !v; });
 }
-
 
 }  // namespace
 }  // namespace elementwise

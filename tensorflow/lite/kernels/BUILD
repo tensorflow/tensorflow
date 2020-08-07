@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
@@ -171,9 +171,9 @@ cc_library(
     deps = [
         ":acceleration_test_util",
         ":builtin_ops",
+        ":test_delegate_providers_lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
@@ -186,11 +186,50 @@ cc_library(
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//tensorflow/lite/tools/versioning",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+# A convenient library of tflite delegate execution providers for kernel tests
+# based on SingleOpModel or its derivatives defined in test_util.h/cc.
+cc_library(
+    name = "test_util_delegate_providers",
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/tools/delegates:coreml_delegate_provider",
+        "//tensorflow/lite/tools/delegates:default_execution_provider",
+        "//tensorflow/lite/tools/delegates:external_delegate_provider",
+        "//tensorflow/lite/tools/delegates:hexagon_delegate_provider",
+        "//tensorflow/lite/tools/delegates:nnapi_delegate_provider",
+        "//tensorflow/lite/tools/delegates:xnnpack_delegate_provider",
+    ] + select({
+        # Metal GPU delegate for iOS has its own setups for kernel tests, so
+        # skipping linking w/ the gpu_delegate_provider.
+        "//tensorflow:ios": [],
+        "//conditions:default": [
+            "//tensorflow/lite/tools/delegates:gpu_delegate_provider",
+        ],
+    }),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "test_delegate_providers_lib",
+    srcs = ["test_delegate_providers.cc"],
+    hdrs = ["test_delegate_providers.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
     ],
 )
 
@@ -200,7 +239,9 @@ cc_library(
     testonly = 1,
     srcs = ["test_main.cc"],
     deps = [
+        ":test_delegate_providers_lib",
         ":test_util",
+        ":test_util_delegate_providers",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_googletest//:gtest",
@@ -240,7 +281,6 @@ cc_test(
 
 cc_library(
     name = "tflite_with_ruy_enabled",
-    build_for_embedded = True,
     defines = ["TFLITE_WITH_RUY"],
     visibility = ["//visibility:private"],
 )
@@ -256,8 +296,8 @@ cc_library(
 
 cc_library(
     name = "tflite_with_ruy_default",
-    build_for_embedded = True,
-    select_deps = {
+    visibility = ["//visibility:private"],
+    deps = select({
         ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
         ":cpu_aarch64": [":tflite_with_ruy_enabled"],
         ":cpu_arm64": [":tflite_with_ruy_enabled"],
@@ -267,18 +307,16 @@ cc_library(
         ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
         "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
         "//conditions:default": [],
-    },
-    visibility = ["//visibility:private"],
+    }),
 )
 
 cc_library(
     name = "tflite_with_ruy",
-    build_for_embedded = True,
-    select_deps = {
+    deps = select({
         ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
         ":tflite_with_ruy_explicit_false": [],
         "//conditions:default": [":tflite_with_ruy_default"],
-    },
+    }),
 )
 
 cc_library(
@@ -391,7 +429,6 @@ cc_library(
     hdrs = [
         "op_macros.h",
     ],
-    build_for_embedded = True,
     copts = tflite_copts(),
     deps = ["//tensorflow/lite/micro:debug_log"],
 )
@@ -404,7 +441,6 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
-    build_for_embedded = True,
     copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -437,11 +473,29 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "test_delegate_providers_lib_test",
+    size = "small",
+    srcs = ["test_delegate_providers_test.cc"],
+    # See details in https://github.com/bazelbuild/bazel/issues/11552 to avoid
+    # lazy symbol binding failure on macOS.
+    linkstatic = select({
+        "//tensorflow:macos": True,
+        "//conditions:default": False,
+    }),
+    deps = [
+        ":test_delegate_providers_lib",
+        "//tensorflow/lite/tools/delegates:default_execution_provider",
+        "//tensorflow/lite/tools/delegates:nnapi_delegate_provider",
+        "//tensorflow/lite/tools/delegates:xnnpack_delegate_provider",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "padding",
     srcs = [],
     hdrs = ["padding.h"],
-    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",

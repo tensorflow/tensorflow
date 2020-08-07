@@ -18,9 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace tpu {
+
+typedef void* TpuTopologyPtr;
 
 class TpuPlatformInterface : public stream_executor::Platform {
  public:
@@ -31,6 +34,9 @@ class TpuPlatformInterface : public stream_executor::Platform {
   // is registered or an error occurred.
   static TpuPlatformInterface* GetRegisteredPlatform();
 
+  // Option to not initialize a platform if not necessary.
+  static TpuPlatformInterface* GetRegisteredPlatform(bool initialize_platform);
+
   virtual Status Reset() { return Reset(false); }
 
   virtual Status Reset(bool only_tear_down) = 0;
@@ -38,6 +44,10 @@ class TpuPlatformInterface : public stream_executor::Platform {
   virtual int64 TpuMemoryLimit() = 0;
 
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
+
+  virtual const TpuTopologyPtr GetTopologyPtr() = 0;
+
+  virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
 };
 
 }  // namespace tpu

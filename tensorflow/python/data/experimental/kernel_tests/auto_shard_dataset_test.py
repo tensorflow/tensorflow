@@ -17,8 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 
+from tensorflow.core.example import example_pb2
+from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute
@@ -31,7 +35,10 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.lib.io import python_io
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
@@ -387,14 +394,27 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       self.evaluate(self.getNext(dataset)())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testShardWithRebatch(self):
-    # Tests that Rebatch is a passthrough op.
+  def testShardWithLegacyRebatch(self):
+    # Tests that RebatchDatasetV1 is a passthrough op.
     dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
     dataset = dataset.apply(
-        testing.assert_next(["Shard", "FlatMap", "BatchV2", "Rebatch"]))
+        testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
     dataset = dataset.batch(5)
-    dataset = distribute._RebatchDataset(dataset, num_replicas=1)
+    dataset = distribute._LegacyRebatchDataset(dataset, num_replicas=1)
+    dataset = distribute._AutoShardDataset(dataset, 5, 3)
+    nxt = self.getNext(dataset)
+    self.evaluate(nxt())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShardWithRebatch(self):
+    # Tests that RebatchDatasetV2 is a passthrough op.
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.apply(
+        testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = distribute._RebatchDataset(dataset, batch_sizes=5)
     dataset = distribute._AutoShardDataset(dataset, 5, 3)
     nxt = self.getNext(dataset)
     self.evaluate(nxt())
@@ -444,6 +464,46 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for r in range(0, 10)
     ]
     self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMakeBatchedFeaturesDataset(self):
+    files = 2
+    records_per_file = 5
+
+    def make_record(file_index):
+      example = example_pb2.Example(
+          features=feature_pb2.Features(
+              feature={
+                  "file":
+                      feature_pb2.Feature(
+                          int64_list=feature_pb2.Int64List(value=[file_index])),
+              }))
+      return example.SerializeToString()
+
+    filenames = []
+    for file_index in range(files):
+      filename = os.path.join(self.get_temp_dir(),
+                              "tf_record.%d.txt" % file_index)
+      filenames.append(filename)
+      writer = python_io.TFRecordWriter(filename)
+      for _ in range(records_per_file):
+        writer.write(make_record(file_index))
+      writer.close()
+
+    dataset = readers.make_batched_features_dataset(
+        file_pattern=filenames,
+        batch_size=records_per_file,
+        features={
+            "file": parsing_ops.FixedLenFeature([], dtypes.int64),
+        },
+        reader=core_readers.TFRecordDataset,
+        num_epochs=1)
+    # We should shard at the file level, so that all records come from file 0.
+    dataset = distribute._AutoShardDataset(dataset, 2, 0)
+    dataset = dataset.unbatch()
+    output = self.getDatasetOutput(dataset)
+    files = [elem["file"] for elem in output]
+    self.assertEqual(files, [0] * records_per_file)
 
 
 class AutoShardTextLineDatasetTest(

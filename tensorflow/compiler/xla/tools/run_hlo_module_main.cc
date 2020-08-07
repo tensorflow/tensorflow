@@ -156,7 +156,7 @@ int main(int argc, char** argv) {
     if (iteration_count != 1) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
-    ::testing::AssertionResult matched =
+    xla::Status matched =
         xla::RunAndCompare(hlo_filename, test_platform_name,
                            reference_platform_name, &engine, opts);
 
@@ -164,13 +164,13 @@ int main(int argc, char** argv) {
     // used. Without a reference, the test just verifies that nothing blew up
     // when running the module.
     if (!reference_platform_name.empty()) {
-      if (matched) {
+      if (matched.ok()) {
         // Success.
         std::cerr << "\n** Results on " << test_platform_name << " and "
                   << reference_platform_name << " are close enough. **\n";
       } else {
         failure_count++;
-        std::cerr << matched.message() << "\n";
+        std::cerr << matched << "\n";
       }
     }
   }

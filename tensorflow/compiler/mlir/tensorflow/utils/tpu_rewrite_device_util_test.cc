@@ -761,7 +761,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceTPUReplicate) {
   auto replicate = builder.create<mlir::tf_device::ReplicateOp>(
       mlir::UnknownLoc::get(&context), /*num_replicas=*/2, devices,
       llvm::ArrayRef<std::pair<llvm::ArrayRef<mlir::Value>, mlir::Type>>{},
-      llvm::ArrayRef<mlir::Type>{});
+      llvm::ArrayRef<mlir::Value>{}, llvm::ArrayRef<mlir::Type>{});
   builder.setInsertionPoint(&replicate.body().front(),
                             replicate.body().front().begin());
 

@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering XLA general dot to a regular dot.
+// This file implements logic for lowering MHLO general dot to a regular dot.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/Pass/Pass.h"
 
 using mlir::DenseIntElementsAttr;
 using mlir::ElementsAttr;
@@ -84,14 +84,14 @@ Value TransposeReshape(Value arg, mlir::Location loc,
     transposed_shape.push_back(arg_shape[val]);
   }
   auto transpose_type = RankedTensorType::get(transposed_shape, element_type);
-  auto transpose_result = rewriter->create<mlir::xla_hlo::TransposeOp>(
+  auto transpose_result = rewriter->create<mlir::mhlo::TransposeOp>(
       loc, transpose_type, arg, transpose_permutation_attr);
 
   // Return the final result.
   auto reshaped_type =
       RankedTensorType::get({left_size, right_size}, element_type);
-  return rewriter->create<mlir::xla_hlo::ReshapeOp>(loc, reshaped_type,
-                                                    transpose_result);
+  return rewriter->create<mlir::mhlo::ReshapeOp>(loc, reshaped_type,
+                                                 transpose_result);
 }
 
 Value ProcessDotArg(Value arg, mlir::Location loc,
@@ -125,8 +125,7 @@ Value ProcessDotArg(Value arg, mlir::Location loc,
   return TransposeReshape(arg, loc, contract_dims, outer_dims, shape, rewriter);
 }
 
-struct GeneralDotConvert
-    : public OpRewritePattern<mlir::xla_hlo::DotGeneralOp> {
+struct GeneralDotConvert : public OpRewritePattern<mlir::mhlo::DotGeneralOp> {
   // Attempts to lower a General Dot operator to a standard Dot operator.
   // General dots include batching dimensions and can have collapsing
   // dimensions along any axis. Inserting correctly arrange transpose and
@@ -138,7 +137,7 @@ struct GeneralDotConvert
   explicit GeneralDotConvert(MLIRContext *context)
       : OpRewritePattern(context) {}
 
-  LogicalResult matchAndRewrite(mlir::xla_hlo::DotGeneralOp op,
+  LogicalResult matchAndRewrite(mlir::mhlo::DotGeneralOp op,
                                 PatternRewriter &rewriter) const override {
     auto dot_element_type = mlir::getElementTypeOrSelf(op);
 
@@ -162,33 +161,32 @@ struct GeneralDotConvert
     auto new_dot_type =
         RankedTensorType::get({lhs_shape[0], rhs_shape[1]}, dot_element_type);
 
-    auto new_dot_op = rewriter.create<mlir::xla_hlo::DotOp>(
+    auto new_dot_op = rewriter.create<mlir::mhlo::DotOp>(
         op.getLoc(), new_dot_type, lhs, rhs, *(op.precision_config()));
 
-    rewriter.replaceOpWithNewOp<mlir::xla_hlo::ReshapeOp>(op, op.getType(),
-                                                          new_dot_op);
+    rewriter.replaceOpWithNewOp<mlir::mhlo::ReshapeOp>(op, op.getType(),
+                                                       new_dot_op);
     return success();
   }
 };
 
-struct LegalizeGeneralDot
-    : public PassWrapper<LegalizeGeneralDot, FunctionPass> {
+struct LegalizeGeneralDotPass
+    : public PassWrapper<LegalizeGeneralDotPass, FunctionPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnFunction() override {
     OwningRewritePatternList patterns;
-    mlir::xla_hlo::PopulateGeneralDotOpLoweringPatterns(&patterns,
-                                                        &getContext());
+    mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
     applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 
 }  // namespace
 
-void mlir::xla_hlo::PopulateGeneralDotOpLoweringPatterns(
+void mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(
     OwningRewritePatternList *patterns, MLIRContext *ctx) {
   patterns->insert<GeneralDotConvert>(ctx);
 }
 
-static PassRegistration<LegalizeGeneralDot> legalize_pass(
-    "test-xla-lower-general-dot",
-    "Tests lowering general dot to a non-batched dot when possible");
+std::unique_ptr<::mlir::Pass> mlir::mhlo::createLegalizeGeneralDotPass() {
+  return std::make_unique<LegalizeGeneralDotPass>();
+}

@@ -197,9 +197,10 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 DenseElementsAttr GetShape(Value output_val) {
   auto output_type = output_val.getType().cast<RankedTensorType>();
   auto shape_vector = output_type.getShape();
-  std::vector<int32_t> shape(shape_vector.size());
-  for (int i = 0; i < shape_vector.size(); ++i) {
-    shape[i] = shape_vector[i];
+  std::vector<int32_t> shape;
+  shape.reserve(shape_vector.size());
+  for (auto shape_object : shape_vector) {
+    shape.push_back(shape_object);
   }
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
@@ -560,7 +561,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       return failure();
     ShapedType filter_type = filter_cst.getType();
 
-    if (llvm::isa<AddOp>(binary_op) || llvm::isa<SubOp>(binary_op)) {
+    if (llvm::isa<AddOp, SubOp>(binary_op)) {
       auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
       if (padding && padding.getValue() != "VALID") return failure();
 
@@ -606,7 +607,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
           rewriter.create<ConstOp>(fc_op.getLoc(), new_bias_type, new_bias);
       fc_op.setOperand(0, binary_op->getOperand(0));
       fc_op.setOperand(2, new_bias_op);
-    } else if (llvm::isa<MulOp>(binary_op) || llvm::isa<DivOp>(binary_op)) {
+    } else if (llvm::isa<MulOp, DivOp>(binary_op)) {
       // The fusion of mul/div is actually applying the following
       // transformation:
       // w * (x ' c) + b => (w ' c) x + b
@@ -684,7 +685,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
     SmallVector<int, 8> old_major_index_ordering;
     SmallVector<int, 8> new_major_index_ordering;
-    for (int i = 0; i < input_shape.size(); i++) {
+    for (int i = 0, end = input_shape.size(); i < end; i++) {
       if (input_shape[i] != 1) {
         old_major_index_ordering.push_back(i);
       }

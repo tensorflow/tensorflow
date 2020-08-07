@@ -547,39 +547,36 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
     }
     std::string errmsg =
         "Expected format: <output_shape_index>: (<input_param>, "
-        "<input_param_shape_index>)";
+        "<input_param_shape_index>) OR <output_shape_index>: <input_param>";
     if (!ParseToken(TokKind::kColon, errmsg)) {
       return false;
     }
-    if (!ParseToken(TokKind::kLparen, errmsg)) {
-      return false;
-    }
-    int64 param_num;
-    ParseInt64(&param_num);
-    if (!ParseToken(TokKind::kComma, errmsg)) {
-      return false;
-    }
-    ShapeIndex param_idx;
-    if (!ParseShapeIndex(&param_idx)) {
-      return false;
-    }
-    HloInputOutputAliasConfig::AliasKind alias_kind =
-        HloInputOutputAliasConfig::kUserAlias;
-    if (EatIfPresent(TokKind::kComma)) {
-      std::string type;
-      ParseName(&type);
-      if (type == "SYSTEM") {
-        alias_kind = HloInputOutputAliasConfig::kSystemAlias;
-      } else if (type == "USER") {
-        alias_kind = HloInputOutputAliasConfig::kUserAlias;
-      } else {
-        return TokenError("Unexpected aliasing kind; expected SYSTEM or USER");
+
+    if (lexer_.GetKind() != TokKind::kLparen) {
+      // Short form: "{0}: 0", output index "{}" is assumed.
+      int64 param_num;
+      ParseInt64(&param_num);
+      data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
+                    std::forward_as_tuple(param_num, ShapeIndex{}));
+    } else {
+      // Long form: "{0}: (0, {0})", output index is explicitly specified.
+      if (!ParseToken(TokKind::kLparen, errmsg)) {
+        return false;
       }
-    }
-    data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
-                  std::forward_as_tuple(alias_kind, param_num, param_idx));
-    if (!ParseToken(TokKind::kRparen, errmsg)) {
-      return false;
+      int64 param_num;
+      ParseInt64(&param_num);
+      if (!ParseToken(TokKind::kComma, errmsg)) {
+        return false;
+      }
+      ShapeIndex param_idx;
+      if (!ParseShapeIndex(&param_idx)) {
+        return false;
+      }
+      data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
+                    std::forward_as_tuple(param_num, param_idx));
+      if (!ParseToken(TokKind::kRparen, errmsg)) {
+        return false;
+      }
     }
 
     if (!EatIfPresent(TokKind::kComma)) {
@@ -627,9 +624,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (aliasing_data) {
     HloInputOutputAliasConfig alias_config(module->result_shape());
     for (auto& p : *aliasing_data) {
-      Status st =
-          alias_config.SetUpAlias(p.first, p.second.parameter_number,
-                                  p.second.parameter_index, p.second.kind);
+      Status st = alias_config.SetUpAlias(p.first, p.second.parameter_number,
+                                          p.second.parameter_index);
       if (!st.ok()) {
         return TokenError(st.error_message());
       }
@@ -2133,6 +2129,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
   LocTy loc = lexer_.GetLoc();
   bool maximal = false;
   bool replicated = false;
+  bool last_tile_dim_replicate = false;
   std::vector<int64> devices;
   std::vector<int64> tile_assignment_dimensions;
   while (lexer_.GetKind() != TokKind::kRbrace) {
@@ -2184,6 +2181,10 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
         }
         break;
       }
+      case TokKind::kw_last_tile_dim_replicate:
+        last_tile_dim_replicate = true;
+        lexer_.Lex();
+        break;
       case TokKind::kRbrace:
         break;
       default:
@@ -2222,6 +2223,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     for (int64 device : devices) {
       sharding->add_tile_assignment_devices(device);
     }
+    sharding->set_replicate_on_last_tile_dim(last_tile_dim_replicate);
   }
 
   lexer_.Lex();
@@ -2678,7 +2680,9 @@ struct MinMaxFiniteValue<Eigen::half> {
 
 template <>
 struct MinMaxFiniteValue<bfloat16> {
-  static double max() { return static_cast<double>(bfloat16::highest()); }
+  static double max() {
+    return static_cast<double>(Eigen::NumTraits<Eigen::bfloat16>::highest());
+  }
   static double min() { return -max(); }
 };
 
@@ -3601,7 +3605,7 @@ bool HloParserImpl::ParseHloComputationList(
     if (!ParseHloComputation(&computation)) {
       return false;
     }
-    LOG(INFO) << "parsed computation " << computation->name();
+    VLOG(3) << "parsed computation " << computation->name();
     result->push_back(computation);
     return true;
   };
@@ -4119,7 +4123,7 @@ bool HloParserImpl::ParseFftType(FftType* result) {
 }
 
 bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
-  VLOG(1) << "ParseComparisonDirection";
+  VLOG(3) << "ParseComparisonDirection";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects comparison direction");
   }

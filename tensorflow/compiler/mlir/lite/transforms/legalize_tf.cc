@@ -158,7 +158,7 @@ LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
       random_uniform_op.seed().getSExtValue(),
       random_uniform_op.seed2().getSExtValue());
   Distribution dist;
-  int num_elements = 0;
+  size_t num_elements = 0;
   if (auto output_type =
           random_uniform_op.output().getType().dyn_cast_or_null<ShapedType>()) {
     if (auto ranked_output = output_type.dyn_cast_or_null<RankedTensorType>()) {

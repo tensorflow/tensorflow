@@ -202,6 +202,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -400,7 +401,7 @@ pybind_extension(
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/rpc:profiler_server",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/python/profiler/internal:traceme_wrapper",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:platform",

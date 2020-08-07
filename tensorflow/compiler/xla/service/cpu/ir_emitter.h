@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -189,6 +190,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
  private:
   Status HandleSliceToDynamic(HloInstruction* hlo);
   Status HandlePadToStatic(HloInstruction* hlo);
+  Status HandleTopK(HloInstruction* hlo);
   Status HandleAllReduceSingleReplica(HloInstruction* crs);
   Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 
@@ -423,6 +425,14 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits printing during the execution.
   llvm::Value* EmitPrintf(absl::string_view fmt,
                           absl::Span<llvm::Value* const> arguments);
+
+  // Emits a call to a non-variadic function `func_name` with arguments
+  // `arguments` assuming C calling convention.
+  llvm::Value* EmitCallToFunc(
+      std::string func_name, const std::vector<llvm::Value*>& arguments,
+      llvm::Type* return_type, bool does_not_throw = true,
+      bool only_accesses_arg_memory = false,
+      bool only_accesses_inaccessible_mem_or_arg_mem = false);
 
   // Assignment of the buffers needed by the computation and their shape
   // information.

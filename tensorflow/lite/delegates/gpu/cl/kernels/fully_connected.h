@@ -34,12 +34,65 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+template <DataType T, typename S>
+void RearrangeFCWeightsToIOO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
+                                absl::Span<S> dst) {
+  const int src_channels = weights.shape.i;
+  const int padded_src_channels = AlignByN(src_channels, 4);
+  const int dst_channels = weights.shape.o;
+  const int padded_dst_channels = AlignByN(dst_channels, 4);
+
+  // The weights are to be rearranged in such a way that the first 4 elements of
+  // each row, starting from row_0, are copied onto the destination buffer. The
+  // next set of 4 elements are then copied and so on. As an example, an 8x8
+  // matrix would be rearranged as below.
+  //
+  //  | a0 a1 a2 a3 a4 a5 a6 a7 |              | a0 a1 a2 a3 b0 b1 b2 b3 |
+  //  | b0 b1 b2 b3 b4 b5 b6 b7 |              | c0 c1 c2 c3 d0 d1 d2 d3 |
+  //  | c0 c1 c2 c3 c4 c5 c6 c7 |              | e0 e1 e2 e3 f0 f1 f2 f3 |
+  //  | d0 d1 d2 d3 d4 d5 d6 d7 |  --------->  | g0 g1 g2 g3 h0 h1 h2 h3 |
+  //  | e0 e1 e2 e3 e4 e5 e6 e7 |              | a4 a5 a6 a7 b4 b5 b6 b7 |
+  //  | f0 f1 f2 f3 f4 f5 f6 f7 |              | c4 c5 c6 c7 d4 d5 d6 d7 |
+  //  | g0 g1 g2 g3 g4 g5 g6 g7 |              | e4 e5 e6 e7 f4 f5 f6 f7 |
+  //  | h0 h1 h2 h3 h4 h5 h6 h7 |              | g4 g5 g6 g7 h4 h5 h6 h7 |
+
+  for (int y = 0; y < dst_channels; y++) {
+    int x = 0;
+    for (; x + 4 <= src_channels; x += 4) {
+      const int idx_data_0 = src_channels * y + x;
+      S filter = S(weights.data[idx_data_0], weights.data[idx_data_0 + 1],
+                   weights.data[idx_data_0 + 2], weights.data[idx_data_0 + 3]);
+      dst[y + padded_dst_channels * x / 4] = filter;
+    }
+
+    // If the width is not a multiple of 4, padding is required and the padded
+    // region is filled with zeros.
+    if (src_channels != padded_src_channels) {
+      const int idx_data_0 = src_channels * y + x;
+
+      S filter = S(x < src_channels ? weights.data[idx_data_0] : 0.0,
+                   x + 1 < src_channels ? weights.data[idx_data_0 + 1] : 0.0,
+                   x + 2 < src_channels ? weights.data[idx_data_0 + 2] : 0.0,
+                   x + 3 < src_channels ? weights.data[idx_data_0 + 3] : 0.0);
+      dst[y + padded_dst_channels * x / 4] = filter;
+    }
+  }
+
+  // Fill the padded columns with zeros.
+  for (int y = dst_channels; y < padded_dst_channels; y++) {
+    for (int x = 0; x < padded_src_channels; x += 4) {
+      dst[y + padded_dst_channels * x / 4] = S(0.0);
+    }
+  }
+}
+
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-
-  absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status Tune(const TuningParameters& params) override {
+    return absl::OkStatus();
+  }
+  int3 GetGridSize() const override;
 
   // Move only
   FullyConnected(FullyConnected&& kernel);
@@ -48,7 +101,7 @@ class FullyConnected : public GPUOperation {
   FullyConnected& operator=(const FullyConnected&) = delete;
 
  private:
-  explicit FullyConnected(const OperationDef& definition);
+  FullyConnected(const OperationDef& definition, const DeviceInfo& device_info);
   friend absl::Status CreateFullyConnected(
       const CreationContext& creation_context, const OperationDef& definition,
       const FullyConnectedAttributes& attr, FullyConnected* result);
@@ -57,12 +110,8 @@ class FullyConnected : public GPUOperation {
   absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                              CLContext* context);
 
-  template <DataType T, typename S>
-  void RearrangeWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                        absl::Span<S> dst);
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(0, 0, 0);
+  std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
+                                          const int3& work_group_size);
 };
 
 template <DataType T>
@@ -83,13 +132,13 @@ absl::Status FullyConnected::UploadWeights(
   Buffer weights_buffer;
   if (f32_weights) {
     std::vector<float4> gpu_data(dst_depth * src_depth * 4);
-    RearrangeWeights(weights, absl::MakeSpan(gpu_data));
+    RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(gpu_data));
     RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                          gpu_data.data(), context,
                                          &weights_buffer));
   } else {
     std::vector<half4> gpu_data(dst_depth * src_depth * 4);
-    RearrangeWeights(weights, absl::MakeSpan(gpu_data));
+    RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(gpu_data));
     RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                          gpu_data.data(), context,
                                          &weights_buffer));
@@ -100,37 +149,6 @@ absl::Status FullyConnected::UploadWeights(
                   absl::make_unique<BufferDescriptor>(desc));
 
   return absl::OkStatus();
-}
-
-template <DataType T, typename S>
-void FullyConnected::RearrangeWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  int counter = 0;
-
-  for (int s = 0; s < src_depth; ++s) {
-    for (int d = 0; d < dst_depth; ++d) {
-      S filters[4];
-      for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
-          const int dst_ch = d * 4 + i;
-          const int src_ch = s * 4 + j;
-          if (dst_ch < weights.shape.o && src_ch < weights.shape.i) {
-            const int f_index =
-                weights.shape.LinearIndex({dst_ch, 0, 0, src_ch});
-            filters[i][j] = weights.data[f_index];
-          } else {
-            filters[i][j] = 0.0;
-          }
-        }
-      }
-      dst[counter++] = filters[0];
-      dst[counter++] = filters[1];
-      dst[counter++] = filters[2];
-      dst[counter++] = filters[3];
-    }
-  }
 }
 
 absl::Status CreateFullyConnected(const CreationContext& creation_context,

@@ -95,6 +95,15 @@ else:
     return False
 
 
+# Differences created by typing implementations.
+_NORMALIZE_TYPE[(
+    'tensorflow.python.framework.ops.Tensor')] = (
+        "<class 'tensorflow.python.framework.ops.Tensor'>")
+_NORMALIZE_TYPE['typing.Generic'] = "<class 'typing.Generic'>"
+# TODO(mdan): Remove once the golden files are generated in Python 3.7.
+_NORMALIZE_TYPE["<class 'typing._GenericAlias'>"] = 'typing.Union'
+
+
 if sys.version_info.major == 3 and sys.version_info.minor >= 8:
   _NORMALIZE_TYPE["<class '_collections._tuplegetter'>"] = "<type 'property'>"
 

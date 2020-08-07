@@ -125,6 +125,19 @@ Status HashTensor(const Tensor& tensor, uint64* hash);
 // the same between TensorFlow builds.
 Status HashGraph(const GraphDef& graph, uint64* hash);
 
+// Writes dataset elements to the checkpoint writer using the given key prefix.
+// The elements can be read back by passing the same key prefix to
+// ReadElementsFromCheckpoint. Only one list of elements can be written under
+// the same key_prefix.
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements);
+
+// Reads dataset elements from the checkpoint reader using the given key prefix.
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements);
+
 // Dataset op level determinism policy.
 class DeterminismPolicy {
  public:
@@ -282,6 +295,26 @@ class DummyResourceOp : public OpKernel {
         ctx, /*container=*/"", /*name=*/"dummy_resource");
   }
 };
+
+// Given an op prefix and an op to match, returns whether the op to match
+// is a regex match for any version of the op prefix. For example,
+// MatchesAnyVersionRE("BatchDataset", "BatchDataset") == true
+// MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2") == true
+// MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3") == true
+// MatchesAnyVersionRE("PaddedBatchDataset", "BatchDataset") == false
+bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match);
+
+// Based on `optimizations_enabled`, `optimizations_disabled`, and
+// `optimizations_disabled`, returns the list of optimizations that will be
+// applied.
+std::vector<tstring> SelectOptimizations(
+    const string& job_name, const string& opt_ins_raw,
+    const string& opt_outs_raw,
+    const absl::flat_hash_map<string, uint64>& live_experiments,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    std::function<uint64(const string&)> hash_func);
 
 }  // namespace data
 }  // namespace tensorflow

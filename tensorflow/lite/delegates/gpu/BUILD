@@ -1,3 +1,4 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
@@ -219,6 +220,16 @@ cc_library(
     ],
 )
 
+# Currently the GPU delegate needs to be built on Android (due to EGL dependency),
+# or built with -DCL_DELEGATE_NO_GL (disabling OpenGL backend fallback), or both.
+selects.config_setting_group(
+    name = "supports_gpu_delegate",
+    match_any = [
+        "//tensorflow:android",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_delegate_no_gl",
+    ],
+)
+
 cc_library(
     name = "delegate",
     srcs = ["delegate.cc"],
@@ -234,7 +245,15 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    deps = [
+    deps = select({
+        "//tensorflow/lite/delegates/gpu/cl:opencl_delegate_no_gl": [],
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/gpu/gl:api2",
+        ],
+    }) + [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
@@ -247,9 +266,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/gl:api2",
         "//tensorflow/lite/kernels/internal:optimized_base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
     ],
 )

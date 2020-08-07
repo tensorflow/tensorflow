@@ -191,7 +191,7 @@ class ProcessFunctionLibraryRuntime {
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::Handle handle,
-           const FunctionArgsInterface& args, std::vector<Tensor>* rets,
+           const FunctionArgsInterface& args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
 
   Status RunSync(const FunctionLibraryRuntime::Options& opts,
@@ -221,6 +221,7 @@ class ProcessFunctionLibraryRuntime {
   void AddCompositeDevice(CompositeDevice* d) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     device_set_->AddDevice(d);
+    composite_devices_.push_back(d);
   }
 
  protected:
@@ -303,7 +304,7 @@ class ProcessFunctionLibraryRuntime {
 
   void RunMultiDevice(
       const FunctionLibraryRuntime::Options& opts,
-      FunctionLibraryRuntime::Handle handle, std::vector<Tensor>* rets,
+      FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
       std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
       FunctionLibraryRuntime::DoneCallback done,
       std::function<Status(const ComponentFunctionData& comp_data,
@@ -387,7 +388,8 @@ class ProcessFunctionLibraryRuntime {
 
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
-                   gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
+                   gtl::ArraySlice<FunctionArg> args,
+                   std::vector<FunctionRet>* rets,
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 
@@ -451,6 +453,9 @@ class ProcessFunctionLibraryRuntime {
   // devices to instantiate multi-worker functions. Function instantiation would
   // fail if it spans the changed remote devices.
   std::shared_ptr<DeviceSet> device_set_ TF_GUARDED_BY(mu_);
+
+  // Composite devices owned by a EagerContext.
+  std::vector<CompositeDevice*> composite_devices_ TF_GUARDED_BY(mu_);
 
   // Holds all the function instantiations. Maps function_keys to handles.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_

@@ -18,11 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+import six
 
 import tensorflow as tf
 
 from tensorflow.python.eager import context
-from tensorflow.python.platform import test
+from tensorflow.python.platform import benchmark
 from tensorflow.python.util import tf_inspect
 
 
@@ -43,20 +44,26 @@ def _run_benchmark(func, num_iters, execution_mode=None):
     return end - start
 
 
-class MicroBenchmarksBase(test.Benchmark):
+class MicroBenchmarksBase(tf.test.Benchmark):
   """Run and report benchmark results."""
 
   def run_report(self, run_benchmark, func, num_iters, execution_mode=None):
     """Run and report benchmark results."""
     total_time = run_benchmark(func, num_iters, execution_mode)
     mean_us = total_time * 1e6 / num_iters
-    extras = {
-        "examples_per_sec": float("{0:.3f}".format(num_iters / total_time)),
-        "us_per_example": float("{0:.3f}".format(total_time * 1e6 / num_iters))
-    }
+    metrics = [{
+        "name": "exp_per_sec",
+        "value": float("{0:.3f}".format(num_iters / total_time))
+    }, {
+        "name": "us_per_exp",
+        "value": float("{0:.3f}".format(total_time * 1e6 / num_iters))
+    }]
     benchmark_name = self._get_benchmark_name()
     self.report_benchmark(
-        iters=num_iters, wall_time=mean_us, extras=extras, name=benchmark_name)
+        iters=num_iters,
+        wall_time=mean_us,
+        metrics=metrics,
+        name=benchmark_name)
 
   def _get_benchmark_name(self):
     """Mostly copied from benchmark.py _get_name()."""
@@ -65,7 +72,7 @@ class MicroBenchmarksBase(test.Benchmark):
     for frame in stack[::-1]:
       f_locals = frame[0].f_locals
       f_self = f_locals.get("self", None)
-      if isinstance(f_self, test.Benchmark):
+      if isinstance(f_self, tf.test.Benchmark):
         name = frame[3]  # Get the method name
         # This is a hack to get around the fact that some methods might have a
         # disable_tfrt decorator around them. In that case a function called
@@ -129,137 +136,6 @@ class MicroBenchmarksBase(test.Benchmark):
 
     self._run(fn, 20)
 
-  # Naming convention: benchmark_layers_{module_name}_{class}_overhead.
-  def benchmark_layers_advanced_activations_leaky_relu_overhead(self):
-
-    layer = tf.keras.layers.LeakyReLU()
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_advanced_activations_prelu_overhead(self):
-
-    layer = tf.keras.layers.PReLU()
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_advanced_activations_elu_overhead(self):
-
-    layer = tf.keras.layers.ELU()
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_advanced_activations_thresholded_relu_overhead(self):
-
-    layer = tf.keras.layers.ThresholdedReLU()
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_advanced_activations_softmax_overhead(self):
-
-    layer = tf.keras.layers.Softmax()
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_advanced_activations_relu_overhead(self):
-
-    layer = tf.keras.layers.ReLU()
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_core_masking_overhead(self):
-
-    layer = tf.keras.layers.Masking()
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_core_dropout_overhead(self):
-
-    layer = tf.keras.layers.Dropout(0.5)
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x, training=True)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_core_flatten_overhead(self):
-
-    layer = tf.keras.layers.Flatten()
-    x = tf.convert_to_tensor([[[1.]]])
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_core_dense_overhead(self):
-
-    layer = tf.keras.layers.Dense(1)
-    x = tf.convert_to_tensor([[1.]])
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_convolutional_conv1d_overhead(self):
-
-    layer = tf.keras.layers.Conv1D(1, (1,))
-    x = tf.ones((1, 1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_convolutional_conv2d_overhead(self):
-
-    layer = tf.keras.layers.Conv2D(1, (1, 1))
-    x = tf.ones((1, 1, 1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_convolutional_conv3d_overhead(self):
-
-    layer = tf.keras.layers.Conv3D(1, (1, 1, 1))
-    x = tf.ones((1, 1, 1, 1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
   def benchmark_layers_embeddings_embedding_overhead(self):
 
     layer = tf.keras.layers.Embedding(1, 1)
@@ -270,57 +146,65 @@ class MicroBenchmarksBase(test.Benchmark):
 
     self._run(fn, 10000)
 
-  def benchmark_layers_batch_norm_fused_inf(self):
 
-    layer = tf.keras.layers.BatchNormalization(fused=True)
-    x = tf.ones((1, 1, 1, 1))
+class KerasLayerCallOverheadBenchmarks(
+    six.with_metaclass(benchmark.ParameterizedBenchmark, MicroBenchmarksBase)):
+
+  # The set of layers for benchmarking. To add benchmarks for new layers,
+  # please add the parameter configs to "_benchmark_paramters".
+
+  # The parameter of each layer benchmark is a tuple contains:
+  # 1) The benchmark name with convention "{module_name}_{layer_name}";
+  # 2) The layer instance;
+  # 3) The shape of the input to the layer;
+  # 4) The kwargs used in the benchmark. It can include the number of
+  #    iterations to run the benchmarks, and kwargs used in the layer call.
+  #    By default, # of iteratons is 10000.
+  _benchmark_parameters = [
+      ("advanced_activations_leaky_relu", tf.keras.layers.LeakyReLU(),
+       (1, 1)),
+      ("advanced_activations_prelu", tf.keras.layers.PReLU(), (1, 1)),
+      ("advanced_activations_elu", tf.keras.layers.ELU(), (1, 1)),
+      ("advanced_activations_thresholded_relu",
+       tf.keras.layers.ThresholdedReLU(), (1, 1)),
+      ("advanced_activations_softmax", tf.keras.layers.Softmax(), (1, 1)),
+      ("advanced_activations_relu", tf.keras.layers.ReLU(), (1, 1)),
+      ("core_masking", tf.keras.layers.Masking(), (1, 1)),
+      ("core_dropout", tf.keras.layers.Dropout(0.5), (1, 1), {
+          "training": True
+      }),
+      ("core_flatten", tf.keras.layers.Flatten(), (1, 1, 1)),
+      ("core_dense", tf.keras.layers.Dense(1), (1, 1)),
+      ("convolutional_conv1d", tf.keras.layers.Conv1D(1, (1,)), (1, 1, 1)),
+      ("convolutional_conv2d", tf.keras.layers.Conv2D(1, (1, 1)), (1, 1, 1, 1)),
+      ("convolutional_conv3d", tf.keras.layers.Conv3D(
+          1, (1, 1, 1)), (1, 1, 1, 1, 1)),
+      ("batch_norm_fused_inf", tf.keras.layers.BatchNormalization(fused=True),
+       (1, 1, 1, 1)),
+      ("batch_norm_fused_train", tf.keras.layers.BatchNormalization(fused=True),
+       (1, 1, 1, 1), {"training": True}),
+      ("batch_norm_nonfused_inf",
+       tf.keras.layers.BatchNormalization(fused=False), (1, 1, 1, 1)),
+      ("batch_norm_nonfused_train",
+       tf.keras.layers.BatchNormalization(fused=False), (1, 1, 1, 1),
+       {"training": True}),
+      ("normalization_layer_normalization",
+       tf.keras.layers.LayerNormalization(), (1, 1),
+       {"iters": 100, "training": True}),
+  ]
+
+  def benchmark_layer(self, layer, input_shape, kwargs=None):
+
+    x = tf.ones(input_shape)
 
     def fn():
-      layer(x)
+      layer(x, **(kwargs or {}))
 
-    self._run(fn, 10000)
-
-  def benchmark_layers_batch_norm_fused_train(self):
-
-    layer = tf.keras.layers.BatchNormalization(fused=True)
-    x = tf.ones((1, 1, 1, 1))
-
-    def fn():
-      layer(x, training=True)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_batch_norm_nonfused_inf(self):
-
-    layer = tf.keras.layers.BatchNormalization(fused=False)
-    x = tf.ones((1, 1, 1, 1))
-
-    def fn():
-      layer(x)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_batch_norm_nonfused_train(self):
-
-    layer = tf.keras.layers.BatchNormalization(fused=False)
-    x = tf.ones((1, 1, 1, 1))
-
-    def fn():
-      layer(x, training=True)
-
-    self._run(fn, 10000)
-
-  def benchmark_layers_normalization_layer_normalization_overhead(self):
-
-    layer = tf.keras.layers.LayerNormalization()
-    x = tf.ones((1, 1))
-
-    def fn():
-      layer(x, training=True)
-
-    self._run(fn, 10000)
+    default_iters = 10000
+    iters = kwargs.pop("iters", default_iters) if kwargs else default_iters
+    self._run(fn, iters)
 
 
 if __name__ == "__main__":
   assert tf.executing_eagerly()
-  test.main()
+  tf.test.main()

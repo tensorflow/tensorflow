@@ -45,8 +45,10 @@ class ConstantFolding : public GraphOptimizer {
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 
-  explicit ConstantFolding(DeviceBase* cpu_device);
-  ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device);
+  explicit ConstantFolding(DeviceBase* cpu_device,
+                           bool disable_compressed_tensor_optimization = false);
+  ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device,
+                  bool disable_compressed_tensor_optimization = false);
 
   ~ConstantFolding() override {}
 
@@ -106,7 +108,8 @@ class ConstantFolding : public GraphOptimizer {
   void ReplaceOperationWithSnapshot(int input_to_forward,
                                     const GraphProperties& properties,
                                     NodeDef* node, GraphDef* graph);
-  void ReplaceOperationWithNoOp(NodeDef* node, GraphDef* graph);
+  void ReplaceOperationWithNoOp(NodeDef* node, GraphProperties* properties,
+                                GraphDef* graph);
   void ReplaceBinaryOperationWithBroadcastTo(int input_to_broadcast,
                                              const GraphProperties& properties,
                                              NodeDef* node, GraphDef* graph);
@@ -289,7 +292,7 @@ class ConstantFolding : public GraphOptimizer {
                       GraphDef* optimized_graph, NodeDef* node);
 
   // Replaces variable updates that are effectively no-ops with NoOp nodes.
-  void RemoveRedundantVariableUpdates(const GraphProperties& properties,
+  void RemoveRedundantVariableUpdates(GraphProperties* properties,
                                       GraphDef* optimized_graph, NodeDef* node);
 
   // Removes Reverse op over dimensions with size 1.
@@ -311,8 +314,8 @@ class ConstantFolding : public GraphOptimizer {
                            GraphDef* optimized_graph, NodeDef* node);
 
   bool GetConcatAxis(const NodeDef& node, int* axis);
-  bool MergeConcat(bool use_shape_info, GraphDef* optimized_graph,
-                   NodeDef* node);
+  bool MergeConcat(bool use_shape_info, GraphProperties* properties,
+                   GraphDef* optimized_graph, NodeDef* node);
 
   Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
                                                GraphDef* optimized_graph);
@@ -327,12 +330,13 @@ class ConstantFolding : public GraphOptimizer {
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
   // TODO(rmlarsen): Could these be keyed on absl::string_view?
-  absl::flat_hash_set<string> nodes_whitelist_;
+  absl::flat_hash_set<string> nodes_allowlist_;
   absl::flat_hash_set<string> feed_nodes_;
   absl::flat_hash_map<string, bool> maybe_foldable_nodes_;
   bool has_fetch_;
   bool graph_modified_;
   bool graph_contains_assign_or_inplace_op_;
+  bool disable_compressed_tensor_optimization_;
 };
 
 }  // end namespace grappler

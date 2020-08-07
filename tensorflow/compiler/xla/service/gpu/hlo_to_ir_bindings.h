@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
 namespace xla {
@@ -42,8 +41,7 @@ class HloToIrBindings {
       : buffer_assignment_(buffer_assignment),
         is_nested_(is_nested),
         b_(b),
-        module_(llvm_module),
-        alias_analysis_(module, *buffer_assignment_, &b_->getContext()) {}
+        module_(llvm_module) {}
 
   void EmitBasePointersForHlos(
       absl::Span<const HloInstruction* const> io_hlos,
@@ -116,8 +114,6 @@ class HloToIrBindings {
 
   // The address of the memory block that contains all temporary buffers.
   llvm::Value* temp_buffer_base_ = nullptr;
-
-  llvm_ir::AliasAnalysis alias_analysis_;
 };
 
 }  // namespace gpu

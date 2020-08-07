@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -525,12 +526,12 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
     LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
         std::move(new_server), grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr));
+        grpc_server->worker_env()->collective_executor_mgr.get()));
   } else {
     LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
     LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
         /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr));
+        grpc_server->worker_env()->collective_executor_mgr.get()));
   }
   return tensorflow::Status::OK();
 #undef LOG_AND_RETURN_IF_ERROR
@@ -549,6 +550,14 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
     return;
   }
   status->status = EnableCollectiveOps(server_def, ctx);
+}
+
+TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
+                                                  TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  auto collective_executor_handle = context->GetCollectiveExecutorHandle();
+  collective_executor_handle->get()->StartAbort(status->status);
 }
 
 TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {

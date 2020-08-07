@@ -33,8 +33,6 @@ namespace tensorflow {
 // is needed a static_cast can be applied.
 class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
  public:
-  // Returns tensor dtype.
-  virtual tensorflow::DataType DataType() const = 0;
   // Returns number of dimensions.
   virtual Status NumDims(int* num_dims) const = 0;
   // Returns number of elements across all dimensions.
@@ -51,6 +49,14 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
 
   // Return a copy of the handle.
   virtual ImmediateExecutionTensorHandle* Copy() = 0;
+
+  // Release any underlying resources, including the interface object.
+  //
+  // WARNING: The destructor of this class is marked as protected to disallow
+  // clients from directly destroying this object since it may manage it's own
+  // lifetime through ref counting. Thus this must be allocated on the heap and
+  // clients MUST call Release() in order to destroy an instance of this class.
+  virtual void Release() = 0;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {

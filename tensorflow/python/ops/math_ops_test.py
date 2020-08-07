@@ -261,7 +261,10 @@ class ModTest(test_util.TensorFlowTestCase):
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   def testSquaredDifference(self):
-    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype,
+        np.int32, np.int64
+    ]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
@@ -472,6 +475,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     # tf2_result = (array_ops.constant(nums)
     #               % array_ops.constant(divs))
     # self.assertAllEqual(tf2_result, tf_result)
+
+  def testFloorModBfloat64(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.floormod(math_ops.cast(nums, dtypes.bfloat16),
+                                  math_ops.cast(divs, dtypes.bfloat16))
+    np_result = nums % divs
+    self.assertAllEqual(tf_result, np_result)
 
   def testTruncateModInt(self):
     nums, divs = self.intTestData()

@@ -34,11 +34,11 @@ namespace cl {
 class Winograd4x4To36 : public GPUOperation {
  public:
   Winograd4x4To36() = default;
-  Winograd4x4To36(const OperationDef& definition, const Padding2D& padding)
-      : GPUOperation(definition), padding_(padding) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  Winograd4x4To36(const OperationDef& definition, const Padding2D& padding,
+                  const DeviceInfo& device_info);
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Winograd4x4To36(Winograd4x4To36&& operation);
@@ -53,16 +53,12 @@ class Winograd4x4To36 : public GPUOperation {
 
   absl::Status UploadBt(CLContext* context);
 
+  std::string GetWinograd4x4To36Code(const OperationDef& op_def);
+
   // Must be called after kernel compilation
   int3 SelectBestWorkGroup();
 
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   Padding2D padding_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(128, 1, 1);
 };
 
 absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
@@ -73,11 +69,11 @@ absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
 class Winograd36To4x4 : public GPUOperation {
  public:
   Winograd36To4x4() = default;
-  explicit Winograd36To4x4(const OperationDef& definition)
-      : GPUOperation(definition) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  Winograd36To4x4(const OperationDef& definition,
+                  const DeviceInfo& device_info);
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Winograd36To4x4(Winograd36To4x4&& operation);
@@ -93,14 +89,10 @@ class Winograd36To4x4 : public GPUOperation {
 
   absl::Status UploadAt(CLContext* context);
 
+  std::string GetWinograd36To4x4Code(const OperationDef& op_def);
+
   // Must be called after kernel compilation
   int3 SelectBestWorkGroup();
-
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(128, 1, 1);
 };
 
 absl::Status CreateWinograd36To4x4(
