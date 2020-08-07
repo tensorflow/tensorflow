@@ -72,14 +72,17 @@ bool MatchesPattern(Operation& op,
   return (supported_ops.contains(op.getName()));
 }
 
-// Checks if the op is supported inside of a device cluster.
+// Checks if the op is supported inside of a device cluster.  Ops not
+// in `tf_dialect` are considered supported.
 bool IsSupportedOp(Operation& op,
-                   const llvm::DenseSet<OperationName>& supported_ops) {
-  // TODO(b/161726307): Check the allowed ops list in LegalizeTfWithTf2XlaPass
-  // as well.
-  return !HasStringOperand(op) && !HasStringResult(op) &&
-         (MatchesPattern(op, supported_ops) ||
-          mhlo::IsOpAllowedTf2XlaFallback(&op));
+                   const llvm::DenseSet<OperationName>& supported_ops,
+                   const Dialect* tf_dialect) {
+  if (op.getDialect() != tf_dialect)
+    return true;
+  else
+    return !HasStringOperand(op) && !HasStringResult(op) &&
+           (MatchesPattern(op, supported_ops) ||
+            mhlo::IsOpAllowedTf2XlaFallback(&op));
 }
 
 // Checks all regions of `op` for captured string operands.
@@ -96,10 +99,12 @@ bool HasCapturedStringOperand(Operation* op) {
   return string_operand;
 }
 
+// Marks uncompilable ops that are in `tf_dialect` for outside compilation.
 LogicalResult MarkUncompilableOps(
-    Block* block, llvm::DenseSet<OperationName>& supported_ops) {
+    const Dialect* tf_dialect, Block* block,
+    llvm::DenseSet<OperationName>& supported_ops) {
   block->walk([&](Operation* op) {
-    if (!IsSupportedOp(*op, supported_ops)) {
+    if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
       op->setAttr(kXlaOutsideCompilationAttr,
                   StringAttr::get("auto", op->getContext()));
     }
@@ -115,6 +120,11 @@ LogicalResult MarkUncompilableOps(
 
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
+  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  if (!tf_dialect) {
+    getOperation().emitError() << "'tf' dialect is not registered";
+    return signalPassFailure();
+  }
   OwningRewritePatternList patterns;
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
 
@@ -129,7 +139,8 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
-    if (failed(MarkUncompilableOps(&cluster.GetBody(), supported_ops)))
+    if (failed(
+            MarkUncompilableOps(tf_dialect, &cluster.GetBody(), supported_ops)))
       return WalkResult::interrupt();
 
     return WalkResult::advance();
