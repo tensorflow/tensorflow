@@ -973,7 +973,8 @@ def _try_handling_undefineds(
   """
   state_modified = False
 
-  if not os.getenv('AUTOGRAPH_CREATE_SYMBOLS_IN_LOOPS', ''):
+  # TODO(mdan): Remove once the default option is stable.
+  if os.getenv('AUTOGRAPH_CREATE_SYMBOLS_IN_LOOPS', '1') == '0':
     _verify_loop_init_vars(init_vars, symbol_names)
     return False, init_vars
 
