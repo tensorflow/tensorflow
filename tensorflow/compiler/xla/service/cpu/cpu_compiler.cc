@@ -77,6 +77,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -303,6 +304,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<AlgebraicSimplifier>(options);
     pass.AddPass<SortSimplifier>();
     pass.AddPass<HloDCE>();
+    pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
