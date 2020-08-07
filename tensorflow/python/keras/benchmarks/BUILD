@@ -173,6 +173,16 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "mnist_conv_custom_training_benchmark_test",
+    srcs = ["keras_examples_benchmarks/mnist_conv_custom_training_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_library(
     name = "distribution_util",
     srcs = ["distribution_util.py"],
