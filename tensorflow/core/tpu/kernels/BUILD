@@ -28,10 +28,16 @@ tf_kernel_library(
     deps = [
         ":cross_replica_ops",
         ":host_compute_ops",
+        ":image_resize_ops",
+        ":infeed_ops",
+        ":outfeed_ops",
+        ":replication_ops",
         ":topk_ops",
         ":tpu_compile_op",
         ":tpu_configuration_ops",
         ":tpu_execute_op",
+        ":tpu_handle_to_key_op",
+        ":transfer_ops",
     ],
 )
 
@@ -683,4 +689,105 @@ cc_library(
         "//tensorflow/core/tpu:tpu_defs",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "infeed_ops",
+    srcs = ["infeed_ops.cc"],
+    hdrs = ["infeed_ops.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":transfer_ops",
+        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:dma_helper",
+        "//tensorflow/core/framework:protos_all_cc",
+        "//tensorflow/core/kernels:transpose_functor",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor/tpu:tpu_transfer_manager_base",
+        "//tensorflow/stream_executor/tpu:tpu_transfer_manager_interface",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "transfer_ops",
+    srcs = ["transfer_ops.cc"],
+    hdrs = ["transfer_ops.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
+        "//tensorflow/stream_executor/tpu:tpu_transfer_manager_interface",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "outfeed_ops",
+    srcs = ["outfeed_ops.cc"],
+    hdrs = ["outfeed_ops.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":transfer_ops",
+        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:protos_all_cc",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/stream_executor:multi_platform_manager",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "image_resize_ops",
+    srcs = ["image_resize_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "replication_ops",
+    srcs = ["replication_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tpu:tpu_defs",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_handle_to_key_op",
+    srcs = ["tpu_handle_to_key_op.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_compilation_cache_interface",
+        ":tpu_op_consts",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tpu:tpu_configuration",
+    ],
+    alwayslink = True,
 )
