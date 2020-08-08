@@ -112,37 +112,6 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
 // ConstOp
 //===----------------------------------------------------------------------===//
 
-static void Print(ConstOp op, OpAsmPrinter* printer) {
-  // Print op name.
-  *printer << op.getOperationName();
-
-  // Elide attribute value while printing the attribute dictionary.
-  SmallVector<StringRef, 1> elided_attrs;
-  elided_attrs.push_back("value");
-  printer->printOptionalAttrDict(op.getAttrs(), elided_attrs);
-
-  *printer << ' ' << op.value();
-}
-
-static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
-  if (parser->parseOptionalAttrDict(result->attributes)) return failure();
-
-  // If colon is not present after attribute dictionary, it should be short form
-  // and attribute 'value' is outside the dictionary.
-  if (failed(parser->parseOptionalColon())) {
-    Attribute value;
-    if (parser->parseAttribute(value, "value", result->attributes))
-      return failure();
-    return parser->addTypeToList(value.getType(), result->types);
-  }
-
-  // Long form should have type of the result after colon.
-  Type ty;
-  if (parser->parseType(ty)) return failure();
-  result->types.push_back(ty);
-  return success();
-}
-
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 
