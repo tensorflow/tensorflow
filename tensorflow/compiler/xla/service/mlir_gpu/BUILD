@@ -82,6 +82,7 @@ cc_library(
         ":kernel_lowering",
         ":lhlo_dialect_emitter",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Core",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

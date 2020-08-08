@@ -32,8 +32,14 @@ namespace mlir {
 namespace chlo {
 
 class HloClientDialect : public Dialect {
+  void initialize();
+
  public:
-  explicit HloClientDialect(MLIRContext *context);
+  explicit HloClientDialect(MLIRContext *context)
+      : Dialect(getDialectNamespace(), context,
+                TypeID::get<HloClientDialect>()) {
+    initialize();
+  }
   static StringRef getDialectNamespace() { return "chlo"; }
 };
 

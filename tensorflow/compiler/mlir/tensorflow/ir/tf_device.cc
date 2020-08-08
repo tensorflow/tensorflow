@@ -101,7 +101,8 @@ bool BlockWrapsSingleOp(Block* block) {
 }  // end anonymous namespace
 
 TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
-    : Dialect(/*name=*/"tf_device", context) {
+    : Dialect(/*name=*/"tf_device", context,
+              TypeID::get<TensorFlowDeviceDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"

@@ -2188,7 +2188,7 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
 //===----------------------------------------------------------------------===//
 
 MhloDialect::MhloDialect(MLIRContext* context)
-    : Dialect(getDialectNamespace(), context) {
+    : Dialect(getDialectNamespace(), context, TypeID::get<MhloDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"

@@ -622,10 +622,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
-  auto llvm_module = absl::make_unique<llvm::Module>(
-      "__compute_module",
-      mlir_context.getRegisteredDialect<mlir::LLVM::LLVMDialect>()
-          ->getLLVMContext());
+  llvm::LLVMContext llvm_context;
+  auto llvm_module =
+      absl::make_unique<llvm::Module>("__compute_module", llvm_context);
 
   auto jit = absl::make_unique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
@@ -834,10 +833,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
-  llvm::Module llvm_module(
-      "__compute_module",
-      mlir_context.getRegisteredDialect<mlir::LLVM::LLVMDialect>()
-          ->getLLVMContext());
+  llvm::LLVMContext llvm_context;
+  llvm::Module llvm_module("__compute_module", llvm_context);
   llvm_module.setDataLayout(target_machine->createDataLayout());
   llvm_module.setTargetTriple(triple.getTriple());
   if (pic_level != llvm::PICLevel::NotPIC) {
