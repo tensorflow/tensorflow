@@ -528,8 +528,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   // global device type for all TensorFlow ops.
   Option<std::string> device_type_{
       *this, "device-type",
-      llvm::cl::desc("XLA device type for execution of TensorFlow ops. "
-                     "Supports XLA_CPU_JIT and XLA_TPU_JIT for now.")};
+      llvm::cl::desc("XLA device type for execution of TensorFlow ops.")};
 };
 
 static PassRegistration<LegalizeTF> pass(

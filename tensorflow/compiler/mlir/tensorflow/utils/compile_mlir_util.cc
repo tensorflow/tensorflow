@@ -312,29 +312,25 @@ Status ConvertMLIRToXlaComputation(
   // inside PromoteResourcesToArgs.
   tf2xla.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(true));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+      /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
+      /*tf2xla_fallback_device_type=*/device_type));
   for (auto& target_pass : custom_legalization_passes) {
     tf2xla.addNestedPass<mlir::FuncOp>(std::move(target_pass));
   }
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  tf2xla.addPass(mlir::TF::CreateTFShapeInferencePass());
-
-  // Leverage tf2xla kernels for ops that didn't get lowered in the previous
-  // legalization pass.
-  tf2xla.addPass(mlir::mhlo::createLegalizeTfWithTf2XlaPass(device_type));
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape
   // inference was originally missing in a TF op but the corresponding HLO op
   // had static shape after lowering.
   tf2xla.addPass(mlir::TF::CreateTFShapeInferencePass());
-
   // Run LegalizeTFPass again because the previous legalization passes can
   // expose more graph pruning and canonicalization opportunities that are
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
   // invocation.
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(false));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+      /*allow_partial_conversion=*/false, /*legalize_chlo=*/true,
+      /*tf2xla_fallback_device_type=*/device_type));
   // In order to export to XLA, we must sink constants to control flow regions,
   // since XLA uses functional control flow.
   tf2xla.addNestedPass<mlir::FuncOp>(
