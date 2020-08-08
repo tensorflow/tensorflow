@@ -264,9 +264,8 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
       if (tensor_id == -1) continue;
       const auto& input_tensor = context->tensors[tensor_id];
       if (input_tensor.allocation_type == kTfLiteMmapRo) {
-        builder_->AddConstNodeWithData(
-            tensor_id, input_tensor,
-            /*int8_to_uint8*/ (input_tensor.type == kTfLiteInt8));
+        builder_->AddConstNodeWithData(tensor_id, input_tensor,
+                                       /*int8_to_uint8*/ true);
       }
     }
     auto* op_builder =

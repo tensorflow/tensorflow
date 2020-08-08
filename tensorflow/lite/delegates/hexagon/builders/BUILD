@@ -85,7 +85,6 @@ cc_library(
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:tensor",
-        "@farmhash_archive//:farmhash",
         "@hexagon_nn//:hexagon_nn_ops",
     ],
 )
