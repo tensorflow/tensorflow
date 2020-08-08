@@ -35,6 +35,8 @@ enum Mode { FILL_REFLECT, FILL_WRAP, FILL_CONSTANT, FILL_NEAREST };
 using Eigen::array;
 using Eigen::DenseIndex;
 
+// Follow scipy's implementation
+// https://github.com/scipy/scipy/blob/master/scipy/ndimage/src/ni_interpolation.c
 template <typename Device, Mode M>
 struct MapCoordinate {
   float operator()(const float out_coord, const DenseIndex len);
@@ -44,22 +46,33 @@ template <typename Device>
 struct MapCoordinate<Device, Mode::FILL_REFLECT> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
+    // Reflect [abcd] to [dcba|abcd|dcba].
     float in_coord = out_coord;
-    // Reflect [abcd] to [dcba|abcd|dcba], periodically from [0, 2 * len)
-    // over [abcddcba]
-    const DenseIndex boundary = 2 * len;
-    // Shift coordinate to (-boundary, boundary)
-    in_coord -= boundary * static_cast<DenseIndex>(in_coord / boundary);
-    // Convert negative coordinates from [-boundary, 0) to [0, boundary)
     if (in_coord < 0) {
-      in_coord += boundary;
+      if (len <= 1) {
+        in_coord = 0;
+      } else {
+        const DenseIndex sz2 = 2 * len;
+        if (in_coord < sz2) {
+          in_coord =
+              sz2 * static_cast<DenseIndex>(-in_coord / sz2) + in_coord;
+        }
+        in_coord = (in_coord < -len) ? in_coord + sz2 : -in_coord - 1;
+      }
+    } else if (in_coord > len - 1) {
+      if (len <= 1) {
+        in_coord = 0;
+      } else {
+        const DenseIndex sz2 = 2 * len;
+        in_coord -= sz2 * static_cast<DenseIndex>(in_coord / sz2);
+        if (in_coord >= len) {
+          in_coord = sz2 - in_coord - 1;
+        }
+      }
     }
-    // Coordinate in_coord between [len, boundary) should reverse reflect
-    // to coordinate to (bounary - 1 - in_coord) between [0, len)
-    if (in_coord > len - 1) {
-      in_coord = boundary - 1 - in_coord;
-    }
-    return in_coord;
+    // clamp is necessary because when out_coord = 3.5 and len = 4,
+    // in_coord = 3.5 and will be rounded to 4 in nearest interpolation.
+    return Eigen::internal::scalar_clamp_op<float>(0.0f, len - 1)(in_coord);
   }
 };
 
@@ -67,17 +80,26 @@ template <typename Device>
 struct MapCoordinate<Device, Mode::FILL_WRAP> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
+    // Wrap [abcd] to [abcd|abcd|abcd].
     float in_coord = out_coord;
-    // Wrap [abcd] to [abcd|abcd|abcd], periodically from [0, len)
-    // over [abcd]
-    const DenseIndex boundary = len;
-    // Shift coordinate to (-boundary, boundary)
-    in_coord -= boundary * static_cast<DenseIndex>(in_coord / boundary);
-    // Shift negative coordinate from [-boundary, 0) to [0, boundary)
     if (in_coord < 0) {
-      in_coord += boundary;
+      if (len <= 1) {
+        in_coord = 0;
+      } else {
+        const DenseIndex sz = len - 1;
+        in_coord += len * (static_cast<DenseIndex>(-in_coord / sz) + 1);
+      }
+    } else if (in_coord > len - 1) {
+      if (len <= 1) {
+        in_coord = 0;
+      } else {
+        const DenseIndex sz = len - 1;
+        in_coord -= len * static_cast<DenseIndex>(in_coord / sz);
+      }
     }
-    return in_coord;
+    // clamp is necessary because when out_coord = -0.5 and len = 4,
+    // in_coord = 3.5 and will be rounded to 4 in nearest interpolation.
+    return Eigen::internal::scalar_clamp_op<float>(0.0f, len - 1)(in_coord);
   }
 };
 
@@ -93,11 +115,7 @@ template <typename Device>
 struct MapCoordinate<Device, Mode::FILL_NEAREST> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
-    if (out_coord < 0)
-      return 0;
-    else if (out_coord >= len)
-      return len - 1;
-    return out_coord;
+    return Eigen::internal::scalar_clamp_op<float>(0.0f, len - 1)(out_coord);
   }
 };
 
