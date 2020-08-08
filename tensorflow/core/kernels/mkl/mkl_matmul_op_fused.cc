@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
-#include "tensorflow/core/kernels/mkl_matmul_ops_common.h"
+#include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {

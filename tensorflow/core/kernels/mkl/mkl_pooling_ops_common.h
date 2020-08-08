@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_MKL_POOLING_OPS_COMMON_H_
-#define TENSORFLOW_CORE_KERNELS_MKL_POOLING_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_POOLING_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_MKL_MKL_POOLING_OPS_COMMON_H_
 
 #ifdef INTEL_MKL
 
@@ -728,4 +728,4 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL
-#endif  // TENSORFLOW_CORE_KERNELS_MKL_POOLING_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_POOLING_OPS_COMMON_H_

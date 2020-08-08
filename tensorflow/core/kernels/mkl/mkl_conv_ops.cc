@@ -16,7 +16,7 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
 
-#include "tensorflow/core/kernels/mkl_conv_ops.h"
+#include "tensorflow/core/kernels/mkl/mkl_conv_ops.h"
 
 #include <algorithm>
 #include <map>
@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/mkl_quantized_conv_ops.h"
+#include "tensorflow/core/kernels/mkl/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"

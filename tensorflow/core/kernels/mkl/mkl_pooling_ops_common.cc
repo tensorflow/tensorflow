@@ -15,7 +15,7 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
+#include "tensorflow/core/kernels/mkl/mkl_pooling_ops_common.h"
 
 #include <limits>
 #include <vector>

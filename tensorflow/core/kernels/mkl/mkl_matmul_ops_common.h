@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_MKL_MATMUL_OPS_COMMON_H_
-#define TENSORFLOW_CORE_KERNELS_MKL_MATMUL_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_
 
 #ifdef INTEL_MKL
 #include <memory>
@@ -41,6 +41,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef enum { CblasRowMajor, CblasColumnMajor } CBLAS_LAYOUT;
 #define MKL_INT int
 #endif
+
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
 struct MklDnnMatMulFwdParams {
   memory::dims src_dims;
@@ -817,4 +818,4 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL
-#endif  // TENSORFLOW_CORE_KERNELS_MKL_MATMUL_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_

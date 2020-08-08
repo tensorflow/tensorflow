@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_MKL_TFCONV_OP_H_
-#define TENSORFLOW_CORE_KERNELS_MKL_TFCONV_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_TFCONV_OP_H_
+#define TENSORFLOW_CORE_KERNELS_MKL_MKL_TFCONV_OP_H_
 
 #ifdef INTEL_MKL
 
@@ -160,4 +160,4 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_CPU);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
-#endif  // TENSORFLOW_CORE_KERNELS_MKL_TFCONV_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_TFCONV_OP_H_

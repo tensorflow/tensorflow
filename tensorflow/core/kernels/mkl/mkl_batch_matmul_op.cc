@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 #include "tensorflow/core/kernels/fill_functor.h"
-#include "tensorflow/core/kernels/mkl_matmul_ops_common.h"
+#include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"

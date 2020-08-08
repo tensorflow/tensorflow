@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_MKL_QUANTIZED_CONV_OPS_H_
-#define TENSORFLOW_CORE_KERNELS_MKL_QUANTIZED_CONV_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_QUANTIZED_CONV_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_MKL_MKL_QUANTIZED_CONV_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
@@ -90,4 +90,4 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
 
 #endif  // INTEL_MKL
 
-#endif  // TENSORFLOW_CORE_KERNELS_MKL_QUANTIZED_CONV_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_QUANTIZED_CONV_OPS_H_
