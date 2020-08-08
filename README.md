@@ -40,9 +40,7 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
 
 ### Contributors 
 
-```
-yunho0130(맹윤호), tina1296, harheem(김하림), yammayamm(김도연)
-```
+> yunho0130(맹윤호), harheem(김하림), prograsshopper(서미지), 0ys(공예슬), yoonseok312(양윤석), greentea1031(이보성), Karmantez(김창윤), kyunghwanleethebest(이경환), new-w(최예진), tina1296, su-minn(전수민), yammayamm(김도연)
 
 * TinyML: Tensorflow lite for microcontroller   컨트리뷰션은 아래의 `Github 가이드라인`을 따릅니다. 
     - Github 공식 오픈소스 컨트리뷰션 가이드라인 <https://opensource.guide/ko/how-to-contribute/>
