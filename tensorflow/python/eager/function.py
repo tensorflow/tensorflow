@@ -77,8 +77,6 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
-from tensorflow.python.eager import _concrete_function
-
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
 # TODO(b/133251390): Use a regular import.
@@ -1509,9 +1507,6 @@ class ConcreteFunction(object):
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
 
-    # Instance of C++ class for migration
-    self._cpp_concrete_function = _concrete_function.ConcreteFunction()
-
     if attrs and IMPLEMENTS_ATTRIBUTE_NAME in attrs:
       # The alternative is to silently drop "implements" tag
       # but it seems likely it would lead to hard to catch bugs.
@@ -2171,9 +2166,27 @@ class ConcreteFunction(object):
     Returns:
       The actual call output.
     """
-    return self._cpp_concrete_function._build_call_outputs(
-        result, self._func_graph.structured_outputs,
-        self._ndarrays_list, self._ndarray_singleton)
+    # TODO(jlchu): call C++ version in function.cc when speed is improved
+    if self._func_graph.structured_outputs is None:
+      return result
+
+    if result:
+      if self._ndarrays_list:
+        return [np_arrays.tensor_to_ndarray(o) for o in result]
+      elif self._ndarray_singleton:
+        return np_arrays.tensor_to_ndarray(result[0])
+
+    # Replace outputs with results, skipping over any 'None' values.
+    outputs_list = nest.flatten(
+        self._func_graph.structured_outputs, expand_composites=True)
+    j = 0
+    for i, o in enumerate(outputs_list):
+      if o is not None:
+        outputs_list[i] = result[j]
+        j += 1
+    ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
+                                outputs_list, expand_composites=True)
+    return ret
 
   @property
   def _as_name_attr_list(self):

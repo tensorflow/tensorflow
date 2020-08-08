@@ -562,7 +562,6 @@ py_library(
         ":forwardprop_util",
         ":graph_only_ops",
         ":tape",
-        ":_concrete_function",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
