@@ -119,31 +119,6 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 
 //===----------------------------------------------------------------------===//
-// tf_device.return
-//===----------------------------------------------------------------------===//
-
-namespace {
-ParseResult ParseReturnOp(OpAsmParser* parser, OperationState* state) {
-  llvm::SmallVector<OpAsmParser::OperandType, 2> op_info;
-  llvm::SmallVector<Type, 2> types;
-  llvm::SMLoc loc = parser->getCurrentLocation();
-  return failure(parser->parseOperandList(op_info) ||
-                 (!op_info.empty() && parser->parseColonTypeList(types)) ||
-                 parser->resolveOperands(op_info, types, loc, state->operands));
-}
-
-void Print(ReturnOp op, OpAsmPrinter* p) {
-  *p << op.getOperationName();
-  if (op.getNumOperands() > 0) {
-    *p << ' ';
-    p->printOperands(op.getOperands());
-    *p << " : ";
-    interleaveComma(op.getOperandTypes(), *p);
-  }
-}
-}  // anonymous namespace
-
-//===----------------------------------------------------------------------===//
 // tf_device.parallel_execute
 //===----------------------------------------------------------------------===//
 
