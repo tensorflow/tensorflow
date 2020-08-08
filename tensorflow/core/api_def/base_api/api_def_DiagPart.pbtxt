@@ -22,15 +22,22 @@ tensor of rank `k` with dimensions `[D1,..., Dk]` where:
 
 `diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
 
-For example:
+For a rank 2 tensor, `diag_part` and `tensor_diag_part`
+produce the same result. An example where they differ
+is given below.
 
 ```
-# 'input' is [[1, 0, 0, 0]
-              [0, 2, 0, 0]
-              [0, 0, 3, 0]
-              [0, 0, 0, 4]]
+# 'input' is [[[[1111,1112],[1121,1122]],
+               [[1211,1212],[1221,1222]]],
+              [[[2111, 2112], [2121, 2122]],
+               [[2211, 2212], [2221, 2222]]]
+             ]
 
-tf.diag_part(input) ==> [1, 2, 3, 4]
+tf.tensor_diag_part(input) ==> [[1111, 1212], [2121, 2222]]
+tf.diag_part(input) ==> [[[1111, 1122],
+                          [1211, 1222]],
+                         [[2111, 2122],
+                          [2211, 2222]]]
 ```
 END
 }
