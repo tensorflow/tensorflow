@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/mkl_tfconv_op.h"
+#include "tensorflow/core/kernels/mkl/mkl_tfconv_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"

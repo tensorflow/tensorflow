@@ -106,11 +106,27 @@
     True, the function may use type annotations to optimize the tracing
     performance.
   * Added support for `iter(DistributedDataset)` in AutoGraph `for` loops.
+  * AutoGraph now allows creating new symbols inside a TensorFLow loop, if
+    the values of these symbols at an iteration does not depend on the previous
+    iteration. These types of loops must run at least one iteration, and will
+    raise a runtime error otherwise.
+
+    Example:
+
+    ```
+    for batch in data:
+      outputs = train_step(batch)
+    tf.print('final outputs', outputs)
+    ```
+    See tensorflow/python/autograph/g3doc/reference/limitations.md for more
+    info.
 *   `tf.lite`:
     * `DynamicBuffer::AddJoinedString()` will now add a separator if the first
       string to be joined is empty.
     * `TFLiteConverter`:
       * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
+    * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
+      * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>

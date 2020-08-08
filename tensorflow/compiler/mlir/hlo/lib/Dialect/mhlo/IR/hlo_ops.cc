@@ -341,6 +341,33 @@ void DynamicIotaOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicUpdateSliceOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DynamicUpdateSliceOp op) {
+  OperandRange indices = op.start_indices();
+  if (indices.size() <= 1) return success();
+
+  // Note: start_indices is constrained to Variadic<HLO_ScalarIntTensor>, so it
+  // is OK to cast indices to ShapedType here.
+  auto idx_tensor = indices.take_front().front().getType().cast<ShapedType>();
+  Type first_elem_ty = idx_tensor.getElementType();
+  Type elem_ty;
+
+  for (auto idx : llvm::drop_begin(indices, 1)) {
+    idx_tensor = idx.getType().cast<ShapedType>();
+    elem_ty = idx_tensor.getElementType();
+
+    if (first_elem_ty != elem_ty) {
+      return op.emitOpError() << "start indices must have same element type "
+                                 "(encountered mismatch: "
+                              << first_elem_ty << " vs " << elem_ty << ")";
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AbsOp
 //===----------------------------------------------------------------------===//
 

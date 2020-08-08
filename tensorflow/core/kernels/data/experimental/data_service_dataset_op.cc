@@ -401,7 +401,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           num_running_worker_threads_--;
           outstanding_requests_--;
-          VLOG(3) << "Exiting worker thread";
         };
         worker_threads_.push_back(ctx->StartThread(
             "tf-data-service-task_thread", [this, done = std::move(done)]() {
@@ -437,10 +436,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             }
             worker_thread_cv_.wait(l);
           }
+          outstanding_requests_++;
           if (cancelled_) {
             return;
           }
-          outstanding_requests_++;
           // Search for a task to update.
           int num_tasks = tasks_.size();
           for (int i = 0; i < num_tasks; ++i) {
@@ -461,6 +460,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);
+          VLOG(1) << "Failed to get element for task "
+                  << task_to_process->task_id << ": " << s;
+          task_to_process->in_use = false;
           status_ = s;
           get_next_cv_.notify_all();
           return;
@@ -485,14 +487,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                                             &end_of_sequence);
         if (s.ok()) {
           break;
-        }
-        if (errors::IsNotFound(s)) {
-          // This indicates that the worker was restarted. The restarted worker
-          // will get a new task, and the old task is lost.
-          mutex_lock l(mu_);
-          finished_tasks_++;
-          task->end_of_sequence = true;
-          return Status::OK();
         }
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&

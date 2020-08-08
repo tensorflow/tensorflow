@@ -339,7 +339,8 @@ void BatchToSpaceOp::getCanonicalizationPatterns(
 //   are not unknown.
 //
 static LogicalResult Verify(BiasAddOp op) {
-  std::string data_format = op.data_format().str();
+  absl::string_view data_format(op.data_format().data(),
+                                op.data_format().size());
   tensorflow::TensorFormat format;
   bool is_valid = FormatFromString(data_format, &format);
   DCHECK(is_valid) << data_format;
@@ -385,7 +386,8 @@ static LogicalResult Verify(BiasAddOp op) {
 // * the out_backprop operands have valid ranks or are unranked.
 //
 static LogicalResult Verify(BiasAddGradOp op) {
-  std::string data_format = op.data_format().str();
+  absl::string_view data_format(op.data_format().data(),
+                                op.data_format().size());
   tensorflow::TensorFormat format;
   bool is_valid = FormatFromString(data_format, &format);
   DCHECK(is_valid) << data_format;
@@ -995,7 +997,8 @@ static LogicalResult Verify(OpT op) {
 
   int64_t input_channels = -1;
   if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
-    std::string data_format = op.data_format().str();
+    absl::string_view data_format(op.data_format().data(),
+                                  op.data_format().size());
     tensorflow::TensorFormat format;
     auto is_valid = FormatFromString(data_format, &format);
     DCHECK(is_valid) << data_format;

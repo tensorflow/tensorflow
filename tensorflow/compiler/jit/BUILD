@@ -129,22 +129,6 @@ cc_library(
 )
 
 cc_library(
-    name = "xla_interpreter_device",
-    srcs = ["xla_interpreter_device.cc"],
-    visibility = [":friends"],
-    deps = [
-        ":jit_compilation_passes",
-        ":xla_device",
-        "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",  # buildcleaner: keep
-        "@com_google_absl//absl/memory",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "xla_tensor",
     srcs = ["xla_tensor.cc"],
     hdrs = ["xla_tensor.h"],

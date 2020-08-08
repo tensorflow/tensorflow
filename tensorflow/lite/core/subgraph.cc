@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/c/common.h"
@@ -138,6 +139,17 @@ const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
     return op_reg.custom_name;
   }
   return tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
+}
+
+TfLiteStatus ValidateCustomAllocationForTensor(
+    TfLiteContext* context, const TfLiteTensor* tensor,
+    const TfLiteCustomAllocation& allocation) {
+  TF_LITE_ENSURE(context, allocation.data != nullptr);
+  TF_LITE_ENSURE(context, allocation.bytes >= tensor->bytes);
+  // Ensure provided memory is aligned to what TFLite requires.
+  const intptr_t data_ptr_value = reinterpret_cast<intptr_t>(allocation.data);
+  TF_LITE_ENSURE(context, data_ptr_value % kDefaultTensorAlignment == 0);
+  return kTfLiteOk;
 }
 
 }  // namespace
@@ -898,9 +910,24 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
                            execution_plan_, &last_exec_plan_index_prepared));
   next_execution_plan_index_to_prepare_ = last_exec_plan_index_prepared + 1;
 
+  // Execute arena allocations.
   TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(
       next_execution_plan_index_to_plan_allocation_,
       last_exec_plan_index_prepared));
+
+  // Ensure custom allocations are still valid for applicable tensors.
+  // This causes some extra validations for cases with dynamic tensors, but the
+  // overhead should be minimal since the number of custom-allocated tensors
+  // will typically be low.
+  for (int i = 0; i < custom_allocations_.size(); ++i) {
+    auto idx_and_alloc = custom_allocations_[i];
+    auto& tensor = tensors()[idx_and_alloc.first];
+    const auto& alloc = idx_and_alloc.second;
+    TF_LITE_ENSURE(context(), tensor.allocation_type == kTfLiteCustom);
+    TF_LITE_ENSURE_STATUS(
+        ValidateCustomAllocationForTensor(context(), &tensor, alloc));
+  }
+
   next_execution_plan_index_to_plan_allocation_ =
       last_exec_plan_index_prepared + 1;
 
@@ -1218,7 +1245,8 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
   if (tensor->allocation_type == kTfLiteArenaRw ||
       tensor->allocation_type == kTfLiteDynamic ||
       tensor->allocation_type == kTfLiteArenaRwPersistent ||
-      tensor->allocation_type == kTfLitePersistentRo) {
+      tensor->allocation_type == kTfLitePersistentRo ||
+      tensor->allocation_type == kTfLiteCustom) {
     tensor_resized_since_op_invoke_ |=
         TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString) {
@@ -1453,6 +1481,33 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   delegates_applied_.push_back(delegate);
 
   return status;
+}
+
+TfLiteStatus Subgraph::SetCustomAllocationForTensor(
+    int tensor_index, const TfLiteCustomAllocation& allocation) {
+  TfLiteTensor* tensor = &context_.tensors[tensor_index];
+  TF_LITE_ENSURE(context(), tensor->allocation_type == kTfLiteArenaRw ||
+                                tensor->allocation_type == kTfLiteCustom);
+  TF_LITE_ENSURE_STATUS(
+      ValidateCustomAllocationForTensor(context(), tensor, allocation));
+
+  // If tensor already has a custom alloc, just reassign.
+  const auto alloc_it = std::find_if(
+      custom_allocations_.begin(), custom_allocations_.end(),
+      [tensor_index](
+          const std::pair<int, TfLiteCustomAllocation>& existing_alloc) {
+        return existing_alloc.first == tensor_index;
+      });
+  if (alloc_it == custom_allocations_.end()) {
+    custom_allocations_.emplace_back(tensor_index, allocation);
+  } else {
+    alloc_it->second = allocation;
+  }
+
+  tensor->allocation_type = kTfLiteCustom;
+  tensor->data.data = allocation.data;
+
+  return kTfLiteOk;
 }
 
 }  // namespace impl

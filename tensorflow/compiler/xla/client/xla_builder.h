@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -277,6 +278,31 @@ class XlaBuilder {
   StatusOr<XlaComputation> BuildConstantSubGraph(
       XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
 
+  // Similar to BuildConstantSubGraph, but with root element type changed to
+  // boolean. A true value in the root indicates that the value is dynamic while
+  // false value indicates that the value is a constant. This will copy the
+  // needed ops/computations to the subgraph.
+  //
+  // E.g.,
+  // Compuptation {
+  //   a = 3
+  //   b = param(0)
+  //   ROOT Tuple(a + b, a + 1, b + 1)
+  // }
+  // Calling BuildDynamicInferenceGraph on root will produce the following
+  // graph:
+  //
+  // Compuptation {
+  //   a = False
+  //   b = True
+  //   ROOT Tuple(a | b, a, b)
+  // }
+  //
+  // The result, which is (True, False, True) after evaluation, can be
+  // interpreted as "First element is dynamic; Second element is static; Third
+  // element is dynamic".
+  StatusOr<XlaComputation> BuildDynamicInferenceGraph(XlaOp root_op);
+
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
   // XlaOp and inform the user of the error that occurred while
@@ -349,12 +375,16 @@ class XlaBuilder {
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   //
-  // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
-  // be aliased with output. If a buffer is not donated at runtime, a copy will
-  // be inserted by XLA to prevent buffer clobbering.
+  // Note: Except when 'must-alias' is true, alias is assumed to be 'may-alias'
+  // and only donated buffer at runtime will be aliased with output. If a buffer
+  // is not donated at runtime, a copy will be inserted by XLA to prevent buffer
+  // clobbering.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                  const ShapeIndex& param_index) {
-    input_output_aliases_.push_back({output_index, param_number, param_index});
+                  const ShapeIndex& param_index,
+                  HloInputOutputAliasConfig::AliasKind kind =
+                      HloInputOutputAliasConfig::AliasKind::kMayAlias) {
+    input_output_aliases_.push_back(
+        {output_index, param_number, param_index, kind});
   }
 
   // Describes an input/output alias as inserted by the SetUpAlias() API.
@@ -365,6 +395,8 @@ class XlaBuilder {
     int64 param_number;
     // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
+    // Specifies if the alias is a must alias or may alias.
+    HloInputOutputAliasConfig::AliasKind kind;
   };
 
   // Looks up the HloInstruction and sets the frontend attribute "attribute" to

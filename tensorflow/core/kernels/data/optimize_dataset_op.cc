@@ -94,8 +94,16 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       // This is currently empty; we have no live experiments yet.
       absl::flat_hash_map<string, uint64> live_experiments;
 
-      const string opt_ins_raw = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
-      const string opt_outs_raw = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+      const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
+      const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+      string opt_ins_raw;
+      if (opt_ins_raw_cs != nullptr) {
+        opt_ins_raw = string(opt_ins_raw_cs);
+      }
+      string opt_outs_raw;
+      if (opt_outs_raw_cs != nullptr) {
+        opt_outs_raw = string(opt_outs_raw_cs);
+      }
       auto hash_func = [](const string& str) { return Hash64(str); };
       optimizations = SelectOptimizations(
           job_name, opt_ins_raw, opt_outs_raw, live_experiments,

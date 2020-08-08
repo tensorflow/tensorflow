@@ -43,7 +43,7 @@ class AnnotatedTraceMe {
         scoped_annotation_.emplace(absl::string_view(name));
       }
       if (TF_PREDICT_TRUE(traceme_enabled)) {
-        trace_me_.emplace([name = std::move(name)] { return name; }, level);
+        trace_me_.emplace([&name] { return std::move(name); }, level);
       }
     }
   }

@@ -218,8 +218,9 @@ Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
                          NodeDef* input, const string& edge_name,
                          int output_index, NodeDef* op, NodeDef** new_input,
                          int* new_output_index, bool* rewrite) {
-  *rewrite = IsExit(*input) || (sa_opti->repeated_outputs().find(edge_name) !=
-                                sa_opti->repeated_outputs().end());
+  *rewrite = IsConstant(*input) || IsExit(*input) ||
+             (sa_opti->repeated_outputs().find(edge_name) !=
+              sa_opti->repeated_outputs().end());
   if (!(*rewrite)) {
     *new_input = input;
     *new_output_index = output_index;

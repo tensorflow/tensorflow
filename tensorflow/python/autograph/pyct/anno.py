@@ -35,9 +35,13 @@ import gast
 
 
 class NoValue(enum.Enum):
+  """Base class for different types of AST annotations."""
 
   def of(self, node, default=None):
     return getanno(node, self, default=default)
+
+  def add_to(self, node, value):
+    setanno(node, self, value)
 
   def exists(self, node):
     return hasanno(node, self)

@@ -805,7 +805,8 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
         }
 
         if (input_dim_size > output_dim_size) {
-          TF_RET_CHECK(input_dim_size % output_dim_size == 0);
+          TF_RET_CHECK(input_dim_size % output_dim_size == 0)
+              << reshape->ToString();
           const int64 divisor = input_dim_size / output_dim_size;
           HloInstruction* divisor_hlo =
               hlo->parent()->AddInstruction(HloInstruction::CreateConstant(

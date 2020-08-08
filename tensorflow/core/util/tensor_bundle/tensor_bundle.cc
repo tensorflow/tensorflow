@@ -741,7 +741,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
 
 // Interface for reading a tensor bundle.
 
-BundleReader::BundleReader(Env* env, StringPiece prefix)
+TF_EXPORT BundleReader::BundleReader(Env* env, StringPiece prefix)
     : env_(env),
       prefix_(prefix),
       metadata_(nullptr),
@@ -796,7 +796,7 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
                           kTensorBundleMinProducer, "Checkpoint", "checkpoint");
 }
 
-BundleReader::~BundleReader() {
+TF_EXPORT BundleReader::~BundleReader() {
   delete metadata_;
   delete iter_;
   delete table_;
@@ -936,7 +936,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   return Status::OK();
 }
 
-Status BundleReader::Lookup(StringPiece key, Tensor* val) {
+TF_EXPORT Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
@@ -950,7 +950,7 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   }
 }
 
-Status BundleReader::ReadCurrent(Tensor* val) {
+TF_EXPORT Status BundleReader::ReadCurrent(Tensor* val) {
   CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
@@ -968,8 +968,8 @@ Status BundleReader::ReadCurrent(Tensor* val) {
   }
 }
 
-Status BundleReader::LookupTensorSlices(StringPiece key,
-                                        std::vector<TensorSlice>* slices) {
+TF_EXPORT Status BundleReader::LookupTensorSlices(
+    StringPiece key, std::vector<TensorSlice>* slices) {
   slices->clear();
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
@@ -980,8 +980,9 @@ Status BundleReader::LookupTensorSlices(StringPiece key,
   return Status::OK();
 }
 
-Status BundleReader::LookupSlice(StringPiece full_tensor_key,
-                                 const TensorSlice& slice_spec, Tensor* val) {
+TF_EXPORT Status BundleReader::LookupSlice(StringPiece full_tensor_key,
+                                           const TensorSlice& slice_spec,
+                                           Tensor* val) {
   CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(full_tensor_key, &entry));
@@ -1103,13 +1104,14 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
   return Status::OK();
 }
 
-bool BundleReader::Contains(StringPiece key) {
+TF_EXPORT bool BundleReader::Contains(StringPiece key) {
   Seek(key);
   return Valid() && (this->key() == key);
 }
 
-Status BundleReader::LookupDtypeAndShape(StringPiece key, DataType* dtype,
-                                         TensorShape* shape) {
+TF_EXPORT Status BundleReader::LookupDtypeAndShape(StringPiece key,
+                                                   DataType* dtype,
+                                                   TensorShape* shape) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
   *dtype = entry.dtype();
@@ -1117,12 +1119,13 @@ Status BundleReader::LookupDtypeAndShape(StringPiece key, DataType* dtype,
   return Status::OK();
 }
 
-Status BundleReader::LookupTensorShape(StringPiece key, TensorShape* shape) {
+TF_EXPORT Status BundleReader::LookupTensorShape(StringPiece key,
+                                                 TensorShape* shape) {
   DataType ignored;
   return LookupDtypeAndShape(key, &ignored, shape);
 }
 
-string BundleReader::DebugString() {
+TF_EXPORT string BundleReader::DebugString() {
   // Format used below emulates that of TensorSliceReader::DebugString().
   string shape_str;
   BundleEntryProto entry;
