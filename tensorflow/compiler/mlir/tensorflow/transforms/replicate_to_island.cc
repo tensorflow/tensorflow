@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -64,6 +66,151 @@ bool RequiresDeviceOrdinalAttribute(Operation* op) {
          llvm::isa<TF::_XlaRecvAtHostOp>(op);
 }
 
+// Checks if a region contains ops that are replica variant.
+bool HasReplicaVariantOps(Region& region,
+                          const llvm::Optional<DictionaryAttr>& devices) {
+  auto result = region.walk([&](Operation* op) {
+    if (RequiresReplicaIDAttribute(op) ||
+        (devices.hasValue() && RequiresDeviceOrdinalAttribute(op)))
+      return WalkResult::interrupt();
+
+    if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
+      if (devices.hasValue() && devices.getValue().get(launch.device()))
+        return WalkResult::interrupt();
+
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted();
+}
+
+// Collects all functions reachable from a region, including transitive ones.
+llvm::SmallPtrSet<FuncOp, 4> GetReachableFunctionsFromRegion(ModuleOp module,
+                                                             Region& region) {
+  llvm::SmallPtrSet<FuncOp, 4> visited_functions;
+
+  SymbolTable symbol_table(module);
+  auto symbol_uses = symbol_table.getSymbolUses(&region);
+  if (!symbol_uses) return {};
+
+  for (auto& use : *symbol_uses)
+    if (auto func =
+            symbol_table.lookup<FuncOp>(use.getSymbolRef().getRootReference()))
+      visited_functions.insert(func);
+
+  llvm::SmallVector<FuncOp, 4> functions_to_visit(visited_functions.begin(),
+                                                  visited_functions.end());
+  while (!functions_to_visit.empty()) {
+    llvm::SmallVector<FuncOp, 4> new_functions_to_visit;
+
+    for (FuncOp function_to_visit : functions_to_visit) {
+      auto func_symbol_uses =
+          symbol_table.getSymbolUses(function_to_visit.getCallableRegion());
+      if (!func_symbol_uses) continue;
+
+      for (auto& use : *func_symbol_uses)
+        if (auto func = symbol_table.lookup<FuncOp>(
+                use.getSymbolRef().getRootReference()))
+          if (visited_functions.insert(func).second)
+            new_functions_to_visit.push_back(func);
+    }
+
+    functions_to_visit.swap(new_functions_to_visit);
+  }
+
+  return visited_functions;
+}
+
+// Collects all functions and transitive functions reachable from region that
+// contain replicate variant ops.
+llvm::SmallDenseMap<llvm::StringRef, FuncOp> GetReachableFunctionsToClone(
+    ModuleOp module, Region& region,
+    const llvm::Optional<DictionaryAttr>& devices) {
+  llvm::SmallPtrSet<FuncOp, 4> reachable_functions =
+      GetReachableFunctionsFromRegion(module, region);
+
+  llvm::SmallDenseMap<llvm::StringRef, FuncOp> functions_to_clone;
+  llvm::SmallVector<FuncOp, 4> functions_to_visit;
+  for (FuncOp func : reachable_functions) {
+    if (!func.getCallableRegion()) continue;
+    if (HasReplicaVariantOps(*func.getCallableRegion(), devices)) {
+      functions_to_clone.insert({func.getName(), func});
+      functions_to_visit.push_back(func);
+    }
+  }
+
+  while (!functions_to_visit.empty()) {
+    llvm::SmallVector<FuncOp, 4> new_functions_to_visit;
+
+    for (FuncOp func_to_visit : functions_to_visit) {
+      auto func_uses = func_to_visit.getSymbolUses(module);
+      if (!func_uses) continue;
+      for (auto use : *func_uses) {
+        auto parent_func = use.getUser()->getParentOfType<FuncOp>();
+        if (!parent_func || !reachable_functions.contains(parent_func) ||
+            !functions_to_clone.insert({parent_func.getName(), parent_func})
+                 .second)
+          continue;
+        new_functions_to_visit.push_back(parent_func);
+      }
+    }
+
+    functions_to_visit.swap(new_functions_to_visit);
+  }
+
+  return functions_to_clone;
+}
+
+struct FuncOldNameAndClone {
+  StringRef old_name;
+  FuncOp clone;
+};
+
+// Replaces all symbol uses with cloned functions, for `region` and across the
+// cloned functions themselves.
+LogicalResult UpdateSymbolUsesWithClones(
+    SymbolTable& symbol_table, ModuleOp module, Region& region,
+    llvm::MutableArrayRef<FuncOldNameAndClone> cloned_functions) {
+  llvm::SmallVector<std::pair<StringRef, StringRef>, 4> old_to_new_names;
+  old_to_new_names.reserve(cloned_functions.size());
+  for (auto& cloned_function : cloned_functions)
+    old_to_new_names.push_back(
+        {cloned_function.old_name, cloned_function.clone.getName()});
+
+  for (const auto& old_to_new_name : old_to_new_names) {
+    if (failed(symbol_table.replaceAllSymbolUses(
+            old_to_new_name.first, old_to_new_name.second, &region)))
+      return failure();
+
+    for (auto& cloned_function : cloned_functions)
+      if (failed(symbol_table.replaceAllSymbolUses(
+              old_to_new_name.first, old_to_new_name.second,
+              cloned_function.clone.getCallableRegion())))
+        return failure();
+  }
+  return success();
+}
+
+// Collects TPU device ordinal for outside compilation communication ops. This
+// currently assumes outside compilation only uses `TPU_REPLICATED_CORE_0`
+// aliased device for the device computation.
+llvm::Optional<int64_t> GetDeviceOrdinal(
+    const llvm::Optional<DictionaryAttr>& devices, Location loc,
+    unsigned replica_id) {
+  int64_t device_ordinal = 0;
+  if (devices.hasValue()) {
+    if (auto tpu_replica_0 = devices.getValue().get("TPU_REPLICATED_CORE_0")) {
+      llvm::StringRef tpu_device = tpu_replica_0.cast<ArrayAttr>()[replica_id]
+                                       .cast<StringAttr>()
+                                       .getValue();
+      if (succeeded(tensorflow::GetDeviceOrdinalFromDeviceString(
+              loc, tpu_device, &device_ordinal))) {
+        return llvm::Optional<int64_t>(device_ordinal);
+      }
+    }
+  }
+  return llvm::None;
+}
+
 // Updates replica variant ops in a region based on replica `replica_id`.
 // TODO(b/157624749): Replace this with better abstraction to differentiate ops
 // for different replicas. Some ops, such as XlaHostCompute op or TPU Embedding
@@ -72,27 +219,17 @@ bool RequiresDeviceOrdinalAttribute(Operation* op) {
 // represents replica id.
 LogicalResult UpdateRegionReplicateVariantOps(
     OpBuilder& builder, Location loc, Region& region, int replica_id,
+    llvm::MutableArrayRef<FuncOldNameAndClone> cloned_functions,
     const llvm::Optional<DictionaryAttr>& devices) {
-  int64_t device_ordinal = -1;
-  const bool has_devices = devices.hasValue();
-  if (has_devices) {
-    if (auto tpu_replica_0 = devices.getValue().get("TPU_REPLICATED_CORE_0")) {
-      llvm::StringRef tpu_device = tpu_replica_0.cast<ArrayAttr>()[replica_id]
-                                       .cast<StringAttr>()
-                                       .getValue();
-      if (failed(tensorflow::GetDeviceOrdinalFromDeviceString(
-              loc, tpu_device, &device_ordinal))) {
-        return failure();
-      }
-    }
-  }
+  llvm::Optional<int64_t> device_ordinal =
+      GetDeviceOrdinal(devices, loc, replica_id);
 
-  region.walk([&](Operation* op) {
+  auto update_replicate_variant_ops = [&](Operation* op) {
     // Add replica id.
     if (RequiresReplicaIDAttribute(op))
       op->setAttr(kReplicaIdAttr, builder.getI32IntegerAttr(replica_id));
 
-    if (!has_devices) return;
+    if (!devices.hasValue()) return;
 
     // Map aliased devices to explicit devices based on replica.
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
@@ -102,10 +239,15 @@ LogicalResult UpdateRegionReplicateVariantOps(
             device_by_replica.cast<ArrayAttr>()[replica_id].cast<StringAttr>());
 
     // Add device ordinal.
-    if (device_ordinal >= 0 && RequiresDeviceOrdinalAttribute(op))
+    if (device_ordinal && RequiresDeviceOrdinalAttribute(op))
       op->setAttr(kDeviceOrdinalAttr,
-                  builder.getI64IntegerAttr(device_ordinal));
-  });
+                  builder.getI64IntegerAttr(*device_ordinal));
+  };
+
+  region.walk(update_replicate_variant_ops);
+  for (auto& cloned_function : cloned_functions)
+    cloned_function.clone.getCallableRegion()->walk(
+        update_replicate_variant_ops);
 
   return success();
 }
@@ -115,7 +257,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
 // `tf_device.replicate`, the device will be remapped to an explicit device
 // for the associated replica island.
 LogicalResult ExpandReplicateIntoReplicas(
-    const Dialect* tf_dialect, OpBuilder& builder,
+    const Dialect* tf_dialect, OpBuilder& builder, ModuleOp module,
     tf_executor::IslandOp island_op, tf_device::ReplicateOp replicate_op,
     int num_replicas, llvm::SmallVectorImpl<tf_executor::IslandOp>& replicas) {
   replicas.reserve(num_replicas);
@@ -133,9 +275,23 @@ LogicalResult ExpandReplicateIntoReplicas(
                                        terminator.getOperands());
   terminator.erase();
 
+  auto funcs_to_clone =
+      GetReachableFunctionsToClone(module, replicate_op.body(), devices);
+  SymbolTable symbol_table(module);
+
   builder.setInsertionPoint(island_op);
   BlockAndValueMapping mapping;
   for (int i : llvm::seq<int>(0, num_replicas)) {
+    // Clone reachable functions with replica variant ops.
+    llvm::SmallVector<FuncOldNameAndClone, 4> cloned_functions;
+    cloned_functions.reserve(funcs_to_clone.size());
+    for (auto& func_to_clone : funcs_to_clone) {
+      auto cloned_function = func_to_clone.getSecond().clone();
+      symbol_table.insert(cloned_function, module.end());
+      cloned_functions.push_back(
+          {func_to_clone.getSecond().getName(), cloned_function});
+    }
+
     // Create new island for replica.
     auto replica = builder.create<tf_executor::IslandOp>(
         island_op.getLoc(), output_types, control_type, replica_inputs);
@@ -149,9 +305,13 @@ LogicalResult ExpandReplicateIntoReplicas(
     // Copy over replicate region into replica island.
     replicate_op.body().cloneInto(&replica.body(), mapping);
 
-    if (failed(UpdateRegionReplicateVariantOps(builder, replicate_op.getLoc(),
-                                               replica.body(), /*replica_id=*/i,
-                                               devices)))
+    if (failed(UpdateSymbolUsesWithClones(symbol_table, module, replica.body(),
+                                          cloned_functions)))
+      return failure();
+
+    if (failed(UpdateRegionReplicateVariantOps(
+            builder, replicate_op.getLoc(), replica.body(),
+            /*replica_id=*/i, cloned_functions, devices)))
       return failure();
 
     replicas.push_back(replica);
@@ -211,6 +371,7 @@ LogicalResult ExpandReplicateIntoReplicas(
 //   tf_executor.yield %a1, %b1 : tensor<i1>, tensor<i1>
 // }
 LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
+                                         ModuleOp module,
                                          tf_executor::GraphOp graph_op,
                                          tf_executor::IslandOp island_op,
                                          tf_device::ReplicateOp replicate_op) {
@@ -219,7 +380,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas;
-  if (failed(ExpandReplicateIntoReplicas(tf_dialect, builder, island_op,
+  if (failed(ExpandReplicateIntoReplicas(tf_dialect, builder, module, island_op,
                                          replicate_op, num_replicas, replicas)))
     return failure();
 
@@ -299,8 +460,8 @@ void ReplicateToIslandPass::runOnOperation() {
     auto graph_op = island_op.getParentOfType<tf_executor::GraphOp>();
     auto replicate_op =
         cast<tf_device::ReplicateOp>(island_op.GetBody().front());
-    if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,
-                                          replicate_op)))
+    if (failed(CreateIslandsFromReplicate(tf_dialect, module, graph_op,
+                                          island_op, replicate_op)))
       return signalPassFailure();
   }
 }
