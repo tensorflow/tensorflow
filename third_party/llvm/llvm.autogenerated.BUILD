@@ -1765,7 +1765,6 @@ cc_library(
         ":Core",
         ":Instrumentation",
         ":MC",
-        ":Passes",
         ":ProfileData",
         ":Scalar",
         ":Support",
