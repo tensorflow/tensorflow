@@ -49,7 +49,7 @@ These examples are implemented by Functional API and Sequential API.
 
 The listed benchmark results are obtained by running on Google Cloud Platform (GCP) with the following setup: </br>
 
-- GPU: 2 x Tesla V100 (only for GPU test) </br>
+- GPU: 2 x Tesla V100</br>
 - OS: Ubuntu 18.04 </br>
 - CPU: 8 x vCPUs, 30 GB memory </br>
 - CUDA: 10.1 </br>
