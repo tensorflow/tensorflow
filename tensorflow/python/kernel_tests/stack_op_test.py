@@ -49,90 +49,103 @@ class StackOpTest(test.TestCase):
     else:
       return data.astype(dtype)
 
+  @test_util.run_in_graph_and_eager_modes
   def testSimple(self):
     np.random.seed(7)
-    for shape in (2,), (3,), (2, 3), (3, 2), (8, 2, 10):
-      rank = len(shape)
-      for axis in range(-rank, rank):
-        for dtype in [np.bool, np.float32, np.int32, np.int64]:
-          data = self.randn(shape, dtype)
-          xs = np_split_squeeze(data, axis)
-          # Stack back into a single tensorflow tensor
-          with self.subTest(shape=shape, axis=axis, dtype=dtype):
-            c = array_ops.stack(xs, axis=axis)
-            self.assertAllEqual(c, data)
+    with test_util.device(use_gpu=True):
+      for shape in (2,), (3,), (2, 3), (3, 2), (8, 2, 10):
+        rank = len(shape)
+        for axis in range(-rank, rank):
+          for dtype in [np.bool, np.float32, np.int32, np.int64]:
+            data = self.randn(shape, dtype)
+            xs = np_split_squeeze(data, axis)
+            # Stack back into a single tensorflow tensor
+            with self.subTest(shape=shape, axis=axis, dtype=dtype):
+              c = array_ops.stack(xs, axis=axis)
+              self.assertAllEqual(c, data)
 
+  @test_util.run_in_graph_and_eager_modes
   def testSimpleParallelCPU(self):
     np.random.seed(7)
-    for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
-      with self.subTest(shape=shape):
-        data = self.randn(shape, np.float32)
-        xs = list(map(constant_op.constant, data))
-        c = array_ops.parallel_stack(xs)
-        self.assertAllEqual(c, data)
-
-  def testSimpleParallelGPU(self):
-    np.random.seed(7)
-    for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
-      with self.subTest(shape=shape):
-        data = self.randn(shape, np.float32)
-        xs = list(map(constant_op.constant, data))
-        c = array_ops.parallel_stack(xs)
-        self.assertAllEqual(c, data)
-
-  def testConst(self):
-    np.random.seed(7)
-    # Verify that shape induction works with shapes produced via const stack
-    a = constant_op.constant([1, 2, 3, 4, 5, 6])
-    b = array_ops.reshape(a, array_ops.stack([2, 3]))
-    self.assertAllEqual(b.get_shape(), [2, 3])
-
-    # Check on a variety of shapes and types
-    for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (8, 2, 10):
-      for dtype in [np.bool, np.float32, np.int16, np.int32, np.int64]:
-        with self.subTest(shape=shape, dtype=dtype):
-          data = self.randn(shape, dtype)
-          # Stack back into a single tensorflow tensor directly using np array
-          c = array_ops.stack(data)
-          # This is implemented via a Const:
-          self.assertEqual(c.op.type, "Const")
+    with test_util.device(use_gpu=False): 
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
+        with self.subTest(shape=shape):
+          data = self.randn(shape, np.float32)
+          xs = list(map(constant_op.constant, data))
+          c = array_ops.parallel_stack(xs)
           self.assertAllEqual(c, data)
 
-          # Python lists also work for 1-D case:
-          if len(shape) == 1:
-            data_list = list(data)
-            cl = array_ops.stack(data_list)
-            self.assertEqual(cl.op.type, "Const")
-            self.assertAllEqual(cl, data)
+  @test_util.run_in_graph_and_eager_modes
+  def testSimpleParallelGPU(self):
+    np.random.seed(7)
+    with test_util.device(use_gpu=True): 
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
+        with self.subTest(shape=shape):
+          data = self.randn(shape, np.float32)
+          xs = list(map(constant_op.constant, data))
+          c = array_ops.parallel_stack(xs)
+          self.assertAllEqual(c, data)
 
+  @test_util.run_deprecated_v1
+  def testConst(self):
+    np.random.seed(7)
+    with test_util.device(use_gpu=True):
+      # Verify that shape induction works with shapes produced via const stack
+      a = constant_op.constant([1, 2, 3, 4, 5, 6])
+      b = array_ops.reshape(a, array_ops.stack([2, 3]))
+      self.assertAllEqual(b.get_shape(), [2, 3])
+
+      # Check on a variety of shapes and types
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (8, 2, 10):
+        for dtype in [np.bool, np.float32, np.int16, np.int32, np.int64]:
+          with self.subTest(shape=shape, dtype=dtype):
+            data = self.randn(shape, dtype)
+            # Stack back into a single tensorflow tensor directly using np array
+            c = array_ops.stack(data)
+            # This is implemented via a Const:
+            self.assertEqual(c.op.type, "Const")
+            self.assertAllEqual(c, data)
+
+            # Python lists also work for 1-D case:
+            if len(shape) == 1:
+              data_list = list(data)
+              cl = array_ops.stack(data_list)
+              self.assertEqual(cl.op.type, "Const")
+              self.assertAllEqual(cl, data)
+
+  @test_util.run_deprecated_v1
   def testConstParallelCPU(self):
     np.random.seed(7)
-    for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (8, 2, 10):
-      with self.subTest(shape=shape):
-        data = self.randn(shape, np.float32)
-        if len(shape) == 1:
-          data_list = list(data)
-          cl = array_ops.parallel_stack(data_list)
-          self.assertAllEqual(cl, data)
+    with test_util.device(use_gpu=False):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (8, 2, 10):
+        with self.subTest(shape=shape):
+          data = self.randn(shape, np.float32)
+          if len(shape) == 1:
+            data_list = list(data)
+            cl = array_ops.parallel_stack(data_list)
+            self.assertAllEqual(cl, data)
 
-        data = self.randn(shape, np.float32)
-        c = array_ops.parallel_stack(data)
-        self.assertAllEqual(c, data)
+          data = self.randn(shape, np.float32)
+          c = array_ops.parallel_stack(data)
+          self.assertAllEqual(c, data)
 
+  @test_util.run_deprecated_v1
   def testConstParallelGPU(self):
     np.random.seed(7)
-    for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-      with self.subTest(shape=shape):
-        data = self.randn(shape, np.float32)
-        if len(shape) == 1:
-          data_list = list(data)
-          cl = array_ops.parallel_stack(data_list)
-          self.assertAllEqual(cl, data)
+    with test_util.device(use_gpu=True):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+        with self.subTest(shape=shape):
+          data = self.randn(shape, np.float32)
+          if len(shape) == 1:
+            data_list = list(data)
+            cl = array_ops.parallel_stack(data_list)
+            self.assertAllEqual(cl, data)
 
-        data = self.randn(shape, np.float32)
-        c = array_ops.parallel_stack(data)
-        self.assertAllEqual(c, data)
-
+          data = self.randn(shape, np.float32)
+          c = array_ops.parallel_stack(data)
+          self.assertAllEqual(c, data)
+          
+  @test_util.run_deprecated_v1
   def testGradientsAxis0(self):
     np.random.seed(7)
     for shape in (2,), (3,), (2, 3), (3, 2), (8, 2, 10):
