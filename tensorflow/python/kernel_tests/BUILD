@@ -3411,6 +3411,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["cwise_ops_test.py"],
     shard_count = 50,
+    tags = ["no_windows"],  # b/163222163
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
