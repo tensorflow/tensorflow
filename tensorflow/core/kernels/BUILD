@@ -2932,6 +2932,7 @@ tf_cc_tests(
     srcs = [
         "tensor_map_test.cc",
     ],
+    tags = ["nomsan"],  # b/163222155
     deps = [
         ":tensor_map",
         "//tensorflow/core:framework",

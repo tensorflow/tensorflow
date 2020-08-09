@@ -480,7 +480,7 @@ func @map_non_scalar_computation_operand(%arg0: tensor<4x5xf32>, %arg1: tensor<4
   // expected-error@+1 {{computation arguments must be 0-rank tensor, but got: arg #1 of type 'tensor<5xf32>'}}
   %0 = "mhlo.map"(%arg0, %arg1) ( {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<5xf32>):
-    %1 = mhlo.constant {value = dense<2.0> : tensor<f32>} : tensor<f32>
+    %1 = mhlo.constant dense<2.0> : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
   return %0 : tensor<4x5xf32>
@@ -492,7 +492,7 @@ func @map_mismatch_operand_and_computation_args(%arg0: tensor<4x5xf32>, %arg1: t
   // expected-error@+1 {{element type of operands and computation arguments must match, but got: 'f32' and 'i32'}}
   %0 = "mhlo.map"(%arg0, %arg1) ( {
     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
-    %1 = mhlo.constant {value = dense<2.0> : tensor<f32>} : tensor<f32>
+    %1 = mhlo.constant dense<2.0> : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
   return %0 : tensor<4x5xf32>
@@ -504,7 +504,7 @@ func @map_invalid_number_of_computation_output(%arg0: tensor<4x5xf32>, %arg1: te
   // expected-error@+1 {{computation must return single output, but got: 0}}
   %0 = "mhlo.map"(%arg0, %arg1) ( {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
-    %1 = mhlo.constant {value = dense<2.0> : tensor<f32>} : tensor<f32>
+    %1 = mhlo.constant dense<2.0> : tensor<f32>
     "mhlo.return"() : () -> ()
   }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
   return %0 : tensor<4x5xf32>
@@ -516,7 +516,7 @@ func @main_non_scalar_computation_output(%arg0: tensor<4x5xf32>, %arg1: tensor<4
   // expected-error@+1 {{computation must return 0-rank tensor, but got: 'tensor<5xf32>'}}
   %0 = "mhlo.map"(%arg0, %arg1) ( {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
-    %1 = mhlo.constant {value = dense<2.0> : tensor<f32>} : tensor<5xf32>
+    %1 = mhlo.constant dense<2.0> : tensor<5xf32>
     "mhlo.return"(%1) : (tensor<5xf32>) -> ()
   }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
   return %0 : tensor<4x5xf32>
@@ -528,7 +528,7 @@ func @mismatch_computation_output_type(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5
   // expected-error@+1 {{element type of result and computation output must match, but got: 'f32' and 'i32'}}
   %0 = "mhlo.map"(%arg0, %arg1) ( {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
-    %1 = mhlo.constant {value = dense<2> : tensor<i32>} : tensor<i32>
+    %1 = mhlo.constant dense<2> : tensor<i32>
     "mhlo.return"(%1) : (tensor<i32>) -> ()
   }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
   return %0 : tensor<4x5xf32>

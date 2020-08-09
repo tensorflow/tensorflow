@@ -13,23 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.h"
+#include "tensorflow/compiler/jit/xla_device_ops.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
-namespace mlir {
-namespace tfjs {
+namespace tensorflow {
 
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.cc.inc"
+REGISTER_KERNEL_BUILDER(Name("_TPUReplicate").Device(DEVICE_TPU_SYSTEM),
+                        XlaDeviceDummyOp);
 
-//===----------------------------------------------------------------------===//
-// TFJSDialect
-//===----------------------------------------------------------------------===//
-
-void TFJSDialect::initialize() {
-  addOperations<
-#define GET_OP_LIST
-#include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.cc.inc"
-      >();
-}
-}  // namespace tfjs
-}  // namespace mlir
+}  // namespace tensorflow

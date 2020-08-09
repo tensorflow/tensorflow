@@ -510,6 +510,12 @@ Status CompileGraphToXlaHlo(
   mlir::MLIRContext context;
   GraphImportConfig config;
   config.graph_as_function = true;
+  // Disable shape inference during import as some TensorFlow op fails during
+  // shape inference with dynamic shaped operands. This in turn causes the
+  // import to fail. Shape inference during import is going to be removed and
+  // the shape inference pass is run early in the pass pipeline, shape inference
+  // during import is not necessary.
+  config.enable_shape_inference = false;
   auto module_or =
       ConvertGraphToMlir(graph, debug_info, flib_def, config, &context);
   if (!module_or.ok()) return module_or.status();

@@ -182,6 +182,8 @@ void TpuTransferManager_WriteSingleTupleIndexTable(
     XLA_TransferManager* manager, SE_Stream* stream,
     SE_DeviceMemoryBase* elements, size_t elements_len, XLA_Shape* shape,
     SE_DeviceMemoryBase* region, SE_Status* status);
+void TpuTransferManager_GetInfeedLayout(XLA_Shape* shape,
+                                        XLA_Shape* infeed_shape);
 void TpuTransferManager_LinearizeToBuffers(
     XLA_TransferManager* manager, XLA_Literal* c_literal, char*** buffers_array,
     int64_t** buffers_size, int64_t* buffers_array_size, SE_Status* status);
@@ -341,6 +343,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromDevice);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetByteSizeRequirement);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_WriteSingleTupleIndexTable);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetInfeedLayout);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_LinearizeToBuffers);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_FreeBuffers);
 

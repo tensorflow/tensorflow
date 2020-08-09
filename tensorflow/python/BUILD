@@ -347,6 +347,7 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         ":platform",
         ":platform_test",
@@ -365,6 +366,7 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         ":platform",
         ":platform_test",
@@ -376,6 +378,7 @@ tf_py_test(
     size = "small",
     srcs = ["platform/flags_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":platform",
@@ -391,6 +394,7 @@ tf_py_test(
         "no_windows",
         "nomac",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":platform",
@@ -1148,6 +1152,7 @@ tf_py_test(
     name = "decorator_utils_test",
     srcs = ["util/decorator_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":platform",
@@ -1159,6 +1164,7 @@ tf_py_test(
     name = "deprecation_test",
     srcs = ["util/deprecation_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":platform",
@@ -1170,6 +1176,7 @@ tf_py_test(
     name = "dispatch_test",
     srcs = ["util/dispatch_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":platform",
@@ -1181,6 +1188,7 @@ tf_py_test(
     name = "keyword_args_test",
     srcs = ["util/keyword_args_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":util",
@@ -1518,6 +1526,7 @@ tf_py_test(
     srcs = ["framework/function_def_to_graph_test.py"],
     python_version = "PY3",
     tags = ["no_pip"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -1663,6 +1672,7 @@ tf_py_test(
     srcs = ["framework/op_def_util_test.py"],
     python_version = "PY3",
     tags = ["no_pip"],
+    tfrt_enabled = True,
 )
 
 py_library(
@@ -1692,6 +1702,7 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/profiler:traceme",
         "@six_archive//:six",
     ],
 )
@@ -1875,6 +1886,7 @@ tf_py_test(
     size = "small",
     srcs = ["framework/smart_cond_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":constant_op",
@@ -1947,6 +1959,7 @@ tf_py_test(
     srcs = ["framework/composite_tensor_utils_test.py"],
     main = "framework/composite_tensor_utils_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":composite_tensor",
@@ -2204,6 +2217,7 @@ tf_py_test(
     srcs = ["framework/registry_test.py"],
     main = "framework/registry_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -2217,6 +2231,7 @@ tf_py_test(
     srcs = ["framework/errors_test.py"],
     main = "framework/errors_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":errors",
@@ -2230,6 +2245,7 @@ tf_py_test(
     srcs = ["framework/error_interpolation_test.py"],
     main = "framework/error_interpolation_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":constant_op",
@@ -2244,6 +2260,7 @@ tf_py_test(
     srcs = ["framework/subscribe_test.py"],
     main = "framework/subscribe_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework",
         ":framework_for_generated_wrappers",
@@ -2286,6 +2303,7 @@ tf_py_test(
     tags = [
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":platform",
@@ -2298,6 +2316,7 @@ tf_py_test(
     srcs = ["framework/proto_test.py"],
     main = "framework/proto_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -2386,6 +2405,7 @@ tf_py_test(
     srcs = ["framework/versions_test.py"],
     main = "framework/versions_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -2398,6 +2418,7 @@ tf_py_test(
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -2434,6 +2455,7 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -2457,6 +2479,7 @@ tf_py_test(
     srcs = ["framework/traceable_stack_test.py"],
     main = "framework/traceable_stack_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_test_lib",
         ":platform_test",
@@ -2511,6 +2534,7 @@ tf_py_test(
     srcs = ["framework/common_shapes_test.py"],
     main = "framework/common_shapes_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework",
         ":framework_for_generated_wrappers",
@@ -2557,6 +2581,7 @@ tf_py_test(
     srcs = ["framework/ops_enable_eager_test.py"],
     main = "framework/ops_enable_eager_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework",
         ":platform_test",
@@ -2570,6 +2595,7 @@ tf_py_test(
     srcs = ["framework/tensor_shape_test.py"],
     main = "framework/tensor_shape_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -2585,6 +2611,7 @@ tf_py_test(
     srcs = ["framework/type_spec_test.py"],
     main = "framework/type_spec_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -2600,6 +2627,7 @@ tf_py_test(
     srcs = ["framework/tensor_spec_test.py"],
     main = "framework/tensor_spec_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -2632,6 +2660,7 @@ tf_py_test(
     srcs = ["framework/device_spec_test.py"],
     main = "framework/device_spec_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -2646,6 +2675,7 @@ tf_py_test(
     srcs = ["framework/device_test.py"],
     main = "framework/device_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -2660,6 +2690,7 @@ tf_py_test(
     srcs = ["framework/random_seed_test.py"],
     main = "framework/random_seed_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework",
@@ -2672,6 +2703,7 @@ tf_py_test(
     srcs = ["framework/tensor_shape_div_test.py"],
     main = "framework/tensor_shape_div_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -2688,6 +2720,7 @@ tf_py_test(
     main = "framework/tensor_util_test.py",
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -2707,6 +2740,7 @@ tf_py_test(
     main = "framework/test_util_test.py",
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":control_flow_ops",
         ":errors",
@@ -2741,6 +2775,7 @@ tf_py_test(
         "nomsan",  # TODO(b/149948895): Re-enable.
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
+    tfrt_enabled = True,
     deps = [
         ":framework_test_lib",
         # TODO(kkb): Find more appropriate place to add `memory_checker` as deps
@@ -2766,6 +2801,7 @@ tf_py_test(
     srcs = ["framework/dtypes_test.py"],
     main = "framework/dtypes_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -2781,6 +2817,7 @@ tf_py_test(
     size = "small",
     srcs = ["framework/op_def_library_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -2794,6 +2831,7 @@ tf_py_test(
     srcs = ["framework/kernels_test.py"],
     main = "framework/kernels_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_test_lib",
         ":kernels",
@@ -3319,6 +3357,7 @@ tf_py_test(
     size = "small",
     srcs = ["ops/clip_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":clip_ops",
@@ -3344,6 +3383,7 @@ tf_py_test(
     size = "medium",
     srcs = ["ops/clustering_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":clustering_ops",
@@ -3368,6 +3408,7 @@ tf_py_test(
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
     tags = ["no_rocm"],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -3388,6 +3429,7 @@ tf_py_test(
         "no_windows",
         "nomac",
     ],
+    tfrt_enabled = True,
     xla_enable_strict_auto_jit = True,
     deps = [
         ":client_testlib",
@@ -3409,6 +3451,7 @@ cuda_py_test(
         "no_rocm",
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -3512,6 +3555,7 @@ tf_py_test(
     size = "small",
     srcs = ["ops/control_flow_v2_toggles_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":control_flow_util_v2",
@@ -3525,6 +3569,7 @@ tf_py_test(
     size = "small",
     srcs = ["ops/control_flow_v2_enable_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":control_flow_util",
@@ -3546,6 +3591,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":control_flow_util",
@@ -3627,6 +3673,7 @@ tf_py_test(
     size = "small",
     srcs = ["ops/bincount_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":bincount_ops",
         ":platform_test",
@@ -4108,6 +4155,7 @@ cuda_py_test(
     size = "small",
     srcs = ["training/experimental/mixed_precision_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":mixed_precision",
@@ -4426,6 +4474,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/stateful_random_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
     deps = [
@@ -4597,6 +4646,7 @@ tf_py_test(
     name = "sort_ops_test",
     srcs = ["ops/sort_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -4696,6 +4746,7 @@ cuda_py_test(
     name = "rnn_grad_test",
     srcs = ["ops/rnn_grad_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -4978,6 +5029,7 @@ cuda_py_test(
     srcs = ["ops/bitwise_ops_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":bitwise_ops",
         ":constant_op",
@@ -5089,6 +5141,7 @@ cuda_py_test(
     size = "small",
     srcs = ["ops/histogram_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5105,6 +5158,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/image_grad_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -5146,6 +5200,7 @@ cuda_py_test(
     size = "small",
     srcs = ["ops/init_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_ops",
@@ -5161,6 +5216,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/init_ops_v2_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5231,6 +5287,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5250,6 +5307,7 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 24,
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5300,6 +5358,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_xent_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -5333,6 +5392,7 @@ cuda_py_test(
         "no_oss",  # TODO(b/149565560)
         "no_windows_gpu",
     ],
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -5369,6 +5429,7 @@ tf_py_test(
     size = "small",
     srcs = ["ops/variable_spec_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -5639,6 +5700,7 @@ tf_py_test(
     name = "tf_export_test",
     srcs = ["util/tf_export_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":platform",
@@ -5696,6 +5758,7 @@ tf_py_test(
     name = "tf_stack_test",
     srcs = ["util/tf_stack_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":tf_export",
@@ -5768,6 +5831,7 @@ tf_py_test(
     size = "small",
     srcs = ["util/object_identity_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
 )
 
 # Placeholder for intenal nest_test comments.
@@ -5777,6 +5841,7 @@ tf_py_test(
     srcs = ["util/nest_test.py"],
     main = "util/nest_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [":util_nest_test_main_lib"],
 )
 
@@ -5802,6 +5867,7 @@ tf_py_test(
     srcs = ["util/serialization_test.py"],
     main = "util/serialization_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":util",
@@ -5812,6 +5878,7 @@ tf_py_test(
     name = "function_utils_test",
     srcs = ["util/function_utils_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":util",
@@ -5823,6 +5890,7 @@ tf_py_test(
     size = "small",
     srcs = ["util/tf_contextlib_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":util",
@@ -5834,6 +5902,7 @@ tf_py_test(
     size = "small",
     srcs = ["util/tf_decorator_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":util",
@@ -5857,6 +5926,7 @@ tf_py_test(
     size = "small",
     srcs = ["util/tf_should_use_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":tf_should_use",
@@ -5868,6 +5938,7 @@ tf_py_test(
     size = "small",
     srcs = ["util/tf_inspect_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":util",
@@ -5892,6 +5963,7 @@ tf_py_test(
     srcs = ["util/lock_util_test.py"],
     main = "util/lock_util_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":util",
@@ -5904,6 +5976,7 @@ tf_py_test(
     size = "small",
     srcs = ["util/module_wrapper_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":util",
@@ -5946,6 +6019,7 @@ tf_py_test(
     main = "util/protobuf/compare_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
+    tfrt_enabled = True,
     deps = [
         ":compare_test_proto_py",
         ":platform_test",
@@ -5960,6 +6034,7 @@ tf_py_test(
     srcs = ["util/example_parser_configuration_test.py"],
     main = "util/example_parser_configuration_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -5975,6 +6050,7 @@ tf_py_test(
     size = "small",
     srcs = ["client/events_writer_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":errors",
         ":framework_test_lib",
@@ -6396,6 +6472,7 @@ tf_py_test(
     tags = [
         "noasan",  # TODO(b/161236904): flaky timeout in trying to start gRPC server
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6417,6 +6494,7 @@ tf_py_test(
     srcs = ["training/server_lib_multiple_containers_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6438,6 +6516,7 @@ tf_py_test(
     srcs = ["training/server_lib_same_variables_clear_container_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6459,6 +6538,7 @@ tf_py_test(
     srcs = ["training/server_lib_same_variables_clear_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6480,6 +6560,7 @@ tf_py_test(
     srcs = ["training/server_lib_same_variables_no_clear_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6501,6 +6582,7 @@ tf_py_test(
     srcs = ["training/server_lib_sparse_job_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6528,6 +6610,7 @@ cuda_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "oss_serial",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client",
         ":client_testlib",
@@ -6554,6 +6637,7 @@ tf_py_test(
         "notsan",  # data race due to b/62910646
         "oss_serial",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -6596,6 +6680,7 @@ tf_py_test(
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6658,6 +6743,7 @@ tf_py_test(
         "no_pip_gpu",
         "notsan",  # data race due to b/62910646
     ],
+    tfrt_enabled = True,
     deps = [
         ":client",
         ":framework",
@@ -6677,6 +6763,7 @@ tf_py_test(
         "no_gpu",
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -6701,6 +6788,7 @@ cuda_py_test(
         "gpu_cupti",
         "no_gpu",  # b/154742661
     ],
+    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
         ":client",
@@ -6720,6 +6808,7 @@ cuda_py_test(
         "no_gpu",  # b/127386241
         "no_windows_gpu",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client",
         ":client_testlib",
@@ -6734,6 +6823,7 @@ tf_py_test(
     size = "small",
     srcs = ["framework/c_api_util_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":c_api_util",
         ":framework_test_lib",
@@ -6746,6 +6836,7 @@ tf_py_test(
     size = "small",
     srcs = ["framework/graph_util_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client",
         ":client_testlib",
@@ -6766,6 +6857,7 @@ tf_py_test(
     srcs = ["framework/convert_to_constants_test.py"],
     python_version = "PY3",
     tags = ["no_rocm"],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":control_flow_v2_toggles",
@@ -6780,6 +6872,7 @@ tf_py_test(
     size = "small",
     srcs = ["lib/core/bfloat16_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":lib",
@@ -6796,6 +6889,7 @@ tf_py_test(
         "no_rocm",
         "no_windows",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":errors",
@@ -6808,6 +6902,7 @@ tf_py_test(
     size = "small",
     srcs = ["lib/io/tf_record_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":errors",
@@ -6844,6 +6939,7 @@ cuda_py_test(
         "no_windows",  # b/139083295: bfloat16 tests fail on Windows
         "notsan",
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -7014,6 +7110,7 @@ tf_py_test(
         "noasan",  # http://b/30379628
         "notsan",  # http://b/30379628
     ],
+    tfrt_enabled = True,
     deps = [
         ":client",
         ":client_testlib",
@@ -7034,6 +7131,7 @@ tf_py_test(
         "noasan",  # http://b/30782289
         "notsan",  # http://b/30782289
     ],
+    tfrt_enabled = True,
     deps = [
         ":client",
         ":client_testlib",
@@ -7051,6 +7149,7 @@ cuda_py_test(
     grpc_enabled = True,
     main = "training/session_manager_test.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -7071,6 +7170,7 @@ tf_py_test(
     grpc_enabled = True,
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":checkpoint_management",
@@ -7099,6 +7199,7 @@ tf_py_test(
         "no_windows",
         "notsan",  # intermittent races on a few percent of runs
     ],
+    tfrt_enabled = True,
     deps = [
         ":client",
         ":client_testlib",
@@ -7149,6 +7250,7 @@ tf_py_test(
     size = "small",
     srcs = ["training/checkpoint_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":checkpoint_ops_gen",
         ":client",
@@ -7170,6 +7272,7 @@ tf_py_test(
     size = "medium",
     srcs = ["training/warm_starting_util_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -7191,6 +7294,7 @@ tf_py_test(
         "no_pip",
         "notsan",  # b/67945581
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":checkpoint_management",
@@ -7235,6 +7339,7 @@ tf_py_test(
     size = "small",
     srcs = ["training/training_util_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework",
@@ -7250,6 +7355,7 @@ tf_py_test(
     size = "medium",
     srcs = ["training/input_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -7400,6 +7506,7 @@ tf_py_test(
     srcs = ["ops/dequantize_op_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -7414,6 +7521,7 @@ tf_py_test(
     srcs = ["ops/quantized_ops_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -7428,6 +7536,7 @@ tf_py_test(
     srcs = ["ops/quantized_conv_ops_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -7461,6 +7570,7 @@ cuda_py_test(
     main = "ops/accumulate_n_benchmark.py",
     python_version = "PY3",
     shard_count = 6,
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -7480,6 +7590,7 @@ cuda_py_test(
     srcs = ["ops/batch_norm_benchmark.py"],
     main = "ops/batch_norm_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -7501,6 +7612,7 @@ cuda_py_test(
     srcs = ["ops/collective_ops_benchmark.py"],
     main = "ops/collective_ops_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -7518,6 +7630,7 @@ cuda_py_test(
     srcs = ["ops/concat_benchmark.py"],
     main = "ops/concat_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -7536,6 +7649,7 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_benchmark.py"],
     main = "ops/control_flow_ops_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":constant_op",
@@ -7551,6 +7665,7 @@ cuda_py_test(
     srcs = ["ops/conv2d_benchmark.py"],
     main = "ops/conv2d_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client",
         ":client_testlib",
@@ -7571,6 +7686,7 @@ cuda_py_test(
     srcs = ["ops/split_benchmark.py"],
     main = "ops/split_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -7591,6 +7707,7 @@ cuda_py_test(
     srcs = ["ops/transpose_benchmark.py"],
     main = "ops/transpose_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -7611,6 +7728,7 @@ cuda_py_test(
     srcs = ["ops/matmul_benchmark.py"],
     main = "ops/matmul_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [":matmul_benchmark_main_lib"],
 )
 
@@ -7640,6 +7758,7 @@ cuda_py_test(
     grpc_enabled = True,
     main = "client/session_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client",
@@ -7658,6 +7777,7 @@ cuda_py_test(
     srcs = ["framework/graph_building_benchmark.py"],
     main = "framework/graph_building_benchmark.py",
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -7673,6 +7793,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_grad_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -7727,6 +7848,7 @@ tf_py_test(
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -7747,6 +7869,7 @@ tf_py_test(
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -7865,6 +7988,7 @@ tf_py_test(
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -7886,6 +8010,7 @@ tf_py_test(
     tags = [
         "grappler",
     ],
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -8021,6 +8146,7 @@ tf_py_test(
         "no_pip",
         "no_windows",  # TODO(b/151942037)
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -8055,6 +8181,7 @@ tf_py_test(
         "grappler",
         "no_pip",
     ],
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -8075,6 +8202,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = ["grappler"],
+    tfrt_enabled = True,
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -8330,6 +8458,7 @@ cuda_py_test(
     name = "raw_ops_test",
     srcs = ["ops/raw_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":client_testlib",
     ],

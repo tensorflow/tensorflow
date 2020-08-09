@@ -188,7 +188,7 @@ std::vector<TensorFlowDialect::AdditionalOpFunction>
         new std::vector<TensorFlowDialect::AdditionalOpFunction>();
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf", context) {
+    : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_all_ops.cc.inc"

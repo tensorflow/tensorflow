@@ -24,9 +24,16 @@ limitations under the License.
 namespace xla {
 
 class TpuTransferManagerInterface : public xla::TransferManager {
+ public:
   virtual Status TransferBuffersToInfeed(
       se::StreamExecutor* executor,
       const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) = 0;
+
+  virtual Status LinearizeToBuffers(
+      const LiteralSlice& literal,
+      std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) = 0;
+
+  static TpuTransferManagerInterface* GetRegisteredTpuTransferManager();
 };
 
 }  // namespace xla

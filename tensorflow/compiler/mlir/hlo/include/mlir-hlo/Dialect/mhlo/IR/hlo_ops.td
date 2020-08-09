@@ -67,8 +67,7 @@ def HLO_ConstOp : HLO_Op<"constant",
     "OpBuilder &builder, OperationState &result, Attribute value"
   >];
 
-  let printer = [{ return Print(*this, &p); }];
-  let parser = [{ return ParseConstOp(&parser, &result); }];
+  let assemblyFormat = "attr-dict $value";
 
   let hasFolder = 1;
 
