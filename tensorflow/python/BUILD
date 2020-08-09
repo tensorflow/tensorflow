@@ -1702,6 +1702,7 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/profiler:traceme",
         "@six_archive//:six",
     ],
 )
