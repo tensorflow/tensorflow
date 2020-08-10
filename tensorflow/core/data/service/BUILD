@@ -173,6 +173,7 @@ cc_library(
     deps = [
         ":journal_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],

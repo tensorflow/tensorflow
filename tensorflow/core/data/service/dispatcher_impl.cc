@@ -87,21 +87,25 @@ Status DataServiceDispatcherImpl::Start() {
   }
   journal_writer_ = absl::make_unique<FileJournalWriter>(
       Env::Default(), JournalDir(config_.work_dir()));
+  LOG(INFO) << "Restoring dispatcher state from journal in "
+            << JournalDir(config_.work_dir());
   Update update;
   bool end_of_journal = false;
   FileJournalReader reader(Env::Default(), JournalDir(config_.work_dir()));
   Status s = reader.Read(&update, &end_of_journal);
   if (errors::IsNotFound(s)) {
     LOG(INFO) << "No journal found. Starting dispatcher from new state.";
-    return Status::OK();
+  } else if (!s.ok()) {
+    return s;
+  } else {
+    while (!end_of_journal) {
+      TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
+      TF_RETURN_IF_ERROR(reader.Read(&update, &end_of_journal));
+    }
   }
-  TF_RETURN_IF_ERROR(s);
-  LOG(INFO) << "Restoring dispatcher state from journal in "
-            << JournalDir(config_.work_dir());
-  while (!end_of_journal) {
-    TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
-    TF_RETURN_IF_ERROR(reader.Read(&update, &end_of_journal));
-  }
+  // Initialize the journal writer in `Start` so that we fail fast in case it
+  // can't be initialized.
+  TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   return Status::OK();
 }
 

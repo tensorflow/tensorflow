@@ -107,6 +107,14 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dispatcher._stop()
     return self.start_dispatch_server(port=port)
 
+  def restart_worker(self, worker, dispatcher, use_same_port=True):
+    """Stops `worker` and returns a new worker."""
+    port = 0
+    if use_same_port:
+      port = int(worker._address.split(":")[1])
+    worker._stop()
+    return self.start_worker_server(dispatcher, port)
+
   def start_cluster(self, num_workers):
     """Creates a cluster of tf.data service servers.
 
@@ -174,6 +182,35 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = _make_distributed_range_dataset(100, dispatcher)
     self.assertDatasetProduces(ds, list(range(num_elements)))
     dispatcher = self.restart_dispatcher(dispatcher)
+    self.assertDatasetProduces(ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherManyRestarts(self):
+    dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_elements_start = 10
+    num_elements_end = 15
+    datasets = []
+    for num_elements in range(num_elements_start, num_elements_end):
+      datasets.append(_make_distributed_range_dataset(num_elements, dispatcher))
+      dispatcher = self.restart_dispatcher(dispatcher)
+    for ds, num_elements in zip(datasets,
+                                range(num_elements_start, num_elements_end)):
+      self.assertDatasetProduces(ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherAndWorkerRestart(self):
+    dispatcher, [worker] = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+
+    def restart():
+      return (self.restart_dispatcher(dispatcher),
+              self.restart_worker(worker, dispatcher))
+
+    ds = _make_distributed_dataset(ds, dispatcher)
+    dispatcher, worker = restart()
+    self.assertDatasetProduces(ds, list(range(num_elements)))
+    dispatcher, worker = restart()
     self.assertDatasetProduces(ds, list(range(num_elements)))
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -357,11 +394,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(i, next(iterator).numpy())
 
     # Stop the original worker and start a new one.
-    port = 0
-    if use_same_port:
-      port = int(worker._address.split(":")[1])
-    worker._stop()
-    new_worker = self.start_worker_server(dispatcher, port=port)  # to avoid gcing workers, pylint: disable=unused-variable
+    worker = self.restart_worker(worker, dispatcher, use_same_port)
 
     # There may have been some elements prefetched from the first worker
     # before it was stopped.
