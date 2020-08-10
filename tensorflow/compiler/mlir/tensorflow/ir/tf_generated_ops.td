@@ -8712,6 +8712,8 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
     return Verify(*this);
   }];
 
+  let hasCanonicalizer = 1;
+
   let hasFolder = 1;
 }
 

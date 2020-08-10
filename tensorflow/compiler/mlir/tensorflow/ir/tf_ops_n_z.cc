@@ -947,9 +947,42 @@ LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
   return success();
 }
 
-// TODO(hinsu): Add canonicalization pattern for ShapeN ops that don't have all
+namespace {
+// Canonicalization pattern for ShapeNOp that don't have all
 // static input shapes. Replacing output values corresponding to static input
 // types may enable optimizations in users of the values.
+class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() == 0) return success();
+    int width = op.getType(0)
+                    .cast<ShapedType>()
+                    .getElementType()
+                    .getIntOrFloatBitWidth();
+    BoolAttr use32Bit = BoolAttr::get(width == 32, op.getContext());
+
+    SmallVector<Value, 4> results;
+    for (Value input : op.getOperands()) {
+      Value shape;
+      if (OpFoldResult result = ConvertShapeToAttr(input.getType(), width)) {
+        shape =
+            rewriter.create<TF::ConstOp>(op.getLoc(), result.get<Attribute>());
+      } else {
+        shape = rewriter.create<TF::ShapeOp>(op.getLoc(), input, use32Bit);
+      }
+      results.push_back(shape);
+    }
+    rewriter.replaceOp(op, results);
+    return success();
+  }
+};
+}  // namespace
+
+void ShapeNOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ShapeNPartialStaticInputShape>(context);
+}
 
 //===----------------------------------------------------------------------===//
 // SizeOp
