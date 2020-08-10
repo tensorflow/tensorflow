@@ -1233,6 +1233,222 @@ class Dense(Layer):
     return config
 
 
+@keras_export('keras.layers.NoisyDense')
+class NoisyDense(Layer):
+  """Like normal dense layer but random noisy is added to the weights matrix. But
+  as the network improves the random noise is decayed until it is insignificant. 
+
+  A `NoisyDense` layer implements the operation:
+  `output = activation(dot(input, µ_kernel + (σ_kernel * ε_kernel)) + bias)`
+  where `activation` is the element-wise activation function
+  passed as the `activation` argument, `µ_kernel` is your average weights matrix
+  created by the layer, σ_kernel is a weights matrix that controls the importance of 
+  the ε_kernel which is just random noise, and `bias` is a bias vector created by the layer
+  (only applicable if `use_bias` is `True`).
+
+  Besides, layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
+
+  Example:
+
+  >>> # Create a `Sequential` model and add a Dense layer as the first layer.
+  >>> model = tf.keras.models.Sequential()
+  >>> model.add(tf.keras.Input(shape=(16,)))
+  >>> model.add(tf.keras.layers.NoisyDense(32, activation='relu'))
+  >>> # Now the model will take as input arrays of shape (None, 16)
+  >>> # and output arrays of shape (None, 32).
+  >>> # Note that after the first layer, you don't need to specify
+  >>> # the size of the input anymore:
+  >>> model.add(tf.keras.layers.Dense(32))
+  >>> model.output_shape
+  (None, 32)
+
+  Arguments:
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      If you don't specify anything, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    activity_regularizer: Regularizer function applied to
+      the output of the layer (its "activation").
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+
+  Input shape:
+    N-D tensor with shape: `(batch_size, ..., input_dim)`.
+    The most common situation would be
+    a 2D input with shape `(batch_size, input_dim)`.
+
+  Output shape:
+    N-D tensor with shape: `(batch_size, ..., units)`.
+    For instance, for a 2D input with shape `(batch_size, input_dim)`,
+    the output would have shape `(batch_size, units)`.
+  """
+
+  def __init__(self,
+               units,
+               activation=None,
+               use_bias=True,
+               kernel_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
+               **kwargs):
+    super(NoisyDense, self).__init__(activity_regularizer=activity_regularizer, **kwargs)
+
+    self.units = int(units) if not isinstance(units, int) else units
+    self.activation = activations.get(activation)
+    self.use_bias = use_bias
+    self.kernel_regularizer = regularizers.get(kernel_regularizer)
+    self.bias_regularizer = regularizers.get(bias_regularizer)
+    self.kernel_constraint = constraints.get(kernel_constraint)
+    self.bias_constraint = constraints.get(bias_constraint)
+
+    self.input_spec = InputSpec(min_ndim=2)
+    self.supports_masking = True
+
+  def build(self, input_shape):
+    # Make sure dtype is correct
+    dtype = dtypes.as_dtype(self.dtype or K.floatx())
+    if not (dtype.is_floating or dtype.is_complex):
+      raise TypeError('Unable to build `Dense` layer with non-floating point '
+                      'dtype %s' % (dtype,))
+
+    input_shape = tensor_shape.TensorShape(input_shape)
+    self.last_dim = tensor_shape.dimension_value(input_shape[-1])
+    sqrt_dim = self.last_dim ** (1/2)
+    if self.last_dim is None:
+      raise ValueError('The last dimension of the inputs to `Dense` '
+                       'should be defined. Found `None`.')
+    self.input_spec = InputSpec(min_ndim=2, axes={-1: self.last_dim})
+
+    self.σ_init = initializers.Constant(value=0.5/sqrt_dim)
+    self.µ_init = initializers.RandomUniform(minval=-1/sqrt_dim, maxval=1/sqrt_dim)
+
+    # Learnable parameters
+    # Agent will learn to decay σ as it improves creating a sort of learned epsilon decay
+    self.σ_kernel = self.add_weight(
+        "σ_kernel",
+        shape=[self.last_dim, self.units], 
+        initializer=self.σ_init,
+        regularizer=self.kernel_regularizer,
+        constraint=self.kernel_constraint, 
+        dtype=self.dtype,
+        trainable=True)
+
+    self.µ_kernel = self.add_weight(
+        "µ_kernel",
+        shape=[self.last_dim, self.units], 
+        initializer=self.µ_init,
+        regularizer=self.kernel_regularizer,
+        constraint=self.kernel_constraint, 
+        dtype=self.dtype,
+        trainable=True)
+
+    if self.use_bias:
+      self.σ_bias = self.add_weight(
+          "σ_bias",
+          shape=[self.units,],
+          initializer=self.σ_init,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint,
+          dtype=self.dtype,
+          trainable=True)
+      
+      self.µ_bias = self.add_weight(
+          "µ_bias",
+          shape=[self.units,],
+          initializer=self.µ_init,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint,
+          dtype=self.dtype,
+          trainable=True)
+                               
+    self.built = True
+
+  @staticmethod
+  def f(x):
+    return tf.sign(x)*tf.sqrt(tf.abs(x))
+
+  def call(self, inputs):
+    dtype = self._compute_dtype_object
+    if inputs.dtype.base_dtype != dtype.base_dtype:
+      inputs = math_ops.cast(inputs, dtype=dtype)
+
+    # Unlearnable parameters added as the noise
+    ε_i = tf.random.normal([self.last_dim, self.units])
+    ε_j = tf.random.normal([self.units,])
+
+    f = NoisyDense.f
+    ε_kernel = f(ε_i) * f(ε_j)
+    ε_bias = f(ε_j)
+
+    # Code adapted from: https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/layers/ops/core.py
+    # Optimally performs: y = (µw + σw · εw)x + µb + σb · εb
+    rank = inputs.shape.rank
+    if rank == 2 or rank is None:
+      if isinstance(inputs, sparse_tensor.SparseTensor):
+        outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, self.µ_kernel + (self.σ_kernel * ε_kernel))
+      else:
+        outputs = gen_math_ops.mat_mul(inputs, self.µ_kernel + (self.σ_kernel * ε_kernel))
+    # Broadcast kernel to inputs.
+    else:
+      outputs = standard_ops.tensordot(inputs, self.µ_kernel + (self.σ_kernel * ε_kernel), [[rank - 1], [0]])
+      # Reshape the output back to the original ndim of the input.
+      if not context.executing_eagerly():
+        shape = inputs.shape.as_list()
+        output_shape = shape[:-1] + [kernel.shape[-1]]
+        outputs.set_shape(output_shape)
+
+    if self.use_bias:
+      noisy_bias = self.µ_bias + (self.σ_bias * ε_bias)
+      outputs = nn_ops.bias_add(outputs, noisy_bias)
+
+    if self.activation is not None:
+      outputs = self.activation(outputs)
+
+    return outputs
+
+
+  def compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    input_shape = input_shape.with_rank_at_least(2)
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
+      raise ValueError(
+          'The innermost dimension of input_shape must be defined, but saw: %s'
+          % input_shape)
+    return input_shape[:-1].concatenate(self.units)
+
+  def get_config(self):
+    config = super(NoisyDense, self).get_config()
+    config.update({
+        'units':
+            self.units,
+        'activation':
+            activations.serialize(self.activation),
+        'σ_initializer':
+            initializers.serialize(self.σ_init),
+        'µ_initializer':
+            initializers.serialize(self.µ_init),
+        'kernel_regularizer':
+            regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
+        'activity_regularizer':
+            regularizers.serialize(self.activity_regularizer),
+        'kernel_constraint':
+            constraints.serialize(self.kernel_constraint),
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
+    })
+    return config
+
+
 @keras_export('keras.layers.ActivityRegularization')
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
