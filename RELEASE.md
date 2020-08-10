@@ -128,6 +128,7 @@
       * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
     * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
       * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
+    * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
