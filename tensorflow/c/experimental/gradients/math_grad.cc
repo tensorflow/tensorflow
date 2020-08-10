@@ -91,8 +91,8 @@ class ExpGradientFunction : public GradientFunction {
 
 class MatMulGradientFunction : public GradientFunction {
  public:
-  explicit MatMulGradientFunction(std::vector<AbstractTensorHandle*> f_inputs/*, AttrBuilder f_attrs*/)
-      : forward_inputs(f_inputs)/*, attrs(f_attrs)*/ {}
+  explicit MatMulGradientFunction(std::vector<AbstractTensorHandle*> f_inputs, AttrBuilder f_attrs)
+      : forward_inputs(f_inputs), attrs(f_attrs) {}
 
   Status Compute(Context* ctx,
                  absl::Span<AbstractTensorHandle* const> grad_inputs,
@@ -105,18 +105,19 @@ class MatMulGradientFunction : public GradientFunction {
      *    where A.T means `transpose(A)`
      */
 
+    // TODO(amturati): figure why adding attrs to the function breaks the counter
+
     AbstractTensorHandle* upstream_grad = grad_inputs[0];
     grad_outputs->resize(2);
     
-    // // Get transpose attrs
-    // bool t_a;
-    // attrs.Get("transpose_a", &t_a);
+    // Get transpose attrs
+    bool t_a;
+    attrs.Get("transpose_a", &t_a);
 
-    // bool t_b;
-    // attrs.Get("transpose_b", &t_b);
+    bool t_b;
+    attrs.Get("transpose_b", &t_b);
    
-    // Conj Inputs
-    std::cout << "c = " << counter << std::endl;
+    // Conj each input
     std::vector<AbstractTensorHandle*> conj_outputs(1);
     std::string name = "Conj_A_MatMul_Grad_" + std::to_string(counter);
     TF_RETURN_IF_ERROR(
@@ -135,7 +136,7 @@ class MatMulGradientFunction : public GradientFunction {
     std::vector<AbstractTensorHandle*> matmul_B_outputs(1);
     std::string name_grad_A = "MatMul_Grad_A_" + std::to_string(counter);
     std::string name_grad_B = "MatMul_Grad_B_" + std::to_string(counter);
-    //if(!t_a && !t_b) {
+    if(!t_a && !t_b) {
       TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, B},
                               absl::MakeSpan(matmul_A_outputs), name_grad_A.c_str(),
                               /*transpose_a = */ false,
@@ -145,41 +146,41 @@ class MatMulGradientFunction : public GradientFunction {
                               absl::MakeSpan(matmul_B_outputs), name_grad_B.c_str(),
                               /*transpose_a = */ true,
                               /*transpose_b = */ false));
-    // }
-    // else if(!t_a && t_b) {
-    //   TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, B},
-    //                             absl::MakeSpan(matmul_A_outputs), name_grad_A.c_str(),
-    //                             /*transpose_a = */ false,
-    //                             /*transpose_b = */ false));
+    }
+    else if(!t_a && t_b) {
+      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, B},
+                                absl::MakeSpan(matmul_A_outputs), name_grad_A.c_str(),
+                                /*transpose_a = */ false,
+                                /*transpose_b = */ false));
     
-    //   TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, A},
-    //                             absl::MakeSpan(matmul_B_outputs), name_grad_B.c_str(),
-    //                             /*transpose_a = */ true,
-    //                             /*transpose_b = */ false));
+      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, A},
+                                absl::MakeSpan(matmul_B_outputs), name_grad_B.c_str(),
+                                /*transpose_a = */ true,
+                                /*transpose_b = */ false));
 
-    // }
-    // else if(t_a && !t_b)  {
-    //   TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {B, upstream_grad},
-    //                             absl::MakeSpan(matmul_A_outputs), name_grad_A.c_str(),
-    //                             /*transpose_a = */ false,
-    //                             /*transpose_b = */ true));
+    }
+    else if(t_a && !t_b)  {
+      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {B, upstream_grad},
+                                absl::MakeSpan(matmul_A_outputs), name_grad_A.c_str(),
+                                /*transpose_a = */ false,
+                                /*transpose_b = */ true));
     
-    //   TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {A, upstream_grad},
-    //                             absl::MakeSpan(matmul_B_outputs), name_grad_B.c_str(),
-    //                             /*transpose_a = */ false,
-    //                             /*transpose_b = */ false));
-    // }
-    // else { // t_a && t_b 
-    //   TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {B, upstream_grad},
-    //                             absl::MakeSpan(matmul_A_outputs), name_grad_A.c_str(),
-    //                             /*transpose_a = */ true,
-    //                             /*transpose_b = */ true));
+      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {A, upstream_grad},
+                                absl::MakeSpan(matmul_B_outputs), name_grad_B.c_str(),
+                                /*transpose_a = */ false,
+                                /*transpose_b = */ false));
+    }
+    else { // t_a && t_b 
+      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {B, upstream_grad},
+                                absl::MakeSpan(matmul_A_outputs), name_grad_A.c_str(),
+                                /*transpose_a = */ true,
+                                /*transpose_b = */ true));
     
-    //   TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, A},
-    //                             absl::MakeSpan(matmul_B_outputs), name_grad_B.c_str(),
-    //                             /*transpose_a = */ true,
-    //                             /*transpose_b = */ true));
-    // }
+      TF_RETURN_IF_ERROR(MatMul(ctx->ctx, {upstream_grad, A},
+                                absl::MakeSpan(matmul_B_outputs), name_grad_B.c_str(),
+                                /*transpose_a = */ true,
+                                /*transpose_b = */ true));
+    }
 
     // Gradient for A
     (*grad_outputs)[0] = matmul_A_outputs[0];
@@ -195,7 +196,7 @@ class MatMulGradientFunction : public GradientFunction {
  private:
   int64_t counter;
   std::vector<AbstractTensorHandle*> forward_inputs;
-  // AttrBuilder attrs;
+  AttrBuilder attrs;
 };
 
 class ReluGradientFunction : public GradientFunction {
@@ -293,7 +294,7 @@ BackwardFunction* ExpRegisterer(const ForwardOperation& op) {
 }
 
 GradientFunction* MatMulRegisterer(const ForwardOperation& op) {
-  return new MatMulGradientFunction(op.inputs/*, op.attrs*/);
+  return new MatMulGradientFunction(op.inputs, op.attrs);
 }
 
 GradientFunction* ReluRegisterer(const ForwardOperation& op) {

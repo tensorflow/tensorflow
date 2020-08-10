@@ -46,7 +46,6 @@ TFE_TensorHandle* TestTensorHandleWithDimsFloat(TFE_Context* ctx, float data[], 
 // Get a Matrix TensorHandle with given int values and dimensions
 TFE_TensorHandle* TestTensorHandleWithDimsInt(TFE_Context* ctx, int data[], int64_t dims [], int num_dims);
 
-
 // Return a tensor handle containing a 100x100 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle100x100(TFE_Context* ctx);
 
