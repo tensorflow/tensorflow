@@ -647,7 +647,9 @@ class InputOptions(
       elements will be prefetched to accelerator device memory. When False,
       dataset elements are prefetched to host device memory. Must be False when
       using TPUEmbedding API.
-      replication_mode: Replication mode for the input function.
+      replication_mode: Replication mode for the input function. Currently, the 
+      InputReplicationMode.PER_WORKER works only under mirrored_strategy for the 
+      supported input functions.
   """
 
   def __new__(cls, experimental_prefetch_to_device=True,

@@ -139,7 +139,7 @@ def get_distributed_datasets_from_function(dataset_fn,
           input_contexts,
           strategy)
     else:
-          return DistributedDatasetsFromFunctionForReplicas(
+      return DistributedDatasetsFromFunctionForReplicas(
           dataset_fn,
           input_workers,
           input_contexts,

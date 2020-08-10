@@ -367,7 +367,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     logging.info("Using MirroredStrategy with remote devices %r", devices)
 
   def _input_workers_with_options(self, options=None, input_workers_devices=None):
-    if not self._input_workers_devices:
+    if not input_workers_devices:
       input_workers_devices = self._input_workers_devices
     if not options or options.experimental_prefetch_to_device:
       return input_lib.InputWorkers(input_workers_devices)
@@ -472,6 +472,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                                            self._container_strategy())
 
   def _experimental_distribute_dataset(self, dataset, options):
+    if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+      raise RuntimeError("InputReplicationMode.PER_REPLICA "
+                    "is only supported in `experimental_distribute_datasets_from_function`.")
     return input_lib.get_distributed_dataset(
         dataset,
         self._input_workers_with_options(options),
