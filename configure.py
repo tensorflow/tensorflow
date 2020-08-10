@@ -844,6 +844,7 @@ def set_gcc_host_compiler_path(environ_cp):
     if os.path.islink(cuda_bin_symlink):
       # os.readlink is only available in linux
       default_gcc_host_compiler_path = os.path.realpath(cuda_bin_symlink)
+      break
 
   gcc_host_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
