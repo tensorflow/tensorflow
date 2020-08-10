@@ -188,7 +188,16 @@ TfLiteStatus Interpreter::AllocateTensors() {
     // The execution will fall back to default implementation if the XNNPACK
     // delegate fails to be applied. Therefore, we ignore the return status
     // here and let it fall through the rest of the code.
-    ModifyGraphWithDelegate(std::move(lazy_delegate_provider_));
+    auto status = ModifyGraphWithDelegate(std::move(lazy_delegate_provider_));
+    if (status != kTfLiteOk) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "Ignoring failed application of the default TensorFlow Lite "
+          "delegate.");
+    } else {
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Successfully applied the default TensorFlow Lite delegate.");
+    }
     lazy_delegate_provider_.reset();
   }
 

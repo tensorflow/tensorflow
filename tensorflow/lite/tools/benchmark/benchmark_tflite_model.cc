@@ -669,18 +669,21 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
         return kTfLiteError;
       }
       if (fully_delegated) {
-        TFLITE_LOG(INFO) << "Applied " << delegate_provider->GetName()
+        TFLITE_LOG(INFO) << "Explicitly applied "
+                         << delegate_provider->GetName()
                          << " delegate, and the model graph will be completely"
                          << " executed by the delegate.";
       } else if (num_delegated_kernels > 0) {
-        TFLITE_LOG(INFO) << "Applied " << delegate_provider->GetName()
+        TFLITE_LOG(INFO) << "Explicitly applied "
+                         << delegate_provider->GetName()
                          << " delegate, and the model graph will be partially"
                          << " executed by the delegate w/ "
                          << num_delegated_kernels << " delegate kernels.";
       } else {
-        TFLITE_LOG(INFO) << "Though " << delegate_provider->GetName()
-                         << " delegate is applied, the model graph will not be"
-                         << " executed by the delegate.";
+        TFLITE_LOG(INFO)
+            << "Though " << delegate_provider->GetName()
+            << " delegate is explicitly applied, the model graph will not be"
+            << " executed by the delegate.";
       }
     }
     owned_delegates_.emplace_back(std::move(delegate));
