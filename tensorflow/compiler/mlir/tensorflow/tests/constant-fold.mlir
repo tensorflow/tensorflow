@@ -121,6 +121,15 @@ func @testShapeNOneDynamic(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %a
   return %0#0, %0#1, %0#2 : tensor<0xi64>, tensor<4xi64>, tensor<?xi64>
 }
 
+// CHECK-LABEL: func @testShapeNToShape
+func @testShapeNToShape(%arg0: tensor<*xf32>) -> tensor<?xi64> {
+  // CHECK: %[[SHAPE0:.*]] = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi64>
+  %0:1 = "tf.ShapeN"(%arg0) : (tensor<*xf32>) -> tensor<?xi64>
+
+  // CHECK: return %[[SHAPE0]]
+  return %0#0 : tensor<?xi64>
+}
+
 // CHECK-LABEL: func @testLeakyRelu
 func @testLeakyRelu(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>, tensor<f32>, tensor<16xf32>) {
   %pos = constant dense<5.0> : tensor<f32>
