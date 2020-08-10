@@ -113,7 +113,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
 
-  UseNNAPI(false);
+  primary_subgraph().UseNNAPI(false);
 }
 
 Interpreter::~Interpreter() {

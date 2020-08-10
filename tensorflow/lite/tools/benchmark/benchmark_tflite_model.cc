@@ -259,8 +259,6 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_value_files",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("use_legacy_nnapi",
-                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("require_full_delegation",
                           BenchmarkParam::Create<bool>(false));
@@ -324,7 +322,6 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "input_layer_value_range of the input_name will be ignored. The file "
           "format is binary and it should be array format or null separated "
           "strings format."),
-      CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("require_full_delegation", &params_,
                        "require delegate to run the entire graph"),
@@ -363,9 +360,6 @@ void BenchmarkTfLiteModel::LogParams() {
   LOG_BENCHMARK_PARAM(std::string, "input_layer_value_files",
                       "Input value files", verbose);
 
-#if defined(__ANDROID__)
-  LOG_BENCHMARK_PARAM(bool, "use_legacy_nnapi", "Use legacy nnapi", verbose);
-#endif
   LOG_BENCHMARK_PARAM(bool, "allow_fp16", "Allow fp16", verbose);
   LOG_BENCHMARK_PARAM(bool, "require_full_delegation",
                       "Require full delegation", verbose);
@@ -635,7 +629,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   profiling_listener_ = MayCreateProfilingListener();
   if (profiling_listener_) AddListener(profiling_listener_.get());
 
-  interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   owned_delegates_.clear();
