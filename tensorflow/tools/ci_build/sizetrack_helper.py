@@ -54,8 +54,10 @@ import csv
 import datetime
 import os
 import os.path
+import pathlib
 import platform
 import subprocess
+
 
 parser = argparse.ArgumentParser(
     usage=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -231,6 +233,15 @@ def gcloud(tool, args, stdin=None):
   return ret.stdout.strip()
 
 
+def bq(args, stdin=None):
+  """Helper for running bq, the BigQuery tool."""
+  # bq prints extra messages to stdout if ~/.bigqueryrc doesn't exist
+  pathlib.Path(pathlib.Path.home() / ".bigqueryrc").touch()
+  return gcloud(
+      "bq", ["--project_id", FLAGS.project, "--headless", *args],
+      stdin=stdin)
+
+
 def get_all_tested_commits():
   """Get details about the full commit range tested by this invocation."""
   head_info = git_pretty("HEAD", PRETTY_HEAD_INFO, n=1)
@@ -245,12 +256,8 @@ def get_all_tested_commits():
   # --format=csv returns an empty string if no results, or else two lines:
   # commit
   # COMMIT_HASH
-  earliest_commit = gcloud(
-      "bq", [
-          "--project_id", FLAGS.project, "--headless", "-q", "query",
-          "--format", "csv", "--nouse_legacy_sql"
-      ],
-      stdin=query_earliest_included_commit)
+  earliest_commit = bq(["query", "--format", "csv", "--nouse_legacy_sql"],
+                       stdin=query_earliest_included_commit)
 
   # Compute the commit/CL range since the last test
   if earliest_commit:
@@ -359,9 +366,8 @@ def main():
     with open("data.tsv", "w") as tsvfile:
       writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
       writer.writerow(next_tsv_row)
-    gcloud("bq", [
-        "--project_id", FLAGS.project, "--headless", "-q", "load",
-        "--source_format", "CSV", "--field_delimiter", "tab",
+    bq([
+        "load", "--source_format", "CSV", "--field_delimiter", "tab",
         PROJECT_LEVEL_TABLE_NAME, "data.tsv", SCHEMA
     ])
 
