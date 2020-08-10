@@ -364,8 +364,9 @@ def main():
     print("DRY RUN: Generated this TSV row:")
     print("\t".join(map(str, next_tsv_row)))
   else:
-    with open("data.tsv", "w") as tsvfile:
-      writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
+    with open("data.tsv", "w", newline="") as tsvfile:
+      writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL,
+                          lineterminator=os.linesep)
       writer.writerow(next_tsv_row)
     bq([
         "load", "--source_format", "CSV", "--field_delimiter", "tab",
