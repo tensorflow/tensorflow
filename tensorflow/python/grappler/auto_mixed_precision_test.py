@@ -46,6 +46,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -578,6 +579,12 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_depthwise_conv2d(self, mode):
     """Test grad ops with depthwise convolution2d graph."""
     self._maybe_skip(mode)
+    cudnn_version = tuple([
+        int(x) for x in sysconfig.get_build_info()['cudnn_version'].split('.')])
+    if cudnn_version < (8,):
+      # Depthwise conv2d ops are only enabled in auto_mixed_precision as of
+      # cuDNN v8.
+      self.skipTest('cuDNN version >= 8 required')
     random_seed.set_random_seed(0)
     x = _input([2, 8, 8, 1])
     f = _weight([3, 3, 1, 4])
