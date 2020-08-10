@@ -114,6 +114,9 @@ size.add_argument(
     help="Manually set the recorded size instead of providing an artifact.")
 FLAGS = parser.parse_args()
 
+
+NOW = datetime.datetime.now(
+    datetime.timezone.utc).replace(microsecond=0).isoformat()
 TABLE_NAME = "{}.{}".format(FLAGS.dataset, FLAGS.table)
 PROJECT_LEVEL_TABLE_NAME = "{}:{}".format(FLAGS.project, TABLE_NAME)
 CL_TRAILER = "PiperOrigin-RevId"
@@ -285,15 +288,13 @@ def get_upload_path():
   """Generate URL for 'gsutil cp'."""
   if FLAGS.upload and FLAGS.artifact:
     artifact_filename = os.path.basename(FLAGS.artifact.name)
-    ts = datetime.datetime.now(
-        datetime.timezone.utc).replace(microsecond=0).isoformat()
     # note: not os.path.join here, because gsutil is always linux-style
     # Using a timestamp prevents duplicate entries
     path = "{bucket}/{team}/{artifact_id}/{now}.{artifact_filename}".format(
         bucket=FLAGS.bucket,
         team=FLAGS.team,
         artifact_id=FLAGS.artifact_id,
-        now=ts,
+        now=NOW,
         artifact_filename=artifact_filename)
     return path
   else:
