@@ -51,23 +51,8 @@ Status RegisterGradients(GradientRegistry* registry) {
 }
 
 // ========================= Test Util Functions ==============================
-void printArr(float data[], int n) {
-  std::cout << std::endl << "[";
-  for (int i = 0; i < n - 1; i++) {
-    std::cout << data[i] << ", ";
-  }
-  std::cout << data[n - 1] << "]" << std::endl;
-}
 
-float sumArr(float data[], int n) {
-  float sum = 0;
-  for (int i = 0; i < n; i++) {
-    sum += data[i];
-  }
-  return sum;
-}
-
-// Get a scalar TensorHandle woth given value
+// Get a scalar TensorHandle with given value
 Status TestScalarTensorHandle(AbstractContext* ctx, float value,
                               AbstractTensorHandle** tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -82,7 +67,7 @@ Status TestScalarTensorHandle(AbstractContext* ctx, float value,
 }
 
 // Get a Matrix TensorHandle with given float values and dimensions
-Status TestMatrixTensorHandleFloat(AbstractContext* ctx, float data[],
+Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
                                    int64_t dims[], int num_dims,
                                    AbstractTensorHandle** tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -91,14 +76,14 @@ Status TestMatrixTensorHandleFloat(AbstractContext* ctx, float data[],
       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   TFE_TensorHandle* input_eager =
-      TestMatrixTensorHandleFloat(eager_ctx, data, dims, num_dims);
+      TestTensorHandleWithDimsFloat(eager_ctx, data, dims, num_dims);
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return Status::OK();
 }
 
 // Get a Matrix TensorHandle with given int values and dimensions
-Status TestMatrixTensorHandleInt(AbstractContext* ctx, int data[],
+Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
                                  int64_t dims[], int num_dims,
                                  AbstractTensorHandle** tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -107,13 +92,13 @@ Status TestMatrixTensorHandleInt(AbstractContext* ctx, int data[],
       TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   TFE_TensorHandle* input_eager =
-      TestMatrixTensorHandleInt(eager_ctx, data, dims, num_dims);
+      TestTensorHandleWithDimsInt(eager_ctx, data, dims, num_dims);
   *tensor =
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return Status::OK();
 }
 
-Status getValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
+Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_TensorHandle* result_t =
@@ -123,103 +108,28 @@ Status getValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
   return Status::OK();
 }
 
-AbstractTensorHandlePtr getMatrixTensorHandleUtilFloat(AbstractContext* ctx,
+AbstractTensorHandlePtr GetTensorHandleUtilFloat(AbstractContext* ctx,
                                                        float vals[],
                                                        int64_t dims[],
                                                        int num_dims) {
   AbstractTensorHandlePtr A;
   AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestMatrixTensorHandleFloat(ctx, vals, dims, num_dims, &a_raw);
+  Status s = TestTensorHandleWithDimsFloat(ctx, vals, dims, num_dims, &a_raw);
   A.reset(a_raw);
   return A;
 }
 
-AbstractTensorHandlePtr getMatrixTensorHandleUtilInt(AbstractContext* ctx,
+AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx,
                                                      int vals[], int64_t dims[],
                                                      int num_dims) {
   AbstractTensorHandlePtr A;
   AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestMatrixTensorHandleInt(ctx, vals, dims, num_dims, &a_raw);
+  Status s = TestTensorHandleWithDimsInt(ctx, vals, dims, num_dims, &a_raw);
   A.reset(a_raw);
   return A;
 }
 
-void printTensor(AbstractTensorHandle* t, int size) {
-  TF_Tensor* tensor;
-  Status s = getValue(t, &tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  float result_data[size] = {0};
-  memcpy(&result_data[0], TF_TensorData(tensor), TF_TensorByteSize(tensor));
-  printArr(result_data, size);
-
-  TF_DeleteTensor(tensor);
-}
-
 // =========================== Start Tests ================================
-
-TEST_P(CppGradients, TestAddGrad) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  AbstractContextPtr ctx;
-  {
-    AbstractContext* ctx_raw = nullptr;
-    Status s =
-        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    ctx.reset(ctx_raw);
-  }
-
-  AbstractTensorHandlePtr x;
-  {
-    AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    x.reset(x_raw);
-  }
-
-  AbstractTensorHandlePtr y;
-  {
-    AbstractTensorHandle* y_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &y_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    y.reset(y_raw);
-  }
-
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  /* Pseudo-code:
-   *
-   * tape.watch(x)
-   * tape.watch(y)
-   * y = x + y
-   * outputs = tape.gradient(y, [x, y])
-   */
-
-  std::vector<AbstractTensorHandle*> outputs(2);
-  s = RunModel(AddGradModel, ctx.get(), {x.get(), y.get()},
-               absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  TF_Tensor* result_tensor;
-  s = getValue(outputs[0], &result_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-  auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
-  EXPECT_EQ(*result_value, 1.0);
-  outputs[0]->Unref();
-  TF_DeleteTensor(result_tensor);
-  result_tensor = nullptr;
-
-  s = getValue(outputs[1], &result_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-  result_value = static_cast<float*>(TF_TensorData(result_tensor));
-  EXPECT_EQ(*result_value, 1.0);
-  outputs[1]->Unref();
-  TF_DeleteTensor(result_tensor);
-}
 
 TEST_P(CppGradients, TestMatMulGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -240,9 +150,9 @@ TEST_P(CppGradients, TestMatMulGrad) {
   int num_dims = 2;
 
   AbstractTensorHandlePtr A =
-      getMatrixTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
   AbstractTensorHandlePtr B =
-      getMatrixTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
 
   GradientRegistry registry;
   Status s = RegisterGradients(&registry);
@@ -263,7 +173,7 @@ TEST_P(CppGradients, TestMatMulGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* dA_tensor;
-  s = getValue(outputs[0], &dA_tensor);
+  s = GetValue(outputs[0], &dA_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float result_data[4] = {0};
@@ -277,7 +187,7 @@ TEST_P(CppGradients, TestMatMulGrad) {
   }
 
   TF_Tensor* dB_tensor;
-  s = getValue(outputs[1], &dB_tensor);
+  s = GetValue(outputs[1], &dB_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   memcpy(&result_data[0], TF_TensorData(dB_tensor),
@@ -309,24 +219,24 @@ TEST_P(CppGradients, TestMNISTForward) {
   int64_t dims[] = {2, 2};
   int num_dims = 2;
   AbstractTensorHandlePtr X =
-      getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), X_vals, dims, num_dims);
 
   // W1 = first weights
   float W1_vals[] = {-1.0f, 10.0f, .5f, 1.0f};
   AbstractTensorHandlePtr W1 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
 
   // W2 = second weights
   float W2_vals[] = {.1f, .2f, .3f, -.5f};
   AbstractTensorHandlePtr W2 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
 
   // y = labels
   int y_vals[] = {1, 1};
   int64_t dims_y[] = {2};
   num_dims = sizeof(dims_y) / sizeof(dims_y[0]);
   AbstractTensorHandlePtr y =
-      getMatrixTensorHandleUtilInt(ctx.get(), y_vals, dims, num_dims);
+      GetTensorHandleUtilInt(ctx.get(), y_vals, dims, num_dims);
 
   GradientRegistry registry;
 
@@ -340,7 +250,7 @@ TEST_P(CppGradients, TestMNISTForward) {
 
   // Verify the Results
   TF_Tensor* scores_tensor;
-  s = getValue(outputs[0], &scores_tensor);
+  s = GetValue(outputs[0], &scores_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float result_data[4] = {0};
@@ -354,7 +264,7 @@ TEST_P(CppGradients, TestMNISTForward) {
   }
 
   TF_Tensor* loss_vals_tensor;
-  s = getValue(outputs[1], &loss_vals_tensor);
+  s = GetValue(outputs[1], &loss_vals_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   memcpy(&result_data[0], TF_TensorData(loss_vals_tensor),
@@ -385,25 +295,25 @@ TEST_P(CppGradients, TestMNISTForward2) {
   int64_t X_dims[] = {3, 2};
   int num_dims = 2;
   AbstractTensorHandlePtr X =
-      getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
   // W1 = first weights
   float W1_vals[] = {-1.0f, 10.0f, .5f, 1.0f};
   int64_t dims[] = {2, 2};
   AbstractTensorHandlePtr W1 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
 
   // W2 = second weights
   float W2_vals[] = {.1f, .2f, .3f, -.5f};
   AbstractTensorHandlePtr W2 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
 
   // y = labels
   int y_vals[] = {1, 1, 1};
   int64_t y_dims[] = {3};
   num_dims = sizeof(y_dims) / sizeof(y_dims[0]);
   AbstractTensorHandlePtr y =
-      getMatrixTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
+      GetTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
 
   GradientRegistry registry;
 
@@ -417,7 +327,7 @@ TEST_P(CppGradients, TestMNISTForward2) {
 
   // Verify the Results
   TF_Tensor* scores_tensor;
-  s = getValue(outputs[0], &scores_tensor);
+  s = GetValue(outputs[0], &scores_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float result_data[6] = {0};
@@ -431,7 +341,7 @@ TEST_P(CppGradients, TestMNISTForward2) {
   }
 
   TF_Tensor* loss_vals_tensor;
-  s = getValue(outputs[1], &loss_vals_tensor);
+  s = GetValue(outputs[1], &loss_vals_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   memcpy(&result_data[0], TF_TensorData(loss_vals_tensor),
@@ -465,13 +375,13 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   int64_t X_dims[] = {2, 3};
   int num_dims = 2;
   AbstractTensorHandlePtr X =
-      getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
   // W1 = first weights
   float W1_vals[] = {1.0f, 2.0f, 3.0f, 4.0f};
   int64_t dims[] = {2, 2};
   AbstractTensorHandlePtr W1 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
 
   GradientRegistry registry;
 
@@ -486,7 +396,7 @@ TEST_P(CppGradients, TestMatMulTranspose) {
 
   // Verify the Results
   TF_Tensor* scores_tensor;
-  s = getValue(outputs[0], &scores_tensor);
+  s = GetValue(outputs[0], &scores_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float result_data[6] = {0};
@@ -518,7 +428,7 @@ TEST_P(CppGradients, TestReluGrad) {
   int64_t X_dims[] = {3, 3};
   int num_dims = 2;
   AbstractTensorHandlePtr X =
-      getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
   GradientRegistry registry;
   Status s = RegisterGradients(&registry);
@@ -536,7 +446,7 @@ TEST_P(CppGradients, TestReluGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* dX_tensor;
-  s = getValue(outputs[0], &dX_tensor);
+  s = GetValue(outputs[0], &dX_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float result_data[9] = {0};
@@ -571,14 +481,14 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   int64_t X_dims[] = {3, 3};
   int num_dims = 2;
   AbstractTensorHandlePtr X =
-      getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
   // y = labels
   int y_vals[] = {1, 0, 1};
   int64_t y_dims[] = {3};
   num_dims = sizeof(y_dims) / sizeof(y_dims[0]);
   AbstractTensorHandlePtr y =
-      getMatrixTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
+      GetTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
 
   GradientRegistry registry;
   Status s = RegisterGradients(&registry);
@@ -602,7 +512,7 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* dX_tensor;
-  s = getValue(outputs[0], &dX_tensor);
+  s = GetValue(outputs[0], &dX_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float result_data[9] = {0};
@@ -638,25 +548,25 @@ TEST_P(CppGradients, TestMNISTGrad) {
   int64_t X_dims[] = {2, 2};
   int num_dims = 2;
   AbstractTensorHandlePtr X =
-      getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
   // W1 = first weights
   float W1_vals[] = {-1.0f, 10.0f, .5f, 1.0f};
   int64_t dims[] = {2, 2};
   AbstractTensorHandlePtr W1 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
 
   // W2 = second weights
   float W2_vals[] = {.1f, .2f, .3f, -.5f};
   AbstractTensorHandlePtr W2 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
 
   // y = labels
   int y_vals[] = {1, 1};
   int64_t y_dims[] = {2};
   num_dims = sizeof(y_dims) / sizeof(y_dims[0]);
   AbstractTensorHandlePtr y =
-      getMatrixTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
+      GetTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
 
   // Register Grads
   GradientRegistry registry;
@@ -684,7 +594,7 @@ TEST_P(CppGradients, TestMNISTGrad) {
 
   float tolerance = 1e-3;
   TF_Tensor* dW1_tensor;
-  s = getValue(outputs[0], &dW1_tensor);
+  s = GetValue(outputs[0], &dW1_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float result_data[4] = {0};
@@ -698,7 +608,7 @@ TEST_P(CppGradients, TestMNISTGrad) {
   }
 
   TF_Tensor* dW2_tensor;
-  s = getValue(outputs[1], &dW2_tensor);
+  s = GetValue(outputs[1], &dW2_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   memcpy(&result_data[0], TF_TensorData(dW2_tensor),
@@ -742,7 +652,7 @@ TEST_P(CppGradients, TestScalarMul) {
   int num_dims = 2;
 
   AbstractTensorHandlePtr A =
-      getMatrixTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
 
   GradientRegistry registry;
   std::vector<AbstractTensorHandle*> outputs(1);
@@ -752,7 +662,7 @@ TEST_P(CppGradients, TestScalarMul) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   TF_Tensor* dA_tensor;
-  s = getValue(outputs[0], &dA_tensor);
+  s = GetValue(outputs[0], &dA_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float result_data[4] = {0};
@@ -787,25 +697,25 @@ TEST_P(CppGradients, TestMNIST_Training) {
   int64_t X_dims[] = {2, 2};
   int num_dims = 2;
   AbstractTensorHandlePtr X =
-      getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
   // W1 = first weights
   float W1_vals[] = {-.01f, 0.4f, 0.5f, -.2f};
   int64_t dims[] = {2, 2};
   AbstractTensorHandlePtr W1 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
 
   // W2 = second weights
   float W2_vals[] = {.1f, .2f, .3f, -.5f};
   AbstractTensorHandlePtr W2 =
-      getMatrixTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
+      GetTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
 
   // y = labels
   int y_vals[] = {1, 1};
   int64_t y_dims[] = {2};
   num_dims = sizeof(y_dims) / sizeof(y_dims[0]);
   AbstractTensorHandlePtr y =
-      getMatrixTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
+      GetTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
 
   // Register Grads
   GradientRegistry registry;
@@ -817,9 +727,9 @@ TEST_P(CppGradients, TestMNIST_Training) {
   weights.push_back(W1.get());
   weights.push_back(W2.get());
 
-  // Set learning rate to be 1e-3
+  // Set learning rate to be 1e-1
   AbstractTensorHandle* learning_rate = nullptr;
-  s = TestScalarTensorHandle(ctx.get(), -1e-2, &learning_rate);
+  s = TestScalarTensorHandle(ctx.get(), 1e-1, &learning_rate);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Train
@@ -827,8 +737,7 @@ TEST_P(CppGradients, TestMNIST_Training) {
   std::vector<AbstractTensorHandle*> mnist_outputs(3);
   std::vector<AbstractTensorHandle*> grads(2);
   for (int i = 0; i < num_iters; i++) {
-    std::cout << "iter " << i << ": " << std::endl;
-
+    
     // Run Forward Pass
     s = RunModel(MNISTGradModel, ctx.get(),
                  {X.get(), weights[0], weights[1], y.get()},
@@ -844,23 +753,11 @@ TEST_P(CppGradients, TestMNIST_Training) {
     s = UpdateWeights(ctx.get(), grads, weights, learning_rate);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-    // Print Loss
-    AbstractTensorHandle* loss_vals = mnist_outputs[2];
-    TF_Tensor* loss_tensor;
-    s = getValue(loss_vals, &loss_tensor);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-    float result_data[2] = {0};
-    memcpy(&result_data[0], TF_TensorData(loss_tensor),
-           TF_TensorByteSize(loss_tensor));
-    std::cout << "     loss = " << sumArr(result_data, 2) << std::endl;
-    std::cout << "-----------------" << std::endl;
-    TF_DeleteTensor(loss_tensor);
   }
 
-  grads[0]->Unref();
-  grads[1]->Unref();
-  mnist_outputs[2]->Unref();
+  grads[0]->Unref(); // release W1_grad
+  grads[1]->Unref(); // release W2_grad
+  mnist_outputs[2]->Unref(); // release loss
 }
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is

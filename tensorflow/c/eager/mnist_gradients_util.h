@@ -32,7 +32,7 @@ using namespace tensorflow;
 using namespace tensorflow::gradients;
 using namespace tensorflow::gradients::internal;
 
-// ========================== tape  ==============================
+// ========================== Tape Ops ==============================
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,

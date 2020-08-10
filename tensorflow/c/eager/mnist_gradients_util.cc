@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
+
+// ========================== Tape Ops ==============================
+
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle* const> inputs,
@@ -71,8 +74,8 @@ Status MatMul(AbstractContext* ctx, Tape* tape,
 
   TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[0], &forward_op));
   TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[1], &forward_op));
-  matmul_op->SetAttrBool("transpose_a",transpose_a);
-  matmul_op->SetAttrBool("transpose_b",transpose_b);
+  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(matmul_op.get(), "transpose_a", transpose_a, &forward_op));
+  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(matmul_op.get(), "transpose_b", transpose_b, &forward_op));
 
   int num_retvals = 1;
   return Execute(matmul_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
@@ -351,10 +354,6 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
       source_tensors_that_are_targets,
       /*output_gradients=*/{}, &out_grads));
 
-  // for (auto sm_output : sm_outputs) {
-  //   sm_output->Unref();
-  // }
-
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
   delete tape;
@@ -451,15 +450,20 @@ Status UpdateWeights(AbstractContext* ctx,
                      AbstractTensorHandle* learning_rate) {
   /* Update weights one by one using gradient update rule:
    *
-   *    w += lr*grad[w]
+   *    w -= lr*grad[w]
    *
-   *  NOTE: assuming learning rate is already negative
+   *  NOTE: assuming learning rate is positive
    */
 
   Status s;
   int num_grads = grads.size();
   std::vector<AbstractTensorHandle*> temp_outputs(1);
   std::string update_str;
+
+  // Negate learning rate for gradient descent
+  TF_RETURN_IF_ERROR(ops::Neg(ctx, {learning_rate}, absl::MakeSpan(temp_outputs),
+                         "neg_lr"));  // Compute -lr
+  learning_rate = temp_outputs[0];
 
   for (int i = 0; i < num_grads; i++) {
     // Compute dW = -lr * grad(w[i])
@@ -559,3 +563,4 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   TFE_DeleteContextOptions(opts);
   return Status::OK();
 }
+

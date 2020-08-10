@@ -73,7 +73,7 @@ Status Add(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
 Status MatMul(AbstractContext* ctx,
               absl::Span<AbstractTensorHandle* const> inputs,
               absl::Span<AbstractTensorHandle*> outputs, const char* name,
-              bool transpose_a, bool transpose_b) {
+              bool transpose_a = false, bool transpose_b = false) {
   AbstractOperationPtr matmul_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(matmul_op->Reset("MatMul", /*raw_device_name=*/nullptr));
 
@@ -91,6 +91,20 @@ Status MatMul(AbstractContext* ctx,
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(matmul_op->Execute(outputs, &num_retvals));
   return Status::OK();
+}
+
+Status Neg(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr neg_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(neg_op->Reset("Neg", /*raw_device_name=*/nullptr));
+  if (isa<TracingOperation>(neg_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(neg_op.get())->SetOpName(name));
+  }
+  TF_RETURN_IF_ERROR(neg_op->AddInput(inputs[0]));
+ 
+  int num_retvals = 1;
+  return neg_op->Execute(outputs, &num_retvals);
 }
 
 }  // namespace ops
