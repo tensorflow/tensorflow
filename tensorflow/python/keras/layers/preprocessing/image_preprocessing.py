@@ -238,10 +238,10 @@ class RandomCrop(PreprocessingLayer):
       input_shape = control_flow_ops.with_dependencies([check], input_shape)
       limit = input_shape - crop_size + 1
       offset = self._rng.uniform(
-              array_ops.shape(input_shape),
-              minval=None,
-              maxval=None,
-              dtype=crop_size.dtype) % limit
+          array_ops.shape(input_shape),
+          minval=None,
+          maxval=None,
+          dtype=crop_size.dtype) % limit
       return array_ops.slice(inputs, offset, crop_size)
 
     # TODO(b/143885775): Share logic with Resize and CenterCrop.
