@@ -5807,10 +5807,20 @@ LogicalResult legalizeTF(
   if (legalize_chlo) {
     chlo::PopulateLegalizeChloToHloPatterns(context, &patterns);
   }
+  // ConstantLike op is convenient to create splat constants, but is
+  // canonicalized to plain HLO constant if statically shaped. Add the
+  // canonicalization pattern to pattern list to enable multi-hop lowering.
+  chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
   ConversionTarget target(*context);
   if (legalize_chlo) {
     target.addIllegalDialect<chlo::HloClientDialect>();
+
+    // Mark ConstantLikeOp as dynamically legal only when it doesn't have a
+    // static result type so that it gets canonicalized to MHLO constant.
+    target.addDynamicallyLegalOp<chlo::ConstantLikeOp>([](Operation *op) {
+      return !op->getResultTypes().front().cast<ShapedType>().hasStaticShape();
+    });
   } else {
     target.addLegalDialect<chlo::HloClientDialect>();
   }
