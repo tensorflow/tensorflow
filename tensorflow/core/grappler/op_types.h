@@ -187,6 +187,7 @@ bool IsSub(const NodeDef& node);
 bool IsSum(const NodeDef& node);
 bool IsSwitch(const NodeDef& node);
 bool IsSymbolicGradient(const NodeDef& node);
+bool IsTanh(const NodeDef& node);
 bool IsTanhGrad(const NodeDef& node);
 bool IsTensorArray(const NodeDef& node);
 bool IsTile(const NodeDef& node);
