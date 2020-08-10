@@ -88,13 +88,7 @@ cc_library(
     name = "tpu_defs",
     srcs = ["tpu_defs.cc"],
     hdrs = ["tpu_defs.h"],
-    deps = [
-        ":tpu_api",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/stream_executor/tpu:c_api_decl",
-    ],
+    deps = ["//tensorflow/core:protos_all_cc"],
 )
 
 cc_library(
