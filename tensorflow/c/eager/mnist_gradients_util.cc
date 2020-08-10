@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
-
 // ========================== Tape Ops ==============================
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
@@ -38,7 +37,6 @@ Status Add(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle* const> inputs,
            absl::Span<AbstractTensorHandle*> outputs,
            const GradientRegistry& registry) {
-  
   AbstractOperationPtr add_op(ctx->CreateOperation());
   ForwardOperation forward_op;
   forward_op.ctx = ctx;
@@ -57,16 +55,15 @@ Status Add(AbstractContext* ctx, Tape* tape,
 
 // Computes `inputs[0] * inputs[1]` for matrices and records it on the tape.
 Status MatMul(AbstractContext* ctx, Tape* tape,
-           absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name,
-           bool transpose_a, bool transpose_b,
-           const GradientRegistry& registry) {
-  
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name,
+              bool transpose_a, bool transpose_b,
+              const GradientRegistry& registry) {
   AbstractOperationPtr matmul_op(ctx->CreateOperation());
   ForwardOperation forward_op;
   forward_op.ctx = ctx;
-  TF_RETURN_IF_ERROR(
-      Reset(matmul_op.get(), "MatMul", /*raw_device_name=*/nullptr, &forward_op));
+  TF_RETURN_IF_ERROR(Reset(matmul_op.get(), "MatMul",
+                           /*raw_device_name=*/nullptr, &forward_op));
   if (isa<tracing::TracingOperation>(matmul_op.get())) {
     TF_RETURN_IF_ERROR(
         dyn_cast<tracing::TracingOperation>(matmul_op.get())->SetOpName(name));
@@ -74,8 +71,10 @@ Status MatMul(AbstractContext* ctx, Tape* tape,
 
   TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[0], &forward_op));
   TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[1], &forward_op));
-  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(matmul_op.get(), "transpose_a", transpose_a, &forward_op));
-  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(matmul_op.get(), "transpose_b", transpose_b, &forward_op));
+  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(
+      matmul_op.get(), "transpose_a", transpose_a, &forward_op));
+  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(
+      matmul_op.get(), "transpose_b", transpose_b, &forward_op));
 
   int num_retvals = 1;
   return Execute(matmul_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
@@ -104,13 +103,11 @@ Status Mul(AbstractContext* ctx, Tape* tape,
                  registry);
 }
 
-
 // Computes `Relu(inputs[0])` and records it on the tape.
 Status Relu(AbstractContext* ctx, Tape* tape,
-           absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name,
-           const GradientRegistry& registry) {
-  
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name,
+            const GradientRegistry& registry) {
   AbstractOperationPtr relu_op(ctx->CreateOperation());
   ForwardOperation forward_op;
   forward_op.ctx = ctx;
@@ -126,20 +123,21 @@ Status Relu(AbstractContext* ctx, Tape* tape,
                  registry);
 }
 
-// Computes `SoftmaxLoss(scores, labels)` for matrices and records it on the tape.
-Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx, Tape* tape,
-           absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name,
-           const GradientRegistry& registry) {
-  
+// Computes `SoftmaxLoss(scores, labels)` for matrices and records it on the
+// tape.
+Status SparseSoftmaxCrossEntropyLoss(
+    AbstractContext* ctx, Tape* tape,
+    absl::Span<AbstractTensorHandle* const> inputs,
+    absl::Span<AbstractTensorHandle*> outputs, const char* name,
+    const GradientRegistry& registry) {
   AbstractTensorHandle* scores = inputs[0];
   AbstractTensorHandle* labels = inputs[1];
 
   AbstractOperationPtr sm_op(ctx->CreateOperation());
   ForwardOperation forward_op;
   forward_op.ctx = ctx;
-  TF_RETURN_IF_ERROR(
-      Reset(sm_op.get(), "SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr, &forward_op));
+  TF_RETURN_IF_ERROR(Reset(sm_op.get(), "SparseSoftmaxCrossEntropyWithLogits",
+                           /*raw_device_name=*/nullptr, &forward_op));
   if (isa<tracing::TracingOperation>(sm_op.get())) {
     TF_RETURN_IF_ERROR(
         dyn_cast<tracing::TracingOperation>(sm_op.get())->SetOpName(name));
@@ -148,7 +146,7 @@ Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx, Tape* tape,
   TF_RETURN_IF_ERROR(AddInput(sm_op.get(), scores, &forward_op));
   TF_RETURN_IF_ERROR(AddInput(sm_op.get(), labels, &forward_op));
 
-  int num_retvals = 2; // returns loss values and backprop
+  int num_retvals = 2;  // returns loss values and backprop
   return Execute(sm_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
                  registry);
 }
@@ -341,8 +339,7 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
   tape->Watch(ToId(inputs[1]));  // Watch labels.
   std::vector<AbstractTensorHandle*> sm_outputs(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
-      ctx, tape, inputs, absl::MakeSpan(sm_outputs), "softmax0",
-      registry)); 
+      ctx, tape, inputs, absl::MakeSpan(sm_outputs), "softmax0", registry));
 
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
@@ -461,8 +458,9 @@ Status UpdateWeights(AbstractContext* ctx,
   std::string update_str;
 
   // Negate learning rate for gradient descent
-  TF_RETURN_IF_ERROR(ops::Neg(ctx, {learning_rate}, absl::MakeSpan(temp_outputs),
-                         "neg_lr"));  // Compute -lr
+  TF_RETURN_IF_ERROR(ops::Neg(ctx, {learning_rate},
+                              absl::MakeSpan(temp_outputs),
+                              "neg_lr"));  // Compute -lr
   learning_rate = temp_outputs[0];
 
   for (int i = 0; i < num_grads; i++) {
@@ -563,4 +561,3 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   TFE_DeleteContextOptions(opts);
   return Status::OK();
 }
-

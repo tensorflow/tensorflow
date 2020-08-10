@@ -51,7 +51,7 @@ Status MatMul(AbstractContext* ctx, Tape* tape,
 Status Mul(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle* const> inputs,
            absl::Span<AbstractTensorHandle*> outputs, const char* name,
-           const GradientRegistry& registry); 
+           const GradientRegistry& registry);
 
 // Computes `Relu(inputs[0])` and records it on the tape.
 Status Relu(AbstractContext* ctx, Tape* tape,

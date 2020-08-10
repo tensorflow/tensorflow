@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/eager/gradients_internal.h"
 #include "tensorflow/c/eager/mnist_gradients_util.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
+#include "tensorflow/c/experimental/gradients/nn_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -46,7 +47,9 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("MatMul", MatMulRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Relu", ReluRegisterer));
-  TF_RETURN_IF_ERROR(registry->Register("SparseSoftmaxCrossEntropyWithLogits", SparseSoftmaxCrossEntropyLossRegisterer));
+  TF_RETURN_IF_ERROR(
+      registry->Register("SparseSoftmaxCrossEntropyWithLogits",
+                         SparseSoftmaxCrossEntropyLossRegisterer));
   return Status::OK();
 }
 
@@ -68,8 +71,8 @@ Status TestScalarTensorHandle(AbstractContext* ctx, float value,
 
 // Get a Matrix TensorHandle with given float values and dimensions
 Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
-                                   int64_t dims[], int num_dims,
-                                   AbstractTensorHandle** tensor) {
+                                     int64_t dims[], int num_dims,
+                                     AbstractTensorHandle** tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_Context* eager_ctx =
@@ -84,8 +87,8 @@ Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
 
 // Get a Matrix TensorHandle with given int values and dimensions
 Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
-                                 int64_t dims[], int num_dims,
-                                 AbstractTensorHandle** tensor) {
+                                   int64_t dims[], int num_dims,
+                                   AbstractTensorHandle** tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_Context* eager_ctx =
@@ -109,9 +112,8 @@ Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
 }
 
 AbstractTensorHandlePtr GetTensorHandleUtilFloat(AbstractContext* ctx,
-                                                       float vals[],
-                                                       int64_t dims[],
-                                                       int num_dims) {
+                                                 float vals[], int64_t dims[],
+                                                 int num_dims) {
   AbstractTensorHandlePtr A;
   AbstractTensorHandle* a_raw = nullptr;
   Status s = TestTensorHandleWithDimsFloat(ctx, vals, dims, num_dims, &a_raw);
@@ -119,9 +121,8 @@ AbstractTensorHandlePtr GetTensorHandleUtilFloat(AbstractContext* ctx,
   return A;
 }
 
-AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx,
-                                                     int vals[], int64_t dims[],
-                                                     int num_dims) {
+AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
+                                               int64_t dims[], int num_dims) {
   AbstractTensorHandlePtr A;
   AbstractTensorHandle* a_raw = nullptr;
   Status s = TestTensorHandleWithDimsInt(ctx, vals, dims, num_dims, &a_raw);
@@ -737,7 +738,6 @@ TEST_P(CppGradients, TestMNIST_Training) {
   std::vector<AbstractTensorHandle*> mnist_outputs(3);
   std::vector<AbstractTensorHandle*> grads(2);
   for (int i = 0; i < num_iters; i++) {
-    
     // Run Forward Pass
     s = RunModel(MNISTGradModel, ctx.get(),
                  {X.get(), weights[0], weights[1], y.get()},
@@ -752,12 +752,11 @@ TEST_P(CppGradients, TestMNIST_Training) {
     // Gradient Update
     s = UpdateWeights(ctx.get(), grads, weights, learning_rate);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
   }
 
-  grads[0]->Unref(); // release W1_grad
-  grads[1]->Unref(); // release W2_grad
-  mnist_outputs[2]->Unref(); // release loss
+  grads[0]->Unref();          // release W1_grad
+  grads[1]->Unref();          // release W2_grad
+  mnist_outputs[2]->Unref();  // release loss
 }
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
