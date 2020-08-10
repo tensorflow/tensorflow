@@ -32,7 +32,6 @@ from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -75,8 +74,7 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
 
   def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(
-        self._container_strategy(),
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
+        self._container_strategy(), replica_id_in_sync_group=0):
       return fn(*args, **kwargs)
 
   def _create_variable(self, next_creator, **kwargs):
@@ -558,6 +556,14 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
         default_strategy.experimental_distribute_datasets_from_function(
             dataset_fn)
       dataset_ops.make_initializable_iterator(dist_dataset_from_func)
+
+  @combinations.generate(combinations.combine(tf_api_version=1))
+  def testV1(self):
+    self.assertIsInstance(ds_context.get_strategy(), distribute_lib.StrategyV1)
+
+  @combinations.generate(combinations.combine(tf_api_version=2))
+  def testV2(self):
+    self.assertIsInstance(ds_context.get_strategy(), distribute_lib.Strategy)
 
 
 class InputContextTest(test.TestCase):

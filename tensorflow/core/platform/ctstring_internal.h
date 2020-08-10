@@ -169,8 +169,7 @@ static inline size_t TF_TString_ToInternalSizeT(size_t size,
 }
 
 static inline void TF_TString_Init(TF_TString *str) {
-  str->u.smll.size = 0;
-  str->u.smll.str[0] = '\0';
+  memset(str->u.raw.raw, 0, sizeof(TF_TString_Raw));
 }
 
 static inline void TF_TString_Dealloc(TF_TString *str) {

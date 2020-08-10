@@ -49,6 +49,8 @@ string Hostname() {
   return name;
 }
 
+string JobName() { return ""; }
+
 int NumSchedulableCPUs() {
   SYSTEM_INFO system_info;
   GetSystemInfo(&system_info);

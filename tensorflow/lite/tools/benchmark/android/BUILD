@@ -2,6 +2,7 @@
 #   BenchmarkModel Android harness for TensorFlow Lite benchmarks.
 
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
+load("//tensorflow/lite:special_rules.bzl", "tflite_hexagon_nn_skel_libraries")
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 
 package(
@@ -23,7 +24,10 @@ android_binary(
     # can't be built. We need to prevent the build system from trying to
     # use the target in that case.
     tags = ["manual"],
-    deps = [":tensorflowlite_benchmark_native"],
+    deps = [
+        ":hexagon_libs",
+        ":tensorflowlite_benchmark_native",
+    ],
 )
 
 tflite_jni_binary(
@@ -41,5 +45,19 @@ tflite_jni_binary(
 cc_library(
     name = "tensorflowlite_benchmark_native",
     srcs = ["libtensorflowlite_benchmark.so"],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "hexagon_libs",
+    srcs = select({
+        "//tensorflow:android_arm64": [
+            "//tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so",
+        ] + tflite_hexagon_nn_skel_libraries(),
+        "//tensorflow:android_arm": [
+            "//tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so",
+        ] + tflite_hexagon_nn_skel_libraries(),
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:private"],
 )

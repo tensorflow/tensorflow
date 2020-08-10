@@ -176,8 +176,8 @@ class GrpcRemoteMaster : public MasterInterface {
               ? deadline_with_backoff_micros
               : expired_time_micros;
       Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
-      if (Env::Default()->NowMicros() > expired_time_micros &&
-          timeout_in_ms > 0) {
+      const int64 now = Env::Default()->NowMicros();
+      if (now > expired_time_micros && timeout_in_ms > 0) {
         // If timeout_in_ms is set, exit the retry loop on timeout.
         return errors::DeadlineExceeded(ctx.debug_error_string());
       }

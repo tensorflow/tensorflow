@@ -924,7 +924,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     st = StructuredTensor.from_pyval({"a": 5, "b": {"c": [1, 2, 3]}})
     self.assertAllEqual(st.field_value(("a",)), 5)
     self.assertAllEqual(st.field_value(("b", "c")), [1, 2, 3])
-    expected = "Field path \(.*a.*,.*b.*\) not found in .*"
+    expected = r"Field path \(.*a.*,.*b.*\) not found in .*"
     with self.assertRaisesRegex(KeyError, expected):
       st.field_value(("a", "b"))
 
@@ -960,6 +960,179 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         row_partition.RowPartition.from_uniform_row_length(2, 2))
     r = result.field_value("r")
     self.assertAllEqual(r, [[[1, 2], [3, 4]]])
+
+  @parameterized.parameters([
+      # Simple example.
+      (
+          {"a": 12, "b": 23},
+          {"a": 7},
+      ),
+      # New field.
+      (
+          {"a": 12},
+          {("b",): 13},
+      ),
+      # Nested example.
+      (
+          {"a": 12, "b": {"c": 23}},
+          {("b", "c"): 7},
+      ),
+      # Multipe updates.
+      (
+          {"a": 12, "b": {"c": 23}},
+          {"a": 3, ("b", "c"): 7},
+      ),
+      # Deep updates.
+      (
+          {"a": 12, "b": {"c": 23, "d": {"e": 11}}},
+          {("b", "c"): 7, ("b", "d", "e"): 13},
+      ),
+      # Multiple updates to the same substructure.
+      (
+          {"a": 12, "b": {"c": 23, "d": {"e": 11}}},
+          {("b", "c"): 7, ("b", "f"): 13},
+      ),
+      # Scalar to non-scalar elements. Shape remains unchanged.
+      (
+          {"a": 5},
+          {"a": ragged_factory_ops.constant_value([[51, 52], [61, 62, 63]])},
+      ),
+      # Non-scalar element to scalar.
+      (
+          {"c": {"a": [5, 3], "b": 2}},
+          {("c", "a"): 5},
+      ),
+      # Rank-1 StructuredTensor: shape is preserved and an item is added.
+      (
+          [{"a": 5}, {"a": 6}],
+          {"a": [15, 16], "b": np.array([0.9, 1.1])},
+      ),
+      # Non-scalar ragged elements, within a rank-2 StructuredTensor: elements
+      # rows (inner dimensions) are changed, but StructuredTensor shape
+      # (outer dimensions) are preserved.
+      (
+          [[{"a": [5]}], [{"a": [3, 4]}, {"a": [8]}]],
+          {"a": ragged_factory_ops.constant_value([[[50, 60]], [[30], []]])},
+      ),
+  ])  # pyformat: disable
+  def testWithUpdatesValues(self, pyval, updates):
+    st = StructuredTensor.from_pyval(pyval)
+    updated_st = st.with_updates(updates, validate=False)
+    for key, value in updates.items():
+      got = updated_st.field_value(key)
+      self.assertAllEqual(
+          value, got, "Update failed: key={}, value={}, got={}".format(
+              key, value, got))
+
+  def testWithUpdatesFunctions(self):
+    pyval = {"a": 12, "b": {"c": 23, "d": {"e": 11}}}
+    st = StructuredTensor.from_pyval(pyval)
+    st_updated = st.with_updates(
+        {
+            "a": lambda x: x + 1,
+            ("b", "d", "e"): lambda x: x + 7
+        }, validate=True)
+    # Updated values.
+    self.assertAllEqual(st_updated.field_value("a"), 13)
+    self.assertAllEqual(st_updated.field_value(("b", "d", "e")), 18)
+    # Unchanged value.
+    self.assertAllEqual(st_updated.field_value(("b", "c")), 23)
+
+  def testWithUpdatesChecks(self):
+    pyval = {"a": 12, "b": {"c": 23, "d": {"e": 11}}}
+    st = StructuredTensor.from_pyval(pyval)
+
+    # Try to set non-existant sub-structure.
+    with self.assertRaisesRegex(
+        ValueError, r"cannot create new sub-field.*\('b', 'x'\).*is not set"):
+      st.with_updates({("b", "x", "e"): 5})
+
+    # Try to set with path to a non-sub-structure.
+    with self.assertRaisesRegex(
+        ValueError, r"cannot create new sub-field.*\('b', 'c'\).*is not a "
+        r"`StructuredTensor`"):
+      st.with_updates({("b", "c", "e"): 5})
+
+    # Try to apply function to non-existing value.
+    with self.assertRaisesRegex(
+        ValueError, r"cannot update.*\('b', 'd', 'x'\).*does not already "
+        r"exist"):
+      st.with_updates({("b", "d", "x"): lambda x: x + 1})
+
+    # Empty names not allowed.
+    with self.assertRaisesRegex(ValueError, r"does not allow empty names"):
+      st.with_updates({(): lambda x: x + 1})
+    with self.assertRaisesRegex(ValueError, r"does not allow empty names"):
+      st.with_updates({("b", ""): lambda x: x + 1})
+
+    # Parent and child nodes cannot be updated simultaneously.
+    with self.assertRaisesRegex(
+        ValueError, r"does not allow both parent and child nodes.*"
+        r"parent=\('b'.*child=\('b', 'd'"):
+      st.with_updates({("b", "d"): lambda x: x + 1, "a": 3, "b": 10})
+
+    # Invalid shape change.
+    with self.assertRaisesRegex(
+        ValueError, r"\('c'.*incompatible with the shape that was specified"):
+      st_with_shape = StructuredTensor.from_pyval([[{
+          "c": {
+              "a": 5,
+              "b": 2
+          }
+      }], [{
+          "c": {
+              "a": 3,
+              "b": 1
+          }
+      }, {
+          "c": {
+              "a": 8,
+              "b": 18
+          }
+      }]])
+      st_with_shape.with_updates({("c", "a"): 3})
+
+  def testWithUpdatesDelete(self):
+    pyval = {"a": 12, "b": {"c": 23, "d": {"e": 11}}}
+    st = StructuredTensor.from_pyval(pyval)
+    updated_st = st.with_updates({("b", "c"): None}, validate=True)
+    self.assertNotIn("c", updated_st.field_value("b").field_names())
+    with self.assertRaisesRegex(ValueError,
+                                r"cannot delete.*\('b', 'x'\).*not present"):
+      st.with_updates({("b", "x"): None}, validate=True)
+    with self.assertRaisesRegex(ValueError,
+                                r"cannot delete.*\'x'.*not present"):
+      st.with_updates({"x": None}, validate=False)
+
+    # Test that nrows() and rowpartitions() is preserved after removal.
+    pyval = [[{"a": 1}, {"a": 2}], [{"a": 3}]]
+    st = StructuredTensor.from_pyval(pyval)
+    self.assertLen(st.row_partitions, 1)
+    self.assertAllEqual(st.nrows(), 2)
+    self.assertAllEqual(st.row_partitions[0].row_lengths(), [2, 1])
+    updated_st = st.with_updates({("a",): None}, validate=True)
+    self.assertLen(updated_st.row_partitions, 1)
+    self.assertAllEqual(updated_st.nrows(), 2)
+    self.assertAllEqual(updated_st.row_partitions[0].row_lengths(), [2, 1])
+
+    # Test that it works also for rank-1 and rank-0 empty results.
+    pyval = [{"a": 1}, {"a": 2}]
+    st = StructuredTensor.from_pyval(pyval)
+    self.assertEqual(st.rank, 1)
+    updated_st = st.with_updates({("a",): None}, validate=True)
+    self.assertEqual(updated_st.rank, 1)
+
+    # assertEqual won't work because nrows() returns a tensor, and
+    # assertEqual doesn't do the magic to convert them to numbers in a
+    # way that works in eager/non-eager mode.
+    self.assertAllEqual(updated_st.nrows(), 2)
+    pyval = {"a": [0, 1]}
+    st = StructuredTensor.from_pyval(pyval)
+    self.assertEqual(st.rank, 0)
+    updated_st = st.with_updates({("a",): None}, validate=True)
+    self.assertEqual(updated_st.rank, 0)
+    self.assertFalse(updated_st.row_partitions)
+    self.assertIsNone(updated_st.nrows())
 
 
 if __name__ == "__main__":

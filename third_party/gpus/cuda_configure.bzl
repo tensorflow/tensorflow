@@ -187,6 +187,7 @@ def _get_win_cuda_defines(repository_ctx):
     # the same tmp directory
     escaped_cxx_include_directories = [
         _get_nvcc_tmp_dir_for_windows(repository_ctx),
+        "C:\\\\botcode\\\\w",
     ]
     for path in escaped_include_paths.split(";"):
         if path:

@@ -71,7 +71,7 @@ class KerasSumTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(m.total), 100)
 
       # check update_state() and result() + state accumulation + tensor input
-      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      update_op = m.update_state(ops.convert_to_tensor_v2([1, 5]))
       self.evaluate(update_op)
       self.assertAlmostEqual(self.evaluate(m.result()), 106)
       self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5

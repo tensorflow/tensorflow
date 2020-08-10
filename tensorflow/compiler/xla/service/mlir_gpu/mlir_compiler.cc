@@ -30,18 +30,14 @@ namespace {
 using ::mlir::MLIRContext;
 using ::mlir::LLVM::LLVMDialect;
 
-int64 ConfigureLLVMModuleAndGetPointerSize(MLIRContext* context) {
+int64 GetPointerSize(MLIRContext* context) {
   LLVMDialect* dialect = context->getRegisteredDialect<LLVMDialect>();
-  llvm::Module& module = dialect->getLLVMModule();
-  module.setTargetTriple(gpu::nvptx::kTargetTriple);
-  module.setDataLayout(gpu::nvptx::kDataLayout);
-  return module.getDataLayout().getPointerSize();
+  return dialect->getDataLayout().getPointerSize();
 }
 
 }  // namespace
 
-MlirCompiler::MlirCompiler()
-    : pointer_size_(ConfigureLLVMModuleAndGetPointerSize(&context_)) {}
+MlirCompiler::MlirCompiler() : pointer_size_(GetPointerSize(&context_)) {}
 
 se::Platform::Id MlirCompiler::PlatformId() const {
   return stream_executor::cuda::kCudaPlatformId;

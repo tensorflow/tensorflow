@@ -26,6 +26,14 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
+
+
+# Utility function that indicates if you are in an UpdateContext when running
+# in a replica fn.
+def in_replica_update_context():
+  return distribute_lib.get_update_replica_id() is not None
 
 
 def on_write_assign(var, value, use_locking=False, name=None, read_value=True):
@@ -107,10 +115,10 @@ def on_read_assign_cross_replica(var, value, read_value=True):
       # total across all devices when restoring a variable that was summed
       # when saving.
       tensor = value
-      # TODO(anjs): Should this be over all the replicas in sync since we
-      # call `reduce` on the variable during read?
       if var.aggregation == vs.VariableAggregation.SUM:
-        tensor = math_ops.cast(tensor / len(var._devices), var.dtype)  # pylint: disable=protected-access
+        strategy = var._distribute_strategy  # pylint: disable=protected-access
+        tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
+                               var.dtype)
       return assign_on_each_device(var, assign_on_device, tensor,
                                    read_value)
 
@@ -247,3 +255,20 @@ scatter_error_msg = ("{op_name} is only supported for mirrored "
                      "variable (variable created within certain "
                      "`tf.distribute.Strategy` scope) with NONE or "
                      "`ONLY_FIRST_REPLICA` aggregation, got: {aggregation}.")
+
+
+def is_saving_non_distributed():
+  """Returns whether we're saving a non-distributed version of the model.
+
+  It returns True iff we are in saving context and are saving a non-distributed
+  version of the model. That is, SaveOptions.experimental_variable_policy is
+  NONE.
+
+  Returns:
+    A boolean.
+  """
+  if not save_context.in_save_context():
+    return False
+  options = save_context.get_save_options()
+  return (options.experimental_variable_policy !=
+          save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES)

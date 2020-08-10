@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "llvm/IR/LLVMContext.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -292,10 +293,10 @@ Status InsertBufferLoadPreduleIntoKernel(
     BufferAssignment* assignment,
     const std::vector<const BufferAllocation*>& buffers) {
   mlir::OpBuilder builder(kernel.getBody());
-  auto llvm_dialect = kernel.getContext()->getRegisteredDialect<LLVMDialect>();
-  auto offset_type = LLVMType::getInt64Ty(llvm_dialect);
-  auto ptr_type = LLVMType::getInt8PtrTy(llvm_dialect);
-  auto void_type = LLVMType::getVoidTy(llvm_dialect);
+  auto* context = kernel.getContext();
+  auto offset_type = LLVMType::getInt64Ty(context);
+  auto ptr_type = LLVMType::getInt8PtrTy(context);
+  auto void_type = LLVMType::getVoidTy(context);
   auto loc = kernel.getLoc();
 
   auto num_original_args = kernel.getNumArguments();
@@ -436,8 +437,10 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
       kernel, operand_to_value_map, ordered_operands, assignment, buffers));
 
   // Finally, create the thunk and set the launch dimensions.
-  auto thunk = absl::make_unique<gpu::KernelThunk>(
-      buffers, kernel.getName().str(), instr);
+  gpu::Thunk::ThunkInfo info;
+  info.hlo_instruction = instr;
+  auto thunk = absl::make_unique<gpu::KernelThunk>(info, buffers,
+                                                   kernel.getName().str());
 
   // Set launch bounds.
   mlir::gpu::KernelDim3 block = launchOp.getBlockSizeOperandValues();
@@ -488,8 +491,17 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   LhloDialectEmitter lhlo_emitter(&emission_context, *buffer_assignment,
                                   stream_exec->platform(), *mlir_module);
 
-  TF_RETURN_IF_ERROR(lhlo_emitter.EmitComputation(
-      *emission_context.getHloModule()->entry_computation()));
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<gpu::Thunk>>
+      hlo_to_thunk;
+  for (HloInstruction* instruction : hlo_schedule->ThunkLaunchOrder()) {
+    TF_RETURN_IF_ERROR(instruction->Visit(&lhlo_emitter));
+    gpu::ThunkSequence thunks = lhlo_emitter.ConsumeThunkSequence();
+    TF_RET_CHECK(thunks.size() <= 1) << instruction->ToString();
+    if (!thunks.empty()) {
+      auto thunk = std::move(thunks.front());
+      hlo_to_thunk[instruction] = std::move(thunk);
+    }
+  }
 
   TF_RETURN_IF_ERROR(
       module_hook_.invoke(IRHook::LoweringStage::LHLO, *mlir_module));
@@ -507,19 +519,36 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   TF_ASSIGN_OR_RETURN(OwningModuleRef kernel_module,
                       ExtractKernelModule(*mlir_module));
 
-  auto thunk_sequence = lhlo_emitter.ConsumeThunkSequence();
   for (auto entry : lhlo_emitter.InstructionToFunctionMap()) {
     TF_ASSIGN_OR_RETURN(
         auto thunk,
         TransformKernelToXlaThunk(entry.second, entry.first, *kernel_module,
                                   buffer_assignment.get()));
-    thunk_sequence->push_back(std::move(thunk));
+    hlo_to_thunk[entry.first] = std::move(thunk);
+  }
+
+  absl::flat_hash_map<const gpu::Thunk*, const HloInstruction*> thunk_to_hlo;
+  gpu::ThunkSequence thunk_sequence;
+  {
+    for (HloInstruction* hlo : hlo_schedule->ThunkLaunchOrder()) {
+      auto it = hlo_to_thunk.find(hlo);
+      if (it != hlo_to_thunk.end()) {
+        const HloInstruction* hlo = it->first;
+        auto& thunk = it->second;
+        thunk_to_hlo[thunk.get()] = hlo;
+        thunk_sequence.push_back(std::move(thunk));
+      }
+    }
   }
 
   TF_RETURN_IF_ERROR(
       module_hook_.invoke(IRHook::LoweringStage::KERNEL, *kernel_module));
 
-  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module);
+  // Translate to LLVM IR in a fresh context. The module is further translated
+  // to textual PTX and a CUBIN blob so there is no need for the context to live
+  // longer than this function.
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module, llvmContext);
 
   if (!llvmModule) {
     return InternalError("Translation to LLVM failed");
@@ -539,8 +568,8 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
                                     gpu::PtxOptsFromConfig(config)));
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      std::move(thunk_sequence), std::move(stream_assignment),
-      hlo_schedule->ThunkLaunchOrder());
+      std::make_unique<gpu::ThunkSequence>(std::move(thunk_sequence)),
+      std::move(stream_assignment), std::move(thunk_to_hlo));
 
   if (DumpingEnabledForHloModule(*emission_context.getHloModule())) {
     DumpToFileInDirOrStdout(*emission_context.getHloModule(), "",

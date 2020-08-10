@@ -30,51 +30,62 @@ static const absl::string_view content_view = content;
 
 namespace gcs = google::cloud::storage;
 
+static std::string InitializeTmpDir() {
+  // This env should be something like `gs://bucket/path`
+  const char* test_dir = getenv("GCS_TEST_TMPDIR");
+  if (test_dir != nullptr) {
+    std::string bucket, object;
+    TF_Status* status = TF_NewStatus();
+    ParseGCSPath(test_dir, true, &bucket, &object, status);
+    if (TF_GetCode(status) != TF_OK) {
+      TF_DeleteStatus(status);
+      return "";
+    }
+    TF_DeleteStatus(status);
+
+    // We add a random value into `test_dir` to ensures that two consecutive
+    // runs are unlikely to clash.
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distribution;
+    std::string rng_val = std::to_string(distribution(gen));
+    return tensorflow::io::JoinPath(std::string(test_dir), rng_val);
+  } else {
+    return "";
+  }
+}
+
+static std::string* GetTmpDir() {
+  static std::string tmp_dir = InitializeTmpDir();
+  if (tmp_dir == "")
+    return nullptr;
+  else
+    return &tmp_dir;
+}
+
 namespace tensorflow {
 namespace {
 
+// TODO(vnvo2409): Refactor `gcs_filesystem_test` to remove unnecessary tests
+// after porting all tests from
+// `//tensorflow/core/platform/cloud:gcs_file_system_test`.
 class GCSFilesystemTest : public ::testing::Test {
  public:
   void SetUp() override {
     root_dir_ = io::JoinPath(
-        tmp_dir_,
+        *GetTmpDir(),
         ::testing::UnitTest::GetInstance()->current_test_info()->name());
     status_ = TF_NewStatus();
     filesystem_ = new TF_Filesystem;
-    tf_gcs_filesystem::Init(filesystem_, status_);
-    ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
-                          << TF_Message(status_);
+    filesystem_->plugin_filesystem = nullptr;
+    // Because different tests requires different setup for filesystem. We
+    // initialize filesystem in each testcase.
   }
   void TearDown() override {
     TF_DeleteStatus(status_);
-    tf_gcs_filesystem::Cleanup(filesystem_);
+    if (filesystem_->plugin_filesystem != nullptr)
+      tf_gcs_filesystem::Cleanup(filesystem_);
     delete filesystem_;
-  }
-
-  static bool InitializeTmpDir() {
-    // This env should be something like `gs://bucket/path`
-    const char* test_dir = getenv("GCS_TEST_TMPDIR");
-    if (test_dir != nullptr) {
-      std::string bucket, object;
-      TF_Status* status = TF_NewStatus();
-      ParseGCSPath(test_dir, true, &bucket, &object, status);
-      if (TF_GetCode(status) != TF_OK) {
-        TF_DeleteStatus(status);
-        return false;
-      }
-      TF_DeleteStatus(status);
-
-      // We add a random value into `test_dir` to ensures that two consecutive
-      // runs are unlikely to clash.
-      std::random_device rd;
-      std::mt19937 gen(rd());
-      std::uniform_int_distribution<> distribution;
-      std::string rng_val = std::to_string(distribution(gen));
-      tmp_dir_ = io::JoinPath(string(test_dir), rng_val);
-      return true;
-    } else {
-      return false;
-    }
   }
 
   std::string GetURIForPath(absl::string_view path) {
@@ -89,9 +100,7 @@ class GCSFilesystemTest : public ::testing::Test {
 
  private:
   std::string root_dir_;
-  static std::string tmp_dir_;
 };
-std::string GCSFilesystemTest::tmp_dir_;
 
 ::testing::AssertionResult WriteToServer(const std::string& path, size_t offset,
                                          size_t length, gcs::Client* gcs_client,
@@ -110,6 +119,21 @@ std::string GCSFilesystemTest::tmp_dir_;
     return ::testing::AssertionFailure()
            << writer.metadata().status().message();
   }
+}
+
+::testing::AssertionResult InsertObject(const std::string& path,
+                                        const std::string& content,
+                                        gcs::Client* gcs_client,
+                                        TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK)
+    return ::testing::AssertionFailure() << TF_Message(status);
+  auto metadata = gcs_client->InsertObject(bucket, object, content);
+  if (metadata)
+    return ::testing::AssertionSuccess();
+  else
+    return ::testing::AssertionFailure() << metadata.status().message();
 }
 
 ::testing::AssertionResult CompareSubString(int64_t offset, size_t length,
@@ -167,6 +191,9 @@ TEST_F(GCSFilesystemTest, ParseGCSPath) {
 }
 
 TEST_F(GCSFilesystemTest, RandomAccessFile) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
   std::string filepath = GetURIForPath("a_file");
   TF_RandomAccessFile* file = new TF_RandomAccessFile;
   tf_gcs_filesystem::NewRandomAccessFile(filesystem_, filepath.c_str(), file,
@@ -203,6 +230,9 @@ TEST_F(GCSFilesystemTest, RandomAccessFile) {
 }
 
 TEST_F(GCSFilesystemTest, WritableFile) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
   std::string filepath = GetURIForPath("a_file");
   TF_WritableFile* file = new TF_WritableFile;
   tf_gcs_filesystem::NewWritableFile(filesystem_, filepath.c_str(), file,
@@ -268,6 +298,9 @@ TEST_F(GCSFilesystemTest, WritableFile) {
 }
 
 TEST_F(GCSFilesystemTest, ReadOnlyMemoryRegion) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
   std::string path = GetURIForPath("a_file");
   auto gcs_file =
       static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
@@ -293,12 +326,137 @@ TEST_F(GCSFilesystemTest, ReadOnlyMemoryRegion) {
   delete region;
 }
 
+// These tests below are ported from
+// `//tensorflow/core/platform/cloud:gcs_file_system_test`
+TEST_F(GCSFilesystemTest, NewRandomAccessFile_NoBlockCache) {
+  tf_gcs_filesystem::InitTest(filesystem_, false, 0, 0, 0, 0, 0, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
+  std::string path = GetURIForPath("a_file");
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(InsertObject(path, "0123456789", &gcs_file->gcs_client, status_));
+
+  TF_RandomAccessFile* file = new TF_RandomAccessFile;
+  tf_gcs_filesystem::NewRandomAccessFile(filesystem_, path.c_str(), file,
+                                         status_);
+  ASSERT_TF_OK(status_);
+
+  std::string result;
+  result.resize(6);
+  int64_t read = tf_random_access_file::Read(file, 0, 6, &result[0], status_);
+  ASSERT_EQ(read, 6) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(result, "012345") << "Result: " << result << "\n";
+
+  read = tf_random_access_file::Read(file, 6, 6, &result[0], status_);
+  ASSERT_EQ(read, 4) << "Read: " << read << "\n";
+  ASSERT_EQ(TF_GetCode(status_), TF_OUT_OF_RANGE) << TF_Message(status_);
+  result.resize(read);
+  ASSERT_EQ(result, "6789") << "Result: " << result << "\n";
+}
+
+TEST_F(GCSFilesystemTest, NewRandomAccessFile_Buffered) {
+  tf_gcs_filesystem::InitTest(filesystem_, false, 10, 0, 0, 0, 0, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
+  std::string path = GetURIForPath("a_file");
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(InsertObject(path, "0123456789", &gcs_file->gcs_client, status_));
+
+  TF_RandomAccessFile* file = new TF_RandomAccessFile;
+  tf_gcs_filesystem::NewRandomAccessFile(filesystem_, path.c_str(), file,
+                                         status_);
+  ASSERT_TF_OK(status_);
+
+  std::string result;
+  result.resize(6);
+  int64_t read = tf_random_access_file::Read(file, 0, 6, &result[0], status_);
+  ASSERT_EQ(read, 6) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(result, "012345") << "Result: " << result << "\n";
+
+  read = tf_random_access_file::Read(file, 6, 6, &result[0], status_);
+  ASSERT_EQ(read, 4) << "Read: " << read << "\n";
+  ASSERT_EQ(TF_GetCode(status_), TF_OUT_OF_RANGE) << TF_Message(status_);
+  result.resize(read);
+  ASSERT_EQ(result, "6789") << "Result: " << result << "\n";
+}
+
+TEST_F(GCSFilesystemTest, NewRandomAccessFile_Buffered_ReadAtEOF) {
+  tf_gcs_filesystem::InitTest(filesystem_, false, 10, 0, 0, 0, 0, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
+  std::string path = GetURIForPath("a_file");
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(InsertObject(path, "0123456789", &gcs_file->gcs_client, status_));
+
+  TF_RandomAccessFile* file = new TF_RandomAccessFile;
+  tf_gcs_filesystem::NewRandomAccessFile(filesystem_, path.c_str(), file,
+                                         status_);
+  ASSERT_TF_OK(status_);
+
+  std::string result;
+  result.resize(10);
+  int64_t read = tf_random_access_file::Read(file, 0, result.length(),
+                                             &result[0], status_);
+  ASSERT_EQ(read, 10) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(result, "0123456789") << "Result: " << result << "\n";
+
+  read = tf_random_access_file::Read(file, result.length(), result.length(),
+                                     &result[0], status_);
+  ASSERT_EQ(read, 0) << "Read: " << read << "\n";
+  ASSERT_EQ(TF_GetCode(status_), TF_OUT_OF_RANGE) << TF_Message(status_);
+  result.resize(read);
+  ASSERT_EQ(result, "") << "Result: " << result << "\n";
+}
+
+TEST_F(GCSFilesystemTest, NewRandomAccessFile_Buffered_CachedOutOfRange) {
+  tf_gcs_filesystem::InitTest(filesystem_, false, 10, 0, 0, 0, 0, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
+  std::string path = GetURIForPath("a_file");
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(InsertObject(path, "012345678", &gcs_file->gcs_client, status_));
+
+  TF_RandomAccessFile* file = new TF_RandomAccessFile;
+  tf_gcs_filesystem::NewRandomAccessFile(filesystem_, path.c_str(), file,
+                                         status_);
+  ASSERT_TF_OK(status_);
+
+  std::string result;
+  result.resize(5);
+  int64_t read = tf_random_access_file::Read(file, 0, result.length(),
+                                             &result[0], status_);
+  ASSERT_EQ(read, 5) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(result, "01234") << "Result: " << result << "\n";
+
+  read = tf_random_access_file::Read(file, 4, result.length(), &result[0],
+                                     status_);
+  ASSERT_EQ(read, 5) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  result.resize(read);
+  ASSERT_EQ(result, "45678") << "Result: " << result << "\n";
+
+  read = tf_random_access_file::Read(file, 5, result.length(), &result[0],
+                                     status_);
+  ASSERT_EQ(read, 4) << "Read: " << read << "\n";
+  ASSERT_EQ(TF_GetCode(status_), TF_OUT_OF_RANGE) << TF_Message(status_);
+  result.resize(read);
+  ASSERT_EQ(result, "5678") << "Result: " << result << "\n";
+}
+
 }  // namespace
 }  // namespace tensorflow
 
 GTEST_API_ int main(int argc, char** argv) {
   tensorflow::testing::InstallStacktraceHandler();
-  if (!tensorflow::GCSFilesystemTest::InitializeTmpDir()) {
+  if (!GetTmpDir()) {
     std::cerr << "Could not read GCS_TEST_TMPDIR env";
     return -1;
   }

@@ -40,8 +40,10 @@ upper_tabs:
         status: external
 
       - heading: "Text"
-      - title: "Text classification"
+      - title: "Text classification with Model Maker"
         path: /lite/tutorials/model_maker_text_classification
+      - title: "Question Answer with Model Maker"
+        path: /lite/tutorials/model_maker_question_answer
 
       - heading: "Microcontrollers"
       - title: "Gesture recognition"
@@ -90,6 +92,11 @@ upper_tabs:
         path: /lite/convert/operation_fusion
       - title: "1.x compatibility"
         path: /lite/convert/1x_compatibility
+
+      - heading: "Create a model"
+      - title: "TensorFlow Lite Model Maker"
+        status: experimental
+        path: /lite/guide/model_maker
 
       - heading: "Inference"
       - title: "Overview"
@@ -190,6 +197,9 @@ upper_tabs:
         path: /lite/models/smart_reply/overview
       - title: "Text classification"
         path: /lite/models/text_classification/overview
+      - heading: "Others"
+      - title: "Recommendation"
+        path: /lite/models/recommendation/overview
 
     - name: "API"
       skip_translation: true

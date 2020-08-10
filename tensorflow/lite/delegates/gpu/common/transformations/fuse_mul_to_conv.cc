@@ -43,8 +43,8 @@ class MergeConvolutionWithMul : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    MultiplyAttributes mul_attr =
-        absl::any_cast<MultiplyAttributes>(mul_node.operation.attributes);
+    ElementwiseAttributes mul_attr =
+        absl::any_cast<ElementwiseAttributes>(mul_node.operation.attributes);
     if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
             mul_attr.param) &&
         !absl::holds_alternative<float>(mul_attr.param)) {
@@ -107,8 +107,8 @@ class MergeMulWithConvolution : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    MultiplyAttributes mul_attr =
-        absl::any_cast<MultiplyAttributes>(mul_node.operation.attributes);
+    ElementwiseAttributes mul_attr =
+        absl::any_cast<ElementwiseAttributes>(mul_node.operation.attributes);
     if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
             mul_attr.param) &&
         !absl::holds_alternative<float>(mul_attr.param)) {
@@ -164,7 +164,7 @@ std::unique_ptr<SequenceTransformation> NewMergeMulWithConvolution() {
   return absl::make_unique<MergeMulWithConvolution>();
 }
 
-void FuseConvolution2DWithMultiply(const MultiplyAttributes& mul_attr,
+void FuseConvolution2DWithMultiply(const ElementwiseAttributes& mul_attr,
                                    Convolution2DAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -185,7 +185,7 @@ void FuseConvolution2DWithMultiply(const MultiplyAttributes& mul_attr,
 }
 
 void FuseDepthwiseConvolution2DWithMultiply(
-    const MultiplyAttributes& mul_attr,
+    const ElementwiseAttributes& mul_attr,
     DepthwiseConvolution2DAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -207,7 +207,8 @@ void FuseDepthwiseConvolution2DWithMultiply(
 }
 
 void FuseConvolutionTransposedWithMultiply(
-    const MultiplyAttributes& mul_attr, ConvolutionTransposedAttributes* attr) {
+    const ElementwiseAttributes& mul_attr,
+    ConvolutionTransposedAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
   for (int d = 0; d < attr->weights.shape.o; ++d) {
@@ -226,7 +227,7 @@ void FuseConvolutionTransposedWithMultiply(
   }
 }
 
-void FuseFullyConnectedWithMultiply(const MultiplyAttributes& mul_attr,
+void FuseFullyConnectedWithMultiply(const ElementwiseAttributes& mul_attr,
                                     FullyConnectedAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -242,7 +243,7 @@ void FuseFullyConnectedWithMultiply(const MultiplyAttributes& mul_attr,
   }
 }
 
-void FuseMultiplyWithConvolution2D(const MultiplyAttributes& mul_attr,
+void FuseMultiplyWithConvolution2D(const ElementwiseAttributes& mul_attr,
                                    Convolution2DAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -260,7 +261,7 @@ void FuseMultiplyWithConvolution2D(const MultiplyAttributes& mul_attr,
 }
 
 void FuseMultiplyWithDepthwiseConvolution2D(
-    const MultiplyAttributes& mul_attr,
+    const ElementwiseAttributes& mul_attr,
     DepthwiseConvolution2DAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -278,7 +279,8 @@ void FuseMultiplyWithDepthwiseConvolution2D(
 }
 
 void FuseMultiplyWithConvolutionTransposed(
-    const MultiplyAttributes& mul_attr, ConvolutionTransposedAttributes* attr) {
+    const ElementwiseAttributes& mul_attr,
+    ConvolutionTransposedAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
   for (int s = 0; s < attr->weights.shape.i; ++s) {
@@ -294,7 +296,7 @@ void FuseMultiplyWithConvolutionTransposed(
   }
 }
 
-void FuseMultiplyWithFullyConnected(const MultiplyAttributes& mul_attr,
+void FuseMultiplyWithFullyConnected(const ElementwiseAttributes& mul_attr,
                                     FullyConnectedAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);

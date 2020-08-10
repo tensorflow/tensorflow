@@ -288,8 +288,8 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       tf_opt = training.GradientDescentOptimizer(0.1)
       tf_embedding.initializer.run()
 
-      self.assertAllClose(tf_grad.indices.eval(), grad.indices)
-      self.assertAllClose(tf_grad.values.eval(), grad.values)
+      self.assertAllClose(tf_grad.indices, grad.indices)
+      self.assertAllClose(tf_grad.values, grad.values)
 
       tf_opt.apply_gradients([(tf_grad, tf_embedding)]).run()
       expected = self.evaluate(tf_embedding)
@@ -837,8 +837,32 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       z = y * y
     g.gradient(z, [x])
     with self.assertRaisesRegex(
-        RuntimeError, 'GradientTape.gradient can only be called once'):
+        RuntimeError, 'A non-persistent GradientTape can only'):
       g.gradient(y, [x])
+
+  @test_util.assert_no_new_tensors
+  def testGradientTapeJacobianCalledMultipleTimes(self):
+    with backprop.GradientTape() as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      z = y * y
+    g.jacobian(z, [x])
+    with self.assertRaisesRegex(
+        RuntimeError, 'A non-persistent GradientTape can only'):
+      g.jacobian(y, [x])
+
+  @test_util.assert_no_new_tensors
+  def testGradientTapeBatchJacobianCalledMultipleTimes(self):
+    with backprop.GradientTape() as g:
+      x = constant_op.constant([[3.0]])
+      g.watch(x)
+      y = x * x
+      z = y * y
+    g.batch_jacobian(z, x)
+    with self.assertRaisesRegex(
+        RuntimeError, 'A non-persistent GradientTape can only'):
+      g.batch_jacobian(y, [x])
 
   @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes

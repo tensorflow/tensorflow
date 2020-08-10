@@ -62,9 +62,44 @@ Status SessionMgr::CreateSession(
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
     bool isolate_session_state) {
+  return CreateSession(session, server_def, cluster_device_attributes,
+                       isolate_session_state, /*master_task=*/"",
+                       /*master_incarnation=*/0);
+}
+
+Status SessionMgr::CreateSession(
+    const string& session, const ServerDef& server_def,
+    const protobuf::RepeatedPtrField<DeviceAttributes>&
+        cluster_device_attributes,
+    bool isolate_session_state, string master_task, int64 master_incarnation) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
+  }
+
+  // For given master task name, check if one or more `WorkerSession`s have been
+  // created previously on this worker, and if so garbage collect the expired
+  // `WorkerSession`s. This happens when the master fails before sending
+  // `DeleteSession` requests, which can cause `WorkerSession`s to be leaked.
+  if (!master_task.empty()) {
+    auto it_range = master_to_associated_sessions_.equal_range(master_task);
+    if (it_range.first != it_range.second &&
+        it_range.first->second.master_incarnation != master_incarnation) {
+      LOG(INFO) << "When creating WorkerSession for master task " << master_task
+                << ", found old WorkerSessions created by the same master task "
+                << "with a different incarnation. These sessions will "
+                << "be garbage collected. Current WorkerSession count: "
+                << sessions_.size();
+
+      auto it = it_range.first;
+      while (it != it_range.second) {
+        auto session_it = sessions_.find(it->second.session_handle);
+        if (session_it != sessions_.end()) {
+          sessions_.erase(session_it);
+        }
+        it = master_to_associated_sessions_.erase(it);
+      }
+    }
   }
 
   WorkerCacheInterface* worker_cache = nullptr;
@@ -141,7 +176,15 @@ Status SessionMgr::CreateSession(
   }
 
   sessions_.insert(std::make_pair(session, std::move(worker_session)));
+  if (!master_task.empty()) {
+    MasterAssociatedSession s{master_incarnation, session};
+    master_to_associated_sessions_.emplace(master_task, s);
+  }
   return Status::OK();
+}
+
+void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
+  default_worker_cache_.reset(worker_cache);
 }
 
 Status SessionMgr::UpdateSession(

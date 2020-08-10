@@ -120,8 +120,11 @@ void PythonHooks::ProfileFast(PyFrameObject* frame, int what, PyObject* arg) {
       function = py::reinterpret_borrow<py::str>(f_code->co_name);
     }
 
-    tracemes_[thread_id].push_back(absl::make_unique<TraceMe>(absl::StrCat(
-        "$", io::Basename(filename), ":", line_no, " ", function)));
+    tracemes_[thread_id].push_back(
+        absl::make_unique<TraceMe>([&filename, line_no, &function] {
+          return absl::StrCat("$", io::Basename(filename), ":", line_no, " ",
+                              function);
+        }));
   } else if (what == PyTrace_C_CALL && PyCFunction_Check(arg)) {
     // Python stack does not have a filename/line_no for native calls.
     auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
@@ -139,9 +142,10 @@ void PythonHooks::ProfileFast(PyFrameObject* frame, int what, PyObject* arg) {
       filename = "<unknown>";
     }
 
-    string function(func->m_ml->ml_name);
-    tracemes_[thread_id].push_back(absl::make_unique<TraceMe>(
-        absl::StrCat(filename, " ", func->m_ml->ml_name)));
+    tracemes_[thread_id].push_back(
+        absl::make_unique<TraceMe>([&filename, func] {
+          return absl::StrCat(filename, " ", func->m_ml->ml_name);
+        }));
   } else if (what == PyTrace_RETURN || what == PyTrace_C_RETURN ||
              what == PyTrace_EXCEPTION || what == PyTrace_C_EXCEPTION) {
     auto& thread_tracemes = tracemes_[thread_id];

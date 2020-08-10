@@ -235,6 +235,14 @@ Status EagerOperation::InputLength(const char* input_name, int* length) {
   return Status::OK();
 }
 
+absl::Span<ImmediateExecutionTensorHandle* const> EagerOperation::GetInputs()
+    const {
+  // TODO(b/162536003): Remove reinterpret_cast.
+  return absl::MakeSpan(
+      reinterpret_cast<ImmediateExecutionTensorHandle* const*>(inputs_.data()),
+      inputs_.size());
+}
+
 Status EagerOperation::OutputLength(const char* output_name, int* length) {
   Status status;
   const tensorflow::OpDef* op_def = GetOpDef(&status);
@@ -260,7 +268,8 @@ Status EagerOperation::AddInput(AbstractTensorHandle* input) {
   return MaybeInferSingleInputAttrs(h);
 }
 
-Status EagerOperation::AddInputList(absl::Span<AbstractTensorHandle*> inputs) {
+Status EagerOperation::AddInputList(
+    absl::Span<AbstractTensorHandle* const> inputs) {
   for (auto& input : inputs) {
     TensorHandle* h = TensorHandleFromInterface(input);
     AddTensorHandle(h);
@@ -305,6 +314,7 @@ Status EagerOperation::Reset(
   }
   attrs_.Reset(op);
   use_xla_ = false;
+  stack_trace_.reset();
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();
@@ -390,7 +400,7 @@ Status EagerOperation::SetDeviceName(const char* c_name) {
     last_set_device_name_ = name;
     device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
     CustomDevice* custom_device;
-    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
+    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device)) {
       device_ = custom_device;
     } else {
       // Device placement for physical devices happens lazily in

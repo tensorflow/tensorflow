@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
+#include "mlir-hlo/utils/broadcast_utils.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
-namespace xla_chlo {
+namespace chlo {
 
 template <typename T>
 static LogicalResult Verify(T op) {
@@ -137,7 +137,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
   auto broadcast_dimensions = op->getAttr("broadcast_dimensions")
                                   .dyn_cast_or_null<DenseIntElementsAttr>();
   if (broadcast_dimensions &&
-      !xla::IsLegalNumpyRankedBroadcast(lhs, rhs, broadcast_dimensions)) {
+      !hlo::IsLegalNumpyRankedBroadcast(lhs, rhs, broadcast_dimensions)) {
     // Note: It is unclear whether the general specification of explicit
     // broadcast_dimensions on binary ops is a feature we want to carry
     // forward. While it can technically be implemented for ranked-dynamic,
@@ -150,8 +150,8 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
            << "broadcast_dimensions = " << broadcast_dimensions;
   }
 
-  Value computed_shape = xla::ComputeBinaryElementwiseBroadcastingResultExtents(
-      loc, lhs, rhs, builder);
+  Value computed_shape = hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
+      loc, lhs, rhs, builder, /*unsafe_as_extent_tensor=*/false);
   if (!computed_shape) return failure();
   reifiedReturnShapes.push_back(computed_shape);
   return success();
@@ -260,19 +260,18 @@ BROADCAST_BINARY_OP_DEFS(BroadcastXorOp);
 #undef BROADCAST_BINARY_OP_DEFS
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
-// xla_chlo Dialect Constructor
+// chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-XlaHloClientDialect::XlaHloClientDialect(MLIRContext* context)
-    : Dialect(getDialectNamespace(), context) {
+void HloClientDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
       >();
 }
 
-}  // namespace xla_chlo
+}  // namespace chlo
 }  // namespace mlir

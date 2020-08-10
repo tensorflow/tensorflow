@@ -83,14 +83,6 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
   int tensor_id = inputs->data[2];
   const auto& data_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  float data_min = 0;
-  float data_max = 0;
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(data_tensor, &data_min, &data_max));
-  auto* data_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&data_min), sizeof(data_min));
-  auto* data_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&data_max), sizeof(data_max));
 
   // WEIGHTS.
   tensor_id = inputs->data[1];
@@ -150,8 +142,7 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
       kScalarShape, reinterpret_cast<char*>(&weights_max), sizeof(weights_max));
 
   // Min/max inputs for data & weights tensors.
-  AddInput(TensorID(data_min_const->GetID(), 0));
-  AddInput(TensorID(data_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, data_tensor));
   AddInput(TensorID(weights_min_const->GetID(), 0));
   AddInput(TensorID(weights_max_const->GetID(), 0));
 
@@ -206,16 +197,8 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
   AddInput(TensorID(bias_max_const->GetID(), 0));
 
   // Output quantization.
-  float output_min = 0;
-  float output_max = 0;
-  ComputeMinAndMaxQuantValues(context->tensors[outputs->data[0]], &output_min,
-                              &output_max);
-  auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
-  auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
-  AddInput(TensorID(output_min_const->GetID(), 0));
-  AddInput(TensorID(output_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(
+      ComputeAndAddMinAndMax(context, context->tensors[outputs->data[0]]));
 
   // Channel scales, if this op is per-channel quantized.
   if (channel_scales_node_ != nullptr) {

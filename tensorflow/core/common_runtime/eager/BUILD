@@ -120,6 +120,21 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "placement_test",
+    srcs = ["placement_test.cc"],
+    deps = [
+        ":context",
+        ":core",
+        ":eager_operation",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_library(
     name = "eager_operation",
     srcs = [
@@ -148,6 +163,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/util:abstract_stack_trace",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -321,7 +337,7 @@ tf_cuda_library(
         ],
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
-            "//tensorflow/compiler/jit:xla_kernel_creator_util",
+            "//tensorflow/compiler/jit:xla_kernel_creator",
         ],
     }),
 )

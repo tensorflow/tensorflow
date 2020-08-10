@@ -41,7 +41,7 @@ class StringJoinOpTest(test.TestCase):
       self.assertAllEqual(output, [b"a--a--a", b"b--a--b"])
 
       output = string_ops.string_join([input1] * 4, separator="!")
-      self.assertEqual(output.eval(), b"a!a!a!a")
+      self.assertEqual(self.evaluate(output), b"a!a!a!a")
 
       output = string_ops.string_join([input2] * 2, separator="")
       self.assertAllEqual(output, [[b"bb"], [b"cc"]])

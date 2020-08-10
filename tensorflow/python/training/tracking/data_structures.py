@@ -59,6 +59,8 @@ class NoDependency(object):
   variables will appear in `Model.variables`).
   """
 
+  __slots__ = ["value"]
+
   def __init__(self, value):
     self.value = value
 

@@ -379,11 +379,12 @@ enum TensorType {
   TensorType_COMPLEX64 = 8,
   TensorType_INT8 = 9,
   TensorType_FLOAT64 = 10,
+  TensorType_COMPLEX128 = 11,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_FLOAT64
+  TensorType_MAX = TensorType_COMPLEX128
 };
 
-inline const TensorType (&EnumValuesTensorType())[11] {
+inline const TensorType (&EnumValuesTensorType())[12] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -395,13 +396,14 @@ inline const TensorType (&EnumValuesTensorType())[11] {
     TensorType_INT16,
     TensorType_COMPLEX64,
     TensorType_INT8,
-    TensorType_FLOAT64
+    TensorType_FLOAT64,
+    TensorType_COMPLEX128
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[12] = {
+  static const char * const names[13] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -413,13 +415,14 @@ inline const char * const *EnumNamesTensorType() {
     "COMPLEX64",
     "INT8",
     "FLOAT64",
+    "COMPLEX128",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_FLOAT64)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_COMPLEX128)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -4739,22 +4742,29 @@ flatbuffers::Offset<ConcatenationOptions> CreateConcatenationOptions(flatbuffers
 
 struct AddOptionsT : public flatbuffers::NativeTable {
   typedef AddOptions TableType;
+  bool pot_scale_int16;
   tflite::ActivationFunctionType fused_activation_function;
   AddOptionsT()
-      : fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : pot_scale_int16(true),
+        fused_activation_function(tflite::ActivationFunctionType_NONE) {
   }
 };
 
 struct AddOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef AddOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_FUSED_ACTIVATION_FUNCTION = 4
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_POT_SCALE_INT16 = 6
   };
+  bool pot_scale_int16() const {
+    return GetField<uint8_t>(VT_POT_SCALE_INT16, 0) != 0;
+  }
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            verifier.EndTable();
   }
@@ -5904,22 +5914,29 @@ flatbuffers::Offset<DepthToSpaceOptions> CreateDepthToSpaceOptions(flatbuffers::
 
 struct SubOptionsT : public flatbuffers::NativeTable {
   typedef SubOptions TableType;
+  bool pot_scale_int16;
   tflite::ActivationFunctionType fused_activation_function;
   SubOptionsT()
-      : fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : pot_scale_int16(true),
+        fused_activation_function(tflite::ActivationFunctionType_NONE) {
   }
 };
 
 struct SubOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SubOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_FUSED_ACTIVATION_FUNCTION = 4
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_POT_SCALE_INT16 = 6
   };
+  bool pot_scale_int16() const {
+    return GetField<uint8_t>(VT_POT_SCALE_INT16, 0) != 0;
+  }
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            verifier.EndTable();
   }

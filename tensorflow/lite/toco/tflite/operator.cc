@@ -24,7 +24,7 @@ limitations under the License.
 
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
-#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
+#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
@@ -51,6 +51,7 @@ namespace tflite {
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kString, ::tflite::TensorType_STRING},
       {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64},
+      {ArrayDataType::kComplex128, ::tflite::TensorType_COMPLEX128},
       {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16},
       {ArrayDataType::kFloat64, ::tflite::TensorType_FLOAT64}};
 
@@ -275,10 +276,10 @@ class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
     if (input1_array.has_shape() && input2_array.has_shape()) {
-      op_sig.options.broadcast.num_dims =
+      op_sig.options.addsub.num_dims =
           std::max(input1_array.shape().dimensions_count(),
                    input2_array.shape().dimensions_count());
-      op_sig.options.broadcast.need_broadcast =
+      op_sig.options.addsub.need_broadcast =
           (input1_array.shape() != input2_array.shape());
     }
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
@@ -2116,7 +2117,7 @@ bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
     return false;
   }
   // Check if we can find the `OpDef` for the TensorFlow op. If we can find
-  // it and it has been whitelisted, export the op as an Flex op. Otherwise,
+  // it and it has been allowlisted, export the op as an Flex op. Otherwise,
   // export it as a regular custom op.
   const tensorflow::OpDef* op_def = nullptr;
   if (!tensorflow::OpRegistry::Global()
@@ -2125,9 +2126,9 @@ bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
     return false;
   }
 
-  if (!::tflite::flex::IsWhitelistedFlexOp(tensorflow_op_name)) {
+  if (!::tflite::flex::IsAllowlistedFlexOp(tensorflow_op_name)) {
     LOG(WARNING) << "Op " << tensorflow_op_name
-                 << " is a valid TensorFlow op but has not been whitelisted for"
+                 << " is a valid TensorFlow op but has not been allowlisted for"
                     " the TensorFlow Lite flex op set.";
     return false;
   }

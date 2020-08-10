@@ -37,11 +37,12 @@ def experimental_convert_saved_model_to_mlir(saved_model_path, exported_names,
 
 
 def experimental_convert_saved_model_v1_to_mlir(saved_model_path, tags,
-                                                lift_variables,
+                                                lift_variables, upgrade_legacy,
                                                 show_debug_info):
   return ExperimentalConvertSavedModelV1ToMlir(
       str(saved_model_path).encode('utf-8'),
-      str(tags).encode('utf-8'), lift_variables, show_debug_info)
+      str(tags).encode('utf-8'), lift_variables, upgrade_legacy,
+      show_debug_info)
 
 
 def experimental_run_pass_pipeline(mlir_txt, pass_pipeline, show_debug_info):

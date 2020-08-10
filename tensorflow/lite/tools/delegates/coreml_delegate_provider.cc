@@ -38,7 +38,7 @@ class CoreMlDelegateProvider : public DelegateProvider {
   }
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -62,10 +62,11 @@ std::vector<Flag> CoreMlDelegateProvider::CreateFlags(
 #endif
 }
 
-void CoreMlDelegateProvider::LogParams(const ToolParams& params) const {
+void CoreMlDelegateProvider::LogParams(const ToolParams& params,
+                                       bool verbose) const {
 #if defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "Use Core ML : [" << params.Get<bool>("use_coreml")
-                   << "]";
+  LOG_TOOL_PARAM(params, bool, "use_coreml", "Use CoreML", verbose);
+  LOG_TOOL_PARAM(params, int, "coreml_version", "CoreML version", verbose);
 #endif
 }
 

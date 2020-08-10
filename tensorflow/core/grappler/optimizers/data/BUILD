@@ -28,6 +28,7 @@ cc_library(
         ":meta_optimizer",
         ":noop_elimination",
         ":parallel_batch",
+        ":reorder_data_discarding_ops",
         ":shuffle_and_repeat_fusion",
         ":slack",
     ],
@@ -51,8 +52,44 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/kernels/data:dataset_utils",
     ] + tf_protos_all(),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "disable_intra_op_parallelism",
+    srcs = ["disable_intra_op_parallelism.cc"],
+    hdrs = ["disable_intra_op_parallelism.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "disable_intra_op_parallelism_test",
+    srcs = ["disable_intra_op_parallelism_test.cc"],
+    deps = [
+        ":disable_intra_op_parallelism",
+        ":graph_test_utils",
+        ":graph_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
 )
 
 cc_library(
@@ -689,6 +726,44 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
     ],
+)
+
+cc_library(
+    name = "reorder_data_discarding_ops",
+    srcs = ["reorder_data_discarding_ops.cc"],
+    hdrs = [
+        "reorder_data_discarding_ops.h",
+    ],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "reorder_data_discarding_ops_test",
+    srcs = ["reorder_data_discarding_ops_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":reorder_data_discarding_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ] + tf_protos_all(),
 )
 
 cc_library(

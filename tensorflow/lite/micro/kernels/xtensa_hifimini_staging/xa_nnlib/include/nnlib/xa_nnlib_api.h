@@ -37,7 +37,7 @@ limitations under the License.
 #ifndef __XA_NNLIB_API_H__
 #define __XA_NNLIB_API_H__
 
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/include/nnlib/xa_nnlib_kernels_api.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/include/xa_type_def.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_staging/xa_nnlib/include/nnlib/xa_nnlib_kernels_api.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_staging/xa_nnlib/include/xa_type_def.h"
 
 #endif /* __XA_NNLIB_API_H__ */

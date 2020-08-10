@@ -479,7 +479,10 @@ glob_lit_tests(
         "no_pip",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
-    test_file_exts = ["hlo"],
+    test_file_exts = [
+        "hlo",
+        "mlir",
+    ],
 )
 
 # Bundle together all of the test utilities that are used by tests.
@@ -487,7 +490,17 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/xla/service/gpu/tests:hlo_to_llvm_ir",
+        ":hlo_to_llvm_ir",
+        ":xla-thunks-opt",
         "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+# Binary with only the thunks dialect registered, for testing purposes.
+tf_cc_binary(
+    name = "xla-thunks-opt",
+    deps = [
+        "//tensorflow/compiler/mlir:tf_mlir_opt_main",
+        "//tensorflow/compiler/xla/service/gpu:xla_thunks_dialect_registration",
     ],
 )

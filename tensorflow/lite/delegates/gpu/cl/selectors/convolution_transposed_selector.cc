@@ -105,22 +105,19 @@ absl::Status SelectConvolutionTransposed(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectConvolutionTransposedAdreno(attr, creation_context, op_def,
-                                               ptr);
-    case Vendor::POWERVR:
-    case Vendor::NVIDIA:
-    case Vendor::AMD:
-    case Vendor::INTEL:
-      return SelectConvolutionTransposedPowerVR(attr, creation_context, op_def,
-                                                ptr);
-    case Vendor::MALI:
-      return SelectConvolutionTransposedMali(attr, creation_context, op_def,
+  const auto& device_info = creation_context.device->info_;
+  if (device_info.IsAdreno()) {
+    return SelectConvolutionTransposedAdreno(attr, creation_context, op_def,
                                              ptr);
-    default:
-      return SelectConvolutionTransposedAdreno(attr, creation_context, op_def,
-                                               ptr);
+  } else if (device_info.IsPowerVR() || device_info.IsAMD() ||
+             device_info.IsNvidia() || device_info.IsIntel()) {
+    return SelectConvolutionTransposedPowerVR(attr, creation_context, op_def,
+                                              ptr);
+  } else if (device_info.IsMali()) {
+    return SelectConvolutionTransposedMali(attr, creation_context, op_def, ptr);
+  } else {
+    return SelectConvolutionTransposedAdreno(attr, creation_context, op_def,
+                                             ptr);
   }
 }
 

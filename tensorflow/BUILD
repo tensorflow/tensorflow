@@ -261,6 +261,36 @@ config_setting(
 )
 
 config_setting(
+    name = "armeabi",
+    values = {"cpu": "armeabi"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "armeabi-v7a",
+    values = {"cpu": "armeabi-v7a"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "arm64-v8a",
+    values = {"cpu": "arm64-v8a"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "arm_any",
+    match_any = [
+        ":arm",
+        ":armeabi",
+        ":armeabi-v7a",
+        ":arm64-v8a",
+        ":linux_aarch64",
+        ":linux_armhf",
+    ],
+)
+
+config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
@@ -467,6 +497,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag enables experimental MLIR bridge support.
+config_setting(
+    name = "enable_mlir_bridge",
+    values = {"define": "enable_mlir_bridge=true"},
+    visibility = ["//visibility:public"],
+)
+
 # This flag enables experimental TPU support
 config_setting(
     name = "with_tpu_support",
@@ -525,16 +562,14 @@ selects.config_setting_group(
 package_group(
     name = "internal",
     packages = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/...",
         "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
-        "//third_party/swift/tensorflow_apis/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
+        "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
+        "//third_party/swift/tensorflow_apis/...",
     ],
 )
 
@@ -840,6 +875,30 @@ genrule(
     name = "tensorflow_dll_import_lib",
     srcs = [":get_tensorflow_dll_import_lib"],
     outs = ["tensorflow.lib"],
+    cmd = select({
+        "//tensorflow:windows": "cp -f $< $@",
+        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# The interface library (tensorflow_framework.dll.if.lib) for linking tensorflow DLL
+# library (tensorflow_framework.dll) on Windows.
+# To learn more about import library (called interface library in Bazel):
+#     https://docs.microsoft.com/en-us/cpp/build/linking-an-executable-to-a-dll?view=vs-2017#linking-implicitly
+filegroup(
+    name = "get_tensorflow_framework_dll_import_lib",
+    srcs = ["//tensorflow:tensorflow_framework.dll"],
+    output_group = "interface_library",
+    visibility = ["//visibility:public"],
+)
+
+# Rename the import library for tensorflow_framework.dll from
+# tensorflow_framework.dll.if.lib to tensorflow_framework.lib
+genrule(
+    name = "tensorflow_framework_dll_import_lib",
+    srcs = [":get_tensorflow_framework_dll_import_lib"],
+    outs = ["tensorflow_framework.lib"],
     cmd = select({
         "//tensorflow:windows": "cp -f $< $@",
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms

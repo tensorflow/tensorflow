@@ -31,10 +31,9 @@ class Pooling : public GPUOperation {
  public:
   Pooling(const OperationDef& definition, const Pooling2DAttributes& attr);
   Pooling(const OperationDef& definition, const Pooling3DAttributes& attr);
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
 
-  absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   Pooling(Pooling&& kernel);
@@ -43,8 +42,13 @@ class Pooling : public GPUOperation {
   Pooling& operator=(const Pooling&) = delete;
 
  private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
+  std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
+                                          bool stride_correction);
+  std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
+                                      bool stride_correction,
+                                      bool output_indices);
+
+  void GenerateCode();
 
   int4 stride_;
   int4 padding_;
@@ -52,9 +56,6 @@ class Pooling : public GPUOperation {
 
   PoolingType type_;
   bool output_indices_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 Pooling CreatePooling(const OperationDef& definition,

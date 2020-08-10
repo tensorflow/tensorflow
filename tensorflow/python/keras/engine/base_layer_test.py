@@ -45,7 +45,7 @@ from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import rmsprop
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -376,9 +376,9 @@ class BaseLayerTest(keras_parameterized.TestCase):
       def call(self, inputs, training=None):
         if training is None:
           training = backend.learning_phase()
-        return tf_utils.smart_cond(training,
-                                   lambda: array_ops.ones_like(inputs),
-                                   lambda: array_ops.zeros_like(inputs))
+        return control_flow_util.smart_cond(
+            training, lambda: array_ops.ones_like(inputs),
+            lambda: array_ops.zeros_like(inputs))
 
     return TrainingLayer()
 
@@ -437,22 +437,39 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layer_names(self):
-    inputs = input_layer.Input(shape=[2])
-    add1 = inputs + inputs
-    add2 = layers.Add()([inputs, inputs])
-    add3 = inputs + inputs
-    add4 = layers.Add()([inputs, inputs])
-    model = training_lib.Model(inputs=[inputs],
-                               outputs=[add1, add2, add3, add4])
-    actual_names = [l.name for l in model.layers]
-    graph_names = [
-        'input_1', 'tf_op_layer_AddV2', 'add', 'tf_op_layer_AddV2_1', 'add_1'
-    ]
-    eager_names = [
-        'input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'
-    ]
-    for actual, eager, graph in zip(actual_names, graph_names, eager_names):
-      self.assertIn(actual, {eager, graph})
+    with testing_utils.use_keras_tensors_scope(False):
+      inputs = input_layer.Input(shape=[2])
+      add1 = inputs + inputs
+      add2 = layers.Add()([inputs, inputs])
+      add3 = inputs + inputs
+      add4 = layers.Add()([inputs, inputs])
+      model = training_lib.Model(
+          inputs=[inputs], outputs=[add1, add2, add3, add4])
+      actual_names = [l.name for l in model.layers]
+      graph_names = [
+          'input_1', 'tf_op_layer_AddV2', 'add', 'tf_op_layer_AddV2_1', 'add_1'
+      ]
+      eager_names = [
+          'input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'
+      ]
+      for actual, eager, graph in zip(actual_names, graph_names, eager_names):
+        self.assertIn(actual, {eager, graph})
+    if context.executing_eagerly():
+      backend.clear_session()
+      with testing_utils.use_keras_tensors_scope(True):
+        inputs = input_layer.Input(shape=[2])
+        add1 = inputs + inputs
+        add2 = layers.Add()([inputs, inputs])
+        add3 = inputs + inputs
+        add4 = layers.Add()([inputs, inputs])
+        model = training_lib.Model(
+            inputs=[inputs], outputs=[add1, add2, add3, add4])
+        actual_names = [l.name for l in model.layers]
+        expected_names = [
+            'input_1', 'tf.__operators__.add', 'add', 'tf.__operators__.add_1',
+            'add_1'
+        ]
+        self.assertAllEqual(actual_names, expected_names)
 
   def test_add_trainable_weight_on_frozen_layer(self):
 
@@ -871,6 +888,15 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
       for val in e.summary.value:
         tags.add(val.tag)
     self.assertEqual(set(['my_layer/mean']), tags)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_error_when_passing_non_tensor(self):
+    # layers that have an `input_spec` will raise an error when called on
+    # non-tensors. This covers all built-in layers.
+    layer = layers.Dense(3)
+    x = object()
+    with self.assertRaisesRegex(TypeError, r'should be tensors'):
+      layer(x)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))

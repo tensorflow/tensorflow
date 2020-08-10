@@ -182,7 +182,8 @@ class ScatterTest(test.TestCase):
           ref = variables.Variable(old)
           self.evaluate(ref.initializer)
           self.evaluate(tf_scatter(ref, indices, updates))
-          self.assertAllClose(self.evaluate(ref), new)
+          self.assertAllCloseAccordingToType(
+              self.evaluate(ref), new, half_rtol=5e-3, half_atol=5e-3)
 
   def _VariableRankTests(self,
                          tf_scatter,
@@ -191,6 +192,8 @@ class ScatterTest(test.TestCase):
     vtypes = [np.float32, np.float64]
     if tf_scatter != state_ops.scatter_div:
       vtypes.append(np.int32)
+      # float16 is numerically unstable for div
+      vtypes.append(np.float16)
 
     for vtype in vtypes:
       for itype in (np.int32, np.int64):

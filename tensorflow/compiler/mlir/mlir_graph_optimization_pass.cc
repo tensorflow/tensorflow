@@ -115,13 +115,15 @@ Status MlirFunctionOptimizationPass::Run(
       });
 
   if (!is_enabled) {
-    VLOG(1) << "None of the MLIR optimization passes are enabled "
-            << "(registered " << registry_->passes().size() << ")";
+    LOG_FIRST_N(INFO, 1)
+        << "None of the MLIR optimization passes are enabled "
+        << "(registered " << registry_->passes().size() << ")";
     return Status::OK();
   }
 
-  VLOG(1) << "Running MLIR Graph Optimization Passes "
-          << "(registered " << registry_->passes().size() << " passes)";
+  LOG_FIRST_N(INFO, 1) << "Running MLIR Graph Optimization Passes "
+                          << "(registered " << registry_->passes().size()
+                          << " passes)";
 
   GraphDebugInfo debug_info;
   RegisterDialects();
@@ -130,6 +132,12 @@ Status MlirFunctionOptimizationPass::Run(
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
   import_config.upgrade_legacy = true;
+  // Disable shape inference during import as some TensorFlow op fails during
+  // shape inference with dynamic shaped operands. This in turn causes the
+  // import to fail. Shape inference during import is going to be removed and
+  // the shape inference pass is run early in the pass pipeline, shape inference
+  // during import is not necessary.
+  import_config.enable_shape_inference = false;
   TF_ASSIGN_OR_RETURN(auto module_ref,
                       ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                          import_config, &context));
@@ -187,13 +195,15 @@ Status MlirV1CompatGraphOptimizationPass::Run(
       });
 
   if (!is_enabled) {
-    VLOG(1) << "None of the MLIR optimization passes are enabled "
-            << "(registered" << registry_->passes().size() << " passes)";
+    LOG_FIRST_N(INFO, 1)
+        << "None of the MLIR optimization passes are enabled "
+        << "(registered " << registry_->passes().size() << " passes)";
     return Status::OK();
   }
 
-  VLOG(1) << "Running MLIR Graph Optimization V1 Compat Passes "
-          << "(registered" << registry_->passes().size() << " passes)";
+  LOG_FIRST_N(INFO, 1) << "Running MLIR Graph Optimization V1 Compat Passes "
+                          << "(registered " << registry_->passes().size()
+                          << " passes)";
 
   GraphDebugInfo debug_info;
   RegisterDialects();

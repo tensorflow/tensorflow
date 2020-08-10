@@ -69,6 +69,7 @@ constexpr char kPaddingMapAttr[] = "padding_map";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
+constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
 
 constexpr char kBadStringArrayElementMsg[] =
     "bad '{0}' attribute at index {1}, not a string";
@@ -331,6 +332,10 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
   if (xla_device_assignment.hasValue())
     *metadata->mutable_device_assignment() =
         std::move(xla_device_assignment.getValue());
+  auto use_spmd_attr = op.getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
+  if (!use_spmd_attr)
+    return op.emitOpError(CreateMissingAttributeMsg(kUseXlaSpmdAttr));
+  metadata->set_use_spmd_for_xla_partitioning(use_spmd_attr.getValue());
 
   if (failed(SetMetadataProtoArgs(op, metadata))) return failure();
 
@@ -468,9 +473,8 @@ LogicalResult BuildExecuteOp(
   if (failed(result)) return failure();
 
   // TPUExecute has same output types as cluster_func.
-  *execute_op = builder->create<TF::TPUExecuteOp>(
-      cluster_func.getLoc(), output_types, inputs,
-      llvm::ArrayRef<NamedAttribute>{});
+  *execute_op = builder->create<TF::TPUExecuteOp>(cluster_func.getLoc(),
+                                                  output_types, inputs);
   return success();
 }
 
@@ -639,10 +643,7 @@ LogicalResult Rewrite(
   // Collect `num_replicas` and `num_cores_per_replica` attributes.
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
-      cluster_func.getParentOp()
-          ? llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
-                cluster_func.getParentOp())
-          : nullptr;
+      cluster_func.getParentOfType<tf_device::ReplicateOp>();
   if (replicate) num_replicas = replicate.n().getLimitedValue();
 
   auto num_cores_per_replica_attr = cluster_func.getAttrOfType<IntegerAttr>(
@@ -711,9 +712,9 @@ LogicalResult Rewrite(
   // structured lowering.
   if (auto parallel_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
           cluster_func.getParentOp())) {
-    parallel_op.walk([&](TF::_TPUCompileMlirOp parallel_compile_op) {
-      parallel_compile_op.replaceAllUsesWith(compile_op);
-      parallel_compile_op.erase();
+    parallel_op.walk([&](TF::_TPUCompileMlirPlaceholderProgramKeyOp key_op) {
+      key_op.replaceAllUsesWith(compile_op->getResult(1));
+      key_op.erase();
     });
   }
 

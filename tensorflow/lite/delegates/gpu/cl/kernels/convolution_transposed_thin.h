@@ -37,10 +37,7 @@ namespace cl {
 class ConvolutionTransposedThin : public GPUOperation {
  public:
   ConvolutionTransposedThin() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
-  absl::Status Compile(const CreationContext& creation_context) override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConvolutionTransposedThin(ConvolutionTransposedThin&& operation);
@@ -55,7 +52,8 @@ class ConvolutionTransposedThin : public GPUOperation {
       const ConvolutionTransposedAttributes& attr,
       ConvolutionTransposedThin* result);
   ConvolutionTransposedThin(const OperationDef& definition,
-                            const ConvolutionTransposedAttributes& attr);
+                            const ConvolutionTransposedAttributes& attr,
+                            const DeviceInfo& device_info);
   template <DataType T>
   absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
                           const tflite::gpu::Tensor<Linear, T>& biases,
@@ -64,25 +62,18 @@ class ConvolutionTransposedThin : public GPUOperation {
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
-
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
-  int2 kernel_size_;
-  int src_channels_;
-  int dst_channels_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
+  std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
+                                                int src_depth, int dst_channels,
+                                                const int2& kernel_size);
 };
 
 template <DataType T>
 absl::Status ConvolutionTransposedThin::UploadData(
     const tflite::gpu::Tensor<OHWI, T>& weights,
     const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
-  const int src_depth = DivideRoundUp(src_channels_, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int flt4_count =
-      kernel_size_.x * kernel_size_.y * src_depth * dst_channels_;
+      weights.shape.w * weights.shape.h * src_depth * weights.shape.o;
 
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
 
@@ -126,20 +117,20 @@ absl::Status ConvolutionTransposedThin::UploadData(
 template <DataType S, typename T>
 void ConvolutionTransposedThin::RearrangeWeightsData(
     const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int src_depth = DivideRoundUp(src_channels_, 4);
-  const int kernel_x = kernel_size_.x;
-  const int kernel_y = kernel_size_.y;
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int kernel_x = weights.shape.w;
+  const int kernel_y = weights.shape.h;
 
   int counter = 0;
   for (int s = 0; s < src_depth; ++s) {
     for (int y = 0; y < kernel_y; ++y) {
       for (int x = 0; x < kernel_x; ++x) {
-        std::vector<T> filters(dst_channels_);
-        for (int j = 0; j < dst_channels_; ++j) {
+        std::vector<T> filters(weights.shape.o);
+        for (int j = 0; j < weights.shape.o; ++j) {
           for (int i = 0; i < 4; ++i) {
             const int s_ch = s * 4 + i;
             const int d_ch = j;
-            if (s_ch < src_channels_ && d_ch < dst_channels_) {
+            if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
               const int f_index = weights.shape.LinearIndex({d_ch, y, x, s_ch});
               filters[j][i] = weights.data[f_index];
             } else {
@@ -147,7 +138,7 @@ void ConvolutionTransposedThin::RearrangeWeightsData(
             }
           }
         }
-        for (int j = 0; j < dst_channels_; ++j) {
+        for (int j = 0; j < weights.shape.o; ++j) {
           dst[counter++] = filters[j];
         }
       }

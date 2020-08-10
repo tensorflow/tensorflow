@@ -216,7 +216,11 @@ TEST_F(QuantizeWeightsTest, HybridConv) {
         EXPECT_EQ(quant_tensor->type(), TensorType_INT8)
             << quant_tensor->name()->str();
         auto shape = GetAsVector(quant_tensor->shape());
-        EXPECT_EQ(quant_tensor->quantization()->scale()->size(), shape[0]);
+        if (kUseUpdatedHybridSchemeDefault) {
+          EXPECT_EQ(quant_tensor->quantization()->scale()->size(), shape[0]);
+        } else {
+          EXPECT_EQ(quant_tensor->quantization()->scale()->size(), 1);
+        }
       } else {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
       }
@@ -531,6 +535,58 @@ TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationHybrid) {
     }
   }
   EXPECT_EQ(num_custom_ops_found, 1);
+}
+
+TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
+  LoadBasicModel();
+  flatbuffers::FlatBufferBuilder builder;
+  const CustomOpMap custom_op_map;
+  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map, false);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  // Nothing should change.
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+       subgraph_idx++) {
+    const auto quantized_graph = output_model->subgraphs()->Get(subgraph_idx);
+    const auto float_graph = model_->subgraphs()->Get(subgraph_idx);
+    ASSERT_EQ(quantized_graph->tensors()->size(),
+              float_graph->tensors()->size());
+    // Make sure the graph only has one Conv operation.
+    ASSERT_EQ(quantized_graph->operators()->size(), 1);
+    const auto op = quantized_graph->operators()->Get(0);
+    const uint32_t op_code_idx = op->opcode_index();
+    ASSERT_EQ(output_model->operator_codes()->Get(op_code_idx)->builtin_code(),
+              BuiltinOperator_CONV_2D);
+    for (size_t i = 0; i < quantized_graph->tensors()->size(); i++) {
+      const auto quant_tensor = quantized_graph->tensors()->Get(i);
+      const auto float_tensor = float_graph->tensors()->Get(i);
+      EXPECT_EQ(quant_tensor->buffer(), float_tensor->buffer());
+      EXPECT_EQ(quant_tensor->is_variable(), float_tensor->is_variable());
+      EXPECT_EQ(GetAsVector(quant_tensor->shape()),
+                GetAsVector(float_tensor->shape()));
+      EXPECT_EQ(quant_tensor->name()->str(), float_tensor->name()->str());
+      // If the tensor is a weight, it should have type INT8, otherwise it
+      // should stay with type FLOAT32.
+      // If the tensor is a bias, it should have type FLOAT32.
+      if (quant_tensor->name()->str() == "conv_bias") {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (IsModelInputOrOutput(output_model, i)) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (quant_tensor->buffer() != 0) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_INT8)
+            << quant_tensor->name()->str();
+        auto shape = GetAsVector(quant_tensor->shape());
+        EXPECT_EQ(quant_tensor->quantization()->scale()->size(), 1);
+      } else {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      }
+    }
+  }
 }
 
 }  // namespace

@@ -368,6 +368,7 @@ def tf_proto_library_cc(
         j2objc_api_version = 1,
         cc_api_version = 2,
         js_codegen = "jspb",
+        create_service = False,
         make_default_target_header_only = False):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
@@ -376,6 +377,7 @@ def tf_proto_library_cc(
         testonly = testonly,
         visibility = visibility,
     )
+    _ignore = create_service
 
     use_grpc_plugin = None
     if cc_grpc_version:
@@ -500,6 +502,7 @@ def tf_proto_library(
         use_grpc_namespace = False,
         j2objc_api_version = 1,
         js_codegen = "jspb",
+        create_service = False,
         make_default_target_header_only = False,
         exports = []):
     """Make a proto library, possibly depending on other proto libraries."""
@@ -507,7 +510,7 @@ def tf_proto_library(
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (js_codegen, exports)
+    _ignore = (js_codegen, exports, create_service)
 
     native.proto_library(
         name = name,
@@ -593,6 +596,16 @@ def tf_protos_profiler_impl():
         clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl"),
         clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
     ]
+
+def tf_protos_profiler_service():
+    return [
+        clean_dep("//tensorflow/core/profiler:profiler_analysis_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_service_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_service_monitor_result_proto_cc_impl"),
+    ]
+
+def tf_profiler_client_deps():
+    return [clean_dep("//tensorflow/core/profiler/rpc/client:profiler_client_headers")]
 
 def tf_protos_grappler_impl():
     return [clean_dep("//tensorflow/core/grappler/costs:op_performance_data_cc_impl")]
@@ -779,3 +792,9 @@ def if_llvm_aarch64_available(then, otherwise = []):
     # TODO(b/...): The TF XLA build fails when adding a dependency on
     # @llvm/llvm-project/llvm:aarch64_target.
     return otherwise
+
+def if_llvm_system_z_available(then, otherwise = []):
+    return select({
+        "//tensorflow:linux_s390x": then,
+        "//conditions:default": otherwise,
+    })

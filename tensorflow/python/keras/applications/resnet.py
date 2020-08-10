@@ -538,13 +538,16 @@ decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
 
-  Reference paper:
-  - [Deep Residual Learning for Image Recognition]
-  (https://arxiv.org/abs/1512.03385) (CVPR 2015)
+  Reference:
+  - [Deep Residual Learning for Image Recognition](
+      https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+  
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.resnet.preprocess_input` for an example.
 
   Arguments:
     include_top: whether to include the fully-connected

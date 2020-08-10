@@ -825,7 +825,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
         return middle_fn(x, v)
 
       x = constant_op.constant(5.0)
-      self.assertAllEqual(outer_fn(x).eval(), 5.0 * (5.0 + 3.0))
+      self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
 
       grad, = gradients_impl.gradients(outer_fn(x), x)
 

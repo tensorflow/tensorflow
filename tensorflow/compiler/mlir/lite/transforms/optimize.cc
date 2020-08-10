@@ -160,6 +160,31 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
   return false;
 }
 
+// Retuns true if we can eliminate the GatherNdOp or ScatterNdOp. When the value
+// of `indices` are from 0 to n-1, the output tensor are identical to the
+// `params`.
+bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
+                                              DenseIntElementsAttr indices) {
+  auto params_type = params.getType().dyn_cast<RankedTensorType>();
+  auto indices_type = indices.getType().dyn_cast<RankedTensorType>();
+  // Checks the shape of `params` is [n, ...], shape of `indices` is [n, 1]. 2D
+  // `indices` means it gets the first row of `params`. As long as indices
+  // iterate the first row of `params`, the output is identical to input.
+  if (!params_type || !indices_type || indices_type.getRank() != 2 ||
+      indices_type.getDimSize(0) != params_type.getDimSize(0) ||
+      indices_type.getDimSize(1) != 1)
+    return false;
+
+  // Checks the value in `indices` is from 0 to n-1.
+  int cur_value = 0;
+  for (const auto &v : indices.getValues<APInt>()) {
+    if (v.getSExtValue() != cur_value) return false;
+    ++cur_value;
+  }
+
+  return true;
+}
+
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
 // Which dimension depends on 'is_depthwise' is true or false.
 ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
@@ -197,9 +222,10 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 DenseElementsAttr GetShape(Value output_val) {
   auto output_type = output_val.getType().cast<RankedTensorType>();
   auto shape_vector = output_type.getShape();
-  std::vector<int32_t> shape(shape_vector.size());
-  for (int i = 0; i < shape_vector.size(); ++i) {
-    shape[i] = shape_vector[i];
+  std::vector<int32_t> shape;
+  shape.reserve(shape_vector.size());
+  for (auto shape_object : shape_vector) {
+    shape.push_back(shape_object);
   }
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
@@ -560,7 +586,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       return failure();
     ShapedType filter_type = filter_cst.getType();
 
-    if (llvm::isa<AddOp>(binary_op) || llvm::isa<SubOp>(binary_op)) {
+    if (llvm::isa<AddOp, SubOp>(binary_op)) {
       auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
       if (padding && padding.getValue() != "VALID") return failure();
 
@@ -606,7 +632,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
           rewriter.create<ConstOp>(fc_op.getLoc(), new_bias_type, new_bias);
       fc_op.setOperand(0, binary_op->getOperand(0));
       fc_op.setOperand(2, new_bias_op);
-    } else if (llvm::isa<MulOp>(binary_op) || llvm::isa<DivOp>(binary_op)) {
+    } else if (llvm::isa<MulOp, DivOp>(binary_op)) {
       // The fusion of mul/div is actually applying the following
       // transformation:
       // w * (x ' c) + b => (w ' c) x + b
@@ -684,7 +710,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
     SmallVector<int, 8> old_major_index_ordering;
     SmallVector<int, 8> new_major_index_ordering;
-    for (int i = 0; i < input_shape.size(); i++) {
+    for (int i = 0, end = input_shape.size(); i < end; i++) {
       if (input_shape[i] != 1) {
         old_major_index_ordering.push_back(i);
       }

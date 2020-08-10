@@ -275,13 +275,19 @@ Device* SelectBestMatchingDevice(const DeviceNameUtils::ParsedName& pattern,
 }  // namespace
 
 Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
-                                  const PrioritizedDeviceTypeVector& supported,
-                                  const DataType dtype, Device** out) const {
+                                  const NodeDef& ndef, Device** out) const {
   DCHECK(out != nullptr);
 
-  // We always place string tensors on the CPU device if we're allowed to.
-  if (dtype == DT_STRING && AllowSoftPlacement()) {
-    preferred = HostCPU()->parsed_name();
+  PrioritizedDeviceTypeVector supported_devs;
+  auto device_type_list = prioritized_device_type_list();
+  TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
+      *device_type_list, ndef, &supported_devs, &HostCPU()->parsed_name()));
+  if (supported_devs.empty()) {
+    return errors::NotFound("Could not find device for node: ",
+                            errors::FormatNodeNameForError(ndef.name()), " = ",
+                            ndef.op(), "[", SummarizeAttrs(ndef), "]",
+                            "\nAll kernels registered for op ", ndef.op(),
+                            ":\n", KernelsRegisteredForOp(ndef.op()));
   }
 
   // Select the first matching registered device from the supported device
@@ -290,7 +296,7 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
   const auto pflr_device_set = pflr()->device_set();
   const PrioritizedDeviceVector& existing =
       pflr_device_set->prioritized_devices();
-  *out = SelectBestMatchingDevice(preferred, existing, supported);
+  *out = SelectBestMatchingDevice(preferred, existing, supported_devs);
   if (*out != nullptr) {
     return Status::OK();
   }
@@ -302,7 +308,7 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
     soft_device_name.has_id = false;
     // TODO(b/148213746): Soft placement logic picks up another task if the
     // requested does not exist.
-    *out = SelectBestMatchingDevice(soft_device_name, existing, supported);
+    *out = SelectBestMatchingDevice(soft_device_name, existing, supported_devs);
     if (*out != nullptr) {
       return Status::OK();
     }
@@ -313,7 +319,7 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
         "Could not satisfy device specification '", preferred,
         "'. enable_soft_placement=", AllowSoftPlacement(),
         ". Supported device types [",
-        absl::StrJoin(DeviceTypesToString(supported), ", "),
+        absl::StrJoin(DeviceTypesToString(supported_devs), ", "),
         "]. All available devices [",
         absl::StrJoin(DevicesToString(existing), ", "), "].");
   }
@@ -322,7 +328,7 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
       absl::StrJoin(DevicesToString(existing), ", "),
       "]. enable_soft_placement=", AllowSoftPlacement(),
       ". Supported devices types [",
-      absl::StrJoin(DeviceTypesToString(supported), ", "), "].");
+      absl::StrJoin(DeviceTypesToString(supported_devs), ", "), "].");
 }
 
 void EagerContext::ResetClusterFLR(
@@ -669,8 +675,8 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
           if (!status.ok()) {
             LOG(ERROR) << "Failed to register function remotely due to "
                        << status.error_message()
-                       << "\nThis shouldn't happen, please file a bug to "
-                          "tensorflow team.";
+                       << "\nThis could happen if the remote target has been "
+                          "disconnected from the client.";
           }
           delete response;
         });
@@ -713,8 +719,8 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
             if (!s.ok()) {
               LOG(ERROR) << "Failed to register function remotely due to "
                          << s.error_message()
-                         << "\nThis shouldn't happen, please file a bug to "
-                            "tensorflow team.";
+                         << "\nThis could happen if the remote target has been "
+                            "disconnected from the client.";
             }
           });
     }
@@ -901,14 +907,14 @@ Status EagerContext::FindCompositeDeviceFromName(
   return errors::NotFound("Unknown composite device: ", device_name);
 }
 
-Status EagerContext::FindCustomDeviceFromName(const string& device_name,
-                                              CustomDevice** dev) const {
+bool EagerContext::FindCustomDeviceFromName(const string& device_name,
+                                            CustomDevice** dev) const {
   auto dev_it = custom_devices_.find(device_name);
   if (dev_it == custom_devices_.end()) {
-    return errors::InvalidArgument(device_name, " unknown device.");
+    return false;
   }
   *dev = dev_it->second.get();
-  return Status::OK();
+  return true;
 }
 
 Status EagerContext::RegisterCustomDevice(

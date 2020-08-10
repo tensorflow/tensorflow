@@ -41,8 +41,10 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -942,9 +944,137 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
     reduced = reduce_fn(v)
     self.assertAllEqual(self.evaluate(reduced), [[3.0, 3.0], [3.0, 3.0]])
 
+  @combinations.generate(
+      combinations.combine(
+          required_gpus=[0, 1],
+          mode="eager",
+          communication=[CollectiveCommunication.RING]))
+  def testTimeoutReduceDense(self, communication, required_gpus):
+    hints = collective_util.Hints(timeout_seconds=1)
+    collective, devices, _ = self._get_test_objects(
+        "worker",
+        0,
+        num_gpus=required_gpus,
+        communication=communication,
+        use_strategy_object=False)
+    remote.connect_to_cluster(
+        multi_worker_util.normalize_cluster_spec(self._cluster_spec),
+        protocol="grpc")
+    devices = [device_util.canonicalize(d) for d in devices]
+    v = _make_per_replica([1.0], devices)
+
+    @def_function.function
+    def reduce_dense():
+      collective.reduce(reduce_util.ReduceOp.SUM, v, v, hints)
+
+    # The collective should time out because we only launch it on worker-0,
+    # while there're three workers in total.
+    with self.assertRaises(errors.DeadlineExceededError):
+      reduce_dense()
+
+    # Reset since collective failures poison the context.
+    context._reset_context()  # pylint: disable=protected-access
+
+  @combinations.generate(
+      combinations.combine(
+          required_gpus=[0, 1],
+          mode="eager",
+          communication=[CollectiveCommunication.RING]))
+  def testTimeoutBatchReduceDense(self, communication, required_gpus):
+    hints = collective_util.Hints(timeout_seconds=1)
+    collective, devices, _ = self._get_test_objects(
+        "worker",
+        0,
+        num_gpus=required_gpus,
+        communication=communication,
+        use_strategy_object=False)
+    remote.connect_to_cluster(
+        multi_worker_util.normalize_cluster_spec(self._cluster_spec),
+        protocol="grpc")
+    devices = [device_util.canonicalize(d) for d in devices]
+    v = _make_per_replica([1.0], devices)
+
+    @def_function.function
+    def batch_reduce_dense():
+      collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v, v), (v, v)], hints)
+
+    # The collective should time out because we only launch it on worker-0,
+    # while there're three workers in total.
+    with self.assertRaises(errors.DeadlineExceededError):
+      batch_reduce_dense()
+
+    # Reset since collective failures poison the context.
+    context._reset_context()  # pylint: disable=protected-access
+
+  @combinations.generate(
+      combinations.combine(
+          required_gpus=[0, 1],
+          mode="eager",
+          communication=[CollectiveCommunication.RING]))
+  def testTimeoutReduceSparse(self, communication, required_gpus):
+    hints = collective_util.Hints(timeout_seconds=1)
+    collective, devices, _ = self._get_test_objects(
+        "worker",
+        0,
+        num_gpus=required_gpus,
+        communication=communication,
+        use_strategy_object=False)
+    remote.connect_to_cluster(
+        multi_worker_util.normalize_cluster_spec(self._cluster_spec),
+        protocol="grpc")
+    devices = [device_util.canonicalize(d) for d in devices]
+    v = value_lib.PerReplica([
+        _make_indexed_slices([[4., 6.], [5., 6.]], [1, 3], [5, 2], devices[0])
+    ])
+
+    @def_function.function
+    def reduce_sparse():
+      collective.reduce(reduce_util.ReduceOp.SUM, v, v, hints)
+
+    # The collective should time out because we only launch it on worker-0,
+    # while there're three workers in total.
+    with self.assertRaises(errors.DeadlineExceededError):
+      reduce_sparse()
+
+    # Reset since collective failures poison the context.
+    context._reset_context()  # pylint: disable=protected-access
+
+  @combinations.generate(
+      combinations.combine(
+          required_gpus=[0, 1],
+          mode="eager",
+          communication=[CollectiveCommunication.RING]))
+  def testTimeoutBatchReduceSparse(self, communication, required_gpus):
+    hints = collective_util.Hints(timeout_seconds=1)
+    collective, devices, _ = self._get_test_objects(
+        "worker",
+        0,
+        num_gpus=required_gpus,
+        communication=communication,
+        use_strategy_object=False)
+    remote.connect_to_cluster(
+        multi_worker_util.normalize_cluster_spec(self._cluster_spec),
+        protocol="grpc")
+    devices = [device_util.canonicalize(d) for d in devices]
+    v = value_lib.PerReplica([
+        _make_indexed_slices([[4., 6.], [5., 6.]], [1, 3], [5, 2], devices[0])
+    ])
+
+    @def_function.function
+    def batch_reduce_sparse():
+      collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v, v), (v, v)], hints)
+
+    # The collective should time out because we only launch it on worker-0,
+    # while there're three workers in total.
+    with self.assertRaises(errors.DeadlineExceededError):
+      batch_reduce_sparse()
+
+    # Reset since collective failures poison the context.
+    context._reset_context()  # pylint: disable=protected-access
+
 
 if __name__ == "__main__":
   # Set default inter op thread pool size to one to ensure we don't exhaust the
   # thread pool with the additional executors to run collectives in eager.
   os.environ["TF_NUM_INTEROP_THREADS"] = "1"
-  test.main()
+  combinations.main()

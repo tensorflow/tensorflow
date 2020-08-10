@@ -45,6 +45,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
 
 
 def undecorated_function(x):
@@ -585,6 +587,22 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec([None], dtypes.int32))
 
     self.assertIs(func_a, func_b)
+
+  def testCacheWithinSaveContext(self):
+
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    func_a = func.get_concrete_function(constant_op.constant(2.))
+    func_b = func.get_concrete_function(constant_op.constant(2.))
+
+    self.assertIs(func_a, func_b)
+
+    with save_context.save_context(save_options.SaveOptions()):
+      func_c = func.get_concrete_function(constant_op.constant(2.))
+
+    self.assertIs(func_a, func_c)
 
   @test_util.disable_tfrt('Nested function is not supported')
   def testInitializationInNestedCall(self):

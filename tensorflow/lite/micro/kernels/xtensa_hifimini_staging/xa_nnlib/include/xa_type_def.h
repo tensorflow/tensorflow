@@ -37,6 +37,8 @@ limitations under the License.
 #ifndef __XA_TYPE_DEF_H__
 #define __XA_TYPE_DEF_H__
 
+#include <stdint.h>
+
 /****************************************************************************/
 /*     types               type define    prefix        examples      bytes */
 /************************  ***********    ******    ****************  ***** */
@@ -65,10 +67,10 @@ typedef int64_t* pWORD40;   /* pm      pWORD40  pm_count   5   */
 typedef uint64_t UWORD40;   /* um      UWORD40  um_count   5   */
 typedef uint64_t* pUWORD40; /* pum     pUWORD40 pum_count  5   */
 
-typedef int64_t WORD64;      /* h       WORD64   h_count    8   */
-typedef int64_t* pWORD64;    /* ph      pWORD64  ph_count   8   */
-typedef uint64_t UWORD64;    /* uh      UWORD64  uh_count   8   */
-typedef uint64_tg* pUWORD64; /* puh     pUWORD64 puh_count  8   */
+typedef int64_t WORD64;     /* h       WORD64   h_count    8   */
+typedef int64_t* pWORD64;   /* ph      pWORD64  ph_count   8   */
+typedef uint64_t UWORD64;   /* uh      UWORD64  uh_count   8   */
+typedef uint64_t* pUWORD64; /* puh     pUWORD64 puh_count  8   */
 
 typedef float FLOAT32;    /* f       FLOAT32  f_count    4   */
 typedef float* pFLOAT32;  /* pf      pFLOAT32 pf_count   4   */

@@ -19,6 +19,7 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
+#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -35,11 +36,10 @@ namespace data {
 class GrpcWorkerImpl : public WorkerService::Service {
  public:
   explicit GrpcWorkerImpl(grpc::ServerBuilder* server_builder,
-                          const std::string& master_address,
-                          const std::string& protocol);
+                          const experimental::WorkerConfig& config);
   ~GrpcWorkerImpl() override {}
 
-  void Start(const std::string& worker_address);
+  Status Start(const std::string& worker_address);
 
 #define HANDLER(method)                               \
   grpc::Status method(grpc::ServerContext* context,   \

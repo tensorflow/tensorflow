@@ -46,6 +46,10 @@ class MemoryCache {
   // Returns the size of the cache.
   size_t size();
 
+  // Returns a reference to the cache's data. The returned reference will be
+  // invalidated by any call to Reset().
+  const std::vector<std::vector<Tensor>>& data();
+
  private:
   mutex mu_;
   // Determines whether all elements of the dataset have been cached.

@@ -246,7 +246,7 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           self.diagonals, linalg.adjoint(self.diagonals),
           message='Matrix was not equal to its adjoint.')]
     elif self.diagonals_format == _COMPACT:
-      diagonals = ops.convert_to_tensor(self.diagonals)
+      diagonals = ops.convert_to_tensor_v2_with_dispatch(self.diagonals)
       asserts += [linear_operator_util.assert_zero_imag_part(
           diagonals[..., 1, :], message=diag_message)]
       # Roll the subdiagonal so the shifted argument is at the end.
@@ -353,7 +353,9 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           align='LEFT_RIGHT',
           padding_value=0.)
 
-    diagonals = [ops.convert_to_tensor(d) for d in self.diagonals]
+    diagonals = [
+        ops.convert_to_tensor_v2_with_dispatch(d) for d in self.diagonals
+    ]
     diagonals = array_ops.stack(diagonals, axis=-2)
 
     return gen_array_ops.matrix_diag_v3(

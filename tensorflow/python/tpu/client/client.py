@@ -46,7 +46,7 @@ _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
 _ENDPOINTS_SEPARATOR = ','
 _DEFAULT_ENV_VARIABLE = 'TPU_NAME'
 _DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
-_GCE_METADATA_ENDPOINT = 'http://metadata.google.internal'
+_GCE_METADATA_URL_ENV_VARIABLE = 'GCE_METADATA_IP'
 _DEFAULT_ENDPOINT_PORT = '8470'
 _OOM_EVENT_COOL_TIME_SEC = 90
 _VERSION_SWITCHER_ENDPOINT = 'http://{}:8475/requestversion'
@@ -68,9 +68,14 @@ def _environment_discovery_url():
   return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
 
 
+def _gce_metadata_endpoint():
+  return 'http://' + os.environ.get(_GCE_METADATA_URL_ENV_VARIABLE,
+                                    'metadata.google.internal')
+
+
 def _request_compute_metadata(path):
   req = request.Request(
-      '%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
+      '%s/computeMetadata/v1/%s' % (_gce_metadata_endpoint(), path),
       headers={'Metadata-Flavor': 'Google'})
   resp = request.urlopen(req)
   return _as_text(resp.read())

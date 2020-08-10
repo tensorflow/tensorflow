@@ -698,18 +698,18 @@ Defined Functions:
     with captured_output() as (out, _):
       saved_model_cli.scan(args)
     output = out.getvalue().strip()
-    self.assertTrue('does not contain blacklisted ops' in output)
+    self.assertTrue('does not contain denylisted ops' in output)
 
-  def testScanCommandFoundBlacklistedOp(self):
+  def testScanCommandFoundDenylistedOp(self):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     args = self.parser.parse_args(
         ['scan', '--dir', base_path, '--tag_set', 'serve'])
-    op_blacklist = saved_model_cli._OP_BLACKLIST
-    saved_model_cli._OP_BLACKLIST = set(['VariableV2'])
+    op_denylist = saved_model_cli._OP_DENYLIST
+    saved_model_cli._OP_DENYLIST = set(['VariableV2'])
     with captured_output() as (out, _):
       saved_model_cli.scan(args)
-    saved_model_cli._OP_BLACKLIST = op_blacklist
+    saved_model_cli._OP_DENYLIST = op_denylist
     output = out.getvalue().strip()
     self.assertTrue('\'VariableV2\'' in output)
 

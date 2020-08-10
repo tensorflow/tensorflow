@@ -57,7 +57,7 @@ def get_kwargs_for_wrapping(
     kwargs["python_version"] = kwargs.get("python_version", "PY3")
     kwargs["srcs"] = [wrapper_src] + kwargs["srcs"]
     kwargs["deps"] = depset(
-        ["//tensorflow/python:client_testlib"],
+        ["//tensorflow/python/tpu:tpu_test_deps"],
         transitive = [deps],
     )
     kwargs["main"] = wrapper_src

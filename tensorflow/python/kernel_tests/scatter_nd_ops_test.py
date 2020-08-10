@@ -20,18 +20,18 @@ from __future__ import print_function
 
 import functools
 
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -115,7 +115,7 @@ class StatefulScatterNdTest(test.TestCase):
     np.random.seed(8)
     ref_shapes = [(3, 6), (3, 6), (3, 6, 9), (3, 6, 9), (3, 6, 9), (3, 6, 9)]
     indices_shapes = [(2,), (2, 2), (2,), (2, 2), (2, 3), (2, 3, 3)]
-    with self.cached_session(use_gpu=True):
+    with test_util.device(use_gpu=True):
       for ref_shape, indices_shape in zip(ref_shapes, indices_shapes):
         num_updates = indices_shape[0]
         ixdim = indices_shape[-1]
@@ -150,8 +150,8 @@ class StatefulScatterNdTest(test.TestCase):
         np_scatter(new, indices, updates)
         # Scatter via tensorflow
         ref_var = variables.VariableV1(ref)
-        ref_var.initializer.run()
-        tf_scatter(ref_var, indices, updates).eval()
+        self.evaluate(ref_var.initializer)
+        self.evaluate(tf_scatter(ref_var, indices, updates))
 
         # Compare
         self.assertAllClose(new, self.evaluate(ref_var))
@@ -187,7 +187,6 @@ class StatefulScatterNdTest(test.TestCase):
     self.assertAllEqual(self.evaluate(update),
                         [b"qq", b"cc", b"ee", b"dd", b"aa", b"", b"", b"bb"])
 
-  @test_util.run_deprecated_v1
   def testSimpleResource(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
     updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
@@ -195,10 +194,9 @@ class StatefulScatterNdTest(test.TestCase):
         [0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.float32)
     expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
-    init = variables.global_variables_initializer()
 
-    with self.session(use_gpu=True) as sess:
-      self.evaluate(init)
+    with test_util.device(use_gpu=True):
+      self.evaluate(ref.initializer)
       self.evaluate(scatter)
       self.assertAllClose(ref, expected)
 
@@ -230,15 +228,12 @@ class StatefulScatterNdTest(test.TestCase):
       result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
 
-  @test_util.run_deprecated_v1
   def testVariableRankUpdate(self):
     self._VariableRankTests(_NumpyUpdate, state_ops.scatter_nd_update)
 
-  @test_util.run_deprecated_v1
   def testVariableRankAdd(self):
     self._VariableRankTests(_NumpyAdd, state_ops.scatter_nd_add)
 
-  @test_util.run_deprecated_v1
   def testVariableRankSub(self):
     self._VariableRankTests(_NumpySub, state_ops.scatter_nd_sub)
 
@@ -256,13 +251,10 @@ class StatefulScatterNdTest(test.TestCase):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
 
-  @test_util.run_v1_only("b/120545219")
   def testScatterRepeatIndices(self):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
     self._ScatterRepeatIndicesTest(_NumpySub, state_ops.scatter_nd_sub)
-    self._ScatterRepeatIndicesTest(_NumpyMin, state_ops.scatter_nd_min)
-    self._ScatterRepeatIndicesTest(_NumpyMax, state_ops.scatter_nd_max)
     # TODO(ebrevdo): Re-enable when we need ScatterNdMul and ScatterNdDiv.
     # self._ScatterRepeatIndicesTest(_NumpyMul, state_ops.scatter_nd_mul)
     # self._ScatterRepeatIndicesTest(_NumpyDiv, state_ops.scatter_nd_div)
@@ -276,38 +268,36 @@ class StatefulScatterNdTest(test.TestCase):
   #     update1 = tf.compat.v1.scatter_nd_update(
   #         var, tf.constant(
   #             [[0]], dtype=tf.int64), [False])
-  #     var.initializer.run()
+  #     self.evaluate(var.initializer)
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
-  @test_util.run_v1_only("b/120545219")
   def testScatterOutOfRangeCpu(self):
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
     #  tf.scatter_nd_mul, tf.scatter_nd_div,
     for op in (state_ops.scatter_nd_add, state_ops.scatter_nd_sub,
-               state_ops.scatter_nd_min, state_ops.scatter_nd_max,
                state_ops.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
-      with self.cached_session(use_gpu=False):
+      with test_util.device(use_gpu=False):
         ref = variables.VariableV1(params)
-        ref.initializer.run()
+        self.evaluate(ref.initializer)
 
         # Indices all in range, no problem.
         indices = np.array([[2], [0], [5]])
-        op(ref, indices, updates).eval()
+        self.evaluate(op(ref, indices, updates))
 
         # Test some out of range errors.
         indices = np.array([[-1], [0], [5]])
         with self.assertRaisesOpError(
             r"indices\[0\] = \[-1\] does not index into shape \[6\]"):
-          op(ref, indices, updates).eval()
+          self.evaluate(op(ref, indices, updates))
 
         indices = np.array([[2], [0], [6]])
         with self.assertRaisesOpError(
             r"indices\[2\] = \[6\] does not index into shape \[6\]"):
-          op(ref, indices, updates).eval()
+          self.evaluate(op(ref, indices, updates))
 
   def testRank3ValidShape(self):
     indices = array_ops.zeros([2, 2, 2], dtypes.int32)
@@ -318,18 +308,16 @@ class StatefulScatterNdTest(test.TestCase):
         state_ops.scatter_nd_update(ref, indices,
                                     updates).get_shape().as_list(), shape)
 
-  @test_util.run_v1_only("b/120545219")
   @test_util.disable_xla("b/123337890")  # Error messages differ
   def testResVarInvalidOutputShape(self):
     res = variables.Variable(
         initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
         dtype=dtypes.float32)
     with self.cached_session():
-      res.initializer.run()
+      self.evaluate(res.initializer)
       with self.assertRaisesOpError("Output must be at least 1-D"):
         state_ops.scatter_nd_update(res, [[0]], [0.22]).eval()
 
-  @test_util.run_deprecated_v1
   def testExtraIndicesDimensions(self):
     indices = array_ops.zeros([1, 1, 2], dtypes.int32)
     updates = array_ops.zeros([1, 1], dtypes.int32)
@@ -340,7 +328,7 @@ class StatefulScatterNdTest(test.TestCase):
 
     expected_result = np.zeros([2, 2], dtype=np.int32)
     with self.cached_session():
-      ref.initializer.run()
+      self.evaluate(ref.initializer)
       self.assertAllEqual(expected_result, self.evaluate(scatter_update))
 
   @test_util.run_deprecated_v1
@@ -363,7 +351,6 @@ class StatefulScatterNdTest(test.TestCase):
         ValueError, r"The inner \d+ dimensions of input\.shape="):
       state_ops.scatter_nd_update(ref, indices, updates)
 
-  @test_util.run_deprecated_v1
   def testConcurrentUpdates(self):
     num_updates = 10000
     update_values = np.random.rand(num_updates)
@@ -377,10 +364,9 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_add(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with session.Session() as sess:
-      self.evaluate(init)
-      result = self.evaluate(scatter)
-      assert np.allclose(result, expected_result)
+    self.evaluate(init)
+    result = self.evaluate(scatter)
+    assert np.allclose(result, expected_result)
 
   # TODO(fpmc): Re-enable this test when gpu_pip test actually runs on a GPU.
   def _disabledTestScatterOutOfRangeGpu(self):
@@ -397,7 +383,7 @@ class StatefulScatterNdTest(test.TestCase):
       # We don't test the implementation; just test there's no failures.
       with self.cached_session(force_gpu=True):
         ref = variables.Variable(params)
-        ref.initializer.run()
+        self.evaluate(ref.initializer)
 
         # Indices all in range, no problem.
         indices = np.array([2, 0, 5])
@@ -410,7 +396,7 @@ class StatefulScatterNdTest(test.TestCase):
         op(ref, indices, updates).eval()
 
 
-class ScatterNdTest(test.TestCase):
+class ScatterNdTest(test.TestCase, parameterized.TestCase):
   non_aliasing_add_test = False
 
   def scatter_nd(self, indices, updates, shape, input_=None):
@@ -492,7 +478,6 @@ class ScatterNdTest(test.TestCase):
     self.assertAllEqual(
         self.scatter_nd(indices, updates, shape).get_shape().as_list(), shape)
 
-  @test_util.run_deprecated_v1
   def testExtraIndicesDimensions(self):
     indices = array_ops.zeros([1, 1, 2], dtypes.int32)
     updates = array_ops.zeros([1, 1], dtypes.int32)
@@ -500,29 +485,31 @@ class ScatterNdTest(test.TestCase):
     scatter = self.scatter_nd(indices, updates, shape)
     self.assertAllEqual(scatter.get_shape().as_list(), shape)
     expected_result = np.zeros([2, 2], dtype=np.int32)
-    with self.cached_session():
-      self.assertAllEqual(expected_result, self.evaluate(scatter))
+    self.assertAllEqual(expected_result, self.evaluate(scatter))
 
-  @test_util.run_deprecated_v1
   def testUndefinedIndicesShape(self):
-    indices = array_ops.placeholder(dtypes.int32, shape=None)
-    updates = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
-    shape = constant_op.constant([2, 2, 2], dtypes.int32)
-    self.scatter_nd(indices, updates, shape)
+    # Placeholders are only valid in Graph.
+    with ops.Graph().as_default():
+      indices = array_ops.placeholder(dtypes.int32, shape=None)
+      updates = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
+      shape = constant_op.constant([2, 2, 2], dtypes.int32)
+      self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_deprecated_v1
   def testUndefinedUpdatesShape(self):
-    indices = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
-    updates = array_ops.placeholder(dtypes.int32, shape=None)
-    shape = constant_op.constant([2, 2, 2], dtypes.int32)
-    self.scatter_nd(indices, updates, shape)
+    # Placeholders are only valid in Graph.
+    with ops.Graph().as_default():
+      indices = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
+      updates = array_ops.placeholder(dtypes.int32, shape=None)
+      shape = constant_op.constant([2, 2, 2], dtypes.int32)
+      self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_deprecated_v1
   def testUndefinedOutputShape(self):
-    indices = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
-    updates = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
-    shape = array_ops.placeholder(dtypes.int32, shape=[None])
-    self.scatter_nd(indices, updates, shape)
+    # Placeholders are only valid in Graph.
+    with ops.Graph().as_default():
+      indices = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
+      updates = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
+      shape = array_ops.placeholder(dtypes.int32, shape=[None])
+      self.scatter_nd(indices, updates, shape)
 
   @test_util.run_deprecated_v1
   def testEmptyOutputShape1(self):
@@ -534,21 +521,21 @@ class ScatterNdTest(test.TestCase):
         ValueError, "Indices and updates specified for empty output shape"):
       self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_v1_only("b/120545219")
   def testEmptyOutputShape2(self):
-    indices = array_ops.placeholder(dtypes.int32, shape=None)
-    updates = array_ops.placeholder(dtypes.int32, shape=None)
-    shape = constant_op.constant([0, 3, 2], dtypes.int32)
+    with ops.Graph().as_default():
+      indices = array_ops.placeholder(dtypes.int32, shape=None)
+      updates = array_ops.placeholder(dtypes.int32, shape=None)
+      shape = constant_op.constant([0, 3, 2], dtypes.int32)
 
-    with self.cached_session():
-      with self.assertRaisesOpError(
-          "Indices and updates specified for empty output"):
-        self.scatter_nd(indices, updates, shape).eval(feed_dict={
-            indices: np.zeros([2, 2, 2], dtype=np.int32),
-            updates: np.zeros([2, 2, 2], dtype=np.int32)
-        })
+      with self.cached_session():
+        with self.assertRaisesOpError(
+            "Indices and updates specified for empty output"):
+          self.scatter_nd(indices, updates, shape).eval(
+              feed_dict={
+                  indices: np.zeros([2, 2, 2], dtype=np.int32),
+                  updates: np.zeros([2, 2, 2], dtype=np.int32)
+              })
 
-  @test_util.run_deprecated_v1
   def testEmptyOutputShape3(self):
     indices = array_ops.zeros([0], dtypes.int32)
     updates = array_ops.zeros([0], dtypes.int32)
@@ -556,7 +543,7 @@ class ScatterNdTest(test.TestCase):
     scatter = self.scatter_nd(indices, updates, shape)
 
     with self.cached_session():
-      self.assertEqual(scatter.eval().size, 0)
+      self.assertEqual(self.evaluate(scatter).size, 0)
 
   @test_util.run_deprecated_v1
   def testRank3InvalidShape1(self):
@@ -576,139 +563,138 @@ class ScatterNdTest(test.TestCase):
         ValueError, r"The inner \d+ dimensions of (input|output)\.shape="):
       self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_deprecated_v1
-  def testGradientsRank2ElementUpdate(self):
+  @parameterized.parameters(set((True, context.executing_eagerly())))
+  def testGradientsRank2ElementUpdate(self, use_tape):
     for dtype in GRADIENT_TESTS_DTYPES:
-      indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
-      updates = constant_op.constant([1, 4], dtype=dtype)
-      shape = constant_op.constant([2, 2], dtype=dtypes.int32)
-      input_ = array_ops.zeros(shape, dtype=dtype)
-      outputs = self.scatter_nd(indices, updates, shape, input_)
+      with test_util.AbstractGradientTape(use_tape=use_tape) as tape:
+        indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
+        updates = constant_op.constant([1, 4], dtype=dtype)
+        tape.watch(updates)
+        shape = constant_op.constant([2, 2], dtype=dtypes.int32)
+        input_ = array_ops.zeros(shape, dtype=dtype)
+        tape.watch(input_)
+        outputs = self.scatter_nd(indices, updates, shape, input_)
 
-      grad_vals = constant_op.constant([[1, 2], [3, 4]], dtype=dtype)
-      updates_grad, input_grad = gradients_impl.gradients(
-          [outputs], [updates, input_], [grad_vals])
+        grad_vals = constant_op.constant([[1, 2], [3, 4]], dtype=dtype)
+
+        updates_grad, input_grad = tape.gradient([outputs], [updates, input_],
+                                                 [grad_vals])
       expected_updates_grad = np.array([1, 4], dtype=dtype.as_numpy_dtype())
       expected_input_grad = np.array([[1, 2], [3, 4]],
                                      dtype=dtype.as_numpy_dtype())
-      with self.cached_session():
-        self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
-        if self.non_aliasing_add_test:
-          self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
+      self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
+      if self.non_aliasing_add_test:
+        self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
-  @test_util.run_deprecated_v1
-  def testGradientsRank2SliceUpdate(self):
+  @parameterized.parameters(set((True, context.executing_eagerly())))
+  def testGradientsRank2SliceUpdate(self, use_tape):
     for dtype in GRADIENT_TESTS_DTYPES:
-      indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
-      updates = constant_op.constant([[3, 4], [1, 2]], dtype=dtype)
-      shape = constant_op.constant([2, 2], dtype=dtypes.int32)
-      input_ = array_ops.zeros(shape, dtype=dtype)
-      outputs = self.scatter_nd(indices, updates, shape, input_)
+      with test_util.AbstractGradientTape(use_tape=use_tape) as tape:
+        indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
+        updates = constant_op.constant([[3, 4], [1, 2]], dtype=dtype)
+        tape.watch(updates)
+        shape = constant_op.constant([2, 2], dtype=dtypes.int32)
+        input_ = array_ops.zeros(shape, dtype=dtype)
+        tape.watch(input_)
+        outputs = self.scatter_nd(indices, updates, shape, input_)
 
-      grad_vals = constant_op.constant([[3, 4], [1, 2]], dtype=dtype)
-      updates_grad, input_grad = gradients_impl.gradients(
-          [outputs], [updates, input_], [grad_vals])
+        grad_vals = constant_op.constant([[3, 4], [1, 2]], dtype=dtype)
+        updates_grad, input_grad = tape.gradient([outputs], [updates, input_],
+                                                 [grad_vals])
       expected_updates_grad = np.array([[1, 2], [3, 4]],
                                        dtype=dtype.as_numpy_dtype())
       expected_input_grad = np.array([[3, 4], [1, 2]],
                                      dtype=dtype.as_numpy_dtype())
-      with self.cached_session():
-        self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
-        if self.non_aliasing_add_test:
-          self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
+      self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
+      if self.non_aliasing_add_test:
+        self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
-  @test_util.run_deprecated_v1
-  def testGradientsRank3SliceUpdate(self):
+  @parameterized.parameters(set((True, context.executing_eagerly())))
+  def testGradientsRank3SliceUpdate(self, use_tape):
     for dtype in GRADIENT_TESTS_DTYPES:
-      indices = constant_op.constant([[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
-                                     dtype=dtypes.int32)
-      updates = constant_op.constant([[[5, 7], [2, 4]], [[1, 3], [6, 8]]],
-                                     dtype=dtype)
-      shape = constant_op.constant([2, 2, 2], dtype=dtypes.int32)
-      input_ = array_ops.zeros(shape, dtype=dtype)
-      outputs = self.scatter_nd(indices, updates, shape, input_)
-
-      grad_vals = constant_op.constant([[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+      with test_util.AbstractGradientTape(use_tape=use_tape) as tape:
+        indices = constant_op.constant([[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+                                       dtype=dtypes.int32)
+        updates = constant_op.constant([[[5, 7], [2, 4]], [[1, 3], [6, 8]]],
                                        dtype=dtype)
-      updates_grad, input_grad = gradients_impl.gradients(
-          [outputs], [updates, input_], [grad_vals])
+        tape.watch(updates)
+        shape = constant_op.constant([2, 2, 2], dtype=dtypes.int32)
+        input_ = array_ops.zeros(shape, dtype=dtype)
+        tape.watch(input_)
+        outputs = self.scatter_nd(indices, updates, shape, input_)
+
+        grad_vals = constant_op.constant([[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+                                         dtype=dtype)
+        updates_grad, input_grad = tape.gradient([outputs], [updates, input_],
+                                                 [grad_vals])
       expected_updates_grad = np.array([[[3, 4], [5, 6]], [[1, 2], [7, 8]]],
                                        dtype=dtype.as_numpy_dtype())
       expected_input_grad = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
                                      dtype=dtype.as_numpy_dtype())
-      with self.cached_session():
-        self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
-        if self.non_aliasing_add_test:
-          self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
+      self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
+      if self.non_aliasing_add_test:
+        self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
-  @test_util.run_deprecated_v1
-  def testGradientsRank7SliceUpdate(self):
+  @parameterized.parameters(set((True, context.executing_eagerly())))
+  def testGradientsRank7SliceUpdate(self, use_tape):
     for dtype in GRADIENT_TESTS_DTYPES:
-      indices = constant_op.constant(
-          [[[[[[[0, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0]]]],
-             [[[[0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 1]]]]]]],
-          dtype=dtypes.int32)
-      updates = constant_op.constant(
-          [[[[[[[5, 6], [2, 4]]]], [[[[1, 3], [6, 8]]]]]]], dtype=dtype)
-      shape = constant_op.constant([1, 1, 2, 1, 1, 2, 2], dtype=dtypes.int32)
-      input_ = array_ops.zeros(shape, dtype=dtype)
-      outputs = self.scatter_nd(indices, updates, shape, input_)
+      with test_util.AbstractGradientTape(use_tape=use_tape) as tape:
+        indices = constant_op.constant(
+            [[[[[[[0, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0]]]],
+               [[[[0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 1]]]]]]],
+            dtype=dtypes.int32)
+        updates = constant_op.constant(
+            [[[[[[[5, 6], [2, 4]]]], [[[[1, 3], [6, 8]]]]]]], dtype=dtype)
+        tape.watch(updates)
+        shape = constant_op.constant([1, 1, 2, 1, 1, 2, 2], dtype=dtypes.int32)
+        input_ = array_ops.zeros(shape, dtype=dtype)
+        tape.watch(input_)
+        outputs = self.scatter_nd(indices, updates, shape, input_)
 
-      grad_vals = constant_op.constant(
-          [[[[[[[1, 2], [3, 4]]]], [[[[5, 6], [7, 8]]]]]]], dtype=dtype)
-      updates_grad, input_grad = gradients_impl.gradients(
-          [outputs], [updates, input_], [grad_vals])
+        grad_vals = constant_op.constant(
+            [[[[[[[1, 2], [3, 4]]]], [[[[5, 6], [7, 8]]]]]]], dtype=dtype)
+        updates_grad, input_grad = tape.gradient([outputs], [updates, input_],
+                                                 [grad_vals])
       expected_updates_grad = np.array(
           [[[[[[[3, 4], [5, 6]]]], [[[[1, 2], [7, 8]]]]]]],
           dtype=dtype.as_numpy_dtype())
       expected_input_grad = np.array(
           [[[[[[[1, 2], [3, 4]]]], [[[[5, 6], [7, 8]]]]]]],
           dtype=dtype.as_numpy_dtype())
-      with self.cached_session():
-        self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
-        if self.non_aliasing_add_test:
-          self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
+      self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
+      if self.non_aliasing_add_test:
+        self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
-  @test_util.run_deprecated_v1
   def testScatterNdRepeatedIndicesAdd(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
     shape = [1]
-    with self.cached_session():
-      val = self.scatter_nd(indices, values, shape).eval()
+    val = self.evaluate(self.scatter_nd(indices, values, shape))
     self.assertAllClose([np.sum(values)], val)
 
-  @test_util.run_deprecated_v1
   def testSmokeScatterNdBatch2DSliceDim2(self):
-    with self.cached_session():
-      indices = array_ops.zeros([3, 5, 2], dtype=dtypes.int32)
-      values = array_ops.zeros([3, 5, 7])
-      shape = [4, 6, 7]
-      self.scatter_nd(indices, values, shape).eval()
+    indices = array_ops.zeros([3, 5, 2], dtype=dtypes.int32)
+    values = array_ops.zeros([3, 5, 7])
+    shape = [4, 6, 7]
+    self.evaluate(self.scatter_nd(indices, values, shape))
 
-  @test_util.run_deprecated_v1
   def testSmokeScatterNdBatch1DSliceDim2(self):
-    with self.cached_session():
-      indices = array_ops.zeros([0, 2], dtype=dtypes.int32)
-      values = array_ops.zeros([0, 7])
-      shape = [4, 6, 7]
-      self.scatter_nd(indices, values, shape).eval()
+    indices = array_ops.zeros([0, 2], dtype=dtypes.int32)
+    values = array_ops.zeros([0, 7])
+    shape = [4, 6, 7]
+    self.evaluate(self.scatter_nd(indices, values, shape))
 
-  @test_util.run_deprecated_v1
   def testSmokeScatterNdBatch1DSliceDim3ShapeRank7(self):
-    with self.cached_session():
-      indices = array_ops.zeros([1, 3], dtype=dtypes.int32)
-      values = array_ops.zeros([1, 6, 7, 8, 9])
-      shape = [3, 4, 5, 6, 7, 8, 9]
-      self.scatter_nd(indices, values, shape).eval()
+    indices = array_ops.zeros([1, 3], dtype=dtypes.int32)
+    values = array_ops.zeros([1, 6, 7, 8, 9])
+    shape = [3, 4, 5, 6, 7, 8, 9]
+    self.evaluate(self.scatter_nd(indices, values, shape))
 
-  @test_util.run_deprecated_v1
   def testSmokeScatterNdBatch2DSliceDim3ShapeRank7(self):
-    with self.cached_session():
-      indices = array_ops.zeros([1, 2, 3], dtype=dtypes.int32)
-      values = array_ops.zeros([1, 2, 6, 7, 8, 9])
-      shape = [3, 4, 5, 6, 7, 8, 9]
-      self.scatter_nd(indices, values, shape).eval()
+    indices = array_ops.zeros([1, 2, 3], dtype=dtypes.int32)
+    values = array_ops.zeros([1, 2, 6, 7, 8, 9])
+    shape = [3, 4, 5, 6, 7, 8, 9]
+    self.evaluate(self.scatter_nd(indices, values, shape))
 
 
 class ScatterNdNonAliasingAddTest(ScatterNdTest):
@@ -742,37 +728,34 @@ class ScatterNdTensorTest(test.TestCase):
     self.assertAllEqual(subbed,
                         constant_op.constant([1, -10, 1, -9, -8, 1, 1, -11]))
 
-  @test_util.run_v1_only("b/120545219")
   def testUpdateAddSubGradients(self):
-
     with self.cached_session():
       indices = constant_op.constant([[3], [1]])
       updates = constant_op.constant([9, 10], dtype=dtypes.float32)
       x = array_ops.ones([4], dtype=dtypes.float32)
 
-      assigned = array_ops.tensor_scatter_update(x, indices, updates)
-      added = array_ops.tensor_scatter_add(x, indices, updates)
-      subbed = array_ops.tensor_scatter_sub(x, indices, updates)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_update(x, indices, updates), [x])
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_add(x, indices, updates), [x])
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_sub(x, indices, updates), [x])
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
 
-      err_assigned = gradient_checker.compute_gradient_error(
-          x, [4], assigned, [4])
-      err_added = gradient_checker.compute_gradient_error(x, [4], added, [4])
-      err_subbed = gradient_checker.compute_gradient_error(x, [4], subbed, [4])
-
-      self.assertLess(err_assigned, 2e-4)
-      self.assertLess(err_added, 2e-4)
-      self.assertLess(err_subbed, 2e-4)
-
-      err_assigned_wrt_updates = gradient_checker.compute_gradient_error(
-          updates, [2], assigned, [4])
-      err_added_wrt_updates = gradient_checker.compute_gradient_error(
-          updates, [2], added, [4])
-      err_subbed_wrt_updates = gradient_checker.compute_gradient_error(
-          updates, [2], subbed, [4])
-
-      self.assertLess(err_assigned_wrt_updates, 2e-4)
-      self.assertLess(err_added_wrt_updates, 2e-4)
-      self.assertLess(err_subbed_wrt_updates, 2e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda updates: array_ops.tensor_scatter_update(x, indices, updates),
+          [updates])
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda updates: array_ops.tensor_scatter_add(x, indices, updates),
+          [updates])
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda updates: array_ops.tensor_scatter_sub(x, indices, updates),
+          [updates])
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
 
   @test_util.run_in_graph_and_eager_modes
   def testUpdateMinMax(self):

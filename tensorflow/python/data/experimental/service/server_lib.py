@@ -19,45 +19,72 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
+from tensorflow.core.protobuf.data.experimental import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("data.experimental.service.MasterServer", v1=[])
-class MasterServer(object):
-  """An in-process tf.data service master server.
+DEFAULT_PROTOCOL = "grpc"
 
-  A `tf.data.experimental.service.MasterServer` coordinates a cluster of
+
+@tf_export("data.experimental.service.DispatchServer", v1=[])
+class DispatchServer(object):
+  """An in-process tf.data service dispatch server.
+
+  A `tf.data.experimental.service.DispatchServer` coordinates a cluster of
   `tf.data.experimental.service.WorkerServer`s. When the workers start, they
-  register themselves with the master.
+  register themselves with the dispatcher.
 
-  >>> master = tf.data.experimental.service.MasterServer(port=0)
-  >>> master_address = master.target.split("://")[1]
+  >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+  >>> dispatcher_address = dispatcher.target.split("://")[1]
   >>> worker = tf.data.experimental.service.WorkerServer(
-  ...     port=0, master_address=master_address)
+  ...     port=0, dispatcher_address=dispatcher_address)
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
-  ...     processing_mode="parallel_epochs", service=master.target))
+  ...     processing_mode="parallel_epochs", service=dispatcher.target))
   >>> print(list(dataset.as_numpy_iterator()))
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
-  When starting a dedicated tf.data master process, use join() to block
+  When starting a dedicated tf.data dispatch process, use join() to block
   indefinitely after starting up the server.
 
   ```
-  master = tf.data.experimental.service.MasterServer(port=5050)
-  master.join()
+  dispatcher = tf.data.experimental.service.DispatchServer(port=5050)
+  dispatcher.join()
+  ```
+
+  To start a `DispatchServer` in fault-tolerant mode, set `work_dir` and
+  `fault_tolerant_mode` like below:
+
+  ```
+  dispatcher = tf.data.experimental.service.DispatchServer(
+      port=5050,
+      work_dir="gs://my-bucket/dispatcher/work_dir",
+      fault_tolerant_mode=True)
   ```
   """
 
-  def __init__(self, port, protocol=None, start=True):
-    """Creates a new master server.
+  def __init__(self,
+               port,
+               protocol=None,
+               work_dir=None,
+               fault_tolerant_mode=None,
+               start=True):
+    """Creates a new dispatch server.
 
     Args:
       port: Specifies the port to bind to.
       protocol: (Optional.) Specifies the protocol to be used by the server.
         Acceptable values include `"grpc", "grpc+local"`. Defaults to `"grpc"`.
+      work_dir: (Optional.) A directory to store dispatcher state in. This
+        argument is required for the dispatcher to be able to recover from
+        restarts.
+      fault_tolerant_mode: (Optional.) Whether the dispatcher should write
+        its state to a journal so that it can recover from restarts. Dispatcher
+        state, including registered datasets and created jobs, is synchronously
+        written to the journal before responding to RPCs. If `True`, `work_dir`
+        must also be specified. Defaults to `False`.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to `True`.
 
@@ -65,18 +92,28 @@ class MasterServer(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow server.
     """
-    if protocol is None:
-      protocol = "grpc"
-    self._protocol = protocol
-    self._server = _pywrap_server_lib.TF_DATA_NewMasterServer(port, protocol)
+    self._protocol = protocol or DEFAULT_PROTOCOL
+    work_dir = work_dir or ""
+    fault_tolerant_mode = fault_tolerant_mode or False
+    if fault_tolerant_mode and not work_dir:
+      raise ValueError(
+          "Cannot enable fault tolerant mode without configuring a work_dir")
+    config = service_config_pb2.DispatcherConfig(
+        port=port,
+        protocol=self._protocol,
+        work_dir=work_dir,
+        fault_tolerant_mode=fault_tolerant_mode)
+    self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
+        config.SerializeToString())
     if start:
       self._server.start()
 
   def start(self):
     """Starts this server.
 
-    >>> master = tf.data.experimental.service.MasterServer(port=0, start=False)
-    >>> master.start()
+    >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0,
+    ...                                                          start=False)
+    >>> dispatcher.start()
 
     Raises:
       tf.errors.OpError: Or one of its subclasses if an error occurs while
@@ -87,11 +124,11 @@ class MasterServer(object):
   def join(self):
     """Blocks until the server has shut down.
 
-    This is useful when starting a dedicated master process.
+    This is useful when starting a dedicated dispatch process.
 
     ```
-    master = tf.data.experimental.service.MasterServer(port=5050)
-    master.join()
+    dispatcher = tf.data.experimental.service.DispatchServer(port=5050)
+    dispatcher.join()
     ```
 
     Raises:
@@ -104,10 +141,10 @@ class MasterServer(object):
   def target(self):
     """Returns a target that can be used to connect to the server.
 
-    >>> master = tf.data.experimental.service.MasterServer(port=0)
+    >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
     >>> dataset = tf.data.Dataset.range(10)
     >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
-    ...     processing_mode="parallel_epochs", service=master.target))
+    ...     processing_mode="parallel_epochs", service=dispatcher.target))
 
     The returned string will be in the form protocol://address, e.g.
     "grpc://localhost:5050".
@@ -136,7 +173,7 @@ class MasterServer(object):
     return "localhost:{0}".format(self._server.bound_port())
 
   def _num_workers(self):
-    """Returns the number of workers registered with the master."""
+    """Returns the number of workers registered with the dispatcher."""
     return self._server.num_workers()
 
 
@@ -147,15 +184,15 @@ class WorkerServer(object):
   A `tf.data.experimental.service.WorkerServer` performs `tf.data.Dataset`
   processing for user-defined datasets, and provides the resulting elements over
   RPC. A worker is associated with a single
-  `tf.data.experimental.service.MasterServer`.
+  `tf.data.experimental.service.DispatchServer`.
 
-  >>> master = tf.data.experimental.service.MasterServer(port=0)
-  >>> master_address = master.target.split("://")[1]
+  >>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+  >>> dispatcher_address = dispatcher.target.split("://")[1]
   >>> worker = tf.data.experimental.service.WorkerServer(
-  ...     port=0, master_address=master_address)
+  ...     port=0, dispatcher_address=dispatcher_address)
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
-  ...     processing_mode="parallel_epochs", service=master.target))
+  ...     processing_mode="parallel_epochs", service=dispatcher.target))
   >>> print(list(dataset.as_numpy_iterator()))
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -164,14 +201,14 @@ class WorkerServer(object):
 
   ```
   worker = tf.data.experimental.service.WorkerServer(
-      port=5051, master_address="grpc://localhost:5050")
+      port=5051, dispatcher_address="grpc://localhost:5050")
   worker.join()
   ```
   """
 
   def __init__(self,
                port,
-               master_address,
+               dispatcher_address,
                worker_address=None,
                protocol=None,
                start=True):
@@ -180,11 +217,12 @@ class WorkerServer(object):
     Args:
       port: Specifies the port to bind to. A value of 0 indicates that the
         worker can bind to any available port.
-      master_address: Specifies the address of the master server.
+      dispatcher_address: Specifies the address of the dispatcher.
       worker_address: (Optional.) Specifies the address of the worker server.
-        This address is passed to the master server so that the master can tell
-        clients how to connect to this worker. Defaults to `"localhost:%port%"`,
-          where `%port%` will be replaced with the port used by the worker.
+        This address is passed to the dispatcher so that the dispatcher can
+        tell clients how to connect to this worker. Defaults to
+        `"localhost:%port%"`, where `%port%` will be replaced with the port used
+        by the worker.
       protocol: (Optional.) Specifies the protocol to be used by the server.
         Acceptable values include `"grpc", "grpc+local"`. Defaults to `"grpc"`.
       start: (Optional.) Boolean, indicating whether to start the server after
@@ -200,8 +238,13 @@ class WorkerServer(object):
       protocol = "grpc"
 
     self._protocol = protocol
+    config = service_config_pb2.WorkerConfig(
+        port=port,
+        protocol=protocol,
+        dispatcher_address=dispatcher_address,
+        worker_address=worker_address)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
-        port, protocol, master_address, worker_address)
+        config.SerializeToString())
     if start:
       self._server.start()
 
@@ -221,7 +264,7 @@ class WorkerServer(object):
 
     ```
     worker_server = tf.data.experimental.service.WorkerServer(
-        port=5051, master_address="grpc://localhost:5050")
+        port=5051, dispatcher_address="grpc://localhost:5050")
     worker_server.join()
     ```
 

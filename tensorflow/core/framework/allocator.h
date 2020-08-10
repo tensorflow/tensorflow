@@ -39,17 +39,19 @@ class TensorShape;
 struct AllocationAttributes {
   AllocationAttributes() = default;
 
-  AllocationAttributes(bool no_retry_on_failure, bool allocation_will_be_logged,
+  AllocationAttributes(bool retry_on_failure, bool allocation_will_be_logged,
                        std::function<uint64()>* freed_by_func)
-      : no_retry_on_failure(no_retry_on_failure),
+      : retry_on_failure(retry_on_failure),
         allocation_will_be_logged(allocation_will_be_logged),
         freed_by_func(freed_by_func) {}
 
-  // If the first attempt to allocate the memory fails, the allocation
-  // should return immediately without retrying.
-  // An example use case is optional scratch spaces where a failure
-  // has only performance impact.
-  bool no_retry_on_failure = false;
+  // If the first attempt to allocate the memory fails, the allocation should
+  // wait and retry (with a timeout).
+  //
+  // This is usually set to true, but we may set it to false in cases where a
+  // failure has only performance impact (e.g. optional scratch space
+  // allocation).
+  bool retry_on_failure = true;
   // If a Tensor is allocated without the following set to true, then
   // it is logged as an unknown allocation. During execution Tensors
   // should be allocated through the OpKernelContext which records
