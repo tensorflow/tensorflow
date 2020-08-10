@@ -199,10 +199,17 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
 
-TF_CAPI_EXPORT void TF_ForwardInputOrAllocateOutput(TF_OpKernelContext* context,
-    int* candidate_input_indices, int num_input_indices, int output_index, 
-    int64_t* output_dims, int output_num_dims, TF_Tensor** output, 
-    int* forwarded_input, TF_Status* status);
+// Tries to forward one of the inputs given in input_indices to
+// output[output_index]. If none of the given inputs can be forwarded, calls
+// allocate_output() to allocate a new output buffer. The index of the
+// forwarded input will be assign to output argument forwarded_input (if it's
+// not nullptr). If no inputs are forwarded, forwarded_input will be assigned
+// -1.
+
+TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
+    TF_OpKernelContext* context, int* candidate_input_indices, 
+    int num_input_indices, int output_index, int64_t* output_dims, 
+    int output_num_dims, int* forwarded_input, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

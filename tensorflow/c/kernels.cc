@@ -281,26 +281,30 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
   return tf_tensor;
 }
 
-void TF_ForwardInputOrAllocateOutput(TF_OpKernelContext* context, 
+TF_Tensor* TF_ForwardInputOrAllocateOutput(TF_OpKernelContext* context, 
     int* candidate_input_indices, int num_input_indices, int output_index, 
-    int64_t* output_dims, int output_num_dims, TF_Tensor** output, 
-    int* forwarded_input, TF_Status* status) { 
+    int64_t* output_dims, int output_num_dims, int* forwarded_input, 
+    TF_Status* status) { 
   TF_SetStatus(status, TF_OK, ""); 
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   tensorflow::gtl::ArraySlice<int> input_indices_array(candidate_input_indices, 
                                                        num_input_indices); 
   tensorflow::gtl::ArraySlice<tensorflow::int64> output_dimarray(
       reinterpret_cast<tensorflow::int64*>(output_dims), output_num_dims);
-  tensorflow::Tensor output_tensor;  
-  tensorflow::Status s = TF_TensorToTensor(*output, &output_tensor); 
-  if (!s.ok()) { 
-    ::tensorflow::Set_TF_Status_from_Status(status, s);
-    return;
-  }
-  tensorflow::Tensor* output_tensor_pointer = &output_tensor;
-  tensorflow::Status forward_input_status = cc_ctx->
+  tensorflow::Tensor* output_tensor_pointer;
+  tensorflow::Status s = cc_ctx->
       forward_input_or_allocate_output(input_indices_array, output_index, 
       tensorflow::TensorShape(output_dimarray), &output_tensor_pointer, 
       forwarded_input); 
+  if (!s.ok()) { 
     ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return nullptr;  
+  } 
+  TF_Tensor* tf_tensor_output = TF_TensorFromTensor(
+      *output_tensor_pointer, &s); 
+  if (!s.ok()) { 
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return nullptr;  
+  }
+  return tf_tensor_output;
 }

@@ -474,4 +474,68 @@ TEST_F(DeviceKernelOpTest, TestAllocateOutputSize2x3) {
   EXPECT_EQ("Tensor<type: float shape: [2,3] values: [1 2 3][4 5 6]>",
             output->DebugString(100));
 }
+
+TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
+  const char* node_name = "TestForwardInputOrAllocateOutputKernel";
+  const char* op_name = "BazOp";
+  const char* device_name = "FakeDeviceName";
+
+  REGISTER_OP(op_name)
+      .Input("input1: float")
+      .Input("input2: float")
+      .Output("output1: float")
+      .Attr("SomeDataTypeAttr: type");;
+
+  // A kernel whose Compute function that forwards one input to output
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    int candidate_input_indices[1] = {0}; 
+    int forwarded_input; 
+    int64_t output_dims[1] = {};
+    TF_Tensor* output = TF_ForwardInputOrAllocateOutput(ctx, 
+        candidate_input_indices, 1, 0, output_dims, 0, &forwarded_input, s); 
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    EXPECT_EQ(forwarded_input, 0);
+    EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
+    EXPECT_EQ(0, TF_NumDims(output));
+    TF_DeleteStatus(s);
+  };
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(op_name, device_name, nullptr,
+                                                  my_compute_func, nullptr);
+
+  {
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilder(node_name, builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_DeleteStatus(status);
+  }
+
+  {
+    OpKernelContext::Params p;
+    DummyDevice dummy_device(nullptr);
+    p.device = &dummy_device;
+    AllocatorAttributes alloc_attrs; 
+    p.output_attr_array = &alloc_attrs;
+
+    Tensor t(static_cast<float>(123));
+
+    gtl::InlinedVector<TensorValue, 4> inputs;
+    // GetFakeKernel requires a NodeDef with two inputs 
+    inputs.emplace_back(&t);
+    inputs.emplace_back();
+    p.inputs = &inputs;
+
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+
+    p.op_kernel = kernel.get();
+    OpKernelContext ctx(&p);
+    kernel->Compute(&ctx);
+    ASSERT_EQ(123, ctx.mutable_output(0)->scalar<float>()());
+  }
+}
 }  // namespace tensorflow
