@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
@@ -139,6 +140,9 @@ Status GpuCompiler::OptimizeHloModule(
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
     pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
+
+    // Comparison total order expander
+    pipeline.AddPass<ComparisonExpander>();
 
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.

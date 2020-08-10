@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 72
+// Next ID: 73
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -248,6 +248,9 @@ message HloInstructionProto {
 
   // RNG algorithm used by kRngBitGenerator.
   xla.RandomAlgorithm rng_algorithm = 70;
+
+  // The comparison type used for kCompare.
+  string comparison_type = 72;
 }
 
 // Serialization of HloComputation.
