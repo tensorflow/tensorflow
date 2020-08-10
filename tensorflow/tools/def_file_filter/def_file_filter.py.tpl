@@ -39,7 +39,6 @@ import sys
 import tempfile
 
 # External tools we use that come with visual studio sdk
-TOOLSDIR = r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.26.28801\bin\Hostx64\x64"
 UNDNAME = "%{undname_bin_path}"
 DUMPBIN_CMD = "\"{}\" /SYMBOLS".format("%{dumpbin_bin_path}")
 
@@ -251,16 +250,20 @@ def exported_symbols_cxx(decorated_candidates, undecorated_candidates):
     )
     post_exclude_symbols = re.compile(
         r"::_|"                        # exclude anything with a leading underscore
-        r"^tensorflow::internal|"      # exclude tensorflow internals
         r"<.+>",                       # exclude templates
         re.IGNORECASE)
+
+    always_include_symbols = re.compile(
+        r"TensorShapeBase"             # always include TensorShapeBase even in templates
+    )
     exports = set()
     for decorated_symbol, undecorated_symbol in zip(decorated_candidates, undecorated_candidates):
         if decorated_symbol in exports:
             continue
 
         exports.add(decorated_symbol)
-        if pre_include_symbols.search(undecorated_symbol) and not post_exclude_symbols.search(undecorated_symbol):
+        if pre_include_symbols.search(undecorated_symbol) and \
+              (not post_exclude_symbols.search(undecorated_symbol) or always_include_symbols.search(undecorated_symbol)):
             yield decorated_symbol
 
 
