@@ -87,7 +87,7 @@ void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   // Cast values to array to access tensor elements by index 
   auto values_array = static_cast<T*>(TF_TensorData(safe_values_ptr.get())); 
   tensorflow::histogram::Histogram histo; 
-  for (int i = 0; i < TF_TensorElementCount(safe_values_ptr.get()); ++i) { 
+  for (int64_t i = 0; i < TF_TensorElementCount(safe_values_ptr.get()); ++i) { 
     const double double_val = static_cast<double>(values_array[i]); 
     if (Eigen::numext::isnan(double_val)) { 
       std::ostringstream err; 
